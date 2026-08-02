@@ -127,7 +127,7 @@ export class ControlPlane {
   private readonly usageLimitRetryCeiling: number;
   private readonly archivePrefix: string;
   private webhookUrl: string | null;
-  private readonly onAgentMessage: ((agentId: string, msg: AgentWireMessage) => void) | undefined;
+  private onAgentMessage: ((agentId: string, msg: AgentWireMessage) => void) | undefined;
 
   constructor(options: ControlPlaneOptions = {}) {
     this.storage = options.storage;
@@ -150,6 +150,11 @@ export class ControlPlane {
     this.archivePrefix = options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX;
     this.webhookUrl = options.webhookUrl ? options.webhookUrl : null;
     this.onAgentMessage = options.onAgentMessage;
+  }
+
+  /** Wire server→agent delivery (e.g. local WebSocket hub). */
+  setOnAgentMessage(handler: ((agentId: string, msg: AgentWireMessage) => void) | undefined): void {
+    this.onAgentMessage = handler;
   }
 
   /** Load durable rows from DynamoDB into the process cache (after ensure tables). */

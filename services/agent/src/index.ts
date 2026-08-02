@@ -28,3 +28,5 @@ export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./c
 export { ensureAgentReady, runAssignedSession } from "./runtime.js";
 export { AgentLoop, createLoopbackTransport } from "./agent-loop.js";
 export type { AgentLoopOptions, AgentTransport } from "./agent-loop.js";
+export { createWsTransport } from "./ws-transport.js";
+export { startAgentDaemon } from "./start-daemon.js";

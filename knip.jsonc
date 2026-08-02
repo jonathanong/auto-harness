@@ -9,6 +9,7 @@
         "scripts/phase3-cloud-e2e.mts",
         "scripts/phase2-post-session.mts",
         "scripts/ensure-dynamodb.mts",
+        "scripts/phase3-ws-e2e.mts",
         "vitest.config.ts",
       ],
       "project": ["scripts/**/*.{ts,mts}", "vitest.config.ts"],

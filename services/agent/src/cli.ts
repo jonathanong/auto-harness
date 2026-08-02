@@ -12,6 +12,7 @@ export function printUsage(log: (msg: string) => void = console.log): void {
   log(`Usage:
   auto-harness-agent status [--config path]
   auto-harness-agent run-session --file session.json [--config path]
+  auto-harness-agent start [--config path] [--ws ws://host/ws]
 `);
 }
 
@@ -129,10 +130,37 @@ export async function runCli(
   }
 
   if (command === "start") {
-    deps.error(
-      "start: use pnpm local:cloud-e2e or AgentLoop with loopback transport for local agent↔cloud; production WS client binds apiUrl",
-    );
-    return 1;
+    const config = deps.loadConfig({
+      ...(configPath !== undefined ? { configPath } : {}),
+      env,
+    });
+    const wsIdx = args.indexOf("--ws");
+    const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
+    try {
+      const { startAgentDaemon } = await import("./start-daemon.js");
+      await deps.ensureReady(config);
+      const { stop } = await startAgentDaemon({
+        config,
+        ...(wsUrl !== undefined ? { wsUrl } : {}),
+        log: deps.log,
+        error: deps.error,
+      });
+      const shutdown = (): void => {
+        void stop().then(() => {
+          process.exitCode = 0;
+        });
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+      // Block until signal
+      await new Promise<void>(() => {
+        /* run until killed */
+      });
+      return 0;
+    } catch (err) {
+      deps.error(err instanceof Error ? err.message : String(err));
+      return 1;
+    }
   }
 
   deps.error(`Unknown command: ${command}`);

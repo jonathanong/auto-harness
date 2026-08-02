@@ -1,10 +1,11 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
-import type { AgentToServerMessage } from "@auto-harness/shared";
+import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.js";
 import { createControlPlane } from "./create-plane.js";
 import { MemorySessionStore } from "./memory-store.js";
+import { createPlaneWsBridge, type WsHub } from "./ws-hub.js";
 
 type LocalServerOptions = {
   port?: number;
@@ -16,6 +17,9 @@ type LocalServerOptions = {
    * Unit tests may pass an in-process plane without DynamoDB.
    */
   useDynamo?: boolean;
+  /** Attach /ws agent hub (default true for startLocalServer). */
+  enableWs?: boolean;
+  onAgentMessage?: (agentId: string, msg: AgentWireMessage) => void;
 };
 
 function readJson(req: IncomingMessage): Promise<unknown> {
@@ -236,27 +240,49 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   close: () => Promise<void>;
   store: MemorySessionStore;
   plane: ControlPlane;
+  ws?: WsHub;
 }> {
   const port = options.port ?? 7420;
+  const enableWs = options.enableWs !== false;
+  const bridge = enableWs ? createPlaneWsBridge() : null;
+
   let plane = options.plane;
   let store = options.store;
-  // Default: DynamoDB Local via AWS SDK (not a custom in-memory database).
+
   if (!plane && !store && options.useDynamo !== false) {
     const created = await createControlPlane({
       publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
     });
     plane = created.plane;
     store = new MemorySessionStore({ plane });
+  } else if (!plane && store) {
+    plane = store.plane;
+  } else if (!plane) {
+    plane = new ControlPlane({
+      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+    });
+    store = new MemorySessionStore({ plane });
   }
+
+  // Wire WS delivery (and optional extra handler) after plane exists.
+  if (bridge || options.onAgentMessage) {
+    plane.setOnAgentMessage((agentId, msg) => {
+      options.onAgentMessage?.(agentId, msg);
+      bridge?.onAgentMessage(agentId, msg);
+    });
+  }
+
   const app = createLocalApp({
     ...options,
-    ...(plane !== undefined ? { plane } : {}),
-    ...(store !== undefined ? { store } : {}),
+    plane,
+    store: store ?? new MemorySessionStore({ plane }),
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   const server = createServer((req, res) => {
     void handler(req, res);
   });
+
+  const wsHub = bridge ? bridge.attach(server, resolvedPlane) : undefined;
 
   await new Promise<void>((resolve, reject) => {
     server.listen(port, () => {
@@ -269,8 +295,10 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     port,
     store: resolvedStore,
     plane: resolvedPlane,
+    ...(wsHub !== undefined ? { ws: wsHub } : {}),
     close: () =>
       new Promise((resolve, reject) => {
+        wsHub?.close();
         server.close((err) => {
           if (err) {
             reject(err);

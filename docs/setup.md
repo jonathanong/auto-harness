@@ -27,12 +27,15 @@ Endpoint: `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:8000`). Dummy AWS cr
 
 This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start` and full AWS deploy come in later phases.
 
-### One-shot end-to-end check
+### One-shot end-to-end checks
 
-From the repo root after `pnpm install`:
+From the repo root after `pnpm install` (and DynamoDB Local for API paths):
 
 ```bash
-pnpm local:e2e
+pnpm local:e2e          # SessionRunner create→run
+pnpm local:cli-e2e      # documented agent CLI + ref main
+pnpm local:ws-e2e       # real WebSocket agent channel
+pnpm local:cloud-e2e    # loopback agent loop
 ```
 
 What it does (real shipped modules):
@@ -141,6 +144,8 @@ pnpm check
 pnpm local:e2e        # create handler + SessionRunner (feature ref)
 pnpm local:cli-e2e    # documented `pnpm local:agent` path with ref: main
 pnpm local:api-smoke  # POST /sessions → 201
+pnpm local:ws-e2e     # WebSocket create→assign→run
+# optional UI: pnpm local:web  (create-session form on :3000)
 ```
 
 `pnpm check` runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.

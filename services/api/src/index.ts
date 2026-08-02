@@ -9,6 +9,7 @@ export function getServiceName(): string {
 export { MemorySessionStore } from "./memory-store.js";
 export type { StoredSession } from "./memory-store.js";
 export { createLocalApp, startLocalServer } from "./local-server.js";
+export { createPlaneWsBridge, attachAgentWsHub, createWsDelivery } from "./ws-hub.js";
 export { ControlPlane } from "./control-plane.js";
 export type {
   ArchiveObject,

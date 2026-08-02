@@ -115,9 +115,11 @@ describe("runCli", () => {
     expect(await runCli(["node", "x", "run-session"], {}, missing)).toBe(1);
   });
 
-  it("start and unknown", async () => {
+  it("start requires apiUrl and unknown command", async () => {
     const a = deps();
+    // sampleConfig has no apiUrl → start fails
     expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors.some((e) => e.includes("apiUrl"))).toBe(true);
     const b = deps();
     expect(await runCli(["node", "x", "nope"], {}, b)).toBe(1);
   });

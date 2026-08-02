@@ -454,10 +454,10 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
-**Status (code-complete, local loopback):** `AgentLoop` + loopback transport binds to
-`ControlPlane` (`pnpm local:cloud-e2e`). Ack deadline requeue (Inv 2), usage_limit retry (Inv 6),
-agent-only resume pin (Inv 7), concurrency reject (Inv 9), heartbeat stale reclaim. Production
-API Gateway WebSocket client is the same message schema; live deploy is operational.
+**Status (code-complete, local WS):** `AgentLoop` + **WebSocket** (`/ws` on local API,
+`auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
+deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), concurrency
+reject/replace (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
 
 **Migration marker: filaments' `codex-plan` (plan-only, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and usage-limit retry
@@ -483,8 +483,8 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 - Creating a session from the UI with a `ref` produces a session that checks out that ref.
 - The command dropdown only offers profiles the target agent actually has configured.
 
-**Status:** `services/web` create-session form validation + `createSessionFromUi` against API;
-command profiles only from agent-reported list (not free text). Full Next.js chrome deferred.
+**Status:** `pnpm local:web` serves create-session UI (ref + agent profile dropdown only; D4).
+`createSessionFromUi` hits the real API. Full Next.js dashboard deferred; create path is shippable.
 
 **Migration marker:** UI availability doesn't gate any filaments cutover — CLI/API-driven
 callers don't need it. Useful before wider (non-filaments) rollout.
