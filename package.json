@@ -18,6 +18,7 @@
     "local:api": "tsx services/api/src/cli.ts serve",
     "local:agent": "tsx services/agent/src/cli.ts",
     "local:e2e": "tsx scripts/local-e2e.mts",
+    "local:cli-e2e": "tsx scripts/local-cli-e2e.mts",
     "local:api-smoke": "tsx scripts/local-api-smoke.mts"
   },
   "devDependencies": {

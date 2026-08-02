@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.js";
 import { createGitClient } from "./git.js";
-// ProcessRunner used for null exitCode coverage
 
 function scripted(
   responses: Array<{
@@ -12,15 +11,18 @@ function scripted(
     stderr?: string;
   }>,
 ): ProcessRunner {
+  // Consume matching entries in order so the same argv can return different
+  // results on successive calls (e.g. rev-parse fails then succeeds after fetch).
+  const queue = [...responses];
   return {
     async run(opts) {
-      const key = opts.argv.slice(1).join(" ");
-      const hit = responses.find((r) =>
+      const idx = queue.findIndex((r) =>
         r.match.every((m, i) => opts.argv[i + 1] === m || m === "*"),
       );
-      if (!hit) {
-        throw new Error(`unexpected git ${key}`);
+      if (idx < 0) {
+        throw new Error(`unexpected git ${opts.argv.slice(1).join(" ")}`);
       }
+      const [hit] = queue.splice(idx, 1);
       if (hit.stdout) {
         opts.onChunk({ stream: "stdout", data: hit.stdout });
       }
@@ -55,7 +57,11 @@ describe("createGitClient", () => {
   it("ensureWorktree skips when listed", async () => {
     const git = createGitClient(
       scripted([
-        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
+        {
+          match: ["rev-parse", "--is-inside-work-tree"],
+          exitCode: 0,
+          stdout: "true\n",
+        },
         {
           match: ["worktree", "list", "--porcelain"],
           exitCode: 0,
@@ -72,30 +78,7 @@ describe("createGitClient", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("ensureWorktree adds when missing and falls back to detach", async () => {
-    const git = createGitClient(
-      scripted([
-        { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
-        { match: ["worktree", "list", "--porcelain"], exitCode: 0, stdout: "" },
-        {
-          match: ["worktree", "add", "-B", "main", "/repo/wt-1", "main"],
-          exitCode: 1,
-          stderr: "nope",
-        },
-        {
-          match: ["worktree", "add", "--detach", "/repo/wt-1", "HEAD"],
-          exitCode: 0,
-        },
-      ]),
-    );
-    await git.ensureWorktree({
-      repoPath: "/repo",
-      worktreePath: "/repo/wt-1",
-      branch: "main",
-    });
-  });
-
-  it("ensureWorktree success path on first add", async () => {
+  it("ensureWorktree adds detached at branch tip", async () => {
     const git = createGitClient(
       scripted([
         {
@@ -105,7 +88,12 @@ describe("createGitClient", () => {
         },
         { match: ["worktree", "list", "--porcelain"], exitCode: 0, stdout: "" },
         {
-          match: ["worktree", "add", "-B", "main", "/repo/wt-1", "main"],
+          match: ["rev-parse", "--verify", "main"],
+          exitCode: 0,
+          stdout: "abc\n",
+        },
+        {
+          match: ["worktree", "add", "--detach", "/repo/wt-1", "abc"],
           exitCode: 0,
         },
       ]),
@@ -117,32 +105,60 @@ describe("createGitClient", () => {
     });
   });
 
-  it("checkoutRef fails clearly", async () => {
+  it("ensureWorktree falls back to HEAD tip", async () => {
     const git = createGitClient(
       scripted([
-        { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "offline" },
-        { match: ["checkout", "--force", "bad"], exitCode: 1, stderr: "missing" },
+        {
+          match: ["rev-parse", "--is-inside-work-tree"],
+          exitCode: 0,
+          stdout: "true\n",
+        },
+        { match: ["worktree", "list", "--porcelain"], exitCode: 0, stdout: "" },
+        { match: ["rev-parse", "--verify", "missing"], exitCode: 1, stderr: "no" },
+        {
+          match: ["rev-parse", "--verify", "HEAD"],
+          exitCode: 0,
+          stdout: "def\n",
+        },
+        {
+          match: ["worktree", "add", "--detach", "/repo/wt-1", "def"],
+          exitCode: 0,
+        },
       ]),
     );
-    await expect(git.checkoutRef({ cwd: "/repo", ref: "bad" })).rejects.toThrow(
-      /Failed to checkout/,
-    );
+    await git.ensureWorktree({
+      repoPath: "/repo",
+      worktreePath: "/repo/wt-1",
+      branch: "missing",
+    });
   });
 
-  it("revParse returns hash", async () => {
-    const git = createGitClient(
-      scripted([{ match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" }]),
-    );
-    await expect(git.revParse("/repo", "HEAD")).resolves.toBe("abc123");
-  });
-
-  it("revParse and ensureWorktree fail hard", async () => {
+  it("ensureWorktree fails when tip and add fail", async () => {
     await expect(
       createGitClient(
-        scripted([{ match: ["rev-parse", "HEAD"], exitCode: 1, stderr: "e" }]),
-      ).revParse("/repo", "HEAD"),
-    ).rejects.toThrow(/rev-parse/);
+        scripted([
+          {
+            match: ["rev-parse", "--is-inside-work-tree"],
+            exitCode: 0,
+            stdout: "true\n",
+          },
+          {
+            match: ["worktree", "list", "--porcelain"],
+            exitCode: 0,
+            stdout: "",
+          },
+          { match: ["rev-parse", "--verify", "main"], exitCode: 1, stderr: "x" },
+          { match: ["rev-parse", "--verify", "HEAD"], exitCode: 1, stderr: "y" },
+        ]),
+      ).ensureWorktree({
+        repoPath: "/repo",
+        worktreePath: "/repo/wt-1",
+        branch: "main",
+      }),
+    ).rejects.toThrow(/Failed to resolve tip/);
+  });
 
+  it("ensureWorktree fails when worktree add fails", async () => {
     await expect(
       createGitClient(
         scripted([
@@ -153,14 +169,14 @@ describe("createGitClient", () => {
           },
           { match: ["worktree", "list", "--porcelain"], exitCode: 0, stdout: "" },
           {
-            match: ["worktree", "add", "-B", "main", "/repo/wt-1", "main"],
-            exitCode: 1,
-            stderr: "",
+            match: ["rev-parse", "--verify", "main"],
+            exitCode: 0,
+            stdout: "abc\n",
           },
           {
-            match: ["worktree", "add", "--detach", "/repo/wt-1", "HEAD"],
+            match: ["worktree", "add", "--detach", "/repo/wt-1", "abc"],
             exitCode: 1,
-            stderr: "b",
+            stderr: "locked",
           },
         ]),
       ).ensureWorktree({
@@ -171,13 +187,72 @@ describe("createGitClient", () => {
     ).rejects.toThrow(/Failed to create worktree/);
   });
 
-  it("checkoutRef succeeds", async () => {
+  it("checkoutRef detaches at resolved sha", async () => {
     const git = createGitClient(
       scripted([
-        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-        { match: ["checkout", "--force", "main"], exitCode: 0 },
+        {
+          match: ["rev-parse", "--verify", "main"],
+          exitCode: 0,
+          stdout: "abc123\n",
+        },
+        {
+          match: ["switch", "--detach", "abc123"],
+          exitCode: 0,
+        },
       ]),
     );
-    await git.checkoutRef({ cwd: "/repo", ref: "main" });
+    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
+  });
+
+  it("checkoutRef fetches then falls back to checkout --detach", async () => {
+    const git = createGitClient(
+      scripted([
+        { match: ["rev-parse", "--verify", "main"], exitCode: 1, stderr: "no" },
+        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+        {
+          match: ["rev-parse", "--verify", "main"],
+          exitCode: 0,
+          stdout: "abc\n",
+        },
+        { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "old git" },
+        { match: ["checkout", "--detach", "abc"], exitCode: 0 },
+      ]),
+    );
+    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
+  });
+
+  it("checkoutRef fails when ref cannot be resolved", async () => {
+    await expect(
+      createGitClient(
+        scripted([
+          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e" },
+          { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e2" },
+        ]),
+      ).checkoutRef({ cwd: "/repo", ref: "bad" }),
+    ).rejects.toThrow(/Failed to resolve ref/);
+  });
+
+  it("checkoutRef fails when switch and checkout both fail", async () => {
+    await expect(
+      createGitClient(
+        scripted([
+          {
+            match: ["rev-parse", "--verify", "main"],
+            exitCode: 0,
+            stdout: "abc\n",
+          },
+          { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
+          { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
+        ]),
+      ).checkoutRef({ cwd: "/repo", ref: "main" }),
+    ).rejects.toThrow(/Failed to checkout ref/);
+  });
+
+  it("revParse returns hash", async () => {
+    const git = createGitClient(
+      scripted([{ match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" }]),
+    );
+    await expect(git.revParse("/repo", "HEAD")).resolves.toBe("abc123");
   });
 });

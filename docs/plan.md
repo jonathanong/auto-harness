@@ -332,6 +332,19 @@ migration marker. **No filaments workflow may cut over before the marker on Phas
 - Log chunks emitted within the same millisecond are distinguishable and correctly ordered on
   replay (Invariant 5).
 
+**Status (local exit):** done for agent + local REST without AWS. Verify with
+`pnpm check`, `pnpm local:e2e`, `pnpm local:cli-e2e` (documented CLI + `ref: main` while primary
+tree is on `main`), and `pnpm local:api-smoke`.
+
+**Deviations (intentional, Phase 1 only):**
+
+- Local API uses an in-memory store (`services/api` memory repos) instead of DynamoDB Local —
+  same REST shape; DynamoDB lands with Phase 2 CDK.
+- Agent `start` (WebSocket daemon) is Phase 3; local path uses `run-session` / `local:e2e` bridge.
+- `services/web` remains a stub until a later UI phase.
+- Checkout always detaches at the resolved SHA so a session `ref` that is already checked out in
+  the primary tree (e.g. `main`) still works.
+
 **Migration marker:** none — Phase 1 is agent-local only; nothing can cut over yet.
 
 ### Phase 2 — Cloud Infrastructure + API

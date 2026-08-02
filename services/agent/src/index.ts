@@ -24,5 +24,5 @@ export type { SessionRunResult, SessionRunnerDeps } from "./session-runner.js";
 export { runTerminalHook } from "./terminal-hook.js";
 export { detectUsageLimit } from "./usage-limit.js";
 export { WorktreeManager } from "./worktree-manager.js";
-export { runCli, main, createDefaultRunSessionDeps } from "./cli.js";
+export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.js";
 export { ensureAgentReady, runAssignedSession } from "./runtime.js";

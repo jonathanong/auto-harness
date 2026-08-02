@@ -4,6 +4,7 @@ import type { AgentConfig } from "./config.js";
 import {
   createDefaultRunSessionDeps,
   main,
+  normalizeCliArgs,
   printUsage,
   runCli,
   type RunSessionDeps,
@@ -58,12 +59,25 @@ function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
   };
 }
 
+describe("normalizeCliArgs", () => {
+  it("strips a leading -- from pnpm forwarding", () => {
+    expect(normalizeCliArgs(["node", "cli", "--", "status"])).toEqual(["status"]);
+    expect(normalizeCliArgs(["node", "cli", "status"])).toEqual(["status"]);
+  });
+});
+
 describe("runCli", () => {
   it("prints usage for help and missing command", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "help"], {}, a)).toBe(0);
     const b = deps();
     expect(await runCli(["node", "x"], {}, b)).toBe(1);
+  });
+
+  it("accepts pnpm-style -- before the command", async () => {
+    const a = deps();
+    expect(await runCli(["node", "x", "--", "status"], {}, a)).toBe(0);
+    expect(a.logs[0]).toContain("a1");
   });
 
   it("status dumps inventory", async () => {

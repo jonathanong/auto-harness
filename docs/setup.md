@@ -78,9 +78,13 @@ Expect JSON with `"ok": true` and `"status": "completed"`.
 }
 ```
 
-3. Run:
+3. Run (either form works; a leading `--` from pnpm is stripped):
 
 ```bash
+pnpm local:agent status --config /path/to/agent.config.json
+pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+
+# also valid:
 pnpm local:agent -- status --config /path/to/agent.config.json
 pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
 ```
@@ -123,9 +127,12 @@ pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path
 
 ```bash
 pnpm check
+pnpm local:e2e        # create handler + SessionRunner (feature ref)
+pnpm local:cli-e2e    # documented `pnpm local:agent` path with ref: main
+pnpm local:api-smoke  # POST /sessions → 201
 ```
 
-Runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.
+`pnpm check` runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.
 
 ---
 

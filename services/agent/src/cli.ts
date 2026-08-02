@@ -51,12 +51,24 @@ function getConfigPath(args: string[]): string | undefined {
   return args[configIdx + 1];
 }
 
+/**
+ * Normalize argv after the node/tsx entry. pnpm may forward a literal `--`
+ * when invoked as `pnpm local:agent -- status` — strip it.
+ */
+export function normalizeCliArgs(argv: string[]): string[] {
+  const args = argv.slice(2);
+  if (args[0] === "--") {
+    return args.slice(1);
+  }
+  return args;
+}
+
 export async function runCli(
   argv: string[],
   env: NodeJS.ProcessEnv = process.env,
   deps: RunSessionDeps = createDefaultRunSessionDeps(),
 ): Promise<number> {
-  const args = argv.slice(2);
+  const args = normalizeCliArgs(argv);
   const command = args[0];
   if (!command || command === "help" || command === "--help") {
     printUsage(deps.log);

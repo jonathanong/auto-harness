@@ -2,7 +2,12 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
     ".": {
-      "entry": ["scripts/local-e2e.mts", "scripts/local-api-smoke.mts", "vitest.config.ts"],
+      "entry": [
+        "scripts/local-e2e.mts",
+        "scripts/local-api-smoke.mts",
+        "scripts/local-cli-e2e.mts",
+        "vitest.config.ts",
+      ],
       "project": ["scripts/**/*.{ts,mts}", "vitest.config.ts"],
     },
     "modules/shared": {

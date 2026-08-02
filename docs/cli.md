@@ -9,9 +9,9 @@ Full local runbook: [setup.md](setup.md#local-development-phase-1--no-aws).
 ```bash
 pnpm install
 
-# Agent
-pnpm local:agent -- status --config /path/to/agent.config.json
-pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+# Agent (prefer without extra `--`; a leading `--` is still accepted)
+pnpm local:agent status --config /path/to/agent.config.json
+pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
 
 # Local API (in-memory)
 pnpm local:api
@@ -19,6 +19,8 @@ pnpm local:api
 
 # One-shot create→run verification
 pnpm local:e2e
+# Documented CLI path with ref: main (primary tree on main)
+pnpm local:cli-e2e
 ```
 
 Config defaults to `./auto-harness-agent.config.json`. Override with `--config` or `HARNESS_CONFIG_PATH`.
