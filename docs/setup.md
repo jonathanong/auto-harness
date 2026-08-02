@@ -1,69 +1,60 @@
 # Setup
 
-Install and run Auto-Harness: AWS control plane, VPS agent, and local dev. Design details stay in [aws.md](aws.md) / [agent.md](agent.md).
+Install and run Auto Harness. Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
 
 ## Prerequisites
 
-| Piece       | Need                                    |
-| ----------- | --------------------------------------- |
-| AWS account | For cloud deploy (CDK)                  |
-| Node.js 20+ | API, web, agent builds                  |
-| pnpm        | Monorepo                                |
-| Git 2.20+   | Worktrees on the agent host             |
-| AI CLIs     | Codex / Claude / etc. on the agent host |
-| Docker      | Optional; DynamoDB Local for dev        |
+| Piece                                   | Need                                                  |
+| --------------------------------------- | ----------------------------------------------------- |
+| Node.js 22+                             | monorepo tooling                                      |
+| pnpm                                    | workspaces (`packageManager` in root `package.json`)  |
+| Git 2.20+                               | worktrees                                             |
+| AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions |
 
 ---
 
-## AWS control plane
+## Local development (Phase 1 — no AWS)
 
-1. Clone monorepo; `pnpm install`
-2. Configure secrets (do not commit):
-   - `HARNESS_ADMINS` — base64 JSON `[{ "username", "password" }]`
-   - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
-   - `WEB_ORIGIN` — browser origin for CORS
-3. Deploy stack:
+This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start`, DynamoDB, and the web UI come in later phases.
 
-```bash
-pnpm --filter @auto-harness/cdk deploy
-```
+### One-shot end-to-end check
 
-4. Note stack outputs: `RestApiUrl`, `WebSocketUrl`
-5. Log in to Web UI (or REST) as admin → create **user** accounts and **service accounts**
-6. Create an **agent** service account with `boundAgentId` = your VPS agent id; save `hns_…` key once
-7. Add **repositories** in the UI (ids must match agent config)
-
-Full table/env/IAM: [aws.md](aws.md). Auth model: [security.md](security.md).
-
----
-
-## VPS agent
-
-1. On the host, clone monorepo (or install the agent package) and build:
+From the repo root after `pnpm install`:
 
 ```bash
-pnpm install
-pnpm --filter @auto-harness/agent build
+pnpm local:e2e
 ```
 
-2. Clone application repos to paths you will reference in config (e.g. `/home/harness/repos/my-app`)
-3. Write config (example):
+What it does (real shipped modules):
+
+1. Creates a temporary git repo with branch `feature/local-e2e`
+2. Creates a session via the **local API create path** (`createLocalApp` / `POST /api/v1/sessions` handler)
+3. Asserts an **unknown `commandProfile`** fails with `errorCode: unknown_command_profile` (no shell fallback)
+4. Runs `SessionRunner` with `ref: feature/local-e2e` and profile `echo-prompt`
+5. Asserts worktree `HEAD` matches that feature commit, terminal hook env was set, and log `seq` is monotonic
+
+Expect JSON with `"ok": true` and `"status": "completed"`.
+
+### Manual path A — agent `run-session` only
+
+1. Point example config at a real absolute repo path (see [examples/local/agent.config.json](../examples/local/agent.config.json)):
 
 ```json
 {
-  "apiUrl": "wss://YOUR_WS_URL/ws",
-  "apiKey": "hns_…",
-  "agentId": "vps-prod-1",
+  "agentId": "local-1",
+  "commandProfiles": {
+    "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
+  },
   "repositories": [
     {
-      "id": "repo-abc",
-      "path": "/home/harness/repos/my-app",
+      "id": "demo",
+      "path": "/ABS/PATH/TO/REPO",
+      "defaultBranch": "main",
       "worktrees": [
         {
           "id": "wt-1",
-          "path": "/home/harness/repos/my-app/.worktrees/wt-1",
-          "labels": ["codex", "claude"],
-          "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
+          "path": "/ABS/PATH/TO/REPO/.worktrees/wt-1",
+          "labels": ["echo"]
         }
       ]
     }
@@ -71,133 +62,111 @@ pnpm --filter @auto-harness/agent build
 }
 ```
 
-4. Authenticate AI **CLIs under subscription plans** on the host (or API keys only if you deliberately choose that cost model). Git SSH stays on the host. Never put secrets in REST prompts. Subscriptions do not expose Agent SDKs for this path—use **non-interactive CLI** flags. See [why.md](why.md) and [costs.md](costs.md).
-5. Validate and start:
+**Required fields:** `agentId`, `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
+
+2. Write a session assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)):
+
+```json
+{
+  "sessionId": "sess-local-1",
+  "repositoryId": "demo",
+  "prompt": "hello from local session",
+  "commandProfile": "echo-prompt",
+  "timeout": 60,
+  "worktreeId": "wt-1",
+  "ref": "main"
+}
+```
+
+3. Run:
 
 ```bash
-export HARNESS_CONFIG_PATH=/home/harness/auto-harness-agent.config.json
-auto-harness-agent validate
-auto-harness-agent start
+pnpm local:agent -- status --config /path/to/agent.config.json
+pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
 ```
 
-6. Production: systemd unit running as user `harness` (example):
+On success the CLI prints a final JSON line with `"status":"completed"`. On failure (unknown profile, setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
 
-```ini
-[Unit]
-Description=Auto-Harness Agent
-After=network-online.target
-Wants=network-online.target
+### Manual path B — local API create, then agent run
 
-[Service]
-Type=simple
-User=harness
-Group=harness
-WorkingDirectory=/home/harness/harness
-ExecStart=/usr/bin/node services/agent/dist/index.js start
-Restart=always
-RestartSec=10
-Environment=HARNESS_CONFIG_PATH=/home/harness/auto-harness-agent.config.json
-Environment=NODE_ENV=production
-NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/home/harness
-
-[Install]
-WantedBy=multi-user.target
-```
+1. Start the local API (in-memory store, no DynamoDB):
 
 ```bash
-sudo systemctl enable --now auto-harness-agent
+pnpm local:api
+# listens on http://127.0.0.1:7420
 ```
 
-CLI reference: [cli.md](cli.md). Worktree/labels behavior: [agent.md](agent.md).
+2. Create a session (fire-and-forget style):
 
-### Auto-update
+```bash
+curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
+  -H 'content-type: application/json' \
+  -d '{
+    "repositoryId": "demo",
+    "prompt": "hello from API",
+    "commandProfile": "echo-prompt",
+    "timeout": 60,
+    "ref": "main",
+    "requiredLabels": ["echo"]
+  }'
+```
 
-Agent upgrades use a **drain-then-restart** path: stop accepting new jobs, let in-process CLI sessions finish, then restart the service. Auto-update does **not** kill running CLIs. Details: [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
+Response `201` includes `id`, `status: "queued"`, `url`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from your agent config, then:
 
-### Env vars (agent)
+```bash
+pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+```
 
-| Variable              | Required | Default                            |
-| --------------------- | -------- | ---------------------------------- |
-| `HARNESS_API_URL`     | yes\*    | from config `apiUrl`               |
-| `HARNESS_API_KEY`     | yes\*    | from config `apiKey`               |
-| `HARNESS_AGENT_ID`    | no       | config / hostname                  |
-| `HARNESS_CONFIG_PATH` | no       | `./auto-harness-agent.config.json` |
-| `HARNESS_LOG_LEVEL`   | no       | `info`                             |
+> Phase 1 does **not** yet auto-dispatch API sessions to the agent over WebSocket (`start` is Phase 3). You bridge create → run with the assign file (or use `pnpm local:e2e`, which does both in-process).
 
-\*Required overall via config or env.
+### Quality gate
+
+```bash
+pnpm check
+```
+
+Runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.
 
 ---
 
-## Local development
+## AWS control plane (later phases)
 
-Runs the same handlers without AWS:
+1. `pnpm install`
+2. Configure secrets (do not commit):
+   - `HARNESS_ADMINS` — base64 JSON `[{ "username", "password" }]`
+   - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
+   - `WEB_ORIGIN` — browser origin for CORS
+3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (when CDK is implemented)
+4. Create users / service accounts; bind agent API key; add repositories
 
-```text
-Web UI :3000 → API :7420 ←WSS→ Agent
-                  ↓
-           DynamoDB Local :8000
-```
-
-```bash
-# 1. DynamoDB Local
-docker run -p 8000:8000 amazon/dynamodb-local
-
-# 2. API (creates tables, seeds admin/admin)
-pnpm --filter @auto-harness/api dev
-
-# 3. Web
-pnpm --filter @auto-harness/web dev
-
-# 4. Agent
-HARNESS_API_URL=ws://localhost:7420/ws \
-HARNESS_API_KEY=<local-key> \
-HARNESS_AGENT_ID=local-1 \
-auto-harness-agent start
-```
-
-| Feature                  | Local          | Cloud |
-| ------------------------ | -------------- | ----- |
-| REST + WebSocket + agent | ✓              | ✓     |
-| DynamoDB                 | Local          | AWS   |
-| S3 archival              | ✗              | ✓     |
-| Slack                    | ✗              | ✓     |
-| EventBridge cron         | Manual trigger | ✓     |
-
-Example env templates:
-
-```bash
-# services/api/.env
-AWS_ENDPOINT_URL=http://localhost:8000
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=local
-AWS_SECRET_ACCESS_KEY=local
-HARNESS_ADMINS=W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoiYWRtaW4ifV0=
-HARNESS_SESSION_SECRET=local-dev-secret
-
-# services/web/.env
-NEXT_PUBLIC_API_URL=http://localhost:7420
-NEXT_PUBLIC_WS_URL=ws://localhost:7420/ws
-```
+See [aws.md](aws.md), [security.md](security.md).
 
 ---
 
-## First session checklist
+## VPS agent (production shape)
 
-1. Control plane up (cloud or local)
-2. Repository created in API/UI with known `id`
-3. Agent online (`auto-harness-agent status` / UI Agents)
-4. Worktree labels match session `requiredLabels`
-5. `POST /sessions` or Web UI “New Session”
-6. Watch logs in UI ([websocket.md](websocket.md))
+Production will use WebSocket `start` (Phase 3). Until then, use local `run-session` above.
+
+Agent config still includes optional `apiUrl` / `apiKey` for later cloud connect. **commandProfiles** stay required for all execution (D4).
+
+Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
+
+Env vars:
+
+| Variable              | Required  | Default                            |
+| --------------------- | --------- | ---------------------------------- |
+| `HARNESS_CONFIG_PATH` | no        | `./auto-harness-agent.config.json` |
+| `HARNESS_AGENT_ID`    | no        | config / hostname                  |
+| `HARNESS_API_URL`     | for cloud | config `apiUrl`                    |
+| `HARNESS_API_KEY`     | for cloud | config `apiKey`                    |
+| `HARNESS_LOG_LEVEL`   | no        | `info`                             |
 
 ---
 
 ## Security reminders
 
 - No secrets in prompts or REST session bodies
-- Agent holds git + AI keys
-- Rotate service accounts by create-new → swap → delete-old
+- Agent holds git + AI credentials on the VPS
+- Free-form shell commands are not accepted over the API — only named `commandProfile`s
 
 See [security.md](security.md).

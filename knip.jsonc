@@ -1,14 +1,19 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
-    ".": {},
+    ".": {
+      "entry": ["scripts/local-e2e.mts", "scripts/local-api-smoke.mts", "vitest.config.ts"],
+      "project": ["scripts/**/*.{ts,mts}", "vitest.config.ts"],
+    },
     "modules/shared": {
       "project": ["src/**/*.ts"],
     },
     "services/api": {
+      "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
     "services/agent": {
+      "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
     "services/web": {

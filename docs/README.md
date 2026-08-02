@@ -4,10 +4,11 @@ Short entry points. Prefer the focused pages over mega-guides.
 
 ## Get running
 
-| Doc                      | Contents                                               |
-| ------------------------ | ------------------------------------------------------ |
-| [setup.md](setup.md)     | AWS deploy, VPS agent, local stack                     |
-| [cli.md](cli.md)         | `auto-harness-agent` commands                          |
+| Doc                  | Contents                                             |
+| -------------------- | ---------------------------------------------------- |
+| [setup.md](setup.md) | Local Phase 1 first (`pnpm local:e2e`), then AWS/VPS |
+
+| [cli.md](cli.md) | `auto-harness-agent` commands |
 | [harness.md](harness.md) | Repo harness hookup (filaments examples), requirements |
 
 ## Protocols

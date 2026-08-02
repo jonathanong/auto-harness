@@ -21,3 +21,4 @@ export {
   compareSessionsForQueue,
   compareWorktreesForRoundRobin,
 } from "./services/scheduler.js";
+export { main as apiCliMain } from "./cli.js";

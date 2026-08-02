@@ -131,3 +131,9 @@ export async function runCli(
 export async function main(argv: string[] = process.argv): Promise<number> {
   return runCli(argv);
 }
+
+if (process.argv[1]?.endsWith("cli.ts") || process.argv[1]?.endsWith("cli.js")) {
+  void main().then((code) => {
+    process.exitCode = code;
+  });
+}

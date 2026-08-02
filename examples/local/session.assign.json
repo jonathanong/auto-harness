@@ -1,0 +1,9 @@
+{
+  "sessionId": "sess-local-1",
+  "repositoryId": "demo",
+  "prompt": "hello from local session",
+  "commandProfile": "echo-prompt",
+  "timeout": 60,
+  "worktreeId": "wt-1",
+  "ref": "main"
+}

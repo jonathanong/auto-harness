@@ -1,114 +1,100 @@
 # CLI
 
-Operator-facing commands for the VPS agent package (`auto-harness-agent`). Session triggers from CI use the [REST API](api.md), not this CLI.
+Phase 1 local tooling for the agent and API packages. CI callers use the [REST API](api.md) (fire-and-forget); they do not run this CLI.
 
-Install/build: [setup.md](setup.md). Daemon behavior: [agent.md](agent.md).
+Full local runbook: [setup.md](setup.md#local-development-phase-1--no-aws).
 
-## Invocation
+## Invocation (from monorepo root)
 
 ```bash
-npx auto-harness-agent <command> [options]
-# or after build:
-node services/agent/dist/index.js <command> [options]
+pnpm install
+
+# Agent
+pnpm local:agent -- status --config /path/to/agent.config.json
+pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+
+# Local API (in-memory)
+pnpm local:api
+# → http://127.0.0.1:7420
+
+# One-shot create→run verification
+pnpm local:e2e
 ```
 
-Config defaults to `./auto-harness-agent.config.json`. Override with `HARNESS_CONFIG_PATH` or env vars (`HARNESS_API_URL`, `HARNESS_API_KEY`, `HARNESS_AGENT_ID`).
+Config defaults to `./auto-harness-agent.config.json`. Override with `--config` or `HARNESS_CONFIG_PATH`.
 
 ---
 
-## Commands
-
-### `start`
-
-Run the agent daemon: connect WebSocket, register worktrees, accept `session:assign`.
-
-```bash
-HARNESS_API_URL=wss://… HARNESS_API_KEY=hns_… auto-harness-agent start
-```
-
-Foreground process. Production: run under systemd (see [setup.md](setup.md#vps-agent)).
+## Agent commands (Phase 1)
 
 ### `status`
 
-Print connection state, configured worktrees (idle/busy), and in-progress session ids.
+Print agent id, repositories, worktrees, and known `commandProfiles`.
 
 ```bash
-auto-harness-agent status
+pnpm local:agent -- status --config ./agent.config.json
 ```
 
-### `validate`
+### `run-session`
 
-Check config file, required env, git binary, worktree parent paths, and that labeled CLIs resolve on `PATH`.
+Run one session from a JSON assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
 
 ```bash
-auto-harness-agent validate
+pnpm local:agent -- run-session --config ./agent.config.json --file ./session.assign.json
 ```
 
-Exit non-zero on failure (useful before enabling systemd).
+Required assign fields: `sessionId`, `repositoryId`, `prompt`, `commandProfile`, `timeout` (seconds), `worktreeId`. Optional: `ref`, `setupScript`, `resume`, `metadata`.
 
-### `update` (or drain-restart)
+Terminal line is JSON: `{ "status", "exitCode", "errorCode" }`. Exit code `0` only when `status === "completed"`.
 
-Trigger **graceful auto-update**: enter draining (no new jobs), wait for current sessions to finish **without killing CLIs**, exit, then let the supervisor start the new version.
+### `start`
 
-```bash
-auto-harness-agent update
-# equivalent operational intent: drain → wait → restart
-```
-
-See [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
-
-### `list-worktrees`
-
-List worktrees from config and last-known local status.
-
-```bash
-auto-harness-agent list-worktrees
-```
-
-### `add-repo`
-
-Interactive helper: append a repository entry to the config.
-
-```bash
-auto-harness-agent add-repo --path /home/harness/repos/my-app
-# optional: --id repo-abc
-```
-
-`id` must match the control-plane repository id ([api.md](api.md) / UI).
-
-### `add-worktree`
-
-Append a worktree under a repo in the config.
-
-```bash
-auto-harness-agent add-worktree \
-  --repo repo-abc \
-  --path /home/harness/repos/my-app/.worktrees/wt-1 \
-  --labels codex,claude
-```
-
-Options: `--id wt-1`, `--setup-script 'git fetch && …'`.
-
-Restart (or reload) the agent after config edits so inventory re-registers.
+WebSocket daemon (register + accept assigns) — **not implemented until Phase 3**. Use `run-session` or `pnpm local:e2e` locally.
 
 ---
 
-## Common workflows
+## API commands (Phase 1)
 
-| Goal                 | Commands                                                    |
-| -------------------- | ----------------------------------------------------------- |
-| First boot on VPS    | `validate` → `start` (or systemd enable)                    |
-| Add capacity         | `add-worktree` → restart agent → confirm in UI Agents       |
-| Debug offline        | `status`, `validate`, `journalctl -u auto-harness-agent -f` |
-| Point at local stack | `HARNESS_API_URL=ws://localhost:7420/ws start`              |
+### `serve`
+
+```bash
+pnpm local:api
+# optional: tsx services/api/src/cli.ts serve --port 7420
+```
+
+| Method | Path                   | Notes                                                                                                                                |
+| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`  | `/health`              | `{ ok: true }`                                                                                                                       |
+| `POST` | `/api/v1/sessions`     | body: `repositoryId`, `prompt`, `commandProfile`, `timeout` (+ optional `ref`, labels, …) → `201` with `id`, `status: queued`, `url` |
+| `GET`  | `/api/v1/sessions`     | list                                                                                                                                 |
+| `GET`  | `/api/v1/sessions/:id` | get                                                                                                                                  |
+
+No auto-dispatch to the agent yet — bridge with a session assign file for `run-session`.
 
 ---
 
-## Not in this CLI
+## Config shape (agent)
 
-| Action                  | Use instead                            |
-| ----------------------- | -------------------------------------- |
-| Create sessions         | `POST /sessions` ([api.md](api.md))    |
-| Manage users / API keys | REST or Web UI                         |
-| Live log tail           | Web UI / [websocket.md](websocket.md)  |
-| Deploy AWS              | [setup.md](setup.md#aws-control-plane) |
+Named **command profiles** are required (D4). Free-form command strings are rejected.
+
+```json
+{
+  "agentId": "local-1",
+  "commandProfiles": {
+    "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
+  },
+  "repositories": [
+    {
+      "id": "demo",
+      "path": "/abs/path/to/repo",
+      "defaultBranch": "main",
+      "terminalHookScript": "/abs/path/hook.sh",
+      "worktrees": [
+        { "id": "wt-1", "path": "/abs/path/to/repo/.worktrees/wt-1", "labels": ["echo"] }
+      ]
+    }
+  ]
+}
+```
+
+Templates: [examples/local/](../examples/local/).
