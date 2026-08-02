@@ -1,0 +1,18 @@
+# Markdown link checker (https://github.com/lycheeverse/lychee)
+max_concurrency = 8
+timeout = 20
+accept = [200, 206, 429]
+
+exclude_path = [
+  "(^|/)node_modules($|/)",
+  "(^|/)dist($|/)",
+  "(^|/)coverage($|/)",
+  "(^|/)\\.git($|/)",
+]
+
+# Relative and internal docs links are the main signal; skip noisy externals.
+exclude = [
+  '^https://github\\.com/jonathanong/filaments',
+  '^https://api\\.slack\\.com/',
+  '^https://unpkg\\.com/',
+]

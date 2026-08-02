@@ -1,0 +1,22 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {},
+    "modules/shared": {
+      "project": ["src/**/*.ts"],
+    },
+    "services/api": {
+      "project": ["src/**/*.ts"],
+    },
+    "services/agent": {
+      "project": ["src/**/*.ts"],
+    },
+    "services/web": {
+      "project": ["src/**/*.ts"],
+    },
+    "services/cdk": {
+      "project": ["src/**/*.ts"],
+    },
+  },
+  "ignoreBinaries": ["lychee"],
+}
