@@ -1,0 +1,29 @@
+/** Session lifecycle statuses (docs/plan.md data model). */
+export type SessionStatus =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timed_out";
+
+export type SessionType = "prompt" | "scheduled";
+
+export type SessionSource = "api" | "ui" | "webhook" | "schedule";
+
+export type OnConflict = "queue" | "replace" | "reject";
+
+export type LogStream = "stdout" | "stderr" | "system";
+
+/** Machine-readable failure reasons. */
+export type SessionErrorCode =
+  | "usage_limit"
+  | "resume_failed"
+  | "unknown_command_profile"
+  | "setup_failed";
+
+export type UserRole = "admin" | "operator" | "read-only";
+
+export type AccountType = "user" | "service-account";
+
+export type WorktreeStatus = "idle" | "busy" | "error";
