@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./modules/shared" },
+    { "path": "./services/api" },
+    { "path": "./services/agent" },
+    { "path": "./services/web" },
+    { "path": "./services/cdk" }
+  ]
+}
