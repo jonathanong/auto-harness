@@ -1,10 +1,41 @@
 # Cost Breakdown
 
+## Why cost looks like this
+
+Auto Harness is built to run coding agents on **vendor subscription plans** (ChatGPT/Codex Plus–style seats, Claude Pro/Team CLI access, etc.)—**not** as a first-class **API / pay-per-token** agent platform.
+
+| Intent | Implication |
+|--------|-------------|
+| **Subscriptions, not API metering** | Marginal model cost is mostly **seat + plan quota**, already budgeted for humans, reused for automation. You are not designed around `$/1M tokens` as the control variable. |
+| **No Agent SDK on those plans** | Subscription products typically **do not** expose Agent SDKs / full programmatic agent APIs. Automation must drive the **CLI in non-interactive mode** instead. |
+| **Harness AWS bill stays tiny** | Coordination (API, queue, logs) should stay **dollars**, so the cost conversation stays on **plan seats, quota, and VPS size**—not Lambda. |
+
+Deep “why product”: [why.md](why.md).
+
+### Subscription vs API (cost model)
+
+| Model | How you pay | Fits Auto Harness? |
+|-------|-------------|--------------------|
+| **Subscription / seat + plan limits** | Monthly seat; rate/usage limits inside the plan | **Primary design.** Sessions burn plan quota via the installed CLI logged into that plan on the VPS. |
+| **API keys (pay-per-token)** | Metered by tokens/requests | Optional if a CLI is configured that way; **not** the economic rationale for the system. Infrastructure estimates below assume you are **not** modeling API spend as the main AI line item. |
+
+**Usage limits** on subscriptions show up as CLI errors (parsed as `usage_limit`) rather than an AWS invoice spike—see [agent.md — Usage limits](agent.md#usage-limits-ai-vendor--cli-quotas).
+
+### Non-interactive CLI (required by this cost path)
+
+Because subscriptions do not support Agent SDKs for this automation path:
+
+1. Install the vendor **CLI** on the agent host and authenticate under the **subscription** account/profile.
+2. Sessions invoke that CLI in **non-interactive** form (e.g. print/quiet flags, prompt as argv)—with a PTY when the tool still expects a TTY.
+3. Auto Harness never calls a vendor Agent SDK over the public API as the default integration.
+
+That is a **product constraint**, not an implementation preference: it is how you attach factory automation to subscription capacity.
+
 ## Overview
 
-Auto-Harness is designed to be nearly free to operate. The AWS infrastructure costs scale linearly with usage but remain negligible for most teams. The real cost is the AI CLI tool API keys (OpenAI, Anthropic, etc.) running on your VPS — those are orders of magnitude higher than the Auto-Auto-Harness infrastructure bill.
+Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
-## Estimated Monthly Costs
+## Estimated Monthly Costs (AWS only)
 
 Based on **100 sessions/day, 2 connected agents, 1 developer using the UI**:
 
@@ -119,7 +150,7 @@ With lifecycle policies:
 
 ## AWS Free Tier
 
-For new AWS accounts, the first 12 months of free tier covers most of the Auto-Auto-Harness infrastructure:
+For new AWS accounts, the first 12 months of free tier covers most of the auto harness infrastructure:
 
 | Service | Free Tier Allowance | Auto-Harness Usage (small team) | Covered? |
 |---------|-------------------|---------------------------|----------|
@@ -134,7 +165,7 @@ For new AWS accounts, the first 12 months of free tier covers most of the Auto-A
 
 ## VPS Costs
 
-The VPS running the Auto-Auto-Harness agent is a separate cost. This depends on your provider and the workload:
+The VPS running the auto harness agent is a separate cost. This depends on your provider and the workload:
 
 | Provider | Tier | vCPU | RAM | Cost |
 |----------|------|------|-----|------|
@@ -145,19 +176,40 @@ The VPS running the Auto-Auto-Harness agent is a separate cost. This depends on 
 
 AI CLI tools (Codex, Claude Code) can be CPU and memory intensive. For running 2–4 concurrent sessions, a **4 GB RAM / 2 vCPU** instance is a reasonable minimum.
 
-## The Real Cost: AI API Keys
+## The real cost: subscriptions + hosts (not API tokens)
 
-The dominant cost is the AI tool usage, not Auto-Harness infrastructure:
+Under the intended model, the dominant costs are **outside** the Auto Harness AWS bill:
 
-| Tool | Approximate Cost per Session | 100 Sessions/day |
-|------|------------------------------|-----------------|
-| OpenAI Codex (GPT-4.1) | $0.50–$5.00 | $50–$500/month |
-| Anthropic Claude Sonnet | $0.30–$3.00 | $30–$300/month |
-| Anthropic Claude Opus | $1.00–$15.00 | $100–$1,500/month |
+| Line item | What you pay | Notes |
+|-----------|--------------|--------|
+| **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU. |
+| **Plan usage limits** | Soft/hard caps, rate limits | Hit → session `usage_limit` (see agent docs). Size concurrency (worktrees) to stay inside the plan. |
+| **VPS / runner hosts** | Fixed monthly instance cost | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost. |
+| **Auto Harness on AWS** | ~$1–$25/mo for most teams | Queue, API, logs only. |
 
-**Auto-Harness infrastructure (~$2/month) is <1% of your total AI automation spend.**
+### Why we do *not* lead with API unit economics
+
+| API-metered agent stack | Subscription + non-interactive CLI (this project) |
+|-------------------------|-----------------------------------------------------|
+| Cost ≈ tokens × price | Cost ≈ seats + quota fit + host size |
+| Agent SDK / HTTP APIs | CLI non-interactive mode only |
+| Easy to explode invoice with concurrency | Concurrency capped by plan + hardware |
+| Good for pure programmatic agents | Good for “we already pay for the tools” factories |
+
+If you deliberately point a CLI at **API keys**, treat that as a separate budget (true pay-per-session variance). Default docs and capacity planning assume **subscription authentication on the agent host**.
+
+**AWS infrastructure (~$2/month at small-team scale) should be a rounding error next to seats and machines.**
 
 ## Cost Optimization Tips
+
+### Plan / subscription
+
+1. **Cap concurrency** — worktree count ≤ what the plan and host can sustain without constant `usage_limit` failures.
+2. **Prefer scheduled off-peak** — if the plan is shared with humans, run heavy maintenance when seats are idle.
+3. **One profile per automation identity** — dedicated CLI profile for harness so human interactive use is not mixed with factory sessions.
+4. **Watch usage_limit rate** — repeated hits mean you need more seats, lower concurrency, or deferred retry policy—not more Lambda.
+
+### AWS + VPS
 
 1. **Set log retention** — CloudWatch Logs can accumulate. Set 7–14 day retention.
 2. **Archive aggressively** — Move completed session logs to S3 quickly, then to Glacier.
@@ -165,3 +217,4 @@ The dominant cost is the AI tool usage, not Auto-Harness infrastructure:
 4. **Monitor with Cost Explorer** — Set up a $10 billing alert to catch any surprises.
 5. **Use reserved capacity** — If DynamoDB costs grow, switch from on-demand to provisioned with auto-scaling.
 6. **Compress logs** — Gzip session logs before archiving to S3 to reduce storage by ~80%.
+7. **Right-size the VPS** — pay for RAM that matches concurrent CLIs; idle oversize hosts dominate AWS.

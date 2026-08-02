@@ -1,32 +1,24 @@
-# API Reference
+# REST API
 
-## Overview
+HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/api/v1` via API Gateway + Lambda.
 
-The Auto-Auto-Harness API is served via AWS API Gateway with Lambda backends. It consists of two parts:
+Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [security.md](security.md). Deploy/local: [setup.md](setup.md).
 
-- **REST API** — CRUD operations for sessions, repositories, service accounts
-- **WebSocket API** — Real-time communication between the cloud, VPS agents, and the Web UI
+**CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
 ## Authentication
 
-Three authentication methods are supported:
+| Method | Format | Used by |
+|--------|--------|---------|
+| Session cookie | `Cookie: auto_harness_session=<jwt>` | Web UI |
+| Bearer token | `Authorization: Bearer hns_…` | Service accounts (CI, scripts) |
+| Basic auth | `Authorization: Basic …` | Admin / user direct API calls |
 
-| Method | Format | Used By |
-|--------|--------|--------|
-| Session cookie | `Cookie: auto_harness_session=<jwt>` | Web UI (after login) |
-| Bearer token | `Authorization: Bearer <hns_...>` | Service accounts (API keys) |
-| Basic auth | `Authorization: Basic <base64(user:pass)>` | Admin and user accounts (direct API) |
-
-WebSocket connections authenticate via query parameter: `?token=<api-key>` (service accounts only).
-
-See [security.md](security.md) for full details on credential types and the login flow.
-
-Unauthenticated requests receive `401 Unauthorized`.
-Insufficient role permissions receive `403 Forbidden`.
+`401` if missing/invalid; `403` if role insufficient.
 
 ---
 
-## REST API
+## Conventions
 
 Base path: `/api/v1`
 
@@ -332,9 +324,11 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
 }
 ```
 
-The session enters the `queued` state. The scheduler will assign it to an available worktree matching the required labels. If none are available, it remains queued.
+The session enters the `queued` state. The scheduler assigns it to an idle worktree that matches the repository and required labels on an online agent. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, it remains queued.
 
 If the session exceeds `timeout` seconds while running, the agent kills the process and the status becomes `timed_out`.
+
+If the agent detects an **AI vendor usage/rate limit** in CLI output, the session ends as `failed` with `errorCode: "usage_limit"` (no automatic retry). See [agent.md — Usage limits](agent.md#usage-limits-ai-vendor--cli-quotas).
 
 #### `GET /sessions`
 
@@ -377,17 +371,33 @@ Get session details.
   "source": "ui",
   "timeout": 1800,
   "priority": 10,
+  "agentId": "vps-prod-1",
   "requiredLabels": ["codex"],
   "exitCode": null,
+  "errorCode": null,
+  "errorMessage": null,
+  "resumedFromSessionId": null,
+  "pinnedAgentId": null,
+  "pinnedWorktreeId": null,
+  "cliResumeRef": null,
   "createdAt": "2026-08-01T12:00:00Z",
   "startedAt": "2026-08-01T12:00:05Z",
   "completedAt": null
 }
 ```
 
+| Field | When set |
+|-------|----------|
+| `agentId` / `worktreeId` | Set when assigned (used later for [resume](#post-sessionsidresume)) |
+| `errorCode` | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
+| `errorMessage` | Optional short human excerpt from the match / logs |
+| `resumedFromSessionId` | Set on sessions created via resume — parent session id |
+| `pinnedAgentId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree |
+| `cliResumeRef` | Optional opaque id from the AI CLI (if captured) for native resume |
+
 #### `POST /sessions/:id/clone`
 
-Clone a session — creates a new session with the same prompt, command, timeout, priority, and labels. The new session is queued immediately. **Operator or admin.**
+Clone a session — creates a **new** session with the same prompt, command, timeout, priority, and labels. Assignment uses normal **label match + round-robin** (any eligible worktree). **Operator or admin.**
 
 Optional request body to override fields:
 ```json
@@ -398,6 +408,75 @@ Optional request body to override fields:
 ```
 
 **Response:** `201 Created` (same schema as `POST /sessions` response)
+
+#### `POST /sessions/:id/resume`
+
+Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same agent and worktree** as the source session, then the agent **tries to resume** in that workspace.
+
+**Operator or admin.** Source session must have been assigned at least once (`agentId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
+
+**Request (optional body):**
+```json
+{
+  "prompt": "Continue: also fix the edge case in parseDate",
+  "timeout": 1800,
+  "priority": 10
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `prompt` | string | ✗ | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
+| `timeout` | number | ✗ | Override timeout (seconds). Default: source session’s timeout. |
+| `priority` | number | ✗ | Queue priority. Default: source session’s priority. |
+
+**Response:** `201 Created`
+```json
+{
+  "id": "sess-r9s8t7",
+  "repositoryId": "repo-abc",
+  "prompt": "Continue: also fix the edge case in parseDate",
+  "command": "codex -p",
+  "status": "queued",
+  "timeout": 1800,
+  "priority": 10,
+  "requiredLabels": ["codex"],
+  "source": "api",
+  "type": "prompt",
+  "resumedFromSessionId": "sess-x1y2z3",
+  "pinnedAgentId": "vps-prod-1",
+  "pinnedWorktreeId": "wt-1",
+  "createdAt": "2026-08-01T13:00:00Z"
+}
+```
+
+**Scheduling (pinned):**
+
+1. New session is `queued` with `pinnedAgentId` + `pinnedWorktreeId` copied from the source (never round-robins away).
+2. Scheduler assigns **only** when that worktree is idle **and** that agent is online (and not draining).
+3. If the agent is offline or the worktree is busy, the session **stays queued** on that pin — it does **not** fall back to another agent/worktree.
+4. `session:assign` includes `resume: true`, `resumedFromSessionId`, and any stored `cliResumeRef` from the source.
+
+**Agent behavior:** see [agent.md — Resume](agent.md#session-resume). On success, status progresses normally; if resume is impossible, session `failed` with `errorCode: "resume_failed"` (or similar).
+
+**Errors:**
+
+| Status | Code | When |
+|--------|------|------|
+| 400 | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued` |
+| 404 | `NOT_FOUND` | Unknown session id |
+| 409 | `CONFLICT` | Policy reject (e.g. source type `scheduled` without worktree) |
+
+**Clone vs resume:**
+
+| | Clone | Resume |
+|--|-------|--------|
+| New session id | ✓ | ✓ |
+| Placement | Any matching worktree (round-robin) | **Same** agent + worktree only |
+| Workspace | Fresh setup script (typical reset) | Prefer keep tree; try CLI/workspace resume |
+| Prompt | Copy or override as full new prompt | Continuation / resume-oriented |
+
+You can also create a session with pin fields via advanced clients (`pinnedAgentId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
 
 #### `POST /sessions/:id/cancel`
 
@@ -413,7 +492,7 @@ Cancel a queued or running session. **Operator (own sessions) or admin.**
 
 #### `GET /sessions/:id/logs`
 
-Get **historical** session logs. For live streaming of in-progress sessions, use the WebSocket API (see [Live Session Viewing](#live-session-viewing) below).
+Get **historical** session logs. For live streaming, use the [WebSocket API](websocket.md#live-session-viewing).
 
 **Query parameters:**
 
@@ -460,7 +539,8 @@ List all worktrees across all connected agents.
       "path": "/home/harness/repos/my-app/.worktrees/wt-1",
       "labels": ["codex", "claude"],
       "status": "idle",
-      "currentSessionId": null
+      "currentSessionId": null,
+      "lastAssignedAt": "2026-08-01T11:00:00Z"
     }
   ]
 }
@@ -572,126 +652,3 @@ List connected agents and their status.
 Get agent details including worktrees and current sessions.
 
 ---
-
-## WebSocket API
-
-**Endpoint:** `wss://<api-domain>/ws?token=<api-key>`
-
-All messages are JSON with a `type` field. Connection types are distinguished by the first message sent after connect.
-
-### Agent ↔ Server
-
-#### Server → Agent
-
-| Type | Description | Payload |
-|------|-------------|---------|
-| `session:assign` | Assign a session to the agent | `{ sessionId, repositoryId, prompt, command, timeout, worktreeId, setupScript }` |
-| `session:cancel` | Cancel a running session | `{ sessionId }` |
-| `ping` | Keepalive | `{}` |
-
-**Example — session:assign:**
-```json
-{
-  "type": "session:assign",
-  "sessionId": "sess-x1y2z3",
-  "repositoryId": "repo-abc",
-  "prompt": "Fix the failing test in src/utils.test.ts",
-  "command": "codex -p",
-  "timeout": 1800,
-  "worktreeId": "wt-1",
-  "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
-}
-```
-
-#### Agent → Server
-
-| Type | Description | Payload |
-|------|-------------|---------|
-| `agent:register` | Register agent on connect | `{ agentId, worktrees: [{ id, repositoryId, labels[], status }] }` |
-| `session:ack` | Acknowledge session assignment | `{ sessionId }` |
-| `session:status` | Status update | `{ sessionId, status, exitCode? }` |
-| `session:log` | Log output chunk | `{ sessionId, stream, content, timestamp }` |
-| `worktree:status` | Worktree status change | `{ worktreeId, status }` |
-| `pong` | Keepalive response | `{}` |
-
-**Example — session:log:**
-```json
-{
-  "type": "session:log",
-  "sessionId": "sess-x1y2z3",
-  "stream": "stdout",
-  "content": "Analyzing codebase...\n",
-  "timestamp": "2026-08-01T12:00:06.123Z"
-}
-```
-
-### Client ↔ Server (Web UI)
-
-#### Client → Server
-
-| Type | Description | Payload |
-|------|-------------|---------|
-| `client:register` | Identify as a UI client | `{ userId }` |
-| `session:subscribe` | Subscribe to live session updates | `{ sessionId }` |
-| `session:unsubscribe` | Unsubscribe from session updates | `{ sessionId }` |
-
-#### Server → Client
-
-| Type | Description | Payload |
-|------|-------------|---------|
-| `session:log` | Forwarded log chunk | `{ sessionId, stream, content, timestamp }` |
-| `session:status` | Session status update | `{ sessionId, status, exitCode? }` |
-| `agent:status` | Agent connected/disconnected | `{ agentId, status }` |
-
-### Live Session Viewing
-
-The WebSocket API provides real-time log streaming for in-progress sessions. This powers the live terminal view in the Web UI.
-
-**Flow:**
-
-1. Client connects via WebSocket and sends `client:register`
-2. Client sends `{ type: 'session:subscribe', sessionId: 'sess-x1y2z3' }`
-3. Server immediately replays the **last 100 log lines** (buffered) so the client catches up
-4. Server forwards all new `session:log` messages in real-time as the agent streams them
-5. Server sends `session:status` when the session status changes (running → completed/failed)
-6. Client sends `session:unsubscribe` when leaving the page, or the subscription ends automatically on disconnect
-
-**Notes:**
-- Multiple clients can subscribe to the same session simultaneously
-- The Web UI combines REST `GET /sessions/:id/logs` for full history with WebSocket for live tail
-- Log chunks are delivered in order per stream (stdout, stderr) but may interleave between streams
-- The replay buffer ensures clients joining mid-session see recent context immediately
-
-### Connection Lifecycle
-
-```mermaid
-sequenceDiagram
-    participant Agent as VPS Agent
-    participant GW as API Gateway
-    participant Lambda
-    participant DDB as DynamoDB
-
-    Agent->>GW: Connect wss://...?token=hns_xxx
-    GW->>Lambda: $connect
-    Lambda->>DDB: Validate API key hash
-    Lambda->>DDB: Store Connection record
-    Lambda-->>GW: Allow
-    GW-->>Agent: Connected
-
-    Agent->>GW: agent:register
-    GW->>Lambda: $default
-    Lambda->>DDB: Update worktree records
-    Lambda->>DDB: Check queued sessions
-    Lambda-->>GW: session:assign (if pending work)
-    GW-->>Agent: session:assign
-
-    loop Keepalive (every 30s)
-        Lambda-->>Agent: ping
-        Agent-->>Lambda: pong
-    end
-
-    Agent->>GW: Disconnect
-    GW->>Lambda: $disconnect
-    Lambda->>DDB: Remove Connection record
-    Lambda->>DDB: Mark agent worktrees offline
-```

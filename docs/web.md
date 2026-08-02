@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Auto-Auto-Harness Web UI is a Next.js application that provides a browser-based interface for managing sessions, repositories, schedules, and agents. It communicates with the Auto-Auto-Harness API via REST for CRUD operations and WebSocket for real-time updates.
+Next.js UI for sessions, repositories, schedules, and agents. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md).
 
 ## Authentication
 
@@ -76,7 +76,7 @@ The session list is the primary view for monitoring work. It displays all sessio
 
 | Column | Description |
 |--------|-------------|
-| Status | Badge: `queued` (yellow), `running` (blue, animated), `completed` (green), `failed` (red), `cancelled` (gray), `timed_out` (orange) |
+| Status | Badge: `queued` (yellow), `running` (blue, animated), `completed` (green), `failed` (red), `cancelled` (gray), `timed_out` (orange). If `errorCode === usage_limit`, show a distinct “Usage limit” subtitle on failed sessions |
 | Repository | Repository name |
 | Prompt | Truncated first line of the prompt (click to expand) |
 | Command | CLI command (e.g. `codex -p`) |
@@ -214,16 +214,17 @@ Below the prompt, a terminal-like log viewer displays session output. This is th
 
 For `queued` or `running` sessions, a "Cancel Session" button is shown. It calls `POST /sessions/:id/cancel` and the status updates in real-time.
 
-### Re-run & Clone
+### Re-run, Resume & Clone
 
-Two action buttons appear on all completed, failed, cancelled, or timed-out sessions:
+Action buttons on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`):
 
 | Button | Behavior |
 |--------|----------|
-| **Re-run** | Creates an identical new session (same prompt, command, timeout, priority, labels) via `POST /sessions/:id/clone`. Redirects to the new session's detail page. |
-| **Clone & Edit** | Opens the "New Session" form pre-filled with this session's prompt, command, timeout, priority, and labels. The user can modify any field before submitting. |
+| **Resume** | `POST /sessions/:id/resume` — new session **pinned to the same agent + worktree**; agent tries to continue in that workspace. Optional prompt for “continue with…”. Waits if that worktree is busy. |
+| **Re-run** | `POST /sessions/:id/clone` — identical new session; **any** matching worktree (round-robin). Fresh setup. |
+| **Clone & Edit** | Opens the "New Session" form pre-filled with this session's fields; user edits before submit (not pinned unless they use Resume). |
 
-This is the primary workflow for iterating on failed sessions — re-run as-is, or tweak the prompt and try again.
+**Resume vs re-run:** resume keeps the disk/context on the original runner; re-run is a clean independent attempt. See [api.md — resume](api.md#post-sessionsidresume).
 
 ---
 

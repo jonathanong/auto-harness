@@ -2,7 +2,7 @@
 
 ## Principles
 
-1. **No secrets in the control plane.** The Auto-Auto-Harness cloud service holds no repository credentials, SSH keys, or AI tool API keys. All credentials live on the VPS.
+1. **No secrets in the control plane.** The auto harness cloud service holds no repository credentials, SSH keys, or AI tool API keys. All credentials live on the VPS.
 2. **No secrets in prompts.** Never pass secrets through the API or in session prompts. The prompt is stored in DynamoDB and visible in the UI.
 3. **Trusted execution environment.** The VPS agent runs directly on a secure server — no Docker isolation wrapping the agent. The AI agents themselves may use Docker for development work within repositories.
 4. **Principle of least privilege.** Service accounts are scoped by role and optionally by repository.

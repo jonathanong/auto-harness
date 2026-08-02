@@ -1,57 +1,78 @@
-# Auto-Harness
+# Auto Harness
 
-Auto-Harness is an AI automation tool for your software factory.
-It allows you to programmatically call your favorite CLI tools in interactive mode and manage sessions through the web.
+**Your software factory, on autopilot.**
 
-Auto-Harness consists of the following architecture:
+Auto Harness turns the AI coding tools you already use—Codex, Claude Code, and the rest—into a reliable part of how your team ships software. Trigger work from CI, chat, or a simple prompt; watch it run; get a pull request instead of a ticket queue.
 
-- AWS Lambda - the public endpoint for triggering workflows, which includes:
-  - An API service
-  - A web UI
-- AWS DynamoDB - for storing data related to your workflow
-- AWS S3 - for storing archival data for your workflow
-- A service to run on your computer or VPS
+You keep control of secrets and machines. Auto Harness coordinates the work.
 
-Use cases for your auto-harness are:
+---
 
-- Automatically creating a pull request on CI failure
-- Creating pull requests based on prompts
-- Shepherding pull requests to merge
+## Why
 
-The service does not actually care what you send since it must be triggered programmatically. 
+Engineering orgs drown in the same loops: red builds, nitpick reviews, dependency churn, “someone should fix that.” Humans should set direction—not babysit every failed check or routine update.
 
-## Security Boundaries
+Most teams already pay for **coding-agent subscriptions**. Those plans generally **do not include Agent SDKs**, so factory automation has to drive the same tools through **non-interactive CLI** mode—queued, logged, and concurrent—on machines you control. That is what Auto Harness is for: **subscription capacity → unattended software work**, not a new pay-per-token API bill.
 
-The service itself does not contain any credentials except for its own credentials.
-Instead, it is expected that your VPS (e.g. through environment variables or `.env` files) or your repository has the proper credentials set up.
-Passing environment variables through the API is not supported.
-Do not pass secrets through the prompt.
+Auto Harness is for teams that want:
 
-Auto-Harness supports custom CLI commands or environment variables when invoking each agent.
-For example, you can instruct it to do `source .env && codex -p "prompt"`.
-It is recommended to create a profile specific to the auto-harness non-interactive agents.
+- **Faster recovery when things break** — CI fails → a fix session starts without waiting for a free engineer
+- **Less toil, same standards** — repetitive maintenance and prompt-driven changes run the same way every time
+- **Visibility without babysitting** — live sessions, history, and notifications so you know what the agents did
+- **Scale that matches headcount** — more concurrent work when you need it, queued and prioritized when you don’t
 
-## Service Setup
+The win is **time and throughput**. Cloud coordination is cheap; the scarce inputs are **plan seats/quota** and **host capacity**. More on rationale and cost: [docs/why.md](docs/why.md), [docs/costs.md](docs/costs.md).
 
-1. Deploy with CloudFormation with admin credentials
-2. Create users or service accounts
-3. Add repositories using the UI
+---
 
-## VPS Setup
+## Use cases
 
-1. Clone the repo to your VPS
-2. Start the service with
-3. Add repositories with the CLI
+| Situation | What Auto Harness does |
+|-----------|-------------------------|
+| **CI goes red** | Kick off an agent against the failing repo, aimed at a fix and a PR—not a Slack pile-on |
+| **You have a clear change in mind** | Describe the outcome; run it as a tracked session with logs you can audit |
+| **Work was interrupted mid-flight** | Resume the same session context on the same agent and worktree |
+| **PRs stall in review** | Shepherd changes forward—address comments, re-run checks, keep momentum |
+| **The repo needs steady care** | Schedules for updates, lint, security patches—maintenance without calendar babysitting |
+| **CI / bots fire and forget** | GitHub Actions (or anything) calls the API and exits; humans watch **Slack** and/or **GitHub** (PRs, comments)—not the trigger job |
+| **The team lives in Slack** | One thread per session for harness status alongside GitHub activity |
 
-## Worktrees
+Anything you can trigger programmatically is fair game. Auto Harness doesn’t care *why* you started a session—only that you did, with a prompt and a target.
 
-It is recommended to use worktrees for development.
-Auto-Harness re-using worktrees instead of creating and deleting worktrees per session.
-You set the worktrees, auto-harness will automatically create the worktrees if they are not set up yet.
+---
 
-You can also create a script for setting up or updating the worktree, for example something as simple as `git checkout -b claude/auto-harness/{random} && git fetch && git reset --hard origin/main && pnpm install`.
+## How it feels day to day
 
-Similar to GitHub Actions, you can set labels on your worktrees, e.g. set the `claude` label for worktrees in `.claude/worktrees/*`, which can only run Claude.
+1. Something needs doing (a broken build, a written prompt, a schedule firing).
+2. A session lands in the queue and runs on your capacity.
+3. You watch progress live—or only look when Slack or the UI says it’s done.
+4. You review the PR or result like any other change.
 
-The number of worktrees is your concurrency level. 
-If there are not enough worktrees for a task, they will be queued with a priority.
+Operators use the web UI. Pipelines and bots use the API. Your agents run on machines you control.
+
+---
+
+## What you get out of it
+
+- **Shorter time-to-green** after failures  
+- **Fewer context switches** for “quick fixes” that aren’t  
+- **A single place** to see automated coding work—not a scatter of laptop terminals  
+- **Room to grow** from one repo and one engineer to many agents and many repos  
+
+---
+
+## Trust boundaries (in plain terms)
+
+- Auto Harness **does not** hold your git credentials or AI API keys—those stay on **your** runners  
+- **Don’t put secrets in prompts**—prompts are stored and visible operationally  
+- You decide which tools run and how hard they work  
+
+Details live in the docs, not here.
+
+---
+
+## Learn more
+
+Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo hookup examples (filaments-style): **[docs/harness.md](docs/harness.md)**.
+
+Start there when you’re ready to deploy or dig in.

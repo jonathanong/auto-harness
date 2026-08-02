@@ -2,7 +2,16 @@
 
 ## Slack
 
-Auto-Harness integrates with Slack to provide real-time session updates. Each session creates a thread in a configured channel, and the thread is updated as the session progresses.
+For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
+
+| Channel | What they see |
+|---------|----------------|
+| **Slack** | Session lifecycle thread (queued → running → done/fail) from Auto Harness |
+| **GitHub** | PRs, issue/PR comments, reviews, checks—repo updates produced by the agent session (or follow-on tooling) |
+
+Auto Harness owns the **Slack** session thread. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
+
+Auto Harness posts real-time session updates to Slack: each session gets a thread in a configured channel, updated as the session progresses.
 
 ### Setup
 
@@ -148,6 +157,14 @@ Last 5 lines of stderr:
 > ...
 ```
 
+When `errorCode` is `usage_limit` (AI vendor quota / rate limit parsed by the agent):
+
+```
+❌ Session failed — usage limit
+The AI CLI reported a plan or rate limit. Auto Harness does not retry.
+Fix quota/billing on the agent host, then re-run the session.
+```
+
 The original message is updated with ❌ status. The thread includes the last few lines of stderr to aid quick debugging without opening the UI.
 
 #### Session Cancelled (thread reply + update original)
@@ -174,7 +191,8 @@ The Slack `thread_ts` (thread timestamp) is stored on the Session record in Dyna
 
 Slack API rate limits are ~1 message/second per channel. Auto-Harness batches updates:
 
-- Log streaming is **not** sent to Slack (too noisy). Logs are only available in the Web UI.
+- Log streaming is **not** sent to Slack (too noisy). Logs are only available in the Web UI (link the session from the thread when useful).
+- Fire-and-forget CI callers rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
@@ -190,28 +208,29 @@ The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`
 
 ## Future Integrations
 
-These are planned for later phases:
+### GitHub Actions (caller pattern)
 
-### GitHub Webhooks (Inbound)
+**Fire and forget** — not a long-running Actions job:
 
-Trigger sessions from GitHub events:
+1. Event triggers a short workflow (failure, comment, schedule, …).
+2. Workflow calls Auto Harness **`POST /sessions`** (service account).
+3. Workflow **exits**; it does not poll session status.
+4. Humans follow **Slack** (session thread) and/or **GitHub** (PRs/comments/checks). UI/logs for deep dive.
 
-- **CI failure** — on `check_run` completed with `conclusion: failure`, create a fix session
-- **PR comment** — on `issue_comment` with a trigger phrase (e.g. `@auto-harness fix`), create a session
-- **PR review** — on `pull_request_review` with requested changes, create a follow-up session
-
-### Email Notifications
-
-Optional email notifications on session completion/failure via Amazon SES.
+**Requirements:** Slack integration enabled for unattended runs; session id returned on create; no need for GHA to poll. Worked examples: [harness.md](harness.md).
 
 ### Custom Webhooks (Outbound)
 
-Send session lifecycle events to arbitrary HTTP endpoints for custom integrations.
+Optional machine-to-machine callbacks if something other than Slack must react to terminal status. **Not required** for the GHA fire-and-forget + Slack pattern.
 
 ```json
 {
   "url": "https://your-service.com/auto-harness-webhook",
-  "events": ["session:completed", "session:failed"],
+  "events": ["session:completed", "session:failed", "session:timed_out", "session:cancelled"],
   "secret": "webhook-signing-secret"
 }
 ```
+
+### Email Notifications
+
+Optional email notifications on session completion/failure via Amazon SES.

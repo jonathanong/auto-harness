@@ -2,20 +2,23 @@
 
 ## Project Structure
 
+Layer docs: [aws.md](aws.md) (control plane packages `cdk` + `api`), [agent.md](agent.md) (package `agent`).
+
 ```
 auto-harness/
 ├── packages/
-│   ├── cdk/                    # AWS CDK infrastructure
+│   ├── cdk/                    # AWS CDK infrastructure (see aws.md)
 │   │   ├── lib/
 │   │   │   ├── auto-harness-stack.ts
 │   │   │   ├── api-gateway.ts
 │   │   │   ├── lambda.ts
 │   │   │   ├── dynamodb.ts
-│   │   │   └── s3.ts
+│   │   │   ├── s3.ts
+│   │   │   └── eventbridge.ts
 │   │   └── bin/
 │   │       └── auto-harness.ts
 │   │
-│   ├── api/                    # Lambda functions (REST + WebSocket)
+│   ├── api/                    # Lambda functions (REST + WebSocket) — see aws.md
 │   │   ├── src/
 │   │   │   ├── handlers/
 │   │   │   │   ├── rest/
@@ -35,7 +38,7 @@ auto-harness/
 │   │   │       └── client.ts
 │   │   └── package.json
 │   │
-│   ├── agent/                  # VPS service (Node.js daemon)
+│   ├── agent/                  # VPS service (Node.js daemon) — see agent.md
 │   │   ├── src/
 │   │   │   ├── index.ts
 │   │   │   ├── connection.ts
@@ -43,6 +46,7 @@ auto-harness/
 │   │   │   ├── worktree-manager.ts
 │   │   │   ├── session-runner.ts
 │   │   │   ├── log-streamer.ts
+│   │   │   ├── main-lock.ts
 │   │   │   └── config.ts
 │   │   └── package.json
 │   │
@@ -107,12 +111,14 @@ erDiagram
         string status "idle | busy | error"
         string setupScript "optional"
         string currentSessionId FK "nullable"
+        string lastAssignedAt "nullable, used for round-robin"
     }
 
     Session {
         string id PK
         string repositoryId FK
         string worktreeId FK "nullable until assigned"
+        string agentId FK "nullable until assigned"
         string userId FK
         string prompt
         string command "e.g. codex -p"
@@ -123,6 +129,12 @@ erDiagram
         number priority
         string[] requiredLabels
         number exitCode "nullable"
+        string errorCode "nullable, e.g. usage_limit, resume_failed"
+        string errorMessage "nullable"
+        string resumedFromSessionId FK "nullable"
+        string pinnedAgentId "nullable, resume affinity"
+        string pinnedWorktreeId "nullable, resume affinity"
+        string cliResumeRef "nullable, tool-native resume id"
         string slackThreadTs "nullable"
         string slackChannel "nullable"
         string createdAt
@@ -200,6 +212,7 @@ erDiagram
   - Process executor — `child_process.spawn` with `node-pty` for PTY emulation
   - Session runner — claim worktree → run setup script → spawn command → collect output → release
   - Session timeout — kill process after `timeout` seconds, report `timed_out` status
+  - Usage-limit detection — parse CLI output for quota/rate-limit errors → `failed` + `errorCode: usage_limit` (no retry)
   - Log streamer — buffer and emit stdout/stderr with timestamps
 - Minimal agent CLI: `auto-harness-agent start`, `auto-harness-agent status`
 - **Local API server** (`packages/api/src/local-server.ts`) — Express + `ws` wrapper around the same Lambda handlers. Serves REST API on `localhost:7420` and WebSocket on `ws://localhost:7420/ws`. Connects to DynamoDB Local. Auto-creates tables and seeds a default admin on first start.
@@ -222,7 +235,7 @@ erDiagram
   - CloudWatch Events rule (1-minute interval) for cron schedule evaluation
 - `packages/api` — REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD
-  - Sessions: create (with `timeout` required), list (with `search` query param), get, cancel, clone
+  - Sessions: create (with `timeout` required), list (with `search` query param), get, cancel, clone, resume (pin same agent+worktree)
   - Repositories: CRUD
   - Worktrees: list, get
   - Agents: list, get
@@ -261,6 +274,8 @@ erDiagram
 - Session timeout — agent kills process after `timeout` seconds, reports `timed_out`
 - Queue management with priority in Lambda scheduler
 - Worktree label matching — session `requiredLabels` matched against worktree `labels`
+- Multi-agent selection — filter matching idle online worktrees, then round-robin by least-recently-assigned (`lastAssignedAt`)
+- Session resume — pin to source agent+worktree; agent skips hard reset and tries native/workspace resume
 - Reconnection recovery — re-report running sessions and worktree state
 - Non-worktree session execution — run `scheduled` type sessions on main repo checkout
 - Main checkout locking — serial execution per repository (one scheduled session at a time)
@@ -282,6 +297,7 @@ erDiagram
     - **Live session detail** — terminal-like log viewer (xterm.js) connected via WebSocket for real-time output. On page load, fetches historical logs via REST, then switches to WebSocket for live tail.
     - Real-time status indicators (animated state badges, including `timed_out`)
     - Cancel session
+    - **Resume** — `POST /sessions/:id/resume` pins same agent+worktree and continues workspace
     - **Re-run** — clone session as-is via `POST /sessions/:id/clone`
     - **Clone & Edit** — pre-fill new session form with existing session’s fields
     - Loading skeletons, error toasts, empty states
@@ -311,5 +327,8 @@ erDiagram
 - Email notifications via SES
 - Custom outbound webhooks
 - Agent health monitoring — heartbeat, auto-restart detection
+- Agent auto-update — drain (no new jobs), finish in-flight CLIs without kill, then restart
 - Rate limiting + cost tracking
 - Audit logging
+
+> **Repo harness / CI:** GitHub Actions **trigger → `POST /sessions` → fire and forget**. Humans listen on **Slack** and/or **GitHub**—not the trigger job. Requirements and filaments-style examples: [harness.md](harness.md).
