@@ -78,3 +78,12 @@ Everything operational and technical is under **[docs/](docs/README.md)**—setu
 **Contributors / agents:** monorepo conventions live in **[AGENTS.md](AGENTS.md)** (`pnpm check` runs the full gate).
 
 Start there when you’re ready to deploy or dig in.
+
+## Harness Ecosystem
+
+This is part of the following harness ecosystem:
+
+- [auto-harness](https://github.com/jonathanong/auto-harness) - non-interactive agent CLI orchestration across sandboxes
+- [agent-blackboard](https://github.com/jonathanong/auto-blackboard) - session-scoped telemetry for autonomous agents
+- [pr-shepherd](https://github.com/jonathanong/pr-shepherd) - autonomous pull request shepherd
+- [no-mistakes](https://github.com/jonathanong/no-mistakes) - deterministic AST-based codebase intelligence, test selection, and linting for agents
