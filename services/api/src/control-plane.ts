@@ -301,6 +301,19 @@ export class ControlPlane {
     return s ? this.toPublic(s) : null;
   }
 
+  /**
+   * Local/test helper for the Phase 1 memory facade. Does not apply agent
+   * status-validation rules (those are for {@link handleAgentMessage}).
+   */
+  forceStatus(id: string, status: SessionStatus): PublicSession | null {
+    const s = this.sessions.get(id);
+    if (!s) {
+      return null;
+    }
+    s.status = status;
+    return this.toPublic(s);
+  }
+
   listSessions(): PublicSession[] {
     return [...this.sessions.values()]
       .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
@@ -578,7 +591,12 @@ export class ControlPlane {
     }
   }
 
-  /** Cancel/supersede a queued or running session (onConflict:replace). */
+  /**
+   * Cancel/supersede a queued or running session (onConflict:replace).
+   * Queued: free immediately. Running: notify agent cancel and keep worktree
+   * busy until a late terminal status frees it (avoids racing a new assign on
+   * the same path while the old CLI is still inflight).
+   */
   private supersedeSession(sessionId: string, reason: string): void {
     const session = this.sessions.get(sessionId);
     // Caller only passes ids from the active same-key filter.
@@ -586,14 +604,25 @@ export class ControlPlane {
       return;
     }
     this.pendingAcks.delete(sessionId);
-    if (session.worktreeId) {
-      this.releaseWorktree(session.worktreeId);
-    }
+    const wasRunning = session.status === "running";
+    const agentId = session.agentId;
+    const worktreeId = session.worktreeId;
+
     session.status = "cancelled";
-    session.worktreeId = null;
-    session.agentId = null;
     session.errorMessage = reason;
     session.completedAt = this.now();
+
+    if (wasRunning && agentId) {
+      this.onAgentMessage?.(agentId, { type: "session:cancel", sessionId });
+      // Hold worktree (still busy, currentSessionId = this session) until late terminal.
+      return;
+    }
+
+    if (worktreeId) {
+      this.releaseWorktree(worktreeId);
+    }
+    session.worktreeId = null;
+    session.agentId = null;
   }
 
   /** Invariant 2: requeue sessions that never acked. */
@@ -634,6 +663,10 @@ export class ControlPlane {
         if (!session) {
           return { ok: false, error: "session not found" };
         }
+        // Ignore acks after reclaim/replace/cancel rebind.
+        if (session.status !== "running") {
+          return { ok: true };
+        }
         session.ackReceivedAt = this.now();
         this.pendingAcks.delete(msg.sessionId);
         return { ok: true };
@@ -671,6 +704,27 @@ export class ControlPlane {
     if (!session) {
       return { ok: false, error: "session not found" };
     }
+
+    const terminal =
+      msg.status === "completed" ||
+      msg.status === "failed" ||
+      msg.status === "cancelled" ||
+      msg.status === "timed_out";
+
+    // Late status after disconnect/reclaim/replace must not flip session status.
+    // Still release a held worktree on terminal so replace can re-bind safely.
+    if (session.status !== "running") {
+      if (terminal && session.worktreeId) {
+        const wt = this.worktrees.get(session.worktreeId);
+        if (wt?.currentSessionId === session.id) {
+          this.releaseWorktree(session.worktreeId);
+        }
+        session.worktreeId = null;
+        session.agentId = null;
+      }
+      return { ok: true };
+    }
+
     session.status = msg.status;
     if (msg.exitCode !== undefined) {
       session.exitCode = msg.exitCode;
@@ -685,11 +739,6 @@ export class ControlPlane {
       session.cliResumeRef = msg.cliResumeRef;
     }
 
-    const terminal =
-      msg.status === "completed" ||
-      msg.status === "failed" ||
-      msg.status === "cancelled" ||
-      msg.status === "timed_out";
     if (terminal) {
       session.completedAt = this.now();
       this.pendingAcks.delete(msg.sessionId);
@@ -716,6 +765,7 @@ export class ControlPlane {
         session.agentId = null;
         delete session.completedAt;
       } else {
+        session.worktreeId = null;
         void this.archiveSessionLogs(session.id);
         void this.maybeDeliverWebhook(session);
       }

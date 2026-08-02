@@ -43,14 +43,6 @@ export class MemorySessionStore {
   }
 
   setStatus(id: string, status: StoredSession["status"]): StoredSession | undefined {
-    if (!this.plane.getSession(id)) {
-      return undefined;
-    }
-    this.plane.handleAgentMessage({
-      type: "session:status",
-      sessionId: id,
-      status,
-    });
-    return this.get(id);
+    return this.plane.forceStatus(id, status) ?? undefined;
   }
 }

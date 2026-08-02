@@ -63,6 +63,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       };
 
       let plane!: ControlPlane;
+      const assigns: Array<{ sessionId: string; worktreeId: string | null; ref?: string }> = [];
       const transport = createLoopbackTransport({
         sendToServer: (msg) => {
           plane.handleAgentMessage(msg);
@@ -75,6 +76,13 @@ describe("resume re-checks out ref after worktree reuse", () => {
         })(),
         shardCount: 1,
         onAgentMessage: (_a, msg) => {
+          if (msg.type === "session:assign") {
+            assigns.push({
+              sessionId: msg.sessionId,
+              worktreeId: msg.worktreeId,
+              ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
+            });
+          }
           transport.deliver(msg);
         },
       });
@@ -98,9 +106,8 @@ describe("resume re-checks out ref after worktree reuse", () => {
       plane.assignQueued();
       await loop.waitForIdle();
       expect(plane.getSession(first.session.id)?.status).toBe("completed");
-      const firstWt = plane.getSession(first.session.id)?.worktreeId;
-      // After complete worktree is released; capture which path held feature
-      // Intervening session reuses a worktree (may reset it to main via no ref)
+
+      // Intervening session reuses a worktree and checks out main
       const intervening = plane.createSession({
         repositoryId: "demo",
         prompt: "intervening",
@@ -117,46 +124,28 @@ describe("resume re-checks out ref after worktree reuse", () => {
       await loop.waitForIdle();
       expect(plane.getSession(intervening.session.id)?.status).toBe("completed");
 
-      // Resume pins agent only; re-checkout feature/resume on whichever free wt
-      // Force agentId for resume pin (released sessions clear agentId)
-      const firstRec = plane.getSession(first.session.id)!;
-      // resumeSession uses agentId from completed source — ensure pin
+      // Ensure pin source has agent (complete keeps agentId)
+      const any = plane as unknown as {
+        sessions: Map<string, { agentId?: string | null }>;
+      };
+      any.sessions.get(first.session.id)!.agentId = "agent-resume";
+
       const resumed = plane.resumeSession(first.session.id);
-      // completed session may have null agentId after release — pin via register state
+      expect(resumed.ok).toBe(true);
       if (!resumed.ok) {
-        // set agent on source for resume
-        const any = plane as unknown as {
-          sessions: Map<string, { agentId?: string | null; pinnedAgentId?: string | null }>;
-        };
-        any.sessions.get(first.session.id)!.agentId = "agent-resume";
-        const again = plane.resumeSession(first.session.id);
-        expect(again.ok).toBe(true);
-        if (!again.ok) {
-          return;
-        }
-        plane.assignQueued();
-        await loop.waitForIdle();
-        const rSess = plane.getSession(again.session.id);
-        expect(rSess?.status).toBe("completed");
-        expect(rSess?.ref).toBe("feature/resume");
-        const resumeWtId = rSess?.worktreeId;
-        const resumePath = resumeWtId === "wt-a" ? wtA : wtB;
-        const head = git(resumePath, ["rev-parse", "HEAD"]);
-        expect(head).toBe(featureSha);
-        // Prefer different path than first when possible
-        void firstWt;
-        void firstRec;
-      } else {
-        plane.assignQueued();
-        await loop.waitForIdle();
-        const rSess = plane.getSession(resumed.session.id);
-        expect(rSess?.status).toBe("completed");
-        expect(rSess?.ref).toBe("feature/resume");
-        const resumeWtId = rSess?.worktreeId;
-        const resumePath = resumeWtId === "wt-a" ? wtA : wtB;
-        const head = git(resumePath, ["rev-parse", "HEAD"]);
-        expect(head).toBe(featureSha);
+        return;
       }
+      expect(resumed.session.ref).toBe("feature/resume");
+      plane.assignQueued();
+      await loop.waitForIdle();
+      expect(plane.getSession(resumed.session.id)?.status).toBe("completed");
+
+      const resumeAssign = assigns.find((a) => a.sessionId === resumed.session.id);
+      expect(resumeAssign?.ref).toBe("feature/resume");
+      expect(resumeAssign?.worktreeId).toBeTruthy();
+      const resumePath = resumeAssign!.worktreeId === "wt-a" ? wtA : wtB;
+      const head = git(resumePath, ["rev-parse", "HEAD"]);
+      expect(head).toBe(featureSha);
 
       loop.stop();
     } finally {

@@ -507,11 +507,7 @@ describe("ControlPlane coverage edges", () => {
       concurrencyKey: "done-key",
       onConflict: "reject",
     });
-    planeH.handleAgentMessage({
-      type: "session:status",
-      sessionId: "h1",
-      status: "completed",
-    });
+    planeH.forceStatus("h1", "completed");
     expect(
       planeH.createSession({
         repositoryId: "repo-1",
@@ -722,11 +718,7 @@ describe("ControlPlane coverage edges", () => {
       commandProfile: "c",
       timeout: 1,
     });
-    planeS.handleAgentMessage({
-      type: "session:status",
-      sessionId: "s1",
-      status: "completed",
-    });
+    planeS.forceStatus("s1", "completed");
     (
       planeS as unknown as {
         supersedeSession: (id: string, reason: string) => void;
@@ -738,5 +730,40 @@ describe("ControlPlane coverage edges", () => {
       }
     ).supersedeSession("s1", "already terminal");
     expect(planeS.getSession("s1")?.status).toBe("completed");
+
+    // supersede queued session that still has a worktree id (edge)
+    const planeQ = new ControlPlane({
+      idFactory: (() => {
+        let qi = 0;
+        return () => `q${++qi}`;
+      })(),
+      now: () => "t",
+      shardCount: 1,
+    });
+    planeQ.seedWorktree({
+      id: "wq",
+      agentId: "aq",
+      repositoryId: "repo-1",
+      path: "/q",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    planeQ.createSession({
+      repositoryId: "repo-1",
+      prompt: "p",
+      commandProfile: "c",
+      timeout: 1,
+      concurrencyKey: "kq",
+      onConflict: "queue",
+    });
+    const qAny = planeQ as unknown as {
+      sessions: Map<string, { worktreeId?: string | null; status: string }>;
+      supersedeSession: (id: string, reason: string) => void;
+    };
+    qAny.sessions.get("q1")!.worktreeId = "wq";
+    qAny.supersedeSession("q1", "replace queued with wt");
+    expect(planeQ.getSession("q1")?.status).toBe("cancelled");
+    expect(planeQ.getWorktree("wq")?.status).toBe("idle");
   });
 });
