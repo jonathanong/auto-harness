@@ -1,0 +1,10 @@
+# Official Amazon DynamoDB Local for development (no AWS account required).
+# Start: pnpm local:dynamodb  (or docker compose up -d dynamodb)
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: auto-harness-dynamodb
+    ports:
+      - "8000:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    # -inMemory is fine for local/tests; use -dbPath /data for durable local data

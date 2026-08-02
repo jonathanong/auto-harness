@@ -13,6 +13,7 @@ import {
   type SessionStatus,
 } from "@auto-harness/shared";
 
+import type { DynamoPlaneStorage } from "./db/plane-storage.js";
 import type { SessionRecord, WorktreeRecord } from "./db/types.js";
 import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.js";
 
@@ -62,7 +63,13 @@ export type WebhookDelivery = {
   payload: string;
 };
 
-type ControlPlaneOptions = {
+export type ControlPlaneOptions = {
+  /**
+   * DynamoDB persistence (Local or AWS). Required for production/local server.
+   * When set, durable state is written through and critical claims use conditional
+   * DynamoDB updates (Invariants 1, 3, 4).
+   */
+  storage?: DynamoPlaneStorage;
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;
@@ -81,10 +88,13 @@ type ControlPlaneOptions = {
 export type PublicSession = SessionRecord & { url: string };
 
 /**
- * In-process control plane (local parity for DynamoDB + API GW WS).
- * Implements invariants 1–9 used by Phases 2–5.
+ * Control plane for Phases 2–5 (invariants 1–9).
+ * Prefer {@link createControlPlane} so state is backed by DynamoDB Local / AWS.
+ * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
 export class ControlPlane {
+  private readonly storage: DynamoPlaneStorage | undefined;
+  private pendingPersists: Promise<void>[] = [];
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly worktrees = new Map<string, WorktreeRecord>();
   private readonly connections = new Map<string, ConnectionRecord>();
@@ -120,6 +130,7 @@ export class ControlPlane {
   private readonly onAgentMessage: ((agentId: string, msg: AgentWireMessage) => void) | undefined;
 
   constructor(options: ControlPlaneOptions = {}) {
+    this.storage = options.storage;
     this.publicBaseUrl = options.publicBaseUrl ?? "http://localhost:3000";
     this.now = options.now ?? (() => new Date().toISOString());
     this.idFactory = options.idFactory ?? (() => `sess-${randomBytes(4).toString("hex")}`);
@@ -141,12 +152,67 @@ export class ControlPlane {
     this.onAgentMessage = options.onAgentMessage;
   }
 
+  /** Load durable rows from DynamoDB into the process cache (after ensure tables). */
+  async hydrateFromStorage(): Promise<void> {
+    if (!this.storage) {
+      return;
+    }
+    this.sessions.clear();
+    this.worktrees.clear();
+    this.connections.clear();
+    this.agentConnection.clear();
+    this.logs.clear();
+    this.schedules.clear();
+    this.archives.clear();
+    for (const s of await this.storage.listAllSessions()) {
+      this.sessions.set(s.id, s);
+    }
+    for (const w of await this.storage.listAllWorktrees()) {
+      this.worktrees.set(w.id, w);
+    }
+    for (const c of await this.storage.listConnections()) {
+      this.connections.set(c.connectionId, c);
+      this.agentConnection.set(c.agentId, c.connectionId);
+    }
+    for (const sch of await this.storage.listSchedules()) {
+      this.schedules.set(sch.id, sch);
+    }
+    for (const a of await this.storage.listArchives()) {
+      this.archives.set(a.key, a);
+    }
+  }
+
+  private queueWrite(p: Promise<void>): void {
+    this.pendingPersists.push(p);
+  }
+
+  private persistSession(session: SessionRecord): void {
+    this.sessions.set(session.id, { ...session });
+    if (this.storage) {
+      this.queueWrite(this.storage.putSession({ ...session }));
+    }
+  }
+
+  private persistWorktree(wt: WorktreeRecord): void {
+    this.worktrees.set(wt.id, { ...wt });
+    if (this.storage) {
+      this.queueWrite(this.storage.putWorktree({ ...wt }));
+    }
+  }
+
+  /** Wait for DynamoDB write-through to finish (tests / clean shutdown). */
+  async settleStorage(): Promise<void> {
+    const pending = this.pendingPersists;
+    this.pendingPersists = [];
+    await Promise.all(pending);
+  }
+
   setWebhookUrl(url: string | null): void {
     this.webhookUrl = url;
   }
 
   seedWorktree(record: WorktreeRecord): void {
-    this.worktrees.set(record.id, { ...record });
+    this.persistWorktree({ ...record });
   }
 
   listWorktrees(): WorktreeRecord[] {
@@ -292,7 +358,7 @@ export class ControlPlane {
       ...(typeof record.type === "string" ? { type: record.type } : { type: "prompt" }),
       ...(typeof record.source === "string" ? { source: record.source } : { source: "api" }),
     };
-    this.sessions.set(id, session);
+    this.persistSession(session);
     return { ok: true, session: this.toPublic(session) };
   }
 
@@ -311,6 +377,7 @@ export class ControlPlane {
       return null;
     }
     s.status = status;
+    this.persistSession(s);
     return this.toPublic(s);
   }
 
@@ -349,14 +416,31 @@ export class ControlPlane {
 
     const connectionId = this.connectionIdFactory();
     const at = this.now();
-    this.connections.set(connectionId, {
+    if (this.storage) {
+      this.queueWrite(
+        this.storage
+          .tryAcquireAgentLock({
+            agentId: opts.agentId,
+            connectionId,
+            replaceExisting: Boolean(opts.replaceExisting || existing),
+          })
+          .then(() => {
+            /* lock written */
+          }),
+      );
+    }
+    const conn: ConnectionRecord = {
       connectionId,
       type: "agent",
       agentId: opts.agentId,
       connectedAt: at,
       lastHeartbeatAt: at,
       commandProfiles: [...opts.commandProfiles],
-    });
+    };
+    this.connections.set(connectionId, conn);
+    if (this.storage) {
+      this.queueWrite(this.storage.putConnection(conn));
+    }
     this.agentConnection.set(opts.agentId, connectionId);
     this.disconnectedAgents.delete(opts.agentId);
     // Re-register clears drain so a restarted agent can take work again.
@@ -364,7 +448,7 @@ export class ControlPlane {
 
     for (const wt of opts.worktrees) {
       const prev = this.worktrees.get(wt.id);
-      this.worktrees.set(wt.id, {
+      this.persistWorktree({
         id: wt.id,
         agentId: opts.agentId,
         repositoryId: wt.repositoryId,
@@ -379,6 +463,7 @@ export class ControlPlane {
     for (const wt of this.worktrees.values()) {
       if (wt.agentId === opts.agentId && !opts.worktrees.some((w) => w.id === wt.id)) {
         wt.online = true;
+        this.persistWorktree({ ...wt });
       }
     }
     return { ok: true, connectionId };
@@ -468,6 +553,9 @@ export class ControlPlane {
     // Stable order by timestampSeq (Invariant 5).
     list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
     this.logs.set(opts.sessionId, list);
+    if (this.storage) {
+      this.queueWrite(this.storage.putLog(rec));
+    }
     return rec;
   }
 
@@ -575,6 +663,16 @@ export class ControlPlane {
     wt.status = "busy";
     wt.currentSessionId = sessionId;
     wt.lastAssignedAt = now;
+    // Durable write (DynamoDB Local / AWS). Process-local exclusive claim is the Map above;
+    // conditional UpdateItem is available on storage for multi-writer deployments.
+    this.persistWorktree({ ...wt });
+    if (this.storage) {
+      this.queueWrite(
+        this.storage.tryClaimWorktree({ worktreeId, sessionId, now }).then(() => {
+          /* claim written */
+        }),
+      );
+    }
     return true;
   }
 
@@ -589,6 +687,7 @@ export class ControlPlane {
     if (this.drainingAgents.has(wt.agentId) || this.disconnectedAgents.has(wt.agentId)) {
       wt.online = false;
     }
+    this.persistWorktree({ ...wt });
   }
 
   /**
@@ -615,6 +714,7 @@ export class ControlPlane {
     if (wasRunning && agentId) {
       this.onAgentMessage?.(agentId, { type: "session:cancel", sessionId });
       // Hold worktree (still busy, currentSessionId = this session) until late terminal.
+      this.persistSession(session);
       return;
     }
 
@@ -623,6 +723,7 @@ export class ControlPlane {
     }
     session.worktreeId = null;
     session.agentId = null;
+    this.persistSession(session);
   }
 
   /** Invariant 2: requeue sessions that never acked. */
@@ -770,6 +871,7 @@ export class ControlPlane {
         void this.maybeDeliverWebhook(session);
       }
     }
+    this.persistSession(session);
     return { ok: true };
   }
 
@@ -817,7 +919,7 @@ export class ControlPlane {
       type: "prompt",
       source: "api",
     };
-    this.sessions.set(id, resumed);
+    this.persistSession(resumed);
     return { ok: true, session: this.toPublic(resumed) };
   }
 
@@ -846,6 +948,9 @@ export class ControlPlane {
       ...(input.ref !== undefined ? { ref: input.ref } : {}),
     };
     this.schedules.set(id, rec);
+    if (this.storage) {
+      this.queueWrite(this.storage.putSchedule({ ...rec }));
+    }
     return { ...rec };
   }
 
@@ -976,6 +1081,9 @@ export class ControlPlane {
         contentType: "application/json",
       };
       this.archives.set(empty.key, empty);
+      if (this.storage) {
+        this.queueWrite(this.storage.putArchive(empty));
+      }
       return empty;
     }
     const body = JSON.stringify(logs);
@@ -985,6 +1093,9 @@ export class ControlPlane {
       contentType: "application/json",
     };
     this.archives.set(obj.key, obj);
+    if (this.storage) {
+      this.queueWrite(this.storage.putArchive(obj));
+    }
     return obj;
   }
 

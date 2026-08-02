@@ -13,11 +13,22 @@ export { ControlPlane } from "./control-plane.js";
 export type {
   ArchiveObject,
   ConnectionRecord,
+  ControlPlaneOptions,
   LogRecord,
   PublicSession,
   ScheduleRecord,
   WebhookDelivery,
 } from "./control-plane.js";
+export { createControlPlane } from "./create-plane.js";
+export type { CreateControlPlaneOptions } from "./create-plane.js";
+export {
+  createDynamoClients,
+  createDynamoDocumentClient,
+  DEFAULT_DYNAMODB_ENDPOINT,
+  tableNames,
+} from "./db/dynamo.js";
+export { ensureControlPlaneTables } from "./db/ensure-tables.js";
+export { DynamoPlaneStorage } from "./db/plane-storage.js";
 export { MemorySessionRepository, MemoryWorktreeRepository } from "./db/memory-repos.js";
 export type {
   SessionRecord,

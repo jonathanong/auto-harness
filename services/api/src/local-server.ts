@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AgentToServerMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.js";
+import { createControlPlane } from "./create-plane.js";
 import { MemorySessionStore } from "./memory-store.js";
 
 type LocalServerOptions = {
@@ -10,6 +11,11 @@ type LocalServerOptions = {
   store?: MemorySessionStore;
   plane?: ControlPlane;
   publicBaseUrl?: string;
+  /**
+   * When true (default for startLocalServer), open DynamoDB Local and hydrate.
+   * Unit tests may pass an in-process plane without DynamoDB.
+   */
+  useDynamo?: boolean;
 };
 
 function readJson(req: IncomingMessage): Promise<unknown> {
@@ -232,7 +238,22 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   plane: ControlPlane;
 }> {
   const port = options.port ?? 7420;
-  const { store, plane, handler } = createLocalApp(options);
+  let plane = options.plane;
+  let store = options.store;
+  // Default: DynamoDB Local via AWS SDK (not a custom in-memory database).
+  if (!plane && !store && options.useDynamo !== false) {
+    const created = await createControlPlane({
+      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+    });
+    plane = created.plane;
+    store = new MemorySessionStore({ plane });
+  }
+  const app = createLocalApp({
+    ...options,
+    ...(plane !== undefined ? { plane } : {}),
+    ...(store !== undefined ? { store } : {}),
+  });
+  const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   const server = createServer((req, res) => {
     void handler(req, res);
   });
@@ -246,8 +267,8 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
 
   return {
     port,
-    store,
-    plane,
+    store: resolvedStore,
+    plane: resolvedPlane,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((err) => {

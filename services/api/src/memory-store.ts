@@ -10,8 +10,9 @@ type MemoryStoreOptions = {
 };
 
 /**
- * Thin facade used by Phase 1 local server paths.
- * Backed by {@link ControlPlane} for full Phase 2–5 behavior.
+ * Thin session facade over {@link ControlPlane}.
+ * Prefer `createControlPlane()` so the plane is backed by DynamoDB Local
+ * (amazon/dynamodb-local), not a custom database.
  */
 export class MemorySessionStore {
   readonly plane: ControlPlane;

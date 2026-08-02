@@ -13,6 +13,8 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
-    "@auto-harness/shared": "workspace:*"
+    "@auto-harness/shared": "workspace:*",
+    "@aws-sdk/client-dynamodb": "^3.1101.0",
+    "@aws-sdk/lib-dynamodb": "^3.1101.0"
   }
 }

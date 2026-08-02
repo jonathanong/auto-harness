@@ -26,9 +26,12 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     port = n;
   }
 
-  const server = await startLocalServer({ port });
+  const server = await startLocalServer({ port, useDynamo: true });
   console.log(`Auto Harness local API listening on http://127.0.0.1:${server.port}`);
   console.log(`POST http://127.0.0.1:${server.port}/api/v1/sessions`);
+  console.log(
+    `DynamoDB: ${process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:8000"} (pnpm local:dynamodb)`,
+  );
 
   await new Promise<void>(() => {
     /* run until killed */

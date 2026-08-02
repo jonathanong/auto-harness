@@ -8,14 +8,24 @@ Install and run Auto Harness. Design details: [aws.md](aws.md), [agent.md](agent
 | --------------------------------------- | ----------------------------------------------------- |
 | Node.js 22+                             | monorepo tooling                                      |
 | pnpm                                    | workspaces (`packageManager` in root `package.json`)  |
+| Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)          |
 | Git 2.20+                               | worktrees                                             |
 | AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions |
 
 ---
 
-## Local development (Phase 1 — no AWS)
+## Local development (Phase 1 — no AWS account)
 
-This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start`, DynamoDB, and the web UI come in later phases.
+Control-plane data uses **Amazon DynamoDB Local** (official image), not a custom in-memory database. Start it before `local:api` / API smoke tests:
+
+```bash
+pnpm local:dynamodb
+pnpm local:dynamodb:ready   # creates tables, waits for :8000
+```
+
+Endpoint: `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:8000`). Dummy AWS credentials are fine for Local.
+
+This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start` and full AWS deploy come in later phases.
 
 ### One-shot end-to-end check
 
@@ -93,11 +103,12 @@ On success the CLI prints a final JSON line with `"status":"completed"`. On fail
 
 ### Manual path B — local API create, then agent run
 
-1. Start the local API (in-memory store, no DynamoDB):
+1. Start DynamoDB Local (if not already), then the API:
 
 ```bash
+pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api
-# listens on http://127.0.0.1:7420
+# listens on http://127.0.0.1:7420 — persists sessions to DynamoDB Local
 ```
 
 2. Create a session (fire-and-forget style):

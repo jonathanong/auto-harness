@@ -15,6 +15,13 @@ function baseSessionBody(over: Record<string, unknown> = {}) {
 }
 
 describe("ControlPlane invariants", () => {
+  it("hydrate and settle are no-ops without storage", async () => {
+    const plane = new ControlPlane();
+    await plane.hydrateFromStorage();
+    await plane.settleStorage();
+    expect(plane.listSessions()).toEqual([]);
+  });
+
   it("Invariant 1: exclusive worktree claim under concurrent assign", () => {
     const messages: AgentWireMessage[] = [];
     const plane = new ControlPlane({

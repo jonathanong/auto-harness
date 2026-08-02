@@ -338,8 +338,9 @@ tree is on `main`), and `pnpm local:api-smoke`.
 
 **Deviations (intentional, Phase 1 only):**
 
-- Local API uses an in-memory store (`services/api` memory repos) instead of DynamoDB Local —
-  same REST shape; DynamoDB lands with Phase 2 CDK.
+- Local API uses **Amazon DynamoDB Local** (`docker compose` / `pnpm local:dynamodb`) via the
+  AWS SDK — not a custom DB. Process cache remains for single-process coordination; durable
+  rows live in DynamoDB Local (same table shapes as CDK).
 - Agent `start` (WebSocket daemon) is Phase 3; local path uses `run-session` / `local:e2e` bridge.
 - `services/web` remains a stub until a later UI phase.
 - Checkout always detaches at the resolved SHA so a session `ref` that is already checked out in
@@ -400,7 +401,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
 session create with `ref`/`commandProfile`/`concurrencyKey`/`onConflict`/`metadata`/`url`.
 CDK table defs in `services/cdk` (no live AWS deploy required in-repo). Local store is
-in-memory parity (not DynamoDB Local Docker).
+DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
