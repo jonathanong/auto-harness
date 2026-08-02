@@ -9,3 +9,15 @@ export function getServiceName(): string {
 export { MemorySessionStore } from "./memory-store.js";
 export type { StoredSession } from "./memory-store.js";
 export { createLocalApp, startLocalServer } from "./local-server.js";
+export { MemorySessionRepository, MemoryWorktreeRepository } from "./db/memory-repos.js";
+export type {
+  SessionRecord,
+  SessionRepository,
+  WorktreeRecord,
+  WorktreeRepository,
+} from "./db/types.js";
+export {
+  Scheduler,
+  compareSessionsForQueue,
+  compareWorktreesForRoundRobin,
+} from "./services/scheduler.js";
