@@ -1,0 +1,217 @@
+# Integrations
+
+## Slack
+
+Auto-Harness integrates with Slack to provide real-time session updates. Each session creates a thread in a configured channel, and the thread is updated as the session progresses.
+
+### Setup
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Add the `chat:write` OAuth scope
+3. Install the app to your workspace
+4. Copy the **Bot User OAuth Token** (`xoxb-...`)
+5. Configure the integration via the API or Web UI
+
+### Configuration
+
+#### `POST /integrations/slack`
+
+Configure Slack integration. **Admin only.**
+
+**Request:**
+```json
+{
+  "botToken": "xoxb-...",
+  "defaultChannel": "#harness",
+  "enabled": true,
+  "notifications": {
+    "onSessionCreated": true,
+    "onSessionStarted": true,
+    "onSessionCompleted": true,
+    "onSessionFailed": true,
+    "onSessionCancelled": true,
+    "onScheduleCompleted": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `botToken` | string | ✓ | Slack Bot User OAuth Token (`xoxb-...`) |
+| `defaultChannel` | string | ✓ | Default channel for notifications (e.g. `#harness`, `C0123ABCDEF`) |
+| `enabled` | boolean | ✗ | Default: `true` |
+| `notifications` | object | ✗ | Toggle which events post to Slack |
+
+> **Note:** The bot token is encrypted at rest in DynamoDB using AWS KMS.
+
+#### `GET /integrations/slack`
+
+Get current Slack configuration (token is redacted).
+
+#### `PUT /integrations/slack`
+
+Update Slack configuration. **Admin only.**
+
+#### `DELETE /integrations/slack`
+
+Remove Slack integration. **Admin only.**
+
+### Per-Repository Overrides
+
+Repositories can override the default Slack channel:
+
+```json
+{
+  "name": "my-app",
+  "url": "git@github.com:org/my-app.git",
+  "defaultBranch": "main",
+  "slackChannel": "#my-app-auto-harness"
+}
+```
+
+If not set, the default channel from the integration config is used.
+
+### Thread Lifecycle
+
+Each session creates a Slack thread that tracks the full lifecycle:
+
+```mermaid
+sequenceDiagram
+    participant Lambda
+    participant Slack as Slack API
+    participant Channel as #harness
+
+    Note over Lambda: Session created
+    Lambda->>Slack: chat.postMessage
+    Slack-->>Channel: 📋 New session queued
+    Note over Slack: Returns thread_ts
+
+    Note over Lambda: Session started
+    Lambda->>Slack: chat.postMessage (thread_ts)
+    Slack-->>Channel: ▶️ Session started (thread reply)
+
+    Note over Lambda: Session completed
+    Lambda->>Slack: chat.postMessage (thread_ts)
+    Slack-->>Channel: ✅ Session completed (thread reply)
+
+    Lambda->>Slack: chat.update (thread_ts)
+    Slack-->>Channel: Update original message with final status
+```
+
+### Message Format
+
+#### Session Created (channel message — starts the thread)
+
+```
+📋 Session queued — my-app
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Prompt: Fix the failing test in src/utils.test.ts
+Command: codex -p
+Priority: 10
+Source: ui (jong)
+```
+
+#### Session Started (thread reply)
+
+```
+▶️ Session started
+Agent: vps-prod-1
+Worktree: wt-2
+```
+
+#### Session Completed (thread reply + update original)
+
+```
+✅ Session completed in 5m 32s
+Exit code: 0
+```
+
+The original channel message is also updated to show the final status:
+
+```
+✅ Session completed — my-app (5m 32s)
+━━━━━━━━━━━━━━━━━━━━━━━━━
+Prompt: Fix the failing test in src/utils.test.ts
+Command: codex -p
+Exit code: 0
+```
+
+#### Session Failed (thread reply + update original)
+
+```
+❌ Session failed after 2m 15s
+Exit code: 1
+
+Last 5 lines of stderr:
+> Error: Cannot find module './parser'
+> at Object.<anonymous> (src/utils.ts:12:1)
+> ...
+```
+
+The original message is updated with ❌ status. The thread includes the last few lines of stderr to aid quick debugging without opening the UI.
+
+#### Session Cancelled (thread reply + update original)
+
+```
+⚪ Session cancelled by jong
+```
+
+### Thread Metadata
+
+The Slack `thread_ts` (thread timestamp) is stored on the Session record in DynamoDB so that subsequent status updates can reply to the correct thread:
+
+```typescript
+// Session record in DynamoDB
+{
+  id: "sess-x1y2z3",
+  // ... other fields
+  slackThreadTs: "1722556800.001234",
+  slackChannel: "C0123ABCDEF"
+}
+```
+
+### Rate Limiting
+
+Slack API rate limits are ~1 message/second per channel. Auto-Harness batches updates:
+
+- Log streaming is **not** sent to Slack (too noisy). Logs are only available in the Web UI.
+- Status updates are sent immediately (queued → started → completed/failed).
+- If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
+
+### Permissions Required
+
+| Slack OAuth Scope | Purpose |
+|-------------------|---------|
+| `chat:write` | Post messages and replies to channels |
+
+The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`.
+
+---
+
+## Future Integrations
+
+These are planned for later phases:
+
+### GitHub Webhooks (Inbound)
+
+Trigger sessions from GitHub events:
+
+- **CI failure** — on `check_run` completed with `conclusion: failure`, create a fix session
+- **PR comment** — on `issue_comment` with a trigger phrase (e.g. `@auto-harness fix`), create a session
+- **PR review** — on `pull_request_review` with requested changes, create a follow-up session
+
+### Email Notifications
+
+Optional email notifications on session completion/failure via Amazon SES.
+
+### Custom Webhooks (Outbound)
+
+Send session lifecycle events to arbitrary HTTP endpoints for custom integrations.
+
+```json
+{
+  "url": "https://your-service.com/auto-harness-webhook",
+  "events": ["session:completed", "session:failed"],
+  "secret": "webhook-signing-secret"
+}
+```
