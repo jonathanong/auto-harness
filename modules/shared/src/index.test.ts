@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import * as shared from "./index.js";
+import type { SessionAssign } from "./session.js";
 
 describe("package exports", () => {
   it("re-exports validation helpers and constants", () => {
@@ -8,5 +9,17 @@ describe("package exports", () => {
     expect(typeof shared.formatLogSortKey).toBe("function");
     expect(shared.SESSION_STATUSES.length).toBeGreaterThan(0);
     expect(shared.PACKAGE_SCOPE).toBe("@auto-harness");
+  });
+
+  it("exposes session assign typing at runtime via usage", () => {
+    const assign: SessionAssign = {
+      sessionId: "s1",
+      repositoryId: "r1",
+      prompt: "p",
+      commandProfile: "codex-fix",
+      timeout: 60,
+      worktreeId: "wt-1",
+    };
+    expect(assign.commandProfile).toBe("codex-fix");
   });
 });

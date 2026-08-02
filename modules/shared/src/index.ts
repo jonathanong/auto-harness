@@ -10,6 +10,14 @@ export type {
   WorktreeStatus,
 } from "./types.js";
 
+export type {
+  CreateSessionFields,
+  SessionAssign,
+  SessionLogChunk,
+  SessionStatusUpdate,
+  SessionTerminalStatus,
+} from "./session.js";
+
 export {
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
