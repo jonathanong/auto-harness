@@ -18,9 +18,17 @@ describe("phase3 cloud e2e", () => {
       ok: boolean;
       status: string;
       unknownProfileRejected: boolean;
+      featureSha: string;
+      head: string;
+      hookEnv: { sessionId: string; status: string; ref: string };
+      hookFailureDoesNotFlipStatus: boolean;
     };
     expect(json.ok).toBe(true);
     expect(json.status).toBe("completed");
     expect(json.unknownProfileRejected).toBe(true);
+    expect(json.head).toBe(json.featureSha);
+    expect(json.hookEnv.status).toBe("completed");
+    expect(json.hookEnv.ref).toBe("feature/p3");
+    expect(json.hookFailureDoesNotFlipStatus).toBe(true);
   });
 });

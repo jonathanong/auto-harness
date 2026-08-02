@@ -2,7 +2,7 @@
  * Phase 3 local e2e: ControlPlane create → assign → AgentLoop ack/run → terminal.
  * Uses in-process loopback (local parity for API GW WS), not a reimplementation.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -39,10 +39,11 @@ async function main(): Promise<void> {
     const featureSha = git(repo, ["rev-parse", "HEAD"]).trim();
     git(repo, ["checkout", "main"]);
 
+    const hookOut = join(root, "hook.out");
     const hook = join(root, "hook.sh");
     writeFileSync(
       hook,
-      `#!/bin/sh\necho "$HARNESS_SESSION_ID $HARNESS_STATUS" > "${join(root, "hook.out")}"\n`,
+      `#!/bin/sh\nprintf '%s\\n' "$HARNESS_SESSION_ID" "$HARNESS_STATUS" "$HARNESS_REF" "$HARNESS_WORKTREE_PATH" > "${hookOut}"\n`,
     );
     spawnSync("chmod", ["+x", hook]);
 
@@ -114,7 +115,31 @@ async function main(): Promise<void> {
       throw new Error("expected logs");
     }
 
-    // Unknown profile rejected by agent (Invariant 8 / D4)
+    // Terminal hook env (D3) — must fire with session id, status, ref
+    const hookBody = readFileSync(hookOut, "utf8");
+    const hookLines = hookBody.trim().split("\n");
+    if (hookLines[0] !== created.session.id) {
+      throw new Error(`hook session id missing: ${hookBody}`);
+    }
+    if (hookLines[1] !== "completed") {
+      throw new Error(`hook status missing: ${hookBody}`);
+    }
+    if (hookLines[2] !== "feature/p3") {
+      throw new Error(`hook ref missing: ${hookBody}`);
+    }
+    if (!hookLines[3]?.includes("wt-1")) {
+      throw new Error(`hook worktree path missing: ${hookBody}`);
+    }
+
+    // HEAD on worktree matches feature ref
+    const head = git(wt, ["rev-parse", "HEAD"]).trim();
+    if (head !== featureSha) {
+      throw new Error(`worktree HEAD ${head} != feature ${featureSha}`);
+    }
+
+    // Unknown profile rejected by agent (Invariant 8 / D4); hook failure must not flip status
+    writeFileSync(hook, `#!/bin/sh\nexit 1\n`);
+    spawnSync("chmod", ["+x", hook]);
     const bad = plane.createSession({
       repositoryId: "demo",
       prompt: "x",
@@ -131,6 +156,10 @@ async function main(): Promise<void> {
     if (badSess?.status !== "failed" || badSess.errorCode !== "unknown_command_profile") {
       throw new Error(`expected unknown_command_profile, got ${JSON.stringify(badSess)}`);
     }
+    // status remains failed despite hook exit 1
+    if (plane.getSession(bad.session.id)?.status !== "failed") {
+      throw new Error("hook failure altered session status");
+    }
     loop.stop();
 
     console.log(
@@ -141,8 +170,16 @@ async function main(): Promise<void> {
         url: session.url,
         ref: session.ref,
         featureSha,
+        head,
         logCount: logs.length,
         unknownProfileRejected: true,
+        hookEnv: {
+          sessionId: hookLines[0],
+          status: hookLines[1],
+          ref: hookLines[2],
+          worktreePath: hookLines[3],
+        },
+        hookFailureDoesNotFlipStatus: true,
       }),
     );
   } finally {

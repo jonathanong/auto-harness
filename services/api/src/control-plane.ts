@@ -98,6 +98,13 @@ export class ControlPlane {
     string,
     { sessionId: string; worktreeId: string; assignedAtMs: number }
   >();
+  /** Agents in drain: no new assigns; worktrees stay offline after release (Phase 5). */
+  private readonly drainingAgents = new Set<string>();
+  /**
+   * Agents without a live connection that still need heartbeat-style reclaim
+   * (e.g. after disconnect while busy). lastHeartbeatAt is when they went offline.
+   */
+  private readonly disconnectedAgents = new Map<string, { lastHeartbeatAt: string }>();
 
   private readonly publicBaseUrl: string;
   private readonly now: () => string;
@@ -239,19 +246,27 @@ export class ControlPlane {
     }
 
     const v = validated.value;
-    // Invariant 9: concurrencyKey + onConflict:reject rejects at create time.
-    if (v.concurrencyKey && v.onConflict === "reject") {
-      const conflict = [...this.sessions.values()].find(
+    // Invariant 9: concurrencyKey resolved at create time for queue|replace|reject.
+    if (v.concurrencyKey) {
+      const active = [...this.sessions.values()].filter(
         (s) =>
           s.concurrencyKey === v.concurrencyKey &&
           (s.status === "queued" || s.status === "running"),
       );
-      if (conflict) {
-        return {
-          ok: false,
-          error: `concurrencyKey ${v.concurrencyKey} is already active on session ${conflict.id}`,
-          code: "CONFLICT",
-        };
+      if (active.length > 0) {
+        if (v.onConflict === "reject") {
+          return {
+            ok: false,
+            error: `concurrencyKey ${v.concurrencyKey} is already active on session ${active[0]!.id}`,
+            code: "CONFLICT",
+          };
+        }
+        if (v.onConflict === "replace") {
+          for (const prev of active) {
+            this.supersedeSession(prev.id, "replaced by newer session with same concurrencyKey");
+          }
+        }
+        // onConflict === "queue": leave active sessions; new one also queues.
       }
     }
 
@@ -330,6 +345,9 @@ export class ControlPlane {
       commandProfiles: [...opts.commandProfiles],
     });
     this.agentConnection.set(opts.agentId, connectionId);
+    this.disconnectedAgents.delete(opts.agentId);
+    // Re-register clears drain so a restarted agent can take work again.
+    this.drainingAgents.delete(opts.agentId);
 
     for (const wt of opts.worktrees) {
       const prev = this.worktrees.get(wt.id);
@@ -353,20 +371,52 @@ export class ControlPlane {
     return { ok: true, connectionId };
   }
 
-  disconnectAgent(connectionId: string): void {
+  /**
+   * Agent disconnect ($disconnect / crash). Immediately:
+   * - marks ALL worktrees offline
+   * - requeues running sessions and frees busy worktrees
+   * - records disconnectedAgents so assigns cannot bind until re-register
+   */
+  disconnectAgent(connectionId: string): string[] {
     const conn = this.connections.get(connectionId);
     if (!conn) {
-      return;
+      return [];
     }
+    const agentId = conn.agentId;
     this.connections.delete(connectionId);
-    if (this.agentConnection.get(conn.agentId) === connectionId) {
-      this.agentConnection.delete(conn.agentId);
+    if (this.agentConnection.get(agentId) === connectionId) {
+      this.agentConnection.delete(agentId);
     }
+    this.disconnectedAgents.set(agentId, { lastHeartbeatAt: conn.lastHeartbeatAt });
+    return this.offlineAgentAndRequeue(agentId, "agent disconnected; requeued");
+  }
+
+  /** Offline every worktree for agentId; requeue any running sessions. */
+  private offlineAgentAndRequeue(agentId: string, reason: string): string[] {
+    const requeued: string[] = [];
     for (const wt of this.worktrees.values()) {
-      if (wt.agentId === conn.agentId) {
+      if (wt.agentId !== agentId) {
+        continue;
+      }
+      wt.online = false;
+      if (wt.status === "busy") {
+        const sid = wt.currentSessionId;
+        this.releaseWorktree(wt.id);
         wt.online = false;
+        if (sid) {
+          const session = this.sessions.get(sid);
+          if (session?.status === "running") {
+            session.status = "queued";
+            session.worktreeId = null;
+            session.agentId = null;
+            session.errorMessage = reason;
+            this.pendingAcks.delete(sid);
+            requeued.push(sid);
+          }
+        }
       }
     }
+    return requeued;
   }
 
   heartbeat(agentId: string, at?: string): boolean {
@@ -437,11 +487,14 @@ export class ControlPlane {
           continue;
         }
         // Resume pin: only assign to pinned agent when set (Invariant 7).
+        // Skip draining / disconnected agents (online must stay false for zombies).
         let idle = [...this.worktrees.values()].filter(
           (w) =>
             w.repositoryId === session.repositoryId &&
             w.status === "idle" &&
             w.online &&
+            !this.drainingAgents.has(w.agentId) &&
+            !this.disconnectedAgents.has(w.agentId) &&
             session.requiredLabels.every((l) => w.labels.includes(l)),
         );
         if (session.pinnedAgentId) {
@@ -519,6 +572,28 @@ export class ControlPlane {
     }
     wt.status = "idle";
     wt.currentSessionId = null;
+    // Drain / disconnect are sticky: released worktrees must not become assignable.
+    if (this.drainingAgents.has(wt.agentId) || this.disconnectedAgents.has(wt.agentId)) {
+      wt.online = false;
+    }
+  }
+
+  /** Cancel/supersede a queued or running session (onConflict:replace). */
+  private supersedeSession(sessionId: string, reason: string): void {
+    const session = this.sessions.get(sessionId);
+    // Caller only passes ids from the active same-key filter.
+    if (!session || (session.status !== "queued" && session.status !== "running")) {
+      return;
+    }
+    this.pendingAcks.delete(sessionId);
+    if (session.worktreeId) {
+      this.releaseWorktree(session.worktreeId);
+    }
+    session.status = "cancelled";
+    session.worktreeId = null;
+    session.agentId = null;
+    session.errorMessage = reason;
+    session.completedAt = this.now();
   }
 
   /** Invariant 2: requeue sessions that never acked. */
@@ -785,40 +860,47 @@ export class ControlPlane {
   /**
    * Heartbeat-based stale reclaim (Phase 3): free worktrees of agents whose
    * heartbeat is older than heartbeatStaleMs — faster than full session timeout.
+   * Also reclaims agents recorded in disconnectedAgents after disconnect/crash.
+   * Marks ALL of the agent's worktrees offline (idle + busy) so assigns cannot
+   * bind to a zombie agent.
    */
   reclaimStaleAgents(nowMs: number = Date.now()): string[] {
     const reclaimed: string[] = [];
+    const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
+
     for (const [agentId, connectionId] of this.agentConnection.entries()) {
       const conn = this.connections.get(connectionId);
       if (!conn) {
         this.agentConnection.delete(agentId);
         continue;
       }
-      const last = Date.parse(conn.lastHeartbeatAt);
+      candidates.set(agentId, {
+        lastHeartbeatAt: conn.lastHeartbeatAt,
+        connectionId,
+      });
+    }
+    for (const [agentId, rec] of this.disconnectedAgents.entries()) {
+      if (!candidates.has(agentId)) {
+        candidates.set(agentId, { lastHeartbeatAt: rec.lastHeartbeatAt });
+      }
+    }
+
+    for (const [agentId, meta] of candidates) {
+      const last = Date.parse(meta.lastHeartbeatAt);
       if (nowMs - last < this.heartbeatStaleMs) {
         continue;
       }
-      for (const wt of this.worktrees.values()) {
-        if (wt.agentId !== agentId || wt.status !== "busy") {
-          continue;
-        }
-        const sid = wt.currentSessionId;
-        this.releaseWorktree(wt.id);
-        wt.online = false;
-        if (sid) {
-          const session = this.sessions.get(sid);
-          if (session?.status === "running") {
-            session.status = "queued";
-            session.worktreeId = null;
-            session.agentId = null;
-            session.errorMessage = "agent heartbeat stale; requeued";
-            this.pendingAcks.delete(sid);
-            reclaimed.push(sid);
-          }
+      const freed = this.offlineAgentAndRequeue(agentId, "agent heartbeat stale; requeued");
+      for (const sid of freed) {
+        if (!reclaimed.includes(sid)) {
+          reclaimed.push(sid);
         }
       }
-      this.connections.delete(connectionId);
+      if (meta.connectionId) {
+        this.connections.delete(meta.connectionId);
+      }
       this.agentConnection.delete(agentId);
+      this.disconnectedAgents.delete(agentId);
     }
     return reclaimed;
   }
@@ -891,18 +973,29 @@ export class ControlPlane {
     return [...this.webhookDeliveries];
   }
 
-  /** Phase 5: mark agent draining — no new assigns (caller stops assign loop). */
+  /**
+   * Phase 5: mark agent draining — no new assigns until re-register.
+   * Sticky: released busy worktrees stay offline via releaseWorktree.
+   */
   drainAgent(agentId: string): { ok: boolean; runningSessionIds: string[] } {
+    this.drainingAgents.add(agentId);
     const running = [...this.sessions.values()]
       .filter((s) => s.agentId === agentId && s.status === "running")
       .map((s) => s.id);
     this.onAgentMessage?.(agentId, { type: "agent:drain" });
     for (const wt of this.worktrees.values()) {
-      if (wt.agentId === agentId && wt.status === "idle") {
-        wt.online = false;
+      if (wt.agentId === agentId) {
+        // Idle: offline now. Busy: stay busy until release, then releaseWorktree keeps offline.
+        if (wt.status === "idle") {
+          wt.online = false;
+        }
       }
     }
     return { ok: true, runningSessionIds: running };
+  }
+
+  isDraining(agentId: string): boolean {
+    return this.drainingAgents.has(agentId);
   }
 }
 

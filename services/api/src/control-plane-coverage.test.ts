@@ -676,5 +676,67 @@ describe("ControlPlane coverage edges", () => {
     });
     bare.reclaimStaleAgents();
     bare.enforceAckDeadlines();
+
+    // reclaim: orphan agentConnection without connections map entry
+    const planeOrphan = new ControlPlane({
+      heartbeatStaleMs: 1,
+      connectionIdFactory: () => "c-orph",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    planeOrphan.registerAgent({
+      agentId: "orph",
+      worktrees: [{ id: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
+      commandProfiles: ["c"],
+    });
+    const oAny = planeOrphan as unknown as {
+      connections: Map<string, unknown>;
+      agentConnection: Map<string, string>;
+      disconnectedAgents: Map<string, { lastHeartbeatAt: string }>;
+    };
+    oAny.connections.delete("c-orph");
+    // orphan agentConnection → cleaned on reclaim
+    expect(planeOrphan.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 10_000)).toEqual(
+      [],
+    );
+    // disconnectedAgents path without live connection
+    oAny.disconnectedAgents.set("gone", {
+      lastHeartbeatAt: "2020-01-01T00:00:00.000Z",
+    });
+    planeOrphan.seedWorktree({
+      id: "wg",
+      agentId: "gone",
+      repositoryId: "repo-1",
+      path: "/g",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    planeOrphan.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 10_000);
+    expect(planeOrphan.getWorktree("wg")?.online).toBe(false);
+
+    // supersedeSession defensive path via private call
+    const planeS = new ControlPlane({ idFactory: () => "s1", now: () => "t" });
+    planeS.createSession({
+      repositoryId: "repo-1",
+      prompt: "p",
+      commandProfile: "c",
+      timeout: 1,
+    });
+    planeS.handleAgentMessage({
+      type: "session:status",
+      sessionId: "s1",
+      status: "completed",
+    });
+    (
+      planeS as unknown as {
+        supersedeSession: (id: string, reason: string) => void;
+      }
+    ).supersedeSession("missing", "x");
+    (
+      planeS as unknown as {
+        supersedeSession: (id: string, reason: string) => void;
+      }
+    ).supersedeSession("s1", "already terminal");
+    expect(planeS.getSession("s1")?.status).toBe("completed");
   });
 });
