@@ -2,6 +2,9 @@
   "name": "@auto-harness/agent",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "auto-harness-agent": "./bin/auto-harness-agent.mjs"
+  },
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
