@@ -8,11 +8,11 @@ Live streaming and agent control use the [WebSocket protocol](websocket.md). Cre
 
 ## Authentication
 
-| Method | Format | Used by |
-|--------|--------|---------|
-| Session cookie | `Cookie: auto_harness_session=<jwt>` | Web UI |
-| Bearer token | `Authorization: Bearer hns_…` | Service accounts (CI, scripts) |
-| Basic auth | `Authorization: Basic …` | Admin / user direct API calls |
+| Method         | Format                               | Used by                        |
+| -------------- | ------------------------------------ | ------------------------------ |
+| Session cookie | `Cookie: auto_harness_session=<jwt>` | Web UI                         |
+| Bearer token   | `Authorization: Bearer hns_…`        | Service accounts (CI, scripts) |
+| Basic auth     | `Authorization: Basic …`             | Admin / user direct API calls  |
 
 `401` if missing/invalid; `403` if role insufficient.
 
@@ -35,17 +35,18 @@ All errors return a consistent JSON body:
 }
 ```
 
-| Status | Code | Description |
-|--------|------|-------------|
-| 400 | `VALIDATION_ERROR` | Invalid or missing request body fields |
-| 401 | `UNAUTHORIZED` | Missing or invalid token |
-| 403 | `FORBIDDEN` | Insufficient role permissions |
-| 404 | `NOT_FOUND` | Resource not found |
-| 409 | `CONFLICT` | Resource conflict (e.g. duplicate name) |
-| 429 | `RATE_LIMITED` | Too many requests |
-| 500 | `INTERNAL_ERROR` | Unexpected server error |
+| Status | Code               | Description                             |
+| ------ | ------------------ | --------------------------------------- |
+| 400    | `VALIDATION_ERROR` | Invalid or missing request body fields  |
+| 401    | `UNAUTHORIZED`     | Missing or invalid token                |
+| 403    | `FORBIDDEN`        | Insufficient role permissions           |
+| 404    | `NOT_FOUND`        | Resource not found                      |
+| 409    | `CONFLICT`         | Resource conflict (e.g. duplicate name) |
+| 429    | `RATE_LIMITED`     | Too many requests                       |
+| 500    | `INTERNAL_ERROR`   | Unexpected server error                 |
 
 Rate limit headers on all responses:
+
 - `X-RateLimit-Limit`
 - `X-RateLimit-Remaining`
 - `X-RateLimit-Reset`
@@ -59,6 +60,7 @@ Rate limit headers on all responses:
 Authenticate as a human user (admin or user account). Returns a session cookie.
 
 **Request:**
+
 ```json
 {
   "username": "jong",
@@ -67,6 +69,7 @@ Authenticate as a human user (admin or user account). Returns a session cookie.
 ```
 
 **Response:** `200 OK` + `Set-Cookie: auto_harness_session=<jwt>`
+
 ```json
 {
   "username": "jong",
@@ -87,6 +90,7 @@ Clear the session cookie.
 Get the current authenticated user's info.
 
 **Response:** `200 OK`
+
 ```json
 {
   "username": "jong",
@@ -102,6 +106,7 @@ The `type` field is `admin` (env var), `user` (DynamoDB), or `service-account`.
 Change the current user's password. Not available for admin accounts (rotate via env var) or service accounts.
 
 **Request:**
+
 ```json
 {
   "currentPassword": "old-password",
@@ -120,6 +125,7 @@ Change the current user's password. Not available for admin accounts (rotate via
 Create a user account. **Admin only.**
 
 **Request:**
+
 ```json
 {
   "username": "jong",
@@ -129,6 +135,7 @@ Create a user account. **Admin only.**
 ```
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "usr-e5f6g7h8",
@@ -157,6 +164,7 @@ Delete a user account. **Admin only.**
 Create a service account. **Admin only.**
 
 **Request:**
+
 ```json
 {
   "name": "ci-frontend",
@@ -166,14 +174,15 @@ Create a service account. **Admin only.**
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | ✓ | Human-readable name |
-| `role` | string | ✓ | `read-only`, `operator`, or `admin` |
-| `allowedRepositories` | string[] | ✗ | Restrict to specific repos. Default: all repos. |
-| `boundAgentId` | string | ✗ | Required for agent service accounts. Binds this key to a specific agent identity (see [security.md](security.md#agent-binding)). |
+| Field                 | Type     | Required | Description                                                                                                                      |
+| --------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `name`                | string   | ✓        | Human-readable name                                                                                                              |
+| `role`                | string   | ✓        | `read-only`, `operator`, or `admin`                                                                                              |
+| `allowedRepositories` | string[] | ✗        | Restrict to specific repos. Default: all repos.                                                                                  |
+| `boundAgentId`        | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [security.md](security.md#agent-binding)). |
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "sa-a1b2c3d4",
@@ -192,6 +201,7 @@ Create a service account. **Admin only.**
 List all service accounts. **Admin only.**
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [
@@ -221,6 +231,7 @@ Delete a service account and revoke its API key. **Admin only.**
 Add a repository. **Admin only.**
 
 **Request:**
+
 ```json
 {
   "name": "my-app",
@@ -231,6 +242,7 @@ Add a repository. **Admin only.**
 ```
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "repo-abc",
@@ -247,6 +259,7 @@ Add a repository. **Admin only.**
 List all repositories.
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [
@@ -282,6 +295,7 @@ Delete a repository. **Admin only.** Fails if there are active sessions for this
 Create a new session. This is the main endpoint for triggering AI work. **Operator or admin.**
 
 **Request:**
+
 ```json
 {
   "repositoryId": "repo-abc",
@@ -294,20 +308,21 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `repositoryId` | string | ✓ | Target repository |
-| `prompt` | string | ✓ | The prompt/instruction for the AI agent |
-| `command` | string | ✓ | CLI command to execute, e.g. `codex -p`, `claude --print` |
-| `timeout` | number | ✓ | Max session duration in seconds. The agent kills the process after this time. |
-| `priority` | number | ✗ | Higher = more urgent. Default: `0` |
-| `requiredLabels` | string[] | ✗ | Worktree labels required. Default: `[]` (any worktree) |
-| `source` | string | ✗ | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api` |
-| `type` | string | ✗ | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt` |
+| Field            | Type     | Required | Description                                                                                         |
+| ---------------- | -------- | -------- | --------------------------------------------------------------------------------------------------- |
+| `repositoryId`   | string   | ✓        | Target repository                                                                                   |
+| `prompt`         | string   | ✓        | The prompt/instruction for the AI agent                                                             |
+| `command`        | string   | ✓        | CLI command to execute, e.g. `codex -p`, `claude --print`                                           |
+| `timeout`        | number   | ✓        | Max session duration in seconds. The agent kills the process after this time.                       |
+| `priority`       | number   | ✗        | Higher = more urgent. Default: `0`                                                                  |
+| `requiredLabels` | string[] | ✗        | Worktree labels required. Default: `[]` (any worktree)                                              |
+| `source`         | string   | ✗        | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                           |
+| `type`           | string   | ✗        | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt` |
 
 > **Note:** The Web UI uses this same endpoint to create sessions directly from the browser. The UI provides a form with repo selection, prompt text area, command/agent type picker, timeout, priority slider, and label selection.
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "sess-x1y2z3",
@@ -336,16 +351,17 @@ List sessions with optional filters.
 
 **Query parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `status` | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
-| `repositoryId` | string | Filter by repository |
-| `search` | string | Full-text search across session prompts |
-| `sort` | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc` |
-| `limit` | number | Max results (default: 50, max: 100) |
-| `cursor` | string | Pagination cursor from previous response |
+| Param          | Type   | Description                                                                            |
+| -------------- | ------ | -------------------------------------------------------------------------------------- |
+| `status`       | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
+| `repositoryId` | string | Filter by repository                                                                   |
+| `search`       | string | Full-text search across session prompts                                                |
+| `sort`         | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
+| `limit`        | number | Max results (default: 50, max: 100)                                                    |
+| `cursor`       | string | Pagination cursor from previous response                                               |
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [...],
@@ -358,6 +374,7 @@ List sessions with optional filters.
 Get session details.
 
 **Response:** `200 OK`
+
 ```json
 {
   "id": "sess-x1y2z3",
@@ -386,20 +403,21 @@ Get session details.
 }
 ```
 
-| Field | When set |
-|-------|----------|
-| `agentId` / `worktreeId` | Set when assigned (used later for [resume](#post-sessionsidresume)) |
-| `errorCode` | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
-| `errorMessage` | Optional short human excerpt from the match / logs |
-| `resumedFromSessionId` | Set on sessions created via resume — parent session id |
-| `pinnedAgentId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree |
-| `cliResumeRef` | Optional opaque id from the AI CLI (if captured) for native resume |
+| Field                                | When set                                                                                                           |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `agentId` / `worktreeId`             | Set when assigned (used later for [resume](#post-sessionsidresume))                                                |
+| `errorCode`                          | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
+| `errorMessage`                       | Optional short human excerpt from the match / logs                                                                 |
+| `resumedFromSessionId`               | Set on sessions created via resume — parent session id                                                             |
+| `pinnedAgentId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree                                                           |
+| `cliResumeRef`                       | Optional opaque id from the AI CLI (if captured) for native resume                                                 |
 
 #### `POST /sessions/:id/clone`
 
 Clone a session — creates a **new** session with the same prompt, command, timeout, priority, and labels. Assignment uses normal **label match + round-robin** (any eligible worktree). **Operator or admin.**
 
 Optional request body to override fields:
+
 ```json
 {
   "prompt": "Updated prompt text",
@@ -416,6 +434,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 **Operator or admin.** Source session must have been assigned at least once (`agentId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
 
 **Request (optional body):**
+
 ```json
 {
   "prompt": "Continue: also fix the edge case in parseDate",
@@ -424,13 +443,14 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `prompt` | string | ✗ | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
-| `timeout` | number | ✗ | Override timeout (seconds). Default: source session’s timeout. |
-| `priority` | number | ✗ | Queue priority. Default: source session’s priority. |
+| Field      | Type   | Required | Description                                                                                                                                          |
+| ---------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`   | string | ✗        | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
+| `timeout`  | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                       |
+| `priority` | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                  |
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "sess-r9s8t7",
@@ -461,20 +481,20 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 
 **Errors:**
 
-| Status | Code | When |
-|--------|------|------|
-| 400 | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued` |
-| 404 | `NOT_FOUND` | Unknown session id |
-| 409 | `CONFLICT` | Policy reject (e.g. source type `scheduled` without worktree) |
+| Status | Code               | When                                                                       |
+| ------ | ------------------ | -------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued` |
+| 404    | `NOT_FOUND`        | Unknown session id                                                         |
+| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)              |
 
 **Clone vs resume:**
 
-| | Clone | Resume |
-|--|-------|--------|
-| New session id | ✓ | ✓ |
-| Placement | Any matching worktree (round-robin) | **Same** agent + worktree only |
-| Workspace | Fresh setup script (typical reset) | Prefer keep tree; try CLI/workspace resume |
-| Prompt | Copy or override as full new prompt | Continuation / resume-oriented |
+|                | Clone                               | Resume                                     |
+| -------------- | ----------------------------------- | ------------------------------------------ |
+| New session id | ✓                                   | ✓                                          |
+| Placement      | Any matching worktree (round-robin) | **Same** agent + worktree only             |
+| Workspace      | Fresh setup script (typical reset)  | Prefer keep tree; try CLI/workspace resume |
+| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented             |
 
 You can also create a session with pin fields via advanced clients (`pinnedAgentId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
 
@@ -483,6 +503,7 @@ You can also create a session with pin fields via advanced clients (`pinnedAgent
 Cancel a queued or running session. **Operator (own sessions) or admin.**
 
 **Response:** `200 OK`
+
 ```json
 {
   "id": "sess-x1y2z3",
@@ -496,13 +517,14 @@ Get **historical** session logs. For live streaming, use the [WebSocket API](web
 
 **Query parameters:**
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `stream` | string | Filter by stream: `stdout`, `stderr`, `system` |
-| `since` | string | ISO 8601 timestamp — return logs after this time |
-| `limit` | number | Max log entries (default: 1000) |
+| Param    | Type   | Description                                      |
+| -------- | ------ | ------------------------------------------------ |
+| `stream` | string | Filter by stream: `stdout`, `stderr`, `system`   |
+| `since`  | string | ISO 8601 timestamp — return logs after this time |
+| `limit`  | number | Max log entries (default: 1000)                  |
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [
@@ -529,6 +551,7 @@ Get **historical** session logs. For live streaming, use the [WebSocket API](web
 List all worktrees across all connected agents.
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [
@@ -561,6 +584,7 @@ Schedules run recurring maintenance tasks on the main repository checkout (not w
 Create a scheduled task. **Operator or admin.**
 
 **Request:**
+
 ```json
 {
   "repositoryId": "repo-abc",
@@ -571,16 +595,17 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `repositoryId` | string | ✓ | Target repository |
-| `name` | string | ✓ | Human-readable name for the schedule |
-| `command` | string | ✓ | Shell command to execute on the main checkout |
-| `cron` | string | ✓ | Cron expression (5-field) |
-| `timeout` | number | ✗ | Max duration in seconds. Default: `3600` (1 hour) |
-| `enabled` | boolean | ✗ | Default: `true` |
+| Field          | Type    | Required | Description                                       |
+| -------------- | ------- | -------- | ------------------------------------------------- |
+| `repositoryId` | string  | ✓        | Target repository                                 |
+| `name`         | string  | ✓        | Human-readable name for the schedule              |
+| `command`      | string  | ✓        | Shell command to execute on the main checkout     |
+| `cron`         | string  | ✓        | Cron expression (5-field)                         |
+| `timeout`      | number  | ✗        | Max duration in seconds. Default: `3600` (1 hour) |
+| `enabled`      | boolean | ✗        | Default: `true`                                   |
 
 **Response:** `201 Created`
+
 ```json
 {
   "id": "sched-m1n2o3",
@@ -616,6 +641,7 @@ Delete a schedule. **Admin only.**
 Manually trigger a schedule immediately. Creates a session with `type: 'scheduled'` and `source: 'schedule'`. **Operator or admin.**
 
 **Response:** `201 Created`
+
 ```json
 {
   "sessionId": "sess-t1r2g3",
@@ -633,6 +659,7 @@ Manually trigger a schedule immediately. Creates a session with `type: 'schedule
 List connected agents and their status.
 
 **Response:** `200 OK`
+
 ```json
 {
   "items": [

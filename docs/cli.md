@@ -9,7 +9,7 @@ Install/build: [setup.md](setup.md). Daemon behavior: [agent.md](agent.md).
 ```bash
 npx auto-harness-agent <command> [options]
 # or after build:
-node packages/agent/dist/index.js <command> [options]
+node services/agent/dist/index.js <command> [options]
 ```
 
 Config defaults to `./auto-harness-agent.config.json`. Override with `HARNESS_CONFIG_PATH` or env vars (`HARNESS_API_URL`, `HARNESS_API_KEY`, `HARNESS_AGENT_ID`).
@@ -95,20 +95,20 @@ Restart (or reload) the agent after config edits so inventory re-registers.
 
 ## Common workflows
 
-| Goal | Commands |
-|------|----------|
-| First boot on VPS | `validate` → `start` (or systemd enable) |
-| Add capacity | `add-worktree` → restart agent → confirm in UI Agents |
-| Debug offline | `status`, `validate`, `journalctl -u auto-harness-agent -f` |
-| Point at local stack | `HARNESS_API_URL=ws://localhost:7420/ws start` |
+| Goal                 | Commands                                                    |
+| -------------------- | ----------------------------------------------------------- |
+| First boot on VPS    | `validate` → `start` (or systemd enable)                    |
+| Add capacity         | `add-worktree` → restart agent → confirm in UI Agents       |
+| Debug offline        | `status`, `validate`, `journalctl -u auto-harness-agent -f` |
+| Point at local stack | `HARNESS_API_URL=ws://localhost:7420/ws start`              |
 
 ---
 
 ## Not in this CLI
 
-| Action | Use instead |
-|--------|-------------|
-| Create sessions | `POST /sessions` ([api.md](api.md)) |
-| Manage users / API keys | REST or Web UI |
-| Live log tail | Web UI / [websocket.md](websocket.md) |
-| Deploy AWS | [setup.md](setup.md#aws-control-plane) |
+| Action                  | Use instead                            |
+| ----------------------- | -------------------------------------- |
+| Create sessions         | `POST /sessions` ([api.md](api.md))    |
+| Manage users / API keys | REST or Web UI                         |
+| Live log tail           | Web UI / [websocket.md](websocket.md)  |
+| Deploy AWS              | [setup.md](setup.md#aws-control-plane) |

@@ -2,7 +2,7 @@
 
 How a product repository’s **automation harness** (GitHub Actions, prompts, policy) hooks into **Auto Harness** (queue, worktrees, non-interactive CLIs).
 
-Examples use **[filaments](https://github.com/jonathanong/filaments)** naming and flows. Any monorepo can copy the same shape.
+Examples use **filaments** (internal monorepo) naming and flows. Any monorepo can copy the same shape.
 
 API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost model: [why.md](why.md), [costs.md](costs.md).
 
@@ -12,44 +12,44 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ### Auto Harness must provide
 
-| Requirement | Notes |
-|-------------|--------|
-| Fast `POST /sessions` (and `/resume`) | Repo GHA is **fire and forget** — 201 + `id`, then the job ends |
-| Service-account auth | Actions secret `HARNESS_TOKEN` (`hns_…`) |
-| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone |
-| Non-interactive CLI execution | Subscription path; not Agent SDKs ([why.md](why.md)) |
-| Slack session lifecycle threads | Primary harness-side status for unattended runs ([integrations.md](integrations.md)) |
-| Terminal statuses including `usage_limit` | Visible in Slack / API; caller decides retries |
-| Session id in Slack (and API) | Resume, UI deep links |
-| Resume pins same agent + worktree | Shepherd / multi-tick work |
-| Cancel, timeout, agent drain-on-update | Ops |
+| Requirement                                  | Notes                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Fast `POST /sessions` (and `/resume`)        | Repo GHA is **fire and forget** — 201 + `id`, then the job ends                      |
+| Service-account auth                         | Actions secret `HARNESS_TOKEN` (`hns_…`)                                             |
+| Queue, labels, worktrees, multi-agent assign | Actually runs the CLI after GHA is gone                                              |
+| Non-interactive CLI execution                | Subscription path; not Agent SDKs ([why.md](why.md))                                 |
+| Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md)) |
+| Terminal statuses including `usage_limit`    | Visible in Slack / API; caller decides retries                                       |
+| Session id in Slack (and API)                | Resume, UI deep links                                                                |
+| Resume pins same agent + worktree            | Shepherd / multi-tick work                                                           |
+| Cancel, timeout, agent drain-on-update       | Ops                                                                                  |
 
 ### Repo harness owns (out of scope for Auto Harness)
 
-| Concern | Example in filaments |
-|---------|----------------------|
-| Event triggers | `workflow_run`, `issue_comment`, cron |
-| Policy before create | Transient CI triage, dedup, comment authz |
-| Prompt content | `docs/prompts/…`, render actions |
-| Trusted publish / write-token policy | If any — not the fire-and-forget create path |
-| Usage-limit *retry scheduling* | Later GHA, human, or poller → new `POST` / resume |
-| Host sandbox / CLI hooks | `.codex/`, bubblewrap, runner disk health |
+| Concern                              | Example in filaments                              |
+| ------------------------------------ | ------------------------------------------------- |
+| Event triggers                       | `workflow_run`, `issue_comment`, cron             |
+| Policy before create                 | Transient CI triage, dedup, comment authz         |
+| Prompt content                       | `docs/prompts/…`, render actions                  |
+| Trusted publish / write-token policy | If any — not the fire-and-forget create path      |
+| Usage-limit _retry scheduling_       | Later GHA, human, or poller → new `POST` / resume |
+| Host sandbox / CLI hooks             | `.codex/`, bubblewrap, runner disk health         |
 
 ### Human observation (not the trigger job)
 
-| Channel | What humans watch |
-|---------|-------------------|
-| **Slack** | Session thread from Auto Harness |
+| Channel    | What humans watch                                |
+| ---------- | ------------------------------------------------ |
+| **Slack**  | Session thread from Auto Harness                 |
 | **GitHub** | PRs, comments, checks from agent work on the VPS |
 
 ---
 
 ## Two harnesses
 
-| Layer | Lives in | Owns |
-|-------|----------|------|
-| **Repo harness** | Product repo (e.g. filaments `.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX |
-| **Auto Harness** | Shared control plane + VPS agents | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+| Layer            | Lives in                                                            | Owns                                                                  |
+| ---------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **Repo harness** | Product repo (e.g. filaments `.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
+| **Auto Harness** | Shared control plane + VPS agents                                   | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
 
 ```mermaid
 flowchart TB
@@ -104,10 +104,10 @@ sequenceDiagram
 
 Filaments (or any repo) only needs:
 
-| Secret / var | Purpose |
-|--------------|---------|
-| `HARNESS_API_URL` | e.g. `https://harness.example.com` |
-| `HARNESS_TOKEN` | Service account `hns_…` |
+| Secret / var      | Purpose                                         |
+| ----------------- | ----------------------------------------------- |
+| `HARNESS_API_URL` | e.g. `https://harness.example.com`              |
+| `HARNESS_TOKEN`   | Service account `hns_…`                         |
 | `HARNESS_REPO_ID` | Control-plane repository id for this git remote |
 
 Agent host maps that same `repositoryId` to a local checkout path in agent config ([setup.md](setup.md)).
@@ -198,9 +198,9 @@ flowchart LR
   H --> Human
 ```
 
-| Comment | Typical session intent |
-|---------|------------------------|
-| `/codex-fix` | Implement fix; agent/GitHub surfaces PR or updates |
+| Comment       | Typical session intent                                                   |
+| ------------- | ------------------------------------------------------------------------ |
+| `/codex-fix`  | Implement fix; agent/GitHub surfaces PR or updates                       |
 | `/codex-plan` | Plan-only prompt; outcome often issue comment or plan artifact via tools |
 
 Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `timeout`) changes.
@@ -351,10 +351,10 @@ What **stays** in filaments: event filters, triage, dedup, prompt files, comment
 
 ## Checklist for another repo
 
-1. Register repo + service account in Auto Harness; put secrets in that repo’s Actions.  
-2. Run an agent with worktrees/labels matching `requiredLabels`.  
-3. For each automation entrypoint: **prepare prompt → `POST /sessions` → exit**.  
-4. Configure Slack; tell humans to watch **Slack + GitHub**, not the trigger workflow.  
+1. Register repo + service account in Auto Harness; put secrets in that repo’s Actions.
+2. Run an agent with worktrees/labels matching `requiredLabels`.
+3. For each automation entrypoint: **prepare prompt → `POST /sessions` → exit**.
+4. Configure Slack; tell humans to watch **Slack + GitHub**, not the trigger workflow.
 5. Use **resume** when the same worktree context must continue.
 
 API details: [api.md](api.md). Why CLI/subscriptions: [why.md](why.md).

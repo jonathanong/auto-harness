@@ -4,14 +4,14 @@ Install and run Auto-Harness: AWS control plane, VPS agent, and local dev. Desig
 
 ## Prerequisites
 
-| Piece | Need |
-|-------|------|
-| AWS account | For cloud deploy (CDK) |
-| Node.js 20+ | API, web, agent builds |
-| pnpm | Monorepo |
-| Git 2.20+ | Worktrees on the agent host |
-| AI CLIs | Codex / Claude / etc. on the agent host |
-| Docker | Optional; DynamoDB Local for dev |
+| Piece       | Need                                    |
+| ----------- | --------------------------------------- |
+| AWS account | For cloud deploy (CDK)                  |
+| Node.js 20+ | API, web, agent builds                  |
+| pnpm        | Monorepo                                |
+| Git 2.20+   | Worktrees on the agent host             |
+| AI CLIs     | Codex / Claude / etc. on the agent host |
+| Docker      | Optional; DynamoDB Local for dev        |
 
 ---
 
@@ -93,7 +93,7 @@ Type=simple
 User=harness
 Group=harness
 WorkingDirectory=/home/harness/harness
-ExecStart=/usr/bin/node packages/agent/dist/index.js start
+ExecStart=/usr/bin/node services/agent/dist/index.js start
 Restart=always
 RestartSec=10
 Environment=HARNESS_CONFIG_PATH=/home/harness/auto-harness-agent.config.json
@@ -118,13 +118,13 @@ Agent upgrades use a **drain-then-restart** path: stop accepting new jobs, let i
 
 ### Env vars (agent)
 
-| Variable | Required | Default |
-|----------|----------|---------|
-| `HARNESS_API_URL` | yes* | from config `apiUrl` |
-| `HARNESS_API_KEY` | yes* | from config `apiKey` |
-| `HARNESS_AGENT_ID` | no | config / hostname |
-| `HARNESS_CONFIG_PATH` | no | `./auto-harness-agent.config.json` |
-| `HARNESS_LOG_LEVEL` | no | `info` |
+| Variable              | Required | Default                            |
+| --------------------- | -------- | ---------------------------------- |
+| `HARNESS_API_URL`     | yes\*    | from config `apiUrl`               |
+| `HARNESS_API_KEY`     | yes\*    | from config `apiKey`               |
+| `HARNESS_AGENT_ID`    | no       | config / hostname                  |
+| `HARNESS_CONFIG_PATH` | no       | `./auto-harness-agent.config.json` |
+| `HARNESS_LOG_LEVEL`   | no       | `info`                             |
 
 \*Required overall via config or env.
 
@@ -157,18 +157,18 @@ HARNESS_AGENT_ID=local-1 \
 auto-harness-agent start
 ```
 
-| Feature | Local | Cloud |
-|---------|-------|-------|
-| REST + WebSocket + agent | ✓ | ✓ |
-| DynamoDB | Local | AWS |
-| S3 archival | ✗ | ✓ |
-| Slack | ✗ | ✓ |
-| EventBridge cron | Manual trigger | ✓ |
+| Feature                  | Local          | Cloud |
+| ------------------------ | -------------- | ----- |
+| REST + WebSocket + agent | ✓              | ✓     |
+| DynamoDB                 | Local          | AWS   |
+| S3 archival              | ✗              | ✓     |
+| Slack                    | ✗              | ✓     |
+| EventBridge cron         | Manual trigger | ✓     |
 
 Example env templates:
 
 ```bash
-# packages/api/.env
+# services/api/.env
 AWS_ENDPOINT_URL=http://localhost:8000
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=local
@@ -176,7 +176,7 @@ AWS_SECRET_ACCESS_KEY=local
 HARNESS_ADMINS=W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoiYWRtaW4ifV0=
 HARNESS_SESSION_SECRET=local-dev-secret
 
-# packages/web/.env
+# services/web/.env
 NEXT_PUBLIC_API_URL=http://localhost:7420
 NEXT_PUBLIC_WS_URL=ws://localhost:7420/ws
 ```

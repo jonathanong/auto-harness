@@ -11,22 +11,22 @@
 
 Auto-Harness has three tiers of credentials:
 
-| Tier | For | Auth Method | Managed By |
-|------|-----|-------------|------------|
-| Admin accounts | Platform administrators | Username + password (env var) | Environment variable |
-| User accounts | Human operators | Username + password (basic auth) | Admins |
-| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`) | Admins |
+| Tier             | For                      | Auth Method                      | Managed By           |
+| ---------------- | ------------------------ | -------------------------------- | -------------------- |
+| Admin accounts   | Platform administrators  | Username + password (env var)    | Environment variable |
+| User accounts    | Human operators          | Username + password (basic auth) | Admins               |
+| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins               |
 
 ### Admin Accounts
 
 Admin accounts are bootstrapped via environment variable on the Lambda. This is the root credential — it exists before any database records.
 
-| Property | Value |
-|----------|-------|
-| Source | `HARNESS_ADMINS` environment variable on Lambda |
-| Format | Base64-encoded JSON array of `{ username, password }` objects |
-| Rotation | Update the environment variable and redeploy via CDK |
-| Storage | Never stored in a database — only in Lambda environment |
+| Property    | Value                                                           |
+| ----------- | --------------------------------------------------------------- |
+| Source      | `HARNESS_ADMINS` environment variable on Lambda                 |
+| Format      | Base64-encoded JSON array of `{ username, password }` objects   |
+| Rotation    | Update the environment variable and redeploy via CDK            |
+| Storage     | Never stored in a database — only in Lambda environment         |
 | Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`) |
 
 **Setting the environment variable:**
@@ -43,6 +43,7 @@ HARNESS_ADMINS=W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc
 Multiple admins can be defined in the array. Passwords should be long, random strings.
 
 Admin operations:
+
 - Create, list, delete **user accounts**
 - Create, list, delete **service accounts**
 - Manage repositories
@@ -55,11 +56,11 @@ Admin operations:
 
 User accounts are for humans interacting with the Web UI and API. Created by admins.
 
-| Property | Value |
-|----------|-------|
-| Storage | DynamoDB (Users table), password bcrypt-hashed |
-| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`) |
-| Session | On Web UI login, a session cookie is issued (HTTP-only, secure, 24h expiry) |
+| Property    | Value                                                                       |
+| ----------- | --------------------------------------------------------------------------- |
+| Storage     | DynamoDB (Users table), password bcrypt-hashed                              |
+| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`)             |
+| Session     | On Web UI login, a session cookie is issued (HTTP-only, secure, 24h expiry) |
 
 Admins create user accounts via the API or Web UI:
 
@@ -75,11 +76,11 @@ The user can change their password after first login.
 
 #### Roles
 
-| Role | Create Sessions | Cancel Sessions | List/View | Manage Repos | Manage Accounts |
-|------|:-:|:-:|:-:|:-:|:-:|
-| `read-only` | ✗ | ✗ | ✓ | ✗ | ✗ |
-| `operator` | ✓ | Own only | ✓ | ✗ | ✗ |
-| `admin` | ✓ | Any | ✓ | ✓ | ✓ |
+| Role        | Create Sessions | Cancel Sessions | List/View | Manage Repos | Manage Accounts |
+| ----------- | :-------------: | :-------------: | :-------: | :----------: | :-------------: |
+| `read-only` |        ✗        |        ✗        |     ✓     |      ✗       |        ✗        |
+| `operator`  |        ✓        |    Own only     |     ✓     |      ✗       |        ✗        |
+| `admin`     |        ✓        |       Any       |     ✓     |      ✓       |        ✓        |
 
 User accounts with `admin` role have the same permissions as env-var admins but are tracked per-user in audit logs.
 
@@ -87,11 +88,11 @@ User accounts with `admin` role have the same permissions as env-var admins but 
 
 Service accounts are for machines — CI/CD systems, VPS agents, and external integrations. Created by admins.
 
-| Property | Value |
-|----------|-------|
-| Format | `hns_` prefix + 48 random characters |
-| Storage | SHA-256 hash stored in DynamoDB. Plain key shown once on creation. |
-| Rotation | Create a new key, update consumers, delete the old key |
+| Property    | Value                                                                                         |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| Format      | `hns_` prefix + 48 random characters                                                          |
+| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                            |
+| Rotation    | Create a new key, update consumers, delete the old key                                        |
 | Auth method | `Authorization: Bearer <api-key>` header (REST) or `?token=<api-key>` query param (WebSocket) |
 
 Service accounts have the same role system as user accounts (`read-only`, `operator`, `admin`) and can optionally be scoped to specific repositories:
@@ -131,13 +132,13 @@ sequenceDiagram
 
 **Session cookie details:**
 
-| Property | Value |
-|----------|-------|
-| Name | `auto_harness_session` |
-| Content | Signed JWT with `{ userId, username, role, exp }` |
-| Flags | `HttpOnly`, `Secure`, `SameSite=Strict` |
-| Expiry | 24 hours (configurable) |
-| Signing key | `HARNESS_SESSION_SECRET` env var on Lambda |
+| Property    | Value                                             |
+| ----------- | ------------------------------------------------- |
+| Name        | `auto_harness_session`                            |
+| Content     | Signed JWT with `{ userId, username, role, exp }` |
+| Flags       | `HttpOnly`, `Secure`, `SameSite=Strict`           |
+| Expiry      | 24 hours (configurable)                           |
+| Signing key | `HARNESS_SESSION_SECRET` env var on Lambda        |
 
 ## Auth Priority
 
@@ -205,12 +206,12 @@ sequenceDiagram
 
 ## Transport Security
 
-| Layer | Protection |
-|-------|-----------|
-| REST API | HTTPS enforced by API Gateway (TLS 1.2+) |
-| WebSocket | WSS enforced by API Gateway (TLS 1.2+) |
-| DynamoDB | Encrypted at rest (AWS managed keys) |
-| S3 | Encrypted at rest (SSE-S3), bucket policy denies non-TLS |
+| Layer     | Protection                                               |
+| --------- | -------------------------------------------------------- |
+| REST API  | HTTPS enforced by API Gateway (TLS 1.2+)                 |
+| WebSocket | WSS enforced by API Gateway (TLS 1.2+)                   |
+| DynamoDB  | Encrypted at rest (AWS managed keys)                     |
+| S3        | Encrypted at rest (SSE-S3), bucket policy denies non-TLS |
 
 ## CORS Policy
 
@@ -226,13 +227,14 @@ cors: {
 
 ## Rate Limiting
 
-| Endpoint | Limit |
-|----------|-------|
-| `POST /sessions` | 60 requests/minute per service account |
-| `GET` endpoints | 300 requests/minute per service account |
-| WebSocket messages | 100 messages/second per connection |
+| Endpoint           | Limit                                   |
+| ------------------ | --------------------------------------- |
+| `POST /sessions`   | 60 requests/minute per service account  |
+| `GET` endpoints    | 300 requests/minute per service account |
+| WebSocket messages | 100 messages/second per connection      |
 
 Rate limit headers are returned on all REST responses:
+
 - `X-RateLimit-Limit`
 - `X-RateLimit-Remaining`
 - `X-RateLimit-Reset`
@@ -241,13 +243,13 @@ Rate limit headers are returned on all REST responses:
 
 All mutating operations are logged in DynamoDB:
 
-| Field | Description |
-|-------|-------------|
-| `timestamp` | ISO 8601 timestamp |
-| `userId` | Service account or admin ID |
-| `action` | e.g. `session:create`, `account:delete` |
-| `resourceId` | ID of the affected resource |
-| `metadata` | Additional context (IP, user agent) |
+| Field        | Description                             |
+| ------------ | --------------------------------------- |
+| `timestamp`  | ISO 8601 timestamp                      |
+| `userId`     | Service account or admin ID             |
+| `action`     | e.g. `session:create`, `account:delete` |
+| `resourceId` | ID of the affected resource             |
+| `metadata`   | Additional context (IP, user agent)     |
 
 ## VPS Hardening Recommendations
 

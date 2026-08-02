@@ -8,10 +8,10 @@ Real-time channel between the control plane, VPS agents, and the Web UI. REST CR
 wss://<api-domain>/ws?token=<credential>
 ```
 
-| Connection | Credential | First message |
-|------------|------------|---------------|
-| VPS agent | Service account API key (`hns_…`) bound to `agentId` | `agent:register` |
-| Web UI | Short-lived ticket or session-derived token (see [security.md](security.md)) | `client:register` |
+| Connection | Credential                                                                   | First message     |
+| ---------- | ---------------------------------------------------------------------------- | ----------------- |
+| VPS agent  | Service account API key (`hns_…`) bound to `agentId`                         | `agent:register`  |
+| Web UI     | Short-lived ticket or session-derived token (see [security.md](security.md)) | `client:register` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
@@ -23,11 +23,11 @@ Unauthenticated connect → reject. Keepalive: server `ping` ~every 30s; client 
 
 ### Server → agent
 
-| Type | Payload | Purpose |
-|------|---------|---------|
+| Type             | Payload                                                                                                                                         | Purpose                                                         |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | `session:assign` | `sessionId`, `repositoryId`, `prompt`, `command`, `timeout`, `worktreeId?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?` | Run or **resume** a session (`worktreeId` null = main checkout) |
-| `session:cancel` | `sessionId` | Stop queued/running work |
-| `ping` | `{}` | Keepalive |
+| `session:cancel` | `sessionId`                                                                                                                                     | Stop queued/running work                                        |
+| `ping`           | `{}`                                                                                                                                            | Keepalive                                                       |
 
 ```json
 {
@@ -63,15 +63,15 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 ### Agent → server
 
-| Type | Payload | Purpose |
-|------|---------|---------|
-| `agent:register` | `agentId`, `worktrees[]`, optional `runningSessions[]` | Inventory + reclaim after reconnect |
-| `session:ack` | `sessionId` | Accepted assign |
-| `session:status` | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [agent.md](agent.md#usage-limits-ai-vendor--cli-quotas)) |
-| `session:log` | `sessionId`, `stream`, `content`, `timestamp` | stdout / stderr / system chunk |
-| `worktree:status` | `worktreeId`, `status`, `currentSessionId?` | idle / busy / error |
-| `agent:status` | `agentId`, `draining?`, `status?` | Drain / health (e.g. auto-update) |
-| `pong` | `{}` | Keepalive reply |
+| Type              | Payload                                                           | Purpose                                                                                                                                                                                       |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent:register`  | `agentId`, `worktrees[]`, optional `runningSessions[]`            | Inventory + reclaim after reconnect                                                                                                                                                           |
+| `session:ack`     | `sessionId`                                                       | Accepted assign                                                                                                                                                                               |
+| `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [agent.md](agent.md#usage-limits-ai-vendor--cli-quotas)) |
+| `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                     | stdout / stderr / system chunk                                                                                                                                                                |
+| `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                       | idle / busy / error                                                                                                                                                                           |
+| `agent:status`    | `agentId`, `draining?`, `status?`                                 | Drain / health (e.g. auto-update)                                                                                                                                                             |
+| `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                               |
 
 **Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
 
@@ -103,19 +103,19 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 ### Client → server
 
-| Type | Payload |
-|------|---------|
-| `client:register` | `{ userId }` (or principal from connect auth) |
-| `session:subscribe` | `{ sessionId }` |
-| `session:unsubscribe` | `{ sessionId }` |
+| Type                  | Payload                                       |
+| --------------------- | --------------------------------------------- |
+| `client:register`     | `{ userId }` (or principal from connect auth) |
+| `session:subscribe`   | `{ sessionId }`                               |
+| `session:unsubscribe` | `{ sessionId }`                               |
 
 ### Server → client
 
-| Type | Payload |
-|------|---------|
-| `session:log` | Same as agent log (forwarded) |
-| `session:status` | `{ sessionId, status, exitCode? }` |
-| `agent:status` | `{ agentId, status }` online/offline |
+| Type             | Payload                              |
+| ---------------- | ------------------------------------ |
+| `session:log`    | Same as agent log (forwarded)        |
+| `session:status` | `{ sessionId, status, exitCode? }`   |
+| `agent:status`   | `{ agentId, status }` online/offline |
 
 ---
 
@@ -169,10 +169,10 @@ Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [
 
 ## Related
 
-| Doc | Role |
-|-----|------|
-| [api.md](api.md) | REST |
+| Doc                  | Role                                    |
+| -------------------- | --------------------------------------- |
+| [api.md](api.md)     | REST                                    |
 | [agent.md](agent.md) | How the agent handles assign/log/status |
-| [aws.md](aws.md) | Scheduler, fan-out, connections table |
-| [web.md](web.md) | UI live terminal |
-| [setup.md](setup.md) | URLs and tokens |
+| [aws.md](aws.md)     | Scheduler, fan-out, connections table   |
+| [web.md](web.md)     | UI live terminal                        |
+| [setup.md](setup.md) | URLs and tokens                         |

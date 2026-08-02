@@ -4,10 +4,10 @@
 
 Auto-Harness operates on two planes:
 
-| Plane | Where | Doc |
-|-------|--------|-----|
-| **Control plane** | AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge | **[aws.md](aws.md)** |
-| **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs | **[agent.md](agent.md)** |
+| Plane               | Where                                                | Doc                      |
+| ------------------- | ---------------------------------------------------- | ------------------------ |
+| **Control plane**   | AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge | **[aws.md](aws.md)**     |
+| **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs          | **[agent.md](agent.md)** |
 
 ```mermaid
 graph TB
@@ -56,15 +56,15 @@ Deep dives live in the layer docs above; this page keeps cross-plane flows and d
 
 ## Layer Map
 
-| Topic | AWS layer | Agent layer |
-|-------|-----------|-------------|
-| Public API & auth | [api.md](api.md), [websocket.md](websocket.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [setup.md](setup.md)) |
-| Session queue / assign | Scheduler + round-robin | Accepts `session:assign` only |
-| Worktrees | DynamoDB inventory + online flags | Create/claim/release on disk |
-| Logs | SessionLogs + S3 + UI fan-out | Capture PTY, batch, send `session:log` |
-| Schedules | EventBridge cron → sessions | Main-checkout lock + run command |
-| Secrets | No repo/AI secrets | `.env`, SSH, vendor keys |
-| UI | Hosted clients → REST/WS | — |
+| Topic                  | AWS layer                                                                  | Agent layer                                                |
+| ---------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [setup.md](setup.md)) |
+| Session queue / assign | Scheduler + round-robin                                                    | Accepts `session:assign` only                              |
+| Worktrees              | DynamoDB inventory + online flags                                          | Create/claim/release on disk                               |
+| Logs                   | SessionLogs + S3 + UI fan-out                                              | Capture PTY, batch, send `session:log`                     |
+| Schedules              | EventBridge cron → sessions                                                | Main-checkout lock + run command                           |
+| Secrets                | No repo/AI secrets                                                         | `.env`, SSH, vendor keys                                   |
+| UI                     | Hosted clients → REST/WS                                                   | —                                                          |
 
 Web UI feature surface: [web.md](web.md).
 
@@ -152,42 +152,42 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [agent.md — Non-worktree](a
 
 ## Key Design Decisions
 
-| Decision | Rationale |
-|----------|-----------|
-| Two-plane split | Cloud stays secret-light and elastic; heavy/untrusted execution stays on your VPS |
-| WebSocket over polling | Low-latency assign + log streaming |
-| Worktree reuse | Fast start; setup scripts reset state |
-| Labels on worktrees | Route Codex vs Claude (etc.) like Actions runners |
-| Match then round-robin | Filter repo/labels/online idle worktrees, then least-recently-assigned |
-| No Docker wrapping the agent | Trusted host; Docker optional inside repos |
-| PTY (`node-pty`) | AI CLIs often need a TTY |
-| Prompt as argv/stdin, not shell string | Avoid injection from untrusted prompts |
-| Priority queue + FIFO ties | CI fixes can preempt batch work |
-| DynamoDB on-demand | Bursty session traffic |
-| Scheduled on main checkout | Maintenance without burning worktree slots; serial per repo |
-| xterm.js in UI | Faithful ANSI / progress rendering |
-| Session `source` | Audit and filter by api / ui / webhook / schedule |
-| Agent auto-update drains | Stop new assigns, finish in-flight CLIs, then restart — never kill CLIs for the upgrade path |
-| Usage limits: parse then fail | Detect AI vendor quota/rate-limit text in CLI output; fail the session with `usage_limit` — no auto-retry |
-| Session resume pins placement | Resume by session id → same agent + worktree only; agent tries CLI/workspace resume without destructive reset |
-| Subscriptions via non-interactive CLI | Cost path is vendor seats/quota, not Agent SDKs / API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md)) |
-| Repo harness fire-and-forget | Callers (e.g. GHA) only `POST /sessions`; Slack + GitHub are human feedback, not long-running CI ([harness.md](harness.md)) |
+| Decision                               | Rationale                                                                                                                      |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Two-plane split                        | Cloud stays secret-light and elastic; heavy/untrusted execution stays on your VPS                                              |
+| WebSocket over polling                 | Low-latency assign + log streaming                                                                                             |
+| Worktree reuse                         | Fast start; setup scripts reset state                                                                                          |
+| Labels on worktrees                    | Route Codex vs Claude (etc.) like Actions runners                                                                              |
+| Match then round-robin                 | Filter repo/labels/online idle worktrees, then least-recently-assigned                                                         |
+| No Docker wrapping the agent           | Trusted host; Docker optional inside repos                                                                                     |
+| PTY (`node-pty`)                       | AI CLIs often need a TTY                                                                                                       |
+| Prompt as argv/stdin, not shell string | Avoid injection from untrusted prompts                                                                                         |
+| Priority queue + FIFO ties             | CI fixes can preempt batch work                                                                                                |
+| DynamoDB on-demand                     | Bursty session traffic                                                                                                         |
+| Scheduled on main checkout             | Maintenance without burning worktree slots; serial per repo                                                                    |
+| xterm.js in UI                         | Faithful ANSI / progress rendering                                                                                             |
+| Session `source`                       | Audit and filter by api / ui / webhook / schedule                                                                              |
+| Agent auto-update drains               | Stop new assigns, finish in-flight CLIs, then restart — never kill CLIs for the upgrade path                                   |
+| Usage limits: parse then fail          | Detect AI vendor quota/rate-limit text in CLI output; fail the session with `usage_limit` — no auto-retry                      |
+| Session resume pins placement          | Resume by session id → same agent + worktree only; agent tries CLI/workspace resume without destructive reset                  |
+| Subscriptions via non-interactive CLI  | Cost path is vendor seats/quota, not Agent SDKs / API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md)) |
+| Repo harness fire-and-forget           | Callers (e.g. GHA) only `POST /sessions`; Slack + GitHub are human feedback, not long-running CI ([harness.md](harness.md))    |
 
 ---
 
 ## Related documents
 
-| Doc | Role |
-|-----|------|
-| [why.md](why.md) | Product rationale |
-| [costs.md](costs.md) | Subscription vs AWS cost |
-| [setup.md](setup.md) | Install |
-| [api.md](api.md) | REST |
-| [websocket.md](websocket.md) | Real-time protocol |
-| [cli.md](cli.md) | Agent CLI |
-| [aws.md](aws.md) | Control plane |
-| [agent.md](agent.md) | Execution plane |
-| [plan.md](plan.md) | Phases + data model |
-| [security.md](security.md) | Auth |
-| [web.md](web.md) | UI |
-| [integrations.md](integrations.md) | Slack |
+| Doc                                | Role                     |
+| ---------------------------------- | ------------------------ |
+| [why.md](why.md)                   | Product rationale        |
+| [costs.md](costs.md)               | Subscription vs AWS cost |
+| [setup.md](setup.md)               | Install                  |
+| [api.md](api.md)                   | REST                     |
+| [websocket.md](websocket.md)       | Real-time protocol       |
+| [cli.md](cli.md)                   | Agent CLI                |
+| [aws.md](aws.md)                   | Control plane            |
+| [agent.md](agent.md)               | Execution plane          |
+| [plan.md](plan.md)                 | Phases + data model      |
+| [security.md](security.md)         | Auth                     |
+| [web.md](web.md)                   | UI                       |
+| [integrations.md](integrations.md) | Slack                    |

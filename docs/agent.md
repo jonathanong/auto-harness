@@ -2,12 +2,12 @@
 
 Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
-| Need | Doc |
-|------|-----|
-| Install / config / systemd | [setup.md](setup.md) |
-| CLI commands | [cli.md](cli.md) |
-| Wire protocol | [websocket.md](websocket.md) |
-| Control plane | [aws.md](aws.md) |
+| Need                       | Doc                          |
+| -------------------------- | ---------------------------- |
+| Install / config / systemd | [setup.md](setup.md)         |
+| CLI commands               | [cli.md](cli.md)             |
+| Wire protocol              | [websocket.md](websocket.md) |
+| Control plane              | [aws.md](aws.md)             |
 
 ---
 
@@ -15,15 +15,15 @@ Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
 The agent owns:
 
-| Concern | Implementation |
-|---------|----------------|
-| Outbound control channel | Persistent WebSocket client to the control plane |
-| Workspace concurrency | Pre-provisioned git worktrees (one session per worktree) |
-| Process execution | `node-pty` / `child_process` for setup scripts and AI CLIs |
-| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions |
-| Live output | Buffered stdout/stderr/system log streaming |
-| Local secrets | AI vendor keys, git credentials, `.env` files (never sent to AWS) |
-| Inventory reporting | Worktree list + status on register and on change |
+| Concern                   | Implementation                                                    |
+| ------------------------- | ----------------------------------------------------------------- |
+| Outbound control channel  | Persistent WebSocket client to the control plane                  |
+| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)          |
+| Process execution         | `node-pty` / `child_process` for setup scripts and AI CLIs        |
+| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions               |
+| Live output               | Buffered stdout/stderr/system log streaming                       |
+| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS) |
+| Inventory reporting       | Worktree list + status on register and on change                  |
 
 The agent **does not** implement the global queue, multi-agent round-robin, or durable session storage. Those live in the [AWS layer](aws.md).
 
@@ -73,7 +73,7 @@ graph TB
 ### Package layout
 
 ```
-packages/agent/
+services/agent/
 ├── src/
 │   ├── index.ts              # CLI entry (start, status, …)
 │   ├── config.ts             # load + validate config / env
@@ -88,7 +88,6 @@ packages/agent/
 ```
 
 ---
-
 
 ## Startup Sequence
 
@@ -137,13 +136,13 @@ Outbound message types: `agent:register`, `session:ack`, `session:log`, `session
 
 ### Worktree Manager
 
-| Operation | Behavior |
-|-----------|----------|
-| `ensureAll()` | On startup: `git worktree list`; create missing via `git worktree add <path> <branch>` |
-| `claim(id)` | Local mutex: fail if already busy; set busy + `currentSessionId` |
-| `release(id)` | Clear session; set idle; emit `worktree:status` |
-| `snapshot()` | Array for `agent:register` and status CLI |
-| `markError(id)` | On unexpected git failures; report status `error` |
+| Operation       | Behavior                                                                               |
+| --------------- | -------------------------------------------------------------------------------------- |
+| `ensureAll()`   | On startup: `git worktree list`; create missing via `git worktree add <path> <branch>` |
+| `claim(id)`     | Local mutex: fail if already busy; set busy + `currentSessionId`                       |
+| `release(id)`   | Clear session; set idle; emit `worktree:status`                                        |
+| `snapshot()`    | Array for `agent:register` and status CLI                                              |
+| `markError(id)` | On unexpected git failures; report status `error`                                      |
 
 **Concurrency:** number of configured worktrees. Each worktree runs **at most one** session at a time.
 
@@ -188,12 +187,12 @@ sequenceDiagram
 
 #### Placement (control plane)
 
-| Rule | Behavior |
-|------|----------|
-| Pin | Always `pinnedAgentId` + `pinnedWorktreeId` from source |
-| Wait | If that worktree is busy or agent offline/draining → stay `queued` on the pin |
-| No rehome | Never assign a resume session to a different agent or worktree |
-| Same host disk | Resume only makes sense on the machine that still has the worktree files |
+| Rule           | Behavior                                                                      |
+| -------------- | ----------------------------------------------------------------------------- |
+| Pin            | Always `pinnedAgentId` + `pinnedWorktreeId` from source                       |
+| Wait           | If that worktree is busy or agent offline/draining → stay `queued` on the pin |
+| No rehome      | Never assign a resume session to a different agent or worktree                |
+| Same host disk | Resume only makes sense on the machine that still has the worktree files      |
 
 #### How the agent “tries to resume”
 
@@ -205,11 +204,11 @@ Order of preference:
 
 #### Must / must not
 
-| Must | Must not |
-|------|----------|
-| Use the assigned `worktreeId` only | Run full “fresh session” setup that discards prior work (`reset --hard` to main, delete branch, etc.) by default |
-| Stream logs and honor timeout/cancel as usual | Silently fall back to another worktree |
-| Preserve git working tree state from the prior session | Assume every CLI has native resume — workspace continue is a valid try |
+| Must                                                   | Must not                                                                                                         |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Use the assigned `worktreeId` only                     | Run full “fresh session” setup that discards prior work (`reset --hard` to main, delete branch, etc.) by default |
+| Stream logs and honor timeout/cancel as usual          | Silently fall back to another worktree                                                                           |
+| Preserve git working tree state from the prior session | Assume every CLI has native resume — workspace continue is a valid try                                           |
 
 #### Capturing `cliResumeRef`
 
@@ -221,15 +220,15 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 
 #### Command execution model
 
-| Piece | Rule |
-|-------|------|
-| Spawn | Prefer **argv array** / `node-pty` spawn **without** `shell: true` |
-| `command` | From session — **non-interactive CLI** form only (e.g. `codex exec` / print flags, `claude -p`), not an Agent SDK process |
-| `prompt` | Passed as a **separate argument** (e.g. final argv after `-p`) or via stdin — **never** interpolated into a shell string |
-| Working directory | Worktree path, or main repo path for scheduled sessions |
-| Environment | Process env of the agent user + optional repo-local env files **sourced only inside setup scripts**, not by concatenating secrets into the control-plane payload |
-| Timeout | `timeout` seconds from assign; on fire: SIGTERM → wait → SIGKILL; report `timed_out` |
-| Cancel | On `session:cancel`: same signal chain; report `cancelled` |
+| Piece             | Rule                                                                                                                                                             |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                               |
+| `command`         | From session — **non-interactive CLI** form only (e.g. `codex exec` / print flags, `claude -p`), not an Agent SDK process                                        |
+| `prompt`          | Passed as a **separate argument** (e.g. final argv after `-p`) or via stdin — **never** interpolated into a shell string                                         |
+| Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                          |
+| Environment       | Process env of the agent user + optional repo-local env files **sourced only inside setup scripts**, not by concatenating secrets into the control-plane payload |
+| Timeout           | `timeout` seconds from assign; on fire: SIGTERM → wait → SIGKILL; report `timed_out`                                                                             |
+| Cancel            | On `session:cancel`: same signal chain; report `cancelled`                                                                                                       |
 
 Example (illustrative):
 
@@ -246,14 +245,14 @@ If a site needs a full shell pipeline for maintenance, use a **scheduled** sessi
 
 #### Signals and exit
 
-| Event | Action |
-|-------|--------|
-| Process exit 0 | `status: completed`, `exitCode: 0` |
-| Process exit ≠ 0 | `status: failed`, `exitCode` |
+| Event                    | Action                                                                |
+| ------------------------ | --------------------------------------------------------------------- |
+| Process exit 0           | `status: completed`, `exitCode: 0`                                    |
+| Process exit ≠ 0         | `status: failed`, `exitCode`                                          |
 | **Usage limit detected** | stop session → `status: failed`, `errorCode: usage_limit` (see below) |
-| Timeout | kill → `status: timed_out` |
-| Cancel | kill → `status: cancelled` |
-| Setup non-zero | no primary spawn → `status: failed` |
+| Timeout                  | kill → `status: timed_out`                                            |
+| Cancel                   | kill → `status: cancelled`                                            |
+| Setup non-zero           | no primary spawn → `status: failed`                                   |
 
 #### Usage limits (AI vendor / CLI quotas)
 
@@ -273,12 +272,12 @@ AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit
 
 Matchers are case-insensitive substrings / light regexes maintained in the agent (extensible per CLI). Examples:
 
-| Family | Example signals in output |
-|--------|---------------------------|
-| Generic | `usage limit`, `rate limit`, `rate_limit`, `quota exceeded`, `quota_exceeded` |
-| OpenAI / Codex-style | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached` |
-| Anthropic / Claude-style | `rate_limit_error`, `usage limit`, `monthly limit` |
-| HTTP-ish in logs | `429`, `Too Many Requests` when clearly tied to the provider API (not the app under test) |
+| Family                   | Example signals in output                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| Generic                  | `usage limit`, `rate limit`, `rate_limit`, `quota exceeded`, `quota_exceeded`             |
+| OpenAI / Codex-style     | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`             |
+| Anthropic / Claude-style | `rate_limit_error`, `usage limit`, `monthly limit`                                        |
+| HTTP-ish in logs         | `429`, `Too Many Requests` when clearly tied to the provider API (not the app under test) |
 
 Prefer **provider-specific phrases** over bare `429` when possible, to avoid false positives from the **customer application's** own rate limits in tests. If both could match, require a provider/CLI context line nearby or an allowlist of patterns only from known tools.
 
@@ -419,13 +418,13 @@ If all matching worktrees are busy (possibly on other agents), the session stays
 
 ## Non-Worktree Sessions (Scheduled)
 
-| | Worktree session | Non-worktree session |
-|--|------------------|----------------------|
-| Runs in | Dedicated worktree | Main repo checkout |
-| Concurrency | Parallel (1 per worktree) | Serial (1 per repo on this agent) |
-| Typical use | AI coding prompts | Maintenance scripts |
-| Created by | API, UI, webhook | Schedules, manual trigger |
-| Session `type` | `prompt` | `scheduled` |
+|                | Worktree session          | Non-worktree session              |
+| -------------- | ------------------------- | --------------------------------- |
+| Runs in        | Dedicated worktree        | Main repo checkout                |
+| Concurrency    | Parallel (1 per worktree) | Serial (1 per repo on this agent) |
+| Typical use    | AI coding prompts         | Maintenance scripts               |
+| Created by     | API, UI, webhook          | Schedules, manual trigger         |
+| Session `type` | `prompt`                  | `scheduled`                       |
 
 Example maintenance commands (fixed scripts preferred):
 
@@ -443,12 +442,12 @@ Each agent service supports **auto-update** of the agent binary/package without 
 
 ### Goals
 
-| Goal | Behavior |
-|------|----------|
-| No new work during update | Agent enters **draining** — stops accepting new jobs |
-| Finish current work | In-progress sessions run to completion (or their normal timeout / explicit cancel) |
-| Safe restart | Process exits and restarts **only after** active sessions finish |
-| Do not kill CLIs | Auto-update **never** sends signals to in-process CLI commands |
+| Goal                      | Behavior                                                                           |
+| ------------------------- | ---------------------------------------------------------------------------------- |
+| No new work during update | Agent enters **draining** — stops accepting new jobs                               |
+| Finish current work       | In-progress sessions run to completion (or their normal timeout / explicit cancel) |
+| Safe restart              | Process exits and restarts **only after** active sessions finish                   |
+| Do not kill CLIs          | Auto-update **never** sends signals to in-process CLI commands                     |
 
 This is different from session **cancel** or **timeout**, which intentionally stop a single session’s process.
 
@@ -499,9 +498,9 @@ sequenceDiagram
 
 ### What auto-update must not do
 
-- Kill or reparent-kill in-process CLI commands to “hurry” the update  
-- Accept new `session:assign` while draining  
-- Leave the control plane thinking idle worktrees are schedulable while draining  
+- Kill or reparent-kill in-process CLI commands to “hurry” the update
+- Accept new `session:assign` while draining
+- Leave the control plane thinking idle worktrees are schedulable while draining
 
 ### Control plane during drain
 
@@ -509,11 +508,11 @@ See [aws.md — Agent draining](aws.md#agent-draining). Summary: treat the agent
 
 ### Relation to systemd
 
-| Signal / action | Intended behavior |
-|-----------------|-------------------|
-| Auto-update / drain restart | Drain → wait for jobs → exit → start new version |
-| `systemctl restart` (hard) | Prefer configuring the unit so stop uses drain (long `TimeoutStopSec`) rather than immediate kill of the process tree |
-| `session:cancel` / timeout | May kill **that** session’s CLI only — unrelated to update |
+| Signal / action             | Intended behavior                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Auto-update / drain restart | Drain → wait for jobs → exit → start new version                                                                      |
+| `systemctl restart` (hard)  | Prefer configuring the unit so stop uses drain (long `TimeoutStopSec`) rather than immediate kill of the process tree |
+| `session:cancel` / timeout  | May kill **that** session’s CLI only — unrelated to update                                                            |
 
 Recommended: `TimeoutStopSec=` long enough for typical session length (or unbounded drain with a high limit), and `KillMode=mixed` / avoid killing the whole cgroup’s children before the agent has drained — the agent should own child lifecycle except on explicit cancel/timeout.
 
@@ -521,13 +520,13 @@ Recommended: `TimeoutStopSec=` long enough for typical session length (or unboun
 
 ## Disconnect and Crash Recovery
 
-| Scenario | Agent behavior | Control plane (see aws.md) |
-|----------|----------------|----------------------------|
-| Network blip | Reconnect backoff; re-register; keep local processes running | Rebind connection; reconcile running sessions |
-| Agent process crash | systemd restarts agent; in-flight children may be orphaned | After grace, mark stale running sessions timed_out/failed |
+| Scenario                        | Agent behavior                                                                     | Control plane (see aws.md)                                                 |
+| ------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Network blip                    | Reconnect backoff; re-register; keep local processes running                       | Rebind connection; reconcile running sessions                              |
+| Agent process crash             | systemd restarts agent; in-flight children may be orphaned                         | After grace, mark stale running sessions timed_out/failed                  |
 | **Auto-update / drain restart** | Stop new jobs; finish current CLIs; exit; restart — **no kill of in-process CLIs** | Skip agent for new assigns while `draining`; re-register restores capacity |
-| Clean shutdown (operator stop) | Same drain path as auto-update when possible | Worktrees offline until re-register |
-| Mid-session host reboot | Same as crash | Sessions not auto-moved to another agent (disk state is local) |
+| Clean shutdown (operator stop)  | Same drain path as auto-update when possible                                       | Worktrees offline until re-register                                        |
+| Mid-session host reboot         | Same as crash                                                                      | Sessions not auto-moved to another agent (disk state is local)             |
 
 Force-killing the agent process (OOM, `kill -9`) is **not** the auto-update path and may orphan CLI children.
 
@@ -538,7 +537,13 @@ On re-register, include:
   "type": "agent:register",
   "agentId": "vps-prod-1",
   "worktrees": [
-    { "id": "wt-1", "repositoryId": "repo-abc", "labels": ["codex"], "status": "busy", "currentSessionId": "sess-…" },
+    {
+      "id": "wt-1",
+      "repositoryId": "repo-abc",
+      "labels": ["codex"],
+      "status": "busy",
+      "currentSessionId": "sess-…"
+    },
     { "id": "wt-2", "repositoryId": "repo-abc", "labels": ["codex"], "status": "idle" }
   ],
   "runningSessions": ["sess-…"]
@@ -549,17 +554,16 @@ On re-register, include:
 
 ## Resource Planning
 
-| Workloads | Guidance |
-|-----------|----------|
-| 1–2 concurrent AI sessions | ≥ 2 vCPU, 4 GB RAM |
-| 3–4 concurrent | ≥ 4 vCPU, 8 GB RAM |
-| Disk | Worktrees duplicate working trees; size ≈ N × repo checkout + git objects shared |
-| Open files / PIDs | AI CLIs + node can be noisy; raise `LimitNOFILE` in systemd if needed |
+| Workloads                  | Guidance                                                                         |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| 1–2 concurrent AI sessions | ≥ 2 vCPU, 4 GB RAM                                                               |
+| 3–4 concurrent             | ≥ 4 vCPU, 8 GB RAM                                                               |
+| Disk                       | Worktrees duplicate working trees; size ≈ N × repo checkout + git objects shared |
+| Open files / PIDs          | AI CLIs + node can be noisy; raise `LimitNOFILE` in systemd if needed            |
 
 Concurrency knobs: **number of worktrees** in config (not a separate thread pool size).
 
 ---
-
 
 ## Security (agent host)
 
@@ -621,14 +625,13 @@ ERROR: CLI tool not found: codex
 
 ---
 
-
 ## Related documents
 
-| Doc | Content |
-|-----|---------|
-| [setup.md](setup.md) | Install, config file, systemd, local stack |
-| [cli.md](cli.md) | Agent CLI |
-| [websocket.md](websocket.md) | Message types |
-| [aws.md](aws.md) | Scheduler, disconnect |
-| [architecture.md](architecture.md) | Cross-plane flows |
-| [security.md](security.md) | Host hardening |
+| Doc                                | Content                                    |
+| ---------------------------------- | ------------------------------------------ |
+| [setup.md](setup.md)               | Install, config file, systemd, local stack |
+| [cli.md](cli.md)                   | Agent CLI                                  |
+| [websocket.md](websocket.md)       | Message types                              |
+| [aws.md](aws.md)                   | Scheduler, disconnect                      |
+| [architecture.md](architecture.md) | Cross-plane flows                          |
+| [security.md](security.md)         | Host hardening                             |

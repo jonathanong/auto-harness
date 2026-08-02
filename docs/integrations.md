@@ -4,9 +4,9 @@
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
-| Channel | What they see |
-|---------|----------------|
-| **Slack** | Session lifecycle thread (queued → running → done/fail) from Auto Harness |
+| Channel    | What they see                                                                                             |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| **Slack**  | Session lifecycle thread (queued → running → done/fail) from Auto Harness                                 |
 | **GitHub** | PRs, issue/PR comments, reviews, checks—repo updates produced by the agent session (or follow-on tooling) |
 
 Auto Harness owns the **Slack** session thread. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
@@ -28,6 +28,7 @@ Auto Harness posts real-time session updates to Slack: each session gets a threa
 Configure Slack integration. **Admin only.**
 
 **Request:**
+
 ```json
 {
   "botToken": "xoxb-...",
@@ -44,12 +45,12 @@ Configure Slack integration. **Admin only.**
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `botToken` | string | ✓ | Slack Bot User OAuth Token (`xoxb-...`) |
-| `defaultChannel` | string | ✓ | Default channel for notifications (e.g. `#harness`, `C0123ABCDEF`) |
-| `enabled` | boolean | ✗ | Default: `true` |
-| `notifications` | object | ✗ | Toggle which events post to Slack |
+| Field            | Type    | Required | Description                                                        |
+| ---------------- | ------- | -------- | ------------------------------------------------------------------ |
+| `botToken`       | string  | ✓        | Slack Bot User OAuth Token (`xoxb-...`)                            |
+| `defaultChannel` | string  | ✓        | Default channel for notifications (e.g. `#harness`, `C0123ABCDEF`) |
+| `enabled`        | boolean | ✗        | Default: `true`                                                    |
+| `notifications`  | object  | ✗        | Toggle which events post to Slack                                  |
 
 > **Note:** The bot token is encrypted at rest in DynamoDB using AWS KMS.
 
@@ -198,9 +199,9 @@ Slack API rate limits are ~1 message/second per channel. Auto-Harness batches up
 
 ### Permissions Required
 
-| Slack OAuth Scope | Purpose |
-|-------------------|---------|
-| `chat:write` | Post messages and replies to channels |
+| Slack OAuth Scope | Purpose                               |
+| ----------------- | ------------------------------------- |
+| `chat:write`      | Post messages and replies to channels |
 
 The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`.
 

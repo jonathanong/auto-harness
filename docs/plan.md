@@ -4,8 +4,8 @@ This is the build-handoff document for Auto Harness. It exists so a different ag
 memory of how this spec came together — can pick it up and build without re-litigating decisions
 that are already settled, or re-discovering correctness bugs that are already known.
 
-**How to use this document:** this file owns *sequencing, structure, data model, and acceptance
-criteria*. It does not restate layer detail — control-plane internals live in [aws.md](aws.md),
+**How to use this document:** this file owns _sequencing, structure, data model, and acceptance
+criteria_. It does not restate layer detail — control-plane internals live in [aws.md](aws.md),
 agent internals in [agent.md](agent.md), the wire formats in [api.md](api.md) and
 [websocket.md](websocket.md). Section 8 lists exactly what to change in those sibling docs; do
 that first, since phases below assume the amended API/data model, not the one currently written
@@ -26,17 +26,17 @@ automation) and are settled. If an approach below looks more "complete" or "corr
 sufficient reason to reopen it — these trade completeness for a smaller, more auditable system on
 purpose. Raise it with the project owner before changing any row.
 
-| # | Decision | Rationale | Do not propose |
-|---|----------|-----------|-----------------|
-| D1 | The agent holds git + AI vendor credentials and does its own GitHub writes (PRs, comments, labels) directly from the session. | A prior design considered a three-phase execute → validate → publish split (run Codex with no push credential, validate the patch in an immutable runtime, publish from a separate pristine checkout) to keep untrusted output away from any credential. That split cost real complexity for a mitigation a scoped token buys more cheaply (see D7). Deliberately dropped: *"the current system is too complex and agents keep making it over complicated."* | A bundle/validator/publisher pipeline. Patch attestation. Split-credential jobs. A "trusted runtime" concept. |
-| D2 | There is no callback DAG. Callers `POST /sessions` and exit. Results reach humans via the **Slack session thread** and via **the agent's own GitHub writes** (opening/updating a PR, commenting a link) — not via a webhook fired back at the caller. | Repo harness callers are fire-and-forget by design ([harness.md](harness.md)); the triggering GitHub Actions job is gone by the time the session finishes. | Blocking `POST /sessions` until terminal. Polling loops in the caller's CI. A generic outbound-webhook framework as a *required* mechanism (optional, low-priority — see Phase 5). |
-| D3 | Failure escalation (e.g. "Codex couldn't fix it, open an issue for a human") is an **agent-side terminal hook**: agent config points at a repo-local script, invoked with session metadata as env on every terminal status. | No GitHub Actions job survives to run escalation logic post-migration, so *something* has to. Keeping it agent-side keeps escalation policy where it already lives (in the target repo, versioned with it) and keeps GitHub tokens out of the control plane. It also covers failure modes a prompt cannot see itself hit: `usage_limit`, `timed_out`, agent crash, setup-script failure. | A rules engine or escalation templates inside Auto Harness. A control-plane GitHub App making the decision. |
-| D4 | `command` is a **named profile** resolved against agent config, not a free string passed over the API. | A free string is a straight line from "operator role" to arbitrary command execution on the VPS, and string→argv construction is its own injection surface. Naming profiles server-side (agent-side) closes both at once and shortens the API. | Free-form `command` strings. Shell strings. `shell: true` anywhere in the executor. |
-| D5 | Session **resume pins to the agent only**, not agent+worktree. The worktree is re-established via `ref` (see D6) rather than kept untouched. | The AI CLIs this system targets keep their own session/conversation state outside the working tree (e.g. under the CLI's own state directory), and shepherd-style flows push their commits to the remote each tick. The durable state for resume is *(CLI session id, remote branch)* — not "don't touch this worktree." Pinning to a worktree and waiting indefinitely for it to free up is a liveness hazard for no real benefit once this is understood. | Worktree-level pinning. Indefinite pin waits. Snapshotting or freezing a worktree to preserve state. |
-| D6 | `POST /sessions` accepts a `ref` (branch/tag/SHA) so a session can run against something other than the repo default branch. | Without it, every session's worktree gets reset to the default branch by its setup script — so a session can never operate against a specific PR head. This blocks entire trigger patterns (comment-driven PR work, dependency-bot PR fixes), not an edge case. | Solving this by making callers pre-stage the ref out-of-band, or by adding N repo-specific "PR worktree" special cases instead of one general field. |
-| D7 | The credential the agent uses for GitHub writes is a **fine-grained token scoped to one repository**: contents + pull-requests + issues write, no Actions/workflow write, no secrets read. | This is the primary mitigation for D1 and D4 relaxing the trust boundary — a prompt is attacker-influenced (it can originate from an issue comment or embed captured CI output), so bound what a compromised session can reach. | Broad PATs. Org-wide App installations. Reusing a human operator's token. |
-| D8 | Usage-limit retry is **narrow**: only for sessions that failed with `errorCode: usage_limit`, capped at a small number of attempts, with backoff — not a general retry policy. | Replaces an external poller that reruns whole CI jobs from artifact markers. Scope creep here (retrying `failed` or `timed_out` generally) turns a quota hiccup into a resource-burning retry storm. | Automatic retry for any non-`usage_limit` terminal status. Unbounded retry attempts. |
-| D9 | No Docker (or other sandbox) wraps the agent process itself. The host is trusted; the AI CLI runs directly on it, subject to the CLI's *own* sandboxing (approval policy, writable-roots, hooks) which is configured per-repo, not by Auto Harness. | Stated existing principle ([architecture.md](architecture.md), [security.md](security.md)) — keep it explicit here so it isn't "improved" into per-session containers as part of this work. | Per-session containers, gVisor, rootless podman, or any other isolation layer wrapping the agent or its worktrees. |
+| #   | Decision                                                                                                                                                                                                                                              | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Do not propose                                                                                                                                                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | The agent holds git + AI vendor credentials and does its own GitHub writes (PRs, comments, labels) directly from the session.                                                                                                                         | A prior design considered a three-phase execute → validate → publish split (run Codex with no push credential, validate the patch in an immutable runtime, publish from a separate pristine checkout) to keep untrusted output away from any credential. That split cost real complexity for a mitigation a scoped token buys more cheaply (see D7). Deliberately dropped: _"the current system is too complex and agents keep making it over complicated."_ | A bundle/validator/publisher pipeline. Patch attestation. Split-credential jobs. A "trusted runtime" concept.                                                                      |
+| D2  | There is no callback DAG. Callers `POST /sessions` and exit. Results reach humans via the **Slack session thread** and via **the agent's own GitHub writes** (opening/updating a PR, commenting a link) — not via a webhook fired back at the caller. | Repo harness callers are fire-and-forget by design ([harness.md](harness.md)); the triggering GitHub Actions job is gone by the time the session finishes.                                                                                                                                                                                                                                                                                                   | Blocking `POST /sessions` until terminal. Polling loops in the caller's CI. A generic outbound-webhook framework as a _required_ mechanism (optional, low-priority — see Phase 5). |
+| D3  | Failure escalation (e.g. "Codex couldn't fix it, open an issue for a human") is an **agent-side terminal hook**: agent config points at a repo-local script, invoked with session metadata as env on every terminal status.                           | No GitHub Actions job survives to run escalation logic post-migration, so _something_ has to. Keeping it agent-side keeps escalation policy where it already lives (in the target repo, versioned with it) and keeps GitHub tokens out of the control plane. It also covers failure modes a prompt cannot see itself hit: `usage_limit`, `timed_out`, agent crash, setup-script failure.                                                                     | A rules engine or escalation templates inside Auto Harness. A control-plane GitHub App making the decision.                                                                        |
+| D4  | `command` is a **named profile** resolved against agent config, not a free string passed over the API.                                                                                                                                                | A free string is a straight line from "operator role" to arbitrary command execution on the VPS, and string→argv construction is its own injection surface. Naming profiles server-side (agent-side) closes both at once and shortens the API.                                                                                                                                                                                                               | Free-form `command` strings. Shell strings. `shell: true` anywhere in the executor.                                                                                                |
+| D5  | Session **resume pins to the agent only**, not agent+worktree. The worktree is re-established via `ref` (see D6) rather than kept untouched.                                                                                                          | The AI CLIs this system targets keep their own session/conversation state outside the working tree (e.g. under the CLI's own state directory), and shepherd-style flows push their commits to the remote each tick. The durable state for resume is _(CLI session id, remote branch)_ — not "don't touch this worktree." Pinning to a worktree and waiting indefinitely for it to free up is a liveness hazard for no real benefit once this is understood.  | Worktree-level pinning. Indefinite pin waits. Snapshotting or freezing a worktree to preserve state.                                                                               |
+| D6  | `POST /sessions` accepts a `ref` (branch/tag/SHA) so a session can run against something other than the repo default branch.                                                                                                                          | Without it, every session's worktree gets reset to the default branch by its setup script — so a session can never operate against a specific PR head. This blocks entire trigger patterns (comment-driven PR work, dependency-bot PR fixes), not an edge case.                                                                                                                                                                                              | Solving this by making callers pre-stage the ref out-of-band, or by adding N repo-specific "PR worktree" special cases instead of one general field.                               |
+| D7  | The credential the agent uses for GitHub writes is a **fine-grained token scoped to one repository**: contents + pull-requests + issues write, no Actions/workflow write, no secrets read.                                                            | This is the primary mitigation for D1 and D4 relaxing the trust boundary — a prompt is attacker-influenced (it can originate from an issue comment or embed captured CI output), so bound what a compromised session can reach.                                                                                                                                                                                                                              | Broad PATs. Org-wide App installations. Reusing a human operator's token.                                                                                                          |
+| D8  | Usage-limit retry is **narrow**: only for sessions that failed with `errorCode: usage_limit`, capped at a small number of attempts, with backoff — not a general retry policy.                                                                        | Replaces an external poller that reruns whole CI jobs from artifact markers. Scope creep here (retrying `failed` or `timed_out` generally) turns a quota hiccup into a resource-burning retry storm.                                                                                                                                                                                                                                                         | Automatic retry for any non-`usage_limit` terminal status. Unbounded retry attempts.                                                                                               |
+| D9  | No Docker (or other sandbox) wraps the agent process itself. The host is trusted; the AI CLI runs directly on it, subject to the CLI's _own_ sandboxing (approval policy, writable-roots, hooks) which is configured per-repo, not by Auto Harness.   | Stated existing principle ([architecture.md](architecture.md), [security.md](security.md)) — keep it explicit here so it isn't "improved" into per-session containers as part of this work.                                                                                                                                                                                                                                                                  | Per-session containers, gVisor, rootless podman, or any other isolation layer wrapping the agent or its worktrees.                                                                 |
 
 ## 2. Non-goals
 
@@ -48,7 +48,7 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 - **Owning a target repo's GitHub policy.** Trigger filtering, CI-failure triage, deduplication,
   comment-author authorization, and prompt content stay in the target repo
   ([harness.md](harness.md)). Auto Harness receives a rendered prompt and a target; it does not
-  decide *whether* to run.
+  decide _whether_ to run.
 - **Multi-tenant SaaS.** Single-org control plane; `allowedRepositories` scoping is the extent of
   multi-tenancy, not a hard security boundary between untrusted customers.
 - **Per-session containerization** (see D9).
@@ -59,84 +59,36 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 
 ## 3. Project Structure
 
-Layer docs: [aws.md](aws.md) (control plane packages `cdk` + `api`), [agent.md](agent.md)
-(package `agent`).
+**Layout convention:** shared code lives in `modules/`; deployable units live in
+`services/`. Dependency-cruiser forbids modules→services and service→service imports.
+
+Layer docs: [aws.md](aws.md) (control plane `services/cdk` + `services/api`),
+[agent.md](agent.md) (`services/agent`).
 
 ```
 auto-harness/
-├── packages/
-│   ├── cdk/                    # AWS CDK infrastructure (see aws.md)
-│   │   ├── lib/
-│   │   │   ├── auto-harness-stack.ts
-│   │   │   ├── api-gateway.ts
-│   │   │   ├── lambda.ts
-│   │   │   ├── dynamodb.ts       # owns: sharded queue GSI, log SK sequence (§5)
-│   │   │   ├── s3.ts
-│   │   │   └── eventbridge.ts
-│   │   └── bin/
-│   │       └── auto-harness.ts
-│   │
-│   ├── api/                    # Lambda functions (REST + WebSocket) — see aws.md
-│   │   ├── src/
-│   │   │   ├── handlers/
-│   │   │   │   ├── rest/
-│   │   │   │   │   ├── sessions.ts    # owns: ref, concurrencyKey/onConflict, url in response
-│   │   │   │   │   ├── repositories.ts
-│   │   │   │   │   ├── worktrees.ts
-│   │   │   │   │   └── auth.ts
-│   │   │   │   └── websocket/
-│   │   │   │       ├── connect.ts     # owns: conditional put on agentId (Invariant 3)
-│   │   │   │       ├── disconnect.ts
-│   │   │   │       └── message.ts
-│   │   │   ├── services/
-│   │   │   │   ├── session-service.ts
-│   │   │   │   ├── scheduler.ts       # owns: conditional worktree claim (Invariant 1),
-│   │   │   │   │                      #       ack-deadline requeue (Invariant 2)
-│   │   │   │   └── notification.ts
-│   │   │   └── db/
-│   │   │       └── client.ts
-│   │   └── package.json
-│   │
-│   ├── agent/                  # VPS service (Node.js daemon) — see agent.md
-│   │   ├── src/
-│   │   │   ├── index.ts
-│   │   │   ├── connection.ts          # owns: agent-initiated keepalive (§8)
-│   │   │   ├── executor.ts
-│   │   │   ├── worktree-manager.ts    # owns: ref checkout (D6)
-│   │   │   ├── session-runner.ts
-│   │   │   ├── log-streamer.ts        # owns: monotonic log sequence (§5)
-│   │   │   ├── main-lock.ts
-│   │   │   ├── command-profiles.ts    # NEW — owns: named command → argv resolution (D4)
-│   │   │   ├── terminal-hook.ts       # NEW — owns: escalation hook invocation (D3)
-│   │   │   └── config.ts
-│   │   └── package.json
-│   │
-│   ├── web/                    # Next.js Web UI
-│   │   ├── src/
-│   │   │   ├── app/
-│   │   │   │   ├── layout.tsx
-│   │   │   │   ├── page.tsx
-│   │   │   │   ├── sessions/
-│   │   │   │   ├── repositories/
-│   │   │   │   └── settings/
-│   │   │   ├── components/
-│   │   │   └── lib/
-│   │   │       └── api-client.ts
-│   │   └── package.json
-│   │
-│   └── shared/                 # Shared types, constants, utilities
-│       ├── src/
-│       │   ├── types.ts
-│       │   ├── constants.ts
-│       │   └── validation.ts
-│       └── package.json
+├── modules/
+│   └── shared/                 # @auto-harness/shared — types, constants, validation
+│
+├── services/
+│   ├── cdk/                    # @auto-harness/cdk — AWS CDK (see aws.md)
+│   ├── api/                    # @auto-harness/api — REST + WebSocket Lambda/local
+│   ├── agent/                  # @auto-harness/agent — VPS daemon (see agent.md)
+│   └── web/                    # @auto-harness/web — Next.js UI
 │
 ├── docs/
-├── pnpm-workspace.yaml
+├── .github/workflows/
+├── pnpm-workspace.yaml         # modules/* + services/*
 ├── tsconfig.base.json
 ├── package.json
+├── AGENTS.md
 └── README.md
 ```
+
+Target source layout inside services (as Phase 1+ lands) still follows the earlier design:
+`api` owns handlers + session-service + scheduler; `agent` owns connection, executor,
+worktree-manager, command-profiles, terminal-hook, etc. See Phase 1 deliverables below
+(paths use `services/*` / `modules/shared`, not `packages/*`).
 
 ---
 
@@ -277,17 +229,17 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 
 ### Access patterns
 
-| Access pattern | Table / index | Key shape | Notes |
-|---|---|---|---|
-| Get session by id | Sessions | PK `id` | |
-| List queued sessions for assignment | Sessions | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8. |
-| List sessions by repo | Sessions | GSI `repositoryId-createdAt` | |
-| Full-text prompt search | — | **not implemented in v1** | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
-| Append session log chunk | SessionLogs | PK `sessionId`, SK `timestampSeq` | `seq` is a per-session monotonic counter assigned by the **agent** before batching; the server never reorders. |
-| Range-read logs for REST/history | SessionLogs | PK `sessionId`, SK range | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq). |
-| Idle matching worktrees | Worktrees | GSI `repositoryId-status` (or scan for small fleets) | Claim uses a conditional write — see Invariant 1. |
-| Find agent connection for assign | Connections | GSI `agentId` | Conditional put on register — see Invariant 3. |
-| Due schedules | Schedules | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep | Claim is the conditional advance of `nextRunAt` — see Invariant 4. |
+| Access pattern                      | Table / index | Key shape                                                                           | Notes                                                                                                                                                                                  |
+| ----------------------------------- | ------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Get session by id                   | Sessions      | PK `id`                                                                             |                                                                                                                                                                                        |
+| List queued sessions for assignment | Sessions      | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.       |
+| List sessions by repo               | Sessions      | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                        |
+| Full-text prompt search             | —             | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
+| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent** before batching; the server never reorders.                                                                         |
+| Range-read logs for REST/history    | SessionLogs   | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
+| Idle matching worktrees             | Worktrees     | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
+| Find agent connection for assign    | Connections   | GSI `agentId`                                                                       | Conditional put on register — see Invariant 3.                                                                                                                                         |
+| Due schedules                       | Schedules     | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                     |
 
 ---
 
@@ -307,7 +259,7 @@ reference these by number; a phase is not done until its invariants have a passi
 3. **One live connection per agent.** `agent:register` is a conditional put keyed on `agentId`
    ("no existing connection for this `agentId`"); a stale row from a lost `$disconnect` must not
    let two connections both believe they own one agent identity.
-4. **A schedule fires at most once per `nextRunAt`.** The cron evaluator's claim *is* the
+4. **A schedule fires at most once per `nextRunAt`.** The cron evaluator's claim _is_ the
    conditional advance of `nextRunAt` (`ConditionExpression: nextRunAt = :expected`). A retried or
    overlapping EventBridge invocation must not create two sessions for the same fire.
 5. **Log ordering is total per session.** Under the `(timestamp, seq)` sort key, replay and
@@ -318,7 +270,7 @@ reference these by number; a phase is not done until its invariants have a passi
    ceiling (default 2); exceeding it leaves the session terminal with no further retry.
 7. **Resume assigns only to `pinnedAgentId`, on an agent-only pin, with an expiry.** Past
    `pinExpiresAt`, a still-queued pinned resume fails clearly (`status: failed`, `errorCode:
-   resume_failed`) rather than waiting indefinitely.
+resume_failed`) rather than waiting indefinitely.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
    the control plane or the agent.
@@ -339,8 +291,8 @@ migration marker. **No filaments workflow may cut over before the marker on Phas
 
 **Deliverables**
 
-- `pnpm` monorepo with workspaces; `packages/shared` with types + constants.
-- `packages/agent`:
+- `pnpm` monorepo with workspaces; `modules/shared` with types + constants.
+- `services/agent`:
   - Config loading (repos, worktrees, labels, **command profiles**, **terminal hook script
     path**) from JSON file + env vars.
   - Git worktree manager — create worktrees on startup, validate existing ones, **checkout a
@@ -361,15 +313,15 @@ migration marker. **No filaments workflow may cut over before the marker on Phas
   - Log streamer — buffer/emit stdout/stderr with timestamps **and a per-session monotonic
     `seq`** (Invariant 5).
 - Minimal agent CLI: `auto-harness-agent start`, `auto-harness-agent status`.
-- **Local API server** (`packages/api/src/local-server.ts`) — Express + `ws` wrapper around the
+- **Local API server** (`services/api/src/local-server.ts`) — Express + `ws` wrapper around the
   same Lambda handlers. REST on `localhost:7420`, WS on `ws://localhost:7420/ws`. DynamoDB Local.
   Auto-creates tables, seeds a default admin.
 - Local-only mode for testing (accept sessions via local file or stdin).
-- Full local stack: DynamoDB Local (Docker) + local API server + `packages/web` dev server + agent
+- Full local stack: DynamoDB Local (Docker) + local API server + `services/web` dev server + agent
   — same code as production.
 - **Testing:** vitest across packages; unit tests for session runner, worktree manager, config
   loader, command-profiles, terminal-hook; mock `child_process.spawn` / `node-pty`;
-  `packages/shared` type-level assertions.
+  `modules/shared` type-level assertions.
 
 **Acceptance criteria**
 
@@ -386,13 +338,13 @@ migration marker. **No filaments workflow may cut over before the marker on Phas
 
 **Deliverables**
 
-- `packages/cdk`:
+- `services/cdk`:
   - DynamoDB tables per §4, including the **sharded `status-createdAt` GSI** for the queue and
     the **`timestampSeq`** sort key for SessionLogs.
   - SessionLogs TTL (7 days).
   - S3 archive bucket, API Gateway (REST + WS), Lambda functions + IAM roles.
   - CloudWatch Events rule (1-minute) for cron evaluation.
-- `packages/api` REST handlers:
+- `services/api` REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD.
   - Sessions: create (**`ref`, `commandProfile`, `concurrencyKey`, `onConflict`, `metadata`
     accepted; response includes `url`**), list (`search` **omitted from v1** — see Access
@@ -400,7 +352,7 @@ migration marker. **No filaments workflow may cut over before the marker on Phas
   - Repositories: CRUD (include `terminalHookScript`).
   - Worktrees: list, get. Agents: list, get. Schedules: CRUD + manual trigger. Integrations:
     Slack config CRUD.
-- `packages/api` WebSocket handlers:
+- `services/api` WebSocket handlers:
   - `$connect`/`$disconnect` — validate token, manage Connections table with the **conditional put
     on `agentId`** (Invariant 3).
   - `$default` — route by `type`.
@@ -491,7 +443,7 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 
 **Deliverables** — unchanged in scope from the original draft, with one correction:
 
-- `packages/web` Next.js app: dashboard, session list/detail/create, schedule management,
+- `services/web` Next.js app: dashboard, session list/detail/create, schedule management,
   repository management, settings, auth, Slack config UI — see [web.md](web.md) for full detail.
 - **Session search is scoped to client-side filtering over the current page**, not a
   full-text `search` query param against DynamoDB (see Access patterns, §4) — do not implement a
@@ -539,24 +491,24 @@ The phases above assume these changes exist in the referenced docs. Apply them b
 Phase 1/2 implementation — do not implement against the currently-written text where it conflicts
 with this table.
 
-| File | Section | Change |
-|------|---------|--------|
-| `api.md` | `POST /sessions` request | Add `ref`, `concurrencyKey`, `onConflict`, `metadata`. Change `command` → `commandProfile` (string, must match an agent-reported profile name). |
-| `api.md` | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link). |
-| `api.md` | `POST /sessions/:id/resume` | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5). |
-| `api.md` | `GET /sessions` query params | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns). |
-| `agent.md` | Executor | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment). |
-| `agent.md` | Worktree Manager / Setup scripts | Document `ref`-aware checkout (D6). |
-| `agent.md` | Session resume | Rewrite around agent-only pin (D5); remove worktree-preservation language. |
-| `agent.md` | Usage limits | Replace "no auto-retry" with the narrow, capped retry described in D8/Invariant 6. |
-| `agent.md` | New section | Terminal hook (D3): config shape, invocation contract, env vars, failure handling. |
-| `aws.md` | Scheduler | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), `concurrencyKey`/`onConflict` resolution (Invariant 9). |
-| `aws.md` | Cron Evaluator | Conditional `nextRunAt` claim (Invariant 4); heartbeat-based stale sweep (Phase 3) replacing the coarse `timeout + grace` version. |
-| `aws.md` | DynamoDB tables | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`. |
-| `websocket.md` / `aws.md` | Keepalive | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead. |
-| `security.md` | New section | Threat model: prompt is untrusted/attacker-influenced input; the agent-held credential is scoped per D7; state plainly what this does and does not protect against, replacing the argument the dropped validator/publisher split used to make structurally. |
-| `security.md` | Service accounts / roles | Note that `operator` maps to "run any configured command profile" post-D4, not arbitrary command execution. |
-| `costs.md` | SessionLogs cost estimate | Recompute against a realistic long-running CLI session's message volume, not the prior ~50-chunk assumption; note the API Gateway 128 KB frame limit and DynamoDB 400 KB item limit as constraints on prompt/log-chunk size. |
+| File                      | Section                                        | Change                                                                                                                                                                                                                                                      |
+| ------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api.md`                  | `POST /sessions` request                       | Add `ref`, `concurrencyKey`, `onConflict`, `metadata`. Change `command` → `commandProfile` (string, must match an agent-reported profile name).                                                                                                             |
+| `api.md`                  | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link).                                                                                                                                                                                                                                   |
+| `api.md`                  | `POST /sessions/:id/resume`                    | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5).                                                                                                                                 |
+| `api.md`                  | `GET /sessions` query params                   | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns).                                                                                                                                                                      |
+| `agent.md`                | Executor                                       | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                                      |
+| `agent.md`                | Worktree Manager / Setup scripts               | Document `ref`-aware checkout (D6).                                                                                                                                                                                                                         |
+| `agent.md`                | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
+| `agent.md`                | Usage limits                                   | Replace "no auto-retry" with the narrow, capped retry described in D8/Invariant 6.                                                                                                                                                                          |
+| `agent.md`                | New section                                    | Terminal hook (D3): config shape, invocation contract, env vars, failure handling.                                                                                                                                                                          |
+| `aws.md`                  | Scheduler                                      | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), `concurrencyKey`/`onConflict` resolution (Invariant 9).                                                                                                                   |
+| `aws.md`                  | Cron Evaluator                                 | Conditional `nextRunAt` claim (Invariant 4); heartbeat-based stale sweep (Phase 3) replacing the coarse `timeout + grace` version.                                                                                                                          |
+| `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
+| `websocket.md` / `aws.md` | Keepalive                                      | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead.                                                                                                                             |
+| `security.md`             | New section                                    | Threat model: prompt is untrusted/attacker-influenced input; the agent-held credential is scoped per D7; state plainly what this does and does not protect against, replacing the argument the dropped validator/publisher split used to make structurally. |
+| `security.md`             | Service accounts / roles                       | Note that `operator` maps to "run any configured command profile" post-D4, not arbitrary command execution.                                                                                                                                                 |
+| `costs.md`                | SessionLogs cost estimate                      | Recompute against a realistic long-running CLI session's message volume, not the prior ~50-chunk assumption; note the API Gateway 128 KB frame limit and DynamoDB 400 KB item limit as constraints on prompt/log-chunk size.                                |
 
 ---
 

@@ -27,17 +27,17 @@ The win is **time and throughput**. Cloud coordination is cheap; the scarce inpu
 
 ## Use cases
 
-| Situation | What Auto Harness does |
-|-----------|-------------------------|
-| **CI goes red** | Kick off an agent against the failing repo, aimed at a fix and a PR—not a Slack pile-on |
-| **You have a clear change in mind** | Describe the outcome; run it as a tracked session with logs you can audit |
-| **Work was interrupted mid-flight** | Resume the same session context on the same agent and worktree |
-| **PRs stall in review** | Shepherd changes forward—address comments, re-run checks, keep momentum |
-| **The repo needs steady care** | Schedules for updates, lint, security patches—maintenance without calendar babysitting |
-| **CI / bots fire and forget** | GitHub Actions (or anything) calls the API and exits; humans watch **Slack** and/or **GitHub** (PRs, comments)—not the trigger job |
-| **The team lives in Slack** | One thread per session for harness status alongside GitHub activity |
+| Situation                           | What Auto Harness does                                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **CI goes red**                     | Kick off an agent against the failing repo, aimed at a fix and a PR—not a Slack pile-on                                            |
+| **You have a clear change in mind** | Describe the outcome; run it as a tracked session with logs you can audit                                                          |
+| **Work was interrupted mid-flight** | Resume the same session context on the same agent and worktree                                                                     |
+| **PRs stall in review**             | Shepherd changes forward—address comments, re-run checks, keep momentum                                                            |
+| **The repo needs steady care**      | Schedules for updates, lint, security patches—maintenance without calendar babysitting                                             |
+| **CI / bots fire and forget**       | GitHub Actions (or anything) calls the API and exits; humans watch **Slack** and/or **GitHub** (PRs, comments)—not the trigger job |
+| **The team lives in Slack**         | One thread per session for harness status alongside GitHub activity                                                                |
 
-Anything you can trigger programmatically is fair game. Auto Harness doesn’t care *why* you started a session—only that you did, with a prompt and a target.
+Anything you can trigger programmatically is fair game. Auto Harness doesn’t care _why_ you started a session—only that you did, with a prompt and a target.
 
 ---
 
@@ -54,18 +54,18 @@ Operators use the web UI. Pipelines and bots use the API. Your agents run on mac
 
 ## What you get out of it
 
-- **Shorter time-to-green** after failures  
-- **Fewer context switches** for “quick fixes” that aren’t  
-- **A single place** to see automated coding work—not a scatter of laptop terminals  
-- **Room to grow** from one repo and one engineer to many agents and many repos  
+- **Shorter time-to-green** after failures
+- **Fewer context switches** for “quick fixes” that aren’t
+- **A single place** to see automated coding work—not a scatter of laptop terminals
+- **Room to grow** from one repo and one engineer to many agents and many repos
 
 ---
 
 ## Trust boundaries (in plain terms)
 
-- Auto Harness **does not** hold your git credentials or AI API keys—those stay on **your** runners  
-- **Don’t put secrets in prompts**—prompts are stored and visible operationally  
-- You decide which tools run and how hard they work  
+- Auto Harness **does not** hold your git credentials or AI API keys—those stay on **your** runners
+- **Don’t put secrets in prompts**—prompts are stored and visible operationally
+- You decide which tools run and how hard they work
 
 Details live in the docs, not here.
 
@@ -74,5 +74,7 @@ Details live in the docs, not here.
 ## Learn more
 
 Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo hookup examples (filaments-style): **[docs/harness.md](docs/harness.md)**.
+
+**Contributors / agents:** monorepo conventions live in **[AGENTS.md](AGENTS.md)** (`pnpm check` runs the full gate).
 
 Start there when you’re ready to deploy or dig in.

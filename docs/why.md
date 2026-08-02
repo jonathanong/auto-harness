@@ -13,15 +13,15 @@ You want the models you already pay for—on **subscription plans**—driving re
 
 ## Why this shape
 
-| Choice | Why |
-|--------|-----|
-| **CLI tools, not Agent SDKs** | Vendor **subscriptions** generally unlock the **interactive / CLI products**, not the programmatic Agent SDK / pure API agent stacks. To use subscription capacity for automation, you must drive the **non-interactive CLI** the same way a power user would—except unattended. |
-| **Non-interactive mode** | Headless factory work has no human to click approve. Sessions spawn the CLI with print/non-interactive flags (and a PTY when the tool still expects a TTY), capture output, and exit with a status. See [agent.md](agent.md). |
-| **Your VPS holds the tools and logins** | Subscription auth and git credentials stay on **your** machines. The control plane schedules and records; it does not become a second AI vendor account. See [security.md](security.md). |
-| **Worktrees + queue** | Subscription seats and host RAM are finite. Pre-warmed worktrees and a priority queue turn “how many agents can we run?” into an operational knob, not a hope. |
-| **Thin AWS control plane** | Coordination should cost cents. The expensive/scarce resource is **subscription usage and host capacity**, not DynamoDB. See [costs.md](costs.md). |
+| Choice                                  | Why                                                                                                                                                                                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **CLI tools, not Agent SDKs**           | Vendor **subscriptions** generally unlock the **interactive / CLI products**, not the programmatic Agent SDK / pure API agent stacks. To use subscription capacity for automation, you must drive the **non-interactive CLI** the same way a power user would—except unattended. |
+| **Non-interactive mode**                | Headless factory work has no human to click approve. Sessions spawn the CLI with print/non-interactive flags (and a PTY when the tool still expects a TTY), capture output, and exit with a status. See [agent.md](agent.md).                                                    |
+| **Your VPS holds the tools and logins** | Subscription auth and git credentials stay on **your** machines. The control plane schedules and records; it does not become a second AI vendor account. See [security.md](security.md).                                                                                         |
+| **Worktrees + queue**                   | Subscription seats and host RAM are finite. Pre-warmed worktrees and a priority queue turn “how many agents can we run?” into an operational knob, not a hope.                                                                                                                   |
+| **Thin AWS control plane**              | Coordination should cost cents. The expensive/scarce resource is **subscription usage and host capacity**, not DynamoDB. See [costs.md](costs.md).                                                                                                                               |
 
-## What we are *not* optimizing for
+## What we are _not_ optimizing for
 
 - **API-key / pay-per-token agent farms** as the primary economic model (you can point a CLI at API keys if you want, but that is not the design center).
 - Replacing your IDE chat for interactive pair-programming.
