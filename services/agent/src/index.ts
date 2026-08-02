@@ -26,3 +26,5 @@ export { detectUsageLimit } from "./usage-limit.js";
 export { WorktreeManager } from "./worktree-manager.js";
 export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.js";
 export { ensureAgentReady, runAssignedSession } from "./runtime.js";
+export { AgentLoop, createLoopbackTransport } from "./agent-loop.js";
+export type { AgentLoopOptions, AgentTransport } from "./agent-loop.js";

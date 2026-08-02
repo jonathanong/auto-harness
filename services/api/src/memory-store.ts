@@ -1,92 +1,56 @@
-import { randomBytes } from "node:crypto";
+import { ControlPlane, type PublicSession } from "./control-plane.js";
 
-import { validateCreateSessionInput, type SessionStatus } from "@auto-harness/shared";
-
-export type StoredSession = {
-  id: string;
-  repositoryId: string;
-  prompt: string;
-  commandProfile: string;
-  timeout: number;
-  priority: number;
-  requiredLabels: string[];
-  onConflict: "queue" | "replace" | "reject";
-  status: SessionStatus;
-  ref?: string;
-  worktreeId?: string | null;
-  createdAt: string;
-  url: string;
-};
+export type StoredSession = PublicSession;
 
 type MemoryStoreOptions = {
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;
+  plane?: ControlPlane;
 };
 
+/**
+ * Thin facade used by Phase 1 local server paths.
+ * Backed by {@link ControlPlane} for full Phase 2–5 behavior.
+ */
 export class MemorySessionStore {
-  private readonly sessions = new Map<string, StoredSession>();
-  private readonly publicBaseUrl: string;
-  private readonly now: () => string;
-  private readonly idFactory: () => string;
+  readonly plane: ControlPlane;
 
   constructor(options: MemoryStoreOptions = {}) {
-    this.publicBaseUrl = options.publicBaseUrl ?? "http://localhost:3000";
-    this.now = options.now ?? (() => new Date().toISOString());
-    this.idFactory = options.idFactory ?? (() => `sess-${randomBytes(4).toString("hex")}`);
+    this.plane =
+      options.plane ??
+      new ControlPlane({
+        ...(options.publicBaseUrl !== undefined ? { publicBaseUrl: options.publicBaseUrl } : {}),
+        ...(options.now !== undefined ? { now: options.now } : {}),
+        ...(options.idFactory !== undefined ? { idFactory: options.idFactory } : {}),
+      });
   }
 
   create(body: unknown): { ok: true; session: StoredSession } | { ok: false; error: string } {
-    if (typeof body !== "object" || body === null) {
-      return { ok: false, error: "body must be an object" };
+    const result = this.plane.createSession(body);
+    if (!result.ok) {
+      return { ok: false, error: result.error };
     }
-    const record = body as Record<string, unknown>;
-    const validated = validateCreateSessionInput({
-      repositoryId: record.repositoryId,
-      prompt: record.prompt,
-      commandProfile: record.commandProfile,
-      timeout: record.timeout,
-      priority: record.priority,
-      requiredLabels: record.requiredLabels,
-      onConflict: record.onConflict,
-      ref: record.ref,
-    });
-    if (!validated.ok) {
-      return validated;
-    }
-    const id = this.idFactory();
-    const session: StoredSession = {
-      id,
-      repositoryId: validated.value.repositoryId,
-      prompt: validated.value.prompt,
-      commandProfile: validated.value.commandProfile,
-      timeout: validated.value.timeout,
-      priority: validated.value.priority,
-      requiredLabels: validated.value.requiredLabels,
-      onConflict: validated.value.onConflict,
-      status: "queued",
-      createdAt: this.now(),
-      url: `${this.publicBaseUrl}/sessions/${id}`,
-      ...(validated.value.ref !== undefined ? { ref: validated.value.ref } : {}),
-    };
-    this.sessions.set(id, session);
-    return { ok: true, session };
+    return { ok: true, session: result.session };
   }
 
   get(id: string): StoredSession | undefined {
-    return this.sessions.get(id);
+    return this.plane.getSession(id) || undefined;
   }
 
   list(): StoredSession[] {
-    return [...this.sessions.values()].toSorted((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    return this.plane.listSessions();
   }
 
-  setStatus(id: string, status: SessionStatus): StoredSession | undefined {
-    const session = this.sessions.get(id);
-    if (!session) {
+  setStatus(id: string, status: StoredSession["status"]): StoredSession | undefined {
+    if (!this.plane.getSession(id)) {
       return undefined;
     }
-    session.status = status;
-    return session;
+    this.plane.handleAgentMessage({
+      type: "session:status",
+      sessionId: id,
+      status,
+    });
+    return this.get(id);
   }
 }

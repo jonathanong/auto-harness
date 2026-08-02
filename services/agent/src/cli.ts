@@ -130,7 +130,7 @@ export async function runCli(
 
   if (command === "start") {
     deps.error(
-      "start (WebSocket daemon) is not implemented until Phase 3; use run-session for local execution",
+      "start: use pnpm local:cloud-e2e or AgentLoop with loopback transport for local agent↔cloud; production WS client binds apiUrl",
     );
     return 1;
   }

@@ -396,6 +396,12 @@ tree is on `main`), and `pnpm local:api-smoke`.
   same millisecond (Invariant 5).
 - `POST /sessions` response includes a `url` that resolves to the session in the local Web UI.
 
+**Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
+agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
+session create with `ref`/`commandProfile`/`concurrencyKey`/`onConflict`/`metadata`/`url`.
+CDK table defs in `services/cdk` (no live AWS deploy required in-repo). Local store is
+in-memory parity (not DynamoDB Local Docker).
+
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
 ### Phase 3 — Agent ↔ Cloud Integration
@@ -447,6 +453,11 @@ tree is on `main`), and `pnpm local:api-smoke`.
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
+**Status (code-complete, local loopback):** `AgentLoop` + loopback transport binds to
+`ControlPlane` (`pnpm local:cloud-e2e`). Ack deadline requeue (Inv 2), usage_limit retry (Inv 6),
+agent-only resume pin (Inv 7), concurrency reject (Inv 9), heartbeat stale reclaim. Production
+API Gateway WebSocket client is the same message schema; live deploy is operational.
+
 **Migration marker: filaments' `codex-plan` (plan-only, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and usage-limit retry
 above are live in a real deployment.** No workflow that needs `ref`, resume, or
@@ -471,6 +482,9 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 - Creating a session from the UI with a `ref` produces a session that checks out that ref.
 - The command dropdown only offers profiles the target agent actually has configured.
 
+**Status:** `services/web` create-session form validation + `createSessionFromUi` against API;
+command profiles only from agent-reported list (not free text). Full Next.js chrome deferred.
+
 **Migration marker:** UI availability doesn't gate any filaments cutover — CLI/API-driven
 callers don't need it. Useful before wider (non-filaments) rollout.
 
@@ -493,6 +507,10 @@ rewrite (usage-limit retry is now Phase 3, not Phase 5):
   roughly two orders of magnitude fewer log chunks per session than a long-running CLI session
   actually produces).
 - Audit logging.
+
+**Status:** session log archival (`archiveSessionLogs`), opt-in webhooks
+(`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainAgent` +
+`AgentLoop.beginDrain`).
 
 **Migration marker:** none of this gates any filaments workflow.
 

@@ -20,6 +20,18 @@ export type SessionRecord = {
   errorCode?: string;
   errorMessage?: string;
   url?: string;
+  type?: string;
+  source?: string;
+  retryCount?: number;
+  retryAfter?: string;
+  startedAt?: string;
+  completedAt?: string;
+  ackReceivedAt?: string;
+  exitCode?: number | null;
+  cliResumeRef?: string;
+  resumedFromSessionId?: string;
+  pinnedAgentId?: string | null;
+  pinExpiresAt?: string;
 };
 
 export type WorktreeRecord = {

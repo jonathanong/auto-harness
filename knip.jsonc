@@ -6,6 +6,8 @@
         "scripts/local-e2e.mts",
         "scripts/local-api-smoke.mts",
         "scripts/local-cli-e2e.mts",
+        "scripts/phase3-cloud-e2e.mts",
+        "scripts/phase2-post-session.mts",
         "vitest.config.ts",
       ],
       "project": ["scripts/**/*.{ts,mts}", "vitest.config.ts"],

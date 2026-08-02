@@ -1,8 +1,16 @@
 import { PACKAGE_SCOPE } from "@auto-harness/shared";
 
-/** Web UI service identity (Next.js app lands here). */
+import {
+  createHttpApiClient,
+  createSessionFromUi,
+  validateCreateSessionForm,
+} from "./create-session.js";
+
+/** Web UI service identity. */
 export const serviceName = `${PACKAGE_SCOPE}/web` as const;
 
 export function getServiceName(): string {
   return serviceName;
 }
+
+export { createHttpApiClient, createSessionFromUi, validateCreateSessionForm };

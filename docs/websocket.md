@@ -15,7 +15,7 @@ wss://<api-domain>/ws?token=<credential>
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
-Unauthenticated connect → reject. Keepalive: server `ping` ~every 30s; client `pong`.
+Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepalive`); Lambda has no server-side ping timer.
 
 ---
 
@@ -23,11 +23,11 @@ Unauthenticated connect → reject. Keepalive: server `ping` ~every 30s; client 
 
 ### Server → agent
 
-| Type             | Payload                                                                                                                                         | Purpose                                                         |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `session:assign` | `sessionId`, `repositoryId`, `prompt`, `command`, `timeout`, `worktreeId?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?` | Run or **resume** a session (`worktreeId` null = main checkout) |
-| `session:cancel` | `sessionId`                                                                                                                                     | Stop queued/running work                                        |
-| `ping`           | `{}`                                                                                                                                            | Keepalive                                                       |
+| Type             | Payload                                                                                                                                                                     | Purpose                                                                                                             |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `session:assign` | `sessionId`, `repositoryId`, `prompt`, `commandProfile`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); profile is named (D4), never a free command string |
+| `session:cancel` | `sessionId`                                                                                                                                                                 | Stop queued/running work                                                                                            |
+| `ping`           | `{}`                                                                                                                                                                        | Keepalive                                                                                                           |
 
 ```json
 {
@@ -35,7 +35,8 @@ Unauthenticated connect → reject. Keepalive: server `ping` ~every 30s; client 
   "sessionId": "sess-x1y2z3",
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test in src/utils.test.ts",
-  "command": "codex -p",
+  "commandProfile": "codex-fix",
+  "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",
   "setupScript": "git fetch && git reset --hard origin/main && pnpm install"
@@ -50,7 +51,8 @@ Unauthenticated connect → reject. Keepalive: server `ping` ~every 30s; client 
   "sessionId": "sess-r9s8t7",
   "repositoryId": "repo-abc",
   "prompt": "Continue: also fix the edge case",
-  "command": "codex -p",
+  "commandProfile": "codex-fix",
+  "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",
   "resume": true,

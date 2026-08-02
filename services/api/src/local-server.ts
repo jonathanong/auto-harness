@@ -1,10 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import type { AgentToServerMessage } from "@auto-harness/shared";
+
+import { ControlPlane } from "./control-plane.js";
 import { MemorySessionStore } from "./memory-store.js";
 
 type LocalServerOptions = {
   port?: number;
   store?: MemorySessionStore;
+  plane?: ControlPlane;
   publicBaseUrl?: string;
 };
 
@@ -40,13 +44,16 @@ function send(res: ServerResponse, status: number, body: unknown): void {
 
 export function createLocalApp(options: LocalServerOptions = {}): {
   store: MemorySessionStore;
+  plane: ControlPlane;
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 } {
-  const store =
-    options.store ??
-    new MemorySessionStore({
+  const plane =
+    options.plane ??
+    options.store?.plane ??
+    new ControlPlane({
       publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
     });
+  const store = options.store ?? new MemorySessionStore({ plane });
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -60,10 +67,13 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (method === "POST" && url.pathname === "/api/v1/sessions") {
       try {
         const body = await readJson(req);
-        const result = store.create(body);
+        const result = plane.createSession(body);
         if (!result.ok) {
-          send(res, 400, {
-            error: { code: "VALIDATION_ERROR", message: result.error },
+          send(res, result.code === "CONFLICT" ? 409 : 400, {
+            error: {
+              code: result.code ?? "VALIDATION_ERROR",
+              message: result.error,
+            },
           });
           return;
         }
@@ -78,14 +88,127 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
 
     if (method === "GET" && url.pathname === "/api/v1/sessions") {
-      send(res, 200, { items: store.list() });
+      send(res, 200, { items: plane.listSessions() });
       return;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/agents") {
+      send(res, 200, { items: plane.listAgents() });
+      return;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/command-profiles") {
+      send(res, 200, { items: plane.listCommandProfiles() });
+      return;
+    }
+
+    if (method === "GET" && url.pathname === "/api/v1/worktrees") {
+      send(res, 200, { items: plane.listWorktrees() });
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/agent/messages") {
+      try {
+        const body = (await readJson(req)) as AgentToServerMessage;
+        const result = plane.handleAgentMessage(body);
+        if (!result.ok) {
+          send(res, 400, {
+            error: { code: "AGENT_MESSAGE_ERROR", message: result.error },
+          });
+          return;
+        }
+        send(res, 200, { ok: true });
+        return;
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return;
+      }
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/scheduler/assign") {
+      const assigned = plane.assignQueued();
+      send(res, 200, {
+        items: assigned.map((a) => ({
+          sessionId: a.session.id,
+          worktreeId: a.worktree.id,
+          agentId: a.worktree.agentId,
+        })),
+      });
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/scheduler/ack-deadlines") {
+      const requeued = plane.enforceAckDeadlines();
+      send(res, 200, { requeued });
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/scheduler/reclaim-stale") {
+      const reclaimed = plane.reclaimStaleAgents();
+      send(res, 200, { reclaimed });
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/scheduler/cron") {
+      const created = plane.evaluateCron();
+      send(res, 200, { items: created });
+      return;
+    }
+
+    const resumeMatch = /^\/api\/v1\/sessions\/([^/]+)\/resume$/.exec(url.pathname);
+    if (method === "POST" && resumeMatch) {
+      const id = resumeMatch[1]!;
+      const result = plane.resumeSession(id);
+      if (!result.ok) {
+        send(res, 400, {
+          error: { code: "RESUME_ERROR", message: result.error },
+        });
+        return;
+      }
+      send(res, 201, result.session);
+      return;
+    }
+
+    const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
+    if (method === "GET" && logsMatch) {
+      const id = logsMatch[1]!;
+      send(res, 200, { items: plane.getLogs(id) });
+      return;
+    }
+
+    const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
+    if (method === "POST" && archiveMatch) {
+      const id = archiveMatch[1]!;
+      const archived = plane.archiveSessionLogs(id);
+      send(res, 200, archived);
+      return;
+    }
+
+    if (method === "POST" && url.pathname === "/api/v1/agents/drain") {
+      try {
+        const body = (await readJson(req)) as { agentId?: string };
+        if (!body.agentId) {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: "agentId required" },
+          });
+          return;
+        }
+        send(res, 200, plane.drainAgent(body.agentId));
+        return;
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return;
+      }
     }
 
     const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
     if (method === "GET" && sessionMatch) {
       const id = sessionMatch[1]!;
-      const session = store.get(id);
+      const session = plane.getSession(id);
       if (!session) {
         send(res, 404, {
           error: { code: "NOT_FOUND", message: "session not found" },
@@ -99,14 +222,17 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
   };
 
-  return { store, handler };
+  return { store, plane, handler };
 }
 
-export async function startLocalServer(
-  options: LocalServerOptions = {},
-): Promise<{ port: number; close: () => Promise<void>; store: MemorySessionStore }> {
+export async function startLocalServer(options: LocalServerOptions = {}): Promise<{
+  port: number;
+  close: () => Promise<void>;
+  store: MemorySessionStore;
+  plane: ControlPlane;
+}> {
   const port = options.port ?? 7420;
-  const { store, handler } = createLocalApp(options);
+  const { store, plane, handler } = createLocalApp(options);
   const server = createServer((req, res) => {
     void handler(req, res);
   });
@@ -121,6 +247,7 @@ export async function startLocalServer(
   return {
     port,
     store,
+    plane,
     close: () =>
       new Promise((resolve, reject) => {
         server.close((err) => {

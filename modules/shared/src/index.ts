@@ -11,6 +11,8 @@ export type {
 } from "./types.js";
 
 export type {
+  AgentToServerMessage,
+  AgentWireMessage,
   CreateSessionFields,
   SessionAssign,
   SessionLogChunk,
@@ -19,6 +21,10 @@ export type {
 } from "./session.js";
 
 export {
+  DEFAULT_ACK_DEADLINE_MS,
+  DEFAULT_AGENT_KEEPALIVE_MS,
+  DEFAULT_ARCHIVE_PREFIX,
+  DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
   ON_CONFLICT_OPTIONS,

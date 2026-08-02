@@ -19,7 +19,9 @@
     "local:agent": "tsx services/agent/src/cli.ts",
     "local:e2e": "tsx scripts/local-e2e.mts",
     "local:cli-e2e": "tsx scripts/local-cli-e2e.mts",
-    "local:api-smoke": "tsx scripts/local-api-smoke.mts"
+    "local:api-smoke": "tsx scripts/local-api-smoke.mts",
+    "local:cloud-e2e": "tsx scripts/phase3-cloud-e2e.mts",
+    "local:phase2-post": "tsx scripts/phase2-post-session.mts"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",

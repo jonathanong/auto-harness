@@ -4,6 +4,8 @@ HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/ap
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [security.md](security.md). Deploy/local: [setup.md](setup.md).
 
+**Phase 2+ fields on `POST /sessions`:** `ref`, `commandProfile` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
 ## Authentication

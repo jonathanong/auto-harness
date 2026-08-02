@@ -40,6 +40,8 @@ export function validateCreateSessionInput(input: {
   requiredLabels?: unknown;
   onConflict?: unknown;
   ref?: unknown;
+  concurrencyKey?: unknown;
+  metadata?: unknown;
 }): ValidationResult<{
   repositoryId: string;
   prompt: string;
@@ -49,6 +51,8 @@ export function validateCreateSessionInput(input: {
   requiredLabels: string[];
   onConflict: OnConflict;
   ref: string | undefined;
+  concurrencyKey: string | undefined;
+  metadata: Record<string, unknown> | undefined;
 }> {
   if (!isNonEmptyString(input.repositoryId)) {
     return { ok: false, error: "repositoryId is required" };
@@ -101,6 +105,26 @@ export function validateCreateSessionInput(input: {
     ref = input.ref;
   }
 
+  let concurrencyKey: string | undefined;
+  if (input.concurrencyKey !== undefined) {
+    if (!isNonEmptyString(input.concurrencyKey)) {
+      return { ok: false, error: "concurrencyKey must be a non-empty string when set" };
+    }
+    concurrencyKey = input.concurrencyKey;
+  }
+
+  let metadata: Record<string, unknown> | undefined;
+  if (input.metadata !== undefined) {
+    if (
+      typeof input.metadata !== "object" ||
+      input.metadata === null ||
+      Array.isArray(input.metadata)
+    ) {
+      return { ok: false, error: "metadata must be an object when set" };
+    }
+    metadata = input.metadata as Record<string, unknown>;
+  }
+
   return {
     ok: true,
     value: {
@@ -112,6 +136,8 @@ export function validateCreateSessionInput(input: {
       requiredLabels,
       onConflict,
       ref,
+      concurrencyKey,
+      metadata,
     },
   };
 }

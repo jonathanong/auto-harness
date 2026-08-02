@@ -143,6 +143,24 @@ describe("validateCreateSessionInput", () => {
       error: "ref must be a non-empty string when set",
     });
   });
+
+  it("accepts concurrencyKey and metadata", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      concurrencyKey: "pr-12",
+      metadata: { pr: 12 },
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.concurrencyKey).toBe("pr-12");
+      expect(result.value.metadata).toEqual({ pr: 12 });
+    }
+  });
+
+  it("rejects bad concurrencyKey and metadata", () => {
+    expect(validateCreateSessionInput({ ...base, concurrencyKey: "" }).ok).toBe(false);
+    expect(validateCreateSessionInput({ ...base, metadata: [] }).ok).toBe(false);
+  });
 });
 
 describe("formatLogSortKey", () => {
