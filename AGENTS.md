@@ -31,13 +31,16 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm depcruise`              | Architecture import boundaries           |
 | `pnpm links`                  | lychee markdown link check               |
 | `pnpm check`                  | Full local CI gate                       |
+| `pnpm local:e2e`              | Phase 1 create→run on a temp git repo    |
+| `pnpm local:api`              | In-memory API on `:7420`                 |
+| `pnpm local:agent`            | Agent CLI (`status`, `run-session`)      |
 
-Package manager: **pnpm** only (see `packageManager` in root `package.json`).
+Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/setup.md](docs/setup.md).
 
 ## Testing
 
 - Framework: **vitest**.
-- Coverage: **100%** lines, branches, functions, statements on `modules/*/src` and `services/*/src` (excluding pure type files like `types.ts` and `*.test.ts`).
+- Coverage: **100%** lines, branches, functions, statements on `modules/*/src` and `services/*/src` (excluding pure type files like `types.ts`, `session.ts`, thin `**/cli.ts`, and `*.test.ts`).
 - **Mock only host CLI boundaries** (`child_process`, `node-pty`, and similar “run a CLI tool” adapters). Prefer real modules, in-memory fakes, and pure functions for everything else.
 - Do not lower coverage thresholds to land incomplete code.
 
