@@ -100,8 +100,8 @@ sequenceDiagram
     participant AWS as Control plane
 
     Main->>Cfg: Load + validate JSON/env
-    Main->>WTM: Ensure repos exist; create missing worktrees
-    WTM->>WTM: git worktree add if needed; prune stale
+    Main->>WTM: Ensure repos exist - create missing worktrees
+    WTM->>WTM: git worktree add if needed - prune stale
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
     Conn->>AWS: agent:register { agentId, worktrees[] }
@@ -475,7 +475,7 @@ sequenceDiagram
     Agent->>Agent: Exit 0
     Updater->>Agent: Start new binary / systemd restart
     Agent->>AWS: connect + agent:register
-    Note over Agent: draining = false; accept assigns again
+    Note over Agent: draining = false - accept assigns again
 ```
 
 ### Steps (agent)

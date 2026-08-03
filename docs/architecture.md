@@ -101,7 +101,7 @@ sequenceDiagram
     end
     Tool-->>Agent: exit
     Agent->>API: session:status
-    API->>DDB: terminal status; free worktree; drain queue
+    API->>DDB: terminal status - free worktree - drain queue
 ```
 
 Details: [aws.md — Scheduler](aws.md#scheduler), [agent.md — Session lifecycle](agent.md#session-lifecycle-agent-view).
@@ -115,9 +115,9 @@ sequenceDiagram
     participant DDB as DynamoDB
 
     Agent->>API: Connect ?token=hns_…
-    API->>DDB: Validate key; store Connection
+    API->>DDB: Validate key - store Connection
     Agent->>API: agent:register { worktrees }
-    API->>DDB: Upsert inventory; assign pending if any
+    API->>DDB: Upsert inventory - assign pending if any
 
     Note over Agent,API: Disconnect
     Agent->>Agent: Backoff reconnect (max 60s)

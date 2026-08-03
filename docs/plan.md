@@ -181,7 +181,7 @@ erDiagram
 
     SessionLog {
         string sessionId PK
-        string timestampSeq SK "format: <ISO-timestamp>#<zero-padded-seq> — see Invariant 5"
+        string timestampSeq "SK, format: <ISO-timestamp> + <zero-padded-seq> — see Invariant 5"
         string stream "stdout | stderr | system"
         string content
         number ttl "DynamoDB TTL, auto-delete after expiry"
@@ -198,7 +198,7 @@ erDiagram
 
     AuditLog {
         string id PK
-        string timestamp SK
+        string timestamp "sort key"
         string userId
         string action "e.g. session:create, account:delete"
         string resourceId

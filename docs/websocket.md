@@ -149,7 +149,7 @@ sequenceDiagram
 
     Agent->>GW: Connect ?token=hns_…
     GW->>Lambda: $connect
-    Lambda->>DDB: Validate key; store Connection
+    Lambda->>DDB: Validate key - store Connection
     GW-->>Agent: open
 
     Agent->>GW: agent:register
@@ -162,7 +162,7 @@ sequenceDiagram
     end
 
     Agent->>GW: disconnect
-    Lambda->>DDB: Remove Connection; mark worktrees offline
+    Lambda->>DDB: Remove Connection - mark worktrees offline
 ```
 
 Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [agent.md](agent.md#disconnect-and-crash-recovery).

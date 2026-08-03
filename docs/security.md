@@ -190,7 +190,7 @@ sequenceDiagram
     Lambda->>DDB: Store connection record (connectionId, boundAgentId)
     Lambda-->>APIGW: Allow connection
     APIGW-->>Agent: Connected
-    Agent->>APIGW: agent:register { agentId: "vps-prod-1", worktrees[] }
+    Agent->>APIGW: agent:register { agentId: 'vps-prod-1', worktrees[] }
     APIGW->>Lambda: $default handler
     Lambda->>Lambda: Validate agentId matches boundAgentId
     Lambda->>DDB: Check no existing connection for agentId
