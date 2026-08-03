@@ -4,7 +4,7 @@
 
 **Bar:** the full control-plane + agent + (optional) web path works with **real** DynamoDB Local, **real** HTTP/WS, **real** git worktrees, and a **real non-interactive CLI** profile (e.g. `grok`, `codex`, or `echo` for a dry run). Do not claim “ready to deploy” after unit tests alone.
 
-Related: [local-development.md](local-development.md) (runbook), [deploy.md](deploy.md) (deploy/update/teardown), [cli.md](cli.md) (agent CLI), [api.md](api.md) (REST), [websocket.md](websocket.md), [plan.md](plan.md) (acceptance criteria).
+Related: [local-development.md](local-development.md) (runbook), [deploy-local.md](deploy-local.md) (local ops), [deploy.md](deploy.md) (ops index), [cli.md](cli.md) (agent CLI), [api.md](api.md) (REST), [websocket.md](websocket.md), [plan.md](plan.md) (acceptance criteria).
 
 ---
 

@@ -2,7 +2,7 @@
 
 Install Auto Harness and run it in production-shaped environments. **Day-to-day local work (DynamoDB Local, `pnpm local:*`, e2e, manage UI) lives in [local-development.md](local-development.md).**
 
-**Deploy / update / teardown (local + AWS/VPS ops):** [deploy.md](deploy.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
+**Deploy / update / teardown:** [deploy.md](deploy.md) (index) · [deploy-local.md](deploy-local.md) · [deploy-aws.md](deploy-aws.md) · [deploy-agent.md](deploy-agent.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
 
 Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
 
@@ -38,7 +38,7 @@ pnpm check
 
 ## AWS control plane (later phases)
 
-Full ops (deploy, update, teardown, secrets, post-deploy smoke): **[deploy.md](deploy.md)**.
+Full AWS ops: **[deploy-aws.md](deploy-aws.md)**. Index: [deploy.md](deploy.md).
 
 Short checklist:
 
@@ -47,8 +47,8 @@ Short checklist:
    - `HARNESS_ADMINS` — base64 JSON `[{ "username", "password" }]`
    - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
    - `WEB_ORIGIN` — browser origin for CORS
-3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (**only when the CDK app is fully implemented** — see [deploy.md](deploy.md) maturity table)
-4. Create users / service accounts; bind agent API key; add repositories
+3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (**only when the CDK app is fully implemented** — see [deploy-aws.md](deploy-aws.md))
+4. Create users / service accounts; bind agent API key; add repositories; install agents per [deploy-agent.md](deploy-agent.md)
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
@@ -56,21 +56,9 @@ See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
 ## VPS agent (production shape)
 
-Production uses WebSocket `start` (agent daemon). Locally, use `run-session` / e2e as in [local-development.md](local-development.md).
+Install / update / teardown: **[deploy-agent.md](deploy-agent.md)**. Locally: `run-session` / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
 
-Agent config includes optional `apiUrl` / `apiKey` for cloud connect. **commandProfiles** stay required for all execution (D4).
-
-Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
-
-Env vars:
-
-| Variable              | Required  | Default                            |
-| --------------------- | --------- | ---------------------------------- |
-| `HARNESS_CONFIG_PATH` | no        | `./auto-harness-agent.config.json` |
-| `HARNESS_AGENT_ID`    | no        | config / hostname                  |
-| `HARNESS_API_URL`     | for cloud | config `apiUrl`                    |
-| `HARNESS_API_KEY`     | for cloud | config `apiKey`                    |
-| `HARNESS_LOG_LEVEL`   | no        | `info`                             |
+Agent config includes optional `apiUrl` / `apiKey` for cloud connect. **commandProfiles** stay required for all execution (D4). Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
 
 ---
 
