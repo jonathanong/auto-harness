@@ -161,9 +161,25 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ## CI notes
 
-- Set `CI=1` so servers are not reused and retries apply.
-- Ensure Docker is available for DynamoDB Local.
-- Install browsers in CI: `pnpm exec playwright install --with-deps chromium`
+GitHub Actions (`.github/workflows/ci.yml`) runs a parallel job **`playwright (control + agent)`**:
+
+1. `pnpm install --frozen-lockfile`
+2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
+3. `pnpm test:e2e` — Playwright `webServer` starts DynamoDB Local (Docker), API, control UI, agent UI
+4. On failure, uploads `playwright-report/` and `test-results/` as artifacts (7-day retention)
+
+GitHub sets `CI=true`, so config applies:
+
+- `reuseExistingServer: false`
+- `retries: 2`, `workers: 2`
+- reporters: `github` + `list`
+
+Local install for CI-like runs:
+
+```bash
+pnpm exec playwright install --with-deps chromium
+CI=1 pnpm test:e2e
+```
 
 ---
 
