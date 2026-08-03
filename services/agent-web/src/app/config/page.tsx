@@ -26,9 +26,11 @@ export default async function HostConfigPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <div className="mx-auto max-w-2xl space-y-8" data-pw="page-agent-config">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Local repositories</h2>
+        <h2 className="text-2xl font-semibold tracking-tight" data-pw="agent-config-heading">
+          Local repositories
+        </h2>
         <p className="text-sm text-muted-foreground">
           Flow: (1) start agent with env only → registers online, (2) add a local git path here →
           control plane catalog + host inventory, (3) agent reloads inventory and can take work.

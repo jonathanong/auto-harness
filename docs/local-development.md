@@ -2,7 +2,7 @@
 
 Run and test Auto Harness on your machine **without an AWS account**. Install/prereqs overview: [setup.md](setup.md). Agent CLI details: [cli.md](cli.md). Product sequencing: [plan.md](plan.md).
 
-**Pre-deploy end-to-end (full stack + real CLI):** [agent-e2e-testing.md](agent-e2e-testing.md).
+**Pre-deploy end-to-end (full stack + real CLI):** [agent-e2e-testing.md](agent-e2e-testing.md). **Browser UI E2E (Playwright):** [e2e.md](e2e.md).
 
 ## Prerequisites
 
@@ -56,21 +56,22 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 
 ## Commands cheat sheet
 
-| Command                     | What it does                                                 |
-| --------------------------- | ------------------------------------------------------------ |
-| `pnpm local:dynamodb`       | Start DynamoDB Local                                         |
-| `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                            |
-| `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                      |
-| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                          |
-| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7423` (`HARNESS_AGENT_ID`)        |
-| `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                 |
-| `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                  |
-| `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`          |
-| `pnpm local:api-smoke`      | `POST /sessions` → 201                                       |
-| `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                             |
-| `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                    |
-| `pnpm local:manage-verify`  | Repo/schedule CRUD, cancel, drain, web manage routes         |
-| `pnpm check`                | Full local CI gate (lint, fmt, test, knip, depcruise, links) |
+| Command                     | What it does                                                                |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `pnpm local:dynamodb`       | Start DynamoDB Local                                                        |
+| `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                           |
+| `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                     |
+| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                         |
+| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7423` (`HARNESS_AGENT_ID`)                       |
+| `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                                |
+| `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                 |
+| `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`                         |
+| `pnpm local:api-smoke`      | `POST /sessions` → 201                                                      |
+| `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                                            |
+| `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                                   |
+| `pnpm local:manage-verify`  | Repo/schedule CRUD, cancel, drain, web manage routes                        |
+| `pnpm check`                | Full local CI gate (lint, fmt, test, knip, depcruise, links)                |
+| `pnpm test:e2e`             | Playwright browser E2E (starts API + UIs via `webServer`; [e2e.md](e2e.md)) |
 
 ---
 

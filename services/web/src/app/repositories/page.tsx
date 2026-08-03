@@ -25,9 +25,11 @@ export default async function RepositoriesPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-pw="page-repositories">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Repositories</h2>
+        <h2 className="text-2xl font-semibold tracking-tight" data-pw="repositories-heading">
+          Repositories
+        </h2>
         <p className="text-sm text-muted-foreground">
           Add a local repo from this control pane (pick an online agent + absolute path on that
           host), or from the agent pane at :7423/config. Both register the catalog entry and host

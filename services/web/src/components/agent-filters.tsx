@@ -13,11 +13,12 @@ export function AgentFilters() {
   const online = sp.get("online") ?? "all";
 
   return (
-    <div className={`flex items-end gap-3 ${pending ? "opacity-70" : ""}`}>
+    <div className={`flex items-end gap-3 ${pending ? "opacity-70" : ""}`} data-pw="agent-filters">
       <div className="space-y-1">
         <Label htmlFor="online">Online</Label>
         <select
           id="online"
+          data-pw="agent-filter-online"
           className="flex h-9 rounded-md border border-border bg-background px-3 text-sm"
           value={online}
           onChange={(e) => {

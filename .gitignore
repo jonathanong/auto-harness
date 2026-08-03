@@ -12,3 +12,7 @@ coverage/
 *.log
 .vitest/
 .local-grok-demo/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

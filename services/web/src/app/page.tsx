@@ -28,14 +28,17 @@ export default async function DashboardPage() {
   const online = agents.filter((x) => x.online).length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-pw="page-dashboard">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Dashboard</h2>
+          <h2 className="text-2xl font-semibold tracking-tight" data-pw="dashboard-heading">
+            Dashboard
+          </h2>
           <p className="text-sm text-muted-foreground">Control plane overview</p>
         </div>
         <Link
           href="/sessions/new"
+          data-pw="dashboard-new-session"
           className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           New session
@@ -43,29 +46,36 @@ export default async function DashboardPage() {
       </div>
 
       {error ? (
-        <p className="rounded-md border border-destructive/40 bg-red-50 p-3 text-sm text-red-900">
+        <p
+          className="rounded-md border border-destructive/40 bg-red-50 p-3 text-sm text-red-900"
+          data-pw="dashboard-api-error"
+        >
           API unreachable ({error}). Start <code>pnpm local:api</code>.
         </p>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card>
+      <div className="grid gap-4 sm:grid-cols-3" data-pw="dashboard-stats">
+        <Card data-pw="stat-running">
           <CardHeader>
             <CardTitle className="text-base">Running</CardTitle>
           </CardHeader>
-          <CardContent className="text-3xl font-semibold">{running}</CardContent>
+          <CardContent className="text-3xl font-semibold" data-pw="stat-running-value">
+            {running}
+          </CardContent>
         </Card>
-        <Card>
+        <Card data-pw="stat-queued">
           <CardHeader>
             <CardTitle className="text-base">Queued</CardTitle>
           </CardHeader>
-          <CardContent className="text-3xl font-semibold">{queued}</CardContent>
+          <CardContent className="text-3xl font-semibold" data-pw="stat-queued-value">
+            {queued}
+          </CardContent>
         </Card>
-        <Card>
+        <Card data-pw="stat-agents-online">
           <CardHeader>
             <CardTitle className="text-base">Agents online</CardTitle>
           </CardHeader>
-          <CardContent className="text-3xl font-semibold">
+          <CardContent className="text-3xl font-semibold" data-pw="stat-agents-online-value">
             {online}/{agents.length}
           </CardContent>
         </Card>

@@ -14,8 +14,10 @@ export default async function NewSessionPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg space-y-4">
-      <h2 className="text-2xl font-semibold tracking-tight">New session</h2>
+    <div className="mx-auto max-w-lg space-y-4" data-pw="page-session-new">
+      <h2 className="text-2xl font-semibold tracking-tight" data-pw="session-new-heading">
+        New session
+      </h2>
       <p className="text-sm text-muted-foreground">
         Command profiles only (D4) — free-form shell is rejected.
       </p>

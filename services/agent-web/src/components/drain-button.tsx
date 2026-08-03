@@ -14,6 +14,7 @@ export function DrainButton({ agentId }: { agentId: string }) {
       type="button"
       variant="outline"
       disabled={pending}
+      data-pw="agent-drain"
       onClick={() => {
         start(async () => {
           await fetch(`${apiBase()}/api/v1/agents/drain`, {

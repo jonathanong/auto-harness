@@ -20,11 +20,13 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
   return (
     <form
       className="grid max-w-lg gap-3"
+      data-pw="form-add-local-repo"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
         setOk(null);
-        const fd = new FormData(e.currentTarget);
+        const form = e.currentTarget;
+        const fd = new FormData(form);
         const id = String(fd.get("id") ?? "").trim();
         const name = String(fd.get("name") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
@@ -79,36 +81,67 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
             `Registered ${id} on control plane and attached to agent ${agentId}. ` +
               `Daemon picks it up within ~15s.`,
           );
-          e.currentTarget.reset();
+          form.reset();
           router.refresh();
         });
       }}
     >
       <div className="space-y-1">
         <Label htmlFor="id">repository id</Label>
-        <Input id="id" name="id" required placeholder="demo" defaultValue="demo" />
+        <Input
+          id="id"
+          name="id"
+          required
+          placeholder="demo"
+          defaultValue="demo"
+          data-pw="add-repo-id"
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="name">display name</Label>
-        <Input id="name" name="name" placeholder="Demo" />
+        <Input id="name" name="name" placeholder="Demo" data-pw="add-repo-name" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="path">absolute path on this host</Label>
-        <Input id="path" name="path" required placeholder="/Users/you/src/my-repo" />
+        <Input
+          id="path"
+          name="path"
+          required
+          placeholder="/Users/you/src/my-repo"
+          data-pw="add-repo-path"
+        />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="defaultBranch">default branch</Label>
-          <Input id="defaultBranch" name="defaultBranch" defaultValue="main" />
+          <Input
+            id="defaultBranch"
+            name="defaultBranch"
+            defaultValue="main"
+            data-pw="add-repo-branch"
+          />
         </div>
         <div className="space-y-1">
           <Label htmlFor="worktreeId">worktree id</Label>
-          <Input id="worktreeId" name="worktreeId" defaultValue="wt-1" />
+          <Input
+            id="worktreeId"
+            name="worktreeId"
+            defaultValue="wt-1"
+            data-pw="add-repo-worktree-id"
+          />
         </div>
       </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      {ok ? <p className="text-sm text-emerald-700">{ok}</p> : null}
-      <Button type="submit" disabled={pending}>
+      {error ? (
+        <p className="text-sm text-red-700" data-pw="add-repo-error">
+          {error}
+        </p>
+      ) : null}
+      {ok ? (
+        <p className="text-sm text-emerald-700" data-pw="add-repo-ok">
+          {ok}
+        </p>
+      ) : null}
+      <Button type="submit" disabled={pending} data-pw="add-repo-submit">
         {pending ? "Registering…" : "Register local repo"}
       </Button>
     </form>

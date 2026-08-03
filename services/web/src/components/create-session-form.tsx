@@ -14,6 +14,7 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
   return (
     <form
       className="space-y-4"
+      data-pw="form-create-session"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -49,7 +50,13 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
     >
       <div className="space-y-1">
         <Label htmlFor="repositoryId">Repository id</Label>
-        <Input id="repositoryId" name="repositoryId" required defaultValue="demo" />
+        <Input
+          id="repositoryId"
+          name="repositoryId"
+          required
+          defaultValue="demo"
+          data-pw="create-session-repository-id"
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="commandProfile">Command profile</Label>
@@ -57,6 +64,7 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
           id="commandProfile"
           name="commandProfile"
           required
+          data-pw="create-session-command-profile"
           className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
           defaultValue={profiles[0] ?? ""}
         >
@@ -72,20 +80,35 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
       </div>
       <div className="space-y-1">
         <Label htmlFor="prompt">Prompt</Label>
-        <Textarea id="prompt" name="prompt" required rows={4} />
+        <Textarea id="prompt" name="prompt" required rows={4} data-pw="create-session-prompt" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label htmlFor="timeout">Timeout (s)</Label>
-          <Input id="timeout" name="timeout" type="number" defaultValue={600} min={1} />
+          <Input
+            id="timeout"
+            name="timeout"
+            type="number"
+            defaultValue={600}
+            min={1}
+            data-pw="create-session-timeout"
+          />
         </div>
         <div className="space-y-1">
           <Label htmlFor="ref">Git ref</Label>
-          <Input id="ref" name="ref" placeholder="main" />
+          <Input id="ref" name="ref" placeholder="main" data-pw="create-session-ref" />
         </div>
       </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <Button type="submit" disabled={pending || profiles.length === 0}>
+      {error ? (
+        <p className="text-sm text-red-700" data-pw="create-session-error">
+          {error}
+        </p>
+      ) : null}
+      <Button
+        type="submit"
+        disabled={pending || profiles.length === 0}
+        data-pw="create-session-submit"
+      >
         {pending ? "Creating…" : "Create session"}
       </Button>
     </form>

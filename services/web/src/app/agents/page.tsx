@@ -62,9 +62,11 @@ export default async function AgentsPage({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-pw="page-agents">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Agents</h2>
+        <h2 className="text-2xl font-semibold tracking-tight" data-pw="agents-heading">
+          Agents
+        </h2>
         <p className="text-sm text-muted-foreground">
           Fleet view. Host inventory is configured on the <strong>agent pane</strong> (
           <code>pnpm local:agent-web</code> → :7423).

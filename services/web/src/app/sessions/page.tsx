@@ -64,9 +64,11 @@ export default async function SessionsPage({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-pw="page-sessions">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold tracking-tight">Sessions</h2>
+        <h2 className="text-2xl font-semibold tracking-tight" data-pw="sessions-heading">
+          Sessions
+        </h2>
         <Link
           href="/sessions/new"
           className="text-sm font-medium text-primary underline-offset-4 hover:underline"

@@ -12,8 +12,14 @@
         "scripts/phase3-ws-e2e.mts",
         "scripts/manage-verify.mts",
         "vitest.config.ts",
+        "playwright.config.ts",
       ],
-      "project": ["scripts/**/*.{ts,mts}", "vitest.config.ts"],
+      "project": [
+        "scripts/**/*.{ts,mts}",
+        "vitest.config.ts",
+        "playwright.config.ts",
+        "e2e/**/*.ts",
+      ],
     },
     "modules/shared": {
       "project": ["src/**/*.ts"],
@@ -43,6 +49,6 @@
     },
   },
   "ignore": ["**/*-test-helpers.ts", "**/.next/**", "**/next-env.d.ts", "**/next.config.ts"],
-  "ignoreBinaries": ["lychee"],
+  "ignoreBinaries": ["lychee", "playwright"],
   "ignoreDependencies": ["autoprefixer", "postcss", "tailwindcss", "next", "react", "react-dom"],
 }

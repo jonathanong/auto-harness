@@ -27,8 +27,10 @@ export default async function SchedulesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-semibold tracking-tight">Schedules</h2>
+    <div className="space-y-6" data-pw="page-schedules">
+      <h2 className="text-2xl font-semibold tracking-tight" data-pw="schedules-heading">
+        Schedules
+      </h2>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <Table>
         <TableHeader>

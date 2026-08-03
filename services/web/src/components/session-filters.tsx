@@ -31,11 +31,15 @@ export function SessionFilters() {
   );
 
   return (
-    <div className={`flex flex-wrap items-end gap-3 ${pending ? "opacity-70" : ""}`}>
+    <div
+      className={`flex flex-wrap items-end gap-3 ${pending ? "opacity-70" : ""}`}
+      data-pw="session-filters"
+    >
       <div className="space-y-1">
         <Label htmlFor="status">Status</Label>
         <select
           id="status"
+          data-pw="session-filter-status"
           className="flex h-9 rounded-md border border-border bg-background px-3 text-sm"
           value={status}
           onChange={(e) => {
@@ -53,6 +57,7 @@ export function SessionFilters() {
         <Label htmlFor="q">Search</Label>
         <Input
           id="q"
+          data-pw="session-filter-q"
           defaultValue={q}
           placeholder="session id or prompt…"
           onKeyDown={(e) => {

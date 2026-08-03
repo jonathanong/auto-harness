@@ -15,6 +15,7 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
   return (
     <form
       className="space-y-3"
+      data-pw="form-host-config-json"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -54,11 +55,20 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
           required
           defaultValue={initialJson}
           className="font-mono text-xs"
+          data-pw="host-config-json"
         />
       </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      {ok ? <p className="text-sm text-emerald-700">Saved.</p> : null}
-      <Button type="submit" disabled={pending}>
+      {error ? (
+        <p className="text-sm text-red-700" data-pw="host-config-error">
+          {error}
+        </p>
+      ) : null}
+      {ok ? (
+        <p className="text-sm text-emerald-700" data-pw="host-config-ok">
+          Saved.
+        </p>
+      ) : null}
+      <Button type="submit" disabled={pending} data-pw="host-config-submit">
         {pending ? "Saving…" : "Save host config"}
       </Button>
     </form>

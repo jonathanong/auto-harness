@@ -44,10 +44,12 @@ export default async function AgentStatusPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-pw="page-agent-status">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">{id}</h2>
+          <h2 className="text-2xl font-semibold tracking-tight" data-pw="agent-status-id">
+            {id}
+          </h2>
           <p className="text-sm text-muted-foreground">
             Agent pane — control plane is on :7421. Register with env only, then{" "}
             <a className="underline" href="/config">
