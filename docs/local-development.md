@@ -235,7 +235,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 - Relative TypeScript imports use **`.ts` extensions**.
 - Avoid TS features Node cannot strip (enums, namespaces, parameter properties).
 - **D4:** only named `commandProfile`s — never free-form shell command strings over the API.
-- Secrets stay on the agent host (git + AI CLIs); not in REST session bodies. See [security.md](security.md).
+- Secrets stay on the agent host (git + AI CLIs); not in REST session bodies. See [security.md](security.md), [auth.md](auth.md).
 
 ---
 

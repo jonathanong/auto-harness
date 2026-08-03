@@ -26,7 +26,8 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [architecture.md](architecture.md) | Two-plane overview + flows                            |
 | [aws.md](aws.md)                   | Control plane internals                               |
 | [agent.md](agent.md)               | VPS agent internals                                   |
-| [security.md](security.md)         | Auth, binding, hardening                              |
+| [auth.md](auth.md)                 | Credentials, roles, login, agent binding              |
+| [security.md](security.md)         | Principles, transport, hardening, threat boundaries   |
 | [web.md](web.md)                   | Web UI behavior                                       |
 | [integrations.md](integrations.md) | Slack (+ future)                                      |
 | [plan.md](plan.md)                 | Phases + data model                                   |

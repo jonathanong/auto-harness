@@ -2,7 +2,7 @@
 
 HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/api/v1` via API Gateway + Lambda.
 
-Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [security.md](security.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
+Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
 **Phase 2+ fields on `POST /sessions`:** `ref`, `commandProfile` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
@@ -176,12 +176,12 @@ Create a service account. **Admin only.**
 }
 ```
 
-| Field                 | Type     | Required | Description                                                                                                                      |
-| --------------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `name`                | string   | ✓        | Human-readable name                                                                                                              |
-| `role`                | string   | ✓        | `read-only`, `operator`, or `admin`                                                                                              |
-| `allowedRepositories` | string[] | ✗        | Restrict to specific repos. Default: all repos.                                                                                  |
-| `boundAgentId`        | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [security.md](security.md#agent-binding)). |
+| Field                 | Type     | Required | Description                                                                                                              |
+| --------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `name`                | string   | ✓        | Human-readable name                                                                                                      |
+| `role`                | string   | ✓        | `read-only`, `operator`, or `admin`                                                                                      |
+| `allowedRepositories` | string[] | ✗        | Restrict to specific repos. Default: all repos.                                                                          |
+| `boundAgentId`        | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [auth.md](auth.md#agent-binding)). |
 
 **Response:** `201 Created`
 

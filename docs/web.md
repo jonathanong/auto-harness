@@ -2,9 +2,11 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, schedules, and agents. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md).
+Next.js UI for sessions, repositories, schedules, and agents. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
 ## Authentication
+
+UI-facing login behavior below. Server-side credential types, auth priority, and JWT cookie details: [auth.md](auth.md).
 
 ### Login Page
 

@@ -44,7 +44,7 @@ pnpm check
 3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (when CDK is implemented)
 4. Create users / service accounts; bind agent API key; add repositories
 
-See [aws.md](aws.md), [security.md](security.md).
+See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
 ---
 
@@ -74,4 +74,4 @@ Env vars:
 - Agent holds git + AI credentials on the VPS
 - Free-form shell commands are not accepted over the API — only named `commandProfile`s
 
-See [security.md](security.md).
+See [auth.md](auth.md), [security.md](security.md).

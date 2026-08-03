@@ -287,7 +287,7 @@ Prefer **provider-specific phrases** over bare `429` when possible, to avoid fal
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)
 - Agent host OOM / missing CLI → ordinary `failed` without `usage_limit`
-- Auto Harness API rate limits (control plane `429`) — separate; see [api.md](api.md) / [security.md](security.md)
+- Auto Harness API rate limits (control plane `429`) — separate; see [api.md](api.md) / [security.md](security.md#rate-limiting)
 
 **No auto-retry.** Usage limits are operator/account problems, not transient scheduler failures. A future optional “retry after” policy is out of scope unless explicitly added.
 
@@ -575,7 +575,7 @@ Concurrency knobs: **number of worktrees** in config (not a separate thread pool
 - Prompt text is untrusted input: never `shell: true` with string interpolation
 - Docker group membership is root-equivalent — grant only if required
 
-Full matrix: [security.md](security.md).
+Full matrix: [security.md](security.md). Agent API key binding: [auth.md](auth.md#vps-agent-authentication).
 
 ---
 
@@ -636,4 +636,5 @@ ERROR: CLI tool not found: codex
 | [websocket.md](websocket.md)                 | Message types                 |
 | [aws.md](aws.md)                             | Scheduler, disconnect         |
 | [architecture.md](architecture.md)           | Cross-plane flows             |
+| [auth.md](auth.md)                           | Agent API key binding         |
 | [security.md](security.md)                   | Host hardening                |

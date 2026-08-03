@@ -11,19 +11,19 @@ REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup
 
 The control plane owns:
 
-| Concern                       | Implementation                                                         |
-| ----------------------------- | ---------------------------------------------------------------------- |
-| Public REST API               | API Gateway HTTP API + Lambda                                          |
-| Real-time agent + UI channels | API Gateway WebSocket API + Lambda                                     |
-| Durable state                 | DynamoDB (on-demand)                                                   |
-| Long-term log archives        | S3                                                                     |
-| Session queue + assignment    | Scheduler service (invoked from REST/WS/cron)                          |
-| Cron schedules                | EventBridge rule (1 min) → Cron Lambda                                 |
-| Authn / authz                 | Session cookies, API keys, basic auth (see [security.md](security.md)) |
-| Integrations                  | Slack (and future webhooks) via KMS-encrypted config                   |
-| Audit trail                   | AuditLogs table                                                        |
+| Concern                       | Implementation                                                 |
+| ----------------------------- | -------------------------------------------------------------- |
+| Public REST API               | API Gateway HTTP API + Lambda                                  |
+| Real-time agent + UI channels | API Gateway WebSocket API + Lambda                             |
+| Durable state                 | DynamoDB (on-demand)                                           |
+| Long-term log archives        | S3                                                             |
+| Session queue + assignment    | Scheduler service (invoked from REST/WS/cron)                  |
+| Cron schedules                | EventBridge rule (1 min) → Cron Lambda                         |
+| Authn / authz                 | Session cookies, API keys, basic auth (see [auth.md](auth.md)) |
+| Integrations                  | Slack (and future webhooks) via KMS-encrypted config           |
+| Audit trail                   | AuditLogs table                                                |
 
-The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([agent.md](agent.md), [security.md](security.md)).
+The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([agent.md](agent.md), [security.md](security.md)). Authn/authz: [auth.md](auth.md).
 
 ---
 
@@ -106,7 +106,7 @@ Stack outputs (typical):
 ### REST (HTTPS)
 
 - Base path: `/api/v1`
-- Auth: cookie JWT, `Authorization: Bearer hns_...`, or Basic (see [security.md](security.md))
+- Auth: cookie JWT, `Authorization: Bearer hns_...`, or Basic (see [auth.md](auth.md))
 - CORS: allow only the configured Web UI origin(s)
 - Payload: JSON request/response; consistent error envelope (see [api.md](api.md))
 
@@ -457,5 +457,6 @@ Execution always happens on the agent. The control plane only **schedules and ob
 | [websocket.md](websocket.md)                 | Real-time protocol              |
 | [agent.md](agent.md)                         | Execution plane                 |
 | [architecture.md](architecture.md)           | Flows                           |
-| [security.md](security.md)                   | Auth                            |
+| [auth.md](auth.md)                           | Authn / authz                   |
+| [security.md](security.md)                   | Trust boundaries / hardening    |
 | [costs.md](costs.md)                         | Cost model                      |

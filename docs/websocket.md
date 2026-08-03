@@ -8,10 +8,10 @@ Real-time channel between the control plane, VPS agents, and the Web UI. REST CR
 wss://<api-domain>/ws?token=<credential>
 ```
 
-| Connection | Credential                                                                   | First message     |
-| ---------- | ---------------------------------------------------------------------------- | ----------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `agentId`                         | `agent:register`  |
-| Web UI     | Short-lived ticket or session-derived token (see [security.md](security.md)) | `client:register` |
+| Connection | Credential                                                           | First message     |
+| ---------- | -------------------------------------------------------------------- | ----------------- |
+| VPS agent  | Service account API key (`hns_…`) bound to `agentId`                 | `agent:register`  |
+| Web UI     | Short-lived ticket or session-derived token (see [auth.md](auth.md)) | `client:register` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
