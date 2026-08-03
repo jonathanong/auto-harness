@@ -78,3 +78,5 @@ export {
   sessionListHref,
   type SessionListQuery,
 } from "./list-query.ts";
+
+export { apiBase, apiGet, resolveServerApiBase } from "./api-client.ts";
