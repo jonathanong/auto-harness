@@ -77,7 +77,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     pendingAcks: new Map(),
     drainingAgents: new Set(),
     disconnectedAgents: new Map(),
-    publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+    publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     now: options.now ?? (() => new Date().toISOString()),
     idFactory: options.idFactory ?? (() => `sess-${randomBytes(4).toString("hex")}`),
     connectionIdFactory:

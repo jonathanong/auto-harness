@@ -30,7 +30,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<{
   port: number;
   close: () => Promise<void>;
 }> {
-  const port = options.port ?? 3000;
+  const port = options.port ?? 7421;
   const apiBaseUrl = options.apiBaseUrl ?? process.env.HARNESS_API_HTTP ?? "http://127.0.0.1:7420";
   const client = createHttpApiClient(apiBaseUrl);
 
@@ -141,7 +141,7 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<{
 
 export function main(argv: string[] = process.argv): Promise<number> {
   const args = argv.slice(2);
-  let port = 3000;
+  let port = 7421;
   const portIdx = args.indexOf("--port");
   if (portIdx >= 0) {
     port = Number(args[portIdx + 1]);

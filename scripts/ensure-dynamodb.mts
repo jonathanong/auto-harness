@@ -22,7 +22,7 @@ async function main(): Promise<void> {
   console.log(
     JSON.stringify({
       ok: true,
-      endpoint: process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:8000",
+      endpoint: process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:7422",
       tables,
       expected: names,
     }),

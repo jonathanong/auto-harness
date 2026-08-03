@@ -22,18 +22,28 @@ There is **no compile step**. Scripts and CLIs run TypeScript directly via Node 
 
 ---
 
+## Local ports (adjacent 7xxx)
+
+| Service        | Port | URL                     |
+| -------------- | ---- | ----------------------- |
+| API (+ `/ws`)  | 7420 | `http://127.0.0.1:7420` |
+| Web UI         | 7421 | `http://127.0.0.1:7421` |
+| DynamoDB Local | 7422 | `http://127.0.0.1:7422` |
+
+---
+
 ## DynamoDB Local
 
 Control-plane data uses **Amazon DynamoDB Local** (official image), not a custom in-memory database. Start it before `local:api` / API smoke tests:
 
 ```bash
 pnpm local:dynamodb
-pnpm local:dynamodb:ready   # creates tables, waits for :8000
+pnpm local:dynamodb:ready   # creates tables, waits for :7422
 ```
 
 | Item        | Value                                                    |
 | ----------- | -------------------------------------------------------- |
-| Endpoint    | `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:8000`) |
+| Endpoint    | `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:7422`) |
 | Compose     | `docker compose` service `dynamodb`                      |
 | Credentials | Dummy AWS keys are fine for Local                        |
 
@@ -50,7 +60,7 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:dynamodb`       | Start DynamoDB Local                                         |
 | `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                            |
 | `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                      |
-| `pnpm local:web`            | Thin manage UI on `:3000`                                    |
+| `pnpm local:web`            | Thin manage UI on `:7421`                                    |
 | `pnpm local:agent`          | Agent CLI (`status`, `run-session`, later `start`)           |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                  |
 | `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`          |
@@ -161,10 +171,10 @@ pnpm local:agent -- run-session --file /path/to/session.assign.json
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api    # :7420
-pnpm local:web    # :3000 — create-session + manage pages
+pnpm local:web    # :7421 — create-session + manage pages
 ```
 
-Open `http://127.0.0.1:3000`. Surfaces include new session (command profile dropdown of agent-reported names only — D4), sessions list + cancel, repositories, schedules (create/trigger), and agents (drain).
+Open `http://127.0.0.1:7421`. Surfaces include new session (command profile dropdown of agent-reported names only — D4), sessions list + cancel, repositories, schedules (create/trigger), and agents (drain).
 
 ---
 

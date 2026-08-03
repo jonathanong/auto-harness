@@ -27,7 +27,7 @@ export async function createSessionViaApi(): Promise<{
   ref?: string;
 }> {
   const store = new MemorySessionStore({
-    publicBaseUrl: "http://localhost:3000",
+    publicBaseUrl: "http://localhost:7421",
     idFactory: () => "sess-e2e",
     now: () => new Date().toISOString(),
   });

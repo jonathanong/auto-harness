@@ -19,7 +19,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     options.plane ??
     options.store?.plane ??
     new ControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     });
   const store = options.store ?? new MemorySessionStore({ plane });
 
@@ -71,7 +71,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
 
   if (!plane && !store && options.useDynamo !== false) {
     const created = await createControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     });
     plane = created.plane;
     store = new MemorySessionStore({ plane });
@@ -79,7 +79,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane = store.plane;
   } else if (!plane) {
     plane = new ControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:3000",
+      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     });
     store = new MemorySessionStore({ plane });
   }

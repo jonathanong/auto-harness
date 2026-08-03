@@ -54,7 +54,7 @@ If any gate fails, **stop** and fix before manual stack testing.
 Leftover queued sessions from prior smokes will steal worktree assigns (scheduler walks the whole queue). Before a manual E2E, clear the default tables:
 
 ```bash
-export HARNESS_DDB_ENDPOINT=http://127.0.0.1:8000
+export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7422
 export AWS_ACCESS_KEY_ID=local
 export AWS_SECRET_ACCESS_KEY=local
 export AWS_REGION=us-east-1
@@ -63,7 +63,7 @@ node --input-type=module <<'EOF'
 import { createControlPlane } from "./services/api/src/create-plane.ts";
 const { storage } = await createControlPlane({
   tablePrefix: "AutoHarness",
-  publicBaseUrl: "http://127.0.0.1:3000",
+  publicBaseUrl: "http://127.0.0.1:7421",
 });
 await storage.clearAll();
 console.log(JSON.stringify({ ok: true, cleared: "AutoHarness" }));
@@ -73,8 +73,9 @@ EOF
 Confirm nothing is listening on the ports you need (or stop prior processes):
 
 ```bash
-lsof -iTCP:7420 -sTCP:LISTEN || true
-lsof -iTCP:3000 -sTCP:LISTEN || true
+lsof -iTCP:7420 -sTCP:LISTEN || true  # API
+lsof -iTCP:7421 -sTCP:LISTEN || true  # web
+lsof -iTCP:7422 -sTCP:LISTEN || true  # DynamoDB Local
 ```
 
 ---
@@ -185,7 +186,7 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
   -H 'content-type: application/json' \
   -d @"$WORK/config/agent-host.config.json"
 
-# Terminal C — Web (optional, :3000) — also has Agents host-config form
+# Terminal C — Web (optional, :7421) — also has Agents host-config form
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 
 # Terminal D — Agent daemon (env identity only)
@@ -325,7 +326,7 @@ Web create path (D4):
 
 ```bash
 # with API + web + registered agent running:
-curl -sS -X POST http://127.0.0.1:3000/api/create-session \
+curl -sS -X POST http://127.0.0.1:7421/api/create-session \
   -H 'content-type: application/json' \
   -d '{
     "repositoryId": "demo",
@@ -344,11 +345,11 @@ With `pnpm local:web` and API up:
 
 | URL                                | Check                                                          |
 | ---------------------------------- | -------------------------------------------------------------- |
-| http://127.0.0.1:3000/             | Create form; profile **dropdown** includes only agent profiles |
-| http://127.0.0.1:3000/sessions     | Lists sessions; completed session visible                      |
-| http://127.0.0.1:3000/agents       | Shows agent online + profiles                                  |
-| http://127.0.0.1:3000/repositories | List/add works against API                                     |
-| http://127.0.0.1:3000/schedules    | List/add/trigger works                                         |
+| http://127.0.0.1:7421/             | Create form; profile **dropdown** includes only agent profiles |
+| http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                      |
+| http://127.0.0.1:7421/agents       | Shows agent online + profiles                                  |
+| http://127.0.0.1:7421/repositories | List/add works against API                                     |
+| http://127.0.0.1:7421/schedules    | List/add/trigger works                                         |
 
 Automated: `pnpm local:manage-verify`.
 
@@ -383,7 +384,7 @@ kill "$(cat "$WORK/logs/web.pid")" 2>/dev/null || true
 kill "$(cat "$WORK/logs/api.pid")" 2>/dev/null || true
 
 # Or free ports
-for p in 7420 3000; do
+for p in 7420 7421; do
   for pid in $(lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null || true); do kill "$pid" || true; done
 done
 

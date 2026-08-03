@@ -28,13 +28,13 @@ pnpm local:dynamodb
 pnpm local:dynamodb:ready
 
 # Optional: clear leftover sessions/worktrees (avoids stale queue assigns)
-export HARNESS_DDB_ENDPOINT=http://127.0.0.1:8000
+export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7422
 export AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=us-east-1
 node --input-type=module <<'EOF'
 import { createControlPlane } from "./services/api/src/create-plane.ts";
 const { storage } = await createControlPlane({
   tablePrefix: process.env.HARNESS_DDB_PREFIX ?? "AutoHarness",
-  publicBaseUrl: "http://127.0.0.1:3000",
+  publicBaseUrl: "http://127.0.0.1:7421",
 });
 await storage.clearAll();
 console.log(JSON.stringify({ ok: true }));
@@ -46,7 +46,7 @@ pnpm local:api
 
 # Optional thin web UI
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
-# → http://127.0.0.1:3000
+# → http://127.0.0.1:7421
 
 # Agent daemon — env identity only; host inventory from API/UI
 export HARNESS_AGENT_ID=local-1
@@ -90,7 +90,7 @@ kill "$(cat /path/to/web.pid)" 2>/dev/null || true
 kill "$(cat /path/to/api.pid)" 2>/dev/null || true
 
 # Or free ports
-for p in 7420 3000; do
+for p in 7420 7421; do
   for pid in $(lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null || true); do
     kill "$pid" 2>/dev/null || true
   done

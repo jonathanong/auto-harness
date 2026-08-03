@@ -32,8 +32,8 @@ describe("startLocalServer", () => {
 
   it("rejects bind errors", async () => {
     const port = 17421 + Math.floor(Math.random() * 500);
-    const first = await startLocalServer({ port });
-    await expect(startLocalServer({ port })).rejects.toBeTruthy();
+    const first = await startLocalServer({ port, useDynamo: false });
+    await expect(startLocalServer({ port, useDynamo: false })).rejects.toBeTruthy();
     await first.close();
   });
 

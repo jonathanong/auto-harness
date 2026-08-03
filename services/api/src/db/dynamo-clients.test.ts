@@ -17,7 +17,7 @@ describe("DynamoDB Local clients", () => {
     expect(statusShardAttr("queued", 2)).toBe("queued#2");
     expect(tableNames("AH").sessions).toBe("AH-Sessions");
     expect(tableNames("").sessions).toContain("Sessions");
-    expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("8000");
+    expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("7422");
     const doc = createDynamoDocumentClient();
     expect(doc).toBeTruthy();
   });
