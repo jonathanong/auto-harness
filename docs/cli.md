@@ -2,7 +2,7 @@
 
 Phase 1 local tooling for the agent and API packages. CI callers use the [REST API](api.md) (fire-and-forget); they do not run this CLI.
 
-Full local runbook: [local-development.md](local-development.md).
+Full local runbook: [local-development.md](local-development.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
 
 ## Invocation (from monorepo root)
 

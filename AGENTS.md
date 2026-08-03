@@ -34,7 +34,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)   |
 | `pnpm local:agent`            | Agent CLI (`status`, `run-session`)      |
 
-Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/local-development.md](docs/local-development.md).
+Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/local-development.md](docs/local-development.md). **Pre-deploy E2E for agents:** [docs/agent-e2e-testing.md](docs/agent-e2e-testing.md).
 
 ## Testing
 

@@ -2,6 +2,8 @@
 
 Run and test Auto Harness on your machine **without an AWS account**. Install/prereqs overview: [setup.md](setup.md). Agent CLI details: [cli.md](cli.md). Product sequencing: [plan.md](plan.md).
 
+**Pre-deploy end-to-end (full stack + real CLI):** [agent-e2e-testing.md](agent-e2e-testing.md).
+
 ## Prerequisites
 
 | Piece                                   | Need                                                                     |
