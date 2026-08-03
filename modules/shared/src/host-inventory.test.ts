@@ -25,7 +25,7 @@ describe("host-inventory", () => {
   it("upsertHostRepository creates repo with empty worktrees", () => {
     const next = upsertHostRepository(null, {
       id: "demo",
-      path: "/Users/jong/filaments",
+      path: "/tmp/demo-repo",
       defaultBranch: "main",
     });
     expect(next.repositories).toHaveLength(1);

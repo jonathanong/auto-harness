@@ -67,11 +67,11 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
       </p>
       <div className="space-y-1">
         <Label htmlFor="id">repository id</Label>
-        <Input id="id" name="id" required placeholder="filaments" data-pw="add-repo-id" />
+        <Input id="id" name="id" required placeholder="demo" data-pw="add-repo-id" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="name">display name</Label>
-        <Input id="name" name="name" placeholder="Filaments" data-pw="add-repo-name" />
+        <Input id="name" name="name" placeholder="Demo" data-pw="add-repo-name" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="path">absolute path on this host</Label>
