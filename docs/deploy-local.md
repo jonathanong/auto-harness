@@ -28,7 +28,7 @@ pnpm local:dynamodb
 pnpm local:dynamodb:ready
 
 # Optional: clear leftover sessions/worktrees (avoids stale queue assigns)
-export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7422
+export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7423
 export AWS_ACCESS_KEY_ID=local AWS_SECRET_ACCESS_KEY=local AWS_REGION=us-east-1
 node --input-type=module <<'EOF'
 import { createControlPlane } from "./services/api/src/create-plane.ts";
@@ -50,10 +50,12 @@ pnpm local:web
 
 # Agent pane + daemon (env defaults: local-1 → :7420)
 pnpm local:agent-web
-# → http://127.0.0.1:7423
+# → http://127.0.0.1:7422
 pnpm local:agent start
-# registers online; then add local repos at http://127.0.0.1:7423/config
+# registers online; then add local repos at http://127.0.0.1:7422/repositories
 ```
+
+Or run everything above — except DynamoDB Local, which stays in Docker — in one tmux session (one window each): `pnpm local:tmux`.
 
 ### Health
 
@@ -89,8 +91,8 @@ kill "$(cat /path/to/agent.pid)" 2>/dev/null || true
 kill "$(cat /path/to/web.pid)" 2>/dev/null || true
 kill "$(cat /path/to/api.pid)" 2>/dev/null || true
 
-# Or free ports
-for p in 7420 7421 7423; do
+# Or free ports (DynamoDB Local :7423 is a Docker container — use `pnpm local:dynamodb:down`)
+for p in 7420 7421 7422; do
   for pid in $(lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null || true); do
     kill "$pid" 2>/dev/null || true
   done

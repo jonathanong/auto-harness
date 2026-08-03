@@ -2,7 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 /** Default endpoint for amazon/dynamodb-local (docker compose host port). */
-export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7422";
+export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7423";
 
 export type DynamoTableNames = {
   sessions: string;
@@ -43,7 +43,7 @@ type DynamoClients = {
 
 /**
  * Low-level + document clients for DynamoDB Local (or AWS).
- * Local defaults: endpoint :7422, dummy credentials (required by the SDK).
+ * Local defaults: endpoint :7423, dummy credentials (required by the SDK).
  */
 export function createDynamoClients(options: CreateDynamoClientOptions = {}): DynamoClients {
   const endpoint =

@@ -25,7 +25,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   const store = options.store ?? new MemorySessionStore({ plane });
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    // Browser UIs on :7421 / :7423 call this API on :7420 — allow local CORS.
+    // Browser UIs on :7421 / :7422 call this API on :7420 — allow local CORS.
     if (applyLocalCors(req, res)) {
       return;
     }

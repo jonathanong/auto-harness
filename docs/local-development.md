@@ -24,12 +24,14 @@ There is **no compile step**. Scripts and CLIs run TypeScript directly via Node 
 
 ## Local ports (adjacent 7xxx)
 
+Control-plane and agent-pane UIs are adjacent (7421/7422) so they're easy to tell apart; DynamoDB Local isn't a browser UI and trails at 7423.
+
 | Service              | Port | URL                     |
 | -------------------- | ---- | ----------------------- |
 | API (+ `/ws`)        | 7420 | `http://127.0.0.1:7420` |
 | **Control-plane UI** | 7421 | `http://127.0.0.1:7421` |
-| DynamoDB Local       | 7422 | `http://127.0.0.1:7422` |
-| **Agent pane UI**    | 7423 | `http://127.0.0.1:7423` |
+| **Agent pane UI**    | 7422 | `http://127.0.0.1:7422` |
+| DynamoDB Local       | 7423 | `http://127.0.0.1:7423` |
 
 ---
 
@@ -39,12 +41,12 @@ Control-plane data uses **Amazon DynamoDB Local** (official image), not a custom
 
 ```bash
 pnpm local:dynamodb
-pnpm local:dynamodb:ready   # creates tables, waits for :7422
+pnpm local:dynamodb:ready   # creates tables, waits for :7423
 ```
 
 | Item        | Value                                                    |
 | ----------- | -------------------------------------------------------- |
-| Endpoint    | `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:7422`) |
+| Endpoint    | `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:7423`) |
 | Compose     | `docker compose` service `dynamodb`                      |
 | Credentials | Dummy AWS keys are fine for Local                        |
 
@@ -62,8 +64,9 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                               |
 | `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                         |
 | `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                             |
-| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7423` (`HARNESS_AGENT_ID`)                           |
+| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7422` (`HARNESS_AGENT_ID`)                           |
 | `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                                    |
+| `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)   |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                     |
 | `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`                             |
 | `pnpm local:api-smoke`      | `POST /sessions` → 201                                                          |
@@ -176,7 +179,7 @@ Issue [#2](https://github.com/jonathanong/auto-harness/issues/2): **Next.js** fo
 | UI            | Port | Command                | Role                                                     |
 | ------------- | ---- | ---------------------- | -------------------------------------------------------- |
 | Control plane | 7421 | `pnpm local:web`       | Dashboard, sessions, repos, schedules, agent **fleet**   |
-| Agent pane    | 7423 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
+| Agent pane    | 7422 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
 
 Shared components: `modules/ui`.
 
@@ -184,16 +187,18 @@ Shared components: `modules/ui`.
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api         # :7420
 pnpm local:web         # :7421 control plane
-pnpm local:agent-web   # :7423 agent pane
+pnpm local:agent-web   # :7422 agent pane
 pnpm local:agent start # registers even with no repos yet
 ```
+
+Or start everything above (except DynamoDB Local, which runs in Docker) in one tmux session — one window each: `pnpm local:tmux`.
 
 **Intended flow**
 
 1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
 2. **Add a local repo via UI** (either place does the same thing):
    - Control pane: http://127.0.0.1:7421/repositories → **Register local repo on an agent**
-   - Agent pane: http://127.0.0.1:7423/config → **Add local repo**
+   - Agent pane: http://127.0.0.1:7422/repositories → **Add repository**
      Both create the control-plane catalog entry and attach host path/worktree inventory to the agent.
 3. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
 

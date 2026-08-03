@@ -36,7 +36,7 @@ export default defineConfig({
       testMatch: /e2e\/agent\/.*\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: "http://127.0.0.1:7423",
+        baseURL: "http://127.0.0.1:7422",
       },
     },
   ],
@@ -63,7 +63,7 @@ export default defineConfig({
     {
       name: "agent-web",
       command: "pnpm local:agent-web:start",
-      url: "http://127.0.0.1:7423",
+      url: "http://127.0.0.1:7422",
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
       stdout: "pipe",

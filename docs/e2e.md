@@ -1,6 +1,6 @@
 # Playwright E2E tests
 
-Browser end-to-end tests for the **control-plane UI** (`:7421`) and **agent-pane UI** (`:7423`). Unit/integration coverage remains under Vitest (`pnpm test`).
+Browser end-to-end tests for the **control-plane UI** (`:7421`) and **agent-pane UI** (`:7422`). Unit/integration coverage remains under Vitest (`pnpm test`).
 
 Related: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
 
@@ -28,7 +28,7 @@ pnpm exec playwright install chromium
 | ------------- | -------------------------------------------------------------------- | ------------------------------ |
 | `api`         | `pnpm local:dynamodb && pnpm local:dynamodb:ready && pnpm local:api` | `http://127.0.0.1:7420/health` |
 | `control-web` | `pnpm local:web:start` (`next start` on `:7421`)                     | `http://127.0.0.1:7421`        |
-| `agent-web`   | `pnpm local:agent-web:start` (`next start` on `:7423`)               | `http://127.0.0.1:7423`        |
+| `agent-web`   | `pnpm local:agent-web:start` (`next start` on `:7422`)               | `http://127.0.0.1:7422`        |
 
 Locally, `reuseExistingServer: !process.env.CI` reuses servers if already running. In CI, servers are always started fresh.
 
@@ -158,7 +158,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `e2e/control/agents.spec.ts`       | agents page loads with filters and add form               | Page + add agent form + online filter URL                 |
 |                                    | add agent creates empty host inventory slot               | Parallel-safe empty host config                           |
 
-### Project `agent` — baseURL `http://127.0.0.1:7423`
+### Project `agent` — baseURL `http://127.0.0.1:7422`
 
 | File                             | Tests                                                              | What it covers                                             |
 | -------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------- |

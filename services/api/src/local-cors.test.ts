@@ -46,12 +46,12 @@ describe("applyLocalCors", () => {
     const handled = applyLocalCors(
       {
         method: "GET",
-        headers: { origin: "http://127.0.0.1:7423" },
+        headers: { origin: "http://127.0.0.1:7422" },
       } as never,
       res as never,
     );
     expect(handled).toBe(false);
-    expect(headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:7423");
+    expect(headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:7422");
   });
 
   it("allows any localhost port and ignores remote origins", () => {

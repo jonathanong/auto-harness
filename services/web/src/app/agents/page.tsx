@@ -75,7 +75,7 @@ export default async function AgentsPage({
         <p className="text-sm text-muted-foreground">
           Add an agent slot (host inventory), then run the daemon with that{" "}
           <code className="font-mono">HARNESS_AGENT_ID</code>. Configure repos and worktrees on the
-          agent pane (<code className="font-mono">:7423</code>).
+          agent pane (<code className="font-mono">:7422</code>).
         </p>
       </div>
 

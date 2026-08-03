@@ -54,7 +54,7 @@ If any gate fails, **stop** and fix before manual stack testing.
 Leftover queued sessions from prior smokes will steal worktree assigns (scheduler walks the whole queue). Before a manual E2E, clear the default tables:
 
 ```bash
-export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7422
+export HARNESS_DDB_ENDPOINT=http://127.0.0.1:7423
 export AWS_ACCESS_KEY_ID=local
 export AWS_SECRET_ACCESS_KEY=local
 export AWS_REGION=us-east-1
@@ -75,7 +75,8 @@ Confirm nothing is listening on the ports you need (or stop prior processes):
 ```bash
 lsof -iTCP:7420 -sTCP:LISTEN || true  # API
 lsof -iTCP:7421 -sTCP:LISTEN || true  # web
-lsof -iTCP:7422 -sTCP:LISTEN || true  # DynamoDB Local
+lsof -iTCP:7422 -sTCP:LISTEN || true  # agent-web
+lsof -iTCP:7423 -sTCP:LISTEN || true  # DynamoDB Local
 ```
 
 ---
@@ -189,11 +190,11 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
 # Terminal C — Control-plane UI (:7421)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 
-# Terminal C2 — Agent pane UI (:7423) — host inventory for this agent
+# Terminal C2 — Agent pane UI (:7422) — host inventory for this agent
 export HARNESS_AGENT_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:agent-web
-# open http://127.0.0.1:7423/config  (or PUT config via curl as below)
+# open http://127.0.0.1:7422/repositories  (or PUT config via curl as below)
 
 # Terminal D — Agent daemon (env identity only)
 export HARNESS_AGENT_ID=local-e2e-1

@@ -5,7 +5,7 @@ services:
     image: amazon/dynamodb-local:2.5.2
     container_name: auto-harness-dynamodb
     ports:
-      # Host :7422 → container DynamoDB Local (adjacent to API :7420 / web :7421)
-      - "7422:8000"
+      # Host :7423 → container DynamoDB Local (trails API :7420 / web :7421 / agent-web :7422)
+      - "7423:8000"
     command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
     # -inMemory is fine for local/tests; use -dbPath /data for durable local data

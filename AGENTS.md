@@ -34,9 +34,10 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                            |
 | `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)                                           |
 | `pnpm local:web`              | Control-plane Next.js UI on `:7421`                                              |
-| `pnpm local:dynamodb`         | DynamoDB Local on host `:7422`                                                   |
-| `pnpm local:agent-web`        | Agent-pane Next.js UI on `:7423`                                                 |
+| `pnpm local:agent-web`        | Agent-pane Next.js UI on `:7422`                                                 |
+| `pnpm local:dynamodb`         | DynamoDB Local on host `:7423`                                                   |
 | `pnpm local:agent`            | Agent CLI (`status`, `run-session`)                                              |
+| `pnpm local:tmux`             | Above (minus DynamoDB, which stays in Docker), one tmux window each              |
 
 Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/local-development.md](docs/local-development.md). **Pre-deploy E2E:** [docs/agent-e2e-testing.md](docs/agent-e2e-testing.md). **Deploy:** [docs/deploy.md](docs/deploy.md) → [local](docs/deploy-local.md) / [AWS](docs/deploy-aws.md) / [agent](docs/deploy-agent.md).
 

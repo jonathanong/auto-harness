@@ -6,7 +6,7 @@ const NAMED_LOCAL_ORIGINS = new Set([
   LOCAL_WEB_HTTP,
   LOCAL_AGENT_WEB_HTTP,
   "http://localhost:7421",
-  "http://localhost:7423",
+  "http://localhost:7422",
 ]);
 
 /** True for local browser origins (127.0.0.1 / localhost any port). */
