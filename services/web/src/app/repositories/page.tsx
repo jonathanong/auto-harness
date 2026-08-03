@@ -1,4 +1,4 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import { RepositoriesTable } from "@auto-harness/ui";
 
 import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx";
 import { RepoCreateForm } from "../../components/repo-create-form.tsx";
@@ -31,39 +31,12 @@ export default async function RepositoriesPage() {
           Repositories
         </h2>
         <p className="text-sm text-muted-foreground">
-          Add a local repo from this control pane (pick an online agent + absolute path on that
-          host), or from the agent pane at :7423/config. Both register the catalog entry and host
-          inventory.
+          Catalog repositories and attach local host paths to agents. Worktrees are managed on the
+          agent pane Worktrees page (or control Worktrees for fleet view).
         </p>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>URL / path</TableHead>
-            <TableHead>Branch</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {items.map((r) => (
-            <TableRow key={r.id}>
-              <TableCell className="font-mono text-xs">{r.id}</TableCell>
-              <TableCell>{r.name}</TableCell>
-              <TableCell className="max-w-xs truncate">{r.url}</TableCell>
-              <TableCell>{r.defaultBranch ?? "main"}</TableCell>
-            </TableRow>
-          ))}
-          {items.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={4} className="text-muted-foreground">
-                No repositories yet.
-              </TableCell>
-            </TableRow>
-          ) : null}
-        </TableBody>
-      </Table>
+      <RepositoriesTable items={items} />
 
       <div>
         <h3 className="mb-2 text-lg font-medium">Register local repo on an agent</h3>
@@ -73,8 +46,7 @@ export default async function RepositoriesPage() {
       <div className="border-t border-border pt-6">
         <h3 className="mb-2 text-lg font-medium">Catalog only (no agent path)</h3>
         <p className="mb-2 text-sm text-muted-foreground">
-          Creates a control-plane repository record without attaching host inventory. Prefer the
-          form above for local agents.
+          Creates a control-plane repository record without attaching host inventory.
         </p>
         <RepoCreateForm />
       </div>

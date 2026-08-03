@@ -2,13 +2,12 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useTransition } from "react";
+import { sessionListHref } from "@auto-harness/shared";
 import { Input, Label } from "@auto-harness/ui";
-
-import { sessionListHref } from "../lib/url-state.ts";
 
 const STATUSES = ["all", "queued", "running", "completed", "failed", "cancelled", "timed_out"];
 
-/** URL-backed filters — resets cursor when filters change. */
+/** URL-backed filters — same behavior as control plane SessionFilters. */
 export function SessionFilters() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -23,7 +22,6 @@ export function SessionFilters() {
           sessionListHref({
             status: next.status ?? status,
             q: next.q ?? q,
-            // Drop cursor when filters change so pages stay consistent.
             cursor: "",
           }),
         );
@@ -58,7 +56,7 @@ export function SessionFilters() {
         </select>
       </div>
       <div className="min-w-[12rem] flex-1 space-y-1">
-        <Label htmlFor="q" tip="Substring match on session id or prompt (Enter or blur to apply)">
+        <Label htmlFor="q" tip="Substring match on session id or prompt">
           Search
         </Label>
         <Input

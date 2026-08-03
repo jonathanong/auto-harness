@@ -1,0 +1,54 @@
+import { describe, expect, it } from "vitest";
+
+import { ControlPlane } from "./control-plane.ts";
+
+describe("listSessionsPage", () => {
+  it("pages newest-first with opaque cursor and filters", () => {
+    let n = 0;
+    const plane = new ControlPlane({
+      idFactory: () => `s${++n}`,
+      now: (() => {
+        let t = 0;
+        return () => new Date(1_700_000_000_000 + t++ * 1000).toISOString();
+      })(),
+      shardCount: 1,
+    });
+    for (let i = 0; i < 5; i++) {
+      expect(
+        plane.createSession({
+          repositoryId: "r1",
+          prompt: `p-${i}`,
+          commandProfile: "echo",
+          timeout: 10,
+        }).ok,
+      ).toBe(true);
+    }
+    plane.registerAgent({
+      agentId: "a1",
+      worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+      commandProfiles: ["echo"],
+    });
+    const assigned = plane.assignQueued();
+    for (const a of assigned) {
+      plane.handleAgentMessage({ type: "session:ack", sessionId: a.session.id });
+    }
+
+    const page1 = plane.listSessionsPage({ limit: 2 });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).toBeTruthy();
+
+    const page2 = plane.listSessionsPage({ limit: 2, cursor: page1.nextCursor! });
+    expect(page2.items).toHaveLength(2);
+    expect(page2.items[0]!.id).not.toBe(page1.items[0]!.id);
+
+    const rest = plane.listSessionsPage({ limit: 10, cursor: page2.nextCursor! });
+    expect(rest.items.length).toBeGreaterThanOrEqual(1);
+    expect(rest.nextCursor).toBeNull();
+
+    const byAgent = plane.listSessionsPage({ agentId: "a1", limit: 50 });
+    expect(byAgent.items.every((s) => s.agentId === "a1")).toBe(true);
+
+    const byQ = plane.listSessionsPage({ q: "p-0", limit: 50 });
+    expect(byQ.items.some((s) => s.prompt === "p-0")).toBe(true);
+  });
+});

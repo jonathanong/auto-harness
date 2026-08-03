@@ -1,27 +1,19 @@
 /** Read/write filter state only via URL search params (issue #2). */
 
-type SessionListState = {
-  status: string;
-  q: string;
-};
+import {
+  parseSessionListQuery,
+  sessionListHref as sharedSessionListHref,
+  type SessionListQuery,
+} from "@auto-harness/shared";
+
+export type SessionListState = SessionListQuery;
 
 export function parseSessionListState(sp: URLSearchParams): SessionListState {
-  return {
-    status: sp.get("status") ?? "all",
-    q: sp.get("q") ?? "",
-  };
+  return parseSessionListQuery(sp);
 }
 
 export function sessionListHref(state: Partial<SessionListState>): string {
-  const p = new URLSearchParams();
-  if (state.status && state.status !== "all") {
-    p.set("status", state.status);
-  }
-  if (state.q) {
-    p.set("q", state.q);
-  }
-  const s = p.toString();
-  return s ? `/sessions?${s}` : "/sessions";
+  return sharedSessionListHref(state, "/sessions");
 }
 
 type AgentListState = {

@@ -4,12 +4,6 @@ import {
   CardHeader,
   CardTitle,
   StatusBadge,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
 } from "@auto-harness/ui";
 
 import { DrainButton } from "../components/drain-button.tsx";
@@ -22,8 +16,8 @@ export default async function AgentStatusPage() {
   const id = agentId();
 
   let me: { agentId: string; online: boolean; commandProfiles?: string[] } | undefined;
-  let worktrees: Array<Record<string, unknown>> = [];
-  let sessions: Array<Record<string, unknown>> = [];
+  let worktreeCount = 0;
+  let sessionCount = 0;
   let hasConfig = false;
   let error: string | null = null;
 
@@ -33,12 +27,14 @@ export default async function AgentStatusPage() {
         "/api/v1/agents",
       ),
       apiGet<{ items: Array<Record<string, unknown>> }>("/api/v1/worktrees"),
-      apiGet<{ items: Array<Record<string, unknown>> }>("/api/v1/sessions"),
+      apiGet<{ items: Array<Record<string, unknown>>; nextCursor: string | null }>(
+        `/api/v1/sessions?limit=1&agentId=${encodeURIComponent(id)}`,
+      ),
       fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(id)}/config`, { cache: "no-store" }),
     ]);
     me = agents.items?.find((a) => a.agentId === id);
-    worktrees = (wts.items ?? []).filter((w) => w.agentId === id);
-    sessions = (sess.items ?? []).filter((s) => s.agentId === id).slice(0, 20);
+    worktreeCount = (wts.items ?? []).filter((w) => w.agentId === id).length;
+    sessionCount = (sess.items ?? []).length;
     hasConfig = cfg.ok;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -57,11 +53,7 @@ export default async function AgentStatusPage() {
             {id}
           </TipText>
           <p className="text-sm text-muted-foreground">
-            Agent pane — control plane is on :7421. Register with env only, then{" "}
-            <a className="underline" href="/config">
-              add local repos
-            </a>
-            .
+            Status overview. Manage repos, worktrees, and sessions from the nav.
           </p>
         </div>
         <DrainButton agentId={id} />
@@ -91,7 +83,7 @@ export default async function AgentStatusPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
-            {hasConfig ? "present" : "missing — set under Host config"}
+            {hasConfig ? "present" : "missing — add under Repositories"}
           </CardContent>
         </Card>
         <Card>
@@ -108,78 +100,24 @@ export default async function AgentStatusPage() {
         </Card>
       </div>
 
-      <div>
-        <h3 className="mb-2 text-lg font-medium">
-          <TipText tip="Worktrees registered for this agent (online/offline reflects scheduling)">
-            Worktrees
-          </TipText>
-        </h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>id</TableHead>
-              <TableHead>repo</TableHead>
-              <TableHead>path</TableHead>
-              <TableHead>status</TableHead>
-              <TableHead>online</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {worktrees.map((w) => (
-              <TableRow key={String(w.id)}>
-                <TableCell className="font-mono text-xs">{String(w.id)}</TableCell>
-                <TableCell>{String(w.repositoryId ?? "")}</TableCell>
-                <TableCell className="max-w-xs truncate text-xs">{String(w.path ?? "")}</TableCell>
-                <TableCell>
-                  <StatusBadge status={String(w.status ?? "")} />
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={String(w.online ?? false)} />
-                </TableCell>
-              </TableRow>
-            ))}
-            {worktrees.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5} className="text-muted-foreground">
-                  No worktrees for this agent.
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </div>
-
-      <div>
-        <h3 className="mb-2 text-lg font-medium">
-          <TipText tip="Recent sessions assigned to this agentId">Recent sessions</TipText>
-        </h3>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>id</TableHead>
-              <TableHead>status</TableHead>
-              <TableHead>profile</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {sessions.map((s) => (
-              <TableRow key={String(s.id)}>
-                <TableCell className="font-mono text-xs">{String(s.id)}</TableCell>
-                <TableCell>
-                  <StatusBadge status={String(s.status ?? "")} />
-                </TableCell>
-                <TableCell>{String(s.commandProfile ?? "")}</TableCell>
-              </TableRow>
-            ))}
-            {sessions.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={3} className="text-muted-foreground">
-                  No sessions on this agent yet.
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Worktrees (live)</CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold" data-pw="stat-worktrees">
+            {worktreeCount}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent page sample</CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold" data-pw="stat-sessions-sample">
+            {sessionCount}
+            <span className="ml-2 text-sm font-normal text-muted-foreground">on first page</span>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

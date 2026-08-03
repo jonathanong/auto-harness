@@ -71,3 +71,10 @@ export {
   type HostRepository,
   type HostWorktree,
 } from "./host-inventory.ts";
+
+export {
+  buildSessionsApiPath,
+  parseSessionListQuery,
+  sessionListHref,
+  type SessionListQuery,
+} from "./list-query.ts";

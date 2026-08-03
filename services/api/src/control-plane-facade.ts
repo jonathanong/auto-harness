@@ -86,6 +86,10 @@ export class ControlPlaneBase {
     return sessions.listSessions(this.state);
   }
 
+  listSessionsPage(query?: sessions.ListSessionsPageQuery): sessions.ListSessionsPageResult {
+    return sessions.listSessionsPage(this.state, query ?? {});
+  }
+
   registerAgent(opts: {
     agentId: string;
     worktrees: Array<{ id: string; repositoryId: string; path: string; labels: string[] }>;

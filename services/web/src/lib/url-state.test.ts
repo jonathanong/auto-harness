@@ -9,14 +9,25 @@ import {
 
 describe("url-state", () => {
   it("parses and serializes session list filters", () => {
-    expect(parseSessionListState(new URLSearchParams())).toEqual({ status: "all", q: "" });
-    const sp = new URLSearchParams("status=running&q=sess");
-    expect(parseSessionListState(sp)).toEqual({ status: "running", q: "sess" });
+    expect(parseSessionListState(new URLSearchParams())).toEqual({
+      status: "all",
+      q: "",
+      cursor: "",
+      limit: 20,
+    });
+    const sp = new URLSearchParams("status=running&q=sess&cursor=abc");
+    expect(parseSessionListState(sp)).toEqual({
+      status: "running",
+      q: "sess",
+      cursor: "abc",
+      limit: 20,
+    });
     expect(sessionListHref({})).toBe("/sessions");
-    expect(sessionListHref({ status: "all", q: "" })).toBe("/sessions");
+    expect(sessionListHref({ status: "all", q: "", cursor: "" })).toBe("/sessions");
     expect(sessionListHref({ status: "failed" })).toBe("/sessions?status=failed");
     expect(sessionListHref({ q: "x" })).toBe("/sessions?q=x");
     expect(sessionListHref({ status: "failed", q: "x" })).toBe("/sessions?status=failed&q=x");
+    expect(sessionListHref({ cursor: "c1" })).toBe("/sessions?cursor=c1");
   });
 
   it("parses and serializes agent list filters", () => {

@@ -23,3 +23,24 @@ export {
   WithTooltip,
   type WithTooltipProps,
 } from "./components/tooltip.tsx";
+export {
+  CursorPagination,
+  type CursorPaginationProps,
+} from "./components/cursor-pagination.tsx";
+export {
+  SessionsTable,
+  type SessionRow,
+  type SessionsTableProps,
+} from "./components/sessions-table.tsx";
+export {
+  WorktreesHierarchy,
+  groupWorktreesByRepo,
+  type WorktreeRow,
+  type WorktreeRepoGroup,
+  type WorktreesHierarchyProps,
+} from "./components/worktrees-hierarchy.tsx";
+export {
+  RepositoriesTable,
+  type RepositoryRow,
+  type RepositoriesTableProps,
+} from "./components/repositories-table.tsx";

@@ -11,10 +11,22 @@ const NAV = [
     tip: "This host’s agent id, online status, and drain control",
   },
   {
-    href: "/config",
-    label: "Host config",
-    pw: "nav-config",
-    tip: "Repositories and worktrees on this machine (paths are host-local)",
+    href: "/repositories",
+    label: "Repositories",
+    pw: "nav-repositories",
+    tip: "Host repository paths for this agent (no auto worktrees)",
+  },
+  {
+    href: "/worktrees",
+    label: "Worktrees",
+    pw: "nav-worktrees",
+    tip: "Worktrees under each repository — hierarchical, explicit ids and paths",
+  },
+  {
+    href: "/sessions",
+    label: "Sessions",
+    pw: "nav-sessions",
+    tip: "Sessions assigned to this agent (cursor-paginated)",
   },
 ];
 

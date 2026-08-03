@@ -1,11 +1,9 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import { buildSessionsApiPath } from "@auto-harness/shared";
-import { CursorPagination, SessionsTable, WithTooltip } from "@auto-harness/ui";
+import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@auto-harness/shared";
+import { CursorPagination, SessionsTable } from "@auto-harness/ui";
 
 import { SessionFilters } from "../../components/session-filters.tsx";
-import { apiGet } from "../../lib/api.ts";
-import { parseSessionListState, sessionListHref } from "../../lib/url-state.ts";
+import { agentId, apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +17,12 @@ type Session = {
   agentId?: string | null;
 };
 
-export default async function SessionsPage({
+export default async function AgentSessionsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const id = agentId();
   const raw = await searchParams;
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(raw)) {
@@ -31,14 +30,14 @@ export default async function SessionsPage({
       sp.set(k, v);
     }
   }
-  const filters = parseSessionListState(sp);
+  const filters = parseSessionListQuery(sp);
 
   let items: Session[] = [];
   let nextCursor: string | null = null;
   let error: string | null = null;
   try {
     const data = await apiGet<{ items: Session[]; nextCursor: string | null }>(
-      buildSessionsApiPath(filters),
+      buildSessionsApiPath(filters, { agentId: id }),
     );
     items = data.items ?? [];
     nextCursor = data.nextCursor ?? null;
@@ -47,33 +46,27 @@ export default async function SessionsPage({
   }
 
   const nextHref = nextCursor
-    ? sessionListHref({ ...filters, cursor: nextCursor })
+    ? sessionListHref({ ...filters, cursor: nextCursor }, "/sessions")
     : null;
-  // Previous page is not encoded in cursor chain; only "first page" via clearing cursor.
   const prevHref = filters.cursor
-    ? sessionListHref({ ...filters, cursor: "" })
+    ? sessionListHref({ ...filters, cursor: "" }, "/sessions")
     : null;
 
   return (
     <div className="space-y-4" data-pw="page-sessions">
-      <div className="flex items-center justify-between">
+      <div>
         <h2 className="text-2xl font-semibold tracking-tight" data-pw="sessions-heading">
           Sessions
         </h2>
-        <WithTooltip tip="Create a one-off session">
-          <Link
-            href="/sessions/new"
-            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
-          >
-            New session
-          </Link>
-        </WithTooltip>
+        <p className="text-sm text-muted-foreground">
+          Sessions for agent <code className="font-mono">{id}</code> (cursor-paginated).
+        </p>
       </div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} showAgent />
+      <SessionsTable items={items} emptyMessage="No sessions for this agent." />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );

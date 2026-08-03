@@ -29,6 +29,12 @@ const NAV = [
     tip: "Catalog repositories and attach local paths to agents",
   },
   {
+    href: "/worktrees",
+    label: "Worktrees",
+    pw: "nav-worktrees",
+    tip: "Fleet worktrees grouped by repository",
+  },
+  {
     href: "/schedules",
     label: "Schedules",
     pw: "nav-schedules",
