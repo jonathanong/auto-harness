@@ -18,9 +18,9 @@ export type HostInventory = {
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
 };
 
-export const DEFAULT_ECHO_PROFILE = {
+export const DEFAULT_ECHO_PROFILE: HostInventory["commandProfiles"] = {
   "echo-prompt": { argv: ["echo"], appendPrompt: true },
-} as const;
+};
 
 export function defaultWorktreePath(repoPath: string, worktreeId: string): string {
   return `${repoPath.replace(/\/$/, "")}/.worktrees/${worktreeId}`;

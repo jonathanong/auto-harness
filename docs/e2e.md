@@ -20,13 +20,15 @@ pnpm exec playwright install chromium
 
 ## How the stack is started
 
+**Production UI builds only** — not `next dev`. `pnpm test:e2e` runs `pnpm build:web` first (cleans each app’s `.next`, then `next build` for control + agent-web), then Playwright starts production servers via `next start`.
+
 `playwright.config.ts` uses **`webServer`** (array) so Playwright boots and waits for:
 
 | Name          | Command                                                              | Ready URL                      |
 | ------------- | -------------------------------------------------------------------- | ------------------------------ |
 | `api`         | `pnpm local:dynamodb && pnpm local:dynamodb:ready && pnpm local:api` | `http://127.0.0.1:7420/health` |
-| `control-web` | `pnpm local:web`                                                     | `http://127.0.0.1:7421`        |
-| `agent-web`   | `pnpm local:agent-web`                                               | `http://127.0.0.1:7423`        |
+| `control-web` | `pnpm local:web:start` (`next start` on `:7421`)                     | `http://127.0.0.1:7421`        |
+| `agent-web`   | `pnpm local:agent-web:start` (`next start` on `:7423`)               | `http://127.0.0.1:7423`        |
 
 Locally, `reuseExistingServer: !process.env.CI` reuses servers if already running. In CI, servers are always started fresh.
 
@@ -37,11 +39,17 @@ Locally, `reuseExistingServer: !process.env.CI` reuses servers if already runnin
 ## Run commands
 
 ```bash
-# All Playwright tests (parallel)
+# Build both UIs (production) then run all Playwright tests (parallel)
 pnpm test:e2e
 
-# UI mode
+# Build + UI mode
 pnpm test:e2e:ui
+
+# Rebuild only
+pnpm build:web
+
+# After a build: Playwright only (webServer starts next start)
+pnpm exec playwright test
 
 # One project
 pnpm exec playwright test --project=control
@@ -165,7 +173,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs a parallel job **`playwright (c
 
 1. `pnpm install --frozen-lockfile`
 2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
-3. `pnpm test:e2e` — Playwright `webServer` starts DynamoDB Local (Docker), API, control UI, agent UI
+3. `pnpm test:e2e` — `build:web` (production `next build`), then Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
 4. On failure, uploads `playwright-report/` and `test-results/` as artifacts (7-day retention)
 
 GitHub sets `CI=true`, so config applies:

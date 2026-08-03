@@ -2,7 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Playwright E2E — see docs/e2e.md.
- * Stack is started via webServer (DynamoDB+API, control UI, agent UI).
+ * UIs are production builds (`pnpm build:web` then `next start`), not `next dev`.
+ * Stack via webServer: DynamoDB+API, control UI, agent UI.
  * fullyParallel: every test is independent (unique ids; no shared mutable fixtures).
  */
 export default defineConfig({
@@ -51,19 +52,20 @@ export default defineConfig({
     },
     {
       name: "control-web",
-      command: "pnpm local:web",
+      // Expect `pnpm build:web` (or test:e2e) already ran — production server only.
+      command: "pnpm local:web:start",
       url: "http://127.0.0.1:7421",
       reuseExistingServer: !process.env.CI,
-      timeout: 180_000,
+      timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",
     },
     {
       name: "agent-web",
-      command: "pnpm local:agent-web",
+      command: "pnpm local:agent-web:start",
       url: "http://127.0.0.1:7423",
       reuseExistingServer: !process.env.CI,
-      timeout: 180_000,
+      timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",
     },
