@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
-/** Control-plane form: catalog + attach local path to a selected agent (no auto worktree). */
+/** Control-plane form: catalog + attach local path to a selected host (no auto worktree). */
 export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -16,8 +17,11 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
   if (agentIds.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No agents yet. Use <strong>Add agent</strong> on the Agents page, or start{" "}
-        <code>pnpm local:agent start</code>, then refresh.
+        No hosts yet. Use <strong>Add host</strong> on the{" "}
+        <Link href="/hosts" className="underline">
+          Hosts page
+        </Link>
+        , or start <code>pnpm local:agent start</code>, then refresh.
       </p>
     );
   }
@@ -38,7 +42,7 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         if (!agentId || !id || !path) {
-          setError("agent, id, and absolute path on the agent host are required");
+          setError("host, id, and absolute path on the host are required");
           return;
         }
         start(async () => {
@@ -54,7 +58,7 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
             return;
           }
           setOk(
-            `Registered ${id} on agent ${agentId} with no worktrees. Add worktrees on the agent pane Host config.`,
+            `Registered ${id} on host ${agentId} with no worktrees. Add worktrees on the agent pane's Repositories page.`,
           );
           form.reset();
           router.refresh();
@@ -62,8 +66,8 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="agentId" tip="Which agent host inventory receives this repository path">
-          agent
+        <Label htmlFor="agentId" tip="Which host's inventory receives this repository path">
+          host
         </Label>
         <select
           id="agentId"
@@ -95,9 +99,9 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
       <div className="space-y-1">
         <Label
           htmlFor="path"
-          tip="Absolute path on the agent machine (must exist there). Worktrees are added separately on the agent pane."
+          tip="Absolute path on the host machine (must exist there). Worktrees are added separately on the agent pane."
         >
-          absolute path on agent host
+          absolute path on host
         </Label>
         <Input
           id="path"
@@ -130,7 +134,7 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
       ) : null}
       <WithTooltip tip="Creates catalog entry and attaches repo path with zero worktrees">
         <Button type="submit" disabled={pending} data-pw="attach-repo-submit">
-          {pending ? "Registering…" : "Register local repo on agent"}
+          {pending ? "Registering…" : "Register local repo on host"}
         </Button>
       </WithTooltip>
     </form>

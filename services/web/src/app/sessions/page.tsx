@@ -1,9 +1,8 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { buildSessionsApiPath } from "@auto-harness/shared";
-import { CursorPagination, SessionsTable, WithTooltip } from "@auto-harness/ui";
+import { CursorPagination, SessionFilters, SessionsTable, WithTooltip } from "@auto-harness/ui";
 
-import { SessionFilters } from "../../components/session-filters.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseSessionListState, sessionListHref } from "../../lib/url-state.ts";
 
@@ -69,7 +68,7 @@ export default async function SessionsPage({
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} showAgent />
+      <SessionsTable items={items} showAgent hrefBase="/sessions" />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );

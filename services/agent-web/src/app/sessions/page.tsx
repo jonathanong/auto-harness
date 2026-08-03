@@ -1,8 +1,7 @@
 import { Suspense } from "react";
 import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@auto-harness/shared";
-import { CursorPagination, SessionsTable } from "@auto-harness/ui";
+import { CursorPagination, SessionFilters, SessionsTable } from "@auto-harness/ui";
 
-import { SessionFilters } from "../../components/session-filters.tsx";
 import { agentId, apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -64,7 +63,11 @@ export default async function AgentSessionsPage({
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} emptyMessage="No sessions for this agent." />
+      <SessionsTable
+        items={items}
+        hrefBase="/sessions"
+        emptyMessage="No sessions for this agent."
+      />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );

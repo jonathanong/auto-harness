@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
@@ -17,6 +19,8 @@ export type SessionsTableProps = {
   /** Show agentId column (control plane fleet view). */
   showAgent?: boolean;
   emptyMessage?: string;
+  /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
+  hrefBase?: string;
 };
 
 /** Shared sessions table for control plane and agent pane. */
@@ -24,6 +28,7 @@ export function SessionsTable({
   items,
   showAgent = false,
   emptyMessage = "No sessions match filters.",
+  hrefBase,
 }: SessionsTableProps) {
   const cols = showAgent ? 6 : 5;
   return (
@@ -41,7 +46,19 @@ export function SessionsTable({
       <TableBody>
         {items.map((s) => (
           <TableRow key={s.id} data-pw={`session-row-${s.id}`}>
-            <TableCell className="font-mono text-xs">{s.id}</TableCell>
+            <TableCell className="font-mono text-xs">
+              {hrefBase ? (
+                <Link
+                  href={`${hrefBase}/${encodeURIComponent(s.id)}`}
+                  className="hover:underline"
+                  data-pw={`session-link-${s.id}`}
+                >
+                  {s.id}
+                </Link>
+              ) : (
+                s.id
+              )}
+            </TableCell>
             <TableCell>
               <StatusBadge status={s.status} />
             </TableCell>

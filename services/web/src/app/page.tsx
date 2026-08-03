@@ -1,8 +1,14 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@auto-harness/ui";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusBadge,
+  TipLink,
+  TipText,
+} from "@auto-harness/ui";
 
-import { TipLink } from "../components/tip-link.tsx";
-import { TipText } from "../components/tip-text.tsx";
 import { apiGet } from "../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -107,7 +113,7 @@ export default async function DashboardPage() {
           {sessions.slice(0, 8).map((s) => (
             <div key={s.id} className="flex items-center justify-between gap-2 text-sm">
               <Link
-                href={`/sessions?q=${encodeURIComponent(s.id)}`}
+                href={`/sessions/${encodeURIComponent(s.id)}`}
                 className="font-mono hover:underline"
               >
                 {s.id}

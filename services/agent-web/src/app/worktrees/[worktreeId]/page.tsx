@@ -93,7 +93,11 @@ export default async function AgentWorktreeDetailPage({
       >
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Sessions in this worktree</h3>
-          <SessionsTable items={sessions} emptyMessage="No recent sessions in this worktree." />
+          <SessionsTable
+            items={sessions}
+            hrefBase="/sessions"
+            emptyMessage="No recent sessions in this worktree."
+          />
         </div>
       </WorktreeDetail>
     </div>

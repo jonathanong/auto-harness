@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
 
 import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
@@ -47,7 +48,11 @@ export default async function SchedulesPage() {
           {items.map((s) => (
             <TableRow key={s.id}>
               <TableCell>{s.name}</TableCell>
-              <TableCell className="font-mono text-xs">{s.repositoryId}</TableCell>
+              <TableCell className="font-mono text-xs">
+                <Link href="/repositories" className="hover:underline">
+                  {s.repositoryId}
+                </Link>
+              </TableCell>
               <TableCell>{s.commandProfile}</TableCell>
               <TableCell className="font-mono text-xs">{s.cron}</TableCell>
               <TableCell className="text-xs">{s.nextRunAt}</TableCell>

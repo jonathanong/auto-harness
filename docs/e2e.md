@@ -109,9 +109,11 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `nav-dashboard`, `nav-session-new`, `nav-sessions`, `nav-repositories`, `nav-schedules`, `nav-hosts`                                                                                                                     | Nav                                 |
 | `page-dashboard`, `dashboard-heading`, `dashboard-new-session`, `dashboard-stats`                                                                                                                                        | Dashboard                           |
 | `stat-running`, `stat-running-value`, `stat-queued`, `stat-queued-value`, `stat-hosts-online`, `stat-hosts-online-value`                                                                                                 | Dashboard stats                     |
-| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`                                                                                                                      | Sessions list                       |
+| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                                                                    | Sessions list                       |
 | `page-session-new`, `session-new-heading`                                                                                                                                                                                | New session                         |
 | `form-create-session`, `create-session-repository-id`, `create-session-command-profile`, `create-session-prompt`, `create-session-timeout`, `create-session-ref`, `create-session-submit`, `create-session-error`        | Create session form                 |
+| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-detail-back`, `page-session-detail-not-found`                                                                            | Session detail (`/sessions/[id]`)   |
+| `session-cancel`, `session-resume`, `session-archive`, `session-action-error`, `session-logs`, `session-logs-empty`                                                                                                      | Session actions + logs              |
 | `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                                                                             | Repositories                        |
 | `add-repo-dialog`, `dialog-close`, `form-repo-catalog`, `repo-catalog-id`, `repo-catalog-name`, `repo-catalog-url`, `repo-catalog-branch`, `repo-catalog-submit`, `repo-catalog-error`                                   | Add repository modal (catalog)      |
 | `form-attach-local-repo`, `attach-repo-agent-id`, `attach-repo-id`, `attach-repo-name`, `attach-repo-path`, `attach-repo-branch`, `attach-repo-worktree-id`, `attach-repo-submit`, `attach-repo-ok`, `attach-repo-error` | Attach local repo                   |
@@ -134,6 +136,8 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `repo-row-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                                            | Repositories table + nested worktrees     |
 | `page-worktrees`, `worktrees-heading`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-remove-*`                                                                         | Worktrees (hierarchical, editable)        |
 | `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-path`, `worktree-detail-back`, `page-worktree-detail-not-found`                                | Worktree detail (`/worktrees/[id]`)       |
+| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                            | Sessions list                             |
+| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-cancel`, `session-resume`, `session-archive`, `session-logs`                     | Session detail (`/sessions/[id]`)         |
 | `form-host-config-json`, `host-config-json`, `host-config-submit`, `host-config-ok`, `host-config-error`                                                                         | Raw JSON inventory (on Repositories page) |
 
 ---
@@ -148,7 +152,8 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 |                                    | nav links are present                                     | All primary nav `data-pw` links                           |
 | `e2e/control/sessions.spec.ts`     | sessions list page and filters                            | List page; status filter updates URL                      |
 |                                    | new session form is present                               | Form fields visible                                       |
-|                                    | create session via API-backed form when profiles exist    | Seeds host config + register via API; submits create form |
+|                                    | create session via API-backed form when profiles exist    | Submits form; lands on detail page; cancel unlocks resume |
+|                                    | unknown session id shows a not-found state                | `/sessions/[id]` 404-style state                          |
 | `e2e/control/repositories.spec.ts` | repositories page loads with add-repository dialog closed | Page + closed modal + nested worktrees section            |
 |                                    | create catalog repository via modal with unique id        | Opens modal; parallel-safe catalog create                 |
 | `e2e/control/worktrees.spec.ts`    | worktrees page loads                                      | Page + heading                                            |
@@ -168,6 +173,8 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 |                                  | add repository via modal, nested worktrees section shows it empty  | Modal add flow; nested hierarchical worktrees              |
 | `e2e/agent/worktrees.spec.ts`    | worktrees page loads                                               | Page + heading                                             |
 |                                  | clicking a worktree opens its detail page; removing redirects back | Seeds host config via API; click-through, remove, redirect |
+| `e2e/agent/sessions.spec.ts`     | sessions page loads                                                | Page + heading                                             |
+|                                  | clicking a session opens its detail page                           | Seeds + assigns a session via API; click-through           |
 
 ---
 

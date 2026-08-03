@@ -7,7 +7,7 @@ import { apiGet } from "../../lib/api.ts";
 export const dynamic = "force-dynamic";
 
 type Repo = { id: string; name: string; url: string; defaultBranch?: string };
-type Agent = { agentId: string };
+type Host = { agentId: string };
 type Wt = {
   id: string;
   repositoryId: string;
@@ -24,13 +24,13 @@ export default async function RepositoriesPage() {
   let worktrees: Wt[] = [];
   let error: string | null = null;
   try {
-    const [repos, agents, wts] = await Promise.all([
+    const [repos, hosts, wts] = await Promise.all([
       apiGet<{ items: Repo[] }>("/api/v1/repositories"),
-      apiGet<{ items: Agent[] }>("/api/v1/agents"),
+      apiGet<{ items: Host[] }>("/api/v1/agents"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
     items = repos.items ?? [];
-    agentIds = (agents.items ?? []).map((a) => a.agentId);
+    agentIds = (hosts.items ?? []).map((h) => h.agentId);
     worktrees = wts.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -44,7 +44,7 @@ export default async function RepositoriesPage() {
             Repositories
           </h2>
           <p className="text-sm text-muted-foreground">
-            Catalog repositories and attach local host paths to agents.
+            Catalog repositories and attach local paths to hosts.
           </p>
         </div>
         <AddRepoDialog />
@@ -53,7 +53,7 @@ export default async function RepositoriesPage() {
       <RepositoriesTable items={items} />
 
       <div>
-        <h3 className="mb-2 text-lg font-medium">Register local repo on an agent</h3>
+        <h3 className="mb-2 text-lg font-medium">Register local repo on a host</h3>
         <AttachLocalRepoForm agentIds={agentIds} />
       </div>
 

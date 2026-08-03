@@ -53,6 +53,22 @@ test.describe("control plane sessions", () => {
     await page.getByTestId("create-session-prompt").fill(`hello-${id}`);
     await page.getByTestId("create-session-timeout").fill("30");
     await page.getByTestId("create-session-submit").click();
-    await expect(page).toHaveURL(/\/sessions/, { timeout: 15_000 });
+
+    // Lands on the new session's own detail page, not just the list.
+    await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
+    await expect(page.getByTestId("page-session-detail")).toBeVisible();
+    await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+
+    // Queued sessions can be cancelled; cancelling unlocks resume.
+    await page.getByTestId("session-cancel").click();
+    await expect(page.getByTestId("session-detail-status")).toContainText("cancelled", {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("session-resume")).toBeVisible();
+  });
+
+  test("unknown session id shows a not-found state", async ({ page }) => {
+    await page.goto("/sessions/does-not-exist-xyz");
+    await expect(page.getByTestId("page-session-detail-not-found")).toBeVisible();
   });
 });

@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@auto-harness/ui";
+import { Card, CardContent, CardHeader, CardTitle, StatusBadge, TipText } from "@auto-harness/ui";
 
 import { DrainButton } from "../components/drain-button.tsx";
-import { TipText } from "../components/tip-text.tsx";
 import { agentId, apiBase, apiGet } from "../lib/api.ts";
 
 const CLICKABLE_CARD =
@@ -89,7 +88,7 @@ export default async function AgentStatusPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
-              <TipText tip="Command profile names advertised when the agent registers">
+              <TipText tip="Command profile names advertised when the host registers">
                 Profiles
               </TipText>
             </CardTitle>

@@ -43,7 +43,7 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
           } catch {
             /* ignore */
           }
-          router.push(id ? `/sessions?q=${encodeURIComponent(id)}` : "/sessions");
+          router.push(id ? `/sessions/${encodeURIComponent(id)}` : "/sessions");
           router.refresh();
         });
       }}
@@ -78,9 +78,7 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
           className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
           defaultValue={profiles[0] ?? ""}
         >
-          {profiles.length === 0 ? (
-            <option value="">(no profiles — connect an agent)</option>
-          ) : null}
+          {profiles.length === 0 ? <option value="">(no profiles — connect a host)</option> : null}
           {profiles.map((p) => (
             <option key={p} value={p}>
               {p}

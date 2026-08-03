@@ -2,13 +2,31 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useTransition } from "react";
-import { sessionListHref } from "@auto-harness/shared";
-import { Input, Label } from "@auto-harness/ui";
+
+import { Input } from "./input.tsx";
+import { Label } from "./label.tsx";
 
 const STATUSES = ["all", "queued", "running", "completed", "failed", "cancelled", "timed_out"];
 
-/** URL-backed filters — same behavior as control plane SessionFilters. */
-export function SessionFilters() {
+export type SessionFiltersProps = {
+  /** List page these filters live on. Default "/sessions". */
+  basePath?: string;
+};
+
+function buildHref(basePath: string, status: string, q: string): string {
+  const p = new URLSearchParams();
+  if (status && status !== "all") {
+    p.set("status", status);
+  }
+  if (q) {
+    p.set("q", q);
+  }
+  const s = p.toString();
+  return s ? `${basePath}?${s}` : basePath;
+}
+
+/** URL-backed status/search filters — shared by control plane and agent pane session lists. */
+export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
@@ -18,16 +36,10 @@ export function SessionFilters() {
   const push = useCallback(
     (next: { status?: string; q?: string }) => {
       start(() => {
-        router.push(
-          sessionListHref({
-            status: next.status ?? status,
-            q: next.q ?? q,
-            cursor: "",
-          }),
-        );
+        router.push(buildHref(basePath, next.status ?? status, next.q ?? q));
       });
     },
-    [router, status, q],
+    [router, basePath, status, q],
   );
 
   return (
@@ -56,7 +68,7 @@ export function SessionFilters() {
         </select>
       </div>
       <div className="min-w-[12rem] flex-1 space-y-1">
-        <Label htmlFor="q" tip="Substring match on session id or prompt">
+        <Label htmlFor="q" tip="Substring match on session id or prompt (Enter or blur to apply)">
           Search
         </Label>
         <Input
