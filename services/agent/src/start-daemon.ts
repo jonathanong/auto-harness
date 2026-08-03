@@ -1,6 +1,6 @@
 import type { AgentIdentity } from "./config-types.ts";
 import type { AgentConfig } from "./config.ts";
-import { emptyAgentConfig, fetchAgentHostConfig, inventoryFingerprint } from "./bootstrap.ts";
+import { fetchAgentHostConfig, inventoryFingerprint } from "./bootstrap.ts";
 import { AgentLoop } from "./agent-loop.ts";
 import { createWsTransport } from "./ws-transport.ts";
 
