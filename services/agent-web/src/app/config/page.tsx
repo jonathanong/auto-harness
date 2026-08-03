@@ -1,10 +1,10 @@
 import { HostConfigForm } from "../../components/host-config-form.tsx";
-import { apiBase } from "../../lib/api.ts";
+import { agentId, apiBase } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function HostConfigPage() {
-  const id = process.env.HARNESS_AGENT_ID ?? process.env.NEXT_PUBLIC_HARNESS_AGENT_ID ?? "local-1";
+  const id = agentId();
   let initial = `{
   "repositories": [{
     "id": "demo",

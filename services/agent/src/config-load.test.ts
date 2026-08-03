@@ -10,16 +10,23 @@ import {
 import { valid } from "./config-test-helpers.ts";
 
 describe("loadAgentIdentity", () => {
-  it("requires agent id and api url", () => {
-    expect(() => loadAgentIdentity({})).toThrow(/HARNESS_AGENT_ID/);
-    expect(() => loadAgentIdentity({ HARNESS_AGENT_ID: "a" })).toThrow(/HARNESS_API_URL/);
-    const id = loadAgentIdentity({
-      HARNESS_AGENT_ID: "a1",
-      HARNESS_API_URL: "http://127.0.0.1:7420",
-      HARNESS_API_KEY: "hns_x",
-      HARNESS_LOG_LEVEL: "debug",
+  it("defaults to local agent id and API URL when env is empty", () => {
+    expect(loadAgentIdentity({})).toEqual({
+      agentId: "local-1",
+      apiUrl: "http://127.0.0.1:7420",
+      logLevel: "info",
     });
-    expect(id).toEqual({
+  });
+
+  it("accepts HARNESS_API_HTTP as API base alias", () => {
+    expect(
+      loadAgentIdentity({
+        HARNESS_AGENT_ID: "a1",
+        HARNESS_API_HTTP: "http://127.0.0.1:7420",
+        HARNESS_API_KEY: "hns_x",
+        HARNESS_LOG_LEVEL: "debug",
+      }),
+    ).toEqual({
       agentId: "a1",
       apiUrl: "http://127.0.0.1:7420",
       apiKey: "hns_x",

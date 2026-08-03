@@ -51,3 +51,11 @@ export const DEFAULT_AGENT_KEEPALIVE_MS = 20_000;
 export const DEFAULT_ARCHIVE_PREFIX = "session-logs/";
 
 export const PACKAGE_SCOPE = "@auto-harness" as const;
+
+/** Local stack defaults (adjacent 7xxx ports). Override via HARNESS_* env in production. */
+export const LOCAL_API_HTTP = "http://127.0.0.1:7420" as const;
+export const LOCAL_API_WS = "ws://127.0.0.1:7420/ws" as const;
+export const LOCAL_WEB_HTTP = "http://127.0.0.1:7421" as const;
+export const LOCAL_AGENT_WEB_HTTP = "http://127.0.0.1:7423" as const;
+export const LOCAL_DDB_HTTP = "http://127.0.0.1:7422" as const;
+export const LOCAL_AGENT_ID = "local-1" as const;

@@ -14,9 +14,9 @@ export function printUsage(log: (msg: string) => void = console.log): void {
   auto-harness-agent run-session --file session.json
   auto-harness-agent start [--ws ws://host/ws]
 
-Identity (env only):
-  HARNESS_AGENT_ID   required
-  HARNESS_API_URL    required (http(s) or ws(s) control plane)
+Identity (env; local defaults shown):
+  HARNESS_AGENT_ID   default local-1
+  HARNESS_API_URL    default http://127.0.0.1:7420  (alias: HARNESS_API_HTTP)
   HARNESS_API_KEY    service account token (when auth enabled)
   HARNESS_LOG_LEVEL  optional (debug|info|warn|error)
 

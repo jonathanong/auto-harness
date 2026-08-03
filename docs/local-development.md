@@ -181,16 +181,14 @@ Shared components: `modules/ui`.
 
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
-pnpm local:api    # :7420
-
-HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
-# → http://127.0.0.1:7421
-
-export HARNESS_AGENT_ID=local-1
-export HARNESS_API_HTTP=http://127.0.0.1:7420
-pnpm local:agent-web
-# → http://127.0.0.1:7423
+pnpm local:api         # :7420
+pnpm local:web         # :7421  (API defaults to http://127.0.0.1:7420)
+pnpm local:agent-web   # :7423  (agent id defaults to local-1)
+pnpm local:agent start # daemon (same defaults)
 ```
+
+Local defaults (override with env when needed): `HARNESS_AGENT_ID=local-1`,
+`HARNESS_API_URL` / `HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
 URL examples: `/sessions?status=running&q=sess-…`, `/agents?online=online`. Host inventory: agent pane `/config`.
 

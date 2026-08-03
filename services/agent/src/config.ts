@@ -1,3 +1,5 @@
+import { LOCAL_AGENT_ID, LOCAL_API_HTTP } from "@auto-harness/shared";
+
 import type { AgentConfig, AgentIdentity } from "./config-types.ts";
 import { fetchAgentHostConfig, type FetchHostConfigDeps } from "./bootstrap.ts";
 import { parseAgentConfig } from "./config-parse.ts";
@@ -15,18 +17,13 @@ export { fetchAgentHostConfig, httpBaseFromApiUrl } from "./bootstrap.ts";
 
 /**
  * Load process identity from environment.
- * Required: HARNESS_AGENT_ID, HARNESS_API_URL.
+ * Local defaults: HARNESS_AGENT_ID=local-1, HARNESS_API_URL=http://127.0.0.1:7420
+ * (HARNESS_API_HTTP is accepted as an alias for the API base).
  * Optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL.
  */
 export function loadAgentIdentity(env: NodeJS.ProcessEnv = process.env): AgentIdentity {
-  const agentId = env.HARNESS_AGENT_ID?.trim();
-  const apiUrl = env.HARNESS_API_URL?.trim();
-  if (!agentId) {
-    throw new Error("HARNESS_AGENT_ID is required");
-  }
-  if (!apiUrl) {
-    throw new Error("HARNESS_API_URL is required");
-  }
+  const agentId = env.HARNESS_AGENT_ID?.trim() || LOCAL_AGENT_ID;
+  const apiUrl = env.HARNESS_API_URL?.trim() || env.HARNESS_API_HTTP?.trim() || LOCAL_API_HTTP;
   const logLevelRaw = env.HARNESS_LOG_LEVEL;
   const logLevel =
     logLevelRaw === "debug" ||

@@ -116,7 +116,7 @@ describe("printUsage / main / defaults", () => {
   it("covers helpers", () => {
     const lines: string[] = [];
     printUsage((m) => lines.push(m));
-    expect(lines[0]).toMatch(/HARNESS_AGENT_ID/);
+    expect(lines[0]).toMatch(/local-1/);
     const d = createDefaultRunSessionDeps();
     expect(typeof d.loadConfig).toBe("function");
   });

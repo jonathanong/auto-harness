@@ -13,18 +13,12 @@ import {
 } from "@auto-harness/ui";
 
 import { DrainButton } from "../components/drain-button.tsx";
-import { agentId, apiGet } from "../lib/api.ts";
+import { agentId, apiBase, apiGet } from "../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentStatusPage() {
-  const id = (() => {
-    try {
-      return agentId();
-    } catch {
-      return process.env.HARNESS_AGENT_ID ?? "local-1";
-    }
-  })();
+  const id = agentId();
 
   let me: { agentId: string; online: boolean; commandProfiles?: string[] } | undefined;
   let worktrees: Array<Record<string, unknown>> = [];
@@ -39,10 +33,7 @@ export default async function AgentStatusPage() {
       ),
       apiGet<{ items: Array<Record<string, unknown>> }>("/api/v1/worktrees"),
       apiGet<{ items: Array<Record<string, unknown>> }>("/api/v1/sessions"),
-      fetch(
-        `${process.env.HARNESS_API_HTTP ?? process.env.NEXT_PUBLIC_HARNESS_API_HTTP ?? "http://127.0.0.1:7420"}/api/v1/agents/${encodeURIComponent(id)}/config`,
-        { cache: "no-store" },
-      ),
+      fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(id)}/config`, { cache: "no-store" }),
     ]);
     me = agents.items?.find((a) => a.agentId === id);
     worktrees = (wts.items ?? []).filter((w) => w.agentId === id);

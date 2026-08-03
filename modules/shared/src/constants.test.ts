@@ -7,6 +7,8 @@ import {
   DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
+  LOCAL_AGENT_ID,
+  LOCAL_API_HTTP,
   ON_CONFLICT_OPTIONS,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
@@ -27,5 +29,7 @@ describe("constants", () => {
     expect(TERMINAL_SESSION_STATUSES).not.toContain("queued");
     expect(SESSION_ERROR_CODES).toContain("usage_limit");
     expect(ON_CONFLICT_OPTIONS).toEqual(["queue", "replace", "reject"]);
+    expect(LOCAL_AGENT_ID).toBe("local-1");
+    expect(LOCAL_API_HTTP).toContain("7420");
   });
 });
