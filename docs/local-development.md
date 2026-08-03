@@ -243,13 +243,14 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 
 ## Related
 
-| Doc                          | Role                           |
-| ---------------------------- | ------------------------------ |
-| [setup.md](setup.md)         | Install, AWS deploy overview   |
-| [deploy.md](deploy.md)       | Deploy / update / teardown     |
-| [cli.md](cli.md)             | Agent/API CLI commands         |
-| [api.md](api.md)             | REST shapes                    |
-| [websocket.md](websocket.md) | Agent + UI real-time protocol  |
-| [agent.md](agent.md)         | Agent internals                |
-| [aws.md](aws.md)             | Control-plane design           |
-| [plan.md](plan.md)           | Phases and acceptance criteria |
+| Doc                                | Role                               |
+| ---------------------------------- | ---------------------------------- |
+| [setup.md](setup.md)               | Install overview                   |
+| [deploy.md](deploy.md)             | Deploy index (local / AWS / agent) |
+| [deploy-local.md](deploy-local.md) | Local deploy / update / teardown   |
+| [cli.md](cli.md)                   | Agent/API CLI commands             |
+| [api.md](api.md)                   | REST shapes                        |
+| [websocket.md](websocket.md)       | Agent + UI real-time protocol      |
+| [agent.md](agent.md)               | Agent internals                    |
+| [aws.md](aws.md)                   | Control-plane design               |
+| [plan.md](plan.md)                 | Phases and acceptance criteria     |
