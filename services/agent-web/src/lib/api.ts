@@ -1,12 +1,7 @@
 import { LOCAL_AGENT_ID, LOCAL_API_HTTP } from "@auto-harness/shared";
 
-export function apiBase(): string {
-  const raw =
-    process.env.HARNESS_API_HTTP ??
-    process.env.NEXT_PUBLIC_HARNESS_API_HTTP ??
-    process.env.HARNESS_API_URL ??
-    process.env.NEXT_PUBLIC_HARNESS_API_URL ??
-    LOCAL_API_HTTP;
+function serverApiBase(): string {
+  const raw = process.env.HARNESS_API_HTTP ?? process.env.HARNESS_API_URL ?? LOCAL_API_HTTP;
   let base = raw.trim();
   if (base.startsWith("ws://")) {
     base = `http://${base.slice(5)}`;
@@ -14,6 +9,17 @@ export function apiBase(): string {
     base = `https://${base.slice(6)}`;
   }
   return base.replace(/\/ws\/?$/, "").replace(/\/$/, "");
+}
+
+/**
+ * Browser: same-origin via Next rewrite (no CORS).
+ * Server: absolute control-plane URL.
+ */
+export function apiBase(): string {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return serverApiBase();
 }
 
 export function agentId(): string {

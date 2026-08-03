@@ -1,18 +1,25 @@
 import { LOCAL_API_HTTP } from "@auto-harness/shared";
 
-/** Browser + server client for the local control plane API. */
-
-export function apiBase(): string {
-  if (typeof process !== "undefined" && process.env.HARNESS_API_HTTP) {
+/** Resolve control-plane base for server-side fetches. */
+function serverApiBase(): string {
+  if (process.env.HARNESS_API_HTTP) {
     return process.env.HARNESS_API_HTTP.replace(/\/$/, "");
   }
-  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_HARNESS_API_HTTP) {
-    return process.env.NEXT_PUBLIC_HARNESS_API_HTTP.replace(/\/$/, "");
-  }
-  if (typeof process !== "undefined" && process.env.HARNESS_API_URL) {
+  if (process.env.HARNESS_API_URL) {
     return process.env.HARNESS_API_URL.replace(/\/$/, "").replace(/\/ws$/, "");
   }
   return LOCAL_API_HTTP;
+}
+
+/**
+ * Browser: same-origin (Next rewrite proxies to API — avoids CORS).
+ * Server (RSC): absolute local API URL.
+ */
+export function apiBase(): string {
+  if (typeof window !== "undefined") {
+    return "";
+  }
+  return serverApiBase();
 }
 
 export async function apiGet<T>(path: string): Promise<T> {

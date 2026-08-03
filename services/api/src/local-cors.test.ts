@@ -54,7 +54,7 @@ describe("applyLocalCors", () => {
     expect(headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:7423");
   });
 
-  it("ignores unknown origins", () => {
+  it("allows any localhost port and ignores remote origins", () => {
     const headers = new Map<string, string>();
     const res = {
       setHeader(name: string, value: string) {
@@ -67,6 +67,13 @@ describe("applyLocalCors", () => {
         /* unused */
       },
     };
+    applyLocalCors(
+      { method: "GET", headers: { origin: "http://localhost:9999" } } as never,
+      res as never,
+    );
+    expect(headers.get("access-control-allow-origin")).toBe("http://localhost:9999");
+
+    headers.clear();
     applyLocalCors(
       { method: "GET", headers: { origin: "https://evil.example" } } as never,
       res as never,
