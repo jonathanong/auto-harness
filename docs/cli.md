@@ -2,7 +2,7 @@
 
 Phase 1 local tooling for the agent and API packages. CI callers use the [REST API](api.md) (fire-and-forget); they do not run this CLI.
 
-Full local runbook: [setup.md](setup.md#local-development-phase-1--no-aws).
+Full local runbook: [local-development.md](local-development.md).
 
 ## Invocation (from monorepo root)
 
@@ -13,7 +13,8 @@ pnpm install
 pnpm local:agent status --config /path/to/agent.config.json
 pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
 
-# Local API (in-memory)
+# Local API (DynamoDB Local)
+pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api
 # → http://127.0.0.1:7420
 

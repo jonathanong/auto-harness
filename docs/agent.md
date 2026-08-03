@@ -2,12 +2,13 @@
 
 Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
-| Need                       | Doc                          |
-| -------------------------- | ---------------------------- |
-| Install / config / systemd | [setup.md](setup.md)         |
-| CLI commands               | [cli.md](cli.md)             |
-| Wire protocol              | [websocket.md](websocket.md) |
-| Control plane              | [aws.md](aws.md)             |
+| Need                       | Doc                                          |
+| -------------------------- | -------------------------------------------- |
+| Install / config / systemd | [setup.md](setup.md)                         |
+| Local stack / e2e          | [local-development.md](local-development.md) |
+| CLI commands               | [cli.md](cli.md)                             |
+| Wire protocol              | [websocket.md](websocket.md)                 |
+| Control plane              | [aws.md](aws.md)                             |
 
 ---
 
@@ -627,11 +628,12 @@ ERROR: CLI tool not found: codex
 
 ## Related documents
 
-| Doc                                | Content                                    |
-| ---------------------------------- | ------------------------------------------ |
-| [setup.md](setup.md)               | Install, config file, systemd, local stack |
-| [cli.md](cli.md)                   | Agent CLI                                  |
-| [websocket.md](websocket.md)       | Message types                              |
-| [aws.md](aws.md)                   | Scheduler, disconnect                      |
-| [architecture.md](architecture.md) | Cross-plane flows                          |
-| [security.md](security.md)         | Host hardening                             |
+| Doc                                          | Content                       |
+| -------------------------------------------- | ----------------------------- |
+| [setup.md](setup.md)                         | Install, config file, systemd |
+| [local-development.md](local-development.md) | Local stack, e2e, manage UI   |
+| [cli.md](cli.md)                             | Agent CLI                     |
+| [websocket.md](websocket.md)                 | Message types                 |
+| [aws.md](aws.md)                             | Scheduler, disconnect         |
+| [architecture.md](architecture.md)           | Cross-plane flows             |
+| [security.md](security.md)                   | Host hardening                |

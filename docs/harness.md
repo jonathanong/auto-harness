@@ -110,7 +110,7 @@ Filaments (or any repo) only needs:
 | `HARNESS_TOKEN`   | Service account `hns_…`                         |
 | `HARNESS_REPO_ID` | Control-plane repository id for this git remote |
 
-Agent host maps that same `repositoryId` to a local checkout path in agent config ([setup.md](setup.md)).
+Agent host maps that same `repositoryId` to a local checkout path in agent config ([setup.md](setup.md), [local-development.md](local-development.md)).
 
 ---
 

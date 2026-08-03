@@ -2,7 +2,7 @@
 
 HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/api/v1` via API Gateway + Lambda.
 
-Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [security.md](security.md). Deploy/local: [setup.md](setup.md).
+Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [security.md](security.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
 **Phase 2+ fields on `POST /sessions`:** `ref`, `commandProfile` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 

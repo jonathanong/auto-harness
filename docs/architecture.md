@@ -56,15 +56,15 @@ Deep dives live in the layer docs above; this page keeps cross-plane flows and d
 
 ## Layer Map
 
-| Topic                  | AWS layer                                                                  | Agent layer                                                |
-| ---------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [setup.md](setup.md)) |
-| Session queue / assign | Scheduler + round-robin                                                    | Accepts `session:assign` only                              |
-| Worktrees              | DynamoDB inventory + online flags                                          | Create/claim/release on disk                               |
-| Logs                   | SessionLogs + S3 + UI fan-out                                              | Capture PTY, batch, send `session:log`                     |
-| Schedules              | EventBridge cron → sessions                                                | Main-checkout lock + run command                           |
-| Secrets                | No repo/AI secrets                                                         | `.env`, SSH, vendor keys                                   |
-| UI                     | Hosted clients → REST/WS                                                   | —                                                          |
+| Topic                  | AWS layer                                                                  | Agent layer                                                                        |
+| ---------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [local-development.md](local-development.md)) |
+| Session queue / assign | Scheduler + round-robin                                                    | Accepts `session:assign` only                                                      |
+| Worktrees              | DynamoDB inventory + online flags                                          | Create/claim/release on disk                                                       |
+| Logs                   | SessionLogs + S3 + UI fan-out                                              | Capture PTY, batch, send `session:log`                                             |
+| Schedules              | EventBridge cron → sessions                                                | Main-checkout lock + run command                                                   |
+| Secrets                | No repo/AI secrets                                                         | `.env`, SSH, vendor keys                                                           |
+| UI                     | Hosted clients → REST/WS                                                   | —                                                                                  |
 
 Web UI feature surface: [web.md](web.md).
 
@@ -177,17 +177,18 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [agent.md — Non-worktree](a
 
 ## Related documents
 
-| Doc                                | Role                     |
-| ---------------------------------- | ------------------------ |
-| [why.md](why.md)                   | Product rationale        |
-| [costs.md](costs.md)               | Subscription vs AWS cost |
-| [setup.md](setup.md)               | Install                  |
-| [api.md](api.md)                   | REST                     |
-| [websocket.md](websocket.md)       | Real-time protocol       |
-| [cli.md](cli.md)                   | Agent CLI                |
-| [aws.md](aws.md)                   | Control plane            |
-| [agent.md](agent.md)               | Execution plane          |
-| [plan.md](plan.md)                 | Phases + data model      |
-| [security.md](security.md)         | Auth                     |
-| [web.md](web.md)                   | UI                       |
-| [integrations.md](integrations.md) | Slack                    |
+| Doc                                          | Role                     |
+| -------------------------------------------- | ------------------------ |
+| [why.md](why.md)                             | Product rationale        |
+| [costs.md](costs.md)                         | Subscription vs AWS cost |
+| [setup.md](setup.md)                         | Install / AWS / VPS      |
+| [local-development.md](local-development.md) | Local stack              |
+| [api.md](api.md)                             | REST                     |
+| [websocket.md](websocket.md)                 | Real-time protocol       |
+| [cli.md](cli.md)                             | Agent CLI                |
+| [aws.md](aws.md)                             | Control plane            |
+| [agent.md](agent.md)                         | Execution plane          |
+| [plan.md](plan.md)                           | Phases + data model      |
+| [security.md](security.md)                   | Auth                     |
+| [web.md](web.md)                             | UI                       |
+| [integrations.md](integrations.md)           | Slack                    |

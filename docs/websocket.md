@@ -171,10 +171,11 @@ Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [
 
 ## Related
 
-| Doc                  | Role                                    |
-| -------------------- | --------------------------------------- |
-| [api.md](api.md)     | REST                                    |
-| [agent.md](agent.md) | How the agent handles assign/log/status |
-| [aws.md](aws.md)     | Scheduler, fan-out, connections table   |
-| [web.md](web.md)     | UI live terminal                        |
-| [setup.md](setup.md) | URLs and tokens                         |
+| Doc                                          | Role                                    |
+| -------------------------------------------- | --------------------------------------- |
+| [api.md](api.md)                             | REST                                    |
+| [agent.md](agent.md)                         | How the agent handles assign/log/status |
+| [aws.md](aws.md)                             | Scheduler, fan-out, connections table   |
+| [web.md](web.md)                             | UI live terminal                        |
+| [setup.md](setup.md)                         | Deploy / URLs and tokens                |
+| [local-development.md](local-development.md) | Local API + `/ws` e2e                   |

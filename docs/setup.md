@@ -1,168 +1,36 @@
 # Setup
 
-Install and run Auto Harness. Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
+Install Auto Harness and run it in production-shaped environments. **Day-to-day local work (DynamoDB Local, `pnpm local:*`, e2e, manage UI) lives in [local-development.md](local-development.md).**
+
+Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
 
 ## Prerequisites
 
-| Piece                                   | Need                                                                     |
-| --------------------------------------- | ------------------------------------------------------------------------ |
-| Node.js ≥ 22.18                         | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
-| pnpm                                    | workspaces (`packageManager` in root `package.json`)                     |
-| Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)                             |
-| Git 2.20+                               | worktrees                                                                |
-| AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions                    |
+| Piece                                | Need                                                                     |
+| ------------------------------------ | ------------------------------------------------------------------------ |
+| Node.js ≥ 22.18                      | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
+| pnpm                                 | workspaces (`packageManager` in root `package.json`)                     |
+| Docker                               | **DynamoDB Local** for local API paths                                   |
+| Git 2.20+                            | worktrees                                                                |
+| AI CLIs (optional for real sessions) | Codex / Claude / etc. on the agent host                                  |
+
+```bash
+pnpm install
+```
 
 ---
 
-## Local development (Phase 1 — no AWS account)
+## Local development
 
-Control-plane data uses **Amazon DynamoDB Local** (official image), not a custom in-memory database. Start it before `local:api` / API smoke tests:
+**→ [local-development.md](local-development.md)** — DynamoDB Local, `pnpm local:api` / `local:agent` / `local:web`, one-shot e2e, operator manage routes, and the quality gate.
 
-```bash
-pnpm local:dynamodb
-pnpm local:dynamodb:ready   # creates tables, waits for :8000
-```
-
-Endpoint: `HARNESS_DDB_ENDPOINT` (default `http://127.0.0.1:8000`). Dummy AWS credentials are fine for Local.
-
-This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start` and full AWS deploy come in later phases.
-
-### One-shot end-to-end checks
-
-From the repo root after `pnpm install` (and DynamoDB Local for API paths):
-
-```bash
-pnpm local:e2e          # SessionRunner create→run
-pnpm local:cli-e2e      # documented agent CLI + ref main
-pnpm local:ws-e2e       # real WebSocket agent channel
-pnpm local:cloud-e2e    # loopback agent loop
-```
-
-What it does (real shipped modules):
-
-1. Creates a temporary git repo with branch `feature/local-e2e`
-2. Creates a session via the **local API create path** (`createLocalApp` / `POST /api/v1/sessions` handler)
-3. Asserts an **unknown `commandProfile`** fails with `errorCode: unknown_command_profile` (no shell fallback)
-4. Runs `SessionRunner` with `ref: feature/local-e2e` and profile `echo-prompt`
-5. Asserts worktree `HEAD` matches that feature commit, terminal hook env was set, and log `seq` is monotonic
-
-Expect JSON with `"ok": true` and `"status": "completed"`.
-
-### Manual path A — agent `run-session` only
-
-1. Point example config at a real absolute repo path (see [examples/local/agent.config.json](../examples/local/agent.config.json)):
-
-```json
-{
-  "agentId": "local-1",
-  "commandProfiles": {
-    "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
-  },
-  "repositories": [
-    {
-      "id": "demo",
-      "path": "/ABS/PATH/TO/REPO",
-      "defaultBranch": "main",
-      "worktrees": [
-        {
-          "id": "wt-1",
-          "path": "/ABS/PATH/TO/REPO/.worktrees/wt-1",
-          "labels": ["echo"]
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Required fields:** `agentId`, `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
-
-2. Write a session assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)):
-
-```json
-{
-  "sessionId": "sess-local-1",
-  "repositoryId": "demo",
-  "prompt": "hello from local session",
-  "commandProfile": "echo-prompt",
-  "timeout": 60,
-  "worktreeId": "wt-1",
-  "ref": "main"
-}
-```
-
-3. Run (either form works; a leading `--` from pnpm is stripped):
-
-```bash
-pnpm local:agent status --config /path/to/agent.config.json
-pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
-
-# also valid:
-pnpm local:agent -- status --config /path/to/agent.config.json
-pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
-```
-
-On success the CLI prints a final JSON line with `"status":"completed"`. On failure (unknown profile, setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
-
-### Manual path B — local API create, then agent run
-
-1. Start DynamoDB Local (if not already), then the API:
+Quick start:
 
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
-pnpm local:api
-# listens on http://127.0.0.1:7420 — persists sessions to DynamoDB Local
-```
-
-2. Create a session (fire-and-forget style):
-
-```bash
-curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
-  -H 'content-type: application/json' \
-  -d '{
-    "repositoryId": "demo",
-    "prompt": "hello from API",
-    "commandProfile": "echo-prompt",
-    "timeout": 60,
-    "ref": "main",
-    "requiredLabels": ["echo"]
-  }'
-```
-
-Response `201` includes `id`, `status: "queued"`, `url`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from your agent config, then:
-
-```bash
-pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
-```
-
-> Phase 1 does **not** yet auto-dispatch API sessions to the agent over WebSocket (`start` is Phase 3). You bridge create → run with the assign file (or use `pnpm local:e2e`, which does both in-process).
-
-### Quality gate
-
-```bash
+pnpm local:e2e
 pnpm check
-pnpm local:e2e        # create handler + SessionRunner (feature ref)
-pnpm local:cli-e2e    # documented `pnpm local:agent` path with ref: main
-pnpm local:api-smoke  # POST /sessions → 201
-pnpm local:ws-e2e     # WebSocket create→assign→run
-pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
-# optional UI: pnpm local:web  (create-session + repos/schedules/sessions/agents on :3000)
 ```
-
-`pnpm check` runs oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee. There is **no compile step**: local scripts and CLIs run TypeScript directly via Node type stripping (`node …/*.ts`).
-
-### Operator management (local)
-
-With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1` supports:
-
-| Resource     | Routes                                                                                |
-| ------------ | ------------------------------------------------------------------------------------- |
-| Repositories | `GET/POST /repositories`, `GET/PUT/DELETE /repositories/:id`                          |
-| Schedules    | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger` |
-| Sessions     | `GET /sessions`, `POST /sessions/:id/cancel`                                          |
-| Agents       | `GET /agents`, `POST /agents/drain`                                                   |
-
-`pnpm local:web` exposes thin HTML pages for the same surfaces (list/add repos and schedules, session list + cancel, agent list + drain). Command profiles remain agent-reported names only (D4).
 
 ---
 
@@ -182,9 +50,9 @@ See [aws.md](aws.md), [security.md](security.md).
 
 ## VPS agent (production shape)
 
-Production will use WebSocket `start` (Phase 3). Until then, use local `run-session` above.
+Production uses WebSocket `start` (agent daemon). Locally, use `run-session` / e2e as in [local-development.md](local-development.md).
 
-Agent config still includes optional `apiUrl` / `apiKey` for later cloud connect. **commandProfiles** stay required for all execution (D4).
+Agent config includes optional `apiUrl` / `apiKey` for cloud connect. **commandProfiles** stay required for all execution (D4).
 
 Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
 

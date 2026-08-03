@@ -3,7 +3,7 @@
 This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to VPS agents.
 
 Execution plane: [agent.md](agent.md). Overview: [architecture.md](architecture.md).  
-REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md).
+REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
 ---
 
@@ -430,7 +430,7 @@ Alarms (recommended): Lambda errors, API 5xx, zero agents for N minutes, DLQ if 
 
 ## Local stand-in
 
-Express + `ws` wrapping the same handlers; DynamoDB Local. Commands and env: **[setup.md](setup.md#local-development)**.
+Express + `ws` wrapping the same handlers; DynamoDB Local. Commands and env: **[local-development.md](local-development.md)**.
 
 ## Security boundaries (AWS side)
 
@@ -449,12 +449,13 @@ Execution always happens on the agent. The control plane only **schedules and ob
 
 ## Related documents
 
-| Doc                                | Content            |
-| ---------------------------------- | ------------------ |
-| [setup.md](setup.md)               | Deploy and env     |
-| [api.md](api.md)                   | REST               |
-| [websocket.md](websocket.md)       | Real-time protocol |
-| [agent.md](agent.md)               | Execution plane    |
-| [architecture.md](architecture.md) | Flows              |
-| [security.md](security.md)         | Auth               |
-| [costs.md](costs.md)               | Cost model         |
+| Doc                                          | Content                         |
+| -------------------------------------------- | ------------------------------- |
+| [setup.md](setup.md)                         | Deploy and env                  |
+| [local-development.md](local-development.md) | Local DynamoDB + `pnpm local:*` |
+| [api.md](api.md)                             | REST                            |
+| [websocket.md](websocket.md)                 | Real-time protocol              |
+| [agent.md](agent.md)                         | Execution plane                 |
+| [architecture.md](architecture.md)           | Flows                           |
+| [security.md](security.md)                   | Auth                            |
+| [costs.md](costs.md)                         | Cost model                      |
