@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { escapeHtml, layout, readBody, send, simplePage } from "../html.ts";
 
+/** Control-plane fleet view. Host inventory is edited on the agent pane (:7423). */
 export async function handleAgentsGet(res: ServerResponse, apiBaseUrl: string): Promise<void> {
   const [agentsRes, hostsRes] = await Promise.all([
     fetch(`${apiBaseUrl}/api/v1/agents`),
@@ -36,28 +37,12 @@ export async function handleAgentsGet(res: ServerResponse, apiBaseUrl: string): 
     res,
     200,
     layout(
-      "Agents",
+      "Agents — Control plane",
       `<h1>Agents</h1>
-          <table><tr><th>agentId</th><th>online</th><th>profiles</th><th>host config</th><th></th></tr>${rows}${configuredOnly || ""}${!rows && !configuredOnly ? "<tr><td colspan=5>(none)</td></tr>" : ""}</table>
-          <h2>Configure agent host inventory</h2>
-          <p>Agent process only needs <code>HARNESS_AGENT_ID</code>, <code>HARNESS_API_URL</code>, <code>HARNESS_API_KEY</code>. Paths and command profiles are set here.</p>
-          <form method="post" action="/agents/config">
-            <label>agentId <input name="agentId" required placeholder="local-1"/></label>
-            <label>host config JSON
-              <textarea name="configJson" rows="14" cols="72" required>{
-  "repositories": [{
-    "id": "demo",
-    "path": "/ABS/PATH/TO/REPO",
-    "defaultBranch": "main",
-    "worktrees": [{ "id": "wt-1", "path": "/ABS/PATH/TO/REPO/.worktrees/wt-1", "labels": ["echo"] }]
-  }],
-  "commandProfiles": {
-    "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
-  }
-}</textarea>
-            </label>
-            <button type="submit">Save host config</button>
-          </form>`,
+          <p class="banner">Fleet view. Host inventory (paths, commandProfiles) is configured on the
+          <strong>agent pane</strong> at <code>http://127.0.0.1:7423</code>
+          (<code>pnpm local:agent-web</code>).</p>
+          <table><tr><th>agentId</th><th>online</th><th>profiles</th><th>host config</th><th></th></tr>${rows}${configuredOnly || ""}${!rows && !configuredOnly ? "<tr><td colspan=5>(none)</td></tr>" : ""}</table>`,
     ),
   );
 }
@@ -81,45 +66,6 @@ export async function handleAgentsDrainPost(
     r.status,
     simplePage(
       `<p class="${r.ok ? "ok" : "err"}">${r.ok ? "Drain requested" : "Drain failed"}</p><pre>${escapeHtml(text)}</pre><p><a href="/agents">Back</a></p>`,
-    ),
-  );
-}
-
-export async function handleAgentsConfigPost(
-  req: IncomingMessage,
-  res: ServerResponse,
-  apiBaseUrl: string,
-): Promise<void> {
-  const raw = await readBody(req);
-  const params = new URLSearchParams(raw);
-  const agentId = params.get("agentId") ?? "";
-  const configJson = params.get("configJson") ?? "";
-  let body: unknown;
-  try {
-    body = JSON.parse(configJson) as unknown;
-  } catch {
-    send(res, 400, simplePage(`<p class="err">Invalid JSON</p><p><a href="/agents">Back</a></p>`));
-    return;
-  }
-  const r = await fetch(`${apiBaseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await r.text();
-  if (!r.ok) {
-    send(
-      res,
-      r.status,
-      simplePage(`<p class="err">${escapeHtml(text)}</p><p><a href="/agents">Back</a></p>`),
-    );
-    return;
-  }
-  send(
-    res,
-    200,
-    simplePage(
-      `<p class="ok">Host config saved for ${escapeHtml(agentId)}</p><pre>${escapeHtml(text)}</pre><p><a href="/agents">Back</a></p>`,
     ),
   );
 }

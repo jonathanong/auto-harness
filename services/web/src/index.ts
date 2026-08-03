@@ -5,6 +5,7 @@ import {
   createSessionFromUi,
   validateCreateSessionForm,
 } from "./create-session.ts";
+import { startAgentWebServer } from "./agent-server.ts";
 import { startWebServer } from "./server.ts";
 
 /** Web UI service identity. */
@@ -14,4 +15,10 @@ export function getServiceName(): string {
   return serviceName;
 }
 
-export { createHttpApiClient, createSessionFromUi, validateCreateSessionForm, startWebServer };
+export {
+  createHttpApiClient,
+  createSessionFromUi,
+  validateCreateSessionForm,
+  startAgentWebServer,
+  startWebServer,
+};

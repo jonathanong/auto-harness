@@ -23,7 +23,9 @@ export default defineConfig({
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
         "**/server.ts",
-        // HTML route handlers split from server.ts (exercised by phase4-web e2e)
+        "**/agent-server.ts",
+        "**/listen.ts",
+        // HTML route handlers (exercised by phase4-web e2e)
         "**/html.ts",
         "**/pages/**",
         "**/ws-hub.ts",

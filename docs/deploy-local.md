@@ -44,14 +44,17 @@ EOF
 pnpm local:api
 # → http://127.0.0.1:7420
 
-# Optional thin web UI
+# Control-plane UI (sessions, fleet, schedules)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 # → http://127.0.0.1:7421
 
-# Agent daemon — env identity only; host inventory from API/UI
+# Agent pane UI (host inventory + status for this agent)
 export HARNESS_AGENT_ID=local-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-# PUT /api/v1/agents/local-1/config first (see examples/local/agent-host.config.json)
+pnpm local:agent-web
+# → http://127.0.0.1:7423  — open /config and save host inventory
+
+# Agent daemon — same env identity
 pnpm local:agent start
 ```
 
@@ -90,7 +93,7 @@ kill "$(cat /path/to/web.pid)" 2>/dev/null || true
 kill "$(cat /path/to/api.pid)" 2>/dev/null || true
 
 # Or free ports
-for p in 7420 7421; do
+for p in 7420 7421 7423; do
   for pid in $(lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null || true); do
     kill "$pid" 2>/dev/null || true
   done

@@ -186,8 +186,14 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
   -H 'content-type: application/json' \
   -d @"$WORK/config/agent-host.config.json"
 
-# Terminal C — Web (optional, :7421) — also has Agents host-config form
+# Terminal C — Control-plane UI (:7421)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
+
+# Terminal C2 — Agent pane UI (:7423) — host inventory for this agent
+export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent-web
+# open http://127.0.0.1:7423/config  (or PUT config via curl as below)
 
 # Terminal D — Agent daemon (env identity only)
 export HARNESS_AGENT_ID=local-e2e-1
