@@ -9,7 +9,7 @@ import {
   ScalarAttributeType,
 } from "@aws-sdk/client-dynamodb";
 
-import { tableNames, type DynamoTableNames } from "./dynamo.js";
+import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {

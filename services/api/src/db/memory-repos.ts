@@ -5,7 +5,7 @@ import type {
   SessionRepository,
   WorktreeRecord,
   WorktreeRepository,
-} from "./types.js";
+} from "./types.ts";
 
 export class MemorySessionRepository implements SessionRepository {
   private readonly sessions = new Map<string, SessionRecord>();

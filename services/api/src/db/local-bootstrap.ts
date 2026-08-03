@@ -1,7 +1,7 @@
 import { ListTablesCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 
-import { createDynamoClients, DEFAULT_DYNAMODB_ENDPOINT } from "./dynamo.js";
-import { ensureControlPlaneTables } from "./ensure-tables.js";
+import { createDynamoClients, DEFAULT_DYNAMODB_ENDPOINT } from "./dynamo.ts";
+import { ensureControlPlaneTables } from "./ensure-tables.ts";
 
 export { createDynamoClients, ensureControlPlaneTables };
 

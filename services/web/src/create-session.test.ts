@@ -4,7 +4,7 @@ import {
   createHttpApiClient,
   createSessionFromUi,
   validateCreateSessionForm,
-} from "./create-session.js";
+} from "./create-session.ts";
 
 describe("validateCreateSessionForm", () => {
   it("accepts ref and agent-reported profile only", () => {

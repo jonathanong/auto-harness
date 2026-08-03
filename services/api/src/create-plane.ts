@@ -1,7 +1,7 @@
-import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from "./db/dynamo.js";
-import { ensureControlPlaneTables } from "./db/ensure-tables.js";
-import { DynamoPlaneStorage } from "./db/plane-storage.js";
-import { ControlPlane, type ControlPlaneOptions } from "./control-plane.js";
+import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from "./db/dynamo.ts";
+import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
+import { DynamoPlaneStorage } from "./db/plane-storage.ts";
+import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
 
 export type CreateControlPlaneOptions = ControlPlaneOptions &
   CreateDynamoClientOptions & {

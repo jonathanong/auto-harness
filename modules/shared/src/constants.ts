@@ -1,4 +1,4 @@
-import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.js";
+import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.ts";
 
 export const SESSION_STATUSES = [
   "queued",

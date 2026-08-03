@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { main } from "./cli.js";
+import { main } from "./cli.ts";
 
 describe("api cli", () => {
   it("prints help", async () => {

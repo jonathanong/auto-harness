@@ -4,8 +4,8 @@ import {
   createHttpApiClient,
   createSessionFromUi,
   validateCreateSessionForm,
-} from "./create-session.js";
-import { startWebServer } from "./server.js";
+} from "./create-session.ts";
+import { startWebServer } from "./server.ts";
 
 /** Web UI service identity. */
 export const serviceName = `${PACKAGE_SCOPE}/web` as const;

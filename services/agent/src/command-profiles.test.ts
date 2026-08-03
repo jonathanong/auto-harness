@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.js";
+import { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
 
 describe("resolveCommandArgv", () => {
   it("appends prompt when configured", () => {

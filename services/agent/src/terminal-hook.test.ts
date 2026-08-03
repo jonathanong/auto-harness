@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProcessRunner } from "./executor.js";
-import { runTerminalHook } from "./terminal-hook.js";
+import type { ProcessRunner } from "./executor.ts";
+import { runTerminalHook } from "./terminal-hook.ts";
 
 describe("runTerminalHook", () => {
   it("passes session env to the hook script", async () => {

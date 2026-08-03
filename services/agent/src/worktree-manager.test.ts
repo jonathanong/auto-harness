@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { parseAgentConfig } from "./config.js";
-import type { GitClient } from "./git.js";
-import { WorktreeManager } from "./worktree-manager.js";
+import { parseAgentConfig } from "./config.ts";
+import type { GitClient } from "./git.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
 
 function fakeGit(): GitClient & {
   checkouts: string[];

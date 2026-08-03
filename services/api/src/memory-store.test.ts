@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.js";
-import { MemorySessionStore } from "./memory-store.js";
+import { ControlPlane } from "./control-plane.ts";
+import { MemorySessionStore } from "./memory-store.ts";
 
 describe("MemorySessionStore", () => {
   it("creates and lists sessions", () => {

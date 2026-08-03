@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("phase3 websocket e2e", () => {
   it("create→assign→run over real local /ws", () => {
-    const r = spawnSync("pnpm", ["exec", "tsx", "scripts/phase3-ws-e2e.mts"], {
+    const r = spawnSync("pnpm", ["exec", "node", "scripts/phase3-ws-e2e.mts"], {
       encoding: "utf8",
       cwd: process.cwd(),
     });

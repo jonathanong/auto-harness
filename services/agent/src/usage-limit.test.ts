@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectUsageLimit } from "./usage-limit.js";
+import { detectUsageLimit } from "./usage-limit.ts";
 
 describe("detectUsageLimit", () => {
   it("detects common vendor phrases", () => {

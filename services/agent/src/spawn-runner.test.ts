@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SpawnProcessRunner } from "./executor.js";
+import { SpawnProcessRunner } from "./executor.ts";
 
 describe("SpawnProcessRunner", () => {
   it("runs a real process without shell", async () => {

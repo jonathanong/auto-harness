@@ -12,7 +12,7 @@ import {
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
-} from "./constants.js";
+} from "./constants.ts";
 
 describe("constants", () => {
   it("exports stable product constants", () => {

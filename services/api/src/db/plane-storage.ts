@@ -9,8 +9,8 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import type { SessionStatus } from "@auto-harness/shared";
 
-import { statusShardAttr, type DynamoTableNames } from "./dynamo.js";
-import type { SessionRecord, WorktreeRecord } from "./types.js";
+import { statusShardAttr, type DynamoTableNames } from "./dynamo.ts";
+import type { SessionRecord, WorktreeRecord } from "./types.ts";
 
 type ConnectionRecord = {
   connectionId: string;
@@ -67,10 +67,13 @@ export type RepositoryRecord = {
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
 export class DynamoPlaneStorage {
-  constructor(
-    private readonly doc: DynamoDBDocumentClient,
-    private readonly tables: DynamoTableNames,
-  ) {}
+  private readonly doc: DynamoDBDocumentClient;
+  private readonly tables: DynamoTableNames;
+
+  constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
+    this.doc = doc;
+    this.tables = tables;
+  }
 
   async putSession(session: SessionRecord): Promise<void> {
     await this.doc.send(

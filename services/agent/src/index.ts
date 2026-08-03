@@ -6,27 +6,27 @@ export function getServiceName(): string {
   return serviceName;
 }
 
-export { loadAgentConfig, parseAgentConfig } from "./config.js";
+export { loadAgentConfig, parseAgentConfig } from "./config.ts";
 export type {
   AgentConfig,
   CommandProfileConfig,
   RepositoryConfig,
   WorktreeConfig,
-} from "./config.js";
-export { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.js";
-export { SpawnProcessRunner, runSetupScript } from "./executor.js";
-export type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.js";
-export { createGitClient } from "./git.js";
-export type { GitClient } from "./git.js";
-export { LogStreamer } from "./log-streamer.js";
-export { SessionRunner } from "./session-runner.js";
-export type { SessionRunResult, SessionRunnerDeps } from "./session-runner.js";
-export { runTerminalHook } from "./terminal-hook.js";
-export { detectUsageLimit } from "./usage-limit.js";
-export { WorktreeManager } from "./worktree-manager.js";
-export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.js";
-export { ensureAgentReady, runAssignedSession } from "./runtime.js";
-export { AgentLoop, createLoopbackTransport } from "./agent-loop.js";
-export type { AgentLoopOptions, AgentTransport } from "./agent-loop.js";
-export { createWsTransport } from "./ws-transport.js";
-export { startAgentDaemon } from "./start-daemon.js";
+} from "./config.ts";
+export { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
+export { SpawnProcessRunner, runSetupScript } from "./executor.ts";
+export type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+export { createGitClient } from "./git.ts";
+export type { GitClient } from "./git.ts";
+export { LogStreamer } from "./log-streamer.ts";
+export { SessionRunner } from "./session-runner.ts";
+export type { SessionRunResult, SessionRunnerDeps } from "./session-runner.ts";
+export { runTerminalHook } from "./terminal-hook.ts";
+export { detectUsageLimit } from "./usage-limit.ts";
+export { WorktreeManager } from "./worktree-manager.ts";
+export { runCli, main, createDefaultRunSessionDeps, normalizeCliArgs } from "./cli.ts";
+export { ensureAgentReady, runAssignedSession } from "./runtime.ts";
+export { AgentLoop, createLoopbackTransport } from "./agent-loop.ts";
+export type { AgentLoopOptions, AgentTransport } from "./agent-loop.ts";
+export { createWsTransport } from "./ws-transport.ts";
+export { startAgentDaemon } from "./start-daemon.ts";

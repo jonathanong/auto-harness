@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import * as shared from "./index.js";
-import type { SessionAssign } from "./session.js";
+import * as shared from "./index.ts";
+import type { SessionAssign } from "./session.ts";
 
 describe("package exports", () => {
   it("re-exports validation helpers and constants", () => {

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "../services/api/src/control-plane.js";
-import { startLocalServer } from "../services/api/src/local-server.js";
-import { startWebServer } from "../services/web/src/server.js";
+import { ControlPlane } from "../services/api/src/control-plane.ts";
+import { startLocalServer } from "../services/api/src/local-server.ts";
+import { startWebServer } from "../services/web/src/server.ts";
 
 describe("phase4 web create UI", () => {
   it("serves form and creates session with ref via real API", async () => {

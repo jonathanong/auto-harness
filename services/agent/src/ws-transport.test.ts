@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import { WebSocketServer } from "ws";
 
-import { createWsTransport } from "./ws-transport.js";
+import { createWsTransport } from "./ws-transport.ts";
 
 describe("createWsTransport", () => {
   it("connects, sends, and receives assign", async () => {

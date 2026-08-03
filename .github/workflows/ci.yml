@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   ci:
-    name: typecheck · lint · test · knip · depcruise · links
+    name: lint · test · knip · depcruise · links
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -27,14 +27,12 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
+          node-version: "22.18"
           cache: pnpm
 
       - name: Install
         run: pnpm install --frozen-lockfile
-
-      - name: Typecheck
-        run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint

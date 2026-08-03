@@ -11,13 +11,15 @@
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+
+    // Runtime is Node native type-stripping (no emit / no tsc build).
+    // .ts import extensions match what Node resolves at runtime.
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   }
 }

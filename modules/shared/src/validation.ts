@@ -3,8 +3,8 @@ import {
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
-} from "./constants.js";
-import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.js";
+} from "./constants.ts";
+import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.ts";
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 

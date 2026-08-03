@@ -5,13 +5,13 @@ import type {
   SessionLogChunk,
 } from "@auto-harness/shared";
 
-import type { AgentConfig } from "./config.js";
-import type { ProcessRunner } from "./executor.js";
-import { SpawnProcessRunner } from "./executor.js";
-import { createGitClient } from "./git.js";
-import type { SessionRunResult } from "./session-runner.js";
-import { SessionRunner } from "./session-runner.js";
-import { WorktreeManager } from "./worktree-manager.js";
+import type { AgentConfig } from "./config.ts";
+import type { ProcessRunner } from "./executor.ts";
+import { SpawnProcessRunner } from "./executor.ts";
+import { createGitClient } from "./git.ts";
+import type { SessionRunResult } from "./session-runner.ts";
+import { SessionRunner } from "./session-runner.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
 
 export type AgentTransport = {
   send(msg: AgentToServerMessage): Promise<void>;

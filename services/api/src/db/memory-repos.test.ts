@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MemorySessionRepository, MemoryWorktreeRepository } from "./memory-repos.js";
+import { MemorySessionRepository, MemoryWorktreeRepository } from "./memory-repos.ts";
 
 describe("MemorySessionRepository", () => {
   it("stores and lists by status/shard", async () => {

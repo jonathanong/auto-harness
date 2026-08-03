@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectUsageLimit, getServiceName, resolveCommandArgv, serviceName } from "./index.js";
+import { detectUsageLimit, getServiceName, resolveCommandArgv, serviceName } from "./index.ts";
 
 describe("@auto-harness/agent", () => {
   it("exports package identity and core helpers", () => {

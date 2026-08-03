@@ -4,7 +4,7 @@ import type {
   SessionSource,
   SessionStatus,
   SessionType,
-} from "./types.js";
+} from "./types.ts";
 
 /** Payload used when assigning work to an agent (control plane → agent). */
 export type SessionAssign = {

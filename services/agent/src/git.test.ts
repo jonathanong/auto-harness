@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProcessRunner } from "./executor.js";
-import { createGitClient } from "./git.js";
+import type { ProcessRunner } from "./executor.ts";
+import { createGitClient } from "./git.ts";
 
 function scripted(
   responses: Array<{

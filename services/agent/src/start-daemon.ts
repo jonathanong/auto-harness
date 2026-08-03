@@ -1,6 +1,6 @@
-import type { AgentConfig } from "./config.js";
-import { AgentLoop } from "./agent-loop.js";
-import { createWsTransport } from "./ws-transport.js";
+import type { AgentConfig } from "./config.ts";
+import { AgentLoop } from "./agent-loop.ts";
+import { createWsTransport } from "./ws-transport.ts";
 
 type StartDaemonOptions = {
   config: AgentConfig;

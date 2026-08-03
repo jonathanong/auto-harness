@@ -6,7 +6,7 @@ import {
   EVENTBRIDGE_CRON,
   S3_ARCHIVE_BUCKET,
   statusShardKey,
-} from "./tables.js";
+} from "./tables.ts";
 
 /** AWS CDK infrastructure service identity. */
 export const serviceName = `${PACKAGE_SCOPE}/cdk` as const;

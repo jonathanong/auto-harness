@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.js";
-import { createLocalApp, startLocalServer } from "./local-server.js";
-import { MemorySessionStore } from "./memory-store.js";
+import { ControlPlane } from "./control-plane.ts";
+import { createLocalApp, startLocalServer } from "./local-server.ts";
+import { MemorySessionStore } from "./memory-store.ts";
 
 describe("createLocalApp", () => {
   it("handles health, create, get, list, and 404s", async () => {

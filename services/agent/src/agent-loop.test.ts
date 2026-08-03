@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 
-import { AgentLoop, createLoopbackTransport } from "./agent-loop.js";
-import type { AgentConfig } from "./config.js";
+import { AgentLoop, createLoopbackTransport } from "./agent-loop.ts";
+import type { AgentConfig } from "./config.ts";
 
 function git(cwd: string, args: string[]): void {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });
@@ -198,7 +198,7 @@ describe("AgentLoop", () => {
           serverMsgs.push(m);
         },
       });
-      const { SpawnProcessRunner } = await import("./executor.js");
+      const { SpawnProcessRunner } = await import("./executor.ts");
       const real = new SpawnProcessRunner();
       let profileSpawns = 0;
       const loop = new AgentLoop({

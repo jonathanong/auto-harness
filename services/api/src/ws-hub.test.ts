@@ -3,8 +3,8 @@ import { createServer } from "node:http";
 import { describe, expect, it } from "vitest";
 import WebSocket from "ws";
 
-import { ControlPlane } from "./control-plane.js";
-import { createPlaneWsBridge } from "./ws-hub.js";
+import { ControlPlane } from "./control-plane.ts";
+import { createPlaneWsBridge } from "./ws-hub.ts";
 
 describe("createPlaneWsBridge", () => {
   it("registers agent and delivers session:assign", async () => {

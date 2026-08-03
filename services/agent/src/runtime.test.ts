@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { parseAgentConfig } from "./config.js";
-import type { ProcessRunner } from "./executor.js";
-import { ensureAgentReady, runAssignedSession } from "./runtime.js";
+import { parseAgentConfig } from "./config.ts";
+import type { ProcessRunner } from "./executor.ts";
+import { ensureAgentReady, runAssignedSession } from "./runtime.ts";
 
 const config = parseAgentConfig({
   agentId: "a1",

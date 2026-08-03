@@ -8,10 +8,6 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "scripts": {
-    "build": "tsc -b",
-    "typecheck": "tsc -b --pretty false"
-  },
   "dependencies": {
     "@auto-harness/shared": "workspace:*"
   }

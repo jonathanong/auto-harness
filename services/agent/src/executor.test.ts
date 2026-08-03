@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { runSetupScript, type ProcessRunner } from "./executor.js";
+import { runSetupScript, type ProcessRunner } from "./executor.ts";
 
 describe("runSetupScript", () => {
   it("invokes /bin/sh -c with the script", async () => {

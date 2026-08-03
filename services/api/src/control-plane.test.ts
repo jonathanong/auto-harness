@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { AgentWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.js";
+import { ControlPlane } from "./control-plane.ts";
 
 function baseSessionBody(over: Record<string, unknown> = {}) {
   return {

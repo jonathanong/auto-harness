@@ -23,7 +23,6 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | Command                       | Purpose                                  |
 | ----------------------------- | ---------------------------------------- |
 | `pnpm install`                | Install workspace                        |
-| `pnpm typecheck`              | TypeScript project references build      |
 | `pnpm lint`                   | oxlint                                   |
 | `pnpm fmt` / `pnpm fmt:check` | oxfmt                                    |
 | `pnpm test`                   | vitest with **100%** coverage thresholds |
@@ -32,7 +31,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm links`                  | lychee markdown link check               |
 | `pnpm check`                  | Full local CI gate                       |
 | `pnpm local:e2e`              | Phase 1 create→run on a temp git repo    |
-| `pnpm local:api`              | In-memory API on `:7420`                 |
+| `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)   |
 | `pnpm local:agent`            | Agent CLI (`status`, `run-session`)      |
 
 Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/setup.md](docs/setup.md).
@@ -44,9 +43,12 @@ Package manager: **pnpm** only (see `packageManager` in root `package.json`). Lo
 - **Mock only host CLI boundaries** (`child_process`, `node-pty`, and similar “run a CLI tool” adapters). Prefer real modules, in-memory fakes, and pure functions for everything else.
 - Do not lower coverage thresholds to land incomplete code.
 
-## TypeScript
+## TypeScript / runtime
 
-- Strict mode via `tsconfig.base.json`.
+- **No `tsc` build.** Sources are executed with **Node native type stripping** (`node file.ts`). Requires **Node.js ≥ 22.18**.
+- Relative imports use **`.ts` extensions** (what Node resolves at runtime).
+- Avoid TypeScript features Node cannot strip (enums, namespaces, parameter properties). Prefer plain fields assigned in the constructor.
+- Strict mode via `tsconfig.base.json` for editors (`noEmit`, `allowImportingTsExtensions`).
 - `"type": "module"` / NodeNext resolution.
 - Prefer small pure modules in `modules/shared` before adding service code.
 

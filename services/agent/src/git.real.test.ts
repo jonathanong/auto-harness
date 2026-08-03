@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SpawnProcessRunner } from "./executor.js";
-import { createGitClient } from "./git.js";
+import { SpawnProcessRunner } from "./executor.ts";
+import { createGitClient } from "./git.ts";
 
 function git(cwd: string, args: string[]): string {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });

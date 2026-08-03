@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("phase3 cloud e2e", () => {
   it("create→assign→ack→run→completed via ControlPlane + AgentLoop", () => {
-    const r = spawnSync("pnpm", ["exec", "tsx", "scripts/phase3-cloud-e2e.mts"], {
+    const r = spawnSync("pnpm", ["exec", "node", "scripts/phase3-cloud-e2e.mts"], {
       encoding: "utf8",
       cwd: process.cwd(),
     });

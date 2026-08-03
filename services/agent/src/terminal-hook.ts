@@ -1,6 +1,6 @@
 import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 
-import type { ProcessRunner } from "./executor.js";
+import type { ProcessRunner } from "./executor.ts";
 
 type TerminalHookInput = {
   scriptPath: string;

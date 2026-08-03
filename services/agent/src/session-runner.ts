@@ -6,14 +6,14 @@ import type {
   SessionTerminalStatus,
 } from "@auto-harness/shared";
 
-import { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.js";
-import type { AgentConfig } from "./config.js";
-import type { ProcessRunner } from "./executor.js";
-import { runSetupScript } from "./executor.js";
-import { LogStreamer } from "./log-streamer.js";
-import { runTerminalHook } from "./terminal-hook.js";
-import { detectUsageLimit } from "./usage-limit.js";
-import type { WorktreeManager } from "./worktree-manager.js";
+import { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
+import type { AgentConfig } from "./config.ts";
+import type { ProcessRunner } from "./executor.ts";
+import { runSetupScript } from "./executor.ts";
+import { LogStreamer } from "./log-streamer.ts";
+import { runTerminalHook } from "./terminal-hook.ts";
+import { detectUsageLimit } from "./usage-limit.ts";
+import type { WorktreeManager } from "./worktree-manager.ts";
 
 export type SessionRunResult = {
   status: SessionTerminalStatus;
@@ -32,7 +32,11 @@ export type SessionRunnerDeps = {
 };
 
 export class SessionRunner {
-  constructor(private readonly deps: SessionRunnerDeps) {}
+  private readonly deps: SessionRunnerDeps;
+
+  constructor(deps: SessionRunnerDeps) {
+    this.deps = deps;
+  }
 
   async run(assign: SessionAssign): Promise<SessionRunResult> {
     const logs: SessionLogChunk[] = [];

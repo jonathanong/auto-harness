@@ -1,4 +1,4 @@
-import { startLocalServer } from "../services/api/src/local-server.js";
+import { startLocalServer } from "../services/api/src/local-server.ts";
 
 const port = 17556;
 const server = await startLocalServer({ port });

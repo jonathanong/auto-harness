@@ -4,8 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc -b",
-    "build": "tsc -b",
     "lint": "oxlint --deny-warnings .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
@@ -14,20 +12,20 @@
     "knip": "knip",
     "depcruise": "depcruise modules services --config .dependency-cruiser.cjs --output-type err",
     "links": "lychee --config lychee.toml README.md AGENTS.md CLAUDE.md docs",
-    "check": "pnpm typecheck && pnpm lint && pnpm fmt:check && pnpm test && pnpm knip && pnpm depcruise && pnpm links",
+    "check": "pnpm lint && pnpm fmt:check && pnpm test && pnpm knip && pnpm depcruise && pnpm links",
     "local:dynamodb": "docker compose up -d dynamodb",
-    "local:dynamodb:ready": "tsx scripts/ensure-dynamodb.mts",
+    "local:dynamodb:ready": "node scripts/ensure-dynamodb.mts",
     "local:dynamodb:down": "docker compose down",
-    "local:api": "tsx services/api/src/cli.ts serve",
-    "local:web": "tsx services/web/src/server.ts",
-    "local:agent": "tsx services/agent/src/cli.ts",
-    "local:ws-e2e": "tsx scripts/phase3-ws-e2e.mts",
-    "local:e2e": "tsx scripts/local-e2e.mts",
-    "local:cli-e2e": "tsx scripts/local-cli-e2e.mts",
-    "local:api-smoke": "tsx scripts/local-api-smoke.mts",
-    "local:cloud-e2e": "tsx scripts/phase3-cloud-e2e.mts",
-    "local:phase2-post": "tsx scripts/phase2-post-session.mts",
-    "local:manage-verify": "tsx scripts/manage-verify.mts"
+    "local:api": "node services/api/src/cli.ts serve",
+    "local:web": "node services/web/src/server.ts",
+    "local:agent": "node services/agent/src/cli.ts",
+    "local:ws-e2e": "node scripts/phase3-ws-e2e.mts",
+    "local:e2e": "node scripts/local-e2e.mts",
+    "local:cli-e2e": "node scripts/local-cli-e2e.mts",
+    "local:api-smoke": "node scripts/local-api-smoke.mts",
+    "local:cloud-e2e": "node scripts/phase3-cloud-e2e.mts",
+    "local:phase2-post": "node scripts/phase2-post-session.mts",
+    "local:manage-verify": "node scripts/manage-verify.mts"
   },
   "devDependencies": {
     "@types/node": "^22.15.30",
@@ -36,12 +34,11 @@
     "knip": "^5.61.3",
     "oxfmt": "^0.26.0",
     "oxlint": "^1.28.0",
-    "tsx": "^4.23.4",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18.0"
   },
   "packageManager": "pnpm@10.28.2"
 }

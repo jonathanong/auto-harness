@@ -2,10 +2,10 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 
-import { ControlPlane } from "./control-plane.js";
-import { createControlPlane } from "./create-plane.js";
-import { MemorySessionStore } from "./memory-store.js";
-import { createPlaneWsBridge, type WsHub } from "./ws-hub.js";
+import { ControlPlane } from "./control-plane.ts";
+import { createControlPlane } from "./create-plane.ts";
+import { MemorySessionStore } from "./memory-store.ts";
+import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
 
 type LocalServerOptions = {
   port?: number;

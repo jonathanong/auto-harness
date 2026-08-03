@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 
 import type { SessionAssign } from "@auto-harness/shared";
 
-import type { AgentConfig } from "./config.js";
-import { loadAgentConfig } from "./config.js";
-import { ensureAgentReady, runAssignedSession } from "./runtime.js";
-import type { SessionRunResult } from "./session-runner.js";
+import type { AgentConfig } from "./config.ts";
+import { loadAgentConfig } from "./config.ts";
+import { ensureAgentReady, runAssignedSession } from "./runtime.ts";
+import type { SessionRunResult } from "./session-runner.ts";
 
 export function printUsage(log: (msg: string) => void = console.log): void {
   log(`Usage:
@@ -53,7 +53,7 @@ function getConfigPath(args: string[]): string | undefined {
 }
 
 /**
- * Normalize argv after the node/tsx entry. pnpm may forward a literal `--`
+ * Normalize argv after the node entry. pnpm may forward a literal `--`
  * when invoked as `pnpm local:agent -- status` — strip it.
  */
 export function normalizeCliArgs(argv: string[]): string[] {
@@ -137,7 +137,7 @@ export async function runCli(
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
-      const { startAgentDaemon } = await import("./start-daemon.js");
+      const { startAgentDaemon } = await import("./start-daemon.ts");
       await deps.ensureReady(config);
       const { stop } = await startAgentDaemon({
         config,

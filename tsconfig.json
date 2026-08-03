@@ -1,10 +1,11 @@
 {
-  "files": [],
-  "references": [
-    { "path": "./modules/shared" },
-    { "path": "./services/api" },
-    { "path": "./services/agent" },
-    { "path": "./services/web" },
-    { "path": "./services/cdk" }
-  ]
+  "extends": "./tsconfig.base.json",
+  "include": [
+    "modules/*/src/**/*.ts",
+    "services/*/src/**/*.ts",
+    "scripts/**/*.ts",
+    "scripts/**/*.mts",
+    "vitest.config.ts"
+  ],
+  "exclude": ["**/node_modules/**", "**/dist/**", "coverage/**"]
 }

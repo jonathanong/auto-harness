@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeControlPlane, DYNAMO_TABLES, getServiceName, statusShardKey } from "./index.js";
+import { describeControlPlane, DYNAMO_TABLES, getServiceName, statusShardKey } from "./index.ts";
 
 describe("cdk tables", () => {
   it("includes sharded queue GSI and timestampSeq SessionLogs SK", () => {

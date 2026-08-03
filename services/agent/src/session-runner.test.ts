@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SessionAssign } from "@auto-harness/shared";
 
-import { parseAgentConfig } from "./config.js";
-import type { ProcessRunner } from "./executor.js";
-import type { GitClient } from "./git.js";
-import { SessionRunner } from "./session-runner.js";
-import { WorktreeManager } from "./worktree-manager.js";
+import { parseAgentConfig } from "./config.ts";
+import type { ProcessRunner } from "./executor.ts";
+import type { GitClient } from "./git.ts";
+import { SessionRunner } from "./session-runner.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
 
 function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
   return {
@@ -447,4 +447,4 @@ describe("SessionRunner", () => {
   });
 });
 
-import type { AgentConfig } from "./config.js";
+import type { AgentConfig } from "./config.ts";

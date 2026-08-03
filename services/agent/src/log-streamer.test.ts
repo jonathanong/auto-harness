@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LogStreamer } from "./log-streamer.js";
+import { LogStreamer } from "./log-streamer.ts";
 
 describe("LogStreamer", () => {
   it("assigns monotonic seq for same timestamp", () => {

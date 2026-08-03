@@ -61,7 +61,7 @@ WebSocket daemon (register + accept assigns) — **not implemented until Phase 3
 
 ```bash
 pnpm local:api
-# optional: tsx services/api/src/cli.ts serve --port 7420
+# optional: node services/api/src/cli.ts serve --port 7420
 ```
 
 | Method | Path                   | Notes                                                                                                                                |

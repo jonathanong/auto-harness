@@ -9,9 +9,9 @@ import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "../services/api/src/control-plane.js";
-import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.js";
-import type { AgentConfig } from "../services/agent/src/config.js";
+import { ControlPlane } from "../services/api/src/control-plane.ts";
+import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.ts";
+import type { AgentConfig } from "../services/agent/src/config.ts";
 
 function git(cwd: string, args: string[]): string {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });

@@ -2,13 +2,13 @@
  * Operator management verification (SCRATCH proofs).
  * Drives real startLocalServer HTTP + startWebServer handlers.
  *
- * Usage: SCRATCH=/tmp/harness-manage-scratch pnpm exec tsx scripts/manage-verify.mts
+ * Usage: SCRATCH=/tmp/harness-manage-scratch pnpm local:manage-verify
  */
 import { writeFileSync } from "node:fs";
 
-import { ControlPlane } from "../services/api/src/control-plane.js";
-import { startLocalServer } from "../services/api/src/local-server.js";
-import { startWebServer } from "../services/web/src/server.js";
+import { ControlPlane } from "../services/api/src/control-plane.ts";
+import { startLocalServer } from "../services/api/src/local-server.ts";
+import { startWebServer } from "../services/web/src/server.ts";
 
 const SCRATCH = process.env.SCRATCH ?? "/tmp/harness-manage-scratch";
 

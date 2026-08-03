@@ -8,12 +8,19 @@ type LogEmit = (chunk: SessionLogChunk) => void;
  */
 export class LogStreamer {
   private seq = 0;
+  private readonly sessionId: string;
+  private readonly emit: LogEmit;
+  private readonly now: () => string;
 
   constructor(
-    private readonly sessionId: string,
-    private readonly emit: LogEmit,
-    private readonly now: () => string = () => new Date().toISOString(),
-  ) {}
+    sessionId: string,
+    emit: LogEmit,
+    now: () => string = () => new Date().toISOString(),
+  ) {
+    this.sessionId = sessionId;
+    this.emit = emit;
+    this.now = now;
+  }
 
   nextSeq(): number {
     return this.seq;

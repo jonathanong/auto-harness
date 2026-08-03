@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentConfig } from "./config.js";
+import type { AgentConfig } from "./config.ts";
 import {
   createDefaultRunSessionDeps,
   main,
@@ -8,7 +8,7 @@ import {
   printUsage,
   runCli,
   type RunSessionDeps,
-} from "./cli.js";
+} from "./cli.ts";
 
 const sampleConfig: AgentConfig = {
   agentId: "a1",
@@ -143,9 +143,9 @@ describe("runCli", () => {
     error.mockRestore();
     expect(() => d.readFile("/no/such/auto-harness-file")).toThrow();
     const ready = vi
-      .spyOn(await import("./runtime.js"), "ensureAgentReady")
+      .spyOn(await import("./runtime.ts"), "ensureAgentReady")
       .mockResolvedValue(undefined);
-    const run = vi.spyOn(await import("./runtime.js"), "runAssignedSession").mockResolvedValue({
+    const run = vi.spyOn(await import("./runtime.ts"), "runAssignedSession").mockResolvedValue({
       status: "completed",
       exitCode: 0,
       logs: [],

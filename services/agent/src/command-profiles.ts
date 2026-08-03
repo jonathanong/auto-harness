@@ -1,4 +1,4 @@
-import type { CommandProfileConfig } from "./config.js";
+import type { CommandProfileConfig } from "./config.ts";
 
 export class UnknownCommandProfileError extends Error {
   readonly profile: string;

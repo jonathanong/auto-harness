@@ -1,7 +1,7 @@
 import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 import WebSocket from "ws";
 
-import type { AgentTransport } from "./agent-loop.js";
+import type { AgentTransport } from "./agent-loop.ts";
 
 type WsTransportOptions = {
   /** e.g. ws://127.0.0.1:7420/ws */

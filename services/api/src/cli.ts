@@ -1,4 +1,4 @@
-import { startLocalServer } from "./local-server.js";
+import { startLocalServer } from "./local-server.ts";
 
 export async function main(argv: string[] = process.argv): Promise<number> {
   const args = argv.slice(2);

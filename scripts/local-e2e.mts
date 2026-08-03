@@ -12,13 +12,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { parseAgentConfig } from "../services/agent/src/config.js";
-import { SpawnProcessRunner } from "../services/agent/src/executor.js";
-import { createGitClient } from "../services/agent/src/git.js";
-import { SessionRunner } from "../services/agent/src/session-runner.js";
-import { WorktreeManager } from "../services/agent/src/worktree-manager.js";
-import { createLocalApp } from "../services/api/src/local-server.js";
-import { MemorySessionStore } from "../services/api/src/memory-store.js";
+import { parseAgentConfig } from "../services/agent/src/config.ts";
+import { SpawnProcessRunner } from "../services/agent/src/executor.ts";
+import { createGitClient } from "../services/agent/src/git.ts";
+import { SessionRunner } from "../services/agent/src/session-runner.ts";
+import { WorktreeManager } from "../services/agent/src/worktree-manager.ts";
+import { createLocalApp } from "../services/api/src/local-server.ts";
+import { MemorySessionStore } from "../services/api/src/memory-store.ts";
 
 function git(cwd: string, args: string[]): void {
   const r = spawnSync("git", args, { cwd, encoding: "utf8" });

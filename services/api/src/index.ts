@@ -6,11 +6,11 @@ export function getServiceName(): string {
   return serviceName;
 }
 
-export { MemorySessionStore } from "./memory-store.js";
-export type { StoredSession } from "./memory-store.js";
-export { createLocalApp, startLocalServer } from "./local-server.js";
-export { createPlaneWsBridge, attachAgentWsHub, createWsDelivery } from "./ws-hub.js";
-export { ControlPlane } from "./control-plane.js";
+export { MemorySessionStore } from "./memory-store.ts";
+export type { StoredSession } from "./memory-store.ts";
+export { createLocalApp, startLocalServer } from "./local-server.ts";
+export { createPlaneWsBridge, attachAgentWsHub, createWsDelivery } from "./ws-hub.ts";
+export { ControlPlane } from "./control-plane.ts";
 export type {
   ArchiveObject,
   ConnectionRecord,
@@ -19,27 +19,27 @@ export type {
   PublicSession,
   ScheduleRecord,
   WebhookDelivery,
-} from "./control-plane.js";
-export { createControlPlane } from "./create-plane.js";
-export type { CreateControlPlaneOptions } from "./create-plane.js";
+} from "./control-plane.ts";
+export { createControlPlane } from "./create-plane.ts";
+export type { CreateControlPlaneOptions } from "./create-plane.ts";
 export {
   createDynamoClients,
   createDynamoDocumentClient,
   DEFAULT_DYNAMODB_ENDPOINT,
   tableNames,
-} from "./db/dynamo.js";
-export { ensureControlPlaneTables } from "./db/ensure-tables.js";
-export { DynamoPlaneStorage } from "./db/plane-storage.js";
-export { MemorySessionRepository, MemoryWorktreeRepository } from "./db/memory-repos.js";
+} from "./db/dynamo.ts";
+export { ensureControlPlaneTables } from "./db/ensure-tables.ts";
+export { DynamoPlaneStorage } from "./db/plane-storage.ts";
+export { MemorySessionRepository, MemoryWorktreeRepository } from "./db/memory-repos.ts";
 export type {
   SessionRecord,
   SessionRepository,
   WorktreeRecord,
   WorktreeRepository,
-} from "./db/types.js";
+} from "./db/types.ts";
 export {
   Scheduler,
   compareSessionsForQueue,
   compareWorktreesForRoundRobin,
-} from "./services/scheduler.js";
-export { main as apiCliMain } from "./cli.js";
+} from "./services/scheduler.ts";
+export { main as apiCliMain } from "./cli.ts";

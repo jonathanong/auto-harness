@@ -1,4 +1,4 @@
-import { ControlPlane, type PublicSession } from "./control-plane.js";
+import { ControlPlane, type PublicSession } from "./control-plane.ts";
 
 export type StoredSession = PublicSession;
 

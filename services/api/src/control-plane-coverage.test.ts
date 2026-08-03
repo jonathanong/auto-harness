@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ControlPlane } from "./control-plane.js";
+import { ControlPlane } from "./control-plane.ts";
 
 describe("ControlPlane coverage edges", () => {
   it("hits replaceExisting, offline profiles, lost claim, resume cli, status missing, orphan maps", () => {

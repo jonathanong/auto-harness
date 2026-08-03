@@ -5,7 +5,7 @@ import type {
   SessionRepository,
   WorktreeRecord,
   WorktreeRepository,
-} from "../db/types.js";
+} from "../db/types.ts";
 
 type SchedulerDeps = {
   sessions: SessionRepository;
@@ -32,10 +32,12 @@ export function compareWorktreesForRoundRobin(a: WorktreeRecord, b: WorktreeReco
  * and least-recently-assigned round-robin among candidates.
  */
 export class Scheduler {
+  private readonly deps: SchedulerDeps;
   private readonly shardCount: number;
   private readonly now: () => string;
 
-  constructor(private readonly deps: SchedulerDeps) {
+  constructor(deps: SchedulerDeps) {
+    this.deps = deps;
     this.shardCount = deps.shardCount ?? DEFAULT_QUEUE_SHARD_COUNT;
     this.now = deps.now ?? (() => new Date().toISOString());
   }

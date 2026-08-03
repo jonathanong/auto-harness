@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findRepository, findWorktree, loadAgentConfig, parseAgentConfig } from "./config.js";
+import { findRepository, findWorktree, loadAgentConfig, parseAgentConfig } from "./config.ts";
 
 const valid = {
   agentId: "local-1",

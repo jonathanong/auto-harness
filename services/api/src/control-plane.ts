@@ -13,9 +13,9 @@ import {
   type SessionStatus,
 } from "@auto-harness/shared";
 
-import type { DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.js";
-import type { SessionRecord, WorktreeRecord } from "./db/types.js";
-import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.js";
+import type { DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.ts";
+import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.ts";
 
 export type ConnectionRecord = {
   connectionId: string;

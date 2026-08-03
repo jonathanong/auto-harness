@@ -4,7 +4,7 @@ import type { Duplex } from "node:stream";
 import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
-import type { ControlPlane } from "./control-plane.js";
+import type { ControlPlane } from "./control-plane.ts";
 
 export type WsHub = {
   agentCount(): number;

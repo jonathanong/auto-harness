@@ -7,7 +7,7 @@ import {
   isSessionStatus,
   isTerminalSessionStatus,
   validateCreateSessionInput,
-} from "./validation.js";
+} from "./validation.ts";
 
 describe("isSessionStatus", () => {
   it("accepts known statuses", () => {

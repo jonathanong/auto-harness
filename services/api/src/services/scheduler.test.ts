@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { MemorySessionRepository, MemoryWorktreeRepository } from "../db/memory-repos.js";
-import { compareSessionsForQueue, compareWorktreesForRoundRobin, Scheduler } from "./scheduler.js";
+import { MemorySessionRepository, MemoryWorktreeRepository } from "../db/memory-repos.ts";
+import { compareSessionsForQueue, compareWorktreesForRoundRobin, Scheduler } from "./scheduler.ts";
 
 describe("compare helpers", () => {
   it("orders sessions and worktrees", () => {

@@ -1,16 +1,16 @@
 import { ListTablesCommand } from "@aws-sdk/client-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createControlPlane } from "../create-plane.js";
+import { createControlPlane } from "../create-plane.ts";
 import {
   createDynamoClients,
   createDynamoDocumentClient,
   DEFAULT_DYNAMODB_ENDPOINT,
   statusShardAttr,
   tableNames,
-} from "./dynamo.js";
-import { ensureControlPlaneTables } from "./ensure-tables.js";
-import { DynamoPlaneStorage } from "./plane-storage.js";
+} from "./dynamo.ts";
+import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { DynamoPlaneStorage } from "./plane-storage.ts";
 
 async function dynamoAvailable(): Promise<boolean> {
   try {

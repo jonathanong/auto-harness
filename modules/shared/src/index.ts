@@ -8,7 +8,7 @@ export type {
   SessionType,
   UserRole,
   WorktreeStatus,
-} from "./types.js";
+} from "./types.ts";
 
 export type {
   AgentToServerMessage,
@@ -18,7 +18,7 @@ export type {
   SessionLogChunk,
   SessionStatusUpdate,
   SessionTerminalStatus,
-} from "./session.js";
+} from "./session.ts";
 
 export {
   DEFAULT_ACK_DEADLINE_MS,
@@ -32,9 +32,9 @@ export {
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
-} from "./constants.js";
+} from "./constants.ts";
 
-export type { ValidationResult } from "./validation.js";
+export type { ValidationResult } from "./validation.ts";
 export {
   formatLogSortKey,
   isOnConflict,
@@ -42,4 +42,4 @@ export {
   isSessionStatus,
   isTerminalSessionStatus,
   validateCreateSessionInput,
-} from "./validation.js";
+} from "./validation.ts";

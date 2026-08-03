@@ -1,4 +1,4 @@
-import type { ProcessRunner } from "./executor.js";
+import type { ProcessRunner } from "./executor.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;

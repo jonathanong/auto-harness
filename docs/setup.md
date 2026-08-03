@@ -4,13 +4,13 @@ Install and run Auto Harness. Design details: [aws.md](aws.md), [agent.md](agent
 
 ## Prerequisites
 
-| Piece                                   | Need                                                  |
-| --------------------------------------- | ----------------------------------------------------- |
-| Node.js 22+                             | monorepo tooling                                      |
-| pnpm                                    | workspaces (`packageManager` in root `package.json`)  |
-| Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)          |
-| Git 2.20+                               | worktrees                                             |
-| AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions |
+| Piece                                   | Need                                                                     |
+| --------------------------------------- | ------------------------------------------------------------------------ |
+| Node.js ≥ 22.18                         | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
+| pnpm                                    | workspaces (`packageManager` in root `package.json`)                     |
+| Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)                             |
+| Git 2.20+                               | worktrees                                                                |
+| AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions                    |
 
 ---
 
@@ -149,7 +149,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web  (create-session + repos/schedules/sessions/agents on :3000)
 ```
 
-`pnpm check` runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.
+`pnpm check` runs oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee. There is **no compile step**: local scripts and CLIs run TypeScript directly via Node type stripping (`node …/*.ts`).
 
 ### Operator management (local)
 

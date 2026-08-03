@@ -1,5 +1,5 @@
-import type { AgentConfig, RepositoryConfig, WorktreeConfig } from "./config.js";
-import type { GitClient } from "./git.js";
+import type { AgentConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
+import type { GitClient } from "./git.ts";
 
 type ClaimedWorktree = {
   repository: RepositoryConfig;
@@ -9,11 +9,13 @@ type ClaimedWorktree = {
 
 export class WorktreeManager {
   private readonly busy = new Set<string>();
+  private readonly config: AgentConfig;
+  private readonly git: GitClient;
 
-  constructor(
-    private readonly config: AgentConfig,
-    private readonly git: GitClient,
-  ) {}
+  constructor(config: AgentConfig, git: GitClient) {
+    this.config = config;
+    this.git = git;
+  }
 
   async ensureAll(): Promise<void> {
     for (const repo of this.config.repositories) {

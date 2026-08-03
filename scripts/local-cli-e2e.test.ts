@@ -9,7 +9,7 @@ describe("documented CLI local path", () => {
   });
 
   it("runs pnpm local:agent [--] run-session with ref main", () => {
-    const result = spawnSync("pnpm", ["exec", "tsx", "scripts/local-cli-e2e.mts"], {
+    const result = spawnSync("pnpm", ["exec", "node", "scripts/local-cli-e2e.mts"], {
       cwd: process.cwd(),
       encoding: "utf8",
       env: process.env,
