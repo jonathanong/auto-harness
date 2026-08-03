@@ -43,6 +43,11 @@ export {
 } from "./components/repositories-table.tsx";
 export { WorktreeDetail, type WorktreeDetailProps } from "./components/worktree-detail.tsx";
 export {
+  RepositoryDetail,
+  type RepositorySummary,
+  type RepositoryDetailProps,
+} from "./components/repository-detail.tsx";
+export {
   SessionDetail,
   type SessionSummary,
   type SessionDetailProps,
@@ -52,6 +57,7 @@ export { SessionLogs, type LogEntry, type SessionLogsProps } from "./components/
 export { SessionFilters, type SessionFiltersProps } from "./components/session-filters.tsx";
 export { TipText, type TipTextProps } from "./components/tip-text.tsx";
 export { TipLink, type TipLinkProps } from "./components/tip-link.tsx";
+export { DrainButton, type DrainButtonProps } from "./components/drain-button.tsx";
 export {
   Dialog,
   DialogTrigger,

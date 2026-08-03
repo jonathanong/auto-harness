@@ -18,5 +18,9 @@ test.describe("control plane hosts", () => {
     await page.getByTestId("add-host-submit").click();
     await expect(page.getByTestId("add-host-ok")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId(`host-row-${id}`)).toBeVisible({ timeout: 15_000 });
+
+    // Drain is a no-op-safe REST call for an offline slot — just confirm it round-trips.
+    await page.getByTestId(`host-drain-${id}`).click();
+    await expect(page.getByTestId(`host-drain-${id}`)).toBeEnabled({ timeout: 15_000 });
   });
 });

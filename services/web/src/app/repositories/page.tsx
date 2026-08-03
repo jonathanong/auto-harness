@@ -50,7 +50,7 @@ export default async function RepositoriesPage() {
         <AddRepoDialog />
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <RepositoriesTable items={items} />
+      <RepositoriesTable items={items} hrefBase="/repositories" />
 
       <div>
         <h3 className="mb-2 text-lg font-medium">Register local repo on a host</h3>

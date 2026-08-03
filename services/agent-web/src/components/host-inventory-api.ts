@@ -1,6 +1,30 @@
-import type { HostInventory } from "@auto-harness/shared";
+import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
 
 import { apiBase } from "../lib/api.ts";
+
+/**
+ * Fetch inventory fresh right before a read-modify-write mutation. Callers should not
+ * reuse a page-load-time `inventory` prop for this — another tab/action may have
+ * changed it since, and PUT replaces the whole document (lost-update risk).
+ */
+export async function getInventory(agentId: string): Promise<HostInventory> {
+  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    return emptyHostInventory();
+  }
+  const cfg = (await res.json()) as Record<string, unknown>;
+  return {
+    repositories: Array.isArray(cfg.repositories)
+      ? (cfg.repositories as HostInventory["repositories"])
+      : [],
+    commandProfiles:
+      cfg.commandProfiles && typeof cfg.commandProfiles === "object"
+        ? (cfg.commandProfiles as HostInventory["commandProfiles"])
+        : emptyHostInventory().commandProfiles,
+  };
+}
 
 export async function putInventory(
   agentId: string,

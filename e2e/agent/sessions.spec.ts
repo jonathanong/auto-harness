@@ -34,6 +34,23 @@ test.describe("agent pane sessions", () => {
       },
     });
 
+    // Host config alone doesn't bring a worktree online — the scheduler only assigns to
+    // online worktrees, and nothing here runs a real agent daemon. Register over REST
+    // (the documented substitute for a live WebSocket connection in e2e tests).
+    // A prior registration for "local-1" (e.g. an earlier retry, same server process)
+    // is fine to leave in place — syncWorktreesFromHost marks any *new* worktree online
+    // once the agentId has any active connection, regardless of this call's own outcome.
+    await request.post(`${API}/api/v1/agent/messages`, {
+      data: {
+        type: "agent:register",
+        agentId: "local-1",
+        worktrees: [
+          { id: wtId, repositoryId: repoId, path: `/tmp/${repoId}/${wtId}`, labels: ["echo"] },
+        ],
+        commandProfiles: ["echo-prompt"],
+      },
+    });
+
     const created = await request.post(`${API}/api/v1/sessions`, {
       data: {
         repositoryId: repoId,

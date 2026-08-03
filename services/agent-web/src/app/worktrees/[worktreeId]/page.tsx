@@ -84,7 +84,6 @@ export default async function AgentWorktreeDetailPage({
         actions={
           <RemoveWorktreeButton
             agentId={id}
-            inventory={inventory}
             repositoryId={repo.id}
             worktreeId={worktree.id}
             redirectTo="/worktrees"

@@ -55,6 +55,7 @@ export default async function AgentRepositoriesPage() {
       <RepositoriesTable
         items={rows}
         pathLabel="Host path"
+        hrefBase="/repositories"
         emptyMessage="No repositories on this agent yet."
       />
       <div className="space-y-2">

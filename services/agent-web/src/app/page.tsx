@@ -1,7 +1,14 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, StatusBadge, TipText } from "@auto-harness/ui";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  DrainButton,
+  StatusBadge,
+  TipText,
+} from "@auto-harness/ui";
 
-import { DrainButton } from "../components/drain-button.tsx";
 import { agentId, apiBase, apiGet } from "../lib/api.ts";
 
 const CLICKABLE_CARD =
@@ -53,7 +60,12 @@ export default async function AgentStatusPage() {
             Status overview. Manage repos, worktrees, and sessions from the nav.
           </p>
         </div>
-        <DrainButton agentId={id} />
+        <DrainButton
+          agentId={id}
+          label="Drain this agent"
+          pendingLabel="Draining…"
+          pw="agent-drain"
+        />
       </div>
 
       {error ? (

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import {
+  DrainButton,
   StatusBadge,
   Table,
   TableBody,
@@ -11,7 +12,6 @@ import {
 
 import { AddHostForm } from "../../components/add-host-form.tsx";
 import { HostFilters } from "../../components/host-filters.tsx";
-import { HostDrainButton } from "../../components/host-drain-button.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseHostListState } from "../../lib/url-state.ts";
 
@@ -119,7 +119,7 @@ export default async function HostsPage({
                   <TableCell className="text-xs">{repoCount}</TableCell>
                   <TableCell>{inventory ? "yes" : "no"}</TableCell>
                   <TableCell>
-                    <HostDrainButton agentId={h.agentId} />
+                    <DrainButton agentId={h.agentId} size="sm" pw={`host-drain-${h.agentId}`} />
                   </TableCell>
                 </TableRow>
               );

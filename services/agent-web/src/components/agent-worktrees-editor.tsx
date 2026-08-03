@@ -55,12 +55,7 @@ export function AgentWorktreesEditor({
         return <AddWorktreeForm agentId={agentId} inventory={inventory} repo={repo} />;
       }}
       renderWorktreeActions={(wt) => (
-        <RemoveWorktreeButton
-          agentId={agentId}
-          inventory={inventory}
-          repositoryId={wt.repositoryId}
-          worktreeId={wt.id}
-        />
+        <RemoveWorktreeButton agentId={agentId} repositoryId={wt.repositoryId} worktreeId={wt.id} />
       )}
     />
   );

@@ -102,26 +102,27 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ### Control plane (`services/web`)
 
-| `data-pw`                                                                                                                                                                                                                | Where                               |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
-| `control-shell`                                                                                                                                                                                                          | App shell                           |
-| `app-header`, `app-nav`, `app-main`, `app-title`                                                                                                                                                                         | Shell chrome                        |
-| `nav-dashboard`, `nav-session-new`, `nav-sessions`, `nav-repositories`, `nav-schedules`, `nav-hosts`                                                                                                                     | Nav                                 |
-| `page-dashboard`, `dashboard-heading`, `dashboard-new-session`, `dashboard-stats`                                                                                                                                        | Dashboard                           |
-| `stat-running`, `stat-running-value`, `stat-queued`, `stat-queued-value`, `stat-hosts-online`, `stat-hosts-online-value`                                                                                                 | Dashboard stats                     |
-| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                                                                    | Sessions list                       |
-| `page-session-new`, `session-new-heading`                                                                                                                                                                                | New session                         |
-| `form-create-session`, `create-session-repository-id`, `create-session-command-profile`, `create-session-prompt`, `create-session-timeout`, `create-session-ref`, `create-session-submit`, `create-session-error`        | Create session form                 |
-| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-detail-back`, `page-session-detail-not-found`                                                                            | Session detail (`/sessions/[id]`)   |
-| `session-cancel`, `session-resume`, `session-archive`, `session-action-error`, `session-logs`, `session-logs-empty`                                                                                                      | Session actions + logs              |
-| `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                                                                             | Repositories                        |
-| `add-repo-dialog`, `dialog-close`, `form-repo-catalog`, `repo-catalog-id`, `repo-catalog-name`, `repo-catalog-url`, `repo-catalog-branch`, `repo-catalog-submit`, `repo-catalog-error`                                   | Add repository modal (catalog)      |
-| `form-attach-local-repo`, `attach-repo-agent-id`, `attach-repo-id`, `attach-repo-name`, `attach-repo-path`, `attach-repo-branch`, `attach-repo-worktree-id`, `attach-repo-submit`, `attach-repo-ok`, `attach-repo-error` | Attach local repo                   |
-| `page-worktrees`, `worktrees-heading`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                                                           | Worktrees (fleet, hierarchical)     |
-| `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-path`, `worktree-detail-back`, `page-worktree-detail-not-found`                                                                        | Worktree detail (`/worktrees/[id]`) |
-| `page-schedules`, `schedules-heading`                                                                                                                                                                                    | Schedules                           |
-| `form-create-schedule`, `schedule-repository-id`, `schedule-name`, `schedule-command-profile`, `schedule-cron`, `schedule-submit`, `schedule-error`                                                                      | Schedule form                       |
-| `page-hosts`, `hosts-heading`, `host-filters`, `host-filter-online`, `form-add-host`, `add-host-id`, `add-host-submit`, `add-host-ok`, `add-host-error`, `host-row-*`                                                    | Hosts                               |
+| `data-pw`                                                                                                                                                                                                                | Where                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------- |
+| `control-shell`                                                                                                                                                                                                          | App shell                                |
+| `app-header`, `app-nav`, `app-main`, `app-title`                                                                                                                                                                         | Shell chrome                             |
+| `nav-dashboard`, `nav-session-new`, `nav-sessions`, `nav-repositories`, `nav-schedules`, `nav-hosts`                                                                                                                     | Nav                                      |
+| `page-dashboard`, `dashboard-heading`, `dashboard-new-session`, `dashboard-stats`                                                                                                                                        | Dashboard                                |
+| `stat-running`, `stat-running-value`, `stat-queued`, `stat-queued-value`, `stat-hosts-online`, `stat-hosts-online-value`                                                                                                 | Dashboard stats                          |
+| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                                                                    | Sessions list                            |
+| `page-session-new`, `session-new-heading`                                                                                                                                                                                | New session                              |
+| `form-create-session`, `create-session-repository-id`, `create-session-command-profile`, `create-session-prompt`, `create-session-timeout`, `create-session-ref`, `create-session-submit`, `create-session-error`        | Create session form                      |
+| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-detail-back`, `page-session-detail-not-found`                                                                            | Session detail (`/sessions/[id]`)        |
+| `session-cancel`, `session-resume`, `session-archive`, `session-action-error`, `session-logs`, `session-logs-empty`                                                                                                      | Session actions + logs                   |
+| `page-repositories`, `repositories-heading`, `add-repo-open`, `repo-link-*`                                                                                                                                              | Repositories                             |
+| `add-repo-dialog`, `dialog-close`, `form-repo-catalog`, `repo-catalog-id`, `repo-catalog-name`, `repo-catalog-url`, `repo-catalog-branch`, `repo-catalog-submit`, `repo-catalog-error`                                   | Add repository modal (catalog)           |
+| `form-attach-local-repo`, `attach-repo-agent-id`, `attach-repo-id`, `attach-repo-name`, `attach-repo-path`, `attach-repo-branch`, `attach-repo-worktree-id`, `attach-repo-submit`, `attach-repo-ok`, `attach-repo-error` | Attach local repo                        |
+| `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repository-detail-path`, `repository-detail-back`, `page-repository-detail-not-found`                                                            | Repository detail (`/repositories/[id]`) |
+| `page-worktrees`, `worktrees-heading`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                                                           | Worktrees (fleet, hierarchical)          |
+| `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-path`, `worktree-detail-back`, `page-worktree-detail-not-found`                                                                        | Worktree detail (`/worktrees/[id]`)      |
+| `page-schedules`, `schedules-heading`                                                                                                                                                                                    | Schedules                                |
+| `form-create-schedule`, `schedule-repository-id`, `schedule-name`, `schedule-command-profile`, `schedule-cron`, `schedule-submit`, `schedule-error`                                                                      | Schedule form                            |
+| `page-hosts`, `hosts-heading`, `host-filters`, `host-filter-online`, `form-add-host`, `add-host-id`, `add-host-submit`, `add-host-ok`, `add-host-error`, `host-row-*`, `host-drain-*`                                    | Hosts                                    |
 
 ### Agent pane (`services/agent-web`)
 
@@ -133,7 +134,8 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `stat-host-config-link`, `stat-worktrees-link`, `stat-worktrees`, `stat-sessions-link`, `stat-sessions-sample`                                                                   | Status stat cards (link to pages)         |
 | `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                                     | Repositories                              |
 | `add-repo-dialog`, `dialog-close`, `form-add-local-repo`, `add-repo-id`, `add-repo-name`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository modal (no auto worktree)   |
-| `repo-row-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                                            | Repositories table + nested worktrees     |
+| `repo-row-*`, `repo-link-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                             | Repositories table + nested worktrees     |
+| `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repository-detail-path`, `repo-remove-*`, `page-repository-detail-not-found`                             | Repository detail (`/repositories/[id]`)  |
 | `page-worktrees`, `worktrees-heading`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-remove-*`                                                                         | Worktrees (hierarchical, editable)        |
 | `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-path`, `worktree-detail-back`, `page-worktree-detail-not-found`                                | Worktree detail (`/worktrees/[id]`)       |
 | `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                            | Sessions list                             |
@@ -146,35 +148,38 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ### Project `control` — baseURL `http://127.0.0.1:7421`
 
-| File                               | Tests                                                     | What it covers                                            |
-| ---------------------------------- | --------------------------------------------------------- | --------------------------------------------------------- |
-| `e2e/control/dashboard.spec.ts`    | loads shell and dashboard stats                           | Shell, heading, stat cards                                |
-|                                    | nav links are present                                     | All primary nav `data-pw` links                           |
-| `e2e/control/sessions.spec.ts`     | sessions list page and filters                            | List page; status filter updates URL                      |
-|                                    | new session form is present                               | Form fields visible                                       |
-|                                    | create session via API-backed form when profiles exist    | Submits form; lands on detail page; cancel unlocks resume |
-|                                    | unknown session id shows a not-found state                | `/sessions/[id]` 404-style state                          |
-| `e2e/control/repositories.spec.ts` | repositories page loads with add-repository dialog closed | Page + closed modal + nested worktrees section            |
-|                                    | create catalog repository via modal with unique id        | Opens modal; parallel-safe catalog create                 |
-| `e2e/control/worktrees.spec.ts`    | worktrees page loads                                      | Page + heading                                            |
-|                                    | unknown worktree id shows a not-found state               | `/worktrees/[id]` 404-style state                         |
-|                                    | clicking a worktree opens its fleet-wide detail page      | Seeds host config via API; click-through to detail page   |
-| `e2e/control/schedules.spec.ts`    | schedules page and create form                            | Seeds repo via API; creates schedule in UI                |
-| `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                | Page + add host form + online filter URL                  |
-|                                    | add host creates empty host inventory slot                | Parallel-safe empty host config                           |
+| File                               | Tests                                                          | What it covers                                            |
+| ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
+| `e2e/control/dashboard.spec.ts`    | loads shell and dashboard stats                                | Shell, heading, stat cards                                |
+|                                    | nav links are present                                          | All primary nav `data-pw` links                           |
+| `e2e/control/sessions.spec.ts`     | sessions list page and filters                                 | List page; status filter updates URL                      |
+|                                    | new session form is present                                    | Form fields visible                                       |
+|                                    | create session via API-backed form when profiles exist         | Submits form; lands on detail page; cancel unlocks resume |
+|                                    | unknown session id shows a not-found state                     | `/sessions/[id]` 404-style state                          |
+| `e2e/control/repositories.spec.ts` | repositories page loads with add-repository dialog closed      | Page + closed modal + nested worktrees section            |
+|                                    | create catalog repository via modal, then open its detail page | Opens modal; parallel-safe catalog create; click-through  |
+|                                    | unknown repository id shows a not-found state                  | `/repositories/[id]` 404-style state                      |
+| `e2e/control/worktrees.spec.ts`    | worktrees page loads                                           | Page + heading                                            |
+|                                    | unknown worktree id shows a not-found state                    | `/worktrees/[id]` 404-style state                         |
+|                                    | clicking a worktree opens its fleet-wide detail page           | Seeds host config via API; click-through to detail page   |
+| `e2e/control/schedules.spec.ts`    | schedules page and create form                                 | Seeds repo via API; creates schedule in UI                |
+| `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                     | Page + add host form + online filter URL                  |
+|                                    | add host creates empty host inventory slot                     | Parallel-safe empty host config                           |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7422`
 
-| File                             | Tests                                                              | What it covers                                             |
-| -------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------- |
-| `e2e/agent/status.spec.ts`       | loads agent shell and status page                                  | Shell, agent id `local-1`, drain control                   |
-|                                  | stat cards link to their pages                                     | Host config/worktrees/sessions cards are links             |
-| `e2e/agent/repositories.spec.ts` | repositories page loads with add-repository dialog closed          | Page + closed modal                                        |
-|                                  | add repository via modal, nested worktrees section shows it empty  | Modal add flow; nested hierarchical worktrees              |
-| `e2e/agent/worktrees.spec.ts`    | worktrees page loads                                               | Page + heading                                             |
-|                                  | clicking a worktree opens its detail page; removing redirects back | Seeds host config via API; click-through, remove, redirect |
-| `e2e/agent/sessions.spec.ts`     | sessions page loads                                                | Page + heading                                             |
-|                                  | clicking a session opens its detail page                           | Seeds + assigns a session via API; click-through           |
+| File                             | Tests                                                                | What it covers                                             |
+| -------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `e2e/agent/status.spec.ts`       | loads agent shell and status page                                    | Shell, agent id `local-1`, drain control                   |
+|                                  | stat cards link to their pages                                       | Host config/worktrees/sessions cards are links             |
+| `e2e/agent/repositories.spec.ts` | repositories page loads with add-repository dialog closed            | Page + closed modal                                        |
+|                                  | add repository via modal, nested worktrees section shows it empty    | Modal add flow; nested hierarchical worktrees              |
+|                                  | clicking a repository opens its detail page; removing redirects back | Modal add flow; click-through, remove, redirect            |
+|                                  | unknown repository id shows a not-found state                        | `/repositories/[id]` 404-style state                       |
+| `e2e/agent/worktrees.spec.ts`    | worktrees page loads                                                 | Page + heading                                             |
+|                                  | clicking a worktree opens its detail page; removing redirects back   | Seeds host config via API; click-through, remove, redirect |
+| `e2e/agent/sessions.spec.ts`     | sessions page loads                                                  | Page + heading                                             |
+|                                  | clicking a session opens its detail page                             | Seeds + assigns a session via API; click-through           |
 
 ---
 
