@@ -8,7 +8,8 @@ Short entry points. Prefer the focused pages over mega-guides.
 | -------------------------------------------- | ----------------------------------------------------------- |
 | [local-development.md](local-development.md) | Local stack: DynamoDB Local, `pnpm local:*`, e2e, manage UI |
 | [agent-e2e-testing.md](agent-e2e-testing.md) | **Pre-deploy E2E** for coding agents (stack + real CLI)     |
-| [setup.md](setup.md)                         | Install, AWS deploy, VPS agent production shape             |
+| [deploy.md](deploy.md)                       | Deploy / update / teardown (local + AWS/VPS ops)            |
+| [setup.md](setup.md)                         | Install, AWS deploy overview, VPS agent production shape    |
 | [cli.md](cli.md)                             | `auto-harness-agent` commands                               |
 | [harness.md](harness.md)                     | Repo harness hookup examples, requirements                  |
 

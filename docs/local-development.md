@@ -39,7 +39,7 @@ pnpm local:dynamodb:ready   # creates tables, waits for :8000
 
 Stop with `pnpm local:dynamodb:down` (or `docker compose down`).
 
-This is the supported way to **test Auto Harness locally today**. Cloud WebSocket `start` and full AWS deploy are documented separately ([setup.md](setup.md#aws-control-plane-later-phases), [aws.md](aws.md)).
+This is the supported way to **test Auto Harness locally today**. Deploy/update/teardown (local + AWS/VPS): [deploy.md](deploy.md). Cloud design: [setup.md](setup.md#aws-control-plane-later-phases), [aws.md](aws.md).
 
 ---
 
@@ -243,12 +243,13 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 
 ## Related
 
-| Doc                          | Role                                      |
-| ---------------------------- | ----------------------------------------- |
-| [setup.md](setup.md)         | Install, AWS deploy, VPS agent production |
-| [cli.md](cli.md)             | Agent/API CLI commands                    |
-| [api.md](api.md)             | REST shapes                               |
-| [websocket.md](websocket.md) | Agent + UI real-time protocol             |
-| [agent.md](agent.md)         | Agent internals                           |
-| [aws.md](aws.md)             | Control-plane design                      |
-| [plan.md](plan.md)           | Phases and acceptance criteria            |
+| Doc                          | Role                           |
+| ---------------------------- | ------------------------------ |
+| [setup.md](setup.md)         | Install, AWS deploy overview   |
+| [deploy.md](deploy.md)       | Deploy / update / teardown     |
+| [cli.md](cli.md)             | Agent/API CLI commands         |
+| [api.md](api.md)             | REST shapes                    |
+| [websocket.md](websocket.md) | Agent + UI real-time protocol  |
+| [agent.md](agent.md)         | Agent internals                |
+| [aws.md](aws.md)             | Control-plane design           |
+| [plan.md](plan.md)           | Phases and acceptance criteria |

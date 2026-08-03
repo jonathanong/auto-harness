@@ -3,7 +3,7 @@
 This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to VPS agents.
 
 Execution plane: [agent.md](agent.md). Overview: [architecture.md](architecture.md).  
-REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
+REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). Ops deploy/update/teardown: [deploy.md](deploy.md). Local stack: [local-development.md](local-development.md).
 
 ---
 

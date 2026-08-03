@@ -2,6 +2,8 @@
 
 Install Auto Harness and run it in production-shaped environments. **Day-to-day local work (DynamoDB Local, `pnpm local:*`, e2e, manage UI) lives in [local-development.md](local-development.md).**
 
+**Deploy / update / teardown (local + AWS/VPS ops):** [deploy.md](deploy.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
+
 Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
 
 ## Prerequisites
@@ -36,12 +38,16 @@ pnpm check
 
 ## AWS control plane (later phases)
 
+Full ops (deploy, update, teardown, secrets, post-deploy smoke): **[deploy.md](deploy.md)**.
+
+Short checklist:
+
 1. `pnpm install`
 2. Configure secrets (do not commit):
    - `HARNESS_ADMINS` — base64 JSON `[{ "username", "password" }]`
    - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
    - `WEB_ORIGIN` — browser origin for CORS
-3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (when CDK is implemented)
+3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (**only when the CDK app is fully implemented** — see [deploy.md](deploy.md) maturity table)
 4. Create users / service accounts; bind agent API key; add repositories
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
