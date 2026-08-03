@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
+import { applyLocalCors } from "./local-cors.ts";
 import { type LocalServerOptions, send } from "./local-http.ts";
 import { handleAgentConfigRoutes } from "./local-routes-agent-config.ts";
 import { handleAgentSchedulerRoutes } from "./local-routes-agent-scheduler.ts";
@@ -24,6 +25,11 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   const store = options.store ?? new MemorySessionStore({ plane });
 
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    // Browser UIs on :7421 / :7423 call this API on :7420 — allow local CORS.
+    if (applyLocalCors(req, res)) {
+      return;
+    }
+
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
     const ctx = { plane, req, res, url, method };

@@ -42,6 +42,9 @@ describe("createLocalApp agent and scheduler routes", () => {
         },
       };
       const res = {
+        setHeader() {
+          /* cors */
+        },
         writeHead(code: number) {
           statusCode = code;
         },
@@ -160,6 +163,9 @@ describe("createLocalApp agent and scheduler routes", () => {
         },
       };
       const res = {
+        setHeader() {
+          /* cors */
+        },
         writeHead(code: number) {
           status = code;
         },

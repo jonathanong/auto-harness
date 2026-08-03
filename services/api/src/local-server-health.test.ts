@@ -33,6 +33,9 @@ describe("createLocalApp health and sessions", () => {
         },
       };
       const res = {
+        setHeader() {
+          /* cors */
+        },
         writeHead(code: number) {
           statusCode = code;
         },
@@ -91,6 +94,9 @@ describe("createLocalApp health and sessions", () => {
       },
     };
     const badRes = {
+      setHeader() {
+        /* cors */
+      },
       writeHead(code: number) {
         badStatus = code;
       },
@@ -113,6 +119,9 @@ describe("createLocalApp health and sessions", () => {
       },
     };
     const emptyRes = {
+      setHeader() {
+        /* cors */
+      },
       writeHead(code: number) {
         emptyStatus = code;
       },
@@ -140,6 +149,9 @@ describe("createLocalApp health and sessions", () => {
       },
     };
     const res = {
+      setHeader() {
+        /* cors */
+      },
       writeHead(code: number) {
         status = code;
       },
@@ -162,6 +174,9 @@ describe("createLocalApp health and sessions", () => {
       },
     };
     const res2 = {
+      setHeader() {
+        /* cors */
+      },
       writeHead(code: number) {
         status2 = code;
       },

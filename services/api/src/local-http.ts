@@ -51,14 +51,23 @@ export function readJson(req: IncomingMessage): Promise<unknown> {
 
 export function send(res: ServerResponse, status: number, body: unknown): void {
   if (status === 204) {
+    // Keep headers already set (e.g. CORS) — do not pass a headers object.
     res.writeHead(204);
     res.end();
     return;
   }
   const payload = JSON.stringify(body);
-  res.writeHead(status, {
-    "content-type": "application/json",
-    "content-length": Buffer.byteLength(payload),
-  });
+  const len = Buffer.byteLength(payload);
+  // Prefer setHeader so prior CORS headers stay; fall back for minimal test fakes.
+  if (typeof res.setHeader === "function") {
+    res.setHeader("content-type", "application/json");
+    res.setHeader("content-length", len);
+    res.writeHead(status);
+  } else {
+    res.writeHead(status, {
+      "content-type": "application/json",
+      "content-length": len,
+    });
+  }
   res.end(payload);
 }

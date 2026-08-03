@@ -20,7 +20,14 @@ export async function invokeHandler(
       return req;
     },
   };
+  const headers = new Map<string, string | number | string[]>();
   const res = {
+    setHeader(name: string, value: string | number | string[]) {
+      headers.set(name.toLowerCase(), value);
+    },
+    getHeader(name: string) {
+      return headers.get(name.toLowerCase());
+    },
     writeHead(code: number) {
       statusCode = code;
     },
@@ -63,6 +70,9 @@ export async function invokeBadJson(
     },
   };
   const res = {
+    setHeader() {
+      /* cors / content-type */
+    },
     writeHead(code: number) {
       status = code;
     },
