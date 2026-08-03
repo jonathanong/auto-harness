@@ -21,8 +21,9 @@ function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRecord, "u
   if (body.agentId !== undefined && body.agentId !== agentId) {
     throw new Error("body.agentId must match path agentId");
   }
-  if (!Array.isArray(body.repositories) || body.repositories.length === 0) {
-    throw new Error("repositories must be a non-empty array");
+  // Empty repositories allowed: register agent / seed host before attaching repos.
+  if (!Array.isArray(body.repositories)) {
+    throw new Error("repositories must be an array");
   }
   const repositories: AgentHostRecord["repositories"] = [];
   for (const [ri, rawRepo] of body.repositories.entries()) {
