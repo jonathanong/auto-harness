@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 
 export type OutputChunk = {
@@ -27,6 +28,17 @@ export interface ProcessRunner {
   run(options: RunProcessOptions): Promise<ProcessResult>;
 }
 
+/** Node often reports ENOENT for a missing cwd as well as a missing binary. */
+function formatSpawnEnoent(command: string, cwd: string): string {
+  if (!existsSync(cwd)) {
+    return (
+      `Cannot run ${command}: working directory does not exist: ${cwd}. ` +
+      `Remove stale host-inventory repos (agent Config / control plane) or create that path.`
+    );
+  }
+  return `Cannot run ${command}: executable not found in PATH (ENOENT)`;
+}
+
 export class SpawnProcessRunner implements ProcessRunner {
   async run(options: RunProcessOptions): Promise<ProcessResult> {
     if (options.argv.length === 0) {
@@ -35,6 +47,10 @@ export class SpawnProcessRunner implements ProcessRunner {
     const [command, ...args] = options.argv;
     if (!command) {
       throw new Error("argv must be non-empty");
+    }
+
+    if (!existsSync(options.cwd)) {
+      throw new Error(formatSpawnEnoent(command, options.cwd));
     }
 
     return await new Promise<ProcessResult>((resolve, reject) => {
@@ -60,6 +76,10 @@ export class SpawnProcessRunner implements ProcessRunner {
 
       child.on("error", (err) => {
         clearTimeout(timer);
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          reject(new Error(formatSpawnEnoent(command, options.cwd)));
+          return;
+        }
         reject(err);
       });
 

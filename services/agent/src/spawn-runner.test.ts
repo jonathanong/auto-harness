@@ -75,6 +75,18 @@ describe("SpawnProcessRunner", () => {
         timeoutMs: 1000,
         onChunk: () => undefined,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/not found in PATH|ENOENT/);
+  });
+
+  it("explains missing cwd instead of bare spawn ENOENT", async () => {
+    const runner = new SpawnProcessRunner();
+    await expect(
+      runner.run({
+        argv: ["git", "status"],
+        cwd: "/tmp/auto-harness-missing-cwd-xyz",
+        timeoutMs: 1000,
+        onChunk: () => undefined,
+      }),
+    ).rejects.toThrow(/working directory does not exist/);
   });
 });
