@@ -1,64 +1,16 @@
-import { ListTablesCommand } from "@aws-sdk/client-dynamodb";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createControlPlane } from "../create-plane.ts";
-import {
-  createDynamoClients,
-  createDynamoDocumentClient,
-  DEFAULT_DYNAMODB_ENDPOINT,
-  statusShardAttr,
-  tableNames,
-} from "./dynamo.ts";
-import { ensureControlPlaneTables } from "./ensure-tables.ts";
-import { DynamoPlaneStorage } from "./plane-storage.ts";
+import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
 
-async function dynamoAvailable(): Promise<boolean> {
-  try {
-    const { client } = createDynamoClients();
-    await client.send(new ListTablesCommand({}));
-    return true;
-  } catch {
-    return false;
-  }
-}
+const ctx = createDynamoTestCtx("Sto");
 
-const prefix = `AhCov${process.pid}`;
-let storage: DynamoPlaneStorage | null = null;
-let available = false;
-
-beforeAll(async () => {
-  available = await dynamoAvailable();
-  if (!available) {
-    return;
-  }
-  const { client, doc } = createDynamoClients();
-  const names = await ensureControlPlaneTables({ client, prefix });
-  storage = new DynamoPlaneStorage(doc, names);
-  await storage.clearAll();
-});
-
-afterAll(async () => {
-  if (storage) {
-    await storage.clearAll();
-  }
-});
-
-describe("DynamoDB Local integration", () => {
-  it("exports client helpers and table naming", () => {
-    expect(statusShardAttr("queued", 2)).toBe("queued#2");
-    expect(tableNames("AH").sessions).toBe("AH-Sessions");
-    expect(tableNames("").sessions).toContain("Sessions");
-    expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("8000");
-    const doc = createDynamoDocumentClient();
-    expect(doc).toBeTruthy();
-  });
-
-  it("persists sessions, worktrees, claims, locks, logs, schedules, archives", async () => {
-    if (!available || !storage) {
+describe("DynamoDB Local storage", () => {
+  it("persists sessions worktrees claims locks logs schedules", async () => {
+    if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
       return;
     }
-    const s = storage;
+    const s = ctx.storage;
 
     await s.putSession({
       id: "sess-1",
@@ -216,59 +168,5 @@ describe("DynamoDB Local integration", () => {
     expect((await s.getArchive("session-logs/sess-1.json"))?.body).toBe("[]");
     expect(await s.getArchive("missing")).toBeNull();
     expect((await s.listArchives()).length).toBeGreaterThan(0);
-
-    // createControlPlane hydrates from DynamoDB
-    const { plane, storage: st2 } = await createControlPlane({
-      tablePrefix: prefix,
-      skipEnsureTables: true,
-      publicBaseUrl: "http://ui",
-      idFactory: () => "sess-plane",
-      now: () => "2026-01-02T00:00:00.000Z",
-    });
-    plane.seedWorktree({
-      id: "wt-p",
-      agentId: "ap",
-      repositoryId: "r1",
-      path: "/p",
-      labels: [],
-      status: "idle",
-      online: true,
-    });
-    const reg = plane.registerAgent({
-      agentId: "ap",
-      worktrees: [{ id: "wt-p", repositoryId: "r1", path: "/p", labels: [] }],
-      commandProfiles: ["echo-prompt"],
-      replaceExisting: true,
-    });
-    expect(reg.ok).toBe(true);
-    const created = plane.createSession({
-      repositoryId: "r1",
-      prompt: "from plane",
-      commandProfile: "c",
-      timeout: 5,
-    });
-    expect(created.ok).toBe(true);
-    plane.archiveSessionLogs("sess-plane");
-    await plane.settleStorage();
-    const again = await createControlPlane({
-      tablePrefix: prefix,
-      skipEnsureTables: true,
-    });
-    expect(again.plane.getSession("sess-plane")?.prompt).toBe("from plane");
-    expect(again.plane.listWorktrees().some((w) => w.id === "wt-p")).toBe(true);
-    expect(again.plane.listAgents().some((a) => a.agentId === "ap")).toBe(true);
-    expect(again.plane.getArchive("sess-plane")).toBeTruthy();
-    await st2.clearAll();
-  });
-
-  it("ensureControlPlaneTables is idempotent", async () => {
-    if (!available) {
-      expect(true).toBe(true);
-      return;
-    }
-    const { client } = createDynamoClients();
-    const a = await ensureControlPlaneTables({ client, prefix });
-    const b = await ensureControlPlaneTables({ client, prefix });
-    expect(a.sessions).toBe(b.sessions);
   });
 });

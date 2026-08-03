@@ -7,5 +7,15 @@
     "style": "off",
     "restriction": "off"
   },
+  "rules": {
+    "max-lines": [
+      "error",
+      {
+        "max": 200,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ]
+  },
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "**/node_modules/**", "docs/**"]
 }

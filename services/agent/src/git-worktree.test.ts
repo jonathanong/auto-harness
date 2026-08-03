@@ -2,39 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
+import { scripted } from "./git-test-helpers.ts";
 
-function scripted(
-  responses: Array<{
-    match: string[];
-    exitCode: number;
-    stdout?: string;
-    stderr?: string;
-  }>,
-): ProcessRunner {
-  // Consume matching entries in order so the same argv can return different
-  // results on successive calls (e.g. rev-parse fails then succeeds after fetch).
-  const queue = [...responses];
-  return {
-    async run(opts) {
-      const idx = queue.findIndex((r) =>
-        r.match.every((m, i) => opts.argv[i + 1] === m || m === "*"),
-      );
-      if (idx < 0) {
-        throw new Error(`unexpected git ${opts.argv.slice(1).join(" ")}`);
-      }
-      const [hit] = queue.splice(idx, 1);
-      if (hit.stdout) {
-        opts.onChunk({ stream: "stdout", data: hit.stdout });
-      }
-      if (hit.stderr) {
-        opts.onChunk({ stream: "stderr", data: hit.stderr });
-      }
-      return { exitCode: hit.exitCode, timedOut: false, signal: null };
-    },
-  };
-}
-
-describe("createGitClient", () => {
+describe("createGitClient ensureWorktree", () => {
   it("maps null exit codes to 1", async () => {
     const runner: ProcessRunner = {
       async run(opts) {
@@ -185,74 +155,5 @@ describe("createGitClient", () => {
         branch: "main",
       }),
     ).rejects.toThrow(/Failed to create worktree/);
-  });
-
-  it("checkoutRef detaches at resolved sha", async () => {
-    const git = createGitClient(
-      scripted([
-        {
-          match: ["rev-parse", "--verify", "main"],
-          exitCode: 0,
-          stdout: "abc123\n",
-        },
-        {
-          match: ["switch", "--detach", "abc123"],
-          exitCode: 0,
-        },
-      ]),
-    );
-    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
-  });
-
-  it("checkoutRef fetches then falls back to checkout --detach", async () => {
-    const git = createGitClient(
-      scripted([
-        { match: ["rev-parse", "--verify", "main"], exitCode: 1, stderr: "no" },
-        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-        {
-          match: ["rev-parse", "--verify", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
-        { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "old git" },
-        { match: ["checkout", "--detach", "abc"], exitCode: 0 },
-      ]),
-    );
-    await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
-  });
-
-  it("checkoutRef fails when ref cannot be resolved", async () => {
-    await expect(
-      createGitClient(
-        scripted([
-          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e" },
-          { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e2" },
-        ]),
-      ).checkoutRef({ cwd: "/repo", ref: "bad" }),
-    ).rejects.toThrow(/Failed to resolve ref/);
-  });
-
-  it("checkoutRef fails when switch and checkout both fail", async () => {
-    await expect(
-      createGitClient(
-        scripted([
-          {
-            match: ["rev-parse", "--verify", "main"],
-            exitCode: 0,
-            stdout: "abc\n",
-          },
-          { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
-          { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
-        ]),
-      ).checkoutRef({ cwd: "/repo", ref: "main" }),
-    ).rejects.toThrow(/Failed to checkout ref/);
-  });
-
-  it("revParse returns hash", async () => {
-    const git = createGitClient(
-      scripted([{ match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" }]),
-    );
-    await expect(git.revParse("/repo", "HEAD")).resolves.toBe("abc123");
   });
 });

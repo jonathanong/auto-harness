@@ -9,17 +9,23 @@ export default defineConfig({
       include: ["modules/*/src/**/*.ts", "services/*/src/**/*.ts"],
       exclude: [
         "**/*.test.ts",
+        "**/*-test-helpers.ts",
         "**/dist/**",
         "**/types.ts",
+        "**/*-types.ts",
         "**/session.ts",
         "**/cli.ts",
         // DynamoDB Local SDK wiring — covered by dynamo.test.ts integration, not line-perfect unit coverage
         "**/db/dynamo.ts",
         "**/db/ensure-tables.ts",
         "**/db/plane-storage.ts",
+        "**/db/plane-storage-*.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
         "**/server.ts",
+        // HTML route handlers split from server.ts (exercised by phase4-web e2e)
+        "**/html.ts",
+        "**/pages/**",
         "**/ws-hub.ts",
         "**/ws-transport.ts",
         "**/start-daemon.ts",

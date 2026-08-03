@@ -1,0 +1,122 @@
+import { describe, expect, it } from "vitest";
+
+import { ControlPlane } from "./control-plane.ts";
+
+describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
+  it("bound sessions pin and offline claim", () => {
+    const planeE = new ControlPlane({
+      idFactory: () => "e1",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    planeE.seedWorktree({
+      id: "we",
+      agentId: "ae",
+      repositoryId: "repo-1",
+      path: "/e",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    planeE.createSession({
+      repositoryId: "repo-1",
+      prompt: "p",
+      commandProfile: "c",
+      timeout: 1,
+    });
+    const es = planeE.state.sessions.get("e1")!;
+    es.agentId = "ae";
+    es.worktreeId = "we";
+    es.ackReceivedAt = "t";
+    expect(planeE.assignQueued()).toHaveLength(0);
+
+    // resume without cliResumeRef branch + early ack deadline continue
+    const planeF = new ControlPlane({
+      idFactory: (() => {
+        let i = 0;
+        return () => `f${++i}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+      ackDeadlineMs: 60_000,
+    });
+    planeF.seedWorktree({
+      id: "wf",
+      agentId: "af",
+      repositoryId: "repo-1",
+      path: "/f",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    planeF.createSession({
+      repositoryId: "repo-1",
+      prompt: "p",
+      commandProfile: "c",
+      timeout: 1,
+      ref: "main",
+    });
+    planeF.assignQueued();
+    planeF.handleAgentMessage({ type: "session:ack", sessionId: "f1" });
+    planeF.handleAgentMessage({
+      type: "session:status",
+      sessionId: "f1",
+      status: "completed",
+    });
+    // force agent pin without cliResumeRef
+    planeF.state.sessions.get("f1")!.agentId = "af";
+    delete planeF.state.sessions.get("f1")!.cliResumeRef;
+    const resF = planeF.resumeSession("f1");
+    expect(resF.ok).toBe(true);
+    planeF.seedWorktree({
+      id: "wf2",
+      agentId: "af",
+      repositoryId: "repo-1",
+      path: "/f2",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    expect(planeF.assignQueued().length).toBeGreaterThan(0);
+    // deadline not expired: call with now equal to assignment time (fixed clock)
+    const assignMs = Date.parse("2026-01-01T00:00:00.000Z");
+    planeF.state.pendingAcks.set("pending-early", {
+      sessionId: "x",
+      worktreeId: "wf2",
+      assignedAtMs: assignMs,
+    });
+    expect(planeF.enforceAckDeadlines(assignMs)).toEqual([]);
+
+    // tryClaim false: get returns offline worktree
+    const planeG = new ControlPlane({
+      idFactory: () => "g1",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    planeG.seedWorktree({
+      id: "wg",
+      agentId: "ag",
+      repositoryId: "repo-1",
+      path: "/g",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    planeG.createSession({
+      repositoryId: "repo-1",
+      prompt: "p",
+      commandProfile: "c",
+      timeout: 1,
+    });
+    const gMap = planeG.state.worktrees;
+    const realGet = gMap.get.bind(gMap);
+    gMap.get = (id: string) => {
+      const w = realGet(id);
+      if (w) {
+        return { ...w, online: false };
+      }
+      return w;
+    };
+    expect(planeG.assignQueued()).toHaveLength(0);
+  });
+});

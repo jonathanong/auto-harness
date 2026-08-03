@@ -125,10 +125,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       expect(plane.getSession(intervening.session.id)?.status).toBe("completed");
 
       // Ensure pin source has agent (complete keeps agentId)
-      const any = plane as unknown as {
-        sessions: Map<string, { agentId?: string | null }>;
-      };
-      any.sessions.get(first.session.id)!.agentId = "agent-resume";
+      plane.state.sessions.get(first.session.id)!.agentId = "agent-resume";
 
       const resumed = plane.resumeSession(first.session.id);
       expect(resumed.ok).toBe(true);

@@ -33,5 +33,6 @@
       "project": ["src/**/*.ts"],
     },
   },
+  "ignore": ["**/*-test-helpers.ts"],
   "ignoreBinaries": ["lychee"],
 }
