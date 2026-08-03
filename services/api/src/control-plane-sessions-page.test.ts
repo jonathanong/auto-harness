@@ -50,5 +50,15 @@ describe("listSessionsPage", () => {
 
     const byQ = plane.listSessionsPage({ q: "p-0", limit: 50 });
     expect(byQ.items.some((s) => s.prompt === "p-0")).toBe(true);
+
+    const byStatus = plane.listSessionsPage({ status: "queued", limit: 50 });
+    expect(byStatus.items.every((s) => s.status === "queued")).toBe(true);
+    const allStatus = plane.listSessionsPage({ status: "all", limit: 50 });
+    expect(allStatus.items.length).toBeGreaterThan(byStatus.items.length);
+
+    // A cursor that decodes without an embedded newline is treated as invalid and ignored.
+    const garbageCursor = Buffer.from("no-newline-here", "utf8").toString("base64url");
+    const ignored = plane.listSessionsPage({ cursor: garbageCursor, limit: 50 });
+    expect(ignored.items.length).toBe(5);
   });
 });

@@ -6,7 +6,7 @@ import {
   type SessionListQuery,
 } from "@auto-harness/shared";
 
-export type SessionListState = SessionListQuery;
+type SessionListState = SessionListQuery;
 
 export function parseSessionListState(sp: URLSearchParams): SessionListState {
   return parseSessionListQuery(sp);

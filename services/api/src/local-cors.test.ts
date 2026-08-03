@@ -80,4 +80,27 @@ describe("applyLocalCors", () => {
     );
     expect(headers.has("access-control-allow-origin")).toBe(false);
   });
+
+  it("ignores non-http(s) protocols and unparseable origins", () => {
+    const headers = new Map<string, string>();
+    const res = {
+      setHeader(name: string, value: string) {
+        headers.set(name.toLowerCase(), value);
+      },
+      writeHead() {
+        /* unused */
+      },
+      end() {
+        /* unused */
+      },
+    };
+    applyLocalCors(
+      { method: "GET", headers: { origin: "file://localhost/etc/passwd" } } as never,
+      res as never,
+    );
+    expect(headers.has("access-control-allow-origin")).toBe(false);
+
+    applyLocalCors({ method: "GET", headers: { origin: "not-a-url" } } as never, res as never);
+    expect(headers.has("access-control-allow-origin")).toBe(false);
+  });
 });

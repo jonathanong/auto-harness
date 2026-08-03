@@ -46,13 +46,9 @@ export default async function SessionsPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const nextHref = nextCursor
-    ? sessionListHref({ ...filters, cursor: nextCursor })
-    : null;
+  const nextHref = nextCursor ? sessionListHref({ ...filters, cursor: nextCursor }) : null;
   // Previous page is not encoded in cursor chain; only "first page" via clearing cursor.
-  const prevHref = filters.cursor
-    ? sessionListHref({ ...filters, cursor: "" })
-    : null;
+  const prevHref = filters.cursor ? sessionListHref({ ...filters, cursor: "" }) : null;
 
   return (
     <div className="space-y-4" data-pw="page-sessions">

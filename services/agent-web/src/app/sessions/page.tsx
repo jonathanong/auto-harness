@@ -48,9 +48,7 @@ export default async function AgentSessionsPage({
   const nextHref = nextCursor
     ? sessionListHref({ ...filters, cursor: nextCursor }, "/sessions")
     : null;
-  const prevHref = filters.cursor
-    ? sessionListHref({ ...filters, cursor: "" }, "/sessions")
-    : null;
+  const prevHref = filters.cursor ? sessionListHref({ ...filters, cursor: "" }, "/sessions") : null;
 
   return (
     <div className="space-y-4" data-pw="page-sessions">
