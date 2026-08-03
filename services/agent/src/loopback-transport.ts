@@ -1,6 +1,6 @@
 import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
 
-import type { AgentTransport } from "./agent-loop.ts";
+import type { AgentTransport } from "./agent-transport.ts";
 
 /**
  * In-process transport binding an agent to a ControlPlane-like message handler.
