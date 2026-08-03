@@ -31,39 +31,40 @@ On the agent host:
 
 1. Install Node, Git, and AI CLIs.
 2. Clone or install the agent package / monorepo checkout used for `auto-harness-agent`.
-3. Create agent config:
-   - **Absolute** paths for repos and worktrees
-   - Named **`commandProfiles` only** (D4 — no free-form shell over the API)
-4. Create a **bound** service account on the control plane (`boundAgentId` = this host’s `agentId`).
-5. Set env / config:
+3. Create a **bound** service account on the control plane (`boundAgentId` = this host’s `agentId`).
+4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths and named `commandProfiles` (D4 — no free-form shell).
+5. Set **only** identity env vars on the host:
 
-| Variable              | Role                                                            |
-| --------------------- | --------------------------------------------------------------- |
-| `HARNESS_CONFIG_PATH` | Path to agent JSON (default `./auto-harness-agent.config.json`) |
-| `HARNESS_AGENT_ID`    | Optional override of config `agentId`                           |
-| `HARNESS_API_URL`     | Control plane base or `wss://…/ws`                              |
-| `HARNESS_API_KEY`     | Service account `hns_…`                                         |
-| `HARNESS_LOG_LEVEL`   | `info` default                                                  |
+| Variable            | Role                                             |
+| ------------------- | ------------------------------------------------ |
+| `HARNESS_AGENT_ID`  | Required agent id                                |
+| `HARNESS_API_URL`   | Control plane base (`https://…` or `wss://…/ws`) |
+| `HARNESS_API_KEY`   | Service account `hns_…`                          |
+| `HARNESS_LOG_LEVEL` | Optional (`info` default)                        |
 
 6. Start daemon:
 
 ```bash
-# Local control plane
-pnpm local:agent start --config /abs/path/agent.config.json --ws ws://127.0.0.1:7420/ws
+export HARNESS_AGENT_ID=prod-1
+export HARNESS_API_URL=https://YOUR_API   # or wss://YOUR_API/ws
+export HARNESS_API_KEY=hns_…
 
-# Production control plane
-pnpm local:agent start --config /abs/path/agent.config.json --ws wss://YOUR_API/ws
-# production: same entry under systemd (Restart=always), long TimeoutStopSec for drain
+# Local control plane
+pnpm local:agent start
+
+# Production: same entry under systemd (Restart=always), long TimeoutStopSec for drain
+pnpm local:agent start
 ```
 
 7. Confirm control plane shows agent online and profiles:
 
 ```bash
-curl -sS "$HARNESS_API_URL/api/v1/agents"   # or local http://127.0.0.1:7420
+curl -sS "$HARNESS_API_URL/api/v1/agents"
+curl -sS "$HARNESS_API_URL/api/v1/agents/$HARNESS_AGENT_ID/config"
 curl -sS "$HARNESS_API_URL/api/v1/command-profiles"
 ```
 
-Config shape examples: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
+Host inventory template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Runbooks: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
 
 ---
 
@@ -85,8 +86,8 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 
 ### Command profiles / repos
 
-- Edit agent config (new profile argv, worktree paths).
-- Restart agent after drain if inventory must change mid-flight.
+- Update host inventory via `PUT /api/v1/agents/:agentId/config` or the Agents UI.
+- Restart agent after drain so it re-bootstraps the new inventory.
 - Keep profile names stable when possible so schedules/UI selections keep working.
 
 ### Relation to control plane updates

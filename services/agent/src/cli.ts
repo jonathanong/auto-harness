@@ -10,14 +10,26 @@ import type { SessionRunResult } from "./session-runner.ts";
 
 export function printUsage(log: (msg: string) => void = console.log): void {
   log(`Usage:
-  auto-harness-agent status [--config path]
-  auto-harness-agent run-session --file session.json [--config path]
-  auto-harness-agent start [--config path] [--ws ws://host/ws]
+  auto-harness-agent status
+  auto-harness-agent run-session --file session.json
+  auto-harness-agent start [--ws ws://host/ws]
+
+Identity (env only):
+  HARNESS_AGENT_ID   required
+  HARNESS_API_URL    required (http(s) or ws(s) control plane)
+  HARNESS_API_KEY    service account token (when auth enabled)
+  HARNESS_LOG_LEVEL  optional (debug|info|warn|error)
+
+Host inventory (repos, worktrees, commandProfiles) is configured via
+API/UI: PUT /api/v1/agents/:agentId/config — not a local config file.
 `);
 }
 
 export type RunSessionDeps = {
-  loadConfig: (opts: { configPath?: string; env?: NodeJS.ProcessEnv }) => AgentConfig;
+  loadConfig: (opts: {
+    env?: NodeJS.ProcessEnv;
+    inline?: unknown;
+  }) => Promise<AgentConfig> | AgentConfig;
   ensureReady: (config: AgentConfig) => Promise<void>;
   runSession: (
     config: AgentConfig,
@@ -44,14 +56,6 @@ export function createDefaultRunSessionDeps(): RunSessionDeps {
   };
 }
 
-function getConfigPath(args: string[]): string | undefined {
-  const configIdx = args.indexOf("--config");
-  if (configIdx < 0) {
-    return undefined;
-  }
-  return args[configIdx + 1];
-}
-
 /**
  * Normalize argv after the node entry. pnpm may forward a literal `--`
  * when invoked as `pnpm local:agent -- status` — strip it.
@@ -76,13 +80,8 @@ export async function runCli(
     return command ? 0 : 1;
   }
 
-  const configPath = getConfigPath(args);
-
   if (command === "status") {
-    const config = deps.loadConfig({
-      ...(configPath !== undefined ? { configPath } : {}),
-      env,
-    });
+    const config = await deps.loadConfig({ env });
     deps.log(
       JSON.stringify(
         {
@@ -112,10 +111,7 @@ export async function runCli(
       deps.error("--file is required");
       return 1;
     }
-    const config = deps.loadConfig({
-      ...(configPath !== undefined ? { configPath } : {}),
-      env,
-    });
+    const config = await deps.loadConfig({ env });
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
     await deps.ensureReady(config);
     const result = await deps.runSession(config, assign, deps.log);
@@ -130,10 +126,7 @@ export async function runCli(
   }
 
   if (command === "start") {
-    const config = deps.loadConfig({
-      ...(configPath !== undefined ? { configPath } : {}),
-      env,
-    });
+    const config = await deps.loadConfig({ env });
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
@@ -152,7 +145,6 @@ export async function runCli(
       };
       process.on("SIGINT", shutdown);
       process.on("SIGTERM", shutdown);
-      // Block until signal
       await new Promise<void>(() => {
         /* run until killed */
       });

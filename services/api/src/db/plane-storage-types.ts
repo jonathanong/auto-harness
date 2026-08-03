@@ -58,6 +58,27 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
+/** Durable agent host inventory (paths + command profile argv). */
+export type AgentHostRecord = {
+  agentId: string;
+  repositories: Array<{
+    id: string;
+    path: string;
+    defaultBranch: string;
+    setupScript?: string;
+    terminalHookScript?: string;
+    worktrees: Array<{
+      id: string;
+      path: string;
+      labels: string[];
+      setupScript?: string;
+    }>;
+  }>;
+  commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
+  logLevel?: "debug" | "info" | "warn" | "error";
+  updatedAt: string;
+};
+
 export function sessionToItem(session: SessionRecord): Record<string, unknown> {
   return {
     ...session,

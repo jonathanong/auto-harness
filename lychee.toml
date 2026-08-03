@@ -12,3 +12,6 @@ exclude_path = [
 
 # Relative and internal docs links are the main signal; skip noisy externals.
 exclude = ['^https://api\\.slack\\.com/', '^https://unpkg\\.com/']
+
+# Local runbook URLs (127.0.0.1 / localhost) are not live during link checks.
+exclude_loopback = true

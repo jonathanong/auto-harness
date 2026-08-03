@@ -147,6 +147,25 @@ describe("createLocalApp operator management REST", () => {
     });
     expect((await invoke("POST", "/api/v1/agents/drain", { agentId: "a1" })).status).toBe(200);
 
+    const hostPut = await invoke("PUT", "/api/v1/agents/a1/config", {
+      repositories: [
+        {
+          id: "demo",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+      commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
+    });
+    expect(hostPut.status).toBe(200);
+    expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/agent-hosts")).json).toMatchObject({
+      items: expect.arrayContaining([expect.objectContaining({ agentId: "a1" })]),
+    });
+    expect((await invoke("DELETE", "/api/v1/agents/a1/config")).status).toBe(204);
+    expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(404);
+
     expect((await invoke("DELETE", "/api/v1/schedules/sched-1")).status).toBe(204);
     expect((await invoke("DELETE", "/api/v1/schedules/sched-1")).status).toBe(404);
 

@@ -47,7 +47,10 @@ export function listAgents(state: ControlPlaneState): Array<{
   return [...byAgent.values()];
 }
 
-/** Agent-reported profiles across online agents (for UI dropdown). */
+/**
+ * Command profile names for UI dropdown: online agents plus host configs
+ * (so schedules can be written before the agent connects).
+ */
 export function listCommandProfiles(state: ControlPlaneState): string[] {
   const set = new Set<string>();
   for (const a of listAgents(state)) {
@@ -57,9 +60,13 @@ export function listCommandProfiles(state: ControlPlaneState): string[] {
       }
     }
   }
+  for (const host of state.agentHosts.values()) {
+    for (const name of Object.keys(host.commandProfiles)) {
+      set.add(name);
+    }
+  }
   return [...set].toSorted();
 }
-
 /**
  * Conditional agent register (Invariant 3): one live connection per agentId.
  * Second register for same agentId fails unless force-replacing is explicit.

@@ -1,4 +1,4 @@
-import type { RepositoryRecord } from "./db/plane-storage.ts";
+import type { AgentHostRecord, RepositoryRecord } from "./db/plane-storage.ts";
 import type {
   ArchiveObject,
   PublicSession,
@@ -6,6 +6,7 @@ import type {
   WebhookDelivery,
 } from "./control-plane-types.ts";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
+import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as agents from "./control-plane-agents.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as repos from "./control-plane-repos.ts";
@@ -144,5 +145,24 @@ export class ControlPlane extends ControlPlaneBase {
 
   isDraining(agentId: string): boolean {
     return agents.isDraining(this.state, agentId);
+  }
+
+  putAgentHostConfig(
+    agentId: string,
+    body: unknown,
+  ): { ok: true; config: AgentHostRecord } | { ok: false; error: string } {
+    return agentHosts.putAgentHostConfig(this.state, agentId, body);
+  }
+
+  getAgentHostConfig(agentId: string): AgentHostRecord | null {
+    return agentHosts.getAgentHostConfig(this.state, agentId);
+  }
+
+  listAgentHostConfigs(): AgentHostRecord[] {
+    return agentHosts.listAgentHostConfigs(this.state);
+  }
+
+  deleteAgentHostConfig(agentId: string): { ok: true } | { ok: false; error: string } {
+    return agentHosts.deleteAgentHostConfig(this.state, agentId);
   }
 }

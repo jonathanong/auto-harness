@@ -3,6 +3,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { type LocalServerOptions, send } from "./local-http.ts";
+import { handleAgentConfigRoutes } from "./local-routes-agent-config.ts";
 import { handleAgentSchedulerRoutes } from "./local-routes-agent-scheduler.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
@@ -42,6 +43,9 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       return;
     }
     if (await handleAgentSchedulerRoutes(ctx)) {
+      return;
+    }
+    if (await handleAgentConfigRoutes(ctx)) {
       return;
     }
 

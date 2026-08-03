@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 
 import { createHttpApiClient } from "./create-session.ts";
 import { send } from "./html.ts";
-import { handleAgentsDrainPost, handleAgentsGet } from "./pages/agents.ts";
+import { handleAgentsConfigPost, handleAgentsDrainPost, handleAgentsGet } from "./pages/agents.ts";
 import { handleRepositoriesGet, handleRepositoriesPost } from "./pages/repositories.ts";
 import {
   handleScheduleTriggerPost,
@@ -93,6 +93,11 @@ export async function startWebServer(options: WebServerOptions = {}): Promise<{
 
       if (method === "POST" && url.pathname === "/agents/drain") {
         await handleAgentsDrainPost(req, res, apiBaseUrl);
+        return;
+      }
+
+      if (method === "POST" && url.pathname === "/agents/config") {
+        await handleAgentsConfigPost(req, res, apiBaseUrl);
         return;
       }
 

@@ -48,8 +48,11 @@ pnpm local:api
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 # → http://127.0.0.1:3000
 
-# Agent daemon — needs agent.config.json with absolute repo/worktree paths
-pnpm local:agent start --config /abs/path/to/agent.config.json --ws ws://127.0.0.1:7420/ws
+# Agent daemon — env identity only; host inventory from API/UI
+export HARNESS_AGENT_ID=local-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+# PUT /api/v1/agents/local-1/config first (see examples/local/agent-host.config.json)
+pnpm local:agent start
 ```
 
 ### Health

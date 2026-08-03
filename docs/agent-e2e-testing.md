@@ -121,15 +121,12 @@ Profiles are **named → fixed argv**. Never put free-form shell strings in the 
 
 With `appendPrompt: true`, the session prompt is appended as the final argv element (so `-p` receives the prompt).
 
-Write config (substitute absolute paths):
+Write host inventory JSON (substitute absolute paths), then **PUT it to the API** after the control plane is up:
 
 ```bash
 # From monorepo root after setting WORK / GROK_BIN
-cat > "$WORK/config/agent.config.json" <<EOF
+cat > "$WORK/config/agent-host.config.json" <<EOF
 {
-  "agentId": "local-e2e-1",
-  "apiUrl": "http://127.0.0.1:7420",
-  "logLevel": "info",
   "commandProfiles": {
     "echo-prompt": {
       "argv": ["echo"],
@@ -160,11 +157,12 @@ EOF
 
 If `grok` is not installed, **omit** `grok-print` and only run the echo profile — still required for assign/WS proof. Document that a real CLI was skipped.
 
-Validate config:
+Agent process identity (env only):
 
 ```bash
-pnpm local:agent status --config "$WORK/config/agent.config.json"
-# expect agentId, repositories, commandProfiles including the profiles you defined
+export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+# optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL
 ```
 
 ---
@@ -182,14 +180,23 @@ pnpm local:dynamodb:ready
 pnpm local:api
 # → Auto Harness local API listening on http://127.0.0.1:7420
 
-# Terminal C — Web (optional, :3000)
+# Publish host inventory (once API is up)
+curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
+  -H 'content-type: application/json' \
+  -d @"$WORK/config/agent-host.config.json"
+
+# Terminal C — Web (optional, :3000) — also has Agents host-config form
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 
-# Terminal D — Agent daemon
-pnpm local:agent start \
-  --config "$WORK/config/agent.config.json" \
-  --ws ws://127.0.0.1:7420/ws
+# Terminal D — Agent daemon (env identity only)
+export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent start
 # → connected … / agent … registered
+
+# Validate bootstrap
+pnpm local:agent status
+# expect agentId, repositories, commandProfiles from the control plane
 ```
 
 **Health checks:**
@@ -393,7 +400,7 @@ rm -rf "$WORK"             # optional — drop demo workspace
 | Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                         |
 | Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /agents`, `requiredLabels` vs worktree `labels`, agent log      |
 | `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                             |
-| Profile missing from dropdown            | Agent not connected or config missing profile                | Restart agent with correct `--config`                                      |
+| Profile missing from dropdown            | Host config missing profile or agent offline                 | `PUT …/agents/:id/config` then restart agent                               |
 | Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format |
 | Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                        |
 | Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                    |

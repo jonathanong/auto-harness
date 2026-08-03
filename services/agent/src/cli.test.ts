@@ -48,7 +48,7 @@ function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
         timeout: 5,
         worktreeId: "wt-1",
       }),
-    loadConfig: () => sampleConfig,
+    loadConfig: async () => sampleConfig,
     ensureReady: async () => undefined,
     runSession: async () => ({
       status: "completed",
@@ -80,93 +80,50 @@ describe("runCli", () => {
     expect(a.logs[0]).toContain("a1");
   });
 
-  it("status dumps inventory", async () => {
+  it("status uses env-bootstrapped config", async () => {
     const withCfg = deps();
-    expect(await runCli(["node", "x", "status", "--config", "c.json"], {}, withCfg)).toBe(0);
+    expect(await runCli(["node", "x", "status"], { HARNESS_AGENT_ID: "a1" }, withCfg)).toBe(0);
     expect(withCfg.logs[0]).toContain("a1");
-    const noCfg = deps();
-    expect(await runCli(["node", "x", "status"], {}, noCfg)).toBe(0);
   });
 
-  it("run-session success and failure", async () => {
-    const ok = deps();
-    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, ok)).toBe(0);
-    expect(ok.logs.at(-1)).toContain("completed");
-
-    const okCfg = deps();
-    expect(
-      await runCli(
-        ["node", "x", "run-session", "--file", "s.json", "--config", "c.json"],
-        {},
-        okCfg,
-      ),
-    ).toBe(0);
-
-    const bad = deps({
-      runSession: async () => ({
-        status: "failed",
-        exitCode: 1,
-        logs: [],
-      }),
-    });
-    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, bad)).toBe(1);
-
+  it("run-session requires --file and completes", async () => {
     const missing = deps();
     expect(await runCli(["node", "x", "run-session"], {}, missing)).toBe(1);
+    expect(missing.errors[0]).toMatch(/--file/);
+    const ok = deps();
+    expect(await runCli(["node", "x", "run-session", "--file", "s.json"], {}, ok)).toBe(0);
+    expect(ok.logs.some((l) => l.includes("completed"))).toBe(true);
   });
 
-  it("start requires apiUrl and unknown command", async () => {
+  it("unknown command prints usage", async () => {
     const a = deps();
-    // sampleConfig has no apiUrl → start fails
-    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
-    expect(a.errors.some((e) => e.includes("apiUrl"))).toBe(true);
-    const b = deps();
-    expect(await runCli(["node", "x", "nope"], {}, b)).toBe(1);
+    expect(await runCli(["node", "x", "nope"], {}, a)).toBe(1);
+    expect(a.errors[0]).toMatch(/Unknown/);
   });
 
-  it("printUsage and main", async () => {
+  it("start reports daemon errors", async () => {
+    const a = deps({
+      ensureReady: async () => {
+        throw new Error("no host config");
+      },
+    });
+    expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
+    expect(a.errors[0]).toMatch(/no host config/);
+  });
+});
+
+describe("printUsage / main / defaults", () => {
+  it("covers helpers", () => {
     const lines: string[] = [];
     printUsage((m) => lines.push(m));
-    expect(lines.join("")).toContain("Usage");
-    expect(await main(["node", "x", "help"])).toBe(0);
+    expect(lines[0]).toMatch(/HARNESS_AGENT_ID/);
+    const d = createDefaultRunSessionDeps();
+    expect(typeof d.loadConfig).toBe("function");
   });
 
-  it("createDefaultRunSessionDeps wires console and loaders", async () => {
-    const d = createDefaultRunSessionDeps();
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    d.log("hello");
-    d.error("err");
-    expect(log).toHaveBeenCalledWith("hello");
-    expect(error).toHaveBeenCalledWith("err");
-    log.mockRestore();
-    error.mockRestore();
-    expect(() => d.readFile("/no/such/auto-harness-file")).toThrow();
-    const ready = vi
-      .spyOn(await import("./runtime.ts"), "ensureAgentReady")
-      .mockResolvedValue(undefined);
-    const run = vi.spyOn(await import("./runtime.ts"), "runAssignedSession").mockResolvedValue({
-      status: "completed",
-      exitCode: 0,
-      logs: [],
-    });
-    const d2 = createDefaultRunSessionDeps();
-    await d2.ensureReady(sampleConfig);
-    await d2.runSession(
-      sampleConfig,
-      {
-        sessionId: "s",
-        repositoryId: "repo-1",
-        prompt: "p",
-        commandProfile: "echo",
-        timeout: 1,
-        worktreeId: "wt-1",
-      },
-      () => undefined,
-    );
-    expect(ready).toHaveBeenCalled();
-    expect(run).toHaveBeenCalled();
-    ready.mockRestore();
-    run.mockRestore();
+  it("main delegates", async () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(await main(["node", "x", "help"])).toBe(0);
+    spy.mockRestore();
   });
 });

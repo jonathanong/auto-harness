@@ -6,10 +6,18 @@ export function getServiceName(): string {
   return serviceName;
 }
 
-export { loadAgentConfig, parseAgentConfig } from "./config.ts";
+export {
+  fetchAgentHostConfig,
+  httpBaseFromApiUrl,
+  loadAgentConfig,
+  loadAgentIdentity,
+  parseAgentConfig,
+} from "./config.ts";
 export type {
   AgentConfig,
+  AgentIdentity,
   CommandProfileConfig,
+  LoadConfigOptions,
   RepositoryConfig,
   WorktreeConfig,
 } from "./config.ts";

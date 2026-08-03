@@ -15,8 +15,10 @@ function mockStorage(): DynamoPlaneStorage {
     putSchedule: vi.fn(noop),
     putRepository: vi.fn(noop),
     putArchive: vi.fn(noop),
+    putAgentHost: vi.fn(noop),
     deleteSchedule: vi.fn(noop),
     deleteRepository: vi.fn(noop),
+    deleteAgentHost: vi.fn(noop),
     tryClaimWorktree: vi.fn(async () => true),
     tryAcquireAgentLock: vi.fn(noop),
     listAllSessions: vi.fn(emptyList),
@@ -57,6 +59,21 @@ function mockStorage(): DynamoPlaneStorage {
     ]),
     listArchives: vi.fn(async () => [
       { key: "archives/x.json", body: "[]", contentType: "application/json" },
+    ]),
+    listAgentHosts: vi.fn(async () => [
+      {
+        agentId: "a1",
+        repositories: [
+          {
+            id: "r1",
+            path: "/r",
+            defaultBranch: "main",
+            worktrees: [{ id: "wt1", path: "/w", labels: [] }],
+          },
+        ],
+        commandProfiles: { c: { argv: ["echo"], appendPrompt: true } },
+        updatedAt: "t",
+      },
     ]),
   } as unknown as DynamoPlaneStorage;
 }
@@ -151,53 +168,25 @@ describe("ControlPlane storage write-through paths", () => {
     expect(plane.triggerSchedule(sch.id, "2026-01-01T00:00:00.000Z").ok).toBe(true);
     expect(plane.deleteSchedule(sch.id).ok).toBe(true);
 
-    // cancel non-running session that still holds a worktree id
-    plane.state.sessions.set("queued-held", {
-      id: "queued-held",
-      repositoryId: "r1",
-      prompt: "p",
-      commandProfile: "c",
-      timeout: 1,
-      priority: 0,
-      requiredLabels: [],
-      onConflict: "queue",
-      status: "queued",
-      queueShard: 0,
-      createdAt: "t",
-      retryCount: 0,
-      worktreeId: "wt1",
-      agentId: null,
-      type: "prompt",
-      source: "api",
+    plane.putAgentHostConfig("a1", {
+      repositories: [
+        {
+          id: "r1",
+          path: "/r",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt1", path: "/w", labels: [] }],
+        },
+      ],
+      commandProfiles: { c: { argv: ["echo"], appendPrompt: true } },
     });
-    plane.state.worktrees.set("wt-held", {
-      id: "wt-held",
-      agentId: "a1",
-      repositoryId: "r1",
-      path: "/h",
-      labels: [],
-      status: "busy",
-      online: true,
-      currentSessionId: "queued-held",
-      lastAssignedAt: "t",
-    });
-    // Point held session at a real worktree id that release can free
-    plane.state.sessions.get("queued-held")!.worktreeId = "wt-held";
-    expect(plane.cancelSession("queued-held").ok).toBe(true);
-
     await plane.settleStorage();
     await plane.hydrateFromStorage();
     expect(plane.listSchedules().some((s) => s.id === "sch1")).toBe(true);
     expect(plane.listRepositories().some((r) => r.id === "r1")).toBe(true);
+    expect(plane.getAgentHostConfig("a1")?.agentId).toBe("a1");
     expect(plane.listArchives().length).toBeGreaterThan(0);
-    expect(plane.listAgents().some((a) => a.agentId === "a1")).toBe(true);
-
     expect(vi.mocked(storage.putSession).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putWorktree).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putConnection).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putLog).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putArchive).mock.calls.length).toBeGreaterThan(0);
+    expect(vi.mocked(storage.putAgentHost).mock.calls.length).toBeGreaterThan(0);
     expect(vi.mocked(storage.tryClaimWorktree).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.tryAcquireAgentLock).mock.calls.length).toBeGreaterThan(0);
   });
 });

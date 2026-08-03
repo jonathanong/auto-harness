@@ -20,6 +20,13 @@ export type {
   SessionTerminalStatus,
 } from "./session.ts";
 
+export type {
+  AgentHostConfig,
+  CommandProfileDef,
+  HostRepositoryConfig,
+  HostWorktreeConfig,
+} from "./agent-host.ts";
+
 export {
   DEFAULT_ACK_DEADLINE_MS,
   DEFAULT_AGENT_KEEPALIVE_MS,

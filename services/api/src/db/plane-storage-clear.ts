@@ -2,7 +2,12 @@ import { DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 import { listAllSessions, listAllWorktrees } from "./plane-storage-sessions.ts";
 import { listConnections } from "./plane-storage-locks.ts";
-import { listArchives, listRepositories, listSchedules } from "./plane-storage-catalog.ts";
+import {
+  listAgentHosts,
+  listArchives,
+  listRepositories,
+  listSchedules,
+} from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
@@ -53,6 +58,11 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   }
   for (const a of await listArchives(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.archives, Key: { key: a.key } }));
+  }
+  for (const h of await listAgentHosts(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { agentId: h.agentId } }),
+    );
   }
   {
     let startKey: Record<string, unknown> | undefined;

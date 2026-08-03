@@ -9,6 +9,7 @@ import {
 
 import {
   isConditionalFailed,
+  type AgentHostRecord,
   type ArchiveObject,
   type LogRecord,
   type PlaneStorageCtx,
@@ -140,4 +141,32 @@ export async function getArchive(ctx: PlaneStorageCtx, key: string): Promise<Arc
 export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[]> {
   const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.archives }));
   return (res.Items ?? []) as ArchiveObject[];
+}
+
+export async function putAgentHost(ctx: PlaneStorageCtx, rec: AgentHostRecord): Promise<void> {
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: ctx.tables.agentHosts,
+      Item: { ...rec },
+    }),
+  );
+}
+
+export async function getAgentHost(
+  ctx: PlaneStorageCtx,
+  agentId: string,
+): Promise<AgentHostRecord | null> {
+  const res = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.agentHosts, Key: { agentId } }),
+  );
+  return (res.Item as AgentHostRecord | undefined) ?? null;
+}
+
+export async function listAgentHosts(ctx: PlaneStorageCtx): Promise<AgentHostRecord[]> {
+  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.agentHosts }));
+  return (res.Items ?? []) as AgentHostRecord[];
+}
+
+export async function deleteAgentHost(ctx: PlaneStorageCtx, agentId: string): Promise<void> {
+  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { agentId } }));
 }

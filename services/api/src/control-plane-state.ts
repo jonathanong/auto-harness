@@ -9,7 +9,7 @@ import {
   type AgentWireMessage,
 } from "@auto-harness/shared";
 
-import type { DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.ts";
+import type { AgentHostRecord, DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type {
   ArchiveObject,
@@ -34,6 +34,7 @@ export type ControlPlaneState = {
   logs: Map<string, LogRecord[]>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
+  agentHosts: Map<string, AgentHostRecord>;
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
@@ -70,6 +71,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     logs: new Map(),
     schedules: new Map(),
     repositories: new Map(),
+    agentHosts: new Map(),
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),
@@ -99,7 +101,6 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     onAgentMessage: options.onAgentMessage,
   };
 }
-
 export function queueWrite(state: ControlPlaneState, p: Promise<void>): void {
   state.pendingPersists.push(p);
 }
@@ -144,6 +145,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   state.logs.clear();
   state.schedules.clear();
   state.repositories.clear();
+  state.agentHosts.clear();
   state.archives.clear();
   for (const s of await state.storage.listAllSessions()) {
     state.sessions.set(s.id, s);
@@ -161,11 +163,13 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   for (const r of await state.storage.listRepositories()) {
     state.repositories.set(r.id, r);
   }
+  for (const h of await state.storage.listAgentHosts()) {
+    state.agentHosts.set(h.agentId, h);
+  }
   for (const a of await state.storage.listArchives()) {
     state.archives.set(a.key, a);
   }
 }
-
 export async function settleStorage(state: ControlPlaneState): Promise<void> {
   const pending = state.pendingPersists;
   state.pendingPersists = [];

@@ -355,16 +355,18 @@ Non-zero exit → session `failed`, worktree released.
 
 ```text
 /home/harness/
-├── auto-harness-agent.config.json
-├── .env.codex                    # chmod 600
+├── .env                          # HARNESS_AGENT_ID, HARNESS_API_URL, HARNESS_API_KEY
+├── .env.codex                    # chmod 600 — AI CLI credentials
 ├── repos/
-│   └── my-app/                   # main checkout
+│   └── my-app/                   # main checkout (paths configured via API/UI)
 │       ├── .git/
 │       └── .worktrees/
 │           ├── wt-1/
 │           └── wt-2/
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
+
+Host inventory (repo paths, worktrees, command profile argv) is **not** a local file — configure with `PUT /api/v1/agents/:agentId/config` or the Agents UI.
 
 ---
 

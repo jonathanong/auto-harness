@@ -4,6 +4,7 @@ import type { SessionStatus } from "@auto-harness/shared";
 import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, WorktreeRecord } from "./types.ts";
 import {
+  type AgentHostRecord,
   type ArchiveObject,
   type ConnectionRecord,
   type LogRecord,
@@ -16,7 +17,7 @@ import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
-export type { RepositoryRecord } from "./plane-storage-types.ts";
+export type { AgentHostRecord, RepositoryRecord } from "./plane-storage-types.ts";
 
 /**
  * DynamoDB persistence for the control plane (DynamoDB Local or AWS).
@@ -170,6 +171,22 @@ export class DynamoPlaneStorage {
 
   listArchives(): Promise<ArchiveObject[]> {
     return catalog.listArchives(this.ctx);
+  }
+
+  putAgentHost(rec: AgentHostRecord): Promise<void> {
+    return catalog.putAgentHost(this.ctx, rec);
+  }
+
+  getAgentHost(agentId: string): Promise<AgentHostRecord | null> {
+    return catalog.getAgentHost(this.ctx, agentId);
+  }
+
+  listAgentHosts(): Promise<AgentHostRecord[]> {
+    return catalog.listAgentHosts(this.ctx);
+  }
+
+  deleteAgentHost(agentId: string): Promise<void> {
+    return catalog.deleteAgentHost(this.ctx, agentId);
   }
 
   clearAll(): Promise<void> {

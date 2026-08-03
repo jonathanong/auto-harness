@@ -9,22 +9,29 @@ Full local runbook: [local-development.md](local-development.md). Pre-deploy E2E
 ```bash
 pnpm install
 
-# Agent (prefer without extra `--`; a leading `--` is still accepted)
-pnpm local:agent status --config /path/to/agent.config.json
-pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
-
-# Local API (DynamoDB Local)
+# Local API first (DynamoDB Local)
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api
 # → http://127.0.0.1:7420
 
+# Configure host inventory (repos/worktrees/profiles) via API — not a local file
+curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-1/config" \
+  -H 'content-type: application/json' \
+  -d @examples/local/agent-host.config.json
+
+# Agent: identity via env only
+export HARNESS_AGENT_ID=local-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent status
+pnpm local:agent run-session --file /path/to/session.assign.json
+
 # One-shot create→run verification
 pnpm local:e2e
-# Documented CLI path with ref: main (primary tree on main)
+# Documented CLI path (requires local:api)
 pnpm local:cli-e2e
 ```
 
-Config defaults to `./auto-harness-agent.config.json`. Override with `--config` or `HARNESS_CONFIG_PATH`.
+Agent process env: `HARNESS_AGENT_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY` / `HARNESS_LOG_LEVEL`.
 
 ---
 
@@ -32,10 +39,11 @@ Config defaults to `./auto-harness-agent.config.json`. Override with `--config` 
 
 ### `status`
 
-Print agent id, repositories, worktrees, and known `commandProfiles`.
+Bootstraps host inventory from the control plane, then prints agent id, repositories, worktrees, and `commandProfiles`.
 
 ```bash
-pnpm local:agent -- status --config ./agent.config.json
+export HARNESS_AGENT_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent -- status
 ```
 
 ### `run-session`
@@ -43,7 +51,7 @@ pnpm local:agent -- status --config ./agent.config.json
 Run one session from a JSON assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
 
 ```bash
-pnpm local:agent -- run-session --config ./agent.config.json --file ./session.assign.json
+pnpm local:agent -- run-session --file ./session.assign.json
 ```
 
 Required assign fields: `sessionId`, `repositoryId`, `prompt`, `commandProfile`, `timeout` (seconds), `worktreeId`. Optional: `ref`, `setupScript`, `resume`, `metadata`.
@@ -52,7 +60,12 @@ Terminal line is JSON: `{ "status", "exitCode", "errorCode" }`. Exit code `0` on
 
 ### `start`
 
-WebSocket daemon (register + accept assigns) — **not implemented until Phase 3**. Use `run-session` or `pnpm local:e2e` locally.
+WebSocket daemon: bootstrap config → register → accept assigns.
+
+```bash
+pnpm local:agent start
+# optional: --ws ws://127.0.0.1:7420/ws  (otherwise derived from HARNESS_API_URL)
+```
 
 ---
 
@@ -76,13 +89,18 @@ No auto-dispatch to the agent yet — bridge with a session assign file for `run
 
 ---
 
-## Config shape (agent)
+## Host inventory (API/UI)
 
 Named **command profiles** are required (D4). Free-form command strings are rejected.
 
+```bash
+PUT /api/v1/agents/:agentId/config
+GET /api/v1/agents/:agentId/config
+GET /api/v1/agent-hosts
+```
+
 ```json
 {
-  "agentId": "local-1",
   "commandProfiles": {
     "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
   },
@@ -100,4 +118,4 @@ Named **command profiles** are required (D4). Free-form command strings are reje
 }
 ```
 
-Templates: [examples/local/](../examples/local/).
+Template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Or use the Agents page in the local web UI.

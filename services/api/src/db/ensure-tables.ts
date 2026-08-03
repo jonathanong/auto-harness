@@ -140,5 +140,12 @@ export async function ensureControlPlaneTables(opts: {
     KeySchema: [{ AttributeName: "key", KeyType: KeyType.HASH }],
   });
 
+  await createIfMissing(ddb, {
+    TableName: names.agentHosts,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "agentId", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "agentId", KeyType: KeyType.HASH }],
+  });
+
   return names;
 }

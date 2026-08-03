@@ -85,60 +85,39 @@ Expect JSON with `"ok": true` and `"status": "completed"`.
 
 ---
 
-## Manual path A — agent `run-session` only
+## Manual path A — configure host inventory, then `run-session`
 
-No API required. Good for iterating on the agent runner and worktree checkout.
+Agent identity is **env only**. Host inventory (paths + command profiles) lives on the control plane.
 
-1. Point example config at a real absolute repo path (see [examples/local/agent.config.json](../examples/local/agent.config.json)):
-
-```json
-{
-  "agentId": "local-1",
-  "commandProfiles": {
-    "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
-  },
-  "repositories": [
-    {
-      "id": "demo",
-      "path": "/ABS/PATH/TO/REPO",
-      "defaultBranch": "main",
-      "worktrees": [
-        {
-          "id": "wt-1",
-          "path": "/ABS/PATH/TO/REPO/.worktrees/wt-1",
-          "labels": ["echo"]
-        }
-      ]
-    }
-  ]
-}
-```
-
-**Required fields:** `agentId`, `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
-
-2. Write a session assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)):
-
-```json
-{
-  "sessionId": "sess-local-1",
-  "repositoryId": "demo",
-  "prompt": "hello from local session",
-  "commandProfile": "echo-prompt",
-  "timeout": 60,
-  "worktreeId": "wt-1",
-  "ref": "main"
-}
-```
-
-3. Run (either form works; a leading `--` from pnpm is stripped):
+1. Start DynamoDB Local and the API:
 
 ```bash
-pnpm local:agent status --config /path/to/agent.config.json
-pnpm local:agent run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+pnpm local:dynamodb && pnpm local:dynamodb:ready
+pnpm local:api
+# http://127.0.0.1:7420
+```
 
-# also valid:
-pnpm local:agent -- status --config /path/to/agent.config.json
-pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+2. PUT host inventory (edit absolute paths; template [examples/local/agent-host.config.json](../examples/local/agent-host.config.json)):
+
+```bash
+curl -fsS -X PUT http://127.0.0.1:7420/api/v1/agents/local-1/config \
+  -H 'content-type: application/json' \
+  -d @examples/local/agent-host.config.json
+# or use the Agents page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /agents
+```
+
+**Body fields:** `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
+
+3. Write a session assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
+
+4. Run with env identity (a leading `--` from pnpm is stripped):
+
+```bash
+export HARNESS_AGENT_ID=local-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent status
+pnpm local:agent run-session --file /path/to/session.assign.json
+pnpm local:agent -- status
 ```
 
 On success the CLI prints a final JSON line with `"status":"completed"`. On failure (unknown profile, setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
@@ -149,13 +128,7 @@ More command detail: [cli.md](cli.md).
 
 ## Manual path B — local API create, then agent run
 
-1. Start DynamoDB Local (if not already), then the API:
-
-```bash
-pnpm local:dynamodb && pnpm local:dynamodb:ready
-pnpm local:api
-# listens on http://127.0.0.1:7420 — persists sessions to DynamoDB Local
-```
+1. Start DynamoDB Local (if not already), then the API, and PUT host inventory as in path A.
 
 2. Create a session (fire-and-forget style):
 
@@ -172,10 +145,11 @@ curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   }'
 ```
 
-Response `201` includes `id`, `status: "queued"`, `url`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from your agent config, then:
+Response `201` includes `id`, `status: "queued"`, `url`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
 
 ```bash
-pnpm local:agent -- run-session --config /path/to/agent.config.json --file /path/to/session.assign.json
+export HARNESS_AGENT_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:agent -- run-session --file /path/to/session.assign.json
 ```
 
 > Local API create does **not** always auto-dispatch over WebSocket for every workflow. Bridge create → run with the assign file, use `pnpm local:e2e` (in-process), or `pnpm local:ws-e2e` for the real `/ws` agent channel.

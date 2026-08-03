@@ -1,148 +1,33 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import type { AgentConfig, AgentIdentity } from "./config-types.ts";
+import { fetchAgentHostConfig, type FetchHostConfigDeps } from "./bootstrap.ts";
+import { parseAgentConfig } from "./config-parse.ts";
 
-export type CommandProfileConfig = {
-  /** Fixed argv prefix; never a shell string. */
-  argv: string[];
-  /** When true, session prompt is appended as the final argv element. */
-  appendPrompt: boolean;
-};
+export type {
+  AgentConfig,
+  AgentIdentity,
+  CommandProfileConfig,
+  RepositoryConfig,
+  WorktreeConfig,
+} from "./config-types.ts";
+export { findRepository, findWorktree } from "./config-types.ts";
+export { parseAgentConfig } from "./config-parse.ts";
+export { fetchAgentHostConfig, httpBaseFromApiUrl } from "./bootstrap.ts";
 
-export type WorktreeConfig = {
-  id: string;
-  path: string;
-  labels: string[];
-  setupScript?: string;
-};
-
-export type RepositoryConfig = {
-  id: string;
-  path: string;
-  defaultBranch: string;
-  setupScript?: string;
-  terminalHookScript?: string;
-  worktrees: WorktreeConfig[];
-};
-
-export type AgentConfig = {
-  agentId: string;
-  apiUrl?: string;
-  apiKey?: string;
-  repositories: RepositoryConfig[];
-  commandProfiles: Record<string, CommandProfileConfig>;
-  logLevel: "debug" | "info" | "warn" | "error";
-};
-
-type LoadConfigOptions = {
-  configPath?: string;
-  env?: NodeJS.ProcessEnv;
-  /** Inline config for tests (skips file). */
-  inline?: unknown;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requireString(obj: Record<string, unknown>, key: string, ctx: string): string {
-  const value = obj[key];
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${ctx}: ${key} must be a non-empty string`);
+/**
+ * Load process identity from environment.
+ * Required: HARNESS_AGENT_ID, HARNESS_API_URL.
+ * Optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL.
+ */
+export function loadAgentIdentity(env: NodeJS.ProcessEnv = process.env): AgentIdentity {
+  const agentId = env.HARNESS_AGENT_ID?.trim();
+  const apiUrl = env.HARNESS_API_URL?.trim();
+  if (!agentId) {
+    throw new Error("HARNESS_AGENT_ID is required");
   }
-  return value;
-}
-
-function parseCommandProfiles(raw: unknown): Record<string, CommandProfileConfig> {
-  if (!isRecord(raw)) {
-    throw new Error("commandProfiles must be an object");
+  if (!apiUrl) {
+    throw new Error("HARNESS_API_URL is required");
   }
-  const out: Record<string, CommandProfileConfig> = {};
-  for (const [name, profile] of Object.entries(raw)) {
-    if (!isRecord(profile)) {
-      throw new Error(`commandProfiles.${name} must be an object`);
-    }
-    if (
-      !Array.isArray(profile.argv) ||
-      profile.argv.length === 0 ||
-      !profile.argv.every((a) => typeof a === "string" && a.length > 0)
-    ) {
-      throw new Error(`commandProfiles.${name}.argv must be a non-empty string array`);
-    }
-    const appendPrompt = profile.appendPrompt !== false;
-    out[name] = {
-      argv: profile.argv as string[],
-      appendPrompt,
-    };
-  }
-  return out;
-}
-
-function parseWorktree(raw: unknown, index: number, repoId: string): WorktreeConfig {
-  if (!isRecord(raw)) {
-    throw new Error(`repositories.${repoId}.worktrees[${index}] invalid`);
-  }
-  const id = requireString(raw, "id", `worktree[${index}]`);
-  const path = requireString(raw, "path", `worktree.${id}`);
-  if (!Array.isArray(raw.labels) || !raw.labels.every((l) => typeof l === "string")) {
-    throw new Error(`worktree.${id}.labels must be a string array`);
-  }
-  const wt: WorktreeConfig = {
-    id,
-    path,
-    labels: raw.labels as string[],
-  };
-  if (raw.setupScript !== undefined) {
-    if (typeof raw.setupScript !== "string") {
-      throw new Error(`worktree.${id}.setupScript must be a string`);
-    }
-    wt.setupScript = raw.setupScript;
-  }
-  return wt;
-}
-
-function parseRepository(raw: unknown, index: number): RepositoryConfig {
-  if (!isRecord(raw)) {
-    throw new Error(`repositories[${index}] must be an object`);
-  }
-  const id = requireString(raw, "id", `repositories[${index}]`);
-  const path = requireString(raw, "path", `repository.${id}`);
-  const defaultBranch =
-    typeof raw.defaultBranch === "string" && raw.defaultBranch.length > 0
-      ? raw.defaultBranch
-      : "main";
-  if (!Array.isArray(raw.worktrees)) {
-    throw new Error(`repository.${id}.worktrees must be an array`);
-  }
-  const repo: RepositoryConfig = {
-    id,
-    path,
-    defaultBranch,
-    worktrees: raw.worktrees.map((w, i) => parseWorktree(w, i, id)),
-  };
-  if (raw.setupScript !== undefined) {
-    if (typeof raw.setupScript !== "string") {
-      throw new Error(`repository.${id}.setupScript must be a string`);
-    }
-    repo.setupScript = raw.setupScript;
-  }
-  if (raw.terminalHookScript !== undefined) {
-    if (typeof raw.terminalHookScript !== "string") {
-      throw new Error(`repository.${id}.terminalHookScript must be a string`);
-    }
-    repo.terminalHookScript = raw.terminalHookScript;
-  }
-  return repo;
-}
-
-export function parseAgentConfig(raw: unknown): AgentConfig {
-  if (!isRecord(raw)) {
-    throw new Error("config root must be an object");
-  }
-  const agentId = requireString(raw, "agentId", "config");
-  if (!Array.isArray(raw.repositories) || raw.repositories.length === 0) {
-    throw new Error("repositories must be a non-empty array");
-  }
-  const logLevelRaw = raw.logLevel;
+  const logLevelRaw = env.HARNESS_LOG_LEVEL;
   const logLevel =
     logLevelRaw === "debug" ||
     logLevelRaw === "info" ||
@@ -150,70 +35,53 @@ export function parseAgentConfig(raw: unknown): AgentConfig {
     logLevelRaw === "error"
       ? logLevelRaw
       : "info";
-
-  const config: AgentConfig = {
-    agentId,
-    repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
-    commandProfiles: parseCommandProfiles(raw.commandProfiles ?? {}),
-    logLevel,
-  };
-  if (typeof raw.apiUrl === "string") {
-    config.apiUrl = raw.apiUrl;
-  }
-  if (typeof raw.apiKey === "string") {
-    config.apiKey = raw.apiKey;
-  }
-  return config;
-}
-
-/** Merge file/inline config with env overrides (env wins). */
-export function loadAgentConfig(options: LoadConfigOptions = {}): AgentConfig {
-  const env = options.env ?? process.env;
-  let raw: unknown;
-  if (options.inline !== undefined) {
-    raw = options.inline;
-  } else {
-    const configPath = resolve(
-      options.configPath ?? env.HARNESS_CONFIG_PATH ?? "./auto-harness-agent.config.json",
-    );
-    const text = readFileSync(configPath, "utf8");
-    raw = JSON.parse(text) as unknown;
-  }
-
-  const config = parseAgentConfig(raw);
-
-  if (env.HARNESS_AGENT_ID) {
-    config.agentId = env.HARNESS_AGENT_ID;
-  }
-  if (env.HARNESS_API_URL) {
-    config.apiUrl = env.HARNESS_API_URL;
-  }
+  const identity: AgentIdentity = { agentId, apiUrl, logLevel };
   if (env.HARNESS_API_KEY) {
-    config.apiKey = env.HARNESS_API_KEY;
+    identity.apiKey = env.HARNESS_API_KEY;
   }
-  if (
-    env.HARNESS_LOG_LEVEL === "debug" ||
-    env.HARNESS_LOG_LEVEL === "info" ||
-    env.HARNESS_LOG_LEVEL === "warn" ||
-    env.HARNESS_LOG_LEVEL === "error"
-  ) {
-    config.logLevel = env.HARNESS_LOG_LEVEL;
-  }
-
-  return config;
+  return identity;
 }
 
-export function findRepository(
-  config: AgentConfig,
-  repositoryId: string,
-): RepositoryConfig | undefined {
-  return config.repositories.find((r) => r.id === repositoryId);
-}
+export type LoadConfigOptions = {
+  env?: NodeJS.ProcessEnv;
+  /** Inline full config for tests (skips network bootstrap). */
+  inline?: unknown;
+  /** Optional fetch override (tests). */
+  fetchFn?: typeof fetch;
+};
 
-export function findWorktree(
-  config: AgentConfig,
-  repositoryId: string,
-  worktreeId: string,
-): WorktreeConfig | undefined {
-  return findRepository(config, repositoryId)?.worktrees.find((w) => w.id === worktreeId);
+/**
+ * Resolve full agent config: env identity + host inventory from control plane.
+ * Tests may pass `inline` to skip the API.
+ */
+export async function loadAgentConfig(options: LoadConfigOptions = {}): Promise<AgentConfig> {
+  const env = options.env ?? process.env;
+  if (options.inline !== undefined) {
+    const config = parseAgentConfig(options.inline);
+    if (env.HARNESS_AGENT_ID) {
+      config.agentId = env.HARNESS_AGENT_ID;
+    }
+    if (env.HARNESS_API_URL) {
+      config.apiUrl = env.HARNESS_API_URL;
+    }
+    if (env.HARNESS_API_KEY) {
+      config.apiKey = env.HARNESS_API_KEY;
+    }
+    if (
+      env.HARNESS_LOG_LEVEL === "debug" ||
+      env.HARNESS_LOG_LEVEL === "info" ||
+      env.HARNESS_LOG_LEVEL === "warn" ||
+      env.HARNESS_LOG_LEVEL === "error"
+    ) {
+      config.logLevel = env.HARNESS_LOG_LEVEL;
+    }
+    return config;
+  }
+
+  const identity = loadAgentIdentity(env);
+  const deps: FetchHostConfigDeps = {};
+  if (options.fetchFn) {
+    deps.fetchFn = options.fetchFn;
+  }
+  return fetchAgentHostConfig(identity, deps);
 }
