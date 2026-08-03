@@ -2,20 +2,24 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mergeHostRepository, type HostInventory } from "@auto-harness/shared";
 import { Button, Input, Label } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
-/**
- * Attach a local git path to this agent and register the repo on the control plane.
- * Same outcome as control-pane "Register local repo on an agent".
- */
-export function AddLocalRepoForm({ agentId }: { agentId: string }) {
+/** Control-plane form: catalog + attach local path to a selected agent. */
+export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  if (agentIds.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No agents registered yet. Start <code>pnpm local:agent start</code>, then refresh this page.
+      </p>
+    );
+  }
 
   return (
     <form
@@ -25,59 +29,31 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
         setError(null);
         setOk(null);
         const fd = new FormData(e.currentTarget);
+        const agentId = String(fd.get("agentId") ?? "").trim();
         const id = String(fd.get("id") ?? "").trim();
         const name = String(fd.get("name") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         const worktreeId = String(fd.get("worktreeId") ?? "wt-1").trim() || "wt-1";
-        if (!id || !path) {
-          setError("id and absolute path are required");
+        if (!agentId || !id || !path) {
+          setError("agent, id, and absolute path on the agent host are required");
           return;
         }
-
         start(async () => {
-          const base = apiBase();
-          const repoRes = await fetch(`${base}/api/v1/repositories`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              id,
-              name: name || id,
-              url: path,
-              defaultBranch,
-            }),
-          });
-          if (!repoRes.ok && repoRes.status !== 400) {
-            setError(await repoRes.text());
-            return;
-          }
-
-          let existing: HostInventory | null = null;
-          const existingRes = await fetch(
-            `${base}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
-          );
-          if (existingRes.ok) {
-            existing = (await existingRes.json()) as HostInventory;
-          }
-          const host = mergeHostRepository(existing, {
+          const result = await attachLocalRepo({
+            agentId,
             id,
+            name,
             path,
             defaultBranch,
             worktreeId,
           });
-
-          const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(host),
-          });
-          if (!put.ok) {
-            setError(await put.text());
+          if (!result.ok) {
+            setError(result.error);
             return;
           }
           setOk(
-            `Registered ${id} on control plane and attached to agent ${agentId}. ` +
-              `Daemon picks it up within ~15s.`,
+            `Registered ${id} and attached to agent ${agentId}. Daemon reloads inventory within ~15s.`,
           );
           e.currentTarget.reset();
           router.refresh();
@@ -85,15 +61,31 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
       }}
     >
       <div className="space-y-1">
+        <Label htmlFor="agentId">agent</Label>
+        <select
+          id="agentId"
+          name="agentId"
+          required
+          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          defaultValue={agentIds[0]}
+        >
+          {agentIds.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
         <Label htmlFor="id">repository id</Label>
-        <Input id="id" name="id" required placeholder="demo" defaultValue="demo" />
+        <Input id="id" name="id" required defaultValue="demo" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="name">display name</Label>
         <Input id="name" name="name" placeholder="Demo" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="path">absolute path on this host</Label>
+        <Label htmlFor="path">absolute path on agent host</Label>
         <Input id="path" name="path" required placeholder="/Users/you/src/my-repo" />
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -109,7 +101,7 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       {ok ? <p className="text-sm text-emerald-700">{ok}</p> : null}
       <Button type="submit" disabled={pending}>
-        {pending ? "Registering…" : "Register local repo"}
+        {pending ? "Registering…" : "Register local repo on agent"}
       </Button>
     </form>
   );

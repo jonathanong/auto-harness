@@ -190,8 +190,11 @@ pnpm local:agent start # registers even with no repos yet
 **Intended flow**
 
 1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
-2. Open agent pane http://127.0.0.1:7423/config → **Add local repo** (absolute path). That registers the repo on the control plane and attaches host paths/worktrees to this agent.
-3. Agent polls inventory (~15s) and re-registers worktrees; then create a session on the control plane and `POST /scheduler/assign`.
+2. **Add a local repo via UI** (either place does the same thing):
+   - Control pane: http://127.0.0.1:7421/repositories → **Register local repo on an agent**
+   - Agent pane: http://127.0.0.1:7423/config → **Add local repo**
+     Both create the control-plane catalog entry and attach host path/worktree inventory to the agent.
+3. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
 
 Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 

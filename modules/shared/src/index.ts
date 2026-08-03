@@ -56,3 +56,12 @@ export {
   isTerminalSessionStatus,
   validateCreateSessionInput,
 } from "./validation.ts";
+
+export {
+  DEFAULT_ECHO_PROFILE,
+  defaultWorktreePath,
+  mergeHostRepository,
+  type HostInventory,
+  type HostRepository,
+  type HostWorktree,
+} from "./host-inventory.ts";

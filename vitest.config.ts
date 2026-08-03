@@ -28,6 +28,7 @@ export default defineConfig({
         "**/components/**",
         "**/modules/ui/**",
         "**/services/web/src/lib/api.ts",
+        "**/services/web/src/lib/attach-local-repo.ts",
         "**/services/agent-web/**",
         // Thin HTTP route wiring (exercised by local-server-management tests)
         "**/local-routes-agent-config.ts",
