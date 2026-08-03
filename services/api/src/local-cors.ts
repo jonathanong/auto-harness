@@ -10,7 +10,7 @@ const NAMED_LOCAL_ORIGINS = new Set([
 ]);
 
 /** True for local browser origins (127.0.0.1 / localhost any port). */
-export function isLocalDevOrigin(origin: string): boolean {
+function isLocalDevOrigin(origin: string): boolean {
   if (NAMED_LOCAL_ORIGINS.has(origin)) {
     return true;
   }
