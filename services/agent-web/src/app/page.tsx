@@ -13,6 +13,7 @@ import {
 } from "@auto-harness/ui";
 
 import { DrainButton } from "../components/drain-button.tsx";
+import { TipText } from "../components/tip-text.tsx";
 import { agentId, apiBase, apiGet } from "../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -47,9 +48,14 @@ export default async function AgentStatusPage() {
     <div className="space-y-6" data-pw="page-agent-status">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight" data-pw="agent-status-id">
+          <TipText
+            as="h2"
+            className="cursor-help text-2xl font-semibold tracking-tight"
+            tip="This page is bound to HARNESS_AGENT_ID (or default local-1)"
+            pw="agent-status-id"
+          >
             {id}
-          </h2>
+          </TipText>
           <p className="text-sm text-muted-foreground">
             Agent pane — control plane is on :7421. Register with env only, then{" "}
             <a className="underline" href="/config">
@@ -70,7 +76,9 @@ export default async function AgentStatusPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Online</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Live WebSocket connection to the control plane">Online</TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <StatusBadge status={String(me?.online ?? false)} />
@@ -78,7 +86,9 @@ export default async function AgentStatusPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Host config</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Whether host inventory exists for this agentId">Host config</TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-sm">
             {hasConfig ? "present" : "missing — set under Host config"}
@@ -86,7 +96,11 @@ export default async function AgentStatusPage() {
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Profiles</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Command profile names advertised when the agent registers">
+                Profiles
+              </TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-xs font-mono">
             {JSON.stringify(me?.commandProfiles ?? [])}
@@ -95,7 +109,11 @@ export default async function AgentStatusPage() {
       </div>
 
       <div>
-        <h3 className="mb-2 text-lg font-medium">Worktrees</h3>
+        <h3 className="mb-2 text-lg font-medium">
+          <TipText tip="Worktrees registered for this agent (online/offline reflects scheduling)">
+            Worktrees
+          </TipText>
+        </h3>
         <Table>
           <TableHeader>
             <TableRow>
@@ -132,7 +150,9 @@ export default async function AgentStatusPage() {
       </div>
 
       <div>
-        <h3 className="mb-2 text-lg font-medium">Recent sessions</h3>
+        <h3 className="mb-2 text-lg font-medium">
+          <TipText tip="Recent sessions assigned to this agentId">Recent sessions</TipText>
+        </h3>
         <Table>
           <TableHeader>
             <TableRow>

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, Textarea } from "@auto-harness/ui";
+import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -49,7 +49,12 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="repositoryId">Repository id</Label>
+        <Label
+          htmlFor="repositoryId"
+          tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
+        >
+          Repository id
+        </Label>
         <Input
           id="repositoryId"
           name="repositoryId"
@@ -59,7 +64,12 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="commandProfile">Command profile</Label>
+        <Label
+          htmlFor="commandProfile"
+          tip="Named command profile from an agent’s host inventory (e.g. echo-prompt)"
+        >
+          Command profile
+        </Label>
         <select
           id="commandProfile"
           name="commandProfile"
@@ -79,12 +89,16 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
         </select>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="prompt">Prompt</Label>
+        <Label htmlFor="prompt" tip="Prompt text passed to the command profile on the agent">
+          Prompt
+        </Label>
         <Textarea id="prompt" name="prompt" required rows={4} data-pw="create-session-prompt" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="timeout">Timeout (s)</Label>
+          <Label htmlFor="timeout" tip="Max runtime in seconds before the session is timed out">
+            Timeout (s)
+          </Label>
           <Input
             id="timeout"
             name="timeout"
@@ -95,7 +109,9 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ref">Git ref</Label>
+          <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
+            Git ref
+          </Label>
           <Input id="ref" name="ref" placeholder="main" data-pw="create-session-ref" />
         </div>
       </div>
@@ -104,13 +120,21 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
           {error}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        disabled={pending || profiles.length === 0}
-        data-pw="create-session-submit"
+      <WithTooltip
+        tip={
+          profiles.length === 0
+            ? "Start an agent with command profiles first"
+            : "Queue a session for assignment to an online agent worktree"
+        }
       >
-        {pending ? "Creating…" : "Create session"}
-      </Button>
+        <Button
+          type="submit"
+          disabled={pending || profiles.length === 0}
+          data-pw="create-session-submit"
+        >
+          {pending ? "Creating…" : "Create session"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

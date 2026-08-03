@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { Button } from "@auto-harness/ui";
+import { Button, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -10,21 +10,23 @@ export function ScheduleTriggerButton({ id }: { id: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      disabled={pending}
-      onClick={() => {
-        start(async () => {
-          await fetch(`${apiBase()}/api/v1/schedules/${encodeURIComponent(id)}/trigger`, {
-            method: "POST",
+    <WithTooltip tip="Fire this schedule once now (creates a session immediately)">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={() => {
+          start(async () => {
+            await fetch(`${apiBase()}/api/v1/schedules/${encodeURIComponent(id)}/trigger`, {
+              method: "POST",
+            });
+            router.refresh();
           });
-          router.refresh();
-        });
-      }}
-    >
-      {pending ? "…" : "Trigger"}
-    </Button>
+        }}
+      >
+        {pending ? "…" : "Trigger"}
+      </Button>
+    </WithTooltip>
   );
 }

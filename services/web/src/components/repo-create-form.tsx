@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -45,19 +45,30 @@ export function RepoCreateForm() {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="id">id (optional)</Label>
+        <Label htmlFor="id" tip="Optional stable id; auto-generated if omitted">
+          id (optional)
+        </Label>
         <Input id="id" name="id" data-pw="repo-catalog-id" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name">name</Label>
+        <Label htmlFor="name" tip="Human-readable name shown in the control plane">
+          name
+        </Label>
         <Input id="name" name="name" required data-pw="repo-catalog-name" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="url">url / path</Label>
+        <Label
+          htmlFor="url"
+          tip="Remote URL or logical path stored in the catalog (agent host paths are separate)"
+        >
+          url / path
+        </Label>
         <Input id="url" name="url" required data-pw="repo-catalog-url" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="defaultBranch">defaultBranch</Label>
+        <Label htmlFor="defaultBranch" tip="Default branch name for sessions that omit ref">
+          defaultBranch
+        </Label>
         <Input
           id="defaultBranch"
           name="defaultBranch"
@@ -70,9 +81,11 @@ export function RepoCreateForm() {
           {error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="repo-catalog-submit">
-        {pending ? "Saving…" : "Create repository"}
-      </Button>
+      <WithTooltip tip="Register a repository in the control-plane catalog only">
+        <Button type="submit" disabled={pending} data-pw="repo-catalog-submit">
+          {pending ? "Saving…" : "Create repository"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

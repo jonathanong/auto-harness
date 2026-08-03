@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Label, Textarea } from "@auto-harness/ui";
+import { Button, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -47,7 +47,12 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="configJson">host config JSON</Label>
+        <Label
+          htmlFor="configJson"
+          tip="Full host inventory JSON (repositories, worktrees, commandProfiles). Prefer the form UI when possible."
+        >
+          host config JSON
+        </Label>
         <Textarea
           id="configJson"
           name="configJson"
@@ -68,9 +73,11 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
           Saved.
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="host-config-submit">
-        {pending ? "Saving…" : "Save host config"}
-      </Button>
+      <WithTooltip tip="Replace the entire host inventory for this agentId">
+        <Button type="submit" disabled={pending} data-pw="host-config-submit">
+          {pending ? "Saving…" : "Save host config"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

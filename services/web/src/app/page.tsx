@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@auto-harness/ui";
 
+import { TipLink } from "../components/tip-link.tsx";
+import { TipText } from "../components/tip-text.tsx";
 import { apiGet } from "../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -31,18 +33,24 @@ export default async function DashboardPage() {
     <div className="space-y-6" data-pw="page-dashboard">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight" data-pw="dashboard-heading">
+          <TipText
+            as="h2"
+            className="cursor-help text-2xl font-semibold tracking-tight"
+            tip="Live counts from the control plane API"
+            pw="dashboard-heading"
+          >
             Dashboard
-          </h2>
+          </TipText>
           <p className="text-sm text-muted-foreground">Control plane overview</p>
         </div>
-        <Link
+        <TipLink
           href="/sessions/new"
-          data-pw="dashboard-new-session"
+          tip="Create a one-off session for a repository and command profile"
+          pw="dashboard-new-session"
           className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
         >
           New session
-        </Link>
+        </TipLink>
       </div>
 
       {error ? (
@@ -57,7 +65,9 @@ export default async function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-3" data-pw="dashboard-stats">
         <Card data-pw="stat-running">
           <CardHeader>
-            <CardTitle className="text-base">Running</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Sessions currently executing on an agent">Running</TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold" data-pw="stat-running-value">
             {running}
@@ -65,7 +75,9 @@ export default async function DashboardPage() {
         </Card>
         <Card data-pw="stat-queued">
           <CardHeader>
-            <CardTitle className="text-base">Queued</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Sessions waiting for an available agent worktree">Queued</TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold" data-pw="stat-queued-value">
             {queued}
@@ -73,7 +85,11 @@ export default async function DashboardPage() {
         </Card>
         <Card data-pw="stat-agents-online">
           <CardHeader>
-            <CardTitle className="text-base">Agents online</CardTitle>
+            <CardTitle className="text-base">
+              <TipText tip="Agents with a live connection / total known agents (including offline slots)">
+                Agents online
+              </TipText>
+            </CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold" data-pw="stat-agents-online-value">
             {online}/{agents.length}
@@ -83,7 +99,9 @@ export default async function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Recent sessions</CardTitle>
+          <CardTitle className="text-base">
+            <TipText tip="Most recent sessions from the control plane">Recent sessions</TipText>
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {sessions.slice(0, 8).map((s) => (

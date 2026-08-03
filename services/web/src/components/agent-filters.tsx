@@ -15,7 +15,12 @@ export function AgentFilters() {
   return (
     <div className={`flex items-end gap-3 ${pending ? "opacity-70" : ""}`} data-pw="agent-filters">
       <div className="space-y-1">
-        <Label htmlFor="online">Online</Label>
+        <Label
+          htmlFor="online"
+          tip="Filter fleet by live WebSocket connection (online) vs host slot only (offline)"
+        >
+          Online
+        </Label>
         <select
           id="online"
           data-pw="agent-filter-online"

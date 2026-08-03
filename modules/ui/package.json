@@ -11,6 +11,7 @@
     "./utils": "./src/lib/utils.ts"
   },
   "dependencies": {
+    "@radix-ui/react-tooltip": "^1.2.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.3.0"

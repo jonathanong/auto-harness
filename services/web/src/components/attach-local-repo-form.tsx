@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
@@ -62,7 +62,9 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="agentId">agent</Label>
+        <Label htmlFor="agentId" tip="Which agent host inventory receives this repository path">
+          agent
+        </Label>
         <select
           id="agentId"
           name="agentId"
@@ -79,15 +81,24 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         </select>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="id">repository id</Label>
+        <Label htmlFor="id" tip="Repository id used in catalog and host inventory">
+          repository id
+        </Label>
         <Input id="id" name="id" required defaultValue="demo" data-pw="attach-repo-id" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name">display name</Label>
+        <Label htmlFor="name" tip="Display name in the control-plane catalog">
+          display name
+        </Label>
         <Input id="name" name="name" placeholder="Demo" data-pw="attach-repo-name" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="path">absolute path on agent host</Label>
+        <Label
+          htmlFor="path"
+          tip="Absolute path on the agent machine (must exist there). Worktrees are added separately on the agent pane."
+        >
+          absolute path on agent host
+        </Label>
         <Input
           id="path"
           name="path"
@@ -97,7 +108,9 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="defaultBranch">default branch</Label>
+        <Label htmlFor="defaultBranch" tip="Default branch when sessions omit a ref">
+          default branch
+        </Label>
         <Input
           id="defaultBranch"
           name="defaultBranch"
@@ -115,9 +128,11 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
           {ok}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="attach-repo-submit">
-        {pending ? "Registering…" : "Register local repo on agent"}
-      </Button>
+      <WithTooltip tip="Creates catalog entry and attaches repo path with zero worktrees">
+        <Button type="submit" disabled={pending} data-pw="attach-repo-submit">
+          {pending ? "Registering…" : "Register local repo on agent"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

@@ -8,7 +8,7 @@ import {
   type HostInventory,
   type HostRepository,
 } from "@auto-harness/shared";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { putInventory } from "./host-inventory-api.ts";
 
@@ -31,15 +31,17 @@ export function AddWorktreeForm({
 
   if (!open) {
     return (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        data-pw={`add-worktree-open-${repo.id}`}
-        onClick={() => setOpen(true)}
-      >
-        + Add worktree
-      </Button>
+      <WithTooltip tip="Define a worktree id and absolute path under this repository (nothing is auto-created)">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-pw={`add-worktree-open-${repo.id}`}
+          onClick={() => setOpen(true)}
+        >
+          + Add worktree
+        </Button>
+      </WithTooltip>
     );
   }
 
@@ -83,7 +85,7 @@ export function AddWorktreeForm({
     >
       <p className="text-sm font-medium">New worktree under {repo.id}</p>
       <div className="space-y-1">
-        <Label>worktree id</Label>
+        <Label tip="Your worktree id (you choose; never auto-generated)">worktree id</Label>
         <Input
           value={id}
           onChange={(e) => {
@@ -99,7 +101,9 @@ export function AddWorktreeForm({
         />
       </div>
       <div className="space-y-1">
-        <Label>absolute path</Label>
+        <Label tip="Absolute path on this host. Suggested path is optional — edit freely.">
+          absolute path
+        </Label>
         <Input
           value={path}
           onChange={(e) => setPath(e.target.value)}
@@ -107,12 +111,11 @@ export function AddWorktreeForm({
           placeholder={defaultWorktreePath(repo.path, "my-wt")}
           data-pw={`add-worktree-path-${repo.id}`}
         />
-        <p className="text-xs text-muted-foreground">
-          Suggested path is only a default — set any absolute path you want.
-        </p>
       </div>
       <div className="space-y-1">
-        <Label>labels (comma-separated)</Label>
+        <Label tip="Scheduler labels (e.g. echo) used when matching work to worktrees">
+          labels (comma-separated)
+        </Label>
         <Input
           value={labels}
           onChange={(e) => setLabels(e.target.value)}
@@ -121,14 +124,16 @@ export function AddWorktreeForm({
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <div className="flex gap-2">
-        <Button
-          type="submit"
-          size="sm"
-          disabled={pending}
-          data-pw={`add-worktree-submit-${repo.id}`}
-        >
-          {pending ? "Saving…" : "Save worktree"}
-        </Button>
+        <WithTooltip tip="Persist this worktree on host inventory (daemon reloads within ~15s)">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={pending}
+            data-pw={`add-worktree-submit-${repo.id}`}
+          >
+            {pending ? "Saving…" : "Save worktree"}
+          </Button>
+        </WithTooltip>
         <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
           Cancel
         </Button>

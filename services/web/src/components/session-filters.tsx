@@ -36,7 +36,9 @@ export function SessionFilters() {
       data-pw="session-filters"
     >
       <div className="space-y-1">
-        <Label htmlFor="status">Status</Label>
+        <Label htmlFor="status" tip="Filter sessions by lifecycle status">
+          Status
+        </Label>
         <select
           id="status"
           data-pw="session-filter-status"
@@ -54,7 +56,9 @@ export function SessionFilters() {
         </select>
       </div>
       <div className="min-w-[12rem] flex-1 space-y-1">
-        <Label htmlFor="q">Search</Label>
+        <Label htmlFor="q" tip="Substring match on session id or prompt (Enter or blur to apply)">
+          Search
+        </Label>
         <Input
           id="q"
           data-pw="session-filter-q"

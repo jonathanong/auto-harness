@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 import { putInventory } from "./host-inventory-api.ts";
@@ -66,15 +66,24 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
         repo.
       </p>
       <div className="space-y-1">
-        <Label htmlFor="id">repository id</Label>
+        <Label htmlFor="id" tip="Stable id used in catalog and host inventory">
+          repository id
+        </Label>
         <Input id="id" name="id" required placeholder="demo" data-pw="add-repo-id" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name">display name</Label>
+        <Label htmlFor="name" tip="Human-readable name in the control-plane catalog">
+          display name
+        </Label>
         <Input id="name" name="name" placeholder="Demo" data-pw="add-repo-name" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="path">absolute path on this host</Label>
+        <Label
+          htmlFor="path"
+          tip="Absolute path that exists on this machine. Worktrees are not created automatically."
+        >
+          absolute path on this host
+        </Label>
         <Input
           id="path"
           name="path"
@@ -84,7 +93,9 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="defaultBranch">default branch</Label>
+        <Label htmlFor="defaultBranch" tip="Default branch when a session omits ref">
+          default branch
+        </Label>
         <Input
           id="defaultBranch"
           name="defaultBranch"
@@ -102,9 +113,11 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
           {ok}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="add-repo-submit">
-        {pending ? "Adding…" : "Add repository"}
-      </Button>
+      <WithTooltip tip="Adds catalog + host repo with zero worktrees — add worktrees under the card">
+        <Button type="submit" disabled={pending} data-pw="add-repo-submit">
+          {pending ? "Adding…" : "Add repository"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

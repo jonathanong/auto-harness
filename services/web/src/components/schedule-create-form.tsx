@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -45,7 +45,12 @@ export function ScheduleCreateForm() {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="repositoryId">repositoryId</Label>
+        <Label
+          htmlFor="repositoryId"
+          tip="Catalog repository id this schedule creates sessions for"
+        >
+          repositoryId
+        </Label>
         <Input
           id="repositoryId"
           name="repositoryId"
@@ -55,11 +60,15 @@ export function ScheduleCreateForm() {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name">name</Label>
+        <Label htmlFor="name" tip="Display name for this schedule">
+          name
+        </Label>
         <Input id="name" name="name" required data-pw="schedule-name" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="commandProfile">commandProfile</Label>
+        <Label htmlFor="commandProfile" tip="Command profile name that agents must advertise">
+          commandProfile
+        </Label>
         <Input
           id="commandProfile"
           name="commandProfile"
@@ -69,21 +78,29 @@ export function ScheduleCreateForm() {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="cron">cron</Label>
+        <Label htmlFor="cron" tip="Five-field cron expression (UTC) for automatic runs">
+          cron
+        </Label>
         <Input id="cron" name="cron" required defaultValue="0 * * * *" data-pw="schedule-cron" />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="timeout">timeout</Label>
+          <Label htmlFor="timeout" tip="Session timeout in seconds for each scheduled run">
+            timeout
+          </Label>
           <Input id="timeout" name="timeout" type="number" defaultValue={600} />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ref">ref</Label>
+          <Label htmlFor="ref" tip="Git ref checked out for scheduled sessions">
+            ref
+          </Label>
           <Input id="ref" name="ref" defaultValue="main" />
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="nextRunAt">nextRunAt (ISO)</Label>
+        <Label htmlFor="nextRunAt" tip="First (or next) fire time as ISO-8601 timestamp">
+          nextRunAt (ISO)
+        </Label>
         <Input id="nextRunAt" name="nextRunAt" defaultValue={new Date().toISOString()} />
       </div>
       {error ? (
@@ -91,9 +108,11 @@ export function ScheduleCreateForm() {
           {error}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="schedule-submit">
-        {pending ? "Saving…" : "Create schedule"}
-      </Button>
+      <WithTooltip tip="Save a cron schedule that enqueues sessions on the control plane">
+        <Button type="submit" disabled={pending} data-pw="schedule-submit">
+          {pending ? "Saving…" : "Create schedule"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { emptyHostInventory } from "@auto-harness/shared";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -52,12 +52,13 @@ export function AddAgentForm() {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="agentId">agentId</Label>
+        <Label
+          htmlFor="agentId"
+          tip="Stable agent identity. Must match HARNESS_AGENT_ID on the host when you start the daemon. Does not start a process."
+        >
+          agentId
+        </Label>
         <Input id="agentId" name="agentId" required placeholder="local-1" data-pw="add-agent-id" />
-        <p className="text-xs text-muted-foreground">
-          Identity for the daemon env <code>HARNESS_AGENT_ID</code>. Does not start a process — only
-          seeds host inventory on the control plane.
-        </p>
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="add-agent-error">
@@ -69,9 +70,11 @@ export function AddAgentForm() {
           {ok}
         </p>
       ) : null}
-      <Button type="submit" disabled={pending} data-pw="add-agent-submit">
-        {pending ? "Creating…" : "Add agent"}
-      </Button>
+      <WithTooltip tip="Creates empty host inventory on the control plane so you can attach repos before the daemon is online">
+        <Button type="submit" disabled={pending} data-pw="add-agent-submit">
+          {pending ? "Creating…" : "Add agent"}
+        </Button>
+      </WithTooltip>
     </form>
   );
 }
