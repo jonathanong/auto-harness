@@ -9,7 +9,7 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [local-development.md](local-development.md) | Local stack: DynamoDB Local, `pnpm local:*`, e2e, manage UI |
 | [setup.md](setup.md)                         | Install, AWS deploy, VPS agent production shape             |
 | [cli.md](cli.md)                             | `auto-harness-agent` commands                               |
-| [harness.md](harness.md)                     | Repo harness hookup (filaments examples), requirements      |
+| [harness.md](harness.md)                     | Repo harness hookup examples, requirements                  |
 
 ## Protocols
 

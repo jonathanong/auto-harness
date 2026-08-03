@@ -2,7 +2,7 @@
 
 How a product repository’s **automation harness** (GitHub Actions, prompts, policy) hooks into **Auto Harness** (queue, worktrees, non-interactive CLIs).
 
-Examples use **filaments** (internal monorepo) naming and flows. Any monorepo can copy the same shape.
+Examples use a typical monorepo shape (`codex-*` workflow names, `docs/prompts/…`). Any product repo can copy the same pattern.
 
 API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost model: [why.md](why.md), [costs.md](costs.md).
 
@@ -26,7 +26,7 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ### Repo harness owns (out of scope for Auto Harness)
 
-| Concern                              | Example in filaments                              |
+| Concern                              | Typical home in the product repo                  |
 | ------------------------------------ | ------------------------------------------------- |
 | Event triggers                       | `workflow_run`, `issue_comment`, cron             |
 | Policy before create                 | Transient CI triage, dedup, comment authz         |
@@ -46,14 +46,14 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ## Two harnesses
 
-| Layer            | Lives in                                                            | Owns                                                                  |
-| ---------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| **Repo harness** | Product repo (e.g. filaments `.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
-| **Auto Harness** | Shared control plane + VPS agents                                   | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+| Layer            | Lives in                                             | Owns                                                                  |
+| ---------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| **Repo harness** | Product repo (`.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
+| **Auto Harness** | Shared control plane + VPS agents                    | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
 
 ```mermaid
 flowchart TB
-  subgraph Repo["Repo harness (filaments)"]
+  subgraph Repo["Repo harness (product repo)"]
     EV[GitHub events]
     GHA[Short GitHub Actions jobs]
     P[Prompt templates / policy]
@@ -92,17 +92,17 @@ sequenceDiagram
   participant Ops as Operator
   participant AH as Auto Harness
   participant VPS as VPS agent
-  participant Fil as filaments secrets
+  participant Secrets as Repo Actions secrets
 
   Ops->>AH: Deploy control plane, Slack integration
-  Ops->>AH: Create repository id for filaments
+  Ops->>AH: Create repository id for the product git remote
   Ops->>AH: Create service account API key
-  Ops->>VPS: Install agent, clone filaments, worktrees, labels e.g. codex
+  Ops->>VPS: Install agent, clone repo, worktrees, labels e.g. codex
   Ops->>VPS: Login CLIs under subscription profiles
-  Ops->>Fil: HARNESS_API_URL, HARNESS_TOKEN, HARNESS_REPO_ID
+  Ops->>Secrets: HARNESS_API_URL, HARNESS_TOKEN, HARNESS_REPO_ID
 ```
 
-Filaments (or any repo) only needs:
+Each product repo only needs:
 
 | Secret / var      | Purpose                                         |
 | ----------------- | ----------------------------------------------- |
@@ -116,7 +116,7 @@ Agent host maps that same `repositoryId` to a local checkout path in agent confi
 
 ## Pattern A — Main CI failed → auto-fix session
 
-**Today in filaments:** `codex-fix-main` (after transient triage).  
+**Typical workflow name:** `codex-fix-main` (after transient triage).  
 **Hookup:** short job decides “needs Codex,” renders fix-main prompt, `POST /sessions`, done.
 
 ```mermaid
@@ -148,7 +148,7 @@ sequenceDiagram
 Illustrative step (after prompt is in `$PROMPT`):
 
 ```yaml
-# filaments/.github/workflows/codex-fix-main.yml (conceptual)
+# .github/workflows/codex-fix-main.yml (conceptual)
 - name: Dispatch Auto Harness session
   env:
     HARNESS_API_URL: ${{ secrets.HARNESS_API_URL }}
@@ -178,12 +178,12 @@ Illustrative step (after prompt is in `$PROMPT`):
 
 ## Pattern B — Issue comment `/codex-fix` or `/codex-plan`
 
-**Today:** `codex-fix-issue` / `codex-plan` gate on `issue_comment`.  
+**Typical workflows:** `codex-fix-issue` / `codex-plan` gate on `issue_comment`.  
 **Hookup:** validate author association + command → render prompt → `POST /sessions` → exit.
 
 ```mermaid
 flowchart LR
-  subgraph Filaments
+  subgraph RepoGHA["Product repo GHA"]
     C["issue_comment<br/>/codex-fix or /codex-plan"]
     G["Gate: OWNER / COLLABORATOR"]
     R["Render automation prompt"]
@@ -209,7 +209,7 @@ Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `
 
 ## Pattern C — PR `/pr-shepherd`
 
-**Today:** `codex-pr-shepherd` with long runner session + resume.  
+**Typical workflow:** `codex-pr-shepherd` with long runner session + resume.  
 **Hookup:** short gate job → `POST /sessions` (first tick) or `POST /sessions/:id/resume` (continue same worktree) → exit. Humans follow Slack + the PR on GitHub.
 
 ```mermaid
@@ -250,7 +250,7 @@ curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions/${SESSION_ID}/resume" \
 
 ## Pattern D — Dependabot CI red
 
-**Today:** `codex-fix-dependabot`.  
+**Typical workflow:** `codex-fix-dependabot`.  
 **Hookup:** on failed Dependabot PR workflow → render dependabot prompt → `POST /sessions` → humans watch Slack + the Dependabot PR on GitHub.
 
 ```mermaid
@@ -268,8 +268,8 @@ flowchart TB
 
 ## Pattern E — Scheduled maintenance prompts
 
-**Today:** `codex-scheduled-prompts` rotates `docs/prompts/scheduled/*.md`.  
-**Hookup:** cron workflow selects + renders one prompt file → `POST /sessions` → done. Catalog stays **in filaments**; Auto Harness only receives the final string.
+**Typical workflow:** `codex-scheduled-prompts` rotates `docs/prompts/scheduled/*.md`.  
+**Hookup:** cron workflow selects + renders one prompt file → `POST /sessions` → done. Catalog stays **in the product repo**; Auto Harness only receives the final string.
 
 ```mermaid
 flowchart TB
@@ -277,19 +277,19 @@ flowchart TB
   SEL --> FILES["docs/prompts/scheduled/*.md"]
   FILES --> REN[Render via automation wrapper]
   REN -->|POST /sessions| AH[Auto Harness]
-  AH --> Agent[Agent on filaments checkout]
+  AH --> Agent[Agent on product repo checkout]
   Agent --> GH[GitHub: PR or issue hygiene]
   AH --> Slack[Slack]
 ```
 
-Optional alternative: Auto Harness [schedules](api.md) with a fixed command that only runs a **repo-local** script (`node ci/run-scheduled-prompt.mts`)—selection logic still owned by filaments files on disk.
+Optional alternative: Auto Harness [schedules](api.md) with a fixed command that only runs a **repo-local** script (`node ci/run-scheduled-prompt.mts`)—selection logic still owned by prompt files on disk in the product repo.
 
 ---
 
 ## Pattern F — Usage limit then try again later
 
 Agent hits plan quota → session `failed` + `errorCode: usage_limit` → **Slack** shows it.  
-Retry is **outside** Auto Harness: human, later GHA, or filaments poller creates a **new** session or **resume**.
+Retry is **outside** Auto Harness: human, later GHA, or a repo poller creates a **new** session or **resume**.
 
 ```mermaid
 sequenceDiagram
@@ -307,11 +307,11 @@ sequenceDiagram
 
 ---
 
-## End-to-end map (filaments workflows → AH)
+## End-to-end map (repo workflows → AH)
 
 ```mermaid
 flowchart LR
-  subgraph Triggers["Filaments GHA entrypoints"]
+  subgraph Triggers["Product repo GHA entrypoints"]
     FM[codex-fix-main]
     FI[codex-fix-issue]
     PL[codex-plan]
@@ -345,7 +345,7 @@ flowchart LR
 ```
 
 What **leaves** the long-running Actions runner: Codex process, multi-hour job, log babysitting in GHA.  
-What **stays** in filaments: event filters, triage, dedup, prompt files, comment gates—anything that finishes in minutes before the `curl`.
+What **stays** in the product repo: event filters, triage, dedup, prompt files, comment gates—anything that finishes in minutes before the `curl`.
 
 ---
 

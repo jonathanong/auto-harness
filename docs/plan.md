@@ -21,7 +21,7 @@ generic multi-tenant agent platform.
 
 ## 1. Locked decisions — do not re-litigate
 
-These were decided against a real migration target (filaments' `codex-*` GitHub Actions
+These were decided against a real migration target (product-repo `codex-*` GitHub Actions
 automation) and are settled. If an approach below looks more "complete" or "correct," that is not
 sufficient reason to reopen it — these trade completeness for a smaller, more auditable system on
 purpose. Raise it with the project owner before changing any row.
@@ -283,7 +283,7 @@ resume_failed`) rather than waiting indefinitely.
 ## 6. Phases
 
 Each phase lists **Goal → Deliverables → Acceptance criteria → Tests → Exit condition**, plus a
-migration marker. **No filaments workflow may cut over before the marker on Phase 3 is met.**
+migration marker. **No product-repo automation workflow may cut over before the marker on Phase 3 is met.**
 
 ### Phase 1 — Foundation
 
@@ -459,7 +459,7 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), concurrency
 reject/replace (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
 
-**Migration marker: filaments' `codex-plan` (plan-only, no publication) may cut over once this
+**Migration marker: a plan-only repo workflow (e.g. `codex-plan`, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and usage-limit retry
 above are live in a real deployment.** No workflow that needs `ref`, resume, or
 `concurrencyKey` may move before this phase is fully done.
@@ -486,8 +486,8 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 **Status:** `pnpm local:web` serves create-session UI (ref + agent profile dropdown only; D4).
 `createSessionFromUi` hits the real API. Full Next.js dashboard deferred; create path is shippable.
 
-**Migration marker:** UI availability doesn't gate any filaments cutover — CLI/API-driven
-callers don't need it. Useful before wider (non-filaments) rollout.
+**Migration marker:** UI availability doesn't gate any repo-workflow cutover — CLI/API-driven
+callers don't need it. Useful before wider multi-repo rollout.
 
 ### Phase 5 — Polish + Advanced Features
 
@@ -513,7 +513,7 @@ rewrite (usage-limit retry is now Phase 3, not Phase 5):
 (`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainAgent` +
 `AgentLoop.beginDrain`).
 
-**Migration marker:** none of this gates any filaments workflow.
+**Migration marker:** none of this gates any product-repo automation workflow.
 
 ---
 

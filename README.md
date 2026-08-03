@@ -73,7 +73,7 @@ Details live in the docs, not here.
 
 ## Learn more
 
-Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo hookup examples (filaments-style): **[docs/harness.md](docs/harness.md)**.
+Everything operational and technical is under **[docs/](docs/README.md)**—setup, API, security, architecture, and the rest. Repo harness hookup examples: **[docs/harness.md](docs/harness.md)**.
 
 **Contributors / agents:** monorepo conventions live in **[AGENTS.md](AGENTS.md)** (`pnpm check` runs the full gate).
 
