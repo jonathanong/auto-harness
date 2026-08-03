@@ -44,16 +44,15 @@ EOF
 pnpm local:api
 # → http://127.0.0.1:7420
 
-# Control-plane Next.js UI (defaults API → :7420)
+# Control-plane UI
 pnpm local:web
 # → http://127.0.0.1:7421
 
-# Agent-pane Next.js UI (defaults agentId=local-1, API → :7420)
+# Agent pane + daemon (env defaults: local-1 → :7420)
 pnpm local:agent-web
-# → http://127.0.0.1:7423  — open /config and save host inventory
-
-# Agent daemon (same local defaults)
+# → http://127.0.0.1:7423
 pnpm local:agent start
+# registers online; then add local repos at http://127.0.0.1:7423/config
 ```
 
 ### Health

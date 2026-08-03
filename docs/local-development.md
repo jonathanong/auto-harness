@@ -182,15 +182,18 @@ Shared components: `modules/ui`.
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api         # :7420
-pnpm local:web         # :7421  (API defaults to http://127.0.0.1:7420)
-pnpm local:agent-web   # :7423  (agent id defaults to local-1)
-pnpm local:agent start # daemon (same defaults)
+pnpm local:web         # :7421 control plane
+pnpm local:agent-web   # :7423 agent pane
+pnpm local:agent start # registers even with no repos yet
 ```
 
-Local defaults (override with env when needed): `HARNESS_AGENT_ID=local-1`,
-`HARNESS_API_URL` / `HARNESS_API_HTTP=http://127.0.0.1:7420`.
+**Intended flow**
 
-URL examples: `/sessions?status=running&q=sess-…`, `/agents?online=online`. Host inventory: agent pane `/config`.
+1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
+2. Open agent pane http://127.0.0.1:7423/config → **Add local repo** (absolute path). That registers the repo on the control plane and attaches host paths/worktrees to this agent.
+3. Agent polls inventory (~15s) and re-registers worktrees; then create a session on the control plane and `POST /scheduler/assign`.
+
+Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
 ---
 

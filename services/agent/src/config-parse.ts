@@ -98,13 +98,21 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
   return repo;
 }
 
+type ParseAgentConfigOptions = {
+  /** Allow zero repositories (agent registered before host inventory is set). */
+  allowEmptyRepositories?: boolean;
+};
+
 /** Parse full agent runtime config (host inventory + identity fields). */
-export function parseAgentConfig(raw: unknown): AgentConfig {
+export function parseAgentConfig(raw: unknown, options: ParseAgentConfigOptions = {}): AgentConfig {
   if (!isRecord(raw)) {
     throw new Error("config root must be an object");
   }
   const agentId = requireString(raw, "agentId", "config");
-  if (!Array.isArray(raw.repositories) || raw.repositories.length === 0) {
+  if (!Array.isArray(raw.repositories)) {
+    throw new Error("repositories must be an array");
+  }
+  if (raw.repositories.length === 0 && !options.allowEmptyRepositories) {
     throw new Error("repositories must be a non-empty array");
   }
   const logLevelRaw = raw.logLevel;

@@ -20,9 +20,33 @@ export type FetchHostConfigDeps = {
   fetchFn?: typeof fetch;
 };
 
+/** Identity only — no host inventory yet (register first, attach repos via UI). */
+export function emptyAgentConfig(identity: AgentIdentity): AgentConfig {
+  const config: AgentConfig = {
+    agentId: identity.agentId,
+    apiUrl: identity.apiUrl,
+    repositories: [],
+    commandProfiles: {},
+    logLevel: identity.logLevel,
+  };
+  if (identity.apiKey) {
+    config.apiKey = identity.apiKey;
+  }
+  return config;
+}
+
+/** Stable fingerprint of host inventory for change detection. */
+export function inventoryFingerprint(config: AgentConfig): string {
+  return JSON.stringify({
+    repositories: config.repositories,
+    commandProfiles: config.commandProfiles,
+  });
+}
+
 /**
  * Load host inventory from the control plane.
  * `GET /api/v1/agents/:agentId/config`
+ * Missing config (404) → empty inventory so the agent can register first.
  */
 export async function fetchAgentHostConfig(
   identity: AgentIdentity,
@@ -36,19 +60,19 @@ export async function fetchAgentHostConfig(
     headers.authorization = `Bearer ${identity.apiKey}`;
   }
   const res = await fetchFn(url, { headers });
+  if (res.status === 404) {
+    return emptyAgentConfig(identity);
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
-      `bootstrap failed (${res.status}) GET ${url}: ${text || res.statusText}. ` +
-        `Configure host inventory via PUT /api/v1/agents/${identity.agentId}/config (API/UI).`,
-    );
+    throw new Error(`bootstrap failed (${res.status}) GET ${url}: ${text || res.statusText}`);
   }
   const body = (await res.json()) as unknown;
   const raw =
     typeof body === "object" && body !== null
       ? { ...(body as Record<string, unknown>), agentId: identity.agentId }
       : body;
-  const config = parseAgentConfig(raw);
+  const config = parseAgentConfig(raw, { allowEmptyRepositories: true });
   config.apiUrl = identity.apiUrl;
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;

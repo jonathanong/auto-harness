@@ -13,7 +13,12 @@ export type {
 } from "./config-types.ts";
 export { findRepository, findWorktree } from "./config-types.ts";
 export { parseAgentConfig } from "./config-parse.ts";
-export { fetchAgentHostConfig, httpBaseFromApiUrl } from "./bootstrap.ts";
+export {
+  emptyAgentConfig,
+  fetchAgentHostConfig,
+  httpBaseFromApiUrl,
+  inventoryFingerprint,
+} from "./bootstrap.ts";
 
 /**
  * Load process identity from environment.

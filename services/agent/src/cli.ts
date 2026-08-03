@@ -130,10 +130,12 @@ export async function runCli(
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
+      const { loadAgentIdentity } = await import("./config.ts");
       const { startAgentDaemon } = await import("./start-daemon.ts");
       await deps.ensureReady(config);
       const { stop } = await startAgentDaemon({
         config,
+        identity: loadAgentIdentity(env),
         ...(wsUrl !== undefined ? { wsUrl } : {}),
         log: deps.log,
         error: deps.error,

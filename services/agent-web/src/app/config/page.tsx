@@ -1,3 +1,4 @@
+import { AddLocalRepoForm } from "../../components/add-local-repo-form.tsx";
 import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { agentId, apiBase } from "../../lib/api.ts";
 
@@ -6,12 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function HostConfigPage() {
   const id = agentId();
   let initial = `{
-  "repositories": [{
-    "id": "demo",
-    "path": "/ABS/PATH/TO/REPO",
-    "defaultBranch": "main",
-    "worktrees": [{ "id": "wt-1", "path": "/ABS/PATH/TO/REPO/.worktrees/wt-1", "labels": ["echo"] }]
-  }],
+  "repositories": [],
   "commandProfiles": {
     "echo-prompt": { "argv": ["echo"], "appendPrompt": true }
   }
@@ -30,15 +26,25 @@ export default async function HostConfigPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-4">
+    <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">Host inventory</h2>
+        <h2 className="text-2xl font-semibold tracking-tight">Local repositories</h2>
         <p className="text-sm text-muted-foreground">
-          Paths and command profile argv for <code>{id}</code>. Stored on the control plane; the
-          agent daemon bootstraps this on start.
+          Flow: (1) start agent with env only → registers online, (2) add a local git path here →
+          control plane catalog + host inventory, (3) agent reloads inventory and can take work.
         </p>
       </div>
-      <HostConfigForm agentId={id} initialJson={initial} />
+      <div>
+        <h3 className="mb-2 text-lg font-medium">Add local repo</h3>
+        <AddLocalRepoForm agentId={id} />
+      </div>
+      <div className="space-y-2 border-t border-border pt-6">
+        <h3 className="text-lg font-medium">Advanced: raw host inventory JSON</h3>
+        <p className="text-sm text-muted-foreground">
+          Optional power-user edit of full inventory (profiles, multiple worktrees).
+        </p>
+        <HostConfigForm agentId={id} initialJson={initial} />
+      </div>
     </div>
   );
 }

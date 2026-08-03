@@ -48,7 +48,13 @@ export default async function AgentStatusPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">{id}</h2>
-          <p className="text-sm text-muted-foreground">Agent pane — control plane is on :7421</p>
+          <p className="text-sm text-muted-foreground">
+            Agent pane — control plane is on :7421. Register with env only, then{" "}
+            <a className="underline" href="/config">
+              add local repos
+            </a>
+            .
+          </p>
         </div>
         <DrainButton agentId={id} />
       </div>

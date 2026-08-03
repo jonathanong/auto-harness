@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchAgentHostConfig, httpBaseFromApiUrl } from "./bootstrap.ts";
+import {
+  emptyAgentConfig,
+  fetchAgentHostConfig,
+  httpBaseFromApiUrl,
+  inventoryFingerprint,
+} from "./bootstrap.ts";
 import { valid } from "./config-test-helpers.ts";
 
 describe("httpBaseFromApiUrl", () => {
@@ -37,16 +42,36 @@ describe("fetchAgentHostConfig", () => {
     expect(config.repositories[0]?.id).toBe("repo-1");
   });
 
-  it("throws a helpful error when host config is missing", async () => {
+  it("returns empty inventory when host config is not yet set (404)", async () => {
     const fetchFn = vi.fn(
       async () => new Response("nope", { status: 404, statusText: "Not Found" }),
     );
-    await expect(
-      fetchAgentHostConfig(
-        { agentId: "a", apiUrl: "http://127.0.0.1:7420", logLevel: "info" },
-        { fetchFn: fetchFn as unknown as typeof fetch },
-      ),
-    ).rejects.toThrow(/bootstrap failed \(404\).*PUT \/api\/v1\/agents\/a\/config/);
+    const config = await fetchAgentHostConfig(
+      { agentId: "a", apiUrl: "http://127.0.0.1:7420", logLevel: "info" },
+      { fetchFn: fetchFn as unknown as typeof fetch },
+    );
+    expect(config.agentId).toBe("a");
+    expect(config.repositories).toEqual([]);
+    expect(config.commandProfiles).toEqual({});
+  });
+
+  it("emptyAgentConfig and inventoryFingerprint", () => {
+    const empty = emptyAgentConfig({
+      agentId: "a",
+      apiUrl: "http://x",
+      apiKey: "k",
+      logLevel: "warn",
+    });
+    expect(empty.repositories).toEqual([]);
+    expect(empty.apiKey).toBe("k");
+    expect(inventoryFingerprint(empty)).toBe(
+      inventoryFingerprint({
+        agentId: "a",
+        repositories: [],
+        commandProfiles: {},
+        logLevel: "info",
+      }),
+    );
   });
 
   it("handles empty error bodies", async () => {

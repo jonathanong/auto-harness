@@ -7,8 +7,10 @@ export function getServiceName(): string {
 }
 
 export {
+  emptyAgentConfig,
   fetchAgentHostConfig,
   httpBaseFromApiUrl,
+  inventoryFingerprint,
   loadAgentConfig,
   loadAgentIdentity,
   parseAgentConfig,

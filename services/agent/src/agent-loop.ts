@@ -70,6 +70,24 @@ export class AgentLoop {
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg);
     });
+    await this.register();
+  }
+
+  /**
+   * Hot-apply host inventory from the control plane (repos/profiles added via UI).
+   * Mutates the shared config object used by the session runner / worktree manager.
+   */
+  async applyInventory(next: AgentConfig): Promise<void> {
+    this.config.repositories = next.repositories;
+    this.config.commandProfiles = next.commandProfiles;
+    if (next.logLevel) {
+      this.config.logLevel = next.logLevel;
+    }
+    await this.worktrees.ensureAll();
+    await this.register();
+  }
+
+  async register(): Promise<void> {
     await this.transport.send({
       type: "agent:register",
       agentId: this.config.agentId,
@@ -205,26 +223,4 @@ export class AgentLoop {
   }
 }
 
-/**
- * In-process transport binding an agent to a ControlPlane-like message handler.
- * Local parity for API Gateway WebSocket (no network required).
- */
-export function createLoopbackTransport(opts: {
-  sendToServer: (msg: AgentToServerMessage) => void | Promise<void>;
-}): AgentTransport & { deliver(msg: AgentWireMessage): void } {
-  let handler: ((msg: AgentWireMessage) => void) | null = null;
-  return {
-    async send(msg) {
-      await opts.sendToServer(msg);
-    },
-    onMessage(h) {
-      handler = h;
-    },
-    close() {
-      handler = null;
-    },
-    deliver(msg) {
-      handler?.(msg);
-    },
-  };
-}
+export { createLoopbackTransport } from "./loopback-transport.ts";

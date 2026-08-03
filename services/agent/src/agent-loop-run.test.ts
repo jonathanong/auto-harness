@@ -41,6 +41,19 @@ describe("AgentLoop run", () => {
 
       await loop.keepalive();
       expect(serverMsgs.some((m) => m.type === "agent:keepalive")).toBe(true);
+
+      const registersBefore = serverMsgs.filter((m) => m.type === "agent:register").length;
+      await loop.applyInventory({
+        ...config,
+        commandProfiles: {
+          ...config.commandProfiles,
+          true: { argv: ["true"], appendPrompt: false },
+        },
+      });
+      expect(serverMsgs.filter((m) => m.type === "agent:register").length).toBe(
+        registersBefore + 1,
+      );
+
       loop.stop();
     } finally {
       cleanup();
