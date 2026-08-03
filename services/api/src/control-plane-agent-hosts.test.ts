@@ -46,6 +46,59 @@ describe("agent host inventory", () => {
     expect(replace.ok).toBe(true);
     expect(plane.listWorktrees().map((w) => w.id)).toEqual(["wt-1"]);
 
+    // Empty inventory is valid (add-agent / attach-repos-later).
+    const empty = plane.putAgentHostConfig("local-1", {
+      repositories: [],
+      commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
+    });
+    expect(empty.ok).toBe(true);
+    if (empty.ok) {
+      expect(empty.config.repositories).toEqual([]);
+    }
+    // Offline host-only agent appears in fleet list.
+    expect(
+      plane.putAgentHostConfig("slot-offline", {
+        repositories: [],
+        commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
+      }).ok,
+    ).toBe(true);
+    const agents = plane.listAgents();
+    const offline = agents.find((a) => a.agentId === "slot-offline");
+    expect(offline).toMatchObject({
+      agentId: "slot-offline",
+      online: false,
+      commandProfiles: ["echo-prompt"],
+      worktreeIds: [],
+    });
+    // Host for an already-listed agent is skipped in the offline-host merge loop.
+    plane.registerAgent({
+      agentId: "slot-offline",
+      worktrees: [],
+      commandProfiles: ["echo-prompt"],
+    });
+    const afterReg = plane.listAgents().find((a) => a.agentId === "slot-offline");
+    expect(afterReg?.online).toBe(true);
+    // Offline host with worktrees exposes worktreeIds in the fleet list.
+    expect(
+      plane.putAgentHostConfig("host-with-wts", {
+        repositories: [
+          {
+            id: "r1",
+            path: "/r",
+            worktrees: [
+              { id: "w1", path: "/r/w1", labels: [] },
+              { id: "w2", path: "/r/w2", labels: ["echo"] },
+            ],
+          },
+        ],
+        commandProfiles: { p: { argv: ["true"] } },
+      }).ok,
+    ).toBe(true);
+    expect(plane.listAgents().find((a) => a.agentId === "host-with-wts")?.worktreeIds).toEqual([
+      "w1",
+      "w2",
+    ]);
+    // Still invalid: missing commandProfiles or non-array repositories.
     expect(plane.putAgentHostConfig("local-1", { repositories: [] }).ok).toBe(false);
     expect(plane.putAgentHostConfig("local-1", null).ok).toBe(false);
     expect(

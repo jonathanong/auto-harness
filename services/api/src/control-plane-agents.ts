@@ -44,7 +44,19 @@ export function listAgents(state: ControlPlaneState): Array<{
     cur.commandProfiles = [...conn.commandProfiles];
     byAgent.set(conn.agentId, cur);
   }
-  return [...byAgent.values()];
+  // Offline hosts with inventory but no live connection still appear in the fleet list.
+  for (const host of state.agentHosts.values()) {
+    if (!byAgent.has(host.agentId)) {
+      byAgent.set(host.agentId, {
+        agentId: host.agentId,
+        online: false,
+        lastHeartbeatAt: null,
+        commandProfiles: Object.keys(host.commandProfiles),
+        worktreeIds: host.repositories.flatMap((r) => r.worktrees.map((w) => w.id)),
+      });
+    }
+  }
+  return [...byAgent.values()].toSorted((a, b) => a.agentId.localeCompare(b.agentId));
 }
 
 /**
@@ -100,13 +112,14 @@ export function registerAgent(
   const connectionId = state.connectionIdFactory();
   const at = state.now();
   if (state.storage) {
+    const replaceLock = opts.replaceExisting === true || existing !== undefined;
     queueWrite(
       state,
       state.storage
         .tryAcquireAgentLock({
           agentId: opts.agentId,
           connectionId,
-          replaceExisting: Boolean(opts.replaceExisting || existing),
+          replaceExisting: replaceLock,
         })
         .then(() => {
           /* lock written */

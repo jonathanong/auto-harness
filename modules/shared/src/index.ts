@@ -59,8 +59,14 @@ export {
 
 export {
   DEFAULT_ECHO_PROFILE,
+  addHostWorktree,
   defaultWorktreePath,
+  emptyHostInventory,
   mergeHostRepository,
+  removeHostRepository,
+  removeHostWorktree,
+  updateHostWorktree,
+  upsertHostRepository,
   type HostInventory,
   type HostRepository,
   type HostWorktree,

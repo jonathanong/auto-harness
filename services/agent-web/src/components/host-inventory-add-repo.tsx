@@ -2,16 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mergeHostRepository, type HostInventory } from "@auto-harness/shared";
+import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
 import { Button, Input, Label } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
+import { putInventory } from "./host-inventory-api.ts";
 
-/**
- * Attach a local git path to this agent and register the repo on the control plane.
- * Same outcome as control-pane "Register local repo on an agent".
- */
-export function AddLocalRepoForm({ agentId }: { agentId: string }) {
+export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory: HostInventory }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +16,7 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
 
   return (
     <form
-      className="grid max-w-lg gap-3"
+      className="grid max-w-lg gap-3 rounded-lg border border-border p-4"
       data-pw="form-add-local-repo"
       onSubmit={(e) => {
         e.preventDefault();
@@ -31,12 +28,10 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
         const name = String(fd.get("name") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
-        const worktreeId = String(fd.get("worktreeId") ?? "wt-1").trim() || "wt-1";
         if (!id || !path) {
           setError("id and absolute path are required");
           return;
         }
-
         start(async () => {
           const base = apiBase();
           const repoRes = await fetch(`${base}/api/v1/repositories`, {
@@ -53,53 +48,30 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
             setError(await repoRes.text());
             return;
           }
-
-          let existing: HostInventory | null = null;
-          const existingRes = await fetch(
-            `${base}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
-          );
-          if (existingRes.ok) {
-            existing = (await existingRes.json()) as HostInventory;
-          }
-          const host = mergeHostRepository(existing, {
-            id,
-            path,
-            defaultBranch,
-            worktreeId,
-          });
-
-          const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
-            method: "PUT",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(host),
-          });
-          if (!put.ok) {
-            setError(await put.text());
+          const next = upsertHostRepository(inventory, { id, path, defaultBranch });
+          const r = await putInventory(agentId, next);
+          if (!r.ok) {
+            setError(r.error);
             return;
           }
-          setOk(
-            `Registered ${id} on control plane and attached to agent ${agentId}. ` +
-              `Daemon picks it up within ~15s.`,
-          );
+          setOk(`Repository ${id} added with no worktrees. Add worktrees under the card below.`);
           form.reset();
           router.refresh();
         });
       }}
     >
+      <h3 className="text-lg font-medium">Add repository</h3>
+      <p className="text-sm text-muted-foreground">
+        Registers the catalog entry and host path only. Worktrees are added separately under the
+        repo.
+      </p>
       <div className="space-y-1">
         <Label htmlFor="id">repository id</Label>
-        <Input
-          id="id"
-          name="id"
-          required
-          placeholder="demo"
-          defaultValue="demo"
-          data-pw="add-repo-id"
-        />
+        <Input id="id" name="id" required placeholder="filaments" data-pw="add-repo-id" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="name">display name</Label>
-        <Input id="name" name="name" placeholder="Demo" data-pw="add-repo-name" />
+        <Input id="name" name="name" placeholder="Filaments" data-pw="add-repo-name" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="path">absolute path on this host</Label>
@@ -111,25 +83,14 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
           data-pw="add-repo-path"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="defaultBranch">default branch</Label>
-          <Input
-            id="defaultBranch"
-            name="defaultBranch"
-            defaultValue="main"
-            data-pw="add-repo-branch"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="worktreeId">worktree id</Label>
-          <Input
-            id="worktreeId"
-            name="worktreeId"
-            defaultValue="wt-1"
-            data-pw="add-repo-worktree-id"
-          />
-        </div>
+      <div className="space-y-1">
+        <Label htmlFor="defaultBranch">default branch</Label>
+        <Input
+          id="defaultBranch"
+          name="defaultBranch"
+          defaultValue="main"
+          data-pw="add-repo-branch"
+        />
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="add-repo-error">
@@ -142,7 +103,7 @@ export function AddLocalRepoForm({ agentId }: { agentId: string }) {
         </p>
       ) : null}
       <Button type="submit" disabled={pending} data-pw="add-repo-submit">
-        {pending ? "Registering…" : "Register local repo"}
+        {pending ? "Adding…" : "Add repository"}
       </Button>
     </form>
   );

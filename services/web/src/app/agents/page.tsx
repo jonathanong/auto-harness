@@ -9,6 +9,7 @@ import {
   TableRow,
 } from "@auto-harness/ui";
 
+import { AddAgentForm } from "../../components/add-agent-form.tsx";
 import { AgentFilters } from "../../components/agent-filters.tsx";
 import { AgentDrainButton } from "../../components/agent-drain-button.tsx";
 import { apiGet } from "../../lib/api.ts";
@@ -23,7 +24,11 @@ type Agent = {
   worktreeIds?: string[];
 };
 
-type Host = { agentId: string; commandProfiles?: Record<string, unknown> };
+type Host = {
+  agentId: string;
+  commandProfiles?: Record<string, unknown>;
+  repositories?: unknown[];
+};
 
 export default async function AgentsPage({
   searchParams,
@@ -53,7 +58,7 @@ export default async function AgentsPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const hostIds = new Set(hosts.map((h) => h.agentId));
+  const hostById = new Map(hosts.map((h) => [h.agentId, h]));
   let rows = agents;
   if (filters.online === "online") {
     rows = rows.filter((a) => a.online);
@@ -62,53 +67,71 @@ export default async function AgentsPage({
   }
 
   return (
-    <div className="space-y-4" data-pw="page-agents">
+    <div className="space-y-6" data-pw="page-agents">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight" data-pw="agents-heading">
           Agents
         </h2>
         <p className="text-sm text-muted-foreground">
-          Fleet view. Host inventory is configured on the <strong>agent pane</strong> (
-          <code>pnpm local:agent-web</code> → :7423).
+          Add an agent slot (host inventory), then run the daemon with that{" "}
+          <code className="font-mono">HARNESS_AGENT_ID</code>. Configure repos and worktrees on the
+          agent pane (<code className="font-mono">:7423</code>).
         </p>
       </div>
-      <Suspense fallback={null}>
-        <AgentFilters />
-      </Suspense>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>agentId</TableHead>
-            <TableHead>online</TableHead>
-            <TableHead>profiles</TableHead>
-            <TableHead>host config</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((a) => (
-            <TableRow key={a.agentId}>
-              <TableCell className="font-mono text-xs">{a.agentId}</TableCell>
-              <TableCell>
-                <StatusBadge status={String(a.online)} />
-              </TableCell>
-              <TableCell className="text-xs">{JSON.stringify(a.commandProfiles ?? [])}</TableCell>
-              <TableCell>{hostIds.has(a.agentId) ? "yes" : "no"}</TableCell>
-              <TableCell>
-                <AgentDrainButton agentId={a.agentId} />
-              </TableCell>
-            </TableRow>
-          ))}
-          {rows.length === 0 ? (
+
+      <section className="space-y-2">
+        <h3 className="text-lg font-medium">Add agent</h3>
+        <AddAgentForm />
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-lg font-medium">Fleet</h3>
+        <Suspense fallback={null}>
+          <AgentFilters />
+        </Suspense>
+        {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={5} className="text-muted-foreground">
-                No agents match filters.
-              </TableCell>
+              <TableHead>agentId</TableHead>
+              <TableHead>online</TableHead>
+              <TableHead>profiles</TableHead>
+              <TableHead>repos</TableHead>
+              <TableHead>host config</TableHead>
+              <TableHead />
             </TableRow>
-          ) : null}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {rows.map((a) => {
+              const host = hostById.get(a.agentId);
+              const repoCount = Array.isArray(host?.repositories) ? host.repositories.length : 0;
+              return (
+                <TableRow key={a.agentId} data-pw={`agent-row-${a.agentId}`}>
+                  <TableCell className="font-mono text-xs">{a.agentId}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={String(a.online)} />
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    {JSON.stringify(a.commandProfiles ?? [])}
+                  </TableCell>
+                  <TableCell className="text-xs">{repoCount}</TableCell>
+                  <TableCell>{host ? "yes" : "no"}</TableCell>
+                  <TableCell>
+                    <AgentDrainButton agentId={a.agentId} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={6} className="text-muted-foreground">
+                  No agents match filters. Add an agent above or start a daemon.
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </section>
     </div>
   );
 }

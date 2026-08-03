@@ -117,18 +117,19 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `form-attach-local-repo`, `attach-repo-agent-id`, `attach-repo-id`, `attach-repo-name`, `attach-repo-path`, `attach-repo-branch`, `attach-repo-worktree-id`, `attach-repo-submit`, `attach-repo-ok`, `attach-repo-error` | Attach local repo   |
 | `page-schedules`, `schedules-heading`                                                                                                                                                                                    | Schedules           |
 | `form-create-schedule`, `schedule-repository-id`, `schedule-name`, `schedule-command-profile`, `schedule-cron`, `schedule-submit`, `schedule-error`                                                                      | Schedule form       |
-| `page-agents`, `agents-heading`, `agent-filters`, `agent-filter-online`                                                                                                                                                  | Agents              |
+| `page-agents`, `agents-heading`, `agent-filters`, `agent-filter-online`, `form-add-agent`, `add-agent-id`, `add-agent-submit`, `add-agent-ok`, `add-agent-error`, `agent-row-*`                                          | Agents              |
 
 ### Agent pane (`services/agent-web`)
 
-| `data-pw`                                                                                                                                                             | Where              |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `agent-shell`                                                                                                                                                         | App shell          |
-| `nav-status`, `nav-config`                                                                                                                                            | Nav                |
-| `page-agent-status`, `agent-status-id`, `agent-drain`                                                                                                                 | Status             |
-| `page-agent-config`, `agent-config-heading`                                                                                                                           | Config             |
-| `form-add-local-repo`, `add-repo-id`, `add-repo-name`, `add-repo-path`, `add-repo-branch`, `add-repo-worktree-id`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add local repo     |
-| `form-host-config-json`, `host-config-json`, `host-config-submit`, `host-config-ok`, `host-config-error`                                                              | Raw JSON inventory |
+| `data-pw`                                                                                                                                                              | Where                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `agent-shell`                                                                                                                                                          | App shell                         |
+| `nav-status`, `nav-config`                                                                                                                                             | Nav                               |
+| `page-agent-status`, `agent-status-id`, `agent-drain`                                                                                                                  | Status                            |
+| `page-agent-config`, `agent-config-heading`                                                                                                                            | Config                            |
+| `host-inventory-editor`, `form-add-local-repo`, `add-repo-id`, `add-repo-name`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository (no auto worktree) |
+| `repo-card-*`, `repo-remove-*`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-row-*`                                                                         | Hierarchical worktrees            |
+| `form-host-config-json`, `host-config-json`, `host-config-submit`, `host-config-ok`, `host-config-error`                                                               | Raw JSON inventory                |
 
 ---
 
@@ -146,15 +147,17 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `e2e/control/repositories.spec.ts` | repositories page loads                                | Page + catalog form                                       |
 |                                    | create catalog repository with unique id               | Parallel-safe catalog create                              |
 | `e2e/control/schedules.spec.ts`    | schedules page and create form                         | Seeds repo via API; creates schedule in UI                |
-| `e2e/control/agents.spec.ts`       | agents page loads with filters                         | Page + online filter URL                                  |
+| `e2e/control/agents.spec.ts`       | agents page loads with filters and add form            | Page + add agent form + online filter URL                 |
+|                                    | add agent creates empty host inventory slot            | Parallel-safe empty host config                           |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7423`
 
-| File                       | Tests                                         | What it covers                           |
-| -------------------------- | --------------------------------------------- | ---------------------------------------- |
-| `e2e/agent/status.spec.ts` | loads agent shell and status page             | Shell, agent id `local-1`, drain control |
-| `e2e/agent/config.spec.ts` | config page shows add-repo and raw JSON forms | Both config forms visible                |
-|                            | register local repo via form with unique id   | Parallel-safe add-local-repo submit      |
+| File                       | Tests                                           | What it covers                           |
+| -------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| `e2e/agent/status.spec.ts` | loads agent shell and status page               | Shell, agent id `local-1`, drain control |
+| `e2e/agent/config.spec.ts` | config page shows inventory editor and raw JSON | Hierarchical editor + raw JSON           |
+|                            | add repository without inventing worktrees      | Repo card with empty worktrees           |
+|                            | add explicit worktree under a repository        | User-defined worktree id + path          |
 
 ---
 

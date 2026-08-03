@@ -1,10 +1,10 @@
-import { mergeHostRepository, type HostInventory } from "@auto-harness/shared";
+import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
 
 import { apiBase } from "./api.ts";
 
 /**
- * Register a repo on the control plane and attach host paths to an agent.
- * Same behavior as agent-pane "Add local repo".
+ * Register a repo on the control plane and attach host path to an agent.
+ * Does not invent worktrees — add those on the agent host config UI.
  */
 export async function attachLocalRepo(input: {
   agentId: string;
@@ -12,7 +12,6 @@ export async function attachLocalRepo(input: {
   name: string;
   path: string;
   defaultBranch: string;
-  worktreeId: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = apiBase();
   const repoRes = await fetch(`${base}/api/v1/repositories`, {
@@ -35,11 +34,10 @@ export async function attachLocalRepo(input: {
     existing = (await get.json()) as HostInventory;
   }
 
-  const host = mergeHostRepository(existing, {
+  const host = upsertHostRepository(existing, {
     id: input.id,
     path: input.path,
     defaultBranch: input.defaultBranch,
-    worktreeId: input.worktreeId,
   });
 
   const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.agentId)}/config`, {

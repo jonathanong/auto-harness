@@ -6,7 +6,7 @@ import { Button, Input, Label } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
-/** Control-plane form: catalog + attach local path to a selected agent. */
+/** Control-plane form: catalog + attach local path to a selected agent (no auto worktree). */
 export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -16,7 +16,8 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
   if (agentIds.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No agents registered yet. Start <code>pnpm local:agent start</code>, then refresh this page.
+        No agents yet. Use <strong>Add agent</strong> on the Agents page, or start{" "}
+        <code>pnpm local:agent start</code>, then refresh.
       </p>
     );
   }
@@ -36,7 +37,6 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         const name = String(fd.get("name") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
-        const worktreeId = String(fd.get("worktreeId") ?? "wt-1").trim() || "wt-1";
         if (!agentId || !id || !path) {
           setError("agent, id, and absolute path on the agent host are required");
           return;
@@ -48,14 +48,13 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
             name,
             path,
             defaultBranch,
-            worktreeId,
           });
           if (!result.ok) {
             setError(result.error);
             return;
           }
           setOk(
-            `Registered ${id} and attached to agent ${agentId}. Daemon reloads inventory within ~15s.`,
+            `Registered ${id} on agent ${agentId} with no worktrees. Add worktrees on the agent pane Host config.`,
           );
           form.reset();
           router.refresh();
@@ -97,25 +96,14 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
           data-pw="attach-repo-path"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="defaultBranch">default branch</Label>
-          <Input
-            id="defaultBranch"
-            name="defaultBranch"
-            defaultValue="main"
-            data-pw="attach-repo-branch"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="worktreeId">worktree id</Label>
-          <Input
-            id="worktreeId"
-            name="worktreeId"
-            defaultValue="wt-1"
-            data-pw="attach-repo-worktree-id"
-          />
-        </div>
+      <div className="space-y-1">
+        <Label htmlFor="defaultBranch">default branch</Label>
+        <Input
+          id="defaultBranch"
+          name="defaultBranch"
+          defaultValue="main"
+          data-pw="attach-repo-branch"
+        />
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="attach-repo-error">
