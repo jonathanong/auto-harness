@@ -17,5 +17,12 @@
       }
     ]
   },
-  "ignorePatterns": ["**/dist/**", "**/coverage/**", "**/node_modules/**", "docs/**"]
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "**/node_modules/**",
+    "docs/**",
+    "**/.next/**",
+    "**/next-env.d.ts"
+  ]
 }

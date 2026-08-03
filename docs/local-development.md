@@ -61,8 +61,8 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:dynamodb`       | Start DynamoDB Local                                         |
 | `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                            |
 | `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                      |
-| `pnpm local:web`            | Control-plane UI on `:7421` (sessions, fleet, schedules)     |
-| `pnpm local:agent-web`      | Agent pane UI on `:7423` (needs `HARNESS_AGENT_ID`)          |
+| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                          |
+| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7423` (`HARNESS_AGENT_ID`)        |
 | `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                 |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                  |
 | `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`          |
@@ -168,31 +168,31 @@ pnpm local:agent -- run-session --file /path/to/session.assign.json
 
 ---
 
-## Local web UIs (two panes)
+## Local web UIs (two Next.js apps)
 
-There are **two** browser UIs on purpose:
+Issue [#2](https://github.com/jonathanong/auto-harness/issues/2): **Next.js** for both panes, shared `@auto-harness/ui` (shadcn-style), client navigation (no full reloads), filters/state in the URL.
 
-| UI            | Port | Command                | Role                                                                             |
-| ------------- | ---- | ---------------------- | -------------------------------------------------------------------------------- |
-| Control plane | 7421 | `pnpm local:web`       | Org-wide: create session, sessions, repos, schedules, agent **fleet** + drain    |
-| Agent pane    | 7423 | `pnpm local:agent-web` | **This agent only**: status, worktrees, host inventory (paths + profiles), drain |
+| UI            | Port | Command                | Role                                                     |
+| ------------- | ---- | ---------------------- | -------------------------------------------------------- |
+| Control plane | 7421 | `pnpm local:web`       | Dashboard, sessions, repos, schedules, agent **fleet**   |
+| Agent pane    | 7423 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
+
+Shared components: `modules/ui`.
 
 ```bash
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api    # :7420
 
-# Control plane (any terminal)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 # → http://127.0.0.1:7421
 
-# Agent pane (same identity as the daemon)
 export HARNESS_AGENT_ID=local-1
-export HARNESS_API_URL=http://127.0.0.1:7420   # or HARNESS_API_HTTP
+export HARNESS_API_HTTP=http://127.0.0.1:7420
 pnpm local:agent-web
 # → http://127.0.0.1:7423
 ```
 
-Configure host inventory on the **agent pane** (`/config`). The control-plane Agents page lists fleet status only.
+URL examples: `/sessions?status=running&q=sess-…`, `/agents?online=online`. Host inventory: agent pane `/config`.
 
 ---
 

@@ -33,7 +33,10 @@ module.exports = {
   ],
   options: {
     doNotFollow: {
-      path: "node_modules",
+      path: "node_modules|\\.next",
+    },
+    exclude: {
+      path: "node_modules|\\.next|next-env\\.d\\.ts",
     },
     tsPreCompilationDeps: true,
     tsConfig: {
@@ -42,7 +45,7 @@ module.exports = {
     enhancedResolveOptions: {
       exportsFields: ["exports"],
       conditionNames: ["import", "require", "node", "default", "types"],
-      extensions: [".ts", ".js", ".mjs", ".cjs", ".json"],
+      extensions: [".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"],
     },
   },
 };

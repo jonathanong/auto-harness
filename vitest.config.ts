@@ -11,6 +11,7 @@ export default defineConfig({
         "**/*.test.ts",
         "**/*-test-helpers.ts",
         "**/dist/**",
+        "**/.next/**",
         "**/types.ts",
         "**/*-types.ts",
         "**/session.ts",
@@ -22,15 +23,19 @@ export default defineConfig({
         "**/db/plane-storage-*.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
-        "**/server.ts",
-        "**/agent-server.ts",
-        "**/listen.ts",
-        // HTML route handlers (exercised by phase4-web e2e)
-        "**/html.ts",
-        "**/pages/**",
+        // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
+        "**/app/**",
+        "**/components/**",
+        "**/modules/ui/**",
+        "**/services/web/src/lib/api.ts",
+        "**/services/agent-web/**",
+        // Thin HTTP route wiring (exercised by local-server-management tests)
+        "**/local-routes-agent-config.ts",
         "**/ws-hub.ts",
         "**/ws-transport.ts",
         "**/start-daemon.ts",
+        "**/next.config.ts",
+        "**/tailwind.config.ts",
       ],
       thresholds: {
         // Unit tests use process cache; DynamoDB Local write-through is covered by dynamo.test.ts

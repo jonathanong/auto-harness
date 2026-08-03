@@ -44,13 +44,13 @@ EOF
 pnpm local:api
 # → http://127.0.0.1:7420
 
-# Control-plane UI (sessions, fleet, schedules)
+# Control-plane Next.js UI (sessions, fleet, schedules)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 # → http://127.0.0.1:7421
 
-# Agent pane UI (host inventory + status for this agent)
+# Agent-pane Next.js UI (host inventory + status for this agent)
 export HARNESS_AGENT_ID=local-1
-export HARNESS_API_URL=http://127.0.0.1:7420
+export HARNESS_API_HTTP=http://127.0.0.1:7420
 pnpm local:agent-web
 # → http://127.0.0.1:7423  — open /config and save host inventory
 
