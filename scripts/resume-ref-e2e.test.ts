@@ -5,20 +5,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "../services/api/src/control-plane.ts";
 import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.ts";
 import type { AgentConfig } from "../services/agent/src/config.ts";
+import { runCommandOk } from "./lib/run-command.mts";
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")}: ${r.stderr || r.stdout}`);
-  }
-  return r.stdout.trim();
+async function git(cwd: string, args: string[]): Promise<string> {
+  return (await runCommandOk("git", args, { cwd })).trim();
 }
 
 describe("resume re-checks out ref after worktree reuse", () => {
@@ -29,19 +25,19 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const wtA = join(root, "wt-a");
       const wtB = join(root, "wt-b");
       mkdirSync(repo);
-      git(repo, ["init"]);
-      git(repo, ["config", "user.email", "t@t"]);
-      git(repo, ["config", "user.name", "t"]);
+      await git(repo, ["init"]);
+      await git(repo, ["config", "user.email", "t@t"]);
+      await git(repo, ["config", "user.name", "t"]);
       writeFileSync(join(repo, "README"), "base\n");
-      git(repo, ["add", "."]);
-      git(repo, ["commit", "-m", "init"]);
-      git(repo, ["branch", "-M", "main"]);
-      git(repo, ["checkout", "-b", "feature/resume"]);
+      await git(repo, ["add", "."]);
+      await git(repo, ["commit", "-m", "init"]);
+      await git(repo, ["branch", "-M", "main"]);
+      await git(repo, ["checkout", "-b", "feature/resume"]);
       writeFileSync(join(repo, "feat.txt"), "resume-me\n");
-      git(repo, ["add", "."]);
-      git(repo, ["commit", "-m", "feat"]);
-      const featureSha = git(repo, ["rev-parse", "HEAD"]);
-      git(repo, ["checkout", "main"]);
+      await git(repo, ["add", "."]);
+      await git(repo, ["commit", "-m", "feat"]);
+      const featureSha = await git(repo, ["rev-parse", "HEAD"]);
+      await git(repo, ["checkout", "main"]);
 
       const config: AgentConfig = {
         agentId: "agent-resume",
@@ -141,7 +137,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       expect(resumeAssign?.ref).toBe("feature/resume");
       expect(resumeAssign?.worktreeId).toBeTruthy();
       const resumePath = resumeAssign!.worktreeId === "wt-a" ? wtA : wtB;
-      const head = git(resumePath, ["rev-parse", "HEAD"]);
+      const head = await git(resumePath, ["rev-parse", "HEAD"]);
       expect(head).toBe(featureSha);
 
       loop.stop();

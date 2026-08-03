@@ -23,23 +23,23 @@ export function buildPaths(root: string): LocalE2ePaths {
 }
 
 /** Init temp git repo with main + feature/local-e2e; return feature SHA. */
-export function initFeatureRepo(paths: LocalE2ePaths): string {
+export async function initFeatureRepo(paths: LocalE2ePaths): Promise<string> {
   const { repoPath, hookPath, hookLog } = paths;
   mkdirSync(repoPath);
-  git(repoPath, ["init"]);
-  git(repoPath, ["config", "user.email", "e2e@example.com"]);
-  git(repoPath, ["config", "user.name", "e2e"]);
+  await git(repoPath, ["init"]);
+  await git(repoPath, ["config", "user.email", "e2e@example.com"]);
+  await git(repoPath, ["config", "user.name", "e2e"]);
   writeFileSync(join(repoPath, "README.md"), "main\n");
-  git(repoPath, ["add", "README.md"]);
-  git(repoPath, ["commit", "-m", "main"]);
+  await git(repoPath, ["add", "README.md"]);
+  await git(repoPath, ["commit", "-m", "main"]);
   // default branch name may be master on some git — rename to main
-  git(repoPath, ["branch", "-M", "main"]);
-  git(repoPath, ["checkout", "-b", "feature/local-e2e"]);
+  await git(repoPath, ["branch", "-M", "main"]);
+  await git(repoPath, ["checkout", "-b", "feature/local-e2e"]);
   writeFileSync(join(repoPath, "feature.txt"), "on-feature\n");
-  git(repoPath, ["add", "feature.txt"]);
-  git(repoPath, ["commit", "-m", "feature"]);
-  const featureSha = revParse(repoPath, "HEAD");
-  git(repoPath, ["checkout", "main"]);
+  await git(repoPath, ["add", "feature.txt"]);
+  await git(repoPath, ["commit", "-m", "feature"]);
+  const featureSha = await revParse(repoPath, "HEAD");
+  await git(repoPath, ["checkout", "main"]);
 
   writeFileSync(
     hookPath,

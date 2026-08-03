@@ -5,7 +5,7 @@ import { makeRepo } from "./agent-loop-test-helpers.ts";
 
 describe("AgentLoop drain", () => {
   it("drain refuses new assigns without killing inflight tracking", async () => {
-    const { config, cleanup } = makeRepo();
+    const { config, cleanup } = await makeRepo();
     try {
       const logs: string[] = [];
       const transport = createLoopbackTransport({

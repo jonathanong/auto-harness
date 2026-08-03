@@ -5,18 +5,14 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
 import { ControlPlane } from "../services/api/src/control-plane.ts";
 import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.ts";
 import type { AgentConfig } from "../services/agent/src/config.ts";
+import { runCommandOk } from "./lib/run-command.mts";
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")}: ${r.stderr || r.stdout}`);
-  }
-  return r.stdout;
+async function git(cwd: string, args: string[]): Promise<string> {
+  return runCommandOk("git", args, { cwd });
 }
 
 async function main(): Promise<void> {
@@ -25,27 +21,27 @@ async function main(): Promise<void> {
     const repo = join(root, "repo");
     const wt = join(root, "wt-1");
     mkdirSync(repo);
-    git(repo, ["init"]);
-    git(repo, ["config", "user.email", "t@t"]);
-    git(repo, ["config", "user.name", "t"]);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@t"]);
+    await git(repo, ["config", "user.name", "t"]);
     writeFileSync(join(repo, "README"), "phase3\n");
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-m", "init"]);
-    git(repo, ["branch", "-M", "main"]);
-    git(repo, ["checkout", "-b", "feature/p3"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["checkout", "-b", "feature/p3"]);
     writeFileSync(join(repo, "feat.txt"), "x\n");
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-m", "feat"]);
-    const featureSha = git(repo, ["rev-parse", "HEAD"]).trim();
-    git(repo, ["checkout", "main"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "feat"]);
+    const featureSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
+    await git(repo, ["checkout", "main"]);
 
     const hookOut = join(root, "hook.out");
     const hook = join(root, "hook.sh");
     writeFileSync(
       hook,
       `#!/bin/sh\nprintf '%s\\n' "$HARNESS_SESSION_ID" "$HARNESS_STATUS" "$HARNESS_REF" "$HARNESS_WORKTREE_PATH" > "${hookOut}"\n`,
+      { mode: 0o755 },
     );
-    spawnSync("chmod", ["+x", hook]);
 
     const config: AgentConfig = {
       agentId: "agent-p3",
@@ -132,14 +128,13 @@ async function main(): Promise<void> {
     }
 
     // HEAD on worktree matches feature ref
-    const head = git(wt, ["rev-parse", "HEAD"]).trim();
+    const head = (await git(wt, ["rev-parse", "HEAD"])).trim();
     if (head !== featureSha) {
       throw new Error(`worktree HEAD ${head} != feature ${featureSha}`);
     }
 
     // Unknown profile rejected by agent (Invariant 8 / D4); hook failure must not flip status
-    writeFileSync(hook, `#!/bin/sh\nexit 1\n`);
-    spawnSync("chmod", ["+x", hook]);
+    writeFileSync(hook, `#!/bin/sh\nexit 1\n`, { mode: 0o755 });
     const bad = plane.createSession({
       repositoryId: "demo",
       prompt: "x",

@@ -1,32 +1,58 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 
 import type { AgentConfig } from "./config.ts";
 
-export function git(cwd: string, args: string[]): void {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")}: ${r.stderr || r.stdout}`);
-  }
+async function runOk(command: string, args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (c: Buffer) => {
+      stdout += c.toString("utf8");
+    });
+    child.stderr?.on("data", (c: Buffer) => {
+      stderr += c.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (status !== 0) {
+        reject(new Error(`${command} ${args.join(" ")}: ${stderr || stdout}`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
 }
 
-export function makeRepo(): { root: string; config: AgentConfig; cleanup: () => void } {
+export async function git(cwd: string, args: string[]): Promise<void> {
+  await runOk("git", args, cwd);
+}
+
+export async function makeRepo(): Promise<{
+  root: string;
+  config: AgentConfig;
+  cleanup: () => void;
+}> {
   const root = mkdtempSync(join(tmpdir(), "ah-loop-"));
   const repo = join(root, "repo");
   const wt = join(root, "wt-1");
   mkdirSync(repo);
-  git(repo, ["init"]);
-  git(repo, ["config", "user.email", "t@t"]);
-  git(repo, ["config", "user.name", "t"]);
+  await git(repo, ["init"]);
+  await git(repo, ["config", "user.email", "t@t"]);
+  await git(repo, ["config", "user.name", "t"]);
   writeFileSync(join(repo, "README"), "hi\n");
-  git(repo, ["add", "."]);
-  git(repo, ["commit", "-m", "init"]);
-  git(repo, ["branch", "-M", "main"]);
+  await git(repo, ["add", "."]);
+  await git(repo, ["commit", "-m", "init"]);
+  await git(repo, ["branch", "-M", "main"]);
   const hook = join(root, "hook.sh");
-  writeFileSync(hook, "#!/bin/sh\necho ok\n");
-  spawnSync("chmod", ["+x", hook]);
+  writeFileSync(hook, "#!/bin/sh\necho ok\n", { mode: 0o755 });
 
   const config: AgentConfig = {
     agentId: "agent-loop",

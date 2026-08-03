@@ -7,7 +7,7 @@ import { makeRepo } from "./agent-loop-test-helpers.ts";
 
 describe("AgentLoop errors", () => {
   it("rejects unknown profile without shell spawn success", async () => {
-    const { config, cleanup } = makeRepo();
+    const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: AgentToServerMessage[] = [];
       const transport = createLoopbackTransport({
@@ -38,7 +38,7 @@ describe("AgentLoop errors", () => {
   });
 
   it("maps optional assign fields and runner throw to setup_failed", async () => {
-    const { config, cleanup } = makeRepo();
+    const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: AgentToServerMessage[] = [];
       const transport = createLoopbackTransport({

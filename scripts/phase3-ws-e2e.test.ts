@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
+import { runCommand } from "./lib/run-command.mts";
+
 describe("phase3 websocket e2e", () => {
-  it("create→assign→run over real local /ws", () => {
-    const r = spawnSync("pnpm", ["exec", "node", "scripts/phase3-ws-e2e.mts"], {
-      encoding: "utf8",
+  it("create→assign→run over real local /ws", async () => {
+    const r = await runCommand("pnpm", ["exec", "node", "scripts/phase3-ws-e2e.mts"], {
       cwd: process.cwd(),
     });
     expect(r.status, r.stderr + r.stdout).toBe(0);

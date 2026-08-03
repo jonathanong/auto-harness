@@ -1,10 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
+import { runCommand } from "./lib/run-command.mts";
+
 describe("phase3 cloud e2e", () => {
-  it("create→assign→ack→run→completed via ControlPlane + AgentLoop", () => {
-    const r = spawnSync("pnpm", ["exec", "node", "scripts/phase3-cloud-e2e.mts"], {
-      encoding: "utf8",
+  it("create→assign→ack→run→completed via ControlPlane + AgentLoop", async () => {
+    const r = await runCommand("pnpm", ["exec", "node", "scripts/phase3-cloud-e2e.mts"], {
       cwd: process.cwd(),
     });
     expect(r.status, r.stderr + r.stdout).toBe(0);

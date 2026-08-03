@@ -5,18 +5,36 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { SpawnProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")}: ${r.stderr || r.stdout}`);
-  }
-  return r.stdout;
+async function git(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", (c: Buffer) => {
+      stdout += c.toString("utf8");
+    });
+    child.stderr?.on("data", (c: Buffer) => {
+      stderr += c.toString("utf8");
+    });
+    child.on("error", reject);
+    child.on("close", (status) => {
+      if (status !== 0) {
+        reject(new Error(`git ${args.join(" ")}: ${stderr || stdout}`));
+        return;
+      }
+      resolve(stdout);
+    });
+  });
 }
 
 describe("createGitClient real git", () => {
@@ -34,16 +52,16 @@ describe("createGitClient real git", () => {
     const repo = join(root, "repo");
     const wt = join(root, "wt-1");
     mkdirSync(repo);
-    git(repo, ["init"]);
-    git(repo, ["config", "user.email", "t@example.com"]);
-    git(repo, ["config", "user.name", "t"]);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
     writeFileSync(join(repo, "f.txt"), "main\n");
-    git(repo, ["add", "f.txt"]);
-    git(repo, ["commit", "-m", "init"]);
-    git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
     // primary is on main
-    expect(git(repo, ["branch", "--show-current"]).trim()).toBe("main");
-    const mainSha = git(repo, ["rev-parse", "HEAD"]).trim();
+    expect((await git(repo, ["branch", "--show-current"])).trim()).toBe("main");
+    const mainSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
     const client = createGitClient(new SpawnProcessRunner());
     await client.ensureWorktree({

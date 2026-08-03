@@ -19,7 +19,7 @@ async function main(): Promise<void> {
   const paths = buildPaths(root);
 
   try {
-    const featureSha = initFeatureRepo(paths);
+    const featureSha = await initFeatureRepo(paths);
     const config = buildAgentConfig(paths);
 
     // --- API create (documented local path) ---

@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 import type { AgentConfig } from "../../services/agent/src/config.ts";
 import { SpawnProcessRunner } from "../../services/agent/src/executor.ts";
@@ -125,14 +125,14 @@ export async function runHappyPath(
     throw new Error(`session did not complete: ${JSON.stringify(result)}`);
   }
 
-  const head = revParse(paths.wtPath, "HEAD");
+  const head = await revParse(paths.wtPath, "HEAD");
   if (head !== featureSha) {
     throw new Error(`worktree HEAD ${head} != feature sha ${featureSha} (ref checkout failed)`);
   }
 
-  const hookOut = spawnSync("cat", [paths.hookLog], { encoding: "utf8" });
-  if (!hookOut.stdout.includes(created.id) || !hookOut.stdout.includes("completed")) {
-    throw new Error(`terminal hook missing env: ${hookOut.stdout}`);
+  const hookOut = readFileSync(paths.hookLog, "utf8");
+  if (!hookOut.includes(created.id) || !hookOut.includes("completed")) {
+    throw new Error(`terminal hook missing env: ${hookOut}`);
   }
 
   const seqs = result.logs.map((l) => l.seq);
@@ -151,7 +151,7 @@ export async function runHappyPath(
         head,
         featureSha,
         logCount: result.logs.length,
-        hook: hookOut.stdout.trim(),
+        hook: hookOut.trim(),
       },
       null,
       2,

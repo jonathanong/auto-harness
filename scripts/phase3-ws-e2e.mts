@@ -5,18 +5,14 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
 import { startLocalServer } from "../services/api/src/local-server.ts";
 import { startAgentDaemon } from "../services/agent/src/start-daemon.ts";
 import type { AgentConfig } from "../services/agent/src/config.ts";
+import { runCommandOk } from "./lib/run-command.mts";
 
-function git(cwd: string, args: string[]): string {
-  const r = spawnSync("git", args, { cwd, encoding: "utf8" });
-  if (r.status !== 0) {
-    throw new Error(`git ${args.join(" ")}: ${r.stderr || r.stdout}`);
-  }
-  return r.stdout.trim();
+async function git(cwd: string, args: string[]): Promise<string> {
+  return (await runCommandOk("git", args, { cwd })).trim();
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -31,27 +27,27 @@ async function main(): Promise<void> {
     const repo = join(root, "repo");
     const wt = join(root, "wt-1");
     mkdirSync(repo);
-    git(repo, ["init"]);
-    git(repo, ["config", "user.email", "t@t"]);
-    git(repo, ["config", "user.name", "t"]);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@t"]);
+    await git(repo, ["config", "user.name", "t"]);
     writeFileSync(join(repo, "README"), "ws\n");
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-m", "init"]);
-    git(repo, ["branch", "-M", "main"]);
-    git(repo, ["checkout", "-b", "feature/ws"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
+    await git(repo, ["checkout", "-b", "feature/ws"]);
     writeFileSync(join(repo, "f.txt"), "x\n");
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-m", "feat"]);
-    const featureSha = git(repo, ["rev-parse", "HEAD"]);
-    git(repo, ["checkout", "main"]);
+    await git(repo, ["add", "."]);
+    await git(repo, ["commit", "-m", "feat"]);
+    const featureSha = await git(repo, ["rev-parse", "HEAD"]);
+    await git(repo, ["checkout", "main"]);
 
     const hookOut = join(root, "hook.out");
     const hook = join(root, "hook.sh");
     writeFileSync(
       hook,
       `#!/bin/sh\nprintf '%s\\n' "$HARNESS_SESSION_ID" "$HARNESS_STATUS" "$HARNESS_REF" > "${hookOut}"\n`,
+      { mode: 0o755 },
     );
-    spawnSync("chmod", ["+x", hook]);
 
     const port = 18000 + Math.floor(Math.random() * 2000);
     server = await startLocalServer({
@@ -147,7 +143,7 @@ async function main(): Promise<void> {
     if (lines[0] !== body.id || lines[1] !== "completed" || lines[2] !== "feature/ws") {
       throw new Error(`hook env bad: ${hookBody}`);
     }
-    const head = git(wt, ["rev-parse", "HEAD"]);
+    const head = await git(wt, ["rev-parse", "HEAD"]);
     if (head !== featureSha) {
       throw new Error(`HEAD ${head} != ${featureSha}`);
     }
