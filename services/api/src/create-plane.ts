@@ -39,6 +39,9 @@ export async function createControlPlane(
     ...(options.scheduleIdFactory !== undefined
       ? { scheduleIdFactory: options.scheduleIdFactory }
       : {}),
+    ...(options.repositoryIdFactory !== undefined
+      ? { repositoryIdFactory: options.repositoryIdFactory }
+      : {}),
     ...(options.shardCount !== undefined ? { shardCount: options.shardCount } : {}),
     ...(options.ackDeadlineMs !== undefined ? { ackDeadlineMs: options.ackDeadlineMs } : {}),
     ...(options.heartbeatStaleMs !== undefined

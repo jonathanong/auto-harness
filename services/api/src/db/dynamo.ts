@@ -10,6 +10,7 @@ export type DynamoTableNames = {
   connections: string;
   sessionLogs: string;
   schedules: string;
+  repositories: string;
   agentLocks: string;
   archives: string;
 };
@@ -22,6 +23,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     connections: `${p}-Connections`,
     sessionLogs: `${p}-SessionLogs`,
     schedules: `${p}-Schedules`,
+    repositories: `${p}-Repositories`,
     agentLocks: `${p}-AgentLocks`,
     archives: `${p}-Archives`,
   };

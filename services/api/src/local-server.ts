@@ -44,6 +44,11 @@ function readJson(req: IncomingMessage): Promise<unknown> {
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
+  if (status === 204) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",
@@ -99,6 +104,206 @@ export function createLocalApp(options: LocalServerOptions = {}): {
 
     if (method === "GET" && url.pathname === "/api/v1/sessions") {
       send(res, 200, { items: plane.listSessions() });
+      return;
+    }
+
+    // --- repositories ---
+    if (method === "GET" && url.pathname === "/api/v1/repositories") {
+      send(res, 200, { items: plane.listRepositories() });
+      return;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/repositories") {
+      try {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        const result = plane.createRepository({
+          name: String(body.name ?? ""),
+          url: String(body.url ?? ""),
+          ...(typeof body.id === "string" ? { id: body.id } : {}),
+          ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
+          ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
+          ...(typeof body.terminalHookScript === "string"
+            ? { terminalHookScript: body.terminalHookScript }
+            : {}),
+        });
+        if (!result.ok) {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: result.error },
+          });
+          return;
+        }
+        send(res, 201, result.repository);
+        return;
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return;
+      }
+    }
+    const repoMatch = /^\/api\/v1\/repositories\/([^/]+)$/.exec(url.pathname);
+    if (repoMatch) {
+      const id = repoMatch[1]!;
+      if (method === "GET") {
+        const repo = plane.getRepository(id);
+        if (!repo) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "repository not found" } });
+          return;
+        }
+        send(res, 200, repo);
+        return;
+      }
+      if (method === "PUT" || method === "PATCH") {
+        try {
+          const body = (await readJson(req)) as Record<string, unknown>;
+          const result = plane.updateRepository(id, {
+            ...(typeof body.name === "string" ? { name: body.name } : {}),
+            ...(typeof body.url === "string" ? { url: body.url } : {}),
+            ...(typeof body.defaultBranch === "string"
+              ? { defaultBranch: body.defaultBranch }
+              : {}),
+            ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
+            ...(typeof body.terminalHookScript === "string"
+              ? { terminalHookScript: body.terminalHookScript }
+              : {}),
+          });
+          if (!result.ok) {
+            send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+            return;
+          }
+          send(res, 200, result.repository);
+          return;
+        } catch {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+          });
+          return;
+        }
+      }
+      if (method === "DELETE") {
+        const result = plane.deleteRepository(id);
+        if (!result.ok) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          return;
+        }
+        send(res, 204, null);
+        return;
+      }
+    }
+
+    // --- schedules ---
+    if (method === "GET" && url.pathname === "/api/v1/schedules") {
+      send(res, 200, { items: plane.listSchedules() });
+      return;
+    }
+    if (method === "POST" && url.pathname === "/api/v1/schedules") {
+      try {
+        const body = (await readJson(req)) as Record<string, unknown>;
+        if (
+          typeof body.repositoryId !== "string" ||
+          typeof body.name !== "string" ||
+          typeof body.commandProfile !== "string" ||
+          typeof body.cron !== "string" ||
+          typeof body.timeout !== "number" ||
+          typeof body.nextRunAt !== "string"
+        ) {
+          send(res, 400, {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "repositoryId, name, commandProfile, cron, timeout, nextRunAt are required",
+            },
+          });
+          return;
+        }
+        const rec = plane.putSchedule({
+          repositoryId: body.repositoryId,
+          name: body.name,
+          commandProfile: body.commandProfile,
+          cron: body.cron,
+          timeout: body.timeout,
+          nextRunAt: body.nextRunAt,
+          ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+          ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
+          ...(typeof body.id === "string" ? { id: body.id } : {}),
+        });
+        send(res, 201, rec);
+        return;
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return;
+      }
+    }
+    const schedTrigger = /^\/api\/v1\/schedules\/([^/]+)\/trigger$/.exec(url.pathname);
+    if (method === "POST" && schedTrigger) {
+      const result = plane.triggerSchedule(schedTrigger[1]!);
+      if (!result.ok) {
+        send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
+        return;
+      }
+      send(res, 201, result.session);
+      return;
+    }
+    const schedMatch = /^\/api\/v1\/schedules\/([^/]+)$/.exec(url.pathname);
+    if (schedMatch) {
+      const id = schedMatch[1]!;
+      if (method === "GET") {
+        const s = plane.getSchedule(id);
+        if (!s) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "schedule not found" } });
+          return;
+        }
+        send(res, 200, s);
+        return;
+      }
+      if (method === "PUT" || method === "PATCH") {
+        try {
+          const body = (await readJson(req)) as Record<string, unknown>;
+          const result = plane.updateSchedule(id, {
+            ...(typeof body.name === "string" ? { name: body.name } : {}),
+            ...(typeof body.commandProfile === "string"
+              ? { commandProfile: body.commandProfile }
+              : {}),
+            ...(typeof body.cron === "string" ? { cron: body.cron } : {}),
+            ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
+            ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
+            ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
+            ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
+            ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
+          });
+          if (!result.ok) {
+            send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+            return;
+          }
+          send(res, 200, result.schedule);
+          return;
+        } catch {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+          });
+          return;
+        }
+      }
+      if (method === "DELETE") {
+        const result = plane.deleteSchedule(id);
+        if (!result.ok) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          return;
+        }
+        send(res, 204, null);
+        return;
+      }
+    }
+
+    // --- session cancel ---
+    const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
+    if (method === "POST" && cancelMatch) {
+      const result = plane.cancelSession(cancelMatch[1]!);
+      if (!result.ok) {
+        send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
+        return;
+      }
+      send(res, 200, result.session);
       return;
     }
 

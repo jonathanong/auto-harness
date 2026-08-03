@@ -145,10 +145,24 @@ pnpm local:e2e        # create handler + SessionRunner (feature ref)
 pnpm local:cli-e2e    # documented `pnpm local:agent` path with ref: main
 pnpm local:api-smoke  # POST /sessions → 201
 pnpm local:ws-e2e     # WebSocket create→assign→run
-# optional UI: pnpm local:web  (create-session form on :3000)
+pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
+# optional UI: pnpm local:web  (create-session + repos/schedules/sessions/agents on :3000)
 ```
 
 `pnpm check` runs typecheck, oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), knip, dependency-cruiser, and lychee.
+
+### Operator management (local)
+
+With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1` supports:
+
+| Resource     | Routes                                                                                |
+| ------------ | ------------------------------------------------------------------------------------- |
+| Repositories | `GET/POST /repositories`, `GET/PUT/DELETE /repositories/:id`                          |
+| Schedules    | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger` |
+| Sessions     | `GET /sessions`, `POST /sessions/:id/cancel`                                          |
+| Agents       | `GET /agents`, `POST /agents/drain`                                                   |
+
+`pnpm local:web` exposes thin HTML pages for the same surfaces (list/add repos and schedules, session list + cancel, agent list + drain). Command profiles remain agent-reported names only (D4).
 
 ---
 

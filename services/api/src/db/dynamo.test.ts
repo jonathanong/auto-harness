@@ -180,6 +180,17 @@ describe("DynamoDB Local integration", () => {
     expect((await s.getSchedule("sch-1"))?.name).toBe("job");
     expect(await s.getSchedule("nope")).toBeNull();
     expect((await s.listSchedules()).length).toBeGreaterThan(0);
+    await s.putRepository({
+      id: "repo-1",
+      name: "Repo",
+      url: "/tmp/r",
+      defaultBranch: "main",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect((await s.getRepository("repo-1"))?.name).toBe("Repo");
+    expect(await s.getRepository("nope")).toBeNull();
+    expect((await s.listRepositories()).length).toBeGreaterThan(0);
     expect(
       await s.tryClaimSchedule(
         "sch-1",

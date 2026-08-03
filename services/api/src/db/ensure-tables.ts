@@ -127,6 +127,13 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await createIfMissing(ddb, {
+    TableName: names.repositories,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+  });
+
+  await createIfMissing(ddb, {
     TableName: names.archives,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [{ AttributeName: "key", AttributeType: ScalarAttributeType.S }],

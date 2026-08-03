@@ -13,7 +13,7 @@ import {
   type SessionStatus,
 } from "@auto-harness/shared";
 
-import type { DynamoPlaneStorage } from "./db/plane-storage.js";
+import type { DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.js";
 import type { SessionRecord, WorktreeRecord } from "./db/types.js";
 import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.js";
 
@@ -75,6 +75,7 @@ export type ControlPlaneOptions = {
   idFactory?: () => string;
   connectionIdFactory?: () => string;
   scheduleIdFactory?: () => string;
+  repositoryIdFactory?: () => string;
   shardCount?: number;
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
@@ -102,6 +103,7 @@ export class ControlPlane {
   private readonly agentConnection = new Map<string, string>();
   private readonly logs = new Map<string, LogRecord[]>();
   private readonly schedules = new Map<string, ScheduleRecord>();
+  private readonly repositories = new Map<string, RepositoryRecord>();
   private readonly archives = new Map<string, ArchiveObject>();
   private readonly webhookDeliveries: WebhookDelivery[] = [];
   private readonly pendingAcks = new Map<
@@ -121,6 +123,7 @@ export class ControlPlane {
   private readonly idFactory: () => string;
   private readonly connectionIdFactory: () => string;
   private readonly scheduleIdFactory: () => string;
+  private readonly repositoryIdFactory: () => string;
   private readonly shardCount: number;
   private readonly ackDeadlineMs: number;
   private readonly heartbeatStaleMs: number;
@@ -139,6 +142,9 @@ export class ControlPlane {
     this.scheduleIdFactory = options.scheduleIdFactory
       ? options.scheduleIdFactory
       : () => `sched-${randomBytes(4).toString("hex")}`;
+    this.repositoryIdFactory = options.repositoryIdFactory
+      ? options.repositoryIdFactory
+      : () => `repo-${randomBytes(4).toString("hex")}`;
     this.shardCount = options.shardCount ? options.shardCount : DEFAULT_QUEUE_SHARD_COUNT;
     this.ackDeadlineMs = options.ackDeadlineMs ? options.ackDeadlineMs : DEFAULT_ACK_DEADLINE_MS;
     this.heartbeatStaleMs = options.heartbeatStaleMs
@@ -168,6 +174,7 @@ export class ControlPlane {
     this.agentConnection.clear();
     this.logs.clear();
     this.schedules.clear();
+    this.repositories.clear();
     this.archives.clear();
     for (const s of await this.storage.listAllSessions()) {
       this.sessions.set(s.id, s);
@@ -181,6 +188,9 @@ export class ControlPlane {
     }
     for (const sch of await this.storage.listSchedules()) {
       this.schedules.set(sch.id, sch);
+    }
+    for (const r of await this.storage.listRepositories()) {
+      this.repositories.set(r.id, r);
     }
     for (const a of await this.storage.listArchives()) {
       this.archives.set(a.key, a);
@@ -937,8 +947,9 @@ export class ControlPlane {
     nextRunAt: string;
     enabled?: boolean;
     ref?: string;
+    id?: string;
   }): ScheduleRecord {
-    const id = this.scheduleIdFactory();
+    const id = input.id ?? this.scheduleIdFactory();
     const rec: ScheduleRecord = {
       id,
       repositoryId: input.repositoryId,
@@ -957,6 +968,223 @@ export class ControlPlane {
       this.queueWrite(this.storage.putSchedule({ ...rec }));
     }
     return { ...rec };
+  }
+
+  getSchedule(id: string): ScheduleRecord | null {
+    const s = this.schedules.get(id);
+    return s ? { ...s } : null;
+  }
+
+  listSchedules(): ScheduleRecord[] {
+    return [...this.schedules.values()].map((s) => ({ ...s }));
+  }
+
+  updateSchedule(
+    id: string,
+    patch: Partial<{
+      name: string;
+      commandProfile: string;
+      cron: string;
+      timeout: number;
+      nextRunAt: string;
+      enabled: boolean;
+      ref: string;
+      repositoryId: string;
+    }>,
+  ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+    const existing = this.schedules.get(id);
+    if (!existing) {
+      return { ok: false, error: "schedule not found" };
+    }
+    const next: ScheduleRecord = {
+      ...existing,
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.commandProfile !== undefined ? { commandProfile: patch.commandProfile } : {}),
+      ...(patch.cron !== undefined ? { cron: patch.cron } : {}),
+      ...(patch.timeout !== undefined ? { timeout: patch.timeout } : {}),
+      ...(patch.nextRunAt !== undefined ? { nextRunAt: patch.nextRunAt } : {}),
+      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
+      ...(patch.repositoryId !== undefined ? { repositoryId: patch.repositoryId } : {}),
+      ...(patch.ref !== undefined ? { ref: patch.ref } : {}),
+    };
+    this.schedules.set(id, next);
+    if (this.storage) {
+      this.queueWrite(this.storage.putSchedule({ ...next }));
+    }
+    return { ok: true, schedule: { ...next } };
+  }
+
+  deleteSchedule(id: string): { ok: true } | { ok: false; error: string } {
+    if (!this.schedules.has(id)) {
+      return { ok: false, error: "schedule not found" };
+    }
+    this.schedules.delete(id);
+    if (this.storage) {
+      this.queueWrite(this.storage.deleteSchedule(id));
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Manual trigger: creates one scheduled session and advances nextRunAt
+   * (same provenance as cron: type/source schedule).
+   */
+  triggerSchedule(
+    id: string,
+    nowIso: string = this.now(),
+  ): { ok: true; session: PublicSession } | { ok: false; error: string } {
+    const schedule = this.schedules.get(id);
+    if (!schedule) {
+      return { ok: false, error: "schedule not found" };
+    }
+    if (!schedule.enabled) {
+      return { ok: false, error: "schedule is disabled" };
+    }
+    schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+    schedule.lastRunAt = nowIso;
+    if (this.storage) {
+      this.queueWrite(this.storage.putSchedule({ ...schedule }));
+    }
+    const result = this.createSession({
+      repositoryId: schedule.repositoryId,
+      prompt: `scheduled:${schedule.name}`,
+      commandProfile: schedule.commandProfile,
+      timeout: schedule.timeout,
+      type: "scheduled",
+      source: "schedule",
+      ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+    });
+    if (!result.ok) {
+      return { ok: false, error: result.error };
+    }
+    return { ok: true, session: result.session };
+  }
+
+  createRepository(input: {
+    id?: string;
+    name: string;
+    url: string;
+    defaultBranch?: string;
+    setupScript?: string;
+    terminalHookScript?: string;
+  }): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
+    if (!input.name || !input.url) {
+      return { ok: false, error: "name and url are required" };
+    }
+    const id = input.id ?? this.repositoryIdFactory();
+    if (this.repositories.has(id)) {
+      return { ok: false, error: `repository already exists: ${id}` };
+    }
+    const at = this.now();
+    const rec: RepositoryRecord = {
+      id,
+      name: input.name,
+      url: input.url,
+      defaultBranch: input.defaultBranch ?? "main",
+      createdAt: at,
+      updatedAt: at,
+      ...(input.setupScript !== undefined ? { setupScript: input.setupScript } : {}),
+      ...(input.terminalHookScript !== undefined
+        ? { terminalHookScript: input.terminalHookScript }
+        : {}),
+    };
+    this.repositories.set(id, rec);
+    if (this.storage) {
+      this.queueWrite(this.storage.putRepository({ ...rec }));
+    }
+    return { ok: true, repository: { ...rec } };
+  }
+
+  getRepository(id: string): RepositoryRecord | null {
+    const r = this.repositories.get(id);
+    return r ? { ...r } : null;
+  }
+
+  listRepositories(): RepositoryRecord[] {
+    return [...this.repositories.values()]
+      .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+      .map((r) => ({ ...r }));
+  }
+
+  updateRepository(
+    id: string,
+    patch: Partial<{
+      name: string;
+      url: string;
+      defaultBranch: string;
+      setupScript: string;
+      terminalHookScript: string;
+    }>,
+  ): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
+    const existing = this.repositories.get(id);
+    if (!existing) {
+      return { ok: false, error: "repository not found" };
+    }
+    const next: RepositoryRecord = {
+      ...existing,
+      updatedAt: this.now(),
+      ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.url !== undefined ? { url: patch.url } : {}),
+      ...(patch.defaultBranch !== undefined ? { defaultBranch: patch.defaultBranch } : {}),
+      ...(patch.setupScript !== undefined ? { setupScript: patch.setupScript } : {}),
+      ...(patch.terminalHookScript !== undefined
+        ? { terminalHookScript: patch.terminalHookScript }
+        : {}),
+    };
+    this.repositories.set(id, next);
+    if (this.storage) {
+      this.queueWrite(this.storage.putRepository({ ...next }));
+    }
+    return { ok: true, repository: { ...next } };
+  }
+
+  deleteRepository(id: string): { ok: true } | { ok: false; error: string } {
+    if (!this.repositories.has(id)) {
+      return { ok: false, error: "repository not found" };
+    }
+    this.repositories.delete(id);
+    if (this.storage) {
+      this.queueWrite(this.storage.deleteRepository(id));
+    }
+    return { ok: true };
+  }
+
+  /**
+   * Cancel a non-terminal session. Running sessions emit session:cancel and
+   * keep the worktree busy until a late terminal (same as replace).
+   */
+  cancelSession(id: string): { ok: true; session: PublicSession } | { ok: false; error: string } {
+    const session = this.sessions.get(id);
+    if (!session) {
+      return { ok: false, error: "session not found" };
+    }
+    if (
+      session.status === "completed" ||
+      session.status === "failed" ||
+      session.status === "cancelled" ||
+      session.status === "timed_out"
+    ) {
+      return { ok: false, error: `session already terminal: ${session.status}` };
+    }
+    this.pendingAcks.delete(id);
+    const wasRunning = session.status === "running";
+    const agentId = session.agentId;
+    const worktreeId = session.worktreeId;
+    session.status = "cancelled";
+    session.errorMessage = "cancelled by operator";
+    session.completedAt = this.now();
+    if (wasRunning && agentId) {
+      this.onAgentMessage?.(agentId, { type: "session:cancel", sessionId: id });
+      this.persistSession(session);
+      return { ok: true, session: this.toPublic(session) };
+    }
+    if (worktreeId) {
+      this.releaseWorktree(worktreeId);
+    }
+    session.worktreeId = null;
+    session.agentId = null;
+    this.persistSession(session);
+    return { ok: true, session: this.toPublic(session) };
   }
 
   /**

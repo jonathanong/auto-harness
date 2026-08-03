@@ -50,6 +50,18 @@ type ArchiveObject = {
   contentType: string;
 };
 
+export type RepositoryRecord = {
+  id: string;
+  name: string;
+  /** Git remote URL and/or local path identity for operators. */
+  url: string;
+  defaultBranch: string;
+  setupScript?: string;
+  terminalHookScript?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /**
  * DynamoDB persistence for the control plane (DynamoDB Local or AWS).
  * Conditional writes implement exclusive claim and agent register uniqueness.
@@ -363,6 +375,35 @@ export class DynamoPlaneStorage {
     return (res.Items ?? []) as ScheduleRecord[];
   }
 
+  async deleteSchedule(id: string): Promise<void> {
+    await this.doc.send(new DeleteCommand({ TableName: this.tables.schedules, Key: { id } }));
+  }
+
+  async putRepository(rec: RepositoryRecord): Promise<void> {
+    await this.doc.send(
+      new PutCommand({
+        TableName: this.tables.repositories,
+        Item: { ...rec },
+      }),
+    );
+  }
+
+  async getRepository(id: string): Promise<RepositoryRecord | null> {
+    const res = await this.doc.send(
+      new GetCommand({ TableName: this.tables.repositories, Key: { id } }),
+    );
+    return (res.Item as RepositoryRecord | undefined) ?? null;
+  }
+
+  async listRepositories(): Promise<RepositoryRecord[]> {
+    const res = await this.doc.send(new ScanCommand({ TableName: this.tables.repositories }));
+    return (res.Items ?? []) as RepositoryRecord[];
+  }
+
+  async deleteRepository(id: string): Promise<void> {
+    await this.doc.send(new DeleteCommand({ TableName: this.tables.repositories, Key: { id } }));
+  }
+
   /**
    * Conditional nextRunAt advance (Invariant 4).
    */
@@ -461,6 +502,11 @@ export class DynamoPlaneStorage {
     for (const s of await this.listSchedules()) {
       await this.doc.send(
         new DeleteCommand({ TableName: this.tables.schedules, Key: { id: s.id } }),
+      );
+    }
+    for (const r of await this.listRepositories()) {
+      await this.doc.send(
+        new DeleteCommand({ TableName: this.tables.repositories, Key: { id: r.id } }),
       );
     }
     for (const a of await this.listArchives()) {
