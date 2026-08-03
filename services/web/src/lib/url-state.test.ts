@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  agentListHref,
-  parseAgentListState,
+  hostListHref,
+  parseHostListState,
   parseSessionListState,
   sessionListHref,
 } from "./url-state.ts";
@@ -30,13 +30,13 @@ describe("url-state", () => {
     expect(sessionListHref({ cursor: "c1" })).toBe("/sessions?cursor=c1");
   });
 
-  it("parses and serializes agent list filters", () => {
-    expect(parseAgentListState(new URLSearchParams())).toEqual({ online: "all" });
-    expect(parseAgentListState(new URLSearchParams("online=online"))).toEqual({
+  it("parses and serializes host list filters", () => {
+    expect(parseHostListState(new URLSearchParams())).toEqual({ online: "all" });
+    expect(parseHostListState(new URLSearchParams("online=online"))).toEqual({
       online: "online",
     });
-    expect(agentListHref({})).toBe("/agents");
-    expect(agentListHref({ online: "all" })).toBe("/agents");
-    expect(agentListHref({ online: "offline" })).toBe("/agents?online=offline");
+    expect(hostListHref({})).toBe("/hosts");
+    expect(hostListHref({ online: "all" })).toBe("/hosts");
+    expect(hostListHref({ online: "offline" })).toBe("/hosts?online=offline");
   });
 });

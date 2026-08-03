@@ -110,7 +110,7 @@ When the **API** changes: roll control plane first ([deploy-aws.md](deploy-aws.m
 
 | When                       | Gate                                                                                         |
 | -------------------------- | -------------------------------------------------------------------------------------------- |
-| After agent install/update | Online in `/agents`, expected profiles, one smoke session                                    |
+| After agent install/update | Online in `/hosts`, expected profiles, one smoke session                                     |
 | After hard kill / crash    | Re-register; reconcile running sessions ([agent.md](agent.md#disconnect-and-crash-recovery)) |
 
 ---

@@ -354,7 +354,7 @@ With `pnpm local:web` and API up:
 | ---------------------------------- | -------------------------------------------------------------- |
 | http://127.0.0.1:7421/             | Create form; profile **dropdown** includes only agent profiles |
 | http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                      |
-| http://127.0.0.1:7421/agents       | Shows agent online + profiles                                  |
+| http://127.0.0.1:7421/hosts        | Shows host online + profiles                                   |
 | http://127.0.0.1:7421/repositories | List/add works against API                                     |
 | http://127.0.0.1:7421/schedules    | List/add/trigger works                                         |
 
@@ -374,7 +374,7 @@ Copy into the PR or agent final report:
 [ ] Echo session: create → assign → completed; logs present
 [ ] Real CLI session (if available): create → assign → completed; spawn argv matches profile
 [ ] Unknown / free-form profile rejected on web create path (400)
-[ ] Web UI lists sessions/agents; profile dropdown is not free text
+[ ] Web UI lists sessions/hosts; profile dropdown is not free text
 [ ] No secrets in prompts or session JSON
 ```
 

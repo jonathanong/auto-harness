@@ -119,7 +119,7 @@ pnpm local:api
 curl -fsS -X PUT http://127.0.0.1:7420/api/v1/agents/local-1/config \
   -H 'content-type: application/json' \
   -d @examples/local/agent-host.config.json
-# or use the Agents page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /agents
+# or use the Hosts page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /hosts
 ```
 
 **Body fields:** `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
@@ -255,14 +255,15 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 
 ## Related
 
-| Doc                                | Role                               |
-| ---------------------------------- | ---------------------------------- |
-| [setup.md](setup.md)               | Install overview                   |
-| [deploy.md](deploy.md)             | Deploy index (local / AWS / agent) |
-| [deploy-local.md](deploy-local.md) | Local deploy / update / teardown   |
-| [cli.md](cli.md)                   | Agent/API CLI commands             |
-| [api.md](api.md)                   | REST shapes                        |
-| [websocket.md](websocket.md)       | Agent + UI real-time protocol      |
-| [agent.md](agent.md)               | Agent internals                    |
-| [aws.md](aws.md)                   | Control-plane design               |
-| [plan.md](plan.md)                 | Phases and acceptance criteria     |
+| Doc                                | Role                                      |
+| ---------------------------------- | ----------------------------------------- |
+| [setup.md](setup.md)               | Install overview                          |
+| [deploy.md](deploy.md)             | Deploy index (local / AWS / agent)        |
+| [deploy-local.md](deploy-local.md) | Local deploy / update / teardown          |
+| [cli.md](cli.md)                   | Agent/API CLI commands                    |
+| [terminology.md](terminology.md)   | UI-facing vocabulary (Host, Session, ...) |
+| [api.md](api.md)                   | REST shapes                               |
+| [websocket.md](websocket.md)       | Agent + UI real-time protocol             |
+| [agent.md](agent.md)               | Agent internals                           |
+| [aws.md](aws.md)                   | Control-plane design                      |
+| [plan.md](plan.md)                 | Phases and acceptance criteria            |

@@ -118,4 +118,4 @@ GET /api/v1/agent-hosts
 }
 ```
 
-Template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Or use the Agents page in the local web UI.
+Template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Or use the Hosts page in the local web UI.

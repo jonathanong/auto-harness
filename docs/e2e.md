@@ -106,9 +106,9 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
 | `control-shell`                                                                                                                                                                                                          | App shell                           |
 | `app-header`, `app-nav`, `app-main`, `app-title`                                                                                                                                                                         | Shell chrome                        |
-| `nav-dashboard`, `nav-session-new`, `nav-sessions`, `nav-repositories`, `nav-schedules`, `nav-agents`                                                                                                                    | Nav                                 |
+| `nav-dashboard`, `nav-session-new`, `nav-sessions`, `nav-repositories`, `nav-schedules`, `nav-hosts`                                                                                                                     | Nav                                 |
 | `page-dashboard`, `dashboard-heading`, `dashboard-new-session`, `dashboard-stats`                                                                                                                                        | Dashboard                           |
-| `stat-running`, `stat-running-value`, `stat-queued`, `stat-queued-value`, `stat-agents-online`, `stat-agents-online-value`                                                                                               | Dashboard stats                     |
+| `stat-running`, `stat-running-value`, `stat-queued`, `stat-queued-value`, `stat-hosts-online`, `stat-hosts-online-value`                                                                                                 | Dashboard stats                     |
 | `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`                                                                                                                      | Sessions list                       |
 | `page-session-new`, `session-new-heading`                                                                                                                                                                                | New session                         |
 | `form-create-session`, `create-session-repository-id`, `create-session-command-profile`, `create-session-prompt`, `create-session-timeout`, `create-session-ref`, `create-session-submit`, `create-session-error`        | Create session form                 |
@@ -119,7 +119,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-path`, `worktree-detail-back`, `page-worktree-detail-not-found`                                                                        | Worktree detail (`/worktrees/[id]`) |
 | `page-schedules`, `schedules-heading`                                                                                                                                                                                    | Schedules                           |
 | `form-create-schedule`, `schedule-repository-id`, `schedule-name`, `schedule-command-profile`, `schedule-cron`, `schedule-submit`, `schedule-error`                                                                      | Schedule form                       |
-| `page-agents`, `agents-heading`, `agent-filters`, `agent-filter-online`, `form-add-agent`, `add-agent-id`, `add-agent-submit`, `add-agent-ok`, `add-agent-error`, `agent-row-*`                                          | Agents                              |
+| `page-hosts`, `hosts-heading`, `host-filters`, `host-filter-online`, `form-add-host`, `add-host-id`, `add-host-submit`, `add-host-ok`, `add-host-error`, `host-row-*`                                                    | Hosts                               |
 
 ### Agent pane (`services/agent-web`)
 
@@ -155,8 +155,8 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 |                                    | unknown worktree id shows a not-found state               | `/worktrees/[id]` 404-style state                         |
 |                                    | clicking a worktree opens its fleet-wide detail page      | Seeds host config via API; click-through to detail page   |
 | `e2e/control/schedules.spec.ts`    | schedules page and create form                            | Seeds repo via API; creates schedule in UI                |
-| `e2e/control/agents.spec.ts`       | agents page loads with filters and add form               | Page + add agent form + online filter URL                 |
-|                                    | add agent creates empty host inventory slot               | Parallel-safe empty host config                           |
+| `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                | Page + add host form + online filter URL                  |
+|                                    | add host creates empty host inventory slot                | Parallel-safe empty host config                           |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7422`
 

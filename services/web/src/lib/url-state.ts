@@ -16,19 +16,19 @@ export function sessionListHref(state: Partial<SessionListState>): string {
   return sharedSessionListHref(state, "/sessions");
 }
 
-type AgentListState = {
+type HostListState = {
   online: string;
 };
 
-export function parseAgentListState(sp: URLSearchParams): AgentListState {
+export function parseHostListState(sp: URLSearchParams): HostListState {
   return { online: sp.get("online") ?? "all" };
 }
 
-export function agentListHref(state: Partial<AgentListState>): string {
+export function hostListHref(state: Partial<HostListState>): string {
   const p = new URLSearchParams();
   if (state.online && state.online !== "all") {
     p.set("online", state.online);
   }
   const s = p.toString();
-  return s ? `/agents?${s}` : "/agents";
+  return s ? `/hosts?${s}` : "/hosts";
 }

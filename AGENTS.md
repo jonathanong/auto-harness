@@ -61,6 +61,7 @@ Package manager: **pnpm** only (see `packageManager` in root `package.json`). Lo
 
 - Read `docs/` before inventing behavior.
 - Update docs when behavior changes.
+- UI-facing vocabulary (what to call things in nav labels, copy, `data-pw` ids): [docs/terminology.md](docs/terminology.md).
 - Repo harness hookup examples: [docs/harness.md](docs/harness.md).
 
 ## CLAUDE.md

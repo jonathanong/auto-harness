@@ -8,7 +8,7 @@ import {
   validateCreateSessionForm,
 } from "../services/web/src/create-session.ts";
 import {
-  agentListHref,
+  hostListHref,
   parseSessionListState,
   sessionListHref,
 } from "../services/web/src/lib/url-state.ts";
@@ -55,6 +55,6 @@ describe("phase4 web create UI helpers", () => {
   it("keeps list filters in the URL", () => {
     expect(sessionListHref({ status: "running", q: "x" })).toContain("status=running");
     expect(parseSessionListState(new URLSearchParams("status=failed")).status).toBe("failed");
-    expect(agentListHref({ online: "online" })).toBe("/agents?online=online");
+    expect(hostListHref({ online: "online" })).toBe("/hosts?online=online");
   });
 });

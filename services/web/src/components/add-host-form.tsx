@@ -7,8 +7,8 @@ import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
-/** Control-plane: seed a host inventory slot (agent may be offline). */
-export function AddAgentForm() {
+/** Control-plane: seed a host inventory slot (the host's daemon may be offline). */
+export function AddHostForm() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -17,7 +17,7 @@ export function AddAgentForm() {
   return (
     <form
       className="grid max-w-lg gap-3"
-      data-pw="form-add-agent"
+      data-pw="form-add-host"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -44,7 +44,7 @@ export function AddAgentForm() {
             return;
           }
           setOk(
-            `Agent slot ${agentId} created (empty inventory). Run: HARNESS_AGENT_ID=${agentId} pnpm local:agent start`,
+            `Host slot ${agentId} created (empty inventory). Run: HARNESS_AGENT_ID=${agentId} pnpm local:agent start`,
           );
           form.reset();
           router.refresh();
@@ -54,25 +54,25 @@ export function AddAgentForm() {
       <div className="space-y-1">
         <Label
           htmlFor="agentId"
-          tip="Stable agent identity. Must match HARNESS_AGENT_ID on the host when you start the daemon. Does not start a process."
+          tip="Stable host identity. Must match HARNESS_AGENT_ID on the host when you start the daemon. Does not start a process."
         >
           agentId
         </Label>
-        <Input id="agentId" name="agentId" required placeholder="local-1" data-pw="add-agent-id" />
+        <Input id="agentId" name="agentId" required placeholder="local-1" data-pw="add-host-id" />
       </div>
       {error ? (
-        <p className="text-sm text-red-700" data-pw="add-agent-error">
+        <p className="text-sm text-red-700" data-pw="add-host-error">
           {error}
         </p>
       ) : null}
       {ok ? (
-        <p className="text-sm text-emerald-700" data-pw="add-agent-ok">
+        <p className="text-sm text-emerald-700" data-pw="add-host-ok">
           {ok}
         </p>
       ) : null}
       <WithTooltip tip="Creates empty host inventory on the control plane so you can attach repos before the daemon is online">
-        <Button type="submit" disabled={pending} data-pw="add-agent-submit">
-          {pending ? "Creating…" : "Add agent"}
+        <Button type="submit" disabled={pending} data-pw="add-host-submit">
+          {pending ? "Creating…" : "Add host"}
         </Button>
       </WithTooltip>
     </form>

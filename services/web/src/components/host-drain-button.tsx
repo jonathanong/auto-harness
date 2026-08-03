@@ -7,9 +7,9 @@ import { Button, WithTooltip } from "@auto-harness/ui";
 import { apiBase } from "../lib/api.ts";
 
 const DRAIN_TIP =
-  "Stop new sessions on this agent. Running sessions finish; idle worktrees go offline. Re-register (restart daemon) to clear drain. Not a full process kill.";
+  "Stop new sessions on this host. Running sessions finish; idle worktrees go offline. Re-register (restart daemon) to clear drain. Not a full process kill.";
 
-export function AgentDrainButton({ agentId }: { agentId: string }) {
+export function HostDrainButton({ agentId }: { agentId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (

@@ -8,26 +8,26 @@ import { apiGet } from "../lib/api.ts";
 export const dynamic = "force-dynamic";
 
 type Session = { id: string; status: string; prompt?: string };
-type Agent = { agentId: string; online: boolean };
+type Host = { agentId: string; online: boolean };
 
 export default async function DashboardPage() {
   let sessions: Session[] = [];
-  let agents: Agent[] = [];
+  let hosts: Host[] = [];
   let error: string | null = null;
   try {
-    const [s, a] = await Promise.all([
+    const [s, h] = await Promise.all([
       apiGet<{ items: Session[] }>("/api/v1/sessions"),
-      apiGet<{ items: Agent[] }>("/api/v1/agents"),
+      apiGet<{ items: Host[] }>("/api/v1/agents"),
     ]);
     sessions = s.items ?? [];
-    agents = a.items ?? [];
+    hosts = h.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
 
   const running = sessions.filter((x) => x.status === "running").length;
   const queued = sessions.filter((x) => x.status === "queued").length;
-  const online = agents.filter((x) => x.online).length;
+  const online = hosts.filter((x) => x.online).length;
 
   return (
     <div className="space-y-6" data-pw="page-dashboard">
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
         <Card data-pw="stat-running">
           <CardHeader>
             <CardTitle className="text-base">
-              <TipText tip="Sessions currently executing on an agent">Running</TipText>
+              <TipText tip="Sessions currently executing on a host">Running</TipText>
             </CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold" data-pw="stat-running-value">
@@ -76,23 +76,23 @@ export default async function DashboardPage() {
         <Card data-pw="stat-queued">
           <CardHeader>
             <CardTitle className="text-base">
-              <TipText tip="Sessions waiting for an available agent worktree">Queued</TipText>
+              <TipText tip="Sessions waiting for an available host worktree">Queued</TipText>
             </CardTitle>
           </CardHeader>
           <CardContent className="text-3xl font-semibold" data-pw="stat-queued-value">
             {queued}
           </CardContent>
         </Card>
-        <Card data-pw="stat-agents-online">
+        <Card data-pw="stat-hosts-online">
           <CardHeader>
             <CardTitle className="text-base">
-              <TipText tip="Agents with a live connection / total known agents (including offline slots)">
-                Agents online
+              <TipText tip="Hosts with a live connection / total known hosts (including offline slots)">
+                Hosts online
               </TipText>
             </CardTitle>
           </CardHeader>
-          <CardContent className="text-3xl font-semibold" data-pw="stat-agents-online-value">
-            {online}/{agents.length}
+          <CardContent className="text-3xl font-semibold" data-pw="stat-hosts-online-value">
+            {online}/{hosts.length}
           </CardContent>
         </Card>
       </div>

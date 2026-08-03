@@ -9,7 +9,7 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("dashboard-stats")).toBeVisible();
     await expect(page.getByTestId("stat-running-value")).toBeVisible();
     await expect(page.getByTestId("stat-queued-value")).toBeVisible();
-    await expect(page.getByTestId("stat-agents-online-value")).toBeVisible();
+    await expect(page.getByTestId("stat-hosts-online-value")).toBeVisible();
   });
 
   test("nav links are present", async ({ page }) => {
@@ -20,6 +20,6 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("nav-repositories")).toBeVisible();
     await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-schedules")).toBeVisible();
-    await expect(page.getByTestId("nav-agents")).toBeVisible();
+    await expect(page.getByTestId("nav-hosts")).toBeVisible();
   });
 });

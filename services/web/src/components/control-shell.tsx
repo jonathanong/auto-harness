@@ -8,7 +8,7 @@ const NAV = [
     href: "/",
     label: "Dashboard",
     pw: "nav-dashboard",
-    tip: "Fleet overview: running/queued sessions and agents online",
+    tip: "Fleet overview: running/queued sessions and hosts online",
   },
   {
     href: "/sessions/new",
@@ -26,7 +26,7 @@ const NAV = [
     href: "/repositories",
     label: "Repositories",
     pw: "nav-repositories",
-    tip: "Catalog repositories and attach local paths to agents",
+    tip: "Catalog repositories and attach local paths to hosts",
   },
   {
     href: "/worktrees",
@@ -41,10 +41,10 @@ const NAV = [
     tip: "Cron schedules that create sessions on a timer",
   },
   {
-    href: "/agents",
-    label: "Agents",
-    pw: "nav-agents",
-    tip: "Add agent slots, view online/offline fleet, drain agents",
+    href: "/hosts",
+    label: "Hosts",
+    pw: "nav-hosts",
+    tip: "Add host slots, view online/offline fleet, drain hosts",
   },
 ];
 
@@ -54,9 +54,9 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
     <AppShell
       pw="control-shell"
       title="Control plane"
-      titleTip="Org-wide control plane: sessions, schedules, catalog, and agent fleet"
-      subtitle="Org-wide sessions, schedules, and agent fleet"
-      subtitleTip="Agents self-register over the API/WebSocket; configure host paths on the agent pane"
+      titleTip="Org-wide control plane: sessions, schedules, catalog, and host fleet"
+      subtitle="Org-wide sessions, schedules, and host fleet"
+      subtitleTip="Hosts self-register over the API/WebSocket; configure host paths on the agent pane"
       nav={NAV}
       pathname={pathname}
     >
