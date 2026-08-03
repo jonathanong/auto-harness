@@ -40,6 +40,10 @@ jobs:
       - name: Format check
         run: pnpm fmt:check
 
+      # DynamoDB Local so write-through / createControlPlane branches hit coverage thresholds
+      - name: Start DynamoDB Local
+        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
+
       - name: Test with coverage
         run: pnpm test
 
