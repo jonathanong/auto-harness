@@ -18,6 +18,7 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
     await expect(page.getByTestId("nav-session-new")).toBeVisible();
     await expect(page.getByTestId("nav-repositories")).toBeVisible();
+    await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-schedules")).toBeVisible();
     await expect(page.getByTestId("nav-agents")).toBeVisible();
   });

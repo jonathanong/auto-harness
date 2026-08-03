@@ -16,7 +16,7 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
 
   return (
     <form
-      className="grid max-w-lg gap-3 rounded-lg border border-border p-4"
+      className="grid gap-3"
       data-pw="form-add-local-repo"
       onSubmit={(e) => {
         e.preventDefault();
@@ -54,17 +54,12 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
             setError(r.error);
             return;
           }
-          setOk(`Repository ${id} added with no worktrees. Add worktrees under the card below.`);
+          setOk(`Repository ${id} added with no worktrees. Add worktrees on the Worktrees page.`);
           form.reset();
           router.refresh();
         });
       }}
     >
-      <h3 className="text-lg font-medium">Add repository</h3>
-      <p className="text-sm text-muted-foreground">
-        Registers the catalog entry and host path only. Worktrees are added separately under the
-        repo.
-      </p>
       <div className="space-y-1">
         <Label htmlFor="id" tip="Stable id used in catalog and host inventory">
           repository id
@@ -113,7 +108,7 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
           {ok}
         </p>
       ) : null}
-      <WithTooltip tip="Adds catalog + host repo with zero worktrees — add worktrees under the card">
+      <WithTooltip tip="Adds catalog + host repo with zero worktrees — add worktrees on the Worktrees page">
         <Button type="submit" disabled={pending} data-pw="add-repo-submit">
           {pending ? "Adding…" : "Add repository"}
         </Button>

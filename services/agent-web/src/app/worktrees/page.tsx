@@ -1,32 +1,15 @@
 import { AgentWorktreesEditor } from "../../components/agent-worktrees-editor.tsx";
-import { agentId, apiGet } from "../../lib/api.ts";
-import { loadHostInventory } from "../../lib/inventory.ts";
+import { agentId } from "../../lib/api.ts";
+import { loadHostInventory, loadLiveWorktreesById } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
-type PlaneWt = {
-  id: string;
-  repositoryId: string;
-  path: string;
-  status?: string;
-  online?: boolean;
-  agentId?: string;
-};
-
 export default async function AgentWorktreesPage() {
   const id = agentId();
-  const inventory = await loadHostInventory(id);
-  let planeWts: PlaneWt[] = [];
-  try {
-    const data = await apiGet<{ items: PlaneWt[] }>("/api/v1/worktrees");
-    planeWts = (data.items ?? []).filter((w) => w.agentId === id);
-  } catch {
-    /* ignore */
-  }
-  const liveById: Record<string, { id: string; status?: string; online?: boolean }> = {};
-  for (const w of planeWts) {
-    liveById[w.id] = { id: w.id, status: w.status, online: w.online };
-  }
+  const [inventory, liveById] = await Promise.all([
+    loadHostInventory(id),
+    loadLiveWorktreesById(id),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6" data-pw="page-worktrees">

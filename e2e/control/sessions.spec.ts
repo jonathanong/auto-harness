@@ -21,10 +21,15 @@ test.describe("control plane sessions", () => {
 
   test("create session via API-backed form when profiles exist", async ({ page, request }) => {
     // Host config alone populates command-profiles (no agent register — parallel-safe).
+    // Merge into local-1's existing config instead of replacing it wholesale — other
+    // specs seed worktrees on the same agent and a blind replace would clobber them.
     const id = `pw-sess-${test.info().parallelIndex}-${Date.now()}`;
+    const cfgRes = await request.get(`http://127.0.0.1:7420/api/v1/agents/local-1/config`);
+    const cfg = cfgRes.ok() ? await cfgRes.json() : { repositories: [], commandProfiles: {} };
     await request.put(`http://127.0.0.1:7420/api/v1/agents/local-1/config`, {
       data: {
         repositories: [
+          ...(cfg.repositories ?? []).filter((r: { id: string }) => r.id !== "demo"),
           {
             id: "demo",
             path: "/tmp/pw-demo",
@@ -32,7 +37,10 @@ test.describe("control plane sessions", () => {
             worktrees: [{ id: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
           },
         ],
-        commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
+        commandProfiles: {
+          ...cfg.commandProfiles,
+          "echo-prompt": { argv: ["echo"], appendPrompt: true },
+        },
       },
     });
 

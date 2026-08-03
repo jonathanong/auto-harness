@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
@@ -27,6 +28,8 @@ export type WorktreesHierarchyProps = {
   /** Optional node rendered under each repo header (e.g. add-worktree form). */
   renderRepoActions?: (group: WorktreeRepoGroup) => ReactNode;
   renderWorktreeActions?: (wt: WorktreeRow, group: WorktreeRepoGroup) => ReactNode;
+  /** When set, the worktree id links to `${hrefBase}/${encodeURIComponent(id)}`. */
+  hrefBase?: string;
 };
 
 /** Hierarchical worktrees: repository → worktrees table. */
@@ -36,6 +39,7 @@ export function WorktreesHierarchy({
   emptyMessage = "No worktrees yet.",
   renderRepoActions,
   renderWorktreeActions,
+  hrefBase,
 }: WorktreesHierarchyProps) {
   if (groups.length === 0) {
     return (
@@ -80,17 +84,23 @@ export function WorktreesHierarchy({
               <TableBody>
                 {g.worktrees.map((wt) => (
                   <TableRow key={wt.id} data-pw={`worktree-row-${wt.id}`}>
-                    <TableCell className="font-mono text-xs">{wt.id}</TableCell>
-                    <TableCell className="max-w-xs truncate font-mono text-xs">{wt.path}</TableCell>
-                    <TableCell>
-                      {wt.status ? <StatusBadge status={wt.status} /> : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {wt.online === undefined ? (
-                        "—"
+                    <TableCell className="font-mono text-xs">
+                      {hrefBase ? (
+                        <Link
+                          href={`${hrefBase}/${encodeURIComponent(wt.id)}`}
+                          className="hover:underline"
+                          data-pw={`worktree-link-${wt.id}`}
+                        >
+                          {wt.id}
+                        </Link>
                       ) : (
-                        <StatusBadge status={String(wt.online)} />
+                        wt.id
                       )}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate font-mono text-xs">{wt.path}</TableCell>
+                    <TableCell>{wt.status ? <StatusBadge status={wt.status} /> : "—"}</TableCell>
+                    <TableCell>
+                      {wt.online === undefined ? "—" : <StatusBadge status={String(wt.online)} />}
                     </TableCell>
                     {showAgent ? (
                       <TableCell className="font-mono text-xs">{wt.agentId ?? "—"}</TableCell>

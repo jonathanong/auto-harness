@@ -1,6 +1,28 @@
 import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
 
-import { apiBase } from "./api.ts";
+import { apiBase, apiGet } from "./api.ts";
+
+type LiveWorktree = { status?: string; online?: boolean };
+
+/** Control-plane worktree status/online for this agent, keyed by worktree id. */
+export async function loadLiveWorktreesById(
+  agentId: string,
+): Promise<Record<string, LiveWorktree>> {
+  try {
+    const data = await apiGet<{
+      items: Array<{ id: string; agentId?: string; status?: string; online?: boolean }>;
+    }>("/api/v1/worktrees");
+    const out: Record<string, LiveWorktree> = {};
+    for (const w of data.items ?? []) {
+      if (w.agentId === agentId) {
+        out[w.id] = { status: w.status, online: w.online };
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
 
 export async function loadHostInventory(agentId: string): Promise<HostInventory> {
   try {

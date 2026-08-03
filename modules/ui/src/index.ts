@@ -23,10 +23,7 @@ export {
   WithTooltip,
   type WithTooltipProps,
 } from "./components/tooltip.tsx";
-export {
-  CursorPagination,
-  type CursorPaginationProps,
-} from "./components/cursor-pagination.tsx";
+export { CursorPagination, type CursorPaginationProps } from "./components/cursor-pagination.tsx";
 export {
   SessionsTable,
   type SessionRow,
@@ -44,3 +41,12 @@ export {
   type RepositoryRow,
   type RepositoriesTableProps,
 } from "./components/repositories-table.tsx";
+export { WorktreeDetail, type WorktreeDetailProps } from "./components/worktree-detail.tsx";
+export {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "./components/dialog.tsx";

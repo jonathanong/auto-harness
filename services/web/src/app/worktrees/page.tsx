@@ -51,6 +51,7 @@ export default async function WorktreesPage() {
       <WorktreesHierarchy
         groups={groups}
         showAgent
+        hrefBase="/worktrees"
         emptyMessage="No worktrees registered yet."
       />
     </div>

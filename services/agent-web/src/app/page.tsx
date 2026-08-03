@@ -1,14 +1,12 @@
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  StatusBadge,
-} from "@auto-harness/ui";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle, StatusBadge } from "@auto-harness/ui";
 
 import { DrainButton } from "../components/drain-button.tsx";
 import { TipText } from "../components/tip-text.tsx";
 import { agentId, apiBase, apiGet } from "../lib/api.ts";
+
+const CLICKABLE_CARD =
+  "transition-colors hover:bg-muted/40 hover:border-foreground/20 cursor-pointer";
 
 export const dynamic = "force-dynamic";
 
@@ -76,16 +74,18 @@ export default async function AgentStatusPage() {
             <StatusBadge status={String(me?.online ?? false)} />
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              <TipText tip="Whether host inventory exists for this agentId">Host config</TipText>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            {hasConfig ? "present" : "missing — add under Repositories"}
-          </CardContent>
-        </Card>
+        <Link href="/repositories" data-pw="stat-host-config-link">
+          <Card className={CLICKABLE_CARD}>
+            <CardHeader>
+              <CardTitle className="text-base">
+                <TipText tip="Whether host inventory exists for this agentId">Host config</TipText>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm">
+              {hasConfig ? "present" : "missing — add under Repositories"}
+            </CardContent>
+          </Card>
+        </Link>
         <Card>
           <CardHeader>
             <CardTitle className="text-base">
@@ -101,23 +101,27 @@ export default async function AgentStatusPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Worktrees (live)</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-semibold" data-pw="stat-worktrees">
-            {worktreeCount}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Recent page sample</CardTitle>
-          </CardHeader>
-          <CardContent className="text-3xl font-semibold" data-pw="stat-sessions-sample">
-            {sessionCount}
-            <span className="ml-2 text-sm font-normal text-muted-foreground">on first page</span>
-          </CardContent>
-        </Card>
+        <Link href="/worktrees" data-pw="stat-worktrees-link">
+          <Card className={CLICKABLE_CARD}>
+            <CardHeader>
+              <CardTitle className="text-base">Worktrees (live)</CardTitle>
+            </CardHeader>
+            <CardContent className="text-3xl font-semibold" data-pw="stat-worktrees">
+              {worktreeCount}
+            </CardContent>
+          </Card>
+        </Link>
+        <Link href="/sessions" data-pw="stat-sessions-link">
+          <Card className={CLICKABLE_CARD}>
+            <CardHeader>
+              <CardTitle className="text-base">Recent page sample</CardTitle>
+            </CardHeader>
+            <CardContent className="text-3xl font-semibold" data-pw="stat-sessions-sample">
+              {sessionCount}
+              <span className="ml-2 text-sm font-normal text-muted-foreground">on first page</span>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
     </div>
   );
