@@ -54,7 +54,7 @@ export const PACKAGE_SCOPE = "@auto-harness" as const;
 
 /**
  * Local stack defaults (adjacent 7xxx ports). Override via HARNESS_* env in production.
- * Control-plane UI and agent-pane UI are adjacent (7421/7422) so they're easy to tell apart;
+ * Control-plane UI and host-pane UI are adjacent (7421/7422) so they're easy to tell apart;
  * DynamoDB Local (not a browser UI) trails at 7423.
  */
 export const LOCAL_API_HTTP = "http://127.0.0.1:7420" as const;

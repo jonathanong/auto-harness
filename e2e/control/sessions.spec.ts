@@ -34,7 +34,7 @@ test.describe("control plane sessions", () => {
             id: "demo",
             path: "/tmp/pw-demo",
             defaultBranch: "main",
-            worktrees: [{ id: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
+            worktrees: [{ id: "wt-1", name: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
           },
         ],
         commandProfiles: {

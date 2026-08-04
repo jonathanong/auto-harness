@@ -542,12 +542,19 @@ On re-register, include:
   "worktrees": [
     {
       "id": "wt-1",
+      "name": "wt-1",
       "repositoryId": "repo-abc",
       "labels": ["codex"],
       "status": "busy",
       "currentSessionId": "sess-…"
     },
-    { "id": "wt-2", "repositoryId": "repo-abc", "labels": ["codex"], "status": "idle" }
+    {
+      "id": "wt-2",
+      "name": "wt-2",
+      "repositoryId": "repo-abc",
+      "labels": ["codex"],
+      "status": "idle"
+    }
   ],
   "runningSessions": ["sess-…"]
 }

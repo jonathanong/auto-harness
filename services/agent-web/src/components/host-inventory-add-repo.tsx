@@ -5,14 +5,31 @@ import { useState, useTransition } from "react";
 import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import type { RepoCatalogEntry } from "../lib/inventory.ts";
 import { putInventory } from "./host-inventory-api.ts";
 
-export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory: HostInventory }) {
+export function AddRepoForm({
+  agentId,
+  inventory,
+  catalog,
+}: {
+  agentId: string;
+  inventory: HostInventory;
+  catalog: RepoCatalogEntry[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
+
+  if (catalog.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No unattached catalog repositories. Register one on the control plane's Repositories page
+        first, then attach it here.
+      </p>
+    );
+  }
 
   return (
     <form
@@ -24,53 +41,44 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
         setOk(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
-        const id = String(fd.get("id") ?? "").trim();
-        const name = String(fd.get("name") ?? "").trim();
+        const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         if (!id || !path) {
-          setError("id and absolute path are required");
+          setError("repository and absolute path are required");
           return;
         }
         start(async () => {
-          const base = apiBase();
-          const repoRes = await fetch(`${base}/api/v1/repositories`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              id,
-              name: name || id,
-              url: path,
-              defaultBranch,
-            }),
-          });
-          if (!repoRes.ok && repoRes.status !== 400) {
-            setError(await repoRes.text());
-            return;
-          }
           const next = upsertHostRepository(inventory, { id, path, defaultBranch });
           const r = await putInventory(agentId, next);
           if (!r.ok) {
             setError(r.error);
             return;
           }
-          setOk(`Repository ${id} added with no worktrees. Add worktrees on the Worktrees page.`);
+          setOk(`Repository attached with no worktrees.`);
           form.reset();
           router.refresh();
         });
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="id" tip="Stable id used in catalog and host inventory">
-          repository id
+        <Label htmlFor="repositoryId" tip="Existing catalog repository to attach to this host">
+          repository
         </Label>
-        <Input id="id" name="id" required placeholder="demo" data-pw="add-repo-id" />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="name" tip="Human-readable name in the control-plane catalog">
-          display name
-        </Label>
-        <Input id="name" name="name" placeholder="Demo" data-pw="add-repo-name" />
+        <select
+          id="repositoryId"
+          name="repositoryId"
+          required
+          data-pw="add-repo-catalog-id"
+          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          defaultValue={catalog[0]?.id}
+        >
+          {catalog.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="space-y-1">
         <Label
@@ -108,9 +116,9 @@ export function AddRepoForm({ agentId, inventory }: { agentId: string; inventory
           {ok}
         </p>
       ) : null}
-      <WithTooltip tip="Adds catalog + host repo with zero worktrees — add worktrees on the Worktrees page">
+      <WithTooltip tip="Attaches this host's path to an existing catalog repository, zero worktrees">
         <Button type="submit" disabled={pending} data-pw="add-repo-submit">
-          {pending ? "Adding…" : "Add repository"}
+          {pending ? "Attaching…" : "Attach repository"}
         </Button>
       </WithTooltip>
     </form>

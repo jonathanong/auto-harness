@@ -7,8 +7,10 @@ import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
-/** Control-plane form: catalog + attach local path to a selected host (no auto worktree). */
-export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
+type Repo = { id: string; name: string; defaultBranch?: string };
+
+/** Control-plane form: attach an existing catalog repository's local path to a selected host. */
+export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; repos: Repo[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +28,14 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
     );
   }
 
+  if (repos.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        No catalog repositories yet. Use <strong>Add repository</strong> above first.
+      </p>
+    );
+  }
+
   return (
     <form
       className="grid max-w-lg gap-3"
@@ -37,28 +47,21 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         const form = e.currentTarget;
         const fd = new FormData(form);
         const agentId = String(fd.get("agentId") ?? "").trim();
-        const id = String(fd.get("id") ?? "").trim();
-        const name = String(fd.get("name") ?? "").trim();
+        const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         if (!agentId || !id || !path) {
-          setError("host, id, and absolute path on the host are required");
+          setError("host, repository, and absolute path on the host are required");
           return;
         }
         start(async () => {
-          const result = await attachLocalRepo({
-            agentId,
-            id,
-            name,
-            path,
-            defaultBranch,
-          });
+          const result = await attachLocalRepo({ agentId, id, path, defaultBranch });
           if (!result.ok) {
             setError(result.error);
             return;
           }
           setOk(
-            `Registered ${id} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
+            `Attached ${id} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
           );
           form.reset();
           router.refresh();
@@ -85,16 +88,23 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
         </select>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="id" tip="Repository id used in catalog and host inventory">
-          repository id
+        <Label htmlFor="repositoryId" tip="Existing catalog repository to attach to this host">
+          repository
         </Label>
-        <Input id="id" name="id" required defaultValue="demo" data-pw="attach-repo-id" />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="name" tip="Display name in the control-plane catalog">
-          display name
-        </Label>
-        <Input id="name" name="name" placeholder="Demo" data-pw="attach-repo-name" />
+        <select
+          id="repositoryId"
+          name="repositoryId"
+          required
+          data-pw="attach-repo-catalog-id"
+          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+          defaultValue={repos[0]?.id}
+        >
+          {repos.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="space-y-1">
         <Label
@@ -132,9 +142,9 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
           {ok}
         </p>
       ) : null}
-      <WithTooltip tip="Creates catalog entry and attaches repo path with zero worktrees">
+      <WithTooltip tip="Attaches an existing catalog repository's path to a host with zero worktrees">
         <Button type="submit" disabled={pending} data-pw="attach-repo-submit">
-          {pending ? "Registering…" : "Register local repo on host"}
+          {pending ? "Attaching…" : "Attach repository to host"}
         </Button>
       </WithTooltip>
     </form>

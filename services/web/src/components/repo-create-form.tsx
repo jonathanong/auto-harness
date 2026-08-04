@@ -25,10 +25,6 @@ export function RepoCreateForm() {
           url: String(fd.get("url") ?? ""),
           defaultBranch: String(fd.get("defaultBranch") ?? "main"),
         };
-        const id = String(fd.get("id") ?? "").trim();
-        if (id) {
-          body.id = id;
-        }
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/repositories`, {
             method: "POST",
@@ -45,13 +41,10 @@ export function RepoCreateForm() {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="id" tip="Optional stable id; auto-generated if omitted">
-          id (optional)
-        </Label>
-        <Input id="id" name="id" data-pw="repo-catalog-id" />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="name" tip="Human-readable name shown in the control plane">
+        <Label
+          htmlFor="name"
+          tip="Lowercase letters, numbers, and dashes only; unique across the catalog. Id is auto-generated."
+        >
           name
         </Label>
         <Input id="name" name="name" required data-pw="repo-catalog-name" />

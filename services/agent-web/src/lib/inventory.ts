@@ -24,24 +24,26 @@ export async function loadLiveWorktreesById(
   }
 }
 
+export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
+
+/** Full catalog repository list, sorted by name — used for repo pickers. */
+export async function loadRepoCatalog(): Promise<RepoCatalogEntry[]> {
+  try {
+    const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
+    return (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Catalog repository name, keyed by id — a HostRepository has no name of its
  * own (only the global catalog does); id -> name may be missing if the host
  * inventory references a catalog id that was since deleted.
  */
 export async function loadRepoNamesById(): Promise<Record<string, string>> {
-  try {
-    const data = await apiGet<{ items: Array<{ id: string; name: string }> }>(
-      "/api/v1/repositories",
-    );
-    const out: Record<string, string> = {};
-    for (const r of data.items ?? []) {
-      out[r.id] = r.name;
-    }
-    return out;
-  } catch {
-    return {};
-  }
+  const catalog = await loadRepoCatalog();
+  return Object.fromEntries(catalog.map((r) => [r.id, r.name]));
 }
 
 export async function loadHostInventory(agentId: string): Promise<HostInventory> {

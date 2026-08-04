@@ -34,7 +34,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                            |
 | `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)                                           |
 | `pnpm local:web`              | Control-plane Next.js UI on `:7421`                                              |
-| `pnpm local:agent-web`        | Agent-pane Next.js UI on `:7422`                                                 |
+| `pnpm local:agent-web`        | Host-pane Next.js UI on `:7422`                                                  |
 | `pnpm local:dynamodb`         | DynamoDB Local on host `:7423`                                                   |
 | `pnpm local:agent`            | Agent CLI (`status`, `run-session`)                                              |
 | `pnpm local:tmux`             | Above (minus DynamoDB, which stays in Docker), one tmux window each              |

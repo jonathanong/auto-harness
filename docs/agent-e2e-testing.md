@@ -147,6 +147,7 @@ cat > "$WORK/config/agent-host.config.json" <<EOF
       "worktrees": [
         {
           "id": "wt-1",
+          "name": "wt-1",
           "path": "$WORK/worktrees/wt-1",
           "labels": ["echo", "grok"]
         }

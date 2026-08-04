@@ -54,8 +54,8 @@ export default async function RepositoriesPage() {
       <RepositoriesTable items={items} hrefBase="/repositories" />
 
       <div>
-        <h3 className="mb-2 text-lg font-medium">Register local repo on a host</h3>
-        <AttachLocalRepoForm agentIds={agentIds} />
+        <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
+        <AttachLocalRepoForm agentIds={agentIds} repos={items} />
       </div>
 
       <div className="border-t border-border pt-6">

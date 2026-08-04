@@ -5,21 +5,19 @@ import { RepositoriesTable, WorktreesHierarchy, type WorktreeRepoGroup } from "@
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { agentId } from "../../lib/api.ts";
-import {
-  loadHostInventory,
-  loadLiveWorktreesById,
-  loadRepoNamesById,
-} from "../../lib/inventory.ts";
+import { loadHostInventory, loadLiveWorktreesById, loadRepoCatalog } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentRepositoriesPage() {
   const id = agentId();
-  const [inventory, liveById, namesById] = await Promise.all([
+  const [inventory, liveById, catalog] = await Promise.all([
     loadHostInventory(id),
     loadLiveWorktreesById(id),
-    loadRepoNamesById(),
+    loadRepoCatalog(),
   ]);
+  const namesById = Object.fromEntries(catalog.map((r) => [r.id, r.name]));
+  const attachedIds = new Set(inventory.repositories.map((r) => r.id));
   const rows = inventory.repositories.map((r) => ({
     id: r.id,
     name: namesById[r.id] ?? r.id,
@@ -58,7 +56,11 @@ export default async function AgentRepositoriesPage() {
             Agent <code className="font-mono">{id}</code>. Add host repository paths here.
           </p>
         </div>
-        <AddRepoDialog agentId={id} inventory={inventory} />
+        <AddRepoDialog
+          agentId={id}
+          inventory={inventory}
+          catalog={catalog.filter((r) => !attachedIds.has(r.id))}
+        />
       </div>
       <RepositoriesTable
         items={rows}

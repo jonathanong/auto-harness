@@ -111,7 +111,12 @@ GET /api/v1/agent-hosts
       "defaultBranch": "main",
       "terminalHookScript": "/abs/path/hook.sh",
       "worktrees": [
-        { "id": "wt-1", "path": "/abs/path/to/repo/.worktrees/wt-1", "labels": ["echo"] }
+        {
+          "id": "wt-1",
+          "name": "wt-1",
+          "path": "/abs/path/to/repo/.worktrees/wt-1",
+          "labels": ["echo"]
+        }
       ]
     }
   ]

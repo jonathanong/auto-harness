@@ -11,25 +11,26 @@ test.describe("control plane repositories", () => {
   });
 
   test("create catalog repository via modal, then open its detail page", async ({ page }) => {
-    const id = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
+    // Name must be a lowercase-dash slug — id is now auto-generated, never typed.
+    const name = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
     await page.goto("/repositories");
     await page.getByTestId("add-repo-open").click();
     await expect(page.getByTestId("form-repo-catalog")).toBeVisible();
-    await page.getByTestId("repo-catalog-id").fill(id);
-    await page.getByTestId("repo-catalog-name").fill(`Name ${id}`);
-    await page.getByTestId("repo-catalog-url").fill(`/tmp/${id}`);
+    await page.getByTestId("repo-catalog-name").fill(name);
+    await page.getByTestId("repo-catalog-url").fill(`/tmp/${name}`);
     await page.getByTestId("repo-catalog-submit").click();
-    await expect(page.getByTestId(`repo-link-${id}`)).toBeVisible({ timeout: 15_000 });
+    const row = page.getByRole("row", { name });
+    await expect(row).toBeVisible({ timeout: 15_000 });
 
     // The dialog doesn't auto-close on success (user reviews the confirmation) — its
     // overlay blocks clicks elsewhere on the page until dismissed.
     await page.getByTestId("dialog-close").click();
     await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
 
-    await page.getByTestId(`repo-link-${id}`).click();
-    await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
-    await expect(page.getByTestId("repository-detail-id")).toHaveText(id);
-    await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${id}`);
+    await row.getByRole("link").click();
+    await expect(page).toHaveURL(/\/repositories\/[^/]+$/);
+    await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
+    await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
   });
 
   test("unknown repository id shows a not-found state", async ({ page }) => {

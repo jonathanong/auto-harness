@@ -24,7 +24,7 @@ There is **no compile step**. Scripts and CLIs run TypeScript directly via Node 
 
 ## Local ports (adjacent 7xxx)
 
-Control-plane and agent-pane UIs are adjacent (7421/7422) so they're easy to tell apart; DynamoDB Local isn't a browser UI and trails at 7423.
+Control-plane and host-pane UIs are adjacent (7421/7422) so they're easy to tell apart; DynamoDB Local isn't a browser UI and trails at 7423.
 
 | Service              | Port | URL                     |
 | -------------------- | ---- | ----------------------- |
@@ -64,7 +64,7 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                               |
 | `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                         |
 | `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                             |
-| `pnpm local:agent-web`      | Agent-pane Next.js UI on `:7422` (`HARNESS_AGENT_ID`)                           |
+| `pnpm local:agent-web`      | Host-pane Next.js UI on `:7422` (`HARNESS_AGENT_ID`)                            |
 | `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                                    |
 | `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)   |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                     |
@@ -196,11 +196,11 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
 **Intended flow**
 
 1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
-2. **Add a local repo via UI** (either place does the same thing):
-   - Control pane: http://127.0.0.1:7421/repositories → **Register local repo on an agent**
+2. **Register the repository in the catalog** (once): Control pane: http://127.0.0.1:7421/repositories → **Add repository** (name + url; id is auto-generated).
+3. **Attach it to a host** (either place does the same thing — pick the catalog repo, give a local path):
+   - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**
    - Host pane: http://127.0.0.1:7422/repositories → **Add repository**
-     Both create the control-plane catalog entry and attach host path/worktree inventory to the agent.
-3. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
+4. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
 
 Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 

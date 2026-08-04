@@ -29,7 +29,7 @@ test.describe("control plane worktrees", () => {
             id: repoId,
             path: `/tmp/${repoId}`,
             defaultBranch: "main",
-            worktrees: [{ id: wtId, path: wtPath, labels: ["echo"] }],
+            worktrees: [{ id: wtId, name: wtId, path: wtPath, labels: ["echo"] }],
           },
         ],
         commandProfiles: cfg.commandProfiles ?? {},

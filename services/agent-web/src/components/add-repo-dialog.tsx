@@ -11,14 +11,17 @@ import {
   DialogTrigger,
 } from "@auto-harness/ui";
 
+import type { RepoCatalogEntry } from "../lib/inventory.ts";
 import { AddRepoForm } from "./host-inventory-add-repo.tsx";
 
 export function AddRepoDialog({
   agentId,
   inventory,
+  catalog,
 }: {
   agentId: string;
   inventory: HostInventory;
+  catalog: RepoCatalogEntry[];
 }) {
   return (
     <Dialog>
@@ -31,11 +34,11 @@ export function AddRepoDialog({
         <DialogHeader>
           <DialogTitle>Add repository</DialogTitle>
           <DialogDescription>
-            Registers the catalog entry and host path only. Add worktrees for this repo on the
-            Worktrees page.
+            Attaches an existing catalog repository to this host's local path. To register a new
+            repository, use the control plane's Repositories page first.
           </DialogDescription>
         </DialogHeader>
-        <AddRepoForm agentId={agentId} inventory={inventory} />
+        <AddRepoForm agentId={agentId} inventory={inventory} catalog={catalog} />
       </DialogContent>
     </Dialog>
   );

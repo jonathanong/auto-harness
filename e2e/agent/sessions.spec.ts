@@ -24,7 +24,7 @@ test.describe("host pane sessions", () => {
             id: repoId,
             path: `/tmp/${repoId}`,
             defaultBranch: "main",
-            worktrees: [{ id: wtId, path: `/tmp/${repoId}/${wtId}`, labels: ["echo"] }],
+            worktrees: [{ id: wtId, name: wtId, path: `/tmp/${repoId}/${wtId}`, labels: ["echo"] }],
           },
         ],
         commandProfiles: {
@@ -45,7 +45,13 @@ test.describe("host pane sessions", () => {
         type: "agent:register",
         agentId: "local-1",
         worktrees: [
-          { id: wtId, repositoryId: repoId, path: `/tmp/${repoId}/${wtId}`, labels: ["echo"] },
+          {
+            id: wtId,
+            name: wtId,
+            repositoryId: repoId,
+            path: `/tmp/${repoId}/${wtId}`,
+            labels: ["echo"],
+          },
         ],
         commandProfiles: ["echo-prompt"],
       },

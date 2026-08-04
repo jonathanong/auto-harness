@@ -30,7 +30,7 @@ describe("applyLocalCors", () => {
     expect(headers.get("access-control-allow-methods")).toContain("POST");
   });
 
-  it("allows agent-pane origin on normal requests without finishing the response", () => {
+  it("allows host-pane origin on normal requests without finishing the response", () => {
     const headers = new Map<string, string>();
     const res = {
       setHeader(name: string, value: string) {
