@@ -55,6 +55,8 @@ export type WorktreeDetailsCardProps = {
   repoHrefBase?: string;
   /** Host path of the repository root, if known. */
   repoPath?: string;
+  /** When set, the agent field links to `${hostHrefBase}/${encodeURIComponent(agentId)}` (control plane only — the host pane has no per-host route). */
+  hostHrefBase?: string;
 };
 
 /** Worktree fields — the Settings tab's content. */
@@ -63,6 +65,7 @@ export function WorktreeDetailsCard({
   repositoryName,
   repoHrefBase,
   repoPath,
+  hostHrefBase,
 }: WorktreeDetailsCardProps) {
   return (
     <Card>
@@ -93,7 +96,18 @@ export function WorktreeDetailsCard({
           {worktree.agentId ? (
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Agent</dt>
-              <dd className="font-mono text-sm">{worktree.agentId}</dd>
+              <dd className="font-mono text-sm">
+                {hostHrefBase ? (
+                  <Link
+                    href={`${hostHrefBase}/${encodeURIComponent(worktree.agentId)}`}
+                    className="hover:underline"
+                  >
+                    {worktree.agentId}
+                  </Link>
+                ) : (
+                  worktree.agentId
+                )}
+              </dd>
             </div>
           ) : null}
           <div className="sm:col-span-2">

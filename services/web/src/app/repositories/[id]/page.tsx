@@ -9,6 +9,8 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 
+import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
+import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,7 @@ type Session = {
   prompt?: string;
   source?: string;
 };
+type AgentHost = { agentId: string; repositories: Array<{ id: string }> };
 
 export default async function RepositoryDetailPage({
   params,
@@ -88,6 +91,16 @@ export default async function RepositoryDetailPage({
     /* ignore — sessions section stays empty */
   }
 
+  let attachedHosts: AgentHost[] = [];
+  try {
+    const data = await apiGet<{ items: AgentHost[] }>("/api/v1/agent-hosts");
+    attachedHosts = (data.items ?? []).filter((h) =>
+      h.repositories.some((r) => r.id === repositoryId),
+    );
+  } catch {
+    /* ignore — attached-hosts list stays empty */
+  }
+
   return (
     <div data-pw="page-repository-detail">
       <RepositoryDetail repository={repository} backHref="/repositories">
@@ -123,7 +136,38 @@ export default async function RepositoryDetailPage({
             {
               key: "settings",
               label: "Settings",
-              content: <RepositoryDetailsCard repository={repository} />,
+              content: (
+                <div className="space-y-4" data-pw="repository-settings">
+                  <RepositoryDetailsCard repository={repository} />
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Attached hosts</h3>
+                    {attachedHosts.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Not attached to any host yet.</p>
+                    ) : (
+                      <ul className="space-y-1" data-pw="repository-attached-hosts">
+                        {attachedHosts.map((h) => (
+                          <li key={h.agentId}>
+                            <Link
+                              href={`/hosts/${encodeURIComponent(h.agentId)}`}
+                              className="font-mono text-sm hover:underline"
+                              data-pw={`repository-attached-host-${h.agentId}`}
+                            >
+                              {h.agentId}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <EditRepoForm repository={repository} />
+                    <DeleteRepoButton
+                      repositoryId={repositoryId}
+                      attachedHostCount={attachedHosts.length}
+                    />
+                  </div>
+                </div>
+              ),
             },
           ]}
         />

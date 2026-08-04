@@ -1,5 +1,7 @@
 import Link from "next/link";
+import type { HostInventory } from "@auto-harness/shared";
 import {
+  RemoveWorktreeButton,
   SessionsTable,
   Tabs,
   WorktreeDetail,
@@ -7,6 +9,7 @@ import {
   type WorktreeRow,
 } from "@auto-harness/ui";
 
+import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -83,6 +86,20 @@ export default async function WorktreeDetailPage({
     /* ignore — sessions section stays empty */
   }
 
+  let inventory: HostInventory | null = null;
+  if (worktree.agentId) {
+    try {
+      inventory = await apiGet<HostInventory>(
+        `/api/v1/agents/${encodeURIComponent(worktree.agentId)}/config`,
+      );
+    } catch {
+      /* ignore — edit/remove actions stay hidden below */
+    }
+  }
+  const hostWorktree = inventory?.repositories
+    .find((r) => r.id === worktree.repositoryId)
+    ?.worktrees.find((w) => w.id === worktree.id);
+
   const row: WorktreeRow = {
     id: worktree.id,
     name: worktree.name,
@@ -96,7 +113,20 @@ export default async function WorktreeDetailPage({
 
   return (
     <div data-pw="page-worktree-detail">
-      <WorktreeDetail worktree={row} backHref="/worktrees">
+      <WorktreeDetail
+        worktree={row}
+        backHref="/worktrees"
+        actions={
+          worktree.agentId ? (
+            <RemoveWorktreeButton
+              agentId={worktree.agentId}
+              repositoryId={worktree.repositoryId}
+              worktreeId={worktree.id}
+              redirectTo="/worktrees"
+            />
+          ) : null
+        }
+      >
         <Tabs
           basePath={`/worktrees/${encodeURIComponent(worktreeId)}`}
           active={typeof tab === "string" ? tab : "sessions"}
@@ -118,12 +148,23 @@ export default async function WorktreeDetailPage({
               key: "settings",
               label: "Settings",
               content: (
-                <WorktreeDetailsCard
-                  worktree={row}
-                  repositoryName={repoName}
-                  repoHrefBase="/repositories"
-                  repoPath={repoPath}
-                />
+                <div className="space-y-4">
+                  <WorktreeDetailsCard
+                    worktree={row}
+                    repositoryName={repoName}
+                    repoHrefBase="/repositories"
+                    repoPath={repoPath}
+                    hostHrefBase="/hosts"
+                  />
+                  {worktree.agentId && inventory && hostWorktree ? (
+                    <EditWorktreeForm
+                      agentId={worktree.agentId}
+                      inventory={inventory}
+                      repositoryId={worktree.repositoryId}
+                      worktree={hostWorktree}
+                    />
+                  ) : null}
+                </div>
               ),
             },
           ]}
