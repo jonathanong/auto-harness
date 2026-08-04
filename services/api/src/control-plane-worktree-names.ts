@@ -1,3 +1,5 @@
+import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+
 import type { AgentHostRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
@@ -26,4 +28,28 @@ export function findWorktreeNameCollision(
     }
   }
   return null;
+}
+
+/**
+ * Same invariant as findWorktreeNameCollision, for the flat worktree array shape
+ * used by the WS `agent:register` path — this is a separate wire protocol from
+ * the HTTP PUT host-config path, so it needs its own slug + collision validation
+ * rather than trusting the caller to have already checked (registerAgent is
+ * reachable by any client speaking the raw WS protocol, not just the bundled agent).
+ */
+export function validateRegisterWorktreeNames(
+  state: ControlPlaneState,
+  agentId: string,
+  worktrees: Array<{ id: string; name: string; path: string; labels: string[] }>,
+): string | null {
+  for (const wt of worktrees) {
+    if (!isValidSlugName(wt.name)) {
+      return `worktree.${wt.id}.name must be ${SLUG_NAME_HINT}`;
+    }
+  }
+  return findWorktreeNameCollision(state, agentId, {
+    agentId,
+    repositories: [{ id: "_", path: "_", defaultBranch: "main", worktrees }],
+    commandProfiles: {},
+  });
 }

@@ -1,6 +1,7 @@
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
+import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineAgentAndRequeue } from "./control-plane-worktrees.ts";
 
 export function listAgents(state: ControlPlaneState): Array<{
@@ -78,6 +79,11 @@ export function registerAgent(
     replaceExisting?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
+  const nameError = validateRegisterWorktreeNames(state, opts.agentId, opts.worktrees);
+  if (nameError) {
+    return { ok: false, error: nameError };
+  }
+
   const existing = state.agentConnection.get(opts.agentId);
   if (existing && !opts.replaceExisting) {
     return {

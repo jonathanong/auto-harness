@@ -201,5 +201,12 @@ export function deleteAgentHostConfig(
   if (state.storage) {
     queueWrite(state, state.storage.deleteAgentHost(agentId));
   }
+  // The host is gone entirely, so its worktree names must be released too —
+  // otherwise they stay permanently reserved against a host that no longer exists.
+  for (const [id, wt] of state.worktrees) {
+    if (wt.agentId === agentId) {
+      state.worktrees.delete(id);
+    }
+  }
   return { ok: true };
 }

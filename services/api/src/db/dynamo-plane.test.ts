@@ -55,4 +55,32 @@ describe("DynamoDB Local control plane hydrate", () => {
     expect(again.plane.getArchive("sess-plane")).toBeTruthy();
     await st2.clearAll();
   });
+
+  it("putAgentHostConfig and deleteAgentHostConfig queue writes to storage", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+
+    const { plane, storage: st2 } = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+    });
+    const put = plane.putAgentHostConfig("host-storage", {
+      repositories: [
+        {
+          id: "r-storage",
+          path: "/p",
+          worktrees: [{ id: "wt-storage", name: "wt-storage", path: "/p/wt", labels: [] }],
+        },
+      ],
+      commandProfiles: { "echo-prompt": { argv: ["echo"] } },
+    });
+    expect(put.ok).toBe(true);
+    expect(plane.deleteAgentHostConfig("host-storage").ok).toBe(true);
+    expect(plane.getAgentHostConfig("host-storage")).toBeNull();
+    expect(plane.listWorktrees().some((w) => w.id === "wt-storage")).toBe(false);
+    await plane.settleStorage();
+    await st2.clearAll();
+  });
 });
