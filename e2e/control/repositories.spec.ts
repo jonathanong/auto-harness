@@ -19,14 +19,17 @@ test.describe("control plane repositories", () => {
     await page.getByTestId("repo-catalog-name").fill(name);
     await page.getByTestId("repo-catalog-url").fill(`/tmp/${name}`);
     await page.getByTestId("repo-catalog-submit").click();
-    const row = page.getByRole("row", { name });
-    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("repo-catalog-ok")).toBeVisible({ timeout: 15_000 });
 
     // The dialog doesn't auto-close on success (user reviews the confirmation) — its
-    // overlay blocks clicks elsewhere on the page until dismissed.
+    // overlay blocks clicks elsewhere on the page until dismissed. It also marks the rest
+    // of the page aria-hidden while open (Radix modal Dialog), so role-based locators like
+    // getByRole("row", ...) can't find the new row until the dialog is closed.
     await page.getByTestId("dialog-close").click();
     await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
 
+    const row = page.getByRole("row", { name });
+    await expect(row).toBeVisible({ timeout: 15_000 });
     await row.getByRole("link").click();
     await expect(page).toHaveURL(/\/repositories\/[^/]+$/);
     await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
