@@ -30,7 +30,7 @@ Control-plane and agent-pane UIs are adjacent (7421/7422) so they're easy to tel
 | -------------------- | ---- | ----------------------- |
 | API (+ `/ws`)        | 7420 | `http://127.0.0.1:7420` |
 | **Control-plane UI** | 7421 | `http://127.0.0.1:7421` |
-| **Agent pane UI**    | 7422 | `http://127.0.0.1:7422` |
+| **Host pane UI**     | 7422 | `http://127.0.0.1:7422` |
 | DynamoDB Local       | 7423 | `http://127.0.0.1:7423` |
 
 ---
@@ -179,7 +179,7 @@ Issue [#2](https://github.com/jonathanong/auto-harness/issues/2): **Next.js** fo
 | UI            | Port | Command                | Role                                                     |
 | ------------- | ---- | ---------------------- | -------------------------------------------------------- |
 | Control plane | 7421 | `pnpm local:web`       | Dashboard, sessions, repos, schedules, agent **fleet**   |
-| Agent pane    | 7422 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
+| Host pane     | 7422 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
 
 Shared components: `modules/ui`.
 
@@ -187,7 +187,7 @@ Shared components: `modules/ui`.
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api         # :7420
 pnpm local:web         # :7421 control plane
-pnpm local:agent-web   # :7422 agent pane
+pnpm local:agent-web   # :7422 host pane
 pnpm local:agent start # registers even with no repos yet
 ```
 
@@ -198,7 +198,7 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
 1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
 2. **Add a local repo via UI** (either place does the same thing):
    - Control pane: http://127.0.0.1:7421/repositories → **Register local repo on an agent**
-   - Agent pane: http://127.0.0.1:7422/repositories → **Add repository**
+   - Host pane: http://127.0.0.1:7422/repositories → **Add repository**
      Both create the control-plane catalog entry and attach host path/worktree inventory to the agent.
 3. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
 

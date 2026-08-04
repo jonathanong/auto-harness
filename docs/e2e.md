@@ -124,13 +124,13 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `form-create-schedule`, `schedule-repository-id`, `schedule-name`, `schedule-command-profile`, `schedule-cron`, `schedule-submit`, `schedule-error`                                                                      | Schedule form                            |
 | `page-hosts`, `hosts-heading`, `host-filters`, `host-filter-online`, `form-add-host`, `add-host-id`, `add-host-submit`, `add-host-ok`, `add-host-error`, `host-row-*`, `host-drain-*`                                    | Hosts                                    |
 
-### Agent pane (`services/agent-web`)
+### Host pane (`services/agent-web`)
 
 | `data-pw`                                                                                                                                                                        | Where                                     |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `agent-shell`                                                                                                                                                                    | App shell                                 |
+| `host-shell`                                                                                                                                                                     | App shell                                 |
 | `nav-status`, `nav-repositories`, `nav-worktrees`, `nav-sessions`                                                                                                                | Nav                                       |
-| `page-agent-status`, `agent-status-id`, `agent-drain`                                                                                                                            | Status                                    |
+| `page-host-status`, `host-status-id`, `host-drain`                                                                                                                               | Status                                    |
 | `stat-host-config-link`, `stat-worktrees-link`, `stat-worktrees`, `stat-sessions-link`, `stat-sessions-sample`                                                                   | Status stat cards (link to pages)         |
 | `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                                     | Repositories                              |
 | `add-repo-dialog`, `dialog-close`, `form-add-local-repo`, `add-repo-id`, `add-repo-name`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository modal (no auto worktree)   |

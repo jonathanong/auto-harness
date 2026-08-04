@@ -190,7 +190,7 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
 # Terminal C — Control-plane UI (:7421)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 
-# Terminal C2 — Agent pane UI (:7422) — host inventory for this agent
+# Terminal C2 — Host pane UI (:7422) — host inventory for this agent
 export HARNESS_AGENT_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:agent-web

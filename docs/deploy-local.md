@@ -48,7 +48,7 @@ pnpm local:api
 pnpm local:web
 # → http://127.0.0.1:7421
 
-# Agent pane + daemon (env defaults: local-1 → :7420)
+# Host pane + daemon (env defaults: local-1 → :7420)
 pnpm local:agent-web
 # → http://127.0.0.1:7422
 pnpm local:agent start

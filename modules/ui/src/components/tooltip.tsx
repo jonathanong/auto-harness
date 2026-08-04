@@ -5,7 +5,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 
 import { cn } from "../lib/utils.ts";
 
-/** Root provider — place once near the app root (control-shell / agent-shell). */
+/** Root provider — place once near the app root (control-shell / host-shell). */
 export function TooltipProvider({
   delayDuration = 300,
   children,

@@ -25,7 +25,7 @@ export type AppShellProps = {
   pathname?: string;
   children: React.ReactNode;
   className?: string;
-  /** Root data-pw (e.g. control-shell / agent-shell) */
+  /** Root data-pw (e.g. control-shell / host-shell) */
   pw?: string;
 };
 

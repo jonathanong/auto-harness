@@ -14,8 +14,9 @@ The short version: **a "Host" runs "Sessions".** Never call either one an "agent
 | **Session**         | A single Claude/Codex/etc. CLI invocation running against a worktree on a host. This is what people colloquially call "an agent" — in this codebase it is always a **session**, never an agent. | `/sessions`, session status, logs                               |
 | **Repository**      | A git repo registered in the control-plane catalog, optionally with a host path attached.                                                                                                       | `/repositories`                                                 |
 | **Worktree**        | A git worktree under a repository on a specific host, where sessions actually run.                                                                                                              | `/worktrees`, worktree detail pages                             |
-| **Host inventory**  | The repositories + worktrees + command profiles configured for a given host.                                                                                                                    | Agent pane Repositories/Worktrees pages, "Add repository" modal |
+| **Host inventory**  | The repositories + worktrees + command profiles configured for a given host.                                                                                                                    | Host pane Repositories/Worktrees pages, "Add repository" modal  |
 | **Command profile** | A named, fixed `argv` (never a free-form shell string) a session can run.                                                                                                                       | Host inventory, session create form                             |
+| **Host pane**       | The per-host local UI (`services/agent-web`) for managing that host's own inventory — status, repositories, worktrees, sessions.                                                                | `services/agent-web`, port 7422                                 |
 
 ## Deliberately still "agent" (not renamed)
 
@@ -25,7 +26,7 @@ These are internal/API-level names, not UI copy. Renaming them would touch ident
 | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `agentId` / `HARNESS_AGENT_ID`                                | The stable identity a host registers under. Renaming is a breaking wire/env change.                                                                                                              |
 | `pnpm local:agent`, `services/agent/*`                        | The daemon/CLI package that runs _on_ a host and connects to the control plane.                                                                                                                  |
-| **Agent pane** (`services/agent-web`, `pnpm local:agent-web`) | The per-host local UI for managing that host's own inventory. Still says "agent" — a full rename of this surface wasn't in scope when `/hosts` was renamed; revisit if it becomes confusing too. |
+| `services/agent-web`, `pnpm local:agent-web`                  | Package dir and pnpm script for the **Host pane** (see above). UI copy inside now says "Host pane" — only the dir/command name stays "agent", to avoid churning muscle memory and paths.          |
 | `/api/v1/agents/*`, `/api/v1/agent-hosts`                     | REST routes. Renaming would be a breaking API change.                                                                                                                                            |
 
 ---

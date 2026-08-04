@@ -16,7 +16,7 @@ const CLICKABLE_CARD =
 
 export const dynamic = "force-dynamic";
 
-export default async function AgentStatusPage() {
+export default async function HostStatusPage() {
   const id = agentId();
 
   let me: { agentId: string; online: boolean; commandProfiles?: string[] } | undefined;
@@ -45,14 +45,14 @@ export default async function AgentStatusPage() {
   }
 
   return (
-    <div className="space-y-6" data-pw="page-agent-status">
+    <div className="space-y-6" data-pw="page-host-status">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <TipText
             as="h2"
             className="cursor-help text-2xl font-semibold tracking-tight"
             tip="This page is bound to HARNESS_AGENT_ID (or default local-1)"
-            pw="agent-status-id"
+            pw="host-status-id"
           >
             {id}
           </TipText>
@@ -62,9 +62,9 @@ export default async function AgentStatusPage() {
         </div>
         <DrainButton
           agentId={id}
-          label="Drain this agent"
+          label="Drain this host"
           pendingLabel="Draining…"
-          pw="agent-drain"
+          pw="host-drain"
         />
       </div>
 
