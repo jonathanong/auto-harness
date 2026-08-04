@@ -277,6 +277,11 @@ resume_failed`) rather than waiting indefinitely.
 9. **`concurrencyKey` collisions resolve deterministically before entering the queue.** Given
    `onConflict: queue | replace | reject`, the behavior is decided at `POST /sessions` time, not
    left to the scheduler to improvise later.
+10. **The control plane can do everything; the host pane is debug-only.** Hosts connect to the
+    control plane over WebSocket only — there is no reachable address for a host from the control
+    plane's side. Every action a user needs on a host (attach/edit repositories, add/remove/edit
+    worktrees, manage command profiles) must be reachable from `services/web`. `services/agent-web`
+    (`:7422`) is a local debugging tool for that host, never a required step in a normal workflow.
 
 ---
 
