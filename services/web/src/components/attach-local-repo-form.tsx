@@ -58,7 +58,7 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
             return;
           }
           setOk(
-            `Registered ${id} on host ${agentId} with no worktrees. Add worktrees on the agent pane's Repositories page.`,
+            `Registered ${id} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
           );
           form.reset();
           router.refresh();
@@ -99,7 +99,7 @@ export function AttachLocalRepoForm({ agentIds }: { agentIds: string[] }) {
       <div className="space-y-1">
         <Label
           htmlFor="path"
-          tip="Absolute path on the host machine (must exist there). Worktrees are added separately on the agent pane."
+          tip="Absolute path on the host machine (must exist there). Worktrees are added separately on the host pane."
         >
           absolute path on host
         </Label>

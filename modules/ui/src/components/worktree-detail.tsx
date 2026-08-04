@@ -16,7 +16,7 @@ export type WorktreeDetailProps = {
   children?: ReactNode;
 };
 
-/** Shared worktree detail view — reused by the agent pane and control page. */
+/** Shared worktree detail view — reused by the host pane and control page. */
 export function WorktreeDetail({
   worktree,
   repoPath,

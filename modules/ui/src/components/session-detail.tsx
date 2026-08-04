@@ -32,7 +32,7 @@ export type SessionDetailProps = {
   children?: ReactNode;
 };
 
-/** Shared session detail view — reused by the agent pane and control page. */
+/** Shared session detail view — reused by the host pane and control page. */
 export function SessionDetail({ session: s, backHref, actions, children }: SessionDetailProps) {
   return (
     <div className="space-y-6" data-pw="session-detail">

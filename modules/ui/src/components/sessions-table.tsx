@@ -23,7 +23,7 @@ export type SessionsTableProps = {
   hrefBase?: string;
 };
 
-/** Shared sessions table for control plane and agent pane. */
+/** Shared sessions table for control plane and host pane. */
 export function SessionsTable({
   items,
   showAgent = false,

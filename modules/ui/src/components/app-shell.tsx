@@ -29,7 +29,7 @@ export type AppShellProps = {
   pw?: string;
 };
 
-/** Shared chrome for control-plane and agent pane apps. */
+/** Shared chrome for control-plane and host pane apps. */
 export function AppShell({
   title,
   subtitle,

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 export type RepositorySummary = {
   id: string;
   name?: string | null;
-  /** Host path (agent pane) — prefer over `url` when both are present. */
+  /** Host path (host pane) — prefer over `url` when both are present. */
   path?: string | null;
   /** Catalog URL/path (control plane). */
   url?: string | null;
@@ -24,7 +24,7 @@ export type RepositoryDetailProps = {
   children?: ReactNode;
 };
 
-/** Shared repository detail view — reused by the agent pane and control page. */
+/** Shared repository detail view — reused by the host pane and control page. */
 export function RepositoryDetail({
   repository: r,
   backHref,

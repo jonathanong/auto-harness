@@ -25,7 +25,7 @@ function buildHref(basePath: string, status: string, q: string): string {
   return s ? `${basePath}?${s}` : basePath;
 }
 
-/** URL-backed status/search filters — shared by control plane and agent pane session lists. */
+/** URL-backed status/search filters — shared by control plane and host pane session lists. */
 export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) {
   const router = useRouter();
   const sp = useSearchParams();

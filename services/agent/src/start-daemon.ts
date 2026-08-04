@@ -67,7 +67,7 @@ export async function startAgentDaemon(options: StartDaemonOptions): Promise<{
   log(
     `agent ${options.config.agentId} registered` +
       (repoCount === 0
-        ? " (no host inventory yet — add local repos in the agent pane UI)"
+        ? " (no host inventory yet — add local repos in the host pane UI)"
         : ` (${repoCount} repo(s))`),
   );
 

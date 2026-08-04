@@ -60,7 +60,7 @@ export default async function RepositoriesPage() {
       <div className="border-t border-border pt-6">
         <h3 className="mb-2 text-lg font-medium">Worktrees by repository</h3>
         <p className="mb-2 text-sm text-muted-foreground">
-          Click a worktree to see its details and sessions. Worktrees are managed on each agent pane
+          Click a worktree to see its details and sessions. Worktrees are managed on each host pane
           (or fleet-wide on Worktrees).
         </p>
         <WorktreesHierarchy

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test.describe("agent pane repositories", () => {
+test.describe("host pane repositories", () => {
   test("repositories page loads with add-repository dialog closed", async ({ page }) => {
     await page.goto("/repositories");
     await expect(page.getByTestId("page-repositories")).toBeVisible();

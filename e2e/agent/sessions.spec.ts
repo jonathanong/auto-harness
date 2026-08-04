@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 const API = "http://127.0.0.1:7420";
 
-test.describe("agent pane sessions", () => {
+test.describe("host pane sessions", () => {
   test("sessions page loads", async ({ page }) => {
     await page.goto("/sessions");
     await expect(page.getByTestId("page-sessions")).toBeVisible();
