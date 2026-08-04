@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import {
   addHostWorktree,
   defaultWorktreePath,
+  newId,
   type HostInventory,
   type HostRepository,
 } from "@auto-harness/shared";
@@ -25,13 +26,13 @@ export function AddWorktreeForm({
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [id, setId] = useState("");
+  const [name, setName] = useState("");
   const [path, setPath] = useState("");
   const [labels, setLabels] = useState("echo");
 
   if (!open) {
     return (
-      <WithTooltip tip="Define a worktree id and absolute path under this repository (nothing is auto-created)">
+      <WithTooltip tip="Define a worktree name and absolute path under this repository (nothing is auto-created; id is auto-generated)">
         <Button
           type="button"
           variant="outline"
@@ -52,16 +53,17 @@ export function AddWorktreeForm({
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
-        const wtId = id.trim();
+        const wtName = name.trim();
         const wtPath = path.trim();
-        if (!wtId || !wtPath) {
-          setError("worktree id and absolute path are required");
+        if (!wtName || !wtPath) {
+          setError("worktree name and absolute path are required");
           return;
         }
         start(async () => {
           try {
             const next = addHostWorktree(inventory, repo.id, {
-              id: wtId,
+              id: newId(),
+              name: wtName,
               path: wtPath,
               labels: labels
                 .split(",")
@@ -74,7 +76,7 @@ export function AddWorktreeForm({
               return;
             }
             setOpen(false);
-            setId("");
+            setName("");
             setPath("");
             router.refresh();
           } catch (err) {
@@ -85,19 +87,21 @@ export function AddWorktreeForm({
     >
       <p className="text-sm font-medium">New worktree under {repo.id}</p>
       <div className="space-y-1">
-        <Label tip="Your worktree id (you choose; never auto-generated)">worktree id</Label>
+        <Label tip="Lowercase letters, numbers, and dashes only; unique across all hosts. Id is auto-generated.">
+          name
+        </Label>
         <Input
-          value={id}
+          value={name}
           onChange={(e) => {
             const v = e.target.value;
-            setId(v);
-            if (!path || path === defaultWorktreePath(repo.path, id)) {
+            setName(v);
+            if (!path || path === defaultWorktreePath(repo.path, name)) {
               setPath(v.trim() ? defaultWorktreePath(repo.path, v.trim()) : "");
             }
           }}
           required
           placeholder="runner-1"
-          data-pw={`add-worktree-id-${repo.id}`}
+          data-pw={`add-worktree-name-${repo.id}`}
         />
       </div>
       <div className="space-y-1">

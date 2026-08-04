@@ -1,14 +1,19 @@
 import { AgentWorktreesEditor } from "../../components/agent-worktrees-editor.tsx";
 import { agentId } from "../../lib/api.ts";
-import { loadHostInventory, loadLiveWorktreesById } from "../../lib/inventory.ts";
+import {
+  loadHostInventory,
+  loadLiveWorktreesById,
+  loadRepoNamesById,
+} from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentWorktreesPage() {
   const id = agentId();
-  const [inventory, liveById] = await Promise.all([
+  const [inventory, liveById, namesById] = await Promise.all([
     loadHostInventory(id),
     loadLiveWorktreesById(id),
+    loadRepoNamesById(),
   ]);
 
   return (
@@ -22,7 +27,12 @@ export default async function AgentWorktreesPage() {
           come from the control plane when the agent is registered.
         </p>
       </div>
-      <AgentWorktreesEditor agentId={id} inventory={inventory} liveById={liveById} />
+      <AgentWorktreesEditor
+        agentId={id}
+        inventory={inventory}
+        liveById={liveById}
+        namesById={namesById}
+      />
     </div>
   );
 }

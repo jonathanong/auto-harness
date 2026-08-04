@@ -1,4 +1,4 @@
-/** Shared list/cursor query helpers for UIs (control + agent panes). */
+/** Shared list/cursor query helpers for UIs (control + host panes). */
 
 export type SessionListQuery = {
   status: string;

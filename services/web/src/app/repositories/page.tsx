@@ -10,6 +10,7 @@ type Repo = { id: string; name: string; url: string; defaultBranch?: string };
 type Host = { agentId: string };
 type Wt = {
   id: string;
+  name: string;
   repositoryId: string;
   path: string;
   status?: string;
@@ -64,7 +65,11 @@ export default async function RepositoriesPage() {
           (or fleet-wide on Worktrees).
         </p>
         <WorktreesHierarchy
-          groups={groupWorktreesByRepo(worktrees)}
+          groups={groupWorktreesByRepo(worktrees).map((g) => ({
+            ...g,
+            repositoryName: items.find((r) => r.id === g.repositoryId)?.name ?? g.repositoryId,
+            repoHrefBase: "/repositories",
+          }))}
           showAgent
           hrefBase="/worktrees"
           emptyMessage="No worktrees registered yet."

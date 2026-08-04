@@ -9,7 +9,11 @@ import {
 
 import { RemoveRepoButton } from "../../../components/remove-repo-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
-import { loadHostInventory, loadLiveWorktreesById } from "../../../lib/inventory.ts";
+import {
+  loadHostInventory,
+  loadLiveWorktreesById,
+  loadRepoNamesById,
+} from "../../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,12 +53,18 @@ export default async function AgentRepositoryDetailPage({
     );
   }
 
-  const liveById = await loadLiveWorktreesById(agent);
+  const [liveById, namesById] = await Promise.all([
+    loadLiveWorktreesById(agent),
+    loadRepoNamesById(),
+  ]);
+  const repoName = namesById[repo.id] ?? repo.id;
   const group: WorktreeRepoGroup = {
     repositoryId: repo.id,
+    repositoryName: repoName,
     repoPath: repo.path,
     worktrees: repo.worktrees.map((wt) => ({
       id: wt.id,
+      name: wt.name,
       repositoryId: repo.id,
       path: wt.path,
       labels: wt.labels,
@@ -76,7 +86,7 @@ export default async function AgentRepositoryDetailPage({
   return (
     <div data-pw="page-repository-detail">
       <RepositoryDetail
-        repository={repo}
+        repository={{ ...repo, name: repoName }}
         backHref="/repositories"
         actions={
           <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />

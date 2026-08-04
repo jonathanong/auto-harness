@@ -5,27 +5,35 @@ import { RepositoriesTable, WorktreesHierarchy, type WorktreeRepoGroup } from "@
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { agentId } from "../../lib/api.ts";
-import { loadHostInventory, loadLiveWorktreesById } from "../../lib/inventory.ts";
+import {
+  loadHostInventory,
+  loadLiveWorktreesById,
+  loadRepoNamesById,
+} from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentRepositoriesPage() {
   const id = agentId();
-  const [inventory, liveById] = await Promise.all([
+  const [inventory, liveById, namesById] = await Promise.all([
     loadHostInventory(id),
     loadLiveWorktreesById(id),
+    loadRepoNamesById(),
   ]);
   const rows = inventory.repositories.map((r) => ({
     id: r.id,
-    name: r.id,
+    name: namesById[r.id] ?? r.id,
     path: r.path,
     defaultBranch: r.defaultBranch,
   }));
   const worktreeGroups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
+    repositoryName: namesById[repo.id] ?? repo.id,
+    repoHrefBase: "/repositories",
     repoPath: repo.path,
     worktrees: repo.worktrees.map((wt) => ({
       id: wt.id,
+      name: wt.name,
       repositoryId: repo.id,
       path: wt.path,
       labels: wt.labels,

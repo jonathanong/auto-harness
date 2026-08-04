@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 
 export type WorktreeRow = {
   id: string;
+  name: string;
   repositoryId: string;
   path: string;
   status?: string;
@@ -16,8 +17,12 @@ export type WorktreeRow = {
 
 export type WorktreeRepoGroup = {
   repositoryId: string;
+  /** Catalog name; falls back to repositoryId when unknown (e.g. deleted catalog entry). */
+  repositoryName?: string;
   /** Optional host path for the repo root. */
   repoPath?: string;
+  /** When set, the repo name links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
+  repoHrefBase?: string;
   worktrees: WorktreeRow[];
 };
 
@@ -59,7 +64,18 @@ export function WorktreesHierarchy({
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h3 className="font-mono text-base font-semibold">{g.repositoryId}</h3>
+              <h3 className="text-base font-semibold">
+                {g.repoHrefBase ? (
+                  <Link
+                    href={`${g.repoHrefBase}/${encodeURIComponent(g.repositoryId)}`}
+                    className="hover:underline"
+                  >
+                    {g.repositoryName ?? g.repositoryId}
+                  </Link>
+                ) : (
+                  (g.repositoryName ?? g.repositoryId)
+                )}
+              </h3>
               {g.repoPath ? (
                 <p className="break-all font-mono text-xs text-muted-foreground">{g.repoPath}</p>
               ) : null}
@@ -72,7 +88,7 @@ export function WorktreesHierarchy({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>id</TableHead>
+                  <TableHead>name</TableHead>
                   <TableHead>path</TableHead>
                   <TableHead>status</TableHead>
                   <TableHead>online</TableHead>
@@ -84,17 +100,17 @@ export function WorktreesHierarchy({
               <TableBody>
                 {g.worktrees.map((wt) => (
                   <TableRow key={wt.id} data-pw={`worktree-row-${wt.id}`}>
-                    <TableCell className="font-mono text-xs">
+                    <TableCell className="text-xs">
                       {hrefBase ? (
                         <Link
                           href={`${hrefBase}/${encodeURIComponent(wt.id)}`}
                           className="hover:underline"
                           data-pw={`worktree-link-${wt.id}`}
                         >
-                          {wt.id}
+                          {wt.name}
                         </Link>
                       ) : (
-                        wt.id
+                        wt.name
                       )}
                     </TableCell>
                     <TableCell className="max-w-xs truncate font-mono text-xs">{wt.path}</TableCell>

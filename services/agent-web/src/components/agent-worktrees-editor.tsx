@@ -15,18 +15,23 @@ export function AgentWorktreesEditor({
   agentId,
   inventory,
   liveById,
+  namesById,
 }: {
   agentId: string;
   inventory: HostInventory;
   liveById: Record<string, LiveWt>;
+  namesById: Record<string, string>;
 }) {
   const groups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
+    repositoryName: namesById[repo.id] ?? repo.id,
+    repoHrefBase: "/repositories",
     repoPath: repo.path,
     worktrees: repo.worktrees.map((wt) => {
       const live = liveById[wt.id];
       return {
         id: wt.id,
+        name: wt.name,
         repositoryId: repo.id,
         path: wt.path,
         labels: wt.labels,

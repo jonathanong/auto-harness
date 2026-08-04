@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
 
 type Wt = {
   id: string;
+  name: string;
   repositoryId: string;
   path: string;
   status?: string;
@@ -69,6 +70,7 @@ export default async function RepositoryDetailPage({
   }
   const group: WorktreeRepoGroup = {
     repositoryId,
+    repositoryName: repository.name ?? repositoryId,
     repoPath: repository.path ?? repository.url ?? undefined,
     worktrees,
   };

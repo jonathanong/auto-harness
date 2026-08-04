@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 
 type Wt = {
   id: string;
+  name: string;
   repositoryId: string;
   path: string;
   status?: string;
@@ -14,7 +15,7 @@ type Wt = {
   agentId?: string;
   labels?: string[];
 };
-type Repo = { id: string; url: string };
+type Repo = { id: string; name: string; url: string };
 type Session = {
   id: string;
   status: string;
@@ -55,12 +56,15 @@ export default async function WorktreeDetailPage({
   }
 
   let repoPath: string | undefined;
+  let repoName: string | undefined;
   let sessions: Session[] = [];
   try {
     const repos = await apiGet<{ items: Repo[] }>("/api/v1/repositories");
-    repoPath = repos.items?.find((r) => r.id === worktree!.repositoryId)?.url;
+    const repo = repos.items?.find((r) => r.id === worktree!.repositoryId);
+    repoPath = repo?.url;
+    repoName = repo?.name;
   } catch {
-    /* ignore — repo path stays unknown */
+    /* ignore — repo path/name stay unknown */
   }
   try {
     // No server-side worktreeId filter yet — scan the most recent page and filter here.
@@ -72,6 +76,7 @@ export default async function WorktreeDetailPage({
 
   const row: WorktreeRow = {
     id: worktree.id,
+    name: worktree.name,
     repositoryId: worktree.repositoryId,
     path: worktree.path,
     labels: worktree.labels,
@@ -82,7 +87,13 @@ export default async function WorktreeDetailPage({
 
   return (
     <div data-pw="page-worktree-detail">
-      <WorktreeDetail worktree={row} repoPath={repoPath} backHref="/worktrees">
+      <WorktreeDetail
+        worktree={row}
+        repositoryName={repoName}
+        repoHrefBase="/repositories"
+        repoPath={repoPath}
+        backHref="/worktrees"
+      >
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Sessions in this worktree</h3>
           <SessionsTable

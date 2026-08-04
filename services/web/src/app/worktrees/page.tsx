@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 type Wt = {
   id: string;
+  name: string;
   repositoryId: string;
   path: string;
   status?: string;
@@ -13,13 +14,19 @@ type Wt = {
   agentId?: string;
   labels?: string[];
 };
+type Repo = { id: string; name: string };
 
 export default async function WorktreesPage() {
   let items: Wt[] = [];
+  let namesById: Record<string, string> = {};
   let error: string | null = null;
   try {
-    const data = await apiGet<{ items: Wt[] }>("/api/v1/worktrees");
-    items = data.items ?? [];
+    const [wts, repos] = await Promise.all([
+      apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
+      apiGet<{ items: Repo[] }>("/api/v1/repositories"),
+    ]);
+    items = wts.items ?? [];
+    namesById = Object.fromEntries((repos.items ?? []).map((r) => [r.id, r.name]));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -27,6 +34,7 @@ export default async function WorktreesPage() {
   const groups = groupWorktreesByRepo(
     items.map((w) => ({
       id: w.id,
+      name: w.name,
       repositoryId: w.repositoryId,
       path: w.path,
       status: w.status,
@@ -34,7 +42,11 @@ export default async function WorktreesPage() {
       agentId: w.agentId,
       labels: w.labels,
     })),
-  );
+  ).map((g) => ({
+    ...g,
+    repositoryName: namesById[g.repositoryId] ?? g.repositoryId,
+    repoHrefBase: "/repositories",
+  }));
 
   return (
     <div className="space-y-4" data-pw="page-worktrees">
@@ -43,7 +55,7 @@ export default async function WorktreesPage() {
           Worktrees
         </h2>
         <p className="text-sm text-muted-foreground">
-          Fleet worktrees grouped by repository. Edit host paths and add worktrees on each agent
+          Fleet worktrees grouped by repository. Edit host paths and add worktrees on each host
           pane.
         </p>
       </div>

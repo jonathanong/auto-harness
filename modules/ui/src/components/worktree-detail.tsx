@@ -7,6 +7,10 @@ import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 
 export type WorktreeDetailProps = {
   worktree: WorktreeRow;
+  /** Catalog repository name; falls back to worktree.repositoryId when unknown. */
+  repositoryName?: string;
+  /** When set, the repository field links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
+  repoHrefBase?: string;
   /** Host path of the repository root, if known. */
   repoPath?: string;
   backHref: string;
@@ -19,6 +23,8 @@ export type WorktreeDetailProps = {
 /** Shared worktree detail view — reused by the host pane and control page. */
 export function WorktreeDetail({
   worktree,
+  repositoryName,
+  repoHrefBase,
   repoPath,
   backHref,
   actions,
@@ -35,11 +41,8 @@ export function WorktreeDetail({
           >
             ← Back to worktrees
           </Link>
-          <h2
-            className="font-mono text-2xl font-semibold tracking-tight"
-            data-pw="worktree-detail-id"
-          >
-            {worktree.id}
+          <h2 className="text-2xl font-semibold tracking-tight" data-pw="worktree-detail-id">
+            {worktree.name}
           </h2>
         </div>
         {actions}
@@ -52,8 +55,23 @@ export function WorktreeDetail({
         <CardContent>
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
+              <dt className="text-xs uppercase text-muted-foreground">Id</dt>
+              <dd className="font-mono text-xs text-muted-foreground">{worktree.id}</dd>
+            </div>
+            <div>
               <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
-              <dd className="font-mono text-sm">{worktree.repositoryId}</dd>
+              <dd className="text-sm">
+                {repoHrefBase ? (
+                  <Link
+                    href={`${repoHrefBase}/${encodeURIComponent(worktree.repositoryId)}`}
+                    className="hover:underline"
+                  >
+                    {repositoryName ?? worktree.repositoryId}
+                  </Link>
+                ) : (
+                  (repositoryName ?? worktree.repositoryId)
+                )}
+              </dd>
             </div>
             {worktree.agentId ? (
               <div>

@@ -42,11 +42,8 @@ export function RepositoryDetail({
           >
             ← Back to repositories
           </Link>
-          <h2
-            className="font-mono text-2xl font-semibold tracking-tight"
-            data-pw="repository-detail-id"
-          >
-            {r.id}
+          <h2 className="text-2xl font-semibold tracking-tight" data-pw="repository-detail-id">
+            {r.name ?? r.id}
           </h2>
         </div>
         {actions}
@@ -58,12 +55,10 @@ export function RepositoryDetail({
         </CardHeader>
         <CardContent className="space-y-4">
           <dl className="grid gap-4 sm:grid-cols-2">
-            {r.name ? (
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">Name</dt>
-                <dd className="text-sm">{r.name}</dd>
-              </div>
-            ) : null}
+            <div>
+              <dt className="text-xs uppercase text-muted-foreground">Id</dt>
+              <dd className="font-mono text-xs text-muted-foreground">{r.id}</dd>
+            </div>
             <div className="sm:col-span-2">
               <dt className="text-xs uppercase text-muted-foreground">Path / URL</dt>
               <dd className="break-all font-mono text-sm" data-pw="repository-detail-path">

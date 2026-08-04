@@ -4,7 +4,11 @@ import { SessionsTable, WorktreeDetail, type WorktreeRow } from "@auto-harness/u
 
 import { RemoveWorktreeButton } from "../../../components/remove-worktree-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
-import { loadHostInventory, loadLiveWorktreesById } from "../../../lib/inventory.ts";
+import {
+  loadHostInventory,
+  loadLiveWorktreesById,
+  loadRepoNamesById,
+} from "../../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -51,8 +55,9 @@ export default async function AgentWorktreeDetailPage({
     );
   }
 
-  const liveById = await loadLiveWorktreesById(id);
+  const [liveById, namesById] = await Promise.all([loadLiveWorktreesById(id), loadRepoNamesById()]);
   const live = liveById[worktreeId];
+  const repoName = namesById[repo.id] ?? repo.id;
 
   let sessions: Session[] = [];
   try {
@@ -67,6 +72,7 @@ export default async function AgentWorktreeDetailPage({
 
   const row: WorktreeRow = {
     id: worktree.id,
+    name: worktree.name,
     repositoryId: repo.id,
     path: worktree.path,
     labels: worktree.labels,
@@ -79,6 +85,8 @@ export default async function AgentWorktreeDetailPage({
     <div data-pw="page-worktree-detail">
       <WorktreeDetail
         worktree={row}
+        repositoryName={repoName}
+        repoHrefBase="/repositories"
         repoPath={repo.path}
         backHref="/worktrees"
         actions={
