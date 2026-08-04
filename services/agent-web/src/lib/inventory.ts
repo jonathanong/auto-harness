@@ -63,6 +63,12 @@ export async function loadHostInventory(agentId: string): Promise<HostInventory>
         cfg.commandProfiles && typeof cfg.commandProfiles === "object"
           ? (cfg.commandProfiles as HostInventory["commandProfiles"])
           : emptyHostInventory().commandProfiles,
+      ...(cfg.logLevel === "debug" ||
+      cfg.logLevel === "info" ||
+      cfg.logLevel === "warn" ||
+      cfg.logLevel === "error"
+        ? { logLevel: cfg.logLevel }
+        : {}),
     };
   } catch {
     return emptyHostInventory();

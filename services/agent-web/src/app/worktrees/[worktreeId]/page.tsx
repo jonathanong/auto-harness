@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { HostRepository, HostWorktree } from "@auto-harness/shared";
 import {
+  RemoveWorktreeButton,
   SessionsTable,
   Tabs,
   WorktreeDetail,
@@ -8,7 +9,6 @@ import {
   type WorktreeRow,
 } from "@auto-harness/ui";
 
-import { RemoveWorktreeButton } from "../../../components/remove-worktree-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,

@@ -7,6 +7,7 @@ export type HostWorktree = {
   name: string;
   path: string;
   labels: string[];
+  setupScript?: string;
 };
 
 export type HostRepository = {
@@ -14,11 +15,14 @@ export type HostRepository = {
   path: string;
   defaultBranch: string;
   worktrees: HostWorktree[];
+  setupScript?: string;
+  terminalHookScript?: string;
 };
 
 export type HostInventory = {
   repositories: HostRepository[];
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
+  logLevel?: "debug" | "info" | "warn" | "error";
 };
 
 export const DEFAULT_ECHO_PROFILE: HostInventory["commandProfiles"] = {
@@ -48,6 +52,7 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
         }))
       : [],
     commandProfiles: seedProfiles(existing),
+    ...(existing?.logLevel !== undefined ? { logLevel: existing.logLevel } : {}),
   };
 }
 
@@ -61,15 +66,22 @@ export function upsertHostRepository(
     id: string;
     path: string;
     defaultBranch: string;
+    setupScript?: string;
+    terminalHookScript?: string;
   },
 ): HostInventory {
   const base = cloneInventory(existing);
   const prev = base.repositories.find((r) => r.id === entry.id);
   base.repositories = base.repositories.filter((r) => r.id !== entry.id);
   base.repositories.push({
+    ...prev,
     id: entry.id,
     path: entry.path,
     defaultBranch: entry.defaultBranch,
+    ...(entry.setupScript !== undefined ? { setupScript: entry.setupScript } : {}),
+    ...(entry.terminalHookScript !== undefined
+      ? { terminalHookScript: entry.terminalHookScript }
+      : {}),
     worktrees: prev ? prev.worktrees.map((w) => ({ ...w, labels: [...w.labels] })) : [],
   });
   return base;
@@ -102,6 +114,7 @@ export function addHostWorktree(
     name: worktree.name,
     path: worktree.path,
     labels: [...worktree.labels],
+    ...(worktree.setupScript !== undefined ? { setupScript: worktree.setupScript } : {}),
   });
   return base;
 }
@@ -121,10 +134,12 @@ export function updateHostWorktree(
     throw new Error(`Unknown worktree: ${worktree.id}`);
   }
   repo.worktrees[idx] = {
+    ...repo.worktrees[idx],
     id: worktree.id,
     name: worktree.name,
     path: worktree.path,
     labels: [...worktree.labels],
+    ...(worktree.setupScript !== undefined ? { setupScript: worktree.setupScript } : {}),
   };
   return base;
 }

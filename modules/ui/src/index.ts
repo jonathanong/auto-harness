@@ -65,6 +65,8 @@ export { SessionFilters, type SessionFiltersProps } from "./components/session-f
 export { TipText, type TipTextProps } from "./components/tip-text.tsx";
 export { TipLink, type TipLinkProps } from "./components/tip-link.tsx";
 export { DrainButton, type DrainButtonProps } from "./components/drain-button.tsx";
+export { RemoveWorktreeButton } from "./components/remove-worktree-button.tsx";
+export { RemoveRepoButton } from "./components/remove-repo-button.tsx";
 export {
   Dialog,
   DialogTrigger,

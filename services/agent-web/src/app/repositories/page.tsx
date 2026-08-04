@@ -39,7 +39,11 @@ export default async function AgentRepositoriesPage() {
     })),
   }));
   const initialJson = JSON.stringify(
-    { repositories: inventory.repositories, commandProfiles: inventory.commandProfiles },
+    {
+      repositories: inventory.repositories,
+      commandProfiles: inventory.commandProfiles,
+      ...(inventory.logLevel !== undefined ? { logLevel: inventory.logLevel } : {}),
+    },
     null,
     2,
   );

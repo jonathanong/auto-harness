@@ -132,4 +132,82 @@ describe("host-inventory", () => {
     });
     expect(next.repositories[0]?.worktrees[0]?.path).toBe("/repo/.worktrees/wt-1");
   });
+
+  it("upsertHostRepository preserves scripts by default and allows overriding them", () => {
+    let inv = upsertHostRepository(null, {
+      id: "demo",
+      path: "/a",
+      defaultBranch: "main",
+      setupScript: "npm install",
+      terminalHookScript: "/hook.sh",
+    });
+    expect(inv.repositories[0]).toMatchObject({
+      setupScript: "npm install",
+      terminalHookScript: "/hook.sh",
+    });
+    // Re-upserting without scripts must not wipe the existing ones.
+    inv = upsertHostRepository(inv, { id: "demo", path: "/b", defaultBranch: "main" });
+    expect(inv.repositories[0]).toMatchObject({
+      path: "/b",
+      setupScript: "npm install",
+      terminalHookScript: "/hook.sh",
+    });
+    // Explicit override replaces it.
+    inv = upsertHostRepository(inv, {
+      id: "demo",
+      path: "/b",
+      defaultBranch: "main",
+      setupScript: "pnpm install",
+    });
+    expect(inv.repositories[0]?.setupScript).toBe("pnpm install");
+    expect(inv.repositories[0]?.terminalHookScript).toBe("/hook.sh");
+  });
+
+  it("addHostWorktree and updateHostWorktree preserve setupScript", () => {
+    let inv = upsertHostRepository(null, { id: "demo", path: "/repo", defaultBranch: "main" });
+    inv = addHostWorktree(inv, "demo", {
+      id: "wt-a",
+      name: "wt-a",
+      path: "/repo/wt-a",
+      labels: [],
+      setupScript: "npm ci",
+    });
+    expect(inv.repositories[0]?.worktrees[0]?.setupScript).toBe("npm ci");
+    // Updating labels/path without setupScript must not wipe it.
+    inv = updateHostWorktree(inv, "demo", {
+      id: "wt-a",
+      name: "wt-a",
+      path: "/repo/wt-a2",
+      labels: ["x"],
+    });
+    expect(inv.repositories[0]?.worktrees[0]).toMatchObject({
+      path: "/repo/wt-a2",
+      labels: ["x"],
+      setupScript: "npm ci",
+    });
+    // Explicit override replaces it.
+    inv = updateHostWorktree(inv, "demo", {
+      id: "wt-a",
+      name: "wt-a",
+      path: "/repo/wt-a2",
+      labels: ["x"],
+      setupScript: "npm run setup",
+    });
+    expect(inv.repositories[0]?.worktrees[0]?.setupScript).toBe("npm run setup");
+  });
+
+  it("cloneInventory (via any mutation) round-trips logLevel", () => {
+    const seeded = upsertHostRepository(
+      { repositories: [], commandProfiles: {}, logLevel: "debug" },
+      { id: "demo", path: "/repo", defaultBranch: "main" },
+    );
+    expect(seeded.logLevel).toBe("debug");
+    const next = addHostWorktree(seeded, "demo", {
+      id: "wt-a",
+      name: "wt-a",
+      path: "/repo/wt-a",
+      labels: [],
+    });
+    expect(next.logLevel).toBe("debug");
+  });
 });

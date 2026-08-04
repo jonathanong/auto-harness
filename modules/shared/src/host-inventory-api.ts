@@ -1,6 +1,5 @@
-import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
-
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "./api-client.ts";
+import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 
 /**
  * Fetch inventory fresh right before a read-modify-write mutation. Callers should not
@@ -23,6 +22,12 @@ export async function getInventory(agentId: string): Promise<HostInventory> {
       cfg.commandProfiles && typeof cfg.commandProfiles === "object"
         ? (cfg.commandProfiles as HostInventory["commandProfiles"])
         : emptyHostInventory().commandProfiles,
+    ...(cfg.logLevel === "debug" ||
+    cfg.logLevel === "info" ||
+    cfg.logLevel === "warn" ||
+    cfg.logLevel === "error"
+      ? { logLevel: cfg.logLevel }
+      : {}),
   };
 }
 
@@ -36,6 +41,7 @@ export async function putInventory(
     body: JSON.stringify({
       repositories: inv.repositories,
       commandProfiles: inv.commandProfiles,
+      ...(inv.logLevel !== undefined ? { logLevel: inv.logLevel } : {}),
     }),
   });
   if (!res.ok) {

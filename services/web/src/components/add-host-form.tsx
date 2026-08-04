@@ -30,13 +30,22 @@ export function AddHostForm() {
           return;
         }
         start(async () => {
-          const body = emptyHostInventory();
+          const existing = await fetch(
+            `${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
+            { cache: "no-store" },
+          );
+          if (existing.ok) {
+            setOk(`Host slot ${agentId} already exists — left its inventory untouched.`);
+            form.reset();
+            router.refresh();
+            return;
+          }
           const res = await fetch(
             `${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
             {
               method: "PUT",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify(body),
+              body: JSON.stringify(emptyHostInventory()),
             },
           );
           if (!res.ok) {

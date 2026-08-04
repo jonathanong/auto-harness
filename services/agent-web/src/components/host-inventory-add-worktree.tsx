@@ -6,12 +6,11 @@ import {
   addHostWorktree,
   defaultWorktreePath,
   newId,
+  putInventory,
   type HostInventory,
   type HostRepository,
 } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
-
-import { putInventory } from "./host-inventory-api.ts";
 
 export function AddWorktreeForm({
   agentId,

@@ -2,11 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
+import { putInventory, upsertHostRepository, type HostInventory } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import type { RepoCatalogEntry } from "../lib/inventory.ts";
-import { putInventory } from "./host-inventory-api.ts";
 
 export function AddRepoForm({
   agentId,

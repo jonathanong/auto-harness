@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { HostRepository } from "@auto-harness/shared";
 import {
+  RemoveRepoButton,
+  RemoveWorktreeButton,
   RepositoryDetail,
   RepositoryDetailsCard,
   SessionsTable,
@@ -10,8 +12,6 @@ import {
 } from "@auto-harness/ui";
 
 import { AddWorktreeForm } from "../../../components/host-inventory-add-worktree.tsx";
-import { RemoveRepoButton } from "../../../components/remove-repo-button.tsx";
-import { RemoveWorktreeButton } from "../../../components/remove-worktree-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,
