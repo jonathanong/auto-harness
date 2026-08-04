@@ -30,10 +30,24 @@ export type SessionDetailProps = {
   actions?: ReactNode;
   /** Rendered below the details card (e.g. a logs section). */
   children?: ReactNode;
+  /** When set, the repository field links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
+  repoHrefBase?: string;
+  /** When set, the host field links to `${hostHrefBase}/${encodeURIComponent(agentId)}` (control plane only — the host pane has no per-host route). */
+  hostHrefBase?: string;
+  /** When set, the worktree field links to `${worktreeHrefBase}/${encodeURIComponent(worktreeId)}`. */
+  worktreeHrefBase?: string;
 };
 
 /** Shared session detail view — reused by the host pane and control page. */
-export function SessionDetail({ session: s, backHref, actions, children }: SessionDetailProps) {
+export function SessionDetail({
+  session: s,
+  backHref,
+  actions,
+  children,
+  repoHrefBase,
+  hostHrefBase,
+  worktreeHrefBase,
+}: SessionDetailProps) {
   return (
     <div className="space-y-6" data-pw="session-detail">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -73,7 +87,22 @@ export function SessionDetail({ session: s, backHref, actions, children }: Sessi
             </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
-              <dd className="font-mono text-sm">{s.repositoryId ?? "—"}</dd>
+              <dd className="font-mono text-sm">
+                {s.repositoryId ? (
+                  repoHrefBase ? (
+                    <Link
+                      href={`${repoHrefBase}/${encodeURIComponent(s.repositoryId)}`}
+                      className="hover:underline"
+                    >
+                      {s.repositoryId}
+                    </Link>
+                  ) : (
+                    s.repositoryId
+                  )
+                ) : (
+                  "—"
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Ref</dt>
@@ -82,13 +111,35 @@ export function SessionDetail({ session: s, backHref, actions, children }: Sessi
             {s.agentId ? (
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Host</dt>
-                <dd className="font-mono text-sm">{s.agentId}</dd>
+                <dd className="font-mono text-sm">
+                  {hostHrefBase ? (
+                    <Link
+                      href={`${hostHrefBase}/${encodeURIComponent(s.agentId)}`}
+                      className="hover:underline"
+                    >
+                      {s.agentId}
+                    </Link>
+                  ) : (
+                    s.agentId
+                  )}
+                </dd>
               </div>
             ) : null}
             {s.worktreeId ? (
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
-                <dd className="font-mono text-sm">{s.worktreeId}</dd>
+                <dd className="font-mono text-sm">
+                  {worktreeHrefBase ? (
+                    <Link
+                      href={`${worktreeHrefBase}/${encodeURIComponent(s.worktreeId)}`}
+                      className="hover:underline"
+                    >
+                      {s.worktreeId}
+                    </Link>
+                  ) : (
+                    s.worktreeId
+                  )}
+                </dd>
               </div>
             ) : null}
             <div>

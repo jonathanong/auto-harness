@@ -49,7 +49,10 @@ export default async function SchedulesPage() {
             <TableRow key={s.id}>
               <TableCell>{s.name}</TableCell>
               <TableCell className="font-mono text-xs">
-                <Link href="/repositories" className="hover:underline">
+                <Link
+                  href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
+                  className="hover:underline"
+                >
                   {s.repositoryId}
                 </Link>
               </TableCell>

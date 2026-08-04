@@ -46,6 +46,9 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
         session={session}
         backHref="/sessions"
         actions={<SessionActions sessionId={session.id} status={session.status} />}
+        repoHrefBase="/repositories"
+        hostHrefBase="/hosts"
+        worktreeHrefBase="/worktrees"
       >
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Logs</h3>
