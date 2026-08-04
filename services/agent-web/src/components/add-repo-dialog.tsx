@@ -2,6 +2,7 @@
 
 import type { HostInventory } from "@auto-harness/shared";
 import {
+  AddRepoForm,
   Button,
   Dialog,
   DialogContent,
@@ -9,10 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  type RepoCatalogEntry,
 } from "@auto-harness/ui";
-
-import type { RepoCatalogEntry } from "../lib/inventory.ts";
-import { AddRepoForm } from "./host-inventory-add-repo.tsx";
 
 export function AddRepoDialog({
   agentId,

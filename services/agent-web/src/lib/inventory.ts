@@ -1,4 +1,5 @@
 import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
+import type { RepoCatalogEntry } from "@auto-harness/ui";
 
 import { apiBase, apiGet } from "./api.ts";
 
@@ -23,8 +24,6 @@ export async function loadLiveWorktreesById(
     return {};
   }
 }
-
-export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
 
 /** Full catalog repository list, sorted by name — used for repo pickers. */
 export async function loadRepoCatalog(): Promise<RepoCatalogEntry[]> {

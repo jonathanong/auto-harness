@@ -10,7 +10,11 @@ import {
   type HostInventory,
   type HostRepository,
 } from "@auto-harness/shared";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+
+import { Button } from "./button.tsx";
+import { Input } from "./input.tsx";
+import { Label } from "./label.tsx";
+import { WithTooltip } from "./tooltip.tsx";
 
 export function AddWorktreeForm({
   agentId,

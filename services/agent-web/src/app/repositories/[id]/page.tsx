@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { HostRepository } from "@auto-harness/shared";
 import {
+  AddWorktreeForm,
   RemoveRepoButton,
   RemoveWorktreeButton,
   RepositoryDetail,
@@ -11,7 +12,6 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 
-import { AddWorktreeForm } from "../../../components/host-inventory-add-worktree.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,

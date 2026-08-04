@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import {
   DrainButton,
   StatusBadge,
@@ -74,8 +75,8 @@ export default async function HostsPage({
         </h2>
         <p className="text-sm text-muted-foreground">
           Add a host slot (host inventory), then run the daemon with that{" "}
-          <code className="font-mono">HARNESS_AGENT_ID</code>. Configure repos and worktrees on the
-          host pane (<code className="font-mono">:7422</code>).
+          <code className="font-mono">HARNESS_AGENT_ID</code>. Click a host below to attach
+          repositories, manage worktrees, and configure command profiles.
         </p>
       </div>
 
@@ -109,7 +110,15 @@ export default async function HostsPage({
                 : 0;
               return (
                 <TableRow key={h.agentId} data-pw={`host-row-${h.agentId}`}>
-                  <TableCell className="font-mono text-xs">{h.agentId}</TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <Link
+                      href={`/hosts/${encodeURIComponent(h.agentId)}`}
+                      className="hover:underline"
+                      data-pw={`host-link-${h.agentId}`}
+                    >
+                      {h.agentId}
+                    </Link>
+                  </TableCell>
                   <TableCell>
                     <StatusBadge status={String(h.online)} />
                   </TableCell>

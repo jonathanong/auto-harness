@@ -3,9 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { putInventory, upsertHostRepository, type HostInventory } from "@auto-harness/shared";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
-import type { RepoCatalogEntry } from "../lib/inventory.ts";
+import { Button } from "./button.tsx";
+import { Input } from "./input.tsx";
+import { Label } from "./label.tsx";
+import { WithTooltip } from "./tooltip.tsx";
+
+export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
 
 export function AddRepoForm({
   agentId,

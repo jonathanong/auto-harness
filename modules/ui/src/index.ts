@@ -67,6 +67,8 @@ export { TipLink, type TipLinkProps } from "./components/tip-link.tsx";
 export { DrainButton, type DrainButtonProps } from "./components/drain-button.tsx";
 export { RemoveWorktreeButton } from "./components/remove-worktree-button.tsx";
 export { RemoveRepoButton } from "./components/remove-repo-button.tsx";
+export { AddWorktreeForm } from "./components/add-worktree-form.tsx";
+export { AddRepoForm, type RepoCatalogEntry } from "./components/add-repo-form.tsx";
 export {
   Dialog,
   DialogTrigger,

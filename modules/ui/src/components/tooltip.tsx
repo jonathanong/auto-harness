@@ -62,7 +62,12 @@ export function WithTooltip({ tip, children, side = "top", asChild = true }: Wit
   const disabled = Boolean(child.props?.disabled);
   return (
     <Tooltip>
-      <TooltipTrigger asChild={asChild && !disabled}>
+      {/* asChild always applies here (even when disabled) — Radix's Slot clones its props
+          onto whichever single element is passed (the span below, or children directly)
+          instead of rendering its own wrapping element. Without it, a disabled Button
+          (itself a <button>) ends up nested inside Radix's own <button> trigger — invalid
+          HTML that fails hydration. */}
+      <TooltipTrigger asChild={asChild}>
         {disabled ? <span className="inline-flex cursor-not-allowed">{children}</span> : children}
       </TooltipTrigger>
       <TooltipContent side={side}>{tip}</TooltipContent>
