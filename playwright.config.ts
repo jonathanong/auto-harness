@@ -25,7 +25,7 @@ export default defineConfig({
   projects: [
     {
       name: "control",
-      testMatch: /e2e\/control\/.*\.spec\.ts/,
+      testMatch: "e2e/control/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
         baseURL: "http://127.0.0.1:7421",
@@ -33,7 +33,7 @@ export default defineConfig({
     },
     {
       name: "agent",
-      testMatch: /e2e\/agent\/.*\.spec\.ts/,
+      testMatch: "e2e/agent/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
         baseURL: "http://127.0.0.1:7422",

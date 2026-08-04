@@ -1,3 +1,6 @@
 packages:
   - "modules/*"
   - "services/*"
+
+onlyBuiltDependencies:
+  - no-mistakes
