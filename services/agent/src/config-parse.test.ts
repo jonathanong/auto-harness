@@ -27,7 +27,7 @@ describe("parseAgentConfig", () => {
         {
           id: "r",
           path: "/r",
-          worktrees: [{ id: "w", path: "/r/w", labels: [] }],
+          worktrees: [{ id: "w", name: "w", path: "/r/w", labels: [] }],
         },
       ],
     });
@@ -80,7 +80,7 @@ describe("parseAgentConfig", () => {
           {
             id: "r",
             path: "/r",
-            worktrees: [{ id: "w", path: "/w", labels: "x" }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: "x" }],
           },
         ],
       }),
@@ -101,7 +101,7 @@ describe("parseAgentConfig", () => {
             id: "r",
             path: "/r",
             setupScript: 1,
-            worktrees: [{ id: "w", path: "/w", labels: [] }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }],
           },
         ],
       }),
@@ -115,7 +115,7 @@ describe("parseAgentConfig", () => {
             id: "r",
             path: "/r",
             terminalHookScript: 1,
-            worktrees: [{ id: "w", path: "/w", labels: [] }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }],
           },
         ],
       }),
@@ -128,7 +128,7 @@ describe("parseAgentConfig", () => {
           {
             id: "r",
             path: "/r",
-            worktrees: [{ id: "w", path: "/w", labels: [], setupScript: 1 }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [], setupScript: 1 }],
           },
         ],
       }),

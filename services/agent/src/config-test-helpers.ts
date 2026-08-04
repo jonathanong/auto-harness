@@ -13,6 +13,7 @@ export const valid = {
       worktrees: [
         {
           id: "wt-1",
+          name: "wt-1",
           path: "/tmp/repo/wt-1",
           labels: ["codex"],
           setupScript: "true",

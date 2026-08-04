@@ -1,6 +1,21 @@
+import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+
+function findRepositoryByName(
+  state: ControlPlaneState,
+  name: string,
+  excludeId?: string,
+): RepositoryRecord | undefined {
+  for (const r of state.repositories.values()) {
+    if (r.name === name && r.id !== excludeId) {
+      return r;
+    }
+  }
+  return undefined;
+}
 
 export function createRepository(
   state: ControlPlaneState,
@@ -15,6 +30,12 @@ export function createRepository(
 ): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
   if (!input.name || !input.url) {
     return { ok: false, error: "name and url are required" };
+  }
+  if (!isValidSlugName(input.name)) {
+    return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
+  }
+  if (findRepositoryByName(state, input.name)) {
+    return { ok: false, error: `repository name already in use: ${input.name}` };
   }
   const id = input.id ?? state.repositoryIdFactory();
   if (state.repositories.has(id)) {
@@ -65,6 +86,14 @@ export function updateRepository(
   const existing = state.repositories.get(id);
   if (!existing) {
     return { ok: false, error: "repository not found" };
+  }
+  if (patch.name !== undefined) {
+    if (!isValidSlugName(patch.name)) {
+      return { ok: false, error: `name must be ${SLUG_NAME_HINT}` };
+    }
+    if (findRepositoryByName(state, patch.name, id)) {
+      return { ok: false, error: `repository name already in use: ${patch.name}` };
+    }
   }
   const next: RepositoryRecord = {
     ...existing,

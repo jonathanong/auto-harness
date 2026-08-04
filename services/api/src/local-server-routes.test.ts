@@ -16,7 +16,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     });
     plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
     const { handler } = createLocalApp({ plane });

@@ -17,6 +17,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     planeH.seedWorktree({
       id: "wh",
+      name: "wh",
       agentId: "ah",
       repositoryId: "repo-1",
       path: "/h",
@@ -29,7 +30,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     // re-register preserves busy
     planeH.registerAgent({
       agentId: "ah",
-      worktrees: [{ id: "wh", repositoryId: "repo-1", path: "/h", labels: [] }],
+      worktrees: [{ id: "wh", name: "wh", repositoryId: "repo-1", path: "/h", labels: [] }],
       commandProfiles: ["c"],
     });
     expect(planeH.getWorktree("wh")?.status).toBe("busy");

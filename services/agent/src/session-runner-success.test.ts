@@ -36,7 +36,7 @@ describe("SessionRunner success paths", () => {
           id: "repo-1",
           path: "/repo",
           defaultBranch: "main",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
         },
       ],
     });
@@ -119,7 +119,7 @@ describe("SessionRunner success paths", () => {
           path: "/repo",
           defaultBranch: "main",
           setupScript: "should-not-run",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
         },
       ],
     });

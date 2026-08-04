@@ -46,12 +46,14 @@ function parseWorktree(raw: unknown, index: number, repoId: string): WorktreeCon
     throw new Error(`repositories.${repoId}.worktrees[${index}] invalid`);
   }
   const id = requireString(raw, "id", `worktree[${index}]`);
+  const name = requireString(raw, "name", `worktree.${id}`);
   const path = requireString(raw, "path", `worktree.${id}`);
   if (!Array.isArray(raw.labels) || !raw.labels.every((l) => typeof l === "string")) {
     throw new Error(`worktree.${id}.labels must be a string array`);
   }
   const wt: WorktreeConfig = {
     id,
+    name,
     path,
     labels: raw.labels as string[],
   };

@@ -62,7 +62,7 @@ export async function makeRepo(): Promise<{
         id: "demo",
         path: repo,
         defaultBranch: "main",
-        worktrees: [{ id: "wt-1", path: wt, labels: ["echo"] }],
+        worktrees: [{ id: "wt-1", name: "wt-1", path: wt, labels: ["echo"] }],
         terminalHookScript: hook,
       },
     ],

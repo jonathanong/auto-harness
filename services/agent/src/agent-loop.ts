@@ -85,6 +85,7 @@ export class AgentLoop {
       worktrees: this.config.repositories.flatMap((r) =>
         r.worktrees.map((w) => ({
           id: w.id,
+          name: w.name,
           repositoryId: r.id,
           path: w.path,
           labels: w.labels,

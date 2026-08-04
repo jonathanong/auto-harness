@@ -11,7 +11,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     planeO.registerAgent({
       agentId: "o1",
-      worktrees: [{ id: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
+      worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["x"],
     });
     // break consistency: delete connection but leave agent map
@@ -51,6 +51,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     planeC.seedWorktree({
       id: "only",
+      name: "only",
       agentId: "a",
       repositoryId: "repo-1",
       path: "/p",
@@ -89,6 +90,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     planeD.seedWorktree({
       id: "wd",
+      name: "wd",
       agentId: "ad",
       repositoryId: "repo-1",
       path: "/d",

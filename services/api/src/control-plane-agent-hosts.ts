@@ -1,6 +1,9 @@
+import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+
 import type { AgentHostRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
+import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -44,12 +47,17 @@ function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRecord, "u
         throw new Error(`repositories.${id}.worktrees[${wi}] invalid`);
       }
       const wtId = requireString(rawWt, "id", `worktree[${wi}]`);
+      const wtName = requireString(rawWt, "name", `worktree.${wtId}`);
+      if (!isValidSlugName(wtName)) {
+        throw new Error(`worktree.${wtId}.name must be ${SLUG_NAME_HINT}`);
+      }
       const wtPath = requireString(rawWt, "path", `worktree.${wtId}`);
       if (!Array.isArray(rawWt.labels) || !rawWt.labels.every((l) => typeof l === "string")) {
         throw new Error(`worktree.${wtId}.labels must be a string array`);
       }
       const wt: AgentHostRecord["repositories"][0]["worktrees"][0] = {
         id: wtId,
+        name: wtName,
         path: wtPath,
         labels: rawWt.labels as string[],
       };
@@ -125,6 +133,7 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: AgentHostRecord):
       const prev = state.worktrees.get(wt.id);
       persistWorktree(state, {
         id: wt.id,
+        name: wt.name,
         agentId: host.agentId,
         repositoryId: repo.id,
         path: wt.path,
@@ -151,6 +160,10 @@ export function putAgentHostConfig(
 ): { ok: true; config: AgentHostRecord } | { ok: false; error: string } {
   try {
     const parsed = parseHostBody(agentId, body);
+    const collision = findWorktreeNameCollision(state, agentId, parsed);
+    if (collision) {
+      return { ok: false, error: collision };
+    }
     const rec: AgentHostRecord = { ...parsed, updatedAt: state.now() };
     state.agentHosts.set(agentId, rec);
     if (state.storage) {

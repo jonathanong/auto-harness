@@ -14,6 +14,7 @@ describe("ControlPlane retry and resume invariants", () => {
     });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w",
@@ -67,6 +68,7 @@ describe("ControlPlane retry and resume invariants", () => {
     });
     plane.seedWorktree({
       id: "wt-a",
+      name: "wt-a",
       agentId: "agent-1",
       repositoryId: "repo-1",
       path: "/a",
@@ -76,6 +78,7 @@ describe("ControlPlane retry and resume invariants", () => {
     });
     plane.seedWorktree({
       id: "wt-b",
+      name: "wt-b",
       agentId: "agent-1",
       repositoryId: "repo-1",
       path: "/b",

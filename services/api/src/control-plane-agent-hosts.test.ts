@@ -16,8 +16,8 @@ describe("agent host inventory", () => {
           setupScript: "true",
           terminalHookScript: "/hook",
           worktrees: [
-            { id: "wt-1", path: "/repo/wt-1", labels: ["echo"], setupScript: "true" },
-            { id: "wt-2", path: "/repo/wt-2", labels: [] },
+            { id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["echo"], setupScript: "true" },
+            { id: "wt-2", name: "wt-2", path: "/repo/wt-2", labels: [] },
           ],
         },
       ],
@@ -38,7 +38,7 @@ describe("agent host inventory", () => {
         {
           id: "demo",
           path: "/repo",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: ["echo"] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["echo"] }],
         },
       ],
       commandProfiles: { "echo-prompt": { argv: ["echo"] } },
@@ -86,8 +86,8 @@ describe("agent host inventory", () => {
             id: "r1",
             path: "/r",
             worktrees: [
-              { id: "w1", path: "/r/w1", labels: [] },
-              { id: "w2", path: "/r/w2", labels: ["echo"] },
+              { id: "w1", name: "w1", path: "/r/w1", labels: [] },
+              { id: "w2", name: "w2", path: "/r/w2", labels: ["echo"] },
             ],
           },
         ],
@@ -104,7 +104,9 @@ describe("agent host inventory", () => {
     expect(
       plane.putAgentHostConfig("local-1", {
         agentId: "other",
-        repositories: [{ id: "d", path: "/r", worktrees: [{ id: "w", path: "/w", labels: [] }] }],
+        repositories: [
+          { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
+        ],
         commandProfiles: {},
       }).ok,
     ).toBe(false);
@@ -116,7 +118,9 @@ describe("agent host inventory", () => {
     ).toBe(false);
     expect(
       plane.putAgentHostConfig("x", {
-        repositories: [{ id: "d", path: "/r", worktrees: [{ id: "w", path: "/w", labels: "x" }] }],
+        repositories: [
+          { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: "x" }] },
+        ],
         commandProfiles: {},
       }).ok,
     ).toBe(false);
@@ -135,7 +139,12 @@ describe("agent host inventory", () => {
     expect(
       plane.putAgentHostConfig("x", {
         repositories: [
-          { id: "d", path: "/r", setupScript: 1, worktrees: [{ id: "w", path: "/w", labels: [] }] },
+          {
+            id: "d",
+            path: "/r",
+            setupScript: 1,
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }],
+          },
         ],
         commandProfiles: {},
       }).ok,
@@ -147,7 +156,7 @@ describe("agent host inventory", () => {
             id: "d",
             path: "/r",
             terminalHookScript: 1,
-            worktrees: [{ id: "w", path: "/w", labels: [] }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }],
           },
         ],
         commandProfiles: {},
@@ -159,7 +168,7 @@ describe("agent host inventory", () => {
           {
             id: "d",
             path: "/r",
-            worktrees: [{ id: "w", path: "/w", labels: [], setupScript: 1 }],
+            worktrees: [{ id: "w", name: "w", path: "/w", labels: [], setupScript: 1 }],
           },
         ],
         commandProfiles: {},
@@ -167,19 +176,25 @@ describe("agent host inventory", () => {
     ).toBe(false);
     expect(
       plane.putAgentHostConfig("x", {
-        repositories: [{ id: "d", path: "/r", worktrees: [{ id: "w", path: "/w", labels: [] }] }],
+        repositories: [
+          { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
+        ],
         commandProfiles: "x",
       }).ok,
     ).toBe(false);
     expect(
       plane.putAgentHostConfig("x", {
-        repositories: [{ id: "d", path: "/r", worktrees: [{ id: "w", path: "/w", labels: [] }] }],
+        repositories: [
+          { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
+        ],
         commandProfiles: { bad: "x" },
       }).ok,
     ).toBe(false);
     expect(
       plane.putAgentHostConfig("x", {
-        repositories: [{ id: "d", path: "/r", worktrees: [{ id: "w", path: "/w", labels: [] }] }],
+        repositories: [
+          { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
+        ],
         commandProfiles: { bad: { argv: [] } },
       }).ok,
     ).toBe(false);

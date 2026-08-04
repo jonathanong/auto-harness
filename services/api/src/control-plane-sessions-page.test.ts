@@ -25,7 +25,7 @@ describe("listSessionsPage", () => {
     }
     plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo"],
     });
     const assigned = plane.assignQueued();

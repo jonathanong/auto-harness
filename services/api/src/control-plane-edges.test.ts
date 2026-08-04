@@ -32,7 +32,7 @@ describe("ControlPlane API edges", () => {
     const plane = new ControlPlane();
     plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt", repositoryId: "r", path: "/p", labels: [] }],
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "r", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt", "codex-fix"],
     });
     expect(plane.listCommandProfiles()).toEqual(["codex-fix", "echo-prompt"]);
@@ -82,6 +82,7 @@ describe("ControlPlane API edges", () => {
 
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w",

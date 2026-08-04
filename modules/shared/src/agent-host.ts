@@ -8,7 +8,10 @@ export type CommandProfileDef = {
 };
 
 export type HostWorktreeConfig = {
+  /** Auto-generated (UUIDv7), immutable. */
   id: string;
+  /** User-chosen, slug-validated, unique across all hosts. */
+  name: string;
   path: string;
   labels: string[];
   setupScript?: string;

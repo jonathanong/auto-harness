@@ -31,7 +31,7 @@ export function setup(runner: ProcessRunner) {
         path: "/repo",
         defaultBranch: "main",
         terminalHookScript: "/hook.sh",
-        worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: ["codex"] }],
+        worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["codex"] }],
       },
     ],
   });

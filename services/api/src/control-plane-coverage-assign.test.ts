@@ -11,6 +11,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     });
     planeE.seedWorktree({
       id: "we",
+      name: "we",
       agentId: "ae",
       repositoryId: "repo-1",
       path: "/e",
@@ -42,6 +43,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     });
     planeF.seedWorktree({
       id: "wf",
+      name: "wf",
       agentId: "af",
       repositoryId: "repo-1",
       path: "/f",
@@ -70,6 +72,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     expect(resF.ok).toBe(true);
     planeF.seedWorktree({
       id: "wf2",
+      name: "wf2",
       agentId: "af",
       repositoryId: "repo-1",
       path: "/f2",
@@ -95,6 +98,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     });
     planeG.seedWorktree({
       id: "wg",
+      name: "wg",
       agentId: "ag",
       repositoryId: "repo-1",
       path: "/g",

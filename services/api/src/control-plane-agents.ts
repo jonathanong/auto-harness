@@ -60,26 +60,6 @@ export function listAgents(state: ControlPlaneState): Array<{
 }
 
 /**
- * Command profile names for UI dropdown: online agents plus host configs
- * (so schedules can be written before the agent connects).
- */
-export function listCommandProfiles(state: ControlPlaneState): string[] {
-  const set = new Set<string>();
-  for (const a of listAgents(state)) {
-    if (a.online) {
-      for (const p of a.commandProfiles) {
-        set.add(p);
-      }
-    }
-  }
-  for (const host of state.agentHosts.values()) {
-    for (const name of Object.keys(host.commandProfiles)) {
-      set.add(name);
-    }
-  }
-  return [...set].toSorted();
-}
-/**
  * Conditional agent register (Invariant 3): one live connection per agentId.
  * Second register for same agentId fails unless force-replacing is explicit.
  */
@@ -89,6 +69,7 @@ export function registerAgent(
     agentId: string;
     worktrees: Array<{
       id: string;
+      name: string;
       repositoryId: string;
       path: string;
       labels: string[];
@@ -147,6 +128,7 @@ export function registerAgent(
     const prev = state.worktrees.get(wt.id);
     persistWorktree(state, {
       id: wt.id,
+      name: wt.name,
       agentId: opts.agentId,
       repositoryId: wt.repositoryId,
       path: wt.path,

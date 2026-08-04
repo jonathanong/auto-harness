@@ -18,7 +18,7 @@ export async function manageWeb(scratch: string): Promise<void> {
   });
   plane.registerAgent({
     agentId: "a1",
-    worktrees: [{ id: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
+    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],
   });
   const apiPort = 19100 + Math.floor(Math.random() * 200);

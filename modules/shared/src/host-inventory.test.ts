@@ -13,7 +13,7 @@ import {
 
 describe("host-inventory", () => {
   it("builds default worktree path as a suggestion only", () => {
-    expect(defaultWorktreePath("/repo/", "wt-1")).toBe("/repo/.worktrees/wt-1");
+    expect(defaultWorktreePath("/repo/", "runner-1")).toBe("/repo/.worktrees/runner-1");
   });
 
   it("emptyHostInventory seeds echo-prompt with no repos", () => {
@@ -41,6 +41,7 @@ describe("host-inventory", () => {
     });
     inv = addHostWorktree(inv, "demo", {
       id: "runner",
+      name: "runner",
       path: "/a/runner",
       labels: ["echo"],
     });
@@ -51,7 +52,7 @@ describe("host-inventory", () => {
     });
     expect(inv.repositories[0]?.path).toBe("/b");
     expect(inv.repositories[0]?.worktrees).toEqual([
-      { id: "runner", path: "/a/runner", labels: ["echo"] },
+      { id: "runner", name: "runner", path: "/a/runner", labels: ["echo"] },
     ]);
   });
 
@@ -63,15 +64,16 @@ describe("host-inventory", () => {
     });
     const withWt = addHostWorktree(base, "demo", {
       id: "wt-a",
+      name: "wt-a",
       path: "/repo/wt-a",
       labels: [],
     });
     expect(withWt.repositories[0]?.worktrees).toHaveLength(1);
-    expect(() => addHostWorktree(withWt, "missing", { id: "x", path: "/x", labels: [] })).toThrow(
-      /Unknown repository/,
-    );
     expect(() =>
-      addHostWorktree(withWt, "demo", { id: "wt-a", path: "/other", labels: [] }),
+      addHostWorktree(withWt, "missing", { id: "x", name: "x", path: "/x", labels: [] }),
+    ).toThrow(/Unknown repository/);
+    expect(() =>
+      addHostWorktree(withWt, "demo", { id: "wt-a", name: "wt-a", path: "/other", labels: [] }),
     ).toThrow(/already exists/);
   });
 
@@ -83,27 +85,30 @@ describe("host-inventory", () => {
     });
     inv = addHostWorktree(inv, "demo", {
       id: "wt-a",
+      name: "wt-a",
       path: "/repo/wt-a",
       labels: ["a"],
     });
     inv = updateHostWorktree(inv, "demo", {
       id: "wt-a",
+      name: "wt-a2",
       path: "/repo/wt-a2",
       labels: ["b"],
     });
     expect(inv.repositories[0]?.worktrees[0]).toEqual({
       id: "wt-a",
+      name: "wt-a2",
       path: "/repo/wt-a2",
       labels: ["b"],
     });
     inv = removeHostWorktree(inv, "demo", "wt-a");
     expect(inv.repositories[0]?.worktrees).toEqual([]);
-    expect(() => updateHostWorktree(inv, "missing", { id: "x", path: "/x", labels: [] })).toThrow(
-      /Unknown repository/,
-    );
-    expect(() => updateHostWorktree(inv, "demo", { id: "nope", path: "/x", labels: [] })).toThrow(
-      /Unknown worktree/,
-    );
+    expect(() =>
+      updateHostWorktree(inv, "missing", { id: "x", name: "x", path: "/x", labels: [] }),
+    ).toThrow(/Unknown repository/);
+    expect(() =>
+      updateHostWorktree(inv, "demo", { id: "nope", name: "nope", path: "/x", labels: [] }),
+    ).toThrow(/Unknown worktree/);
     expect(() => removeHostWorktree(inv, "missing", "x")).toThrow(/Unknown repository/);
   });
 
@@ -123,6 +128,7 @@ describe("host-inventory", () => {
       path: "/repo",
       defaultBranch: "main",
       worktreeId: "wt-1",
+      worktreeName: "wt-1",
     });
     expect(next.repositories[0]?.worktrees[0]?.path).toBe("/repo/.worktrees/wt-1");
   });

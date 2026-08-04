@@ -69,6 +69,7 @@ export type AgentHostRecord = {
     terminalHookScript?: string;
     worktrees: Array<{
       id: string;
+      name: string;
       path: string;
       labels: string[];
       setupScript?: string;

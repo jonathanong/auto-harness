@@ -14,7 +14,6 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       const result = plane.createRepository({
         name: String(body.name ?? ""),
         url: String(body.url ?? ""),
-        ...(typeof body.id === "string" ? { id: body.id } : {}),
         ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
         ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
         ...(typeof body.terminalHookScript === "string"

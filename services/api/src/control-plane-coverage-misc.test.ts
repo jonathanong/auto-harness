@@ -36,6 +36,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     });
     planeK.seedWorktree({
       id: "wk",
+      name: "wk",
       agentId: "ak",
       repositoryId: "repo-1",
       path: "/k",
@@ -99,7 +100,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     });
     planeOrphan.registerAgent({
       agentId: "orph",
-      worktrees: [{ id: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
+      worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["c"],
     });
     planeOrphan.state.connections.delete("c-orph");
@@ -113,6 +114,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     });
     planeOrphan.seedWorktree({
       id: "wg",
+      name: "wg",
       agentId: "gone",
       repositoryId: "repo-1",
       path: "/g",
@@ -147,6 +149,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     });
     planeQ.seedWorktree({
       id: "wq",
+      name: "wq",
       agentId: "aq",
       repositoryId: "repo-1",
       path: "/q",

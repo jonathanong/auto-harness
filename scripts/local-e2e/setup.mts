@@ -66,6 +66,7 @@ export function buildAgentConfig(paths: LocalE2ePaths): AgentConfig {
         worktrees: [
           {
             id: "wt-1",
+            name: "wt-1",
             path: paths.wtPath,
             labels: ["echo"],
           },

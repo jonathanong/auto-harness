@@ -28,6 +28,7 @@ describe("ControlPlane claim invariants", () => {
     });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "agent-1",
       repositoryId: "repo-1",
       path: "/wt",
@@ -56,12 +57,12 @@ describe("ControlPlane claim invariants", () => {
     });
     const first = plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],
     });
     const second = plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],
     });
     expect(first.ok).toBe(true);
@@ -71,7 +72,7 @@ describe("ControlPlane claim invariants", () => {
     }
     const third = plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
     });
@@ -132,6 +133,7 @@ describe("ControlPlane claim invariants", () => {
     });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w",

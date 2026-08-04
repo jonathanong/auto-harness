@@ -48,8 +48,8 @@ describe("resume re-checks out ref after worktree reuse", () => {
             path: repo,
             defaultBranch: "main",
             worktrees: [
-              { id: "wt-a", path: wtA, labels: ["echo"] },
-              { id: "wt-b", path: wtB, labels: ["echo"] },
+              { id: "wt-a", name: "wt-a", path: wtA, labels: ["echo"] },
+              { id: "wt-b", name: "wt-b", path: wtB, labels: ["echo"] },
             ],
           },
         ],

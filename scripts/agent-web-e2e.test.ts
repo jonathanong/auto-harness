@@ -15,7 +15,7 @@ describe("host pane host inventory API", () => {
           id: "demo",
           path: "/repo",
           defaultBranch: "main",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: ["echo"] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["echo"] }],
         },
       ],
       commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },

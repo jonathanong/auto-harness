@@ -45,7 +45,7 @@ describe("SessionRunner process and profile failures", () => {
           defaultBranch: "main",
           setupScript: "false",
           terminalHookScript: "/hook.sh",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
         },
       ],
     });
@@ -92,7 +92,7 @@ describe("SessionRunner process and profile failures", () => {
           id: "repo-1",
           path: "/repo",
           defaultBranch: "main",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
         },
       ],
     });

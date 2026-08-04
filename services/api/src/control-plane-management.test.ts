@@ -12,9 +12,10 @@ describe("ControlPlane operator management", () => {
       now: () => "2026-01-01T00:00:00.000Z",
     });
     expect(plane.createRepository({ name: "", url: "x" }).ok).toBe(false);
+    expect(plane.createRepository({ name: "Demo", url: "x" }).ok).toBe(false); // must be a slug
     const created = plane.createRepository({
       id: "demo",
-      name: "Demo",
+      name: "demo",
       url: "/tmp/demo",
       defaultBranch: "main",
       setupScript: "setup.sh",
@@ -24,7 +25,7 @@ describe("ControlPlane operator management", () => {
     if (created.ok) {
       expect(created.repository).toMatchObject({
         id: "demo",
-        name: "Demo",
+        name: "demo",
         url: "/tmp/demo",
         defaultBranch: "main",
         setupScript: "setup.sh",
@@ -32,26 +33,29 @@ describe("ControlPlane operator management", () => {
       });
     }
     expect(plane.createRepository({ id: "demo", name: "x", url: "y" }).ok).toBe(false);
-    expect(plane.getRepository("demo")?.name).toBe("Demo");
+    expect(plane.createRepository({ name: "demo", url: "y" }).ok).toBe(false); // name already in use
+    expect(plane.getRepository("demo")?.name).toBe("demo");
     expect(plane.getRepository("missing")).toBeNull();
     expect(plane.listRepositories().map((r) => r.id)).toContain("demo");
 
-    const auto = plane.createRepository({ name: "Auto", url: "git://auto" });
+    const auto = plane.createRepository({ name: "auto", url: "git://auto" });
     expect(auto.ok).toBe(true);
     if (auto.ok) {
       expect(auto.repository.id).toBe("repo-auto");
     }
 
-    // default repositoryIdFactory (random id)
+    // default repositoryIdFactory (UUIDv7)
     const defaultIds = new ControlPlane({ now: () => "t" });
-    const gen = defaultIds.createRepository({ name: "G", url: "u" });
+    const gen = defaultIds.createRepository({ name: "g", url: "u" });
     expect(gen.ok).toBe(true);
     if (gen.ok) {
-      expect(gen.repository.id.startsWith("repo-")).toBe(true);
+      expect(gen.repository.id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
     }
 
     const updated = plane.updateRepository("demo", {
-      name: "Demo2",
+      name: "demo2",
       url: "/tmp/demo2",
       defaultBranch: "develop",
       setupScript: "s2",
@@ -59,10 +63,11 @@ describe("ControlPlane operator management", () => {
     });
     expect(updated.ok).toBe(true);
     if (updated.ok) {
-      expect(updated.repository.name).toBe("Demo2");
+      expect(updated.repository.name).toBe("demo2");
       expect(updated.repository.defaultBranch).toBe("develop");
     }
     expect(plane.updateRepository("nope", { name: "x" }).ok).toBe(false);
+    expect(plane.updateRepository("demo", { name: "auto" }).ok).toBe(false); // name taken by another repo
     expect(plane.deleteRepository("demo").ok).toBe(true);
     expect(plane.getRepository("demo")).toBeNull();
     expect(plane.deleteRepository("demo").ok).toBe(false);
@@ -155,6 +160,7 @@ describe("ControlPlane operator management", () => {
     });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w",

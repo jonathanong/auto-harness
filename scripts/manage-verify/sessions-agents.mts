@@ -15,6 +15,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
   });
   plane.seedWorktree({
     id: "wt-1",
+    name: "wt-1",
     agentId: "a1",
     repositoryId: "r1",
     path: "/w",
@@ -24,7 +25,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
   });
   plane.registerAgent({
     agentId: "a1",
-    worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],
     replaceExisting: true,
   });

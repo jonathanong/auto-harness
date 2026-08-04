@@ -6,6 +6,7 @@ import {
   DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
+  newId,
   type AgentWireMessage,
 } from "@auto-harness/shared";
 
@@ -85,9 +86,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     scheduleIdFactory: options.scheduleIdFactory
       ? options.scheduleIdFactory
       : () => `sched-${randomBytes(4).toString("hex")}`,
-    repositoryIdFactory: options.repositoryIdFactory
-      ? options.repositoryIdFactory
-      : () => `repo-${randomBytes(4).toString("hex")}`,
+    repositoryIdFactory: options.repositoryIdFactory ? options.repositoryIdFactory : newId,
     shardCount: options.shardCount ? options.shardCount : DEFAULT_QUEUE_SHARD_COUNT,
     ackDeadlineMs: options.ackDeadlineMs ? options.ackDeadlineMs : DEFAULT_ACK_DEADLINE_MS,
     heartbeatStaleMs: options.heartbeatStaleMs

@@ -21,6 +21,7 @@ describe("DynamoDB Local control plane hydrate", () => {
     });
     plane.seedWorktree({
       id: "wt-p",
+      name: "wt-p",
       agentId: "ap",
       repositoryId: "r1",
       path: "/p",
@@ -30,7 +31,7 @@ describe("DynamoDB Local control plane hydrate", () => {
     });
     const reg = plane.registerAgent({
       agentId: "ap",
-      worktrees: [{ id: "wt-p", repositoryId: "r1", path: "/p", labels: [] }],
+      worktrees: [{ id: "wt-p", name: "wt-p", repositoryId: "r1", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
     });

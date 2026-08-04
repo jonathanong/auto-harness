@@ -86,6 +86,7 @@ export type AgentToServerMessage =
       agentId: string;
       worktrees: Array<{
         id: string;
+        name: string;
         repositoryId: string;
         path: string;
         labels: string[];

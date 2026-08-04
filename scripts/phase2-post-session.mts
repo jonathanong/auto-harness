@@ -9,7 +9,7 @@ async function main(): Promise<void> {
   const plane = new ControlPlane({ publicBaseUrl: "http://ui.example" });
   plane.registerAgent({
     agentId: "a1",
-    worktrees: [{ id: "wt-1", repositoryId: "demo", path: "/w", labels: ["echo"] }],
+    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: ["echo"] }],
     commandProfiles: ["echo-prompt"],
   });
   const { handler } = createLocalApp({ plane });

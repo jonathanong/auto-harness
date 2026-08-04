@@ -50,7 +50,7 @@ describe("ControlPlane remaining branches", () => {
       plane.handleAgentMessage({
         type: "agent:register",
         agentId: "ax",
-        worktrees: [{ id: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
+        worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
       }).ok,
     ).toBe(true);
@@ -58,7 +58,7 @@ describe("ControlPlane remaining branches", () => {
       plane.handleAgentMessage({
         type: "agent:register",
         agentId: "ax",
-        worktrees: [{ id: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
+        worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
       }).ok,
     ).toBe(false);
@@ -70,6 +70,7 @@ describe("ControlPlane remaining branches", () => {
     // session with retryAfter in future skipped
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w",
@@ -114,6 +115,7 @@ describe("ControlPlane remaining branches", () => {
     // seed online worktree again
     plane.seedWorktree({
       id: "wt-2",
+      name: "wt-2",
       agentId: "a1",
       repositoryId: "repo-1",
       path: "/w2",
@@ -140,7 +142,7 @@ describe("ControlPlane remaining branches", () => {
     });
     plane2.registerAgent({
       agentId: "fresh",
-      worktrees: [{ id: "wt", repositoryId: "repo-1", path: "/p", labels: [] }],
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
     expect(plane2.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 100)).toEqual([]);
@@ -148,6 +150,7 @@ describe("ControlPlane remaining branches", () => {
     // release missing worktree
     plane2.seedWorktree({
       id: "wt-gone",
+      name: "wt-gone",
       agentId: "fresh",
       repositoryId: "repo-1",
       path: "/g",

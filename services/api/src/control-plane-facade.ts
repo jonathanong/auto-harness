@@ -15,6 +15,7 @@ import {
 } from "./control-plane-state.ts";
 import * as agents from "./control-plane-agents.ts";
 import * as assign from "./control-plane-assign.ts";
+import { listCommandProfiles } from "./control-plane-command-profiles.ts";
 import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
@@ -65,7 +66,7 @@ export class ControlPlaneBase {
   }
 
   listCommandProfiles(): string[] {
-    return agents.listCommandProfiles(this.state);
+    return listCommandProfiles(this.state);
   }
 
   createSession(
@@ -92,7 +93,13 @@ export class ControlPlaneBase {
 
   registerAgent(opts: {
     agentId: string;
-    worktrees: Array<{ id: string; repositoryId: string; path: string; labels: string[] }>;
+    worktrees: Array<{
+      id: string;
+      name: string;
+      repositoryId: string;
+      path: string;
+      labels: string[];
+    }>;
     commandProfiles: string[];
     replaceExisting?: boolean;
   }): { ok: true; connectionId: string } | { ok: false; error: string } {

@@ -58,6 +58,7 @@ async function main(): Promise<void> {
     });
     server.plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "agent-ws",
       repositoryId: "demo",
       path: wt,
@@ -75,7 +76,7 @@ async function main(): Promise<void> {
           id: "demo",
           path: repo,
           defaultBranch: "main",
-          worktrees: [{ id: "wt-1", path: wt, labels: ["echo"] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: wt, labels: ["echo"] }],
           terminalHookScript: hook,
         },
       ],

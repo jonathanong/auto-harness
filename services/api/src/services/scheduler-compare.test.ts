@@ -43,16 +43,18 @@ describe("compare helpers", () => {
     };
     expect(
       compareWorktreesForRoundRobin(
-        { ...wt, id: "a", lastAssignedAt: null },
-        { ...wt, id: "b", lastAssignedAt: "t" },
+        { ...wt, id: "a", name: "a", lastAssignedAt: null },
+        { ...wt, id: "b", name: "b", lastAssignedAt: "t" },
       ),
     ).toBeLessThan(0);
     expect(
       compareWorktreesForRoundRobin(
-        { ...wt, id: "b", lastAssignedAt: "t" },
-        { ...wt, id: "a", lastAssignedAt: "t" },
+        { ...wt, id: "b", name: "b", lastAssignedAt: "t" },
+        { ...wt, id: "a", name: "a", lastAssignedAt: "t" },
       ),
     ).toBeGreaterThan(0);
-    expect(compareWorktreesForRoundRobin({ ...wt, id: "a" }, { ...wt, id: "b" })).toBeLessThan(0);
+    expect(
+      compareWorktreesForRoundRobin({ ...wt, id: "a", name: "a" }, { ...wt, id: "b", name: "b" }),
+    ).toBeLessThan(0);
   });
 });

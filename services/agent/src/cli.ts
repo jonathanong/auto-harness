@@ -91,6 +91,7 @@ export async function runCli(
             path: r.path,
             worktrees: r.worktrees.map((w) => ({
               id: w.id,
+              name: w.name,
               path: w.path,
               labels: w.labels,
             })),

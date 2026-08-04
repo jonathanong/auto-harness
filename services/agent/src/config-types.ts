@@ -7,6 +7,7 @@ export type CommandProfileConfig = {
 
 export type WorktreeConfig = {
   id: string;
+  name: string;
   path: string;
   labels: string[];
   setupScript?: string;

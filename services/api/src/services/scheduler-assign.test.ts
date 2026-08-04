@@ -9,6 +9,7 @@ describe("Scheduler assign", () => {
     const worktrees = new MemoryWorktreeRepository();
     worktrees.seed({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w1",
@@ -19,6 +20,7 @@ describe("Scheduler assign", () => {
     });
     worktrees.seed({
       id: "wt-2",
+      name: "wt-2",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w2",
@@ -74,6 +76,7 @@ describe("Scheduler assign", () => {
     const worktrees = new MemoryWorktreeRepository();
     worktrees.seed({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w",
@@ -103,6 +106,7 @@ describe("Scheduler assign", () => {
     const worktrees = new MemoryWorktreeRepository();
     worktrees.seed({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w1",
@@ -113,6 +117,7 @@ describe("Scheduler assign", () => {
     });
     worktrees.seed({
       id: "wt-2",
+      name: "wt-2",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w2",
@@ -174,6 +179,7 @@ describe("Scheduler assign", () => {
     const worktrees = new MemoryWorktreeRepository();
     worktrees.seed({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w",

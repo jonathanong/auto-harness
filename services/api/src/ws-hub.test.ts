@@ -16,6 +16,7 @@ describe("createPlaneWsBridge", () => {
     });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w",

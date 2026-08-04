@@ -1,7 +1,10 @@
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 
 export type HostWorktree = {
+  /** Auto-generated (UUIDv7), immutable. */
   id: string;
+  /** User-chosen, slug-validated, unique across all hosts. */
+  name: string;
   path: string;
   labels: string[];
 };
@@ -23,8 +26,8 @@ export const DEFAULT_ECHO_PROFILE: HostInventory["commandProfiles"] = {
 };
 
 /** Suggested path only — never auto-persist without explicit worktree create. */
-export function defaultWorktreePath(repoPath: string, worktreeId: string): string {
-  return `${repoPath.replace(/\/$/, "")}/.worktrees/${worktreeId}`;
+export function defaultWorktreePath(repoPath: string, worktreeName: string): string {
+  return `${repoPath.replace(/\/$/, "")}/.worktrees/${worktreeName}`;
 }
 
 function seedProfiles(
@@ -96,6 +99,7 @@ export function addHostWorktree(
   }
   repo.worktrees.push({
     id: worktree.id,
+    name: worktree.name,
     path: worktree.path,
     labels: [...worktree.labels],
   });
@@ -118,6 +122,7 @@ export function updateHostWorktree(
   }
   repo.worktrees[idx] = {
     id: worktree.id,
+    name: worktree.name,
     path: worktree.path,
     labels: [...worktree.labels],
   };
@@ -149,6 +154,7 @@ export function mergeHostRepository(
     path: string;
     defaultBranch: string;
     worktreeId: string;
+    worktreeName: string;
     labels?: string[];
   },
 ): HostInventory {
@@ -162,7 +168,8 @@ export function mergeHostRepository(
   repo.worktrees = [
     {
       id: entry.worktreeId,
-      path: defaultWorktreePath(entry.path, entry.worktreeId),
+      name: entry.worktreeName,
+      path: defaultWorktreePath(entry.path, entry.worktreeName),
       labels: entry.labels ?? ["echo"],
     },
   ];

@@ -17,6 +17,7 @@ describe("createLocalApp operator management REST", () => {
     const { handler } = createLocalApp({ plane });
     plane.seedWorktree({
       id: "wt-1",
+      name: "wt-1",
       agentId: "a1",
       repositoryId: "r1",
       path: "/w",
@@ -26,7 +27,7 @@ describe("createLocalApp operator management REST", () => {
     });
     plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
     });
@@ -35,27 +36,29 @@ describe("createLocalApp operator management REST", () => {
       invokeHandler(handler, method, path, body);
 
     expect((await invoke("POST", "/api/v1/repositories", { name: "", url: "" })).status).toBe(400);
+    expect(
+      (await invoke("POST", "/api/v1/repositories", { name: "Demo", url: "/tmp/demo" })).status,
+    ).toBe(400); // name must be a lowercase slug
     const repo = await invoke("POST", "/api/v1/repositories", {
-      id: "demo",
-      name: "Demo",
+      name: "demo",
       url: "/tmp/demo",
       defaultBranch: "main",
       setupScript: "s.sh",
       terminalHookScript: "h.sh",
     });
     expect(repo.status).toBe(201);
-    expect(repo.json).toMatchObject({ id: "demo", name: "Demo", url: "/tmp/demo" });
+    expect(repo.json).toMatchObject({ id: "repo-1", name: "demo", url: "/tmp/demo" });
     expect((await invoke("GET", "/api/v1/repositories")).json).toMatchObject({
-      items: expect.arrayContaining([expect.objectContaining({ id: "demo" })]),
+      items: expect.arrayContaining([expect.objectContaining({ id: "repo-1" })]),
     });
-    expect((await invoke("GET", "/api/v1/repositories/demo")).json).toMatchObject({
-      id: "demo",
+    expect((await invoke("GET", "/api/v1/repositories/repo-1")).json).toMatchObject({
+      id: "repo-1",
     });
     expect((await invoke("GET", "/api/v1/repositories/missing")).status).toBe(404);
     expect(
       (
-        await invoke("PUT", "/api/v1/repositories/demo", {
-          name: "Demo2",
+        await invoke("PUT", "/api/v1/repositories/repo-1", {
+          name: "demo2",
           url: "/tmp/d2",
           defaultBranch: "dev",
           setupScript: "s2.sh",
@@ -63,24 +66,23 @@ describe("createLocalApp operator management REST", () => {
         })
       ).json,
     ).toMatchObject({
-      name: "Demo2",
+      name: "demo2",
       defaultBranch: "dev",
       setupScript: "s2.sh",
       terminalHookScript: "h2.sh",
     });
     expect((await invoke("PUT", "/api/v1/repositories/nope", { name: "x" })).status).toBe(404);
-    expect((await invoke("DELETE", "/api/v1/repositories/demo")).status).toBe(204);
-    expect((await invoke("DELETE", "/api/v1/repositories/demo")).status).toBe(404);
+    expect((await invoke("DELETE", "/api/v1/repositories/repo-1")).status).toBe(204);
+    expect((await invoke("DELETE", "/api/v1/repositories/repo-1")).status).toBe(404);
 
     await invoke("POST", "/api/v1/repositories", {
-      id: "demo",
-      name: "Demo",
+      name: "demo",
       url: "/tmp/demo",
     });
 
     expect((await invoke("POST", "/api/v1/schedules", { name: "x" })).status).toBe(400);
     const sched = await invoke("POST", "/api/v1/schedules", {
-      repositoryId: "demo",
+      repositoryId: "repo-1",
       name: "nightly",
       commandProfile: "echo-prompt",
       cron: "0 0 * * *",
@@ -108,7 +110,7 @@ describe("createLocalApp operator management REST", () => {
           nextRunAt: "2026-01-02T00:00:00.000Z",
           enabled: true,
           ref: "develop",
-          repositoryId: "demo",
+          repositoryId: "repo-1",
         })
       ).json,
     ).toMatchObject({
@@ -130,7 +132,7 @@ describe("createLocalApp operator management REST", () => {
     expect((await invoke("POST", "/api/v1/schedules/missing/trigger")).status).toBe(400);
 
     const created = await invoke("POST", "/api/v1/sessions", {
-      repositoryId: "demo",
+      repositoryId: "repo-1",
       prompt: "cancel-me",
       commandProfile: "echo-prompt",
       timeout: 10,
@@ -150,10 +152,10 @@ describe("createLocalApp operator management REST", () => {
     const hostPut = await invoke("PUT", "/api/v1/agents/a1/config", {
       repositories: [
         {
-          id: "demo",
+          id: "repo-1",
           path: "/repo",
           defaultBranch: "main",
-          worktrees: [{ id: "wt-1", path: "/repo/wt-1", labels: [] }],
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
         },
       ],
       commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
@@ -170,7 +172,7 @@ describe("createLocalApp operator management REST", () => {
     expect((await invoke("DELETE", "/api/v1/schedules/sched-1")).status).toBe(404);
 
     expect(await invokeBadJson(handler, "POST", "/api/v1/repositories")).toBe(400);
-    expect(await invokeBadJson(handler, "PUT", "/api/v1/repositories/demo")).toBe(400);
+    expect(await invokeBadJson(handler, "PUT", "/api/v1/repositories/repo-1")).toBe(400);
     expect(await invokeBadJson(handler, "POST", "/api/v1/schedules")).toBe(400);
     expect(await invokeBadJson(handler, "PATCH", "/api/v1/schedules/sched-1")).toBe(400);
   });

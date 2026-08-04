@@ -68,7 +68,7 @@ function mockStorage(): DynamoPlaneStorage {
             id: "r1",
             path: "/r",
             defaultBranch: "main",
-            worktrees: [{ id: "wt1", path: "/w", labels: [] }],
+            worktrees: [{ id: "wt1", name: "wt1", path: "/w", labels: [] }],
           },
         ],
         commandProfiles: { c: { argv: ["echo"], appendPrompt: true } },
@@ -93,7 +93,7 @@ describe("ControlPlane storage write-through paths", () => {
 
     plane.registerAgent({
       agentId: "a1",
-      worktrees: [{ id: "wt1", repositoryId: "r1", path: "/w", labels: [] }],
+      worktrees: [{ id: "wt1", name: "wt1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["c"],
       replaceExisting: true,
     });
@@ -174,7 +174,7 @@ describe("ControlPlane storage write-through paths", () => {
           id: "r1",
           path: "/r",
           defaultBranch: "main",
-          worktrees: [{ id: "wt1", path: "/w", labels: [] }],
+          worktrees: [{ id: "wt1", name: "wt1", path: "/w", labels: [] }],
         },
       ],
       commandProfiles: { c: { argv: ["echo"], appendPrompt: true } },

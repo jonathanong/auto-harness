@@ -36,6 +36,7 @@ export type SessionRecord = {
 
 export type WorktreeRecord = {
   id: string;
+  name: string;
   agentId: string;
   repositoryId: string;
   path: string;

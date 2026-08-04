@@ -80,3 +80,6 @@ export {
 } from "./list-query.ts";
 
 export { apiBase, apiGet, resolveServerApiBase } from "./api-client.ts";
+
+export { newId } from "./id.ts";
+export { isValidSlugName, SLUG_NAME_HINT, SLUG_PATTERN } from "./slug.ts";
