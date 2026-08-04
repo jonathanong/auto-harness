@@ -173,14 +173,13 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 | File                             | Tests                                                                | What it covers                                             |
 | -------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `e2e/agent/status.spec.ts`       | loads agent shell and status page                                    | Shell, agent id `local-1`, drain control                   |
+| `e2e/agent/status.spec.ts`       | loads host shell and status page                                     | Shell, agent id `local-1`, drain control                   |
 |                                  | stat cards link to their pages                                       | Host config/worktrees/sessions cards are links             |
 | `e2e/agent/repositories.spec.ts` | repositories page loads with add-repository dialog closed            | Page + closed modal                                        |
-|                                  | add repository via modal, nested worktrees section shows it empty    | Modal add flow; nested hierarchical worktrees              |
+|                                  | attach repository via modal, nested worktrees section shows it empty | Modal attach flow; nested hierarchical worktrees           |
 |                                  | clicking a repository opens its detail page; removing redirects back | Modal add flow; click-through, remove, redirect            |
 |                                  | unknown repository id shows a not-found state                        | `/repositories/[id]` 404-style state                       |
-| `e2e/agent/worktrees.spec.ts`    | worktrees page loads                                                 | Page + heading                                             |
-|                                  | clicking a worktree opens its detail page; removing redirects back   | Seeds host config via API; click-through, remove, redirect |
+| `e2e/agent/worktrees.spec.ts`    | clicking a worktree opens its detail page; removing redirects back   | Seeds host config via API; click-through, remove, redirect |
 | `e2e/agent/sessions.spec.ts`     | sessions page loads                                                  | Page + heading                                             |
 |                                  | clicking a session opens its detail page                             | Seeds + assigns a session via API; click-through           |
 

@@ -231,6 +231,7 @@ UI connections store `type: "client"` and `userId` from the authenticated princi
 ```json
 {
   "id": "wt-1",
+  "name": "codex-1",
   "agentId": "vps-prod-1",
   "repositoryId": "repo-abc",
   "path": "/home/harness/repos/my-app/.worktrees/wt-1",

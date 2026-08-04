@@ -92,10 +92,10 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 ```json
 {
   "id": "wt-1",
+  "name": "codex-1",
   "repositoryId": "repo-abc",
-  "labels": ["codex", "claude"],
-  "status": "idle",
-  "currentSessionId": null
+  "path": "/home/harness/repos/my-app/.worktrees/wt-1",
+  "labels": ["codex", "claude"]
 }
 ```
 
