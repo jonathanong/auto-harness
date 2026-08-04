@@ -121,7 +121,12 @@ export default async function AgentRepositoryDetailPage({
               content: (
                 <div className="space-y-3">
                   <div className="flex justify-end">
-                    <AddWorktreeForm agentId={agent} inventory={inventory} repo={repo} />
+                    <AddWorktreeForm
+                      agentId={agent}
+                      inventory={inventory}
+                      repo={repo}
+                      repoName={repoName}
+                    />
                   </div>
                   <WorktreesHierarchy
                     groups={[group]}

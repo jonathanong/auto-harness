@@ -17,10 +17,12 @@ export function AddWorktreeForm({
   agentId,
   inventory,
   repo,
+  repoName,
 }: {
   agentId: string;
   inventory: HostInventory;
   repo: HostRepository;
+  repoName: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -85,7 +87,7 @@ export function AddWorktreeForm({
         });
       }}
     >
-      <p className="text-sm font-medium">New worktree under {repo.id}</p>
+      <p className="text-sm font-medium">New worktree under {repoName}</p>
       <div className="space-y-1">
         <Label tip="Lowercase letters, numbers, and dashes only; unique across all hosts. Id is auto-generated.">
           name

@@ -60,8 +60,9 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
             setError(result.error);
             return;
           }
+          const repoName = repos.find((r) => r.id === id)?.name ?? id;
           setOk(
-            `Attached ${id} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
+            `Attached ${repoName} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
           );
           form.reset();
           router.refresh();
