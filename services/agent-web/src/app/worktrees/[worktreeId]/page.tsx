@@ -1,6 +1,12 @@
 import Link from "next/link";
 import type { HostRepository, HostWorktree } from "@auto-harness/shared";
-import { SessionsTable, WorktreeDetail, type WorktreeRow } from "@auto-harness/ui";
+import {
+  SessionsTable,
+  Tabs,
+  WorktreeDetail,
+  WorktreeDetailsCard,
+  type WorktreeRow,
+} from "@auto-harness/ui";
 
 import { RemoveWorktreeButton } from "../../../components/remove-worktree-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
@@ -23,10 +29,13 @@ type Session = {
 
 export default async function AgentWorktreeDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ worktreeId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { worktreeId } = await params;
+  const { tab } = await searchParams;
   const id = agentId();
   const inventory = await loadHostInventory(id);
 
@@ -85,9 +94,6 @@ export default async function AgentWorktreeDetailPage({
     <div data-pw="page-worktree-detail">
       <WorktreeDetail
         worktree={row}
-        repositoryName={repoName}
-        repoHrefBase="/repositories"
-        repoPath={repo.path}
         backHref="/worktrees"
         actions={
           <RemoveWorktreeButton
@@ -98,14 +104,36 @@ export default async function AgentWorktreeDetailPage({
           />
         }
       >
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Sessions in this worktree</h3>
-          <SessionsTable
-            items={sessions}
-            hrefBase="/sessions"
-            emptyMessage="No recent sessions in this worktree."
-          />
-        </div>
+        <Tabs
+          basePath={`/worktrees/${encodeURIComponent(worktreeId)}`}
+          active={typeof tab === "string" ? tab : "sessions"}
+          pw="worktree-detail-tabs"
+          tabs={[
+            {
+              key: "sessions",
+              label: "Sessions",
+              content: (
+                <SessionsTable
+                  items={sessions}
+                  hrefBase="/sessions"
+                  emptyMessage="No recent sessions in this worktree."
+                />
+              ),
+            },
+            {
+              key: "settings",
+              label: "Settings",
+              content: (
+                <WorktreeDetailsCard
+                  worktree={row}
+                  repositoryName={repoName}
+                  repoHrefBase="/repositories"
+                  repoPath={repo.path}
+                />
+              ),
+            },
+          ]}
+        />
       </WorktreeDetail>
     </div>
   );

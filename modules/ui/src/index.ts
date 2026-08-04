@@ -41,12 +41,19 @@ export {
   type RepositoryRow,
   type RepositoriesTableProps,
 } from "./components/repositories-table.tsx";
-export { WorktreeDetail, type WorktreeDetailProps } from "./components/worktree-detail.tsx";
+export {
+  WorktreeDetail,
+  WorktreeDetailsCard,
+  type WorktreeDetailProps,
+  type WorktreeDetailsCardProps,
+} from "./components/worktree-detail.tsx";
 export {
   RepositoryDetail,
+  RepositoryDetailsCard,
   type RepositorySummary,
   type RepositoryDetailProps,
 } from "./components/repository-detail.tsx";
+export { Tabs, type TabDef, type TabsProps } from "./components/tabs.tsx";
 export {
   SessionDetail,
   type SessionSummary,

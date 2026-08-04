@@ -1,7 +1,9 @@
 import Link from "next/link";
 import {
   RepositoryDetail,
+  RepositoryDetailsCard,
   SessionsTable,
+  Tabs,
   WorktreesHierarchy,
   type RepositorySummary,
   type WorktreeRepoGroup,
@@ -33,10 +35,13 @@ type Session = {
 
 export default async function RepositoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id: repositoryId } = await params;
+  const { tab } = await searchParams;
 
   let repository: RepositorySummary | undefined;
   try {
@@ -86,24 +91,42 @@ export default async function RepositoryDetailPage({
   return (
     <div data-pw="page-repository-detail">
       <RepositoryDetail repository={repository} backHref="/repositories">
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Worktrees</h3>
-          <WorktreesHierarchy
-            groups={[group]}
-            showAgent
-            hrefBase="/worktrees"
-            emptyMessage="No worktrees registered for this repository."
-          />
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Sessions in this repository</h3>
-          <SessionsTable
-            items={sessions}
-            showAgent
-            hrefBase="/sessions"
-            emptyMessage="No recent sessions for this repository."
-          />
-        </div>
+        <Tabs
+          basePath={`/repositories/${encodeURIComponent(repositoryId)}`}
+          active={typeof tab === "string" ? tab : "sessions"}
+          pw="repository-detail-tabs"
+          tabs={[
+            {
+              key: "sessions",
+              label: "Sessions",
+              content: (
+                <SessionsTable
+                  items={sessions}
+                  showAgent
+                  hrefBase="/sessions"
+                  emptyMessage="No recent sessions for this repository."
+                />
+              ),
+            },
+            {
+              key: "worktrees",
+              label: "Worktrees",
+              content: (
+                <WorktreesHierarchy
+                  groups={[group]}
+                  showAgent
+                  hrefBase="/worktrees"
+                  emptyMessage="No worktrees registered for this repository."
+                />
+              ),
+            },
+            {
+              key: "settings",
+              label: "Settings",
+              content: <RepositoryDetailsCard repository={repository} />,
+            },
+          ]}
+        />
       </RepositoryDetail>
     </div>
   );

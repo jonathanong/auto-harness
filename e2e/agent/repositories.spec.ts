@@ -61,6 +61,7 @@ test.describe("host pane repositories", () => {
     await page.getByTestId(`repo-link-${id}`).click();
     await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
     await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
+    await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${id}`);
 
     await page.getByTestId(`repo-remove-${id}`).click();

@@ -2,12 +2,16 @@ import Link from "next/link";
 import type { HostRepository } from "@auto-harness/shared";
 import {
   RepositoryDetail,
+  RepositoryDetailsCard,
   SessionsTable,
+  Tabs,
   WorktreesHierarchy,
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 
+import { AddWorktreeForm } from "../../../components/host-inventory-add-worktree.tsx";
 import { RemoveRepoButton } from "../../../components/remove-repo-button.tsx";
+import { RemoveWorktreeButton } from "../../../components/remove-worktree-button.tsx";
 import { agentId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,
@@ -28,10 +32,13 @@ type Session = {
 
 export default async function AgentRepositoryDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { id: repositoryId } = await params;
+  const { tab } = await searchParams;
   const agent = agentId();
   const inventory = await loadHostInventory(agent);
 
@@ -92,22 +99,52 @@ export default async function AgentRepositoryDetailPage({
           <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />
         }
       >
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Worktrees</h3>
-          <WorktreesHierarchy
-            groups={[group]}
-            hrefBase="/worktrees"
-            emptyMessage="No worktrees yet — add them on the Worktrees page."
-          />
-        </div>
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Sessions in this repository</h3>
-          <SessionsTable
-            items={sessions}
-            hrefBase="/sessions"
-            emptyMessage="No recent sessions for this repository."
-          />
-        </div>
+        <Tabs
+          basePath={`/repositories/${encodeURIComponent(repositoryId)}`}
+          active={typeof tab === "string" ? tab : "sessions"}
+          pw="repository-detail-tabs"
+          tabs={[
+            {
+              key: "sessions",
+              label: "Sessions",
+              content: (
+                <SessionsTable
+                  items={sessions}
+                  hrefBase="/sessions"
+                  emptyMessage="No recent sessions for this repository."
+                />
+              ),
+            },
+            {
+              key: "worktrees",
+              label: "Worktrees",
+              content: (
+                <div className="space-y-3">
+                  <div className="flex justify-end">
+                    <AddWorktreeForm agentId={agent} inventory={inventory} repo={repo} />
+                  </div>
+                  <WorktreesHierarchy
+                    groups={[group]}
+                    hrefBase="/worktrees"
+                    emptyMessage="No worktrees yet."
+                    renderWorktreeActions={(wt) => (
+                      <RemoveWorktreeButton
+                        agentId={agent}
+                        repositoryId={repo.id}
+                        worktreeId={wt.id}
+                      />
+                    )}
+                  />
+                </div>
+              ),
+            },
+            {
+              key: "settings",
+              label: "Settings",
+              content: <RepositoryDetailsCard repository={{ ...repo, name: repoName }} />,
+            },
+          ]}
+        />
       </RepositoryDetail>
     </div>
   );

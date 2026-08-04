@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { SessionsTable, WorktreeDetail, type WorktreeRow } from "@auto-harness/ui";
+import {
+  SessionsTable,
+  Tabs,
+  WorktreeDetail,
+  WorktreeDetailsCard,
+  type WorktreeRow,
+} from "@auto-harness/ui";
 
 import { apiGet } from "../../../lib/api.ts";
 
@@ -28,10 +34,13 @@ type Session = {
 
 export default async function WorktreeDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ worktreeId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { worktreeId } = await params;
+  const { tab } = await searchParams;
 
   let worktree: Wt | undefined;
   try {
@@ -87,22 +96,38 @@ export default async function WorktreeDetailPage({
 
   return (
     <div data-pw="page-worktree-detail">
-      <WorktreeDetail
-        worktree={row}
-        repositoryName={repoName}
-        repoHrefBase="/repositories"
-        repoPath={repoPath}
-        backHref="/worktrees"
-      >
-        <div className="space-y-2">
-          <h3 className="text-lg font-medium">Sessions in this worktree</h3>
-          <SessionsTable
-            items={sessions}
-            showAgent
-            hrefBase="/sessions"
-            emptyMessage="No recent sessions in this worktree."
-          />
-        </div>
+      <WorktreeDetail worktree={row} backHref="/worktrees">
+        <Tabs
+          basePath={`/worktrees/${encodeURIComponent(worktreeId)}`}
+          active={typeof tab === "string" ? tab : "sessions"}
+          pw="worktree-detail-tabs"
+          tabs={[
+            {
+              key: "sessions",
+              label: "Sessions",
+              content: (
+                <SessionsTable
+                  items={sessions}
+                  showAgent
+                  hrefBase="/sessions"
+                  emptyMessage="No recent sessions in this worktree."
+                />
+              ),
+            },
+            {
+              key: "settings",
+              label: "Settings",
+              content: (
+                <WorktreeDetailsCard
+                  worktree={row}
+                  repositoryName={repoName}
+                  repoHrefBase="/repositories"
+                  repoPath={repoPath}
+                />
+              ),
+            },
+          ]}
+        />
       </WorktreeDetail>
     </div>
   );

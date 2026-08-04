@@ -42,6 +42,7 @@ test.describe("control plane worktrees", () => {
 
     await expect(page).toHaveURL(new RegExp(`/worktrees/${wtId}$`));
     await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
+    await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
   });
 });

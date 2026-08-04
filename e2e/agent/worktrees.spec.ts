@@ -40,6 +40,7 @@ test.describe("host pane worktrees", () => {
 
     await expect(page).toHaveURL(new RegExp(`/worktrees/${wtId}$`));
     await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
+    await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
 
     await page.getByTestId(`worktree-remove-${wtId}`).click();

@@ -30,6 +30,7 @@ test.describe("control plane repositories", () => {
     await row.getByRole("link").click();
     await expect(page).toHaveURL(/\/repositories\/[^/]+$/);
     await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
+    await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
   });
 

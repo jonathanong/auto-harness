@@ -20,11 +20,11 @@ export type RepositoryDetailProps = {
   backHref: string;
   /** Rendered top-right (e.g. a remove button). */
   actions?: ReactNode;
-  /** Rendered below the details card (e.g. worktrees + sessions sections). */
+  /** Tab content (Sessions/Worktrees/Settings) rendered below the header. */
   children?: ReactNode;
 };
 
-/** Shared repository detail view — reused by the host pane and control page. */
+/** Shared repository detail header — reused by the host pane and control page. */
 export function RepositoryDetail({
   repository: r,
   backHref,
@@ -49,51 +49,56 @@ export function RepositoryDetail({
         {actions}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <dl className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Id</dt>
-              <dd className="font-mono text-xs text-muted-foreground">{r.id}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-xs uppercase text-muted-foreground">Path / URL</dt>
-              <dd className="break-all font-mono text-sm" data-pw="repository-detail-path">
-                {r.path ?? r.url ?? "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Default branch</dt>
-              <dd className="font-mono text-sm">{r.defaultBranch ?? "main"}</dd>
-            </div>
-          </dl>
-          {r.setupScript ? (
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Setup script</dt>
-              <dd>
-                <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-xs">
-                  {r.setupScript}
-                </pre>
-              </dd>
-            </div>
-          ) : null}
-          {r.terminalHookScript ? (
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Terminal hook script</dt>
-              <dd>
-                <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-xs">
-                  {r.terminalHookScript}
-                </pre>
-              </dd>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
       {children}
     </div>
+  );
+}
+
+/** Repository fields — the Settings tab's content. */
+export function RepositoryDetailsCard({ repository: r }: { repository: RepositorySummary }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Details</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <dl className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Id</dt>
+            <dd className="font-mono text-xs text-muted-foreground">{r.id}</dd>
+          </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs uppercase text-muted-foreground">Path / URL</dt>
+            <dd className="break-all font-mono text-sm" data-pw="repository-detail-path">
+              {r.path ?? r.url ?? "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Default branch</dt>
+            <dd className="font-mono text-sm">{r.defaultBranch ?? "main"}</dd>
+          </div>
+        </dl>
+        {r.setupScript ? (
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Setup script</dt>
+            <dd>
+              <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-xs">
+                {r.setupScript}
+              </pre>
+            </dd>
+          </div>
+        ) : null}
+        {r.terminalHookScript ? (
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Terminal hook script</dt>
+            <dd>
+              <pre className="mt-1 overflow-x-auto rounded-md border border-border bg-muted/30 p-2 font-mono text-xs">
+                {r.terminalHookScript}
+              </pre>
+            </dd>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
