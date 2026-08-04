@@ -128,23 +128,22 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ### Host pane (`services/agent-web`)
 
-| `data-pw`                                                                                                                                                               | Where                                     |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
-| `host-shell`                                                                                                                                                            | App shell                                 |
-| `nav-status`, `nav-repositories`, `nav-worktrees`, `nav-sessions`                                                                                                       | Nav                                       |
-| `page-host-status`, `host-status-id`, `host-drain`                                                                                                                      | Status                                    |
-| `stat-host-config-link`, `stat-worktrees-link`, `stat-worktrees`, `stat-sessions-link`, `stat-sessions-sample`                                                          | Status stat cards (link to pages)         |
-| `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                            | Repositories                              |
-| `add-repo-dialog`, `dialog-close`, `form-add-local-repo`, `add-repo-catalog-id`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository modal (attach, no create)  |
-| `repo-row-*`, `repo-link-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                    | Repositories table + nested worktrees     |
-| `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repo-remove-*`, `page-repository-detail-not-found`                                              | Repository detail (`/repositories/[id]`)  |
-| `repository-detail-tabs`, `tab-sessions`, `tab-worktrees`, `tab-settings`, `repository-detail-path`                                                                     | Repository detail tabs                    |
-| `page-worktrees`, `worktrees-heading`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-remove-*`                                                                | Worktrees (hierarchical, editable)        |
-| `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-back`, `page-worktree-detail-not-found`                                               | Worktree detail (`/worktrees/[id]`)       |
-| `worktree-detail-tabs`, `tab-sessions`, `tab-settings`, `worktree-detail-path`                                                                                          | Worktree detail tabs                      |
-| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                   | Sessions list                             |
-| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-cancel`, `session-resume`, `session-archive`, `session-logs`            | Session detail (`/sessions/[id]`)         |
-| `form-host-config-json`, `host-config-json`, `host-config-submit`, `host-config-ok`, `host-config-error`                                                                | Raw JSON inventory (on Repositories page) |
+| `data-pw`                                                                                                                                                               | Where                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `host-shell`                                                                                                                                                            | App shell                                                          |
+| `nav-status`, `nav-repositories`, `nav-sessions`                                                                                                                        | Nav                                                                |
+| `page-host-status`, `host-status-id`, `host-drain`                                                                                                                      | Status                                                             |
+| `stat-host-config-link`, `stat-worktrees-link`, `stat-worktrees`, `stat-sessions-link`, `stat-sessions-sample`                                                          | Status stat cards (link to pages)                                  |
+| `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                            | Repositories                                                       |
+| `add-repo-dialog`, `dialog-close`, `form-add-local-repo`, `add-repo-catalog-id`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository modal (attach, no create)                           |
+| `repo-row-*`, `repo-link-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                    | Repositories table + nested worktrees                              |
+| `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repo-remove-*`, `page-repository-detail-not-found`                                              | Repository detail (`/repositories/[id]`)                           |
+| `repository-detail-tabs`, `tab-sessions`, `tab-worktrees`, `tab-settings`, `repository-detail-path`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-remove-*`  | Repository detail tabs (add/remove worktrees on the Worktrees tab) |
+| `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-back`, `page-worktree-detail-not-found`                                               | Worktree detail (`/worktrees/[id]`)                                |
+| `worktree-detail-tabs`, `tab-sessions`, `tab-settings`, `worktree-detail-path`                                                                                          | Worktree detail tabs                                               |
+| `page-sessions`, `sessions-heading`, `session-filters`, `session-filter-status`, `session-filter-q`, `session-link-*`                                                   | Sessions list                                                      |
+| `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-cancel`, `session-resume`, `session-archive`, `session-logs`            | Session detail (`/sessions/[id]`)                                  |
+| `form-host-config-json`, `host-config-json`, `host-config-submit`, `host-config-ok`, `host-config-error`                                                                | Raw JSON inventory (on Repositories page)                          |
 
 ---
 

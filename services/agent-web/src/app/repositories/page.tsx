@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { emptyHostInventory } from "@auto-harness/shared";
 import { RepositoriesTable, WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
@@ -71,11 +70,8 @@ export default async function AgentRepositoriesPage() {
       <div className="space-y-2">
         <h3 className="text-lg font-medium">Worktrees by repository</h3>
         <p className="text-sm text-muted-foreground">
-          Click a worktree to see its details and sessions. Add or remove worktrees on the{" "}
-          <Link href="/worktrees" className="underline">
-            Worktrees
-          </Link>{" "}
-          page.
+          Click a worktree to see its details and sessions. Add or remove worktrees from a
+          repository's own detail page (Worktrees tab).
         </p>
         <WorktreesHierarchy
           groups={worktreeGroups}

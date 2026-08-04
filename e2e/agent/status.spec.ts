@@ -8,7 +8,6 @@ test.describe("host pane status", () => {
     await expect(page.getByTestId("host-status-id")).toHaveText("local-1");
     await expect(page.getByTestId("nav-status")).toBeVisible();
     await expect(page.getByTestId("nav-repositories")).toBeVisible();
-    await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
     await expect(page.getByTestId("host-drain")).toBeVisible();
   });
@@ -19,10 +18,10 @@ test.describe("host pane status", () => {
       "href",
       "/repositories",
     );
-    await expect(page.getByTestId("stat-worktrees-link")).toHaveAttribute("href", "/worktrees");
+    await expect(page.getByTestId("stat-worktrees-link")).toHaveAttribute("href", "/repositories");
     await expect(page.getByTestId("stat-sessions-link")).toHaveAttribute("href", "/sessions");
 
     await page.getByTestId("stat-worktrees-link").click();
-    await expect(page).toHaveURL(/\/worktrees$/);
+    await expect(page).toHaveURL(/\/repositories$/);
   });
 });

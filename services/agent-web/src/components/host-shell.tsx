@@ -14,13 +14,7 @@ const NAV = [
     href: "/repositories",
     label: "Repositories",
     pw: "nav-repositories",
-    tip: "Host repository paths for this host (no auto worktrees)",
-  },
-  {
-    href: "/worktrees",
-    label: "Worktrees",
-    pw: "nav-worktrees",
-    tip: "Worktrees under each repository — hierarchical, explicit ids and paths",
+    tip: "Host repository paths and worktrees, hierarchical by repository",
   },
   {
     href: "/sessions",

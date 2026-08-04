@@ -53,8 +53,8 @@ export default async function AgentWorktreeDetailPage({
   if (!repo || !worktree) {
     return (
       <div className="space-y-4" data-pw="page-worktree-detail-not-found">
-        <Link href="/worktrees" className="text-sm text-muted-foreground hover:underline">
-          ← Back to worktrees
+        <Link href="/repositories" className="text-sm text-muted-foreground hover:underline">
+          ← Back to repositories
         </Link>
         <p className="text-sm text-muted-foreground">
           No worktree <code className="font-mono">{worktreeId}</code> on agent{" "}
@@ -90,17 +90,20 @@ export default async function AgentWorktreeDetailPage({
     agentId: id,
   };
 
+  const repoWorktreesHref = `/repositories/${encodeURIComponent(repo.id)}?tab=worktrees`;
+
   return (
     <div data-pw="page-worktree-detail">
       <WorktreeDetail
         worktree={row}
-        backHref="/worktrees"
+        backHref={repoWorktreesHref}
+        backLabel="repository"
         actions={
           <RemoveWorktreeButton
             agentId={id}
             repositoryId={repo.id}
             worktreeId={worktree.id}
-            redirectTo="/worktrees"
+            redirectTo={repoWorktreesHref}
           />
         }
       >

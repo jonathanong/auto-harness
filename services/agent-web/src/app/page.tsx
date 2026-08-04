@@ -112,7 +112,7 @@ export default async function HostStatusPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Link href="/worktrees" data-pw="stat-worktrees-link">
+        <Link href="/repositories" data-pw="stat-worktrees-link">
           <Card className={CLICKABLE_CARD}>
             <CardHeader>
               <CardTitle className="text-base">Worktrees (live)</CardTitle>

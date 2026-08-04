@@ -8,6 +8,8 @@ import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 export type WorktreeDetailProps = {
   worktree: WorktreeRow;
   backHref: string;
+  /** Text after "← Back to " — default "worktrees". */
+  backLabel?: string;
   /** Rendered top-right (e.g. a remove button). */
   actions?: ReactNode;
   /** Tab content (Sessions/Settings) rendered below the header. */
@@ -15,7 +17,13 @@ export type WorktreeDetailProps = {
 };
 
 /** Shared worktree detail header — reused by the host pane and control page. */
-export function WorktreeDetail({ worktree, backHref, actions, children }: WorktreeDetailProps) {
+export function WorktreeDetail({
+  worktree,
+  backHref,
+  backLabel = "worktrees",
+  actions,
+  children,
+}: WorktreeDetailProps) {
   return (
     <div className="space-y-6" data-pw="worktree-detail">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -25,7 +33,7 @@ export function WorktreeDetail({ worktree, backHref, actions, children }: Worktr
             className="text-sm text-muted-foreground hover:underline"
             data-pw="worktree-detail-back"
           >
-            ← Back to worktrees
+            ← Back to {backLabel}
           </Link>
           <h2 className="text-2xl font-semibold tracking-tight" data-pw="worktree-detail-id">
             {worktree.name}
