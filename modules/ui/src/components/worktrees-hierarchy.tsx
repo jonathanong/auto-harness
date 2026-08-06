@@ -81,6 +81,7 @@ export function WorktreesHierarchy({
                     <Link
                       href={`${g.repoHrefBase}/${encodeURIComponent(g.repositoryId)}`}
                       className="hover:underline"
+                      data-pw={`repo-link-${g.repositoryId}`}
                     >
                       {g.repositoryName ?? g.repositoryId}
                     </Link>
@@ -115,12 +116,16 @@ export function WorktreesHierarchy({
                 </TableHeader>
                 <TableBody>
                   {g.worktrees.map((wt) => (
-                    <TableRow key={wt.id} data-pw={`worktree-row-${wt.id}`}>
+                    <TableRow
+                      key={wt.id}
+                      className={hrefBase ? "relative cursor-pointer" : undefined}
+                      data-pw={`worktree-row-${wt.id}`}
+                    >
                       <TableCell className="text-xs">
                         {hrefBase ? (
                           <Link
                             href={`${hrefBase}/${encodeURIComponent(wt.id)}`}
-                            className="hover:underline"
+                            className="after:absolute after:inset-0 hover:underline"
                             data-pw={`worktree-link-${wt.id}`}
                           >
                             {wt.name}
@@ -143,7 +148,9 @@ export function WorktreesHierarchy({
                         {(wt.labels ?? []).length ? (wt.labels ?? []).join(", ") : "—"}
                       </TableCell>
                       {renderWorktreeActions ? (
-                        <TableCell className="text-right">{renderWorktreeActions(wt, g)}</TableCell>
+                        <TableCell className="relative z-10 text-right">
+                          {renderWorktreeActions(wt, g)}
+                        </TableCell>
                       ) : null}
                     </TableRow>
                   ))}

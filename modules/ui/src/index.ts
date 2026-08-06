@@ -37,11 +37,6 @@ export {
   type WorktreesHierarchyProps,
 } from "./components/worktrees-hierarchy.tsx";
 export {
-  RepositoriesTable,
-  type RepositoryRow,
-  type RepositoriesTableProps,
-} from "./components/repositories-table.tsx";
-export {
   WorktreeDetail,
   WorktreeDetailsCard,
   type WorktreeDetailProps,

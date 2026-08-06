@@ -1,4 +1,4 @@
-import { RepositoriesTable, WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
+import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx";
@@ -37,6 +37,20 @@ export default async function RepositoriesPage() {
     error = e instanceof Error ? e.message : String(e);
   }
 
+  const worktreesByRepo = new Map<string, Wt[]>();
+  for (const wt of worktrees) {
+    const list = worktreesByRepo.get(wt.repositoryId) ?? [];
+    list.push(wt);
+    worktreesByRepo.set(wt.repositoryId, list);
+  }
+  const groups: WorktreeRepoGroup[] = items.map((r) => ({
+    repositoryId: r.id,
+    repositoryName: r.name,
+    repoHrefBase: "/repositories",
+    repoPath: r.url,
+    worktrees: worktreesByRepo.get(r.id) ?? [],
+  }));
+
   return (
     <div className="space-y-8" data-pw="page-repositories">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -45,35 +59,23 @@ export default async function RepositoriesPage() {
             Repositories
           </h2>
           <p className="text-sm text-muted-foreground">
-            Catalog repositories and attach local paths to hosts.
+            Catalog repositories and attach local paths to hosts. Click a repository to expand its
+            worktrees, or a worktree to see its details and sessions.
           </p>
         </div>
         <AddRepoDialog />
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <RepositoriesTable items={items} hrefBase="/repositories" />
-
-      <div>
-        <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-        <AttachLocalRepoForm agentIds={agentIds} repos={items} />
-      </div>
+      <WorktreesHierarchy
+        groups={groups}
+        showAgent
+        hrefBase="/worktrees"
+        emptyMessage="No repositories registered yet."
+      />
 
       <div className="border-t border-border pt-6">
-        <h3 className="mb-2 text-lg font-medium">Worktrees by repository</h3>
-        <p className="mb-2 text-sm text-muted-foreground">
-          Click a worktree to see its details and sessions. Worktrees are managed on each host pane
-          (or fleet-wide on Worktrees).
-        </p>
-        <WorktreesHierarchy
-          groups={groupWorktreesByRepo(worktrees).map((g) => ({
-            ...g,
-            repositoryName: items.find((r) => r.id === g.repositoryId)?.name ?? g.repositoryId,
-            repoHrefBase: "/repositories",
-          }))}
-          showAgent
-          hrefBase="/worktrees"
-          emptyMessage="No worktrees registered yet."
-        />
+        <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
+        <AttachLocalRepoForm agentIds={agentIds} repos={items} />
       </div>
     </div>
   );

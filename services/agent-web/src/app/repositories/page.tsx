@@ -1,5 +1,5 @@
 import { emptyHostInventory } from "@auto-harness/shared";
-import { RepositoriesTable, WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
+import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { HostConfigForm } from "../../components/host-config-form.tsx";
@@ -17,12 +17,6 @@ export default async function AgentRepositoriesPage() {
   ]);
   const namesById = Object.fromEntries(catalog.map((r) => [r.id, r.name]));
   const attachedIds = new Set(inventory.repositories.map((r) => r.id));
-  const rows = inventory.repositories.map((r) => ({
-    id: r.id,
-    name: namesById[r.id] ?? r.id,
-    path: r.path,
-    defaultBranch: r.defaultBranch,
-  }));
   const worktreeGroups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
     repositoryName: namesById[repo.id] ?? repo.id,
@@ -56,7 +50,9 @@ export default async function AgentRepositoriesPage() {
             Repositories
           </h2>
           <p className="text-sm text-muted-foreground">
-            Agent <code className="font-mono">{id}</code>. Add host repository paths here.
+            Agent <code className="font-mono">{id}</code>. Click a repository to expand its
+            worktrees, or a worktree to see its details and sessions. Add or remove worktrees from a
+            repository's own detail page (Worktrees tab).
           </p>
         </div>
         <AddRepoDialog
@@ -65,24 +61,11 @@ export default async function AgentRepositoriesPage() {
           catalog={catalog.filter((r) => !attachedIds.has(r.id))}
         />
       </div>
-      <RepositoriesTable
-        items={rows}
-        pathLabel="Host path"
-        hrefBase="/repositories"
+      <WorktreesHierarchy
+        groups={worktreeGroups}
+        hrefBase="/worktrees"
         emptyMessage="No repositories on this agent yet."
       />
-      <div className="space-y-2">
-        <h3 className="text-lg font-medium">Worktrees by repository</h3>
-        <p className="text-sm text-muted-foreground">
-          Click a worktree to see its details and sessions. Add or remove worktrees from a
-          repository's own detail page (Worktrees tab).
-        </p>
-        <WorktreesHierarchy
-          groups={worktreeGroups}
-          hrefBase="/worktrees"
-          emptyMessage="No worktrees yet."
-        />
-      </div>
       <div className="space-y-2 border-t border-border pt-6">
         <h3 className="text-lg font-medium">Advanced: raw host inventory JSON</h3>
         <p className="text-sm text-muted-foreground">
