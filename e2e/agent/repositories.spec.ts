@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 import { attachRepoViaUi, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 
-const API = "http://127.0.0.1:7420";
+const API = "http://127.0.0.1:7430";
 
 /** Repositories are created in the catalog first, then attached by reference on a host. */
 async function createCatalogRepo(request: import("@playwright/test").APIRequestContext) {

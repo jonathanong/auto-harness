@@ -2,9 +2,18 @@ import { defineConfig, devices } from "@playwright/test";
 
 /**
  * Playwright E2E — see docs/e2e.md.
- * UIs are production builds (`pnpm build:web` then `next start`), not `next dev`.
- * Stack via webServer: DynamoDB+API, control UI, agent UI.
- * fullyParallel: every test is independent (unique ids; no shared mutable fixtures).
+ * UIs are production builds (`pnpm build:web:e2e` then `next start`), not `next dev`. The
+ * e2e build is a separate `.next-e2e` output (see next.config.ts's `HARNESS_E2E` distDir),
+ * because Next.js bakes rewrites() — the API upstream URL — into the build at `next build`
+ * time, not at `next start` time.
+ * Stack via webServer: DynamoDB+API, control UI, agent UI — all on a dedicated 743x
+ * port range (+10 offset from the normal 742x/7423 dev ports) with their own DynamoDB
+ * Local container, so a test run never shares state with (or gets confused by) a
+ * manual `pnpm local:*` dev session. reuseExistingServer is unconditionally false:
+ * every invocation force-recreates the DynamoDB container and restarts the app
+ * servers fresh, so no test-created data ever survives across runs.
+ * fullyParallel: every test is independent (unique ids; no shared mutable fixtures,
+ * except the single "local-1" host both projects seed against — see docs/e2e.md).
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -16,7 +25,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   use: {
-    baseURL: "http://127.0.0.1:7421",
+    baseURL: "http://127.0.0.1:7431",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     /** Use data-pw instead of data-testid */
@@ -28,7 +37,7 @@ export default defineConfig({
       testMatch: "e2e/control/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: "http://127.0.0.1:7421",
+        baseURL: "http://127.0.0.1:7431",
       },
     },
     {
@@ -36,35 +45,35 @@ export default defineConfig({
       testMatch: "e2e/agent/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: "http://127.0.0.1:7422",
+        baseURL: "http://127.0.0.1:7432",
       },
     },
   ],
   webServer: [
     {
       name: "api",
-      command: "pnpm local:dynamodb && pnpm local:dynamodb:ready && pnpm local:api",
-      url: "http://127.0.0.1:7420/health",
-      reuseExistingServer: !process.env.CI,
+      command: "pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e",
+      url: "http://127.0.0.1:7430/health",
+      reuseExistingServer: false,
       timeout: 180_000,
       stdout: "pipe",
       stderr: "pipe",
     },
     {
       name: "control-web",
-      // Expect `pnpm build:web` (or test:e2e) already ran — production server only.
-      command: "pnpm local:web:start",
-      url: "http://127.0.0.1:7421",
-      reuseExistingServer: !process.env.CI,
+      // Expect `pnpm build:web:e2e` (or test:e2e) already ran — production server only.
+      command: "pnpm local:web:start:e2e",
+      url: "http://127.0.0.1:7431",
+      reuseExistingServer: false,
       timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",
     },
     {
       name: "agent-web",
-      command: "pnpm local:agent-web:start",
-      url: "http://127.0.0.1:7422",
-      reuseExistingServer: !process.env.CI,
+      command: "pnpm local:agent-web:start:e2e",
+      url: "http://127.0.0.1:7432",
+      reuseExistingServer: false,
       timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",

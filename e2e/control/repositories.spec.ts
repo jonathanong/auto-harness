@@ -7,7 +7,12 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repositories-heading")).toHaveText("Repositories");
     await expect(page.getByTestId("add-repo-open")).toBeVisible();
     await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
-    await expect(page.getByTestId("worktrees-hierarchy")).toBeVisible();
+    // The hierarchy only renders once the catalog is non-empty; a genuinely fresh
+    // environment (e.g. a clean CI run with no prior test having created a repo yet)
+    // shows the empty-state message instead — both are a valid "page loaded" outcome.
+    await expect(
+      page.getByTestId("worktrees-hierarchy").or(page.getByTestId("worktrees-empty")),
+    ).toBeVisible();
   });
 
   test("create catalog repository via modal, then open its detail page", async ({ page }) => {

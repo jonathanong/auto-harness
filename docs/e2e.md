@@ -1,6 +1,9 @@
 # Playwright E2E tests
 
-Browser end-to-end tests for the **control-plane UI** (`:7421`) and **host-pane UI** (`:7422`). Unit/integration coverage remains under Vitest (`pnpm test`).
+Browser end-to-end tests for the **control-plane UI** (`:7431`) and **host-pane UI** (`:7432`) — a
+dedicated port range (and dedicated DynamoDB container), separate from the normal `:7421`/`:7422`
+dev ports; see [How the stack is started](#how-the-stack-is-started). Unit/integration coverage
+remains under Vitest (`pnpm test`).
 
 Related: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
 
@@ -20,19 +23,56 @@ pnpm exec playwright install chromium
 
 ## How the stack is started
 
-**Production UI builds only** — not `next dev`. `pnpm test:e2e` runs `pnpm build:web` first (cleans each app’s `.next`, then `next build` for control + agent-web), then Playwright starts production servers via `next start`.
+**Production UI builds only** — not `next dev`. `pnpm test:e2e` runs `pnpm build:web:e2e` first (cleans each app's `.next-e2e`, then `next build` for control + agent-web), then Playwright starts production servers via `next start`.
+
+**Why a separate build, not just separate ports:** `HARNESS_API_HTTP=http://127.0.0.1:7430` has to
+be set for e2e at **two different times**, for two different code paths, and missing either one
+silently sends requests to the dev API on `:7420` instead:
+
+- **Build time** — the browser's same-origin API calls go through `rewrites()` in each app's
+  `next.config.ts`, which Next.js bakes into `routes-manifest.json` at `next build` time;
+  `next start` just serves that frozen file, it does not re-read env vars at runtime. This is why
+  e2e needs its own `next build` (`build:e2e` in each app's `package.json`), not just a
+  differently-configured `next start` of the normal dev build.
+- **Run time** — server components (RSC) fetch the control plane directly via `apiBase()` /
+  `resolveServerApiBase()` (`modules/shared/src/api-client.ts`), which reads
+  `process.env.HARNESS_API_HTTP` **fresh on every request** inside the running `next start`
+  process, falling back to `LOCAL_API_HTTP` (`:7420`) if unset. This is why `start:e2e` in each
+  app's `package.json` also sets `HARNESS_API_HTTP=http://127.0.0.1:7430` — dropping it doesn't
+  break the build, it breaks every server-rendered page at runtime with a generic "fetch failed"
+  once whatever's on `:7420` doesn't answer.
+
+`HARNESS_E2E=1` (also set by both `build:e2e`/`start:e2e`) points that build's `distDir` at
+`.next-e2e` (see `next.config.ts` in each app) so it lands next to, not on top of, a normal dev
+`.next` build — the two can coexist on disk.
+
+**Side effect to know about:** `next build` regenerates each app's `next-env.d.ts` to reference
+whichever `distDir` it just built (`.next` or `.next-e2e`) — so running `build:web:e2e` locally
+will locally modify `next-env.d.ts` to point at `.next-e2e`, and running `build:web`/`next dev`
+afterward flips it back to `.next`. This is expected, harmless, and matches whichever build ran
+last — don't hand-edit it or worry about it in `git status`; just don't commit it mid-flip. Each
+app's `tsconfig.json` lists both `.next/types/**/*.ts` and `.next-e2e/types/**/*.ts` in `include`
+so neither build needs to rewrite `tsconfig.json` itself.
 
 `playwright.config.ts` uses **`webServer`** (array) so Playwright boots and waits for:
 
-| Name          | Command                                                              | Ready URL                      |
-| ------------- | -------------------------------------------------------------------- | ------------------------------ |
-| `api`         | `pnpm local:dynamodb && pnpm local:dynamodb:ready && pnpm local:api` | `http://127.0.0.1:7420/health` |
-| `control-web` | `pnpm local:web:start` (`next start` on `:7421`)                     | `http://127.0.0.1:7421`        |
-| `agent-web`   | `pnpm local:agent-web:start` (`next start` on `:7422`)               | `http://127.0.0.1:7422`        |
+| Name          | Command                                                                          | Ready URL                      |
+| ------------- | -------------------------------------------------------------------------------- | ------------------------------ |
+| `api`         | `pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e` | `http://127.0.0.1:7430/health` |
+| `control-web` | `pnpm local:web:start:e2e` (`next start` on `:7431`)                             | `http://127.0.0.1:7431`        |
+| `agent-web`   | `pnpm local:agent-web:start:e2e` (`next start` on `:7432`)                       | `http://127.0.0.1:7432`        |
 
-Locally, `reuseExistingServer: !process.env.CI` reuses servers if already running. In CI, servers are always started fresh.
+Every one of these is on the `743x` range — `+10` from the normal `local:*` dev ports (`742x`)
+and dev DynamoDB (`:7423`) — with its own `dynamodb-e2e` container (`:7433`), entirely separate
+from anything a manual `pnpm local:*` dev session has running. `reuseExistingServer: false`
+unconditionally, both locally and in CI: every `playwright test` invocation force-recreates the
+e2e DynamoDB container (wiping all prior test data — `docker compose up -d --force-recreate`) and
+restarts the app servers fresh, rather than silently reusing whatever was left running from an
+earlier run or a stale build. This is deliberate, not just a CI/local parity nicety — a genuinely
+stale leftover process (mismatched `.next` build vs. a since-rebuilt one) has caused real,
+confusing failures here before.
 
-**Note:** The agent **daemon** (`pnpm local:agent start`) is **not** started by Playwright (optional for most UI tests). Tests that need profiles seed host config + `agent:register` via REST.
+**Note:** The agent **daemon** (`pnpm local:agent start`) is **not** started by Playwright (optional for most UI tests). Tests that need profiles seed host config + `agent:register` via REST, against the e2e API (`:7430`).
 
 ---
 
@@ -46,7 +86,7 @@ pnpm test:e2e
 pnpm test:e2e:ui
 
 # Rebuild only
-pnpm build:web
+pnpm build:web:e2e
 
 # After a build: Playwright only (webServer starts next start)
 pnpm exec playwright test
@@ -72,7 +112,7 @@ pnpm exec playwright test e2e/control/dashboard.spec.ts
 const id = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
 ```
 
-- Prefer seeding via `request` (Playwright APIRequestContext → API :7420) over serial UI setup when possible.
+- Prefer seeding via `request` (Playwright APIRequestContext → e2e API :7430) over serial UI setup when possible.
 
 **The one real exception:** the host-pane app is bound to a single agent (`local-1`, no way to
 target a different one from its UI), and a few control-plane specs reuse that same agent rather
@@ -161,7 +201,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ## Test inventory
 
-### Project `control` — baseURL `http://127.0.0.1:7421`
+### Project `control` — baseURL `http://127.0.0.1:7431`
 
 | File                               | Tests                                                          | What it covers                                            |
 | ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
@@ -181,7 +221,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                     | Page + add host form + online filter URL                  |
 |                                    | add host creates empty host inventory slot                     | Parallel-safe empty host config                           |
 
-### Project `agent` — baseURL `http://127.0.0.1:7422`
+### Project `agent` — baseURL `http://127.0.0.1:7432`
 
 | File                             | Tests                                                                | What it covers                                             |
 | -------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------------- |
@@ -212,7 +252,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs a parallel job **`playwright (c
 
 1. `pnpm install --frozen-lockfile`
 2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
-3. `pnpm test:e2e` — `build:web` (production `next build`), then Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
+3. `pnpm test:e2e` — `build:web:e2e` (production `next build` into `.next-e2e`), then Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
 4. On failure, uploads `playwright-report/` and `test-results/` as artifacts (7-day retention)
 
 GitHub sets `CI=true`, so config applies:

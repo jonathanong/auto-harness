@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 
-const API = "http://127.0.0.1:7420";
+const API = "http://127.0.0.1:7430";
 
 test.describe("host pane sessions", () => {
   test("sessions page loads", async ({ page }) => {

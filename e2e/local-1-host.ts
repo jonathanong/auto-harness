@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
-const API = "http://127.0.0.1:7420";
+const API = "http://127.0.0.1:7430";
 const LOCK_DIR = join(tmpdir(), "auto-harness-e2e-local-1.lock");
 
 /**

@@ -9,3 +9,14 @@ services:
       - "7423:8000"
     command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
     # -inMemory is fine for local/tests; use -dbPath /data for durable local data
+
+  # Dedicated instance for `pnpm test:e2e` — separate container, separate port range
+  # (743x, +10 offset), so a Playwright run never shares state with (or gets confused by)
+  # a manual `pnpm local:*` dev session, and force-recreating it wipes prior e2e data on
+  # every run instead of letting hundreds of test-created repos/worktrees accumulate.
+  dynamodb-e2e:
+    image: amazon/dynamodb-local:2.5.2
+    container_name: auto-harness-dynamodb-e2e
+    ports:
+      - "7433:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"

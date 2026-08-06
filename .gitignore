@@ -2,6 +2,7 @@ node_modules/
 dist/
 coverage/
 .next/
+.next-e2e/
 *.tsbuildinfo
 .DS_Store
 .env
