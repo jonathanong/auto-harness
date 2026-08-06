@@ -72,7 +72,13 @@ earlier run or a stale build. This is deliberate, not just a CI/local parity nic
 stale leftover process (mismatched `.next` build vs. a since-rebuilt one) has caused real,
 confusing failures here before.
 
-**Note:** The agent **daemon** (`pnpm local:agent start`) is **not** started by Playwright (optional for most UI tests). Tests that need profiles seed host config + `agent:register` via REST, against the e2e API (`:7430`).
+**Note:** The agent **daemon** (`pnpm local:agent start`) is **not** started by Playwright as a
+`webServer`. Most tests that need profiles seed host config + `agent:register` via REST, against
+the e2e API (`:7430`), rather than running a real daemon. The one exception is
+`e2e/control/orchestration.spec.ts`, which starts a real daemon in-process (imports
+`startAgentDaemon` directly) to prove the full real path works, not just the UI/REST-substituted
+half — see [Test inventory](#test-inventory) and
+[agent-e2e-testing.md](agent-e2e-testing.md).
 
 ---
 
@@ -203,23 +209,23 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ### Project `control` — baseURL `http://127.0.0.1:7431`
 
-| File                               | Tests                                                          | What it covers                                            |
-| ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------- |
-| `e2e/control/dashboard.spec.ts`    | loads shell and dashboard stats                                | Shell, heading, stat cards                                |
-|                                    | nav links are present                                          | All primary nav `data-pw` links                           |
-| `e2e/control/sessions.spec.ts`     | sessions list page and filters                                 | List page; status filter updates URL                      |
-|                                    | new session form is present                                    | Form fields visible                                       |
-|                                    | create session via API-backed form when profiles exist         | Submits form; lands on detail page; cancel unlocks resume |
-|                                    | unknown session id shows a not-found state                     | `/sessions/[id]` 404-style state                          |
-| `e2e/control/repositories.spec.ts` | repositories page loads with add-repository dialog closed      | Page + closed modal + nested worktrees section            |
-|                                    | create catalog repository via modal, then open its detail page | Opens modal; parallel-safe catalog create; click-through  |
-|                                    | unknown repository id shows a not-found state                  | `/repositories/[id]` 404-style state                      |
-| `e2e/control/worktrees.spec.ts`    | worktrees page loads                                           | Page + heading                                            |
-|                                    | unknown worktree id shows a not-found state                    | `/worktrees/[id]` 404-style state                         |
-|                                    | clicking a worktree opens its fleet-wide detail page           | Seeds host config via API; click-through to detail page   |
-| `e2e/control/schedules.spec.ts`    | schedules page and create form                                 | Seeds repo via API; creates schedule in UI                |
-| `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                     | Page + add host form + online filter URL                  |
-|                                    | add host creates empty host inventory slot                     | Parallel-safe empty host config                           |
+| File                                | Tests                                                          | What it covers                                                                                                                              |
+| ----------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2e/control/dashboard.spec.ts`     | loads shell and dashboard stats                                | Shell, heading, stat cards                                                                                                                  |
+|                                     | nav links are present                                          | All primary nav `data-pw` links                                                                                                             |
+| `e2e/control/sessions.spec.ts`      | sessions list page and filters                                 | List page; status filter updates URL                                                                                                        |
+|                                     | new session form is present                                    | Form fields visible                                                                                                                         |
+|                                     | create session via API-backed form when profiles exist         | Submits form; lands on detail page; cancel unlocks resume                                                                                   |
+|                                     | unknown session id shows a not-found state                     | `/sessions/[id]` 404-style state                                                                                                            |
+| `e2e/control/repositories.spec.ts`  | repositories page loads with add-repository dialog closed      | Page + closed modal + nested worktrees section                                                                                              |
+|                                     | create catalog repository via modal, then open its detail page | Opens modal; parallel-safe catalog create; click-through                                                                                    |
+|                                     | unknown repository id shows a not-found state                  | `/repositories/[id]` 404-style state                                                                                                        |
+| `e2e/control/worktrees.spec.ts`     | worktrees page loads                                           | Page + heading                                                                                                                              |
+|                                     | unknown worktree id shows a not-found state                    | `/worktrees/[id]` 404-style state                                                                                                           |
+|                                     | clicking a worktree opens its fleet-wide detail page           | Seeds host config via API; click-through to detail page                                                                                     |
+| `e2e/control/schedules.spec.ts`     | schedules page and create form                                 | Seeds repo via API; creates schedule in UI                                                                                                  |
+| `e2e/control/hosts.spec.ts`         | hosts page loads with filters and add form                     | Page + add host form + online filter URL                                                                                                    |
+|                                     | add host creates empty host inventory slot                     | Parallel-safe empty host config                                                                                                             |
 | `e2e/control/orchestration.spec.ts` | browser-created session runs on a real agent and completes     | Real agent daemon (real WS, real subprocess) — the only spec here that doesn't fake the agent side over REST; see docs/agent-e2e-testing.md |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7432`
