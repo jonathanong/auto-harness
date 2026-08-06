@@ -7,7 +7,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repositories-heading")).toHaveText("Repositories");
     await expect(page.getByTestId("add-repo-open")).toBeVisible();
     await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
-    await expect(page.getByText("Worktrees by repository")).toBeVisible();
+    await expect(page.getByTestId("worktrees-hierarchy")).toBeVisible();
   });
 
   test("create catalog repository via modal, then open its detail page", async ({ page }) => {
@@ -23,14 +23,16 @@ test.describe("control plane repositories", () => {
 
     // The dialog doesn't auto-close on success (user reviews the confirmation) — its
     // overlay blocks clicks elsewhere on the page until dismissed. It also marks the rest
-    // of the page aria-hidden while open (Radix modal Dialog), so role-based locators like
-    // getByRole("row", ...) can't find the new row until the dialog is closed.
+    // of the page aria-hidden while open (Radix modal Dialog), so role-based locators
+    // can't find anything behind it until the dialog is closed.
     await page.getByTestId("dialog-close").click();
     await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
 
-    const row = page.getByRole("row", { name });
-    await expect(row).toBeVisible({ timeout: 15_000 });
-    await row.getByRole("link").click();
+    // A brand-new repo has no worktrees yet, so it renders as a collapsible group
+    // (name link + "no worktrees" message), not a table row.
+    const link = page.getByRole("link", { name });
+    await expect(link).toBeVisible({ timeout: 15_000 });
+    await link.click();
     await expect(page).toHaveURL(/\/repositories\/[^/]+$/);
     await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
     await page.getByTestId("tab-settings").click();

@@ -65,13 +65,25 @@ pnpm exec playwright test e2e/control/dashboard.spec.ts
 
 - Config: `fullyParallel: true` — every **test** can run in parallel across workers.
 - Projects `control` and `agent` use different `baseURL`s; tests under `e2e/control/` and `e2e/agent/` match separately.
-- **No shared mutable fixtures.** Mutations use unique ids:
+- **No shared mutable fixtures — except `local-1`.** Every other mutation uses unique ids and
+  needs no coordination:
 
 ```ts
 const id = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
 ```
 
 - Prefer seeding via `request` (Playwright APIRequestContext → API :7420) over serial UI setup when possible.
+
+**The one real exception:** the host-pane app is bound to a single agent (`local-1`, no way to
+target a different one from its UI), and a few control-plane specs reuse that same agent rather
+than register a second live one. Its host config is one full document with no partial-update
+API, so any test that reads or mutates it must wrap its whole body (setup → assertions →
+teardown) in `withLocalHostLock` from [`e2e/local-1-host.ts`](../e2e/local-1-host.ts) — a
+cross-process lockfile, since Playwright workers are separate OS processes. A one-shot
+read-verify-retry isn't enough here: a slower concurrent test can still land a stale-snapshot
+write _after_ your own write already verified fine. See that file's own comment for the full
+reasoning, and `putHostRepo`/`removeHostRepo`/`attachRepoViaUi` for the safe-to-reuse helpers.
+Everything else should keep using its own uniquely-named entity with no lock at all.
 
 Do **not** use `test.describe.configure({ mode: "serial" })` unless a file truly cannot parallelize.
 
@@ -114,7 +126,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `form-create-session`, `create-session-repository-id`, `create-session-command-profile`, `create-session-prompt`, `create-session-timeout`, `create-session-ref`, `create-session-submit`, `create-session-error` | Create session form                                                    |
 | `page-session-detail`, `session-detail`, `session-detail-id`, `session-detail-status`, `session-detail-back`, `page-session-detail-not-found`                                                                     | Session detail (`/sessions/[id]`)                                      |
 | `session-cancel`, `session-resume`, `session-archive`, `session-action-error`, `session-logs`, `session-logs-empty`                                                                                               | Session actions + logs                                                 |
-| `page-repositories`, `repositories-heading`, `add-repo-open`, `repo-link-*`                                                                                                                                       | Repositories                                                           |
+| `page-repositories`, `repositories-heading`, `add-repo-open`, `worktrees-hierarchy`, `worktree-group-*`, `repo-link-*`, `worktree-row-*`, `worktree-link-*`                                                       | Repositories: repo → worktrees hierarchy (single merged section)       |
 | `add-repo-dialog`, `dialog-close`, `form-repo-catalog`, `repo-catalog-name`, `repo-catalog-url`, `repo-catalog-branch`, `repo-catalog-submit`, `repo-catalog-ok`, `repo-catalog-error`                            | Add repository modal (catalog; the only way to create a catalog entry) |
 | `form-attach-local-repo`, `attach-repo-agent-id`, `attach-repo-catalog-id`, `attach-repo-path`, `attach-repo-branch`, `attach-repo-submit`, `attach-repo-ok`, `attach-repo-error`                                 | Attach an existing catalog repo to a host                              |
 | `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repository-detail-back`, `page-repository-detail-not-found`                                                                               | Repository detail (`/repositories/[id]`)                               |
@@ -136,7 +148,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `stat-host-config-link`, `stat-worktrees-link`, `stat-worktrees`, `stat-sessions-link`, `stat-sessions-sample`                                                          | Status stat cards (link to pages)                                  |
 | `page-repositories`, `repositories-heading`, `add-repo-open`                                                                                                            | Repositories                                                       |
 | `add-repo-dialog`, `dialog-close`, `form-add-local-repo`, `add-repo-catalog-id`, `add-repo-path`, `add-repo-branch`, `add-repo-submit`, `add-repo-ok`, `add-repo-error` | Add repository modal (attach, no create)                           |
-| `repo-row-*`, `repo-link-*`, `worktree-group-*`, `worktree-row-*`, `worktree-link-*`                                                                                    | Repositories table + nested worktrees                              |
+| `worktrees-hierarchy`, `worktree-group-*`, `repo-link-*`, `worktree-row-*`, `worktree-link-*`                                                                           | Repositories: repo → worktrees hierarchy (single merged section)   |
 | `page-repository-detail`, `repository-detail`, `repository-detail-id`, `repo-remove-*`, `page-repository-detail-not-found`                                              | Repository detail (`/repositories/[id]`)                           |
 | `repository-detail-tabs`, `tab-sessions`, `tab-worktrees`, `tab-settings`, `repository-detail-path`, `add-worktree-open-*`, `form-add-worktree-*`, `worktree-remove-*`  | Repository detail tabs (add/remove worktrees on the Worktrees tab) |
 | `page-worktree-detail`, `worktree-detail`, `worktree-detail-id`, `worktree-detail-back`, `page-worktree-detail-not-found`                                               | Worktree detail (`/worktrees/[id]`)                                |
