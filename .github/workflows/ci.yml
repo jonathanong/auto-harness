@@ -60,6 +60,31 @@ jobs:
           fail: true
           jobSummary: true
 
+  integration:
+    name: integration (real orchestration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Integration tests
+        run: pnpm test:integration
+
   e2e:
     name: playwright (control + agent)
     runs-on: ubuntu-latest

@@ -33,6 +33,7 @@ Run from repo root. These exercise **shipped** scripts and modules — not re-im
 
 ```bash
 pnpm check                 # lint, fmt, tests+coverage, knip, depcruise, links
+pnpm test:integration      # real HTTP+WS server + real agent daemon + real echo subprocess
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
 pnpm local:e2e             # SessionRunner + ref + unknown profile + hooks
@@ -42,6 +43,11 @@ pnpm local:ws-e2e          # real WebSocket create→assign→run
 pnpm local:cloud-e2e       # AgentLoop loopback
 pnpm local:manage-verify   # repos/schedules/cancel/drain + thin web routes
 ```
+
+`pnpm test:integration` (config: `vitest.integration.config.ts`, tests under `integration/`) is its
+own CI job, separate from the fast unit-test job's coverage gate — no Docker/DynamoDB needed
+(`useDynamo: false`, like `local:ws-e2e`'s script). It's the automated, always-runs-in-CI proof
+that orchestration works end to end; the sections below are for a full manual/real-CLI pass.
 
 **Pass criteria (each):** exit 0; JSON includes `"ok": true` and/or documented HTTP status (`201` for smoke).
 

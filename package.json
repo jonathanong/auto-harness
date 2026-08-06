@@ -9,6 +9,7 @@
     "fmt:check": "oxfmt --check .",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "build:web": "rm -rf services/web/.next services/agent-web/.next && pnpm --filter @auto-harness/web build && pnpm --filter @auto-harness/agent-web build",
     "build:web:e2e": "rm -rf services/web/.next-e2e services/agent-web/.next-e2e && pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/agent-web build:e2e",
     "test:e2e": "pnpm build:web:e2e && playwright test",

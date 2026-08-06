@@ -220,6 +220,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `e2e/control/schedules.spec.ts`    | schedules page and create form                                 | Seeds repo via API; creates schedule in UI                |
 | `e2e/control/hosts.spec.ts`        | hosts page loads with filters and add form                     | Page + add host form + online filter URL                  |
 |                                    | add host creates empty host inventory slot                     | Parallel-safe empty host config                           |
+| `e2e/control/orchestration.spec.ts` | browser-created session runs on a real agent and completes     | Real agent daemon (real WS, real subprocess) — the only spec here that doesn't fake the agent side over REST; see docs/agent-e2e-testing.md |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7432`
 
