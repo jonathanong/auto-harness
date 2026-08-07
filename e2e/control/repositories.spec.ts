@@ -15,7 +15,7 @@ test.describe("control plane repositories", () => {
     ).toBeVisible();
   });
 
-  test("create catalog repository via modal, then open its detail page", async ({ page }) => {
+  test("create catalog repository via modal, then land on its detail page", async ({ page }) => {
     // Name must be a lowercase-dash slug — id is now auto-generated, never typed.
     const name = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
     await page.goto("/repositories");
@@ -24,21 +24,10 @@ test.describe("control plane repositories", () => {
     await page.getByTestId("repo-catalog-name").fill(name);
     await page.getByTestId("repo-catalog-url").fill(`/tmp/${name}`);
     await page.getByTestId("repo-catalog-submit").click();
-    await expect(page.getByTestId("repo-catalog-ok")).toBeVisible({ timeout: 15_000 });
 
-    // The dialog doesn't auto-close on success (user reviews the confirmation) — its
-    // overlay blocks clicks elsewhere on the page until dismissed. It also marks the rest
-    // of the page aria-hidden while open (Radix modal Dialog), so role-based locators
-    // can't find anything behind it until the dialog is closed.
-    await page.getByTestId("dialog-close").click();
-    await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
-
-    // A brand-new repo has no worktrees yet, so it renders as a collapsible group
-    // (name link + "no worktrees" message), not a table row.
-    const link = page.getByRole("link", { name });
-    await expect(link).toBeVisible({ timeout: 15_000 });
-    await link.click();
-    await expect(page).toHaveURL(/\/repositories\/[^/]+$/);
+    // Success navigates straight to the new repo's detail page (toast + navigate) —
+    // no inline confirmation to dismiss first.
+    await expect(page).toHaveURL(/\/repositories\/[^/]+$/, { timeout: 15_000 });
     await expect(page.getByTestId("repository-detail-id")).toHaveText(name);
     await page.getByTestId("tab-settings").click();
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);

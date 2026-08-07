@@ -40,10 +40,10 @@ test.describe("host pane repositories", () => {
 
       try {
         await attachRepoViaUi(page, { name, path: `/tmp/${id}` });
+        await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
 
-        const group = page.getByTestId(`worktree-group-${id}`);
-        await expect(group).toBeVisible({ timeout: 15_000 });
-        await expect(group.getByText("No worktrees under this repository.")).toBeVisible();
+        await page.getByTestId("tab-worktrees").click();
+        await expect(page.getByText("No worktrees under this repository.")).toBeVisible();
       } finally {
         await removeHostRepo(request, id);
         await deleteCatalogRepo(request, id);
@@ -61,7 +61,12 @@ test.describe("host pane repositories", () => {
 
       try {
         await attachRepoViaUi(page, { name, path: `/tmp/${id}` });
+        await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
 
+        // Back to the list, then click through the repo link — attachRepoViaUi's own
+        // toast+navigate already lands on the detail page directly; this separately
+        // proves the list page's own link still works.
+        await page.goto("/repositories");
         await page.getByTestId(`repo-link-${id}`).click();
         await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
         await expect(page.getByTestId("repository-detail-id")).toHaveText(name);

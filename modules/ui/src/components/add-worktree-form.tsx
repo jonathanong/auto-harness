@@ -14,6 +14,7 @@ import {
 import { Button } from "./button.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
+import { PathInput } from "./path-input.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 export function AddWorktreeForm({
@@ -21,11 +22,14 @@ export function AddWorktreeForm({
   inventory,
   repo,
   repoName,
+  browseEndpoint,
 }: {
   agentId: string;
   inventory: HostInventory;
   repo: HostRepository;
   repoName: string;
+  /** Filesystem browse endpoint for the path field (host pane only). */
+  browseEndpoint?: string | undefined;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -113,12 +117,13 @@ export function AddWorktreeForm({
         <Label tip="Absolute path on this host. Suggested path is optional — edit freely.">
           absolute path
         </Label>
-        <Input
+        <PathInput
           value={path}
           onChange={(e) => setPath(e.target.value)}
           required
           placeholder={defaultWorktreePath(repo.path, "my-wt")}
           data-pw={`add-worktree-path-${repo.id}`}
+          browseEndpoint={browseEndpoint}
         />
       </div>
       <div className="space-y-1">

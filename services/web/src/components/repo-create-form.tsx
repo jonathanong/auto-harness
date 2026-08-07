@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
@@ -10,7 +10,6 @@ export function RepoCreateForm() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState(false);
 
   return (
     <form
@@ -19,9 +18,7 @@ export function RepoCreateForm() {
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
-        setOk(false);
-        const form = e.currentTarget;
-        const fd = new FormData(form);
+        const fd = new FormData(e.currentTarget);
         const body: Record<string, string> = {
           name: String(fd.get("name") ?? ""),
           url: String(fd.get("url") ?? ""),
@@ -37,9 +34,8 @@ export function RepoCreateForm() {
             setError(await res.text());
             return;
           }
-          setOk(true);
-          form.reset();
-          router.refresh();
+          const created = (await res.json()) as { id: string };
+          router.push(withToast(`/repositories/${created.id}`, "Repository created."));
         });
       }}
     >
@@ -75,11 +71,6 @@ export function RepoCreateForm() {
       {error ? (
         <p className="text-sm text-red-700" data-pw="repo-catalog-error">
           {error}
-        </p>
-      ) : null}
-      {ok ? (
-        <p className="text-sm text-emerald-700" data-pw="repo-catalog-ok">
-          Repository created.
         </p>
       ) : null}
       <WithTooltip tip="Register a repository in the control-plane catalog only">

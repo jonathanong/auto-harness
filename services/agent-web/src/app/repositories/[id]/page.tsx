@@ -105,6 +105,7 @@ export default async function AgentRepositoryDetailPage({
                 inventory={inventory}
                 repo={repo}
                 repoName={repoName}
+                browseEndpoint="/api/browse"
               />
             ) : null}
             <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />

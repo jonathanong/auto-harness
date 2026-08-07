@@ -3,6 +3,7 @@ export { Button, type ButtonProps } from "./components/button.tsx";
 export { Badge, type BadgeProps } from "./components/badge.tsx";
 export { Card, CardContent, CardHeader, CardTitle } from "./components/card.tsx";
 export { Input, type InputProps } from "./components/input.tsx";
+export { PathInput, type PathInputProps } from "./components/path-input.tsx";
 export { Label, type LabelProps } from "./components/label.tsx";
 export { Textarea, type TextareaProps } from "./components/textarea.tsx";
 export {
@@ -79,3 +80,4 @@ export {
   DialogTitle,
   DialogDescription,
 } from "./components/dialog.tsx";
+export { Toast, withToast } from "./components/toast.tsx";

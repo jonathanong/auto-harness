@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 
@@ -14,7 +14,6 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   if (agentIds.length === 0) {
     return (
@@ -43,9 +42,7 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
-        setOk(null);
-        const form = e.currentTarget;
-        const fd = new FormData(form);
+        const fd = new FormData(e.currentTarget);
         const agentId = String(fd.get("agentId") ?? "").trim();
         const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
@@ -61,11 +58,12 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
             return;
           }
           const repoName = repos.find((r) => r.id === id)?.name ?? id;
-          setOk(
-            `Attached ${repoName} on host ${agentId} with no worktrees. Add worktrees on the host pane's Repositories page.`,
+          router.push(
+            withToast(
+              `/repositories/${id}`,
+              `Attached ${repoName} on host ${agentId} with no worktrees.`,
+            ),
           );
-          form.reset();
-          router.refresh();
         });
       }}
     >
@@ -136,11 +134,6 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
       {error ? (
         <p className="text-sm text-red-700" data-pw="attach-repo-error">
           {error}
-        </p>
-      ) : null}
-      {ok ? (
-        <p className="text-sm text-emerald-700" data-pw="attach-repo-ok">
-          {ok}
         </p>
       ) : null}
       <WithTooltip tip="Attaches an existing catalog repository's path to a host with zero worktrees">

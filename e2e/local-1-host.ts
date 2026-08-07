@@ -88,7 +88,11 @@ export async function removeHostRepo(request: APIRequestContext, repoId: string)
   });
 }
 
-/** Caller must hold withLocalHostLock for the duration of use. */
+/**
+ * Caller must hold withLocalHostLock for the duration of use. Submitting
+ * navigates straight to the new repository's detail page (toast + navigate
+ * on success) — the dialog unmounts along with the rest of the list page.
+ */
 export async function attachRepoViaUi(
   page: Page,
   repo: { name: string; path: string },
@@ -98,7 +102,5 @@ export async function attachRepoViaUi(
   await page.getByTestId("add-repo-catalog-id").selectOption({ label: repo.name });
   await page.getByTestId("add-repo-path").fill(repo.path);
   await page.getByTestId("add-repo-submit").click();
-  await expect(page.getByTestId("add-repo-ok")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("dialog-close").click();
-  await expect(page.getByTestId("add-repo-dialog")).toBeHidden();
+  await expect(page.getByTestId("page-repository-detail")).toBeVisible({ timeout: 15_000 });
 }

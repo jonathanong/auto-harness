@@ -37,7 +37,12 @@ export function AddRepoDialog({
             repository, use the control plane's Repositories page first.
           </DialogDescription>
         </DialogHeader>
-        <AddRepoForm agentId={agentId} inventory={inventory} catalog={catalog} />
+        <AddRepoForm
+          agentId={agentId}
+          inventory={inventory}
+          catalog={catalog}
+          browseEndpoint="/api/browse"
+        />
       </DialogContent>
     </Dialog>
   );

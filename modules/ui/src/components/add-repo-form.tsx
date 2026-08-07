@@ -7,6 +7,8 @@ import { putInventory, upsertHostRepository, type HostInventory } from "@auto-ha
 import { Button } from "./button.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
+import { PathInput } from "./path-input.tsx";
+import { withToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
@@ -15,15 +17,17 @@ export function AddRepoForm({
   agentId,
   inventory,
   catalog,
+  browseEndpoint,
 }: {
   agentId: string;
   inventory: HostInventory;
   catalog: RepoCatalogEntry[];
+  /** Filesystem browse endpoint for the path field (host pane only). */
+  browseEndpoint?: string | undefined;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [ok, setOk] = useState<string | null>(null);
 
   if (catalog.length === 0) {
     return (
@@ -41,9 +45,7 @@ export function AddRepoForm({
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
-        setOk(null);
-        const form = e.currentTarget;
-        const fd = new FormData(form);
+        const fd = new FormData(e.currentTarget);
         const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
@@ -58,9 +60,7 @@ export function AddRepoForm({
             setError(r.error);
             return;
           }
-          setOk(`Repository attached with no worktrees.`);
-          form.reset();
-          router.refresh();
+          router.push(withToast(`/repositories/${id}`, "Repository attached with no worktrees."));
         });
       }}
     >
@@ -90,12 +90,13 @@ export function AddRepoForm({
         >
           absolute path on this host
         </Label>
-        <Input
+        <PathInput
           id="path"
           name="path"
           required
           placeholder="/Users/you/src/my-repo"
           data-pw="add-repo-path"
+          browseEndpoint={browseEndpoint}
         />
       </div>
       <div className="space-y-1">
@@ -112,11 +113,6 @@ export function AddRepoForm({
       {error ? (
         <p className="text-sm text-red-700" data-pw="add-repo-error">
           {error}
-        </p>
-      ) : null}
-      {ok ? (
-        <p className="text-sm text-emerald-700" data-pw="add-repo-ok">
-          {ok}
         </p>
       ) : null}
       <WithTooltip tip="Attaches this host's path to an existing catalog repository, zero worktrees">

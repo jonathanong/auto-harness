@@ -1,8 +1,6 @@
-import { emptyHostInventory } from "@auto-harness/shared";
 import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
-import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { agentId } from "../../lib/api.ts";
 import { loadHostInventory, loadLiveWorktreesById, loadRepoCatalog } from "../../lib/inventory.ts";
 
@@ -32,15 +30,6 @@ export default async function AgentRepositoriesPage() {
       online: liveById[wt.id]?.online,
     })),
   }));
-  const initialJson = JSON.stringify(
-    {
-      repositories: inventory.repositories,
-      commandProfiles: inventory.commandProfiles,
-      ...(inventory.logLevel !== undefined ? { logLevel: inventory.logLevel } : {}),
-    },
-    null,
-    2,
-  );
 
   return (
     <div className="space-y-8" data-pw="page-repositories">
@@ -66,17 +55,6 @@ export default async function AgentRepositoriesPage() {
         hrefBase="/worktrees"
         emptyMessage="No repositories on this agent yet."
       />
-      <div className="space-y-2 border-t border-border pt-6">
-        <h3 className="text-lg font-medium">Advanced: raw host inventory JSON</h3>
-        <p className="text-sm text-muted-foreground">
-          Power-user edit of full inventory (profiles, bulk worktrees). Prefer the forms when
-          possible.
-        </p>
-        <HostConfigForm
-          agentId={id}
-          initialJson={initialJson || JSON.stringify(emptyHostInventory(), null, 2)}
-        />
-      </div>
     </div>
   );
 }

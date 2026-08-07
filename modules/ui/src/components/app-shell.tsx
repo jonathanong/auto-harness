@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 
 import { cn } from "../lib/utils.ts";
+import { Toast } from "./toast.tsx";
 import { TooltipProvider, WithTooltip } from "./tooltip.tsx";
 
 export type NavItem = {
@@ -20,6 +21,8 @@ export type AppShellProps = {
   subtitle?: string;
   titleTip?: string;
   subtitleTip?: string;
+  /** Rendered inline next to the title (e.g. an online/offline badge). */
+  titleBadge?: React.ReactNode;
   nav: NavItem[];
   /** Current path for active nav highlighting */
   pathname?: string;
@@ -35,6 +38,7 @@ export function AppShell({
   subtitle,
   titleTip,
   subtitleTip,
+  titleBadge,
   nav,
   pathname,
   children,
@@ -47,20 +51,23 @@ export function AppShell({
         <header className="border-b border-border" data-pw="app-header">
           <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              {titleTip ? (
-                <WithTooltip tip={titleTip}>
-                  <h1
-                    className="inline-block cursor-help text-lg font-semibold tracking-tight"
-                    data-pw="app-title"
-                  >
+              <div className="flex items-center gap-2">
+                {titleTip ? (
+                  <WithTooltip tip={titleTip}>
+                    <h1
+                      className="inline-block cursor-help text-lg font-semibold tracking-tight"
+                      data-pw="app-title"
+                    >
+                      {title}
+                    </h1>
+                  </WithTooltip>
+                ) : (
+                  <h1 className="text-lg font-semibold tracking-tight" data-pw="app-title">
                     {title}
                   </h1>
-                </WithTooltip>
-              ) : (
-                <h1 className="text-lg font-semibold tracking-tight" data-pw="app-title">
-                  {title}
-                </h1>
-              )}
+                )}
+                {titleBadge}
+              </div>
               {subtitle ? (
                 subtitleTip ? (
                   <WithTooltip tip={subtitleTip}>
@@ -107,6 +114,9 @@ export function AppShell({
         <main className="mx-auto max-w-5xl px-4 py-6" data-pw="app-main">
           {children}
         </main>
+        <React.Suspense fallback={null}>
+          <Toast />
+        </React.Suspense>
       </div>
     </TooltipProvider>
   );
