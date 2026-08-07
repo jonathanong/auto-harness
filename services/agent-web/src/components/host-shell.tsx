@@ -20,7 +20,7 @@ const NAV = [
     href: "/sessions",
     label: "Sessions",
     pw: "nav-sessions",
-    tip: "Sessions assigned to this host (cursor-paginated)",
+    tip: "Sessions assigned to this host",
   },
 ];
 

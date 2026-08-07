@@ -43,7 +43,7 @@ export default async function AgentRepositoriesPage() {
   );
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8" data-pw="page-repositories">
+    <div className="space-y-8" data-pw="page-repositories">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight" data-pw="repositories-heading">

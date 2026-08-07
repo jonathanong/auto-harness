@@ -56,7 +56,7 @@ export default async function AgentSessionsPage({
           Sessions
         </h2>
         <p className="text-sm text-muted-foreground">
-          Sessions for agent <code className="font-mono">{id}</code> (cursor-paginated).
+          Sessions for agent <code className="font-mono">{id}</code>.
         </p>
       </div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
