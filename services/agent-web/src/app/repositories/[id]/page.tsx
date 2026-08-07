@@ -90,18 +90,30 @@ export default async function AgentRepositoryDetailPage({
     /* ignore — sessions section stays empty */
   }
 
+  const activeTab = typeof tab === "string" ? tab : "sessions";
+
   return (
     <div data-pw="page-repository-detail">
       <RepositoryDetail
         repository={{ ...repo, name: repoName }}
-        backHref="/repositories"
+        breadcrumbs={[{ label: "Repositories", href: "/repositories" }, { label: repoName }]}
         actions={
-          <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+          <>
+            {activeTab === "worktrees" ? (
+              <AddWorktreeForm
+                agentId={agent}
+                inventory={inventory}
+                repo={repo}
+                repoName={repoName}
+              />
+            ) : null}
+            <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+          </>
         }
       >
         <Tabs
           basePath={`/repositories/${encodeURIComponent(repositoryId)}`}
-          active={typeof tab === "string" ? tab : "sessions"}
+          active={activeTab}
           pw="repository-detail-tabs"
           tabs={[
             {
@@ -119,28 +131,18 @@ export default async function AgentRepositoryDetailPage({
               key: "worktrees",
               label: "Worktrees",
               content: (
-                <div className="space-y-3">
-                  <div className="flex justify-end">
-                    <AddWorktreeForm
+                <WorktreesHierarchy
+                  groups={[group]}
+                  hrefBase="/worktrees"
+                  emptyMessage="No worktrees yet."
+                  renderWorktreeActions={(wt) => (
+                    <RemoveWorktreeButton
                       agentId={agent}
-                      inventory={inventory}
-                      repo={repo}
-                      repoName={repoName}
+                      repositoryId={repo.id}
+                      worktreeId={wt.id}
                     />
-                  </div>
-                  <WorktreesHierarchy
-                    groups={[group]}
-                    hrefBase="/worktrees"
-                    emptyMessage="No worktrees yet."
-                    renderWorktreeActions={(wt) => (
-                      <RemoveWorktreeButton
-                        agentId={agent}
-                        repositoryId={repo.id}
-                        worktreeId={wt.id}
-                      />
-                    )}
-                  />
-                </div>
+                  )}
+                />
               ),
             },
             {

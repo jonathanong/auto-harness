@@ -2,46 +2,29 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
+import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 
 export type WorktreeDetailProps = {
   worktree: WorktreeRow;
-  backHref: string;
-  /** Text after "← Back to " — default "worktrees". */
-  backLabel?: string;
-  /** Rendered top-right (e.g. a remove button). */
+  breadcrumbs: Crumb[];
+  /** Rendered in a row under the title (e.g. a remove button). */
   actions?: ReactNode;
   /** Tab content (Sessions/Settings) rendered below the header. */
   children?: ReactNode;
 };
 
 /** Shared worktree detail header — reused by the host pane and control page. */
-export function WorktreeDetail({
-  worktree,
-  backHref,
-  backLabel = "worktrees",
-  actions,
-  children,
-}: WorktreeDetailProps) {
+export function WorktreeDetail({ worktree, breadcrumbs, actions, children }: WorktreeDetailProps) {
   return (
     <div className="space-y-6" data-pw="worktree-detail">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href={backHref}
-            className="text-sm text-muted-foreground hover:underline"
-            data-pw="worktree-detail-back"
-          >
-            ← Back to {backLabel}
-          </Link>
-          <h2 className="text-2xl font-semibold tracking-tight" data-pw="worktree-detail-id">
-            {worktree.name}
-          </h2>
-        </div>
-        {actions}
-      </div>
-
+      <DetailHeader
+        breadcrumbs={breadcrumbs}
+        title={worktree.name}
+        titlePw="worktree-detail-id"
+        actions={actions}
+      />
       {children}
     </div>
   );

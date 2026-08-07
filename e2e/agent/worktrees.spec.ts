@@ -32,6 +32,7 @@ test.describe("host pane worktrees", () => {
         await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
 
         await page.getByTestId(`worktree-remove-${wtId}`).click();
+        await page.getByTestId(`worktree-remove-${wtId}-confirm-submit`).click();
         await expect(page).toHaveURL(new RegExp(`/repositories/${repoId}\\?tab=worktrees$`), {
           timeout: 15_000,
         });

@@ -115,7 +115,7 @@ export default async function WorktreeDetailPage({
     <div data-pw="page-worktree-detail">
       <WorktreeDetail
         worktree={row}
-        backHref="/worktrees"
+        breadcrumbs={[{ label: "Worktrees", href: "/worktrees" }, { label: worktree.name }]}
         actions={
           worktree.agentId ? (
             <RemoveWorktreeButton

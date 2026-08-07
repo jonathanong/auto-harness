@@ -37,6 +37,13 @@ export {
   type WorktreesHierarchyProps,
 } from "./components/worktrees-hierarchy.tsx";
 export {
+  Breadcrumbs,
+  DetailHeader,
+  type Crumb,
+  type DetailHeaderProps,
+} from "./components/detail-header.tsx";
+export { ConfirmButton, type ConfirmButtonProps } from "./components/confirm-button.tsx";
+export {
   WorktreeDetail,
   WorktreeDetailsCard,
   type WorktreeDetailProps,

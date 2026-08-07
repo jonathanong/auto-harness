@@ -44,7 +44,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
     <div data-pw="page-session-detail">
       <SessionDetail
         session={session}
-        backHref="/sessions"
+        breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: session.id }]}
         actions={<SessionActions sessionId={session.id} status={session.status} />}
         repoHrefBase="/repositories"
         worktreeHrefBase="/worktrees"

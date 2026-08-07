@@ -103,7 +103,13 @@ export default async function RepositoryDetailPage({
 
   return (
     <div data-pw="page-repository-detail">
-      <RepositoryDetail repository={repository} backHref="/repositories">
+      <RepositoryDetail
+        repository={repository}
+        breadcrumbs={[
+          { label: "Repositories", href: "/repositories" },
+          { label: repository.name ?? repositoryId },
+        ]}
+      >
         <Tabs
           basePath={`/repositories/${encodeURIComponent(repositoryId)}`}
           active={typeof tab === "string" ? tab : "sessions"}

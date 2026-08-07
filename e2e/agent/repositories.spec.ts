@@ -69,6 +69,7 @@ test.describe("host pane repositories", () => {
         await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${id}`);
 
         await page.getByTestId(`repo-remove-${id}`).click();
+        await page.getByTestId(`repo-remove-${id}-confirm-submit`).click();
         await expect(page).toHaveURL(/\/repositories$/, { timeout: 15_000 });
         await expect(page.getByTestId(`worktree-group-${id}`)).toHaveCount(0);
       } finally {

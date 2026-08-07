@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
+import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 
 export type SessionSummary = {
@@ -25,8 +26,8 @@ export type SessionSummary = {
 
 export type SessionDetailProps = {
   session: SessionSummary;
-  backHref: string;
-  /** Rendered top-right (e.g. cancel/resume/archive buttons). */
+  breadcrumbs: Crumb[];
+  /** Rendered in a row under the title (e.g. cancel/resume/archive buttons). */
   actions?: ReactNode;
   /** Rendered below the details card (e.g. a logs section). */
   children?: ReactNode;
@@ -41,7 +42,7 @@ export type SessionDetailProps = {
 /** Shared session detail view — reused by the host pane and control page. */
 export function SessionDetail({
   session: s,
-  backHref,
+  breadcrumbs,
   actions,
   children,
   repoHrefBase,
@@ -50,24 +51,12 @@ export function SessionDetail({
 }: SessionDetailProps) {
   return (
     <div className="space-y-6" data-pw="session-detail">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href={backHref}
-            className="text-sm text-muted-foreground hover:underline"
-            data-pw="session-detail-back"
-          >
-            ← Back to sessions
-          </Link>
-          <h2
-            className="font-mono text-2xl font-semibold tracking-tight"
-            data-pw="session-detail-id"
-          >
-            {s.id}
-          </h2>
-        </div>
-        {actions}
-      </div>
+      <DetailHeader
+        breadcrumbs={breadcrumbs}
+        title={<span className="font-mono">{s.id}</span>}
+        titlePw="session-detail-id"
+        actions={actions}
+      />
 
       <Card>
         <CardHeader>

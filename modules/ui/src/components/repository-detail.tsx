@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
+import { DetailHeader, type Crumb } from "./detail-header.tsx";
 
 export type RepositorySummary = {
   id: string;
@@ -17,8 +17,8 @@ export type RepositorySummary = {
 
 export type RepositoryDetailProps = {
   repository: RepositorySummary;
-  backHref: string;
-  /** Rendered top-right (e.g. a remove button). */
+  breadcrumbs: Crumb[];
+  /** Rendered in a row under the title (e.g. a remove button). */
   actions?: ReactNode;
   /** Tab content (Sessions/Worktrees/Settings) rendered below the header. */
   children?: ReactNode;
@@ -27,28 +27,18 @@ export type RepositoryDetailProps = {
 /** Shared repository detail header — reused by the host pane and control page. */
 export function RepositoryDetail({
   repository: r,
-  backHref,
+  breadcrumbs,
   actions,
   children,
 }: RepositoryDetailProps) {
   return (
     <div className="space-y-6" data-pw="repository-detail">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href={backHref}
-            className="text-sm text-muted-foreground hover:underline"
-            data-pw="repository-detail-back"
-          >
-            ← Back to repositories
-          </Link>
-          <h2 className="text-2xl font-semibold tracking-tight" data-pw="repository-detail-id">
-            {r.name ?? r.id}
-          </h2>
-        </div>
-        {actions}
-      </div>
-
+      <DetailHeader
+        breadcrumbs={breadcrumbs}
+        title={r.name ?? r.id}
+        titlePw="repository-detail-id"
+        actions={actions}
+      />
       {children}
     </div>
   );
