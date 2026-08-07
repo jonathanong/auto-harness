@@ -50,13 +50,5 @@
   },
   "ignore": ["**/*-test-helpers.ts", "**/.next/**", "**/next-env.d.ts", "**/next.config.ts"],
   "ignoreBinaries": ["lychee", "playwright"],
-  "ignoreDependencies": [
-    "autoprefixer",
-    "postcss",
-    "tailwindcss",
-    "next",
-    "react",
-    "react-dom",
-    "babel-plugin-react-compiler",
-  ],
+  "ignoreDependencies": ["autoprefixer", "postcss", "tailwindcss", "next", "react", "react-dom"],
 }
