@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
     externalDir: true,
+    reactCompiler: true,
   },
   // rewrites() below is baked into the build output at `next build` time — `next start`
   // just serves the frozen result, it does not re-read env vars at runtime. So e2e (which
