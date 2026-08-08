@@ -6,7 +6,7 @@ import { defineConfig, devices } from "@playwright/test";
  * e2e build is a separate `.next-e2e` output (see next.config.ts's `HARNESS_E2E` distDir),
  * because Next.js bakes rewrites() — the API upstream URL — into the build at `next build`
  * time, not at `next start` time.
- * Stack via webServer: DynamoDB+API, control UI, agent UI — all on a dedicated 743x
+ * Stack via webServer: DynamoDB+API, control UI, host-pane UI — all on a dedicated 743x
  * port range (+10 offset from the normal 742x/7423 dev ports) with their own DynamoDB
  * Local container, so a test run never shares state with (or gets confused by) a
  * manual `pnpm local:*` dev session. reuseExistingServer is unconditionally false:
@@ -41,8 +41,8 @@ export default defineConfig({
       },
     },
     {
-      name: "agent",
-      testMatch: "e2e/agent/**/*.spec.ts",
+      name: "host-pane",
+      testMatch: "e2e/host-pane/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
         baseURL: "http://127.0.0.1:7432",

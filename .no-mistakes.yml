@@ -10,4 +10,4 @@ projects:
 # projects in one config cross-contaminates findings (see
 # https://github.com/jonathanong/no-mistakes/issues/624) — each project's rules run
 # from its own isolated config instead. See .no-mistakes.control.yml and
-# .no-mistakes.agent.yml, run together via `pnpm check:data-pw`.
+# .no-mistakes.host-pane.yml, run together via `pnpm check:data-pw`.

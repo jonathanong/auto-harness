@@ -23,7 +23,7 @@ tests:
 rules:
   - rule: playwright-unique-test-ids
     tests:
-      playwright: [agent]
+      playwright: [host-pane]
   - rule: playwright-coverage
     tests:
-      playwright: [agent]
+      playwright: [host-pane]

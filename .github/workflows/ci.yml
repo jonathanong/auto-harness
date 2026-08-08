@@ -89,7 +89,7 @@ jobs:
         run: pnpm test:integration
 
   e2e:
-    name: playwright (control + agent)
+    name: playwright (control + host-pane)
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
