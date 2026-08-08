@@ -10,7 +10,14 @@ import {
   type AgentWireMessage,
 } from "@auto-harness/shared";
 
-import type { AgentHostRecord, DynamoPlaneStorage, RepositoryRecord } from "./db/plane-storage.ts";
+import type {
+  AgentHostRecord,
+  CommandRecord,
+  DynamoPlaneStorage,
+  ProviderAccountRecord,
+  ProviderRecord,
+  RepositoryRecord,
+} from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type {
   ArchiveObject,
@@ -36,6 +43,9 @@ export type ControlPlaneState = {
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
   agentHosts: Map<string, AgentHostRecord>;
+  providers: Map<string, ProviderRecord>;
+  providerAccounts: Map<string, ProviderAccountRecord>;
+  commands: Map<string, CommandRecord>;
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
@@ -52,6 +62,9 @@ export type ControlPlaneState = {
   connectionIdFactory: () => string;
   scheduleIdFactory: () => string;
   repositoryIdFactory: () => string;
+  providerIdFactory: () => string;
+  providerAccountIdFactory: () => string;
+  commandIdFactory: () => string;
   shardCount: number;
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
@@ -73,6 +86,9 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     schedules: new Map(),
     repositories: new Map(),
     agentHosts: new Map(),
+    providers: new Map(),
+    providerAccounts: new Map(),
+    commands: new Map(),
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),
@@ -87,6 +103,11 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       ? options.scheduleIdFactory
       : () => `sched-${randomBytes(4).toString("hex")}`,
     repositoryIdFactory: options.repositoryIdFactory ? options.repositoryIdFactory : newId,
+    providerIdFactory: options.providerIdFactory ? options.providerIdFactory : newId,
+    providerAccountIdFactory: options.providerAccountIdFactory
+      ? options.providerAccountIdFactory
+      : newId,
+    commandIdFactory: options.commandIdFactory ? options.commandIdFactory : newId,
     shardCount: options.shardCount ? options.shardCount : DEFAULT_QUEUE_SHARD_COUNT,
     ackDeadlineMs: options.ackDeadlineMs ? options.ackDeadlineMs : DEFAULT_ACK_DEADLINE_MS,
     heartbeatStaleMs: options.heartbeatStaleMs
@@ -145,6 +166,9 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   state.schedules.clear();
   state.repositories.clear();
   state.agentHosts.clear();
+  state.providers.clear();
+  state.providerAccounts.clear();
+  state.commands.clear();
   state.archives.clear();
   for (const s of await state.storage.listAllSessions()) {
     state.sessions.set(s.id, s);
@@ -164,6 +188,15 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   }
   for (const h of await state.storage.listAgentHosts()) {
     state.agentHosts.set(h.agentId, h);
+  }
+  for (const p of await state.storage.listProviders()) {
+    state.providers.set(p.id, p);
+  }
+  for (const pa of await state.storage.listProviderAccounts()) {
+    state.providerAccounts.set(pa.id, pa);
+  }
+  for (const c of await state.storage.listCommands()) {
+    state.commands.set(c.id, c);
   }
   for (const a of await state.storage.listArchives()) {
     state.archives.set(a.key, a);

@@ -60,6 +60,9 @@ function mockStorage(): DynamoPlaneStorage {
     listArchives: vi.fn(async () => [
       { key: "archives/x.json", body: "[]", contentType: "application/json" },
     ]),
+    listProviders: vi.fn(emptyList),
+    listProviderAccounts: vi.fn(emptyList),
+    listCommands: vi.fn(emptyList),
     listAgentHosts: vi.fn(async () => [
       {
         agentId: "a1",

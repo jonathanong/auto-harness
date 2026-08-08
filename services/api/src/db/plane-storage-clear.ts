@@ -8,6 +8,11 @@ import {
   listRepositories,
   listSchedules,
 } from "./plane-storage-catalog.ts";
+import {
+  listCommands,
+  listProviderAccounts,
+  listProviders,
+} from "./plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
@@ -63,6 +68,17 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
     await ctx.doc.send(
       new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { agentId: h.agentId } }),
     );
+  }
+  for (const p of await listProviders(ctx)) {
+    await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.providers, Key: { id: p.id } }));
+  }
+  for (const a of await listProviderAccounts(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({ TableName: ctx.tables.providerAccounts, Key: { id: a.id } }),
+    );
+  }
+  for (const c of await listCommands(ctx)) {
+    await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.commands, Key: { id: c.id } }));
   }
   {
     let startKey: Record<string, unknown> | undefined;

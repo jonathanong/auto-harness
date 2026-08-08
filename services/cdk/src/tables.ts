@@ -81,6 +81,18 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
     sortKey: { name: "createdAt", type: "S" },
   },
+  {
+    name: "Providers",
+    partitionKey: { name: "id", type: "S" },
+  },
+  {
+    name: "ProviderAccounts",
+    partitionKey: { name: "id", type: "S" },
+  },
+  {
+    name: "Commands",
+    partitionKey: { name: "id", type: "S" },
+  },
 ];
 
 export const S3_ARCHIVE_BUCKET = {

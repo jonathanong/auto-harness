@@ -14,6 +14,9 @@ export type DynamoTableNames = {
   agentLocks: string;
   archives: string;
   agentHosts: string;
+  providers: string;
+  providerAccounts: string;
+  commands: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -28,6 +31,9 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     agentLocks: `${p}-AgentLocks`,
     archives: `${p}-Archives`,
     agentHosts: `${p}-AgentHosts`,
+    providers: `${p}-Providers`,
+    providerAccounts: `${p}-ProviderAccounts`,
+    commands: `${p}-Commands`,
   };
 }
 

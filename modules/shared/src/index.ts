@@ -93,3 +93,5 @@ export {
   type ParsedHostProviderAccount,
   type ParsedProviderAccountOverride,
 } from "./provider-account-parse.ts";
+
+export type { Command, Provider, ProviderAccount } from "./providers.ts";

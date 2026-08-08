@@ -1,192 +1,71 @@
-import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { SessionStatus } from "@auto-harness/shared";
-
-import type { DynamoTableNames } from "./dynamo.ts";
-import type { SessionRecord, WorktreeRecord } from "./types.ts";
 import {
-  type AgentHostRecord,
-  type ArchiveObject,
-  type ConnectionRecord,
-  type LogRecord,
-  type PlaneStorageCtx,
-  type RepositoryRecord,
-  type ScheduleRecord,
+  type CommandRecord,
+  type ProviderAccountRecord,
+  type ProviderRecord,
 } from "./plane-storage-types.ts";
-import * as sessions from "./plane-storage-sessions.ts";
-import * as locks from "./plane-storage-locks.ts";
-import * as catalog from "./plane-storage-catalog.ts";
+import * as catalog from "./plane-storage-catalog-providers.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
-export type { AgentHostRecord, RepositoryRecord } from "./plane-storage-types.ts";
+export type {
+  AgentHostRecord,
+  CommandRecord,
+  ProviderAccountRecord,
+  ProviderRecord,
+  RepositoryRecord,
+} from "./plane-storage-types.ts";
 
 /**
  * DynamoDB persistence for the control plane (DynamoDB Local or AWS).
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
-export class DynamoPlaneStorage {
-  private readonly ctx: PlaneStorageCtx;
-
-  constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
-    this.ctx = { doc, tables };
+export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
+  putProvider(rec: ProviderRecord): Promise<void> {
+    return catalog.putProvider(this.ctx, rec);
   }
 
-  putSession(session: SessionRecord): Promise<void> {
-    return sessions.putSession(this.ctx, session);
+  getProvider(id: string): Promise<ProviderRecord | null> {
+    return catalog.getProvider(this.ctx, id);
   }
 
-  getSession(id: string): Promise<SessionRecord | null> {
-    return sessions.getSession(this.ctx, id);
+  listProviders(): Promise<ProviderRecord[]> {
+    return catalog.listProviders(this.ctx);
   }
 
-  listAllSessions(): Promise<SessionRecord[]> {
-    return sessions.listAllSessions(this.ctx);
+  deleteProvider(id: string): Promise<void> {
+    return catalog.deleteProvider(this.ctx, id);
   }
 
-  listSessionsByStatus(status: SessionStatus, shard: number): Promise<SessionRecord[]> {
-    return sessions.listSessionsByStatus(this.ctx, status, shard);
+  putProviderAccount(rec: ProviderAccountRecord): Promise<void> {
+    return catalog.putProviderAccount(this.ctx, rec);
   }
 
-  putWorktree(wt: WorktreeRecord): Promise<void> {
-    return sessions.putWorktree(this.ctx, wt);
+  getProviderAccount(id: string): Promise<ProviderAccountRecord | null> {
+    return catalog.getProviderAccount(this.ctx, id);
   }
 
-  getWorktree(id: string): Promise<WorktreeRecord | null> {
-    return sessions.getWorktree(this.ctx, id);
+  listProviderAccounts(): Promise<ProviderAccountRecord[]> {
+    return catalog.listProviderAccounts(this.ctx);
   }
 
-  listAllWorktrees(): Promise<WorktreeRecord[]> {
-    return sessions.listAllWorktrees(this.ctx);
+  deleteProviderAccount(id: string): Promise<void> {
+    return catalog.deleteProviderAccount(this.ctx, id);
   }
 
-  listWorktreesForRepo(repositoryId: string): Promise<WorktreeRecord[]> {
-    return sessions.listWorktreesForRepo(this.ctx, repositoryId);
+  putCommand(rec: CommandRecord): Promise<void> {
+    return catalog.putCommand(this.ctx, rec);
   }
 
-  tryClaimWorktree(opts: { worktreeId: string; sessionId: string; now: string }): Promise<boolean> {
-    return sessions.tryClaimWorktree(this.ctx, opts);
+  getCommand(id: string): Promise<CommandRecord | null> {
+    return catalog.getCommand(this.ctx, id);
   }
 
-  releaseWorktree(worktreeId: string, opts?: { forceOffline?: boolean }): Promise<void> {
-    return sessions.releaseWorktree(this.ctx, worktreeId, opts);
+  listCommands(): Promise<CommandRecord[]> {
+    return catalog.listCommands(this.ctx);
   }
 
-  setWorktreeOnline(worktreeId: string, online: boolean): Promise<void> {
-    return sessions.setWorktreeOnline(this.ctx, worktreeId, online);
-  }
-
-  tryAcquireAgentLock(opts: {
-    agentId: string;
-    connectionId: string;
-    replaceExisting: boolean;
-  }): Promise<boolean> {
-    return locks.tryAcquireAgentLock(this.ctx, opts);
-  }
-
-  releaseAgentLock(agentId: string, connectionId: string): Promise<void> {
-    return locks.releaseAgentLock(this.ctx, agentId, connectionId);
-  }
-
-  getAgentLock(agentId: string): Promise<string | null> {
-    return locks.getAgentLock(this.ctx, agentId);
-  }
-
-  putConnection(conn: ConnectionRecord): Promise<void> {
-    return locks.putConnection(this.ctx, conn);
-  }
-
-  getConnection(connectionId: string): Promise<ConnectionRecord | null> {
-    return locks.getConnection(this.ctx, connectionId);
-  }
-
-  deleteConnection(connectionId: string): Promise<void> {
-    return locks.deleteConnection(this.ctx, connectionId);
-  }
-
-  listConnections(): Promise<ConnectionRecord[]> {
-    return locks.listConnections(this.ctx);
-  }
-
-  putLog(rec: LogRecord): Promise<void> {
-    return catalog.putLog(this.ctx, rec);
-  }
-
-  listLogs(sessionId: string): Promise<LogRecord[]> {
-    return catalog.listLogs(this.ctx, sessionId);
-  }
-
-  putSchedule(rec: ScheduleRecord): Promise<void> {
-    return catalog.putSchedule(this.ctx, rec);
-  }
-
-  getSchedule(id: string): Promise<ScheduleRecord | null> {
-    return catalog.getSchedule(this.ctx, id);
-  }
-
-  listSchedules(): Promise<ScheduleRecord[]> {
-    return catalog.listSchedules(this.ctx);
-  }
-
-  deleteSchedule(id: string): Promise<void> {
-    return catalog.deleteSchedule(this.ctx, id);
-  }
-
-  putRepository(rec: RepositoryRecord): Promise<void> {
-    return catalog.putRepository(this.ctx, rec);
-  }
-
-  getRepository(id: string): Promise<RepositoryRecord | null> {
-    return catalog.getRepository(this.ctx, id);
-  }
-
-  listRepositories(): Promise<RepositoryRecord[]> {
-    return catalog.listRepositories(this.ctx);
-  }
-
-  deleteRepository(id: string): Promise<void> {
-    return catalog.deleteRepository(this.ctx, id);
-  }
-
-  tryClaimSchedule(
-    scheduleId: string,
-    expectedNextRunAt: string,
-    newNextRunAt: string,
-    lastRunAt: string,
-  ): Promise<boolean> {
-    return catalog.tryClaimSchedule(
-      this.ctx,
-      scheduleId,
-      expectedNextRunAt,
-      newNextRunAt,
-      lastRunAt,
-    );
-  }
-
-  putArchive(obj: ArchiveObject): Promise<void> {
-    return catalog.putArchive(this.ctx, obj);
-  }
-
-  getArchive(key: string): Promise<ArchiveObject | null> {
-    return catalog.getArchive(this.ctx, key);
-  }
-
-  listArchives(): Promise<ArchiveObject[]> {
-    return catalog.listArchives(this.ctx);
-  }
-
-  putAgentHost(rec: AgentHostRecord): Promise<void> {
-    return catalog.putAgentHost(this.ctx, rec);
-  }
-
-  getAgentHost(agentId: string): Promise<AgentHostRecord | null> {
-    return catalog.getAgentHost(this.ctx, agentId);
-  }
-
-  listAgentHosts(): Promise<AgentHostRecord[]> {
-    return catalog.listAgentHosts(this.ctx);
-  }
-
-  deleteAgentHost(agentId: string): Promise<void> {
-    return catalog.deleteAgentHost(this.ctx, agentId);
+  deleteCommand(id: string): Promise<void> {
+    return catalog.deleteCommand(this.ctx, id);
   }
 
   clearAll(): Promise<void> {

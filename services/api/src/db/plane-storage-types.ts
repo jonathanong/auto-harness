@@ -1,4 +1,6 @@
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
+
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
 import type { SessionRecord } from "./types.ts";
@@ -7,6 +9,10 @@ export type PlaneStorageCtx = {
   doc: DynamoDBDocumentClient;
   tables: DynamoTableNames;
 };
+
+export type ProviderRecord = Provider;
+export type ProviderAccountRecord = ProviderAccount;
+export type CommandRecord = Command;
 
 export type ConnectionRecord = {
   connectionId: string;
