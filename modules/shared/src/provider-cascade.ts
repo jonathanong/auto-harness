@@ -9,9 +9,14 @@ export type ProviderCatalog = {
 
 /**
  * Effective enablement of a provider account, walking worktree -> repository -> host.
- * Absent override = inherit from the parent scope; explicit `enabled: false` disables at
- * that scope and stops the walk. Uses `??`, not `||` — an explicit `false` must not be
- * skipped the way an absent (`undefined`) value is.
+ * Host attachment is the base gate: an account not attached to the host is never
+ * eligible, regardless of repository/worktree overrides — those can only narrow an
+ * already-attached account (per docs/web.md's host-detail contract), never attach a new
+ * one. This matters because detaching an account doesn't clean up stale overrides left
+ * on its repositories/worktrees. Once attached, absent override = inherit from the
+ * parent scope; explicit `enabled: false` disables at that scope and stops the walk.
+ * Uses `??`, not `||` — an explicit `false` must not be skipped the way an absent
+ * (`undefined`) value is.
  */
 export function resolveProviderAccountEnabled(
   providerAccountId: string,
@@ -19,11 +24,15 @@ export function resolveProviderAccountEnabled(
   hostRepository: HostRepository | undefined,
   inventory: HostInventory | undefined,
 ): boolean {
+  const attached =
+    inventory?.providerAccounts?.some((a) => a.providerAccountId === providerAccountId) ?? false;
+  if (!attached) {
+    return false;
+  }
   return (
     hostWorktree?.providerAccountOverrides?.[providerAccountId]?.enabled ??
     hostRepository?.providerAccountOverrides?.[providerAccountId]?.enabled ??
-    inventory?.providerAccounts?.some((a) => a.providerAccountId === providerAccountId) ??
-    false
+    true
   );
 }
 

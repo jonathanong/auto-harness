@@ -16,6 +16,12 @@ export function resolveSessionTargetLabel(
     if (!command) {
       return { ok: false, error: `commandId ${commandId} not found` };
     }
+    if (command.providerId !== null) {
+      return {
+        ok: false,
+        error: `commandId ${commandId} is owned by a provider; target its provider account instead`,
+      };
+    }
     return { ok: true, label: command.name };
   }
   const account = state.providerAccounts.get(providerAccountId!);

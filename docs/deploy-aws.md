@@ -88,6 +88,15 @@ pnpm --filter @auto-harness/cdk deploy
 
 Prefer **control plane first**, then agents, so old agents fail closed on unknown messages rather than new agents talking to old APIs.
 
+> **One-time backfill required if deploying onto a pre-existing populated environment:** the
+> `agentId`→`hostId` and `commandProfile`→`providerAccountId`/`commandId` renames changed
+> persisted attribute names on the Sessions, Worktrees, Connections, and host-inventory tables
+> without a compatibility shim. Rows written before this rename still carry the old attribute
+> names and will hydrate with `hostId`/target fields `undefined`. There is no such environment
+> today (this rename has only run against ephemeral local DynamoDB), so no backfill has been
+> written — write and run one (or wipe and recreate the tables, per Teardown) before deploying
+> this change over any environment with existing data.
+
 ---
 
 ## Teardown

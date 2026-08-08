@@ -63,7 +63,7 @@ describe("resolveProviderAccountEnabled", () => {
     ).toBe(false);
   });
 
-  it("repo-scope explicit true enables even though not host-attached", () => {
+  it("repo-scope explicit true does NOT enable when not host-attached — overrides can only narrow", () => {
     expect(
       resolveProviderAccountEnabled(
         "acct1",
@@ -71,7 +71,20 @@ describe("resolveProviderAccountEnabled", () => {
         repository({ acct1: { enabled: true } }),
         inventory(),
       ),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("a stale repo-scope override left over from before detachment stays disabled", () => {
+    // Detaching an account doesn't clean up overrides on its repositories/worktrees —
+    // an `enabled: true` override set while attached must not resurrect eligibility.
+    expect(
+      resolveProviderAccountEnabled(
+        "acct1",
+        worktree({ acct1: { enabled: true } }),
+        repository({ acct1: { enabled: true } }),
+        inventory([{ providerAccountId: "acct2" }]),
+      ),
+    ).toBe(false);
   });
 
   it("worktree scope wins over repo scope when both set", () => {
@@ -80,18 +93,18 @@ describe("resolveProviderAccountEnabled", () => {
         "acct1",
         worktree({ acct1: { enabled: true } }),
         repository({ acct1: { enabled: false } }),
-        inventory(),
+        inventory([{ providerAccountId: "acct1" }]),
       ),
     ).toBe(true);
   });
 
-  it("an empty override object ({}) inherits rather than disabling", () => {
+  it("an empty override object ({}) inherits from the next scope down, not from the base attachment", () => {
     expect(
       resolveProviderAccountEnabled(
         "acct1",
         worktree({ acct1: {} }),
         repository({ acct1: { enabled: false } }),
-        inventory(),
+        inventory([{ providerAccountId: "acct1" }]),
       ),
     ).toBe(false);
   });

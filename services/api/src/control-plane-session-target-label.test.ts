@@ -29,6 +29,23 @@ describe("resolveSessionTargetLabel", () => {
     });
   });
 
+  it("rejects a provider-owned commandId as a direct target — must go through its provider account", () => {
+    const state = createControlPlaneState();
+    state.commands.set("cmd-1", {
+      id: "cmd-1",
+      name: "claude-print",
+      argv: ["claude", "-p"],
+      appendPrompt: true,
+      providerId: "prov-1",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(resolveSessionTargetLabel(state, undefined, "cmd-1")).toEqual({
+      ok: false,
+      error: "commandId cmd-1 is owned by a provider; target its provider account instead",
+    });
+  });
+
   it("labels a provider account as 'provider name — account label'", () => {
     const state = createControlPlaneState();
     state.providers.set("prov-1", {
