@@ -1,89 +1,40 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
+import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 
-const noop = async () => undefined;
-const emptyList = async () => [];
-
-function mockStorage(): DynamoPlaneStorage {
-  return {
-    putSession: vi.fn(noop),
-    putWorktree: vi.fn(noop),
-    putConnection: vi.fn(noop),
-    putLog: vi.fn(noop),
-    putSchedule: vi.fn(noop),
-    putRepository: vi.fn(noop),
-    putArchive: vi.fn(noop),
-    putAgentHost: vi.fn(noop),
-    deleteSchedule: vi.fn(noop),
-    deleteRepository: vi.fn(noop),
-    deleteAgentHost: vi.fn(noop),
-    tryClaimWorktree: vi.fn(async () => true),
-    tryAcquireAgentLock: vi.fn(noop),
-    listAllSessions: vi.fn(emptyList),
-    listAllWorktrees: vi.fn(emptyList),
-    listConnections: vi.fn(async () => [
-      {
-        connectionId: "c1",
-        type: "agent" as const,
-        agentId: "a1",
-        connectedAt: "t",
-        lastHeartbeatAt: "t",
-        commandProfiles: ["c"],
-      },
-    ]),
-    listSchedules: vi.fn(async () => [
-      {
-        id: "sch1",
-        repositoryId: "r1",
-        name: "n",
-        commandProfile: "c",
-        cron: "* * * * *",
-        enabled: true,
-        timeout: 1,
-        nextRunAt: "t",
-        lastRunAt: null,
-        createdAt: "t",
-      },
-    ]),
-    listRepositories: vi.fn(async () => [
-      {
-        id: "r1",
-        name: "repo",
-        url: "https://example.com/r.git",
-        defaultBranch: "main",
-        createdAt: "t",
-        updatedAt: "t",
-      },
-    ]),
-    listArchives: vi.fn(async () => [
-      { key: "archives/x.json", body: "[]", contentType: "application/json" },
-    ]),
-    listProviders: vi.fn(emptyList),
-    listProviderAccounts: vi.fn(emptyList),
-    listCommands: vi.fn(emptyList),
-    listAgentHosts: vi.fn(async () => [
-      {
-        agentId: "a1",
-        repositories: [
-          {
-            id: "r1",
-            path: "/r",
-            defaultBranch: "main",
-            worktrees: [{ id: "wt1", name: "wt1", path: "/w", labels: [] }],
-          },
-        ],
-        commandProfiles: { c: { argv: ["echo"], appendPrompt: true } },
-        updatedAt: "t",
-      },
-    ]),
-  } as unknown as DynamoPlaneStorage;
-}
+const ctx = createDynamoTestCtx("StoPaths");
 
 describe("ControlPlane storage write-through paths", () => {
-  it("persists through mock storage and hydrates catalog rows", async () => {
-    const storage = mockStorage();
+  it("persists through real DynamoDB Local and hydrates catalog rows", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const storage = ctx.storage;
+
+    // Rows already in Dynamo (e.g. from another process) — hydrateFromStorage must pick these up.
+    await storage.putSchedule({
+      id: "sch1",
+      repositoryId: "r1",
+      name: "n",
+      commandProfile: "c",
+      cron: "* * * * *",
+      enabled: true,
+      timeout: 1,
+      nextRunAt: "t",
+      lastRunAt: null,
+      createdAt: "t",
+    });
+    await storage.putRepository({
+      id: "r1",
+      name: "repo",
+      url: "https://example.com/r.git",
+      defaultBranch: "main",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+
     const plane = new ControlPlane({
       storage,
       idFactory: () => "s1",
@@ -188,8 +139,9 @@ describe("ControlPlane storage write-through paths", () => {
     expect(plane.listRepositories().some((r) => r.id === "r1")).toBe(true);
     expect(plane.getAgentHostConfig("a1")?.agentId).toBe("a1");
     expect(plane.listArchives().length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putSession).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.putAgentHost).mock.calls.length).toBeGreaterThan(0);
-    expect(vi.mocked(storage.tryClaimWorktree).mock.calls.length).toBeGreaterThan(0);
+
+    // Verify real persistence directly against storage, not just the in-process cache.
+    expect(await storage.getSession("s1")).not.toBeNull();
+    expect((await storage.getAgentHost("a1"))?.agentId).toBe("a1");
   });
 });

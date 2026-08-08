@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint --deny-warnings .",
+    "lint:ast": "ast-grep scan --config sgconfig.yml .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
     "test": "vitest run --coverage",
@@ -18,7 +19,7 @@
     "depcruise": "depcruise modules services --config .dependency-cruiser.cjs --output-type err",
     "links": "lychee --config lychee.toml README.md AGENTS.md CLAUDE.md docs",
     "check:data-pw": "no-mistakes check --config .no-mistakes.control.yml; no-mistakes check --config .no-mistakes.agent.yml",
-    "check": "pnpm lint && pnpm fmt:check && pnpm test && pnpm knip && pnpm depcruise && pnpm links",
+    "check": "pnpm lint && pnpm lint:ast && pnpm fmt:check && pnpm test && pnpm knip && pnpm depcruise && pnpm links",
     "local:dynamodb": "docker compose up -d dynamodb",
     "local:dynamodb:ready": "node scripts/ensure-dynamodb.mts",
     "local:dynamodb:down": "docker compose down",
@@ -43,6 +44,7 @@
     "local:manage-verify": "node scripts/manage-verify.mts"
   },
   "devDependencies": {
+    "@ast-grep/cli": "^0.45.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^22.15.30",
     "@vitest/coverage-v8": "^3.2.4",

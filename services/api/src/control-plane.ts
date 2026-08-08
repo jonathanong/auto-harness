@@ -5,7 +5,7 @@ import type {
   ScheduleRecord,
   WebhookDelivery,
 } from "./control-plane-types.ts";
-import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as agents from "./control-plane-agents.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
@@ -27,7 +27,7 @@ export type {
  * Prefer {@link createControlPlane} so state is backed by DynamoDB Local / AWS.
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
-export class ControlPlane extends ControlPlaneBase {
+export class ControlPlane extends ControlPlaneCatalog {
   updateSchedule(
     id: string,
     patch: Partial<{

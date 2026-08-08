@@ -1,0 +1,15 @@
+id: no-mock-backend-storage
+language: TypeScript
+severity: error
+message: >-
+  Don't mock DynamoDB/storage in backend tests. Use real DynamoDB Local instead
+  (services/api/src/db/dynamo-test-helpers.ts's createDynamoTestCtx skips itself
+  when Local isn't running) — see services/api/src/db/dynamo-storage.test.ts and
+  control-plane-providers-storage.test.ts for the pattern.
+files:
+  - "services/**/*.test.ts"
+rule:
+  pattern: $EXPR as unknown as $TYPE
+constraints:
+  TYPE:
+    regex: "(DynamoPlaneStorage|DynamoPlaneStorageBase|DynamoDBDocumentClient|DynamoDBClient)"

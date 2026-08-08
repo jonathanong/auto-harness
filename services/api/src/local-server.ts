@@ -6,6 +6,9 @@ import { applyLocalCors } from "./local-cors.ts";
 import { type LocalServerOptions, send } from "./local-http.ts";
 import { handleAgentConfigRoutes } from "./local-routes-agent-config.ts";
 import { handleAgentSchedulerRoutes } from "./local-routes-agent-scheduler.ts";
+import { handleCommandRoutes } from "./local-routes-commands.ts";
+import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts";
+import { handleProviderRoutes } from "./local-routes-providers.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { MemorySessionStore } from "./memory-store.ts";
@@ -52,6 +55,15 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       return;
     }
     if (await handleAgentConfigRoutes(ctx)) {
+      return;
+    }
+    if (await handleProviderRoutes(ctx)) {
+      return;
+    }
+    if (await handleProviderAccountRoutes(ctx)) {
+      return;
+    }
+    if (await handleCommandRoutes(ctx)) {
       return;
     }
 

@@ -37,6 +37,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Lint (ast-grep)
+        run: pnpm lint:ast
+
       - name: Format check
         run: pnpm fmt:check
 

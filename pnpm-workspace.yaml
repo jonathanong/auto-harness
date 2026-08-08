@@ -3,4 +3,5 @@ packages:
   - "services/*"
 
 onlyBuiltDependencies:
+  - "@ast-grep/cli"
   - no-mistakes
