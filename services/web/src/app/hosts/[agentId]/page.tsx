@@ -50,7 +50,11 @@ export default async function HostDetailPage({
     );
   }
 
-  const inv: HostInventory = inventory ?? { repositories: [], commandProfiles: {} };
+  const inv: HostInventory = inventory ?? {
+    repositories: [],
+    providerAccounts: [],
+    commandProfiles: {},
+  };
 
   let catalog: RepoCatalogEntry[] = [];
   try {
