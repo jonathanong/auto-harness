@@ -35,6 +35,18 @@ const NAV = [
     tip: "Fleet worktrees grouped by repository",
   },
   {
+    href: "/providers",
+    label: "Providers",
+    pw: "nav-providers",
+    tip: "AI CLI vendors (claude, codex, grok…) and their accounts",
+  },
+  {
+    href: "/commands",
+    label: "Commands",
+    pw: "nav-commands",
+    tip: "Named argv invocations, standalone or owned by a provider",
+  },
+  {
     href: "/schedules",
     label: "Schedules",
     pw: "nav-schedules",
