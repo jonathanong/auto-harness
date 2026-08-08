@@ -62,7 +62,7 @@ Or run everything above — except DynamoDB Local, which stays in Docker — in 
 ```bash
 curl -sS http://127.0.0.1:7420/health
 curl -sS http://127.0.0.1:7420/api/v1/agents
-curl -sS http://127.0.0.1:7420/api/v1/command-profiles
+curl -sS http://127.0.0.1:7420/api/v1/session-targets   # attached provider accounts + standalone commands
 ```
 
 Session path after agent is online: `POST /api/v1/sessions` then `POST /api/v1/scheduler/assign` (local create does not auto-assign). Details: [agent-e2e-testing.md](agent-e2e-testing.md).

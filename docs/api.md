@@ -4,7 +4,7 @@ HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/ap
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
-**Phase 2+ fields on `POST /sessions`:** `ref`, `commandProfile` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+**Phase 2+ fields on `POST /sessions`:** `ref`, exactly one of `providerAccountId`/`commandId` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url` and `targetLabel`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
@@ -302,7 +302,7 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
 {
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test in src/utils.test.ts",
-  "command": "codex -p",
+  "commandId": "cmd-codex-fix",
   "timeout": 1800,
   "priority": 10,
   "requiredLabels": ["codex"],
@@ -310,18 +310,20 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
 }
 ```
 
-| Field            | Type     | Required | Description                                                                                         |
-| ---------------- | -------- | -------- | --------------------------------------------------------------------------------------------------- |
-| `repositoryId`   | string   | ✓        | Target repository                                                                                   |
-| `prompt`         | string   | ✓        | The prompt/instruction for the AI agent                                                             |
-| `command`        | string   | ✓        | CLI command to execute, e.g. `codex -p`, `claude --print`                                           |
-| `timeout`        | number   | ✓        | Max session duration in seconds. The agent kills the process after this time.                       |
-| `priority`       | number   | ✗        | Higher = more urgent. Default: `0`                                                                  |
-| `requiredLabels` | string[] | ✗        | Worktree labels required. Default: `[]` (any worktree)                                              |
-| `source`         | string   | ✗        | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                           |
-| `type`           | string   | ✗        | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt` |
+| Field                           | Type     | Required    | Description                                                                                                                                                                                                                                |
+| ------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repositoryId`                  | string   | ✓           | Target repository                                                                                                                                                                                                                          |
+| `prompt`                        | string   | ✓           | The prompt/instruction for the AI agent                                                                                                                                                                                                    |
+| `providerAccountId`/`commandId` | string   | exactly one | Session target — a Provider Account (cascade-resolved to a Command at assign time) or a standalone Command. Never a free-form command string. See [Providers, Provider Accounts, and Commands](#providers-provider-accounts-and-commands). |
+| `timeout`                       | number   | ✓           | Max session duration in seconds. The agent kills the process after this time.                                                                                                                                                              |
+| `priority`                      | number   | ✗           | Higher = more urgent. Default: `0`                                                                                                                                                                                                         |
+| `requiredLabels`                | string[] | ✗           | Worktree labels required. Default: `[]` (any worktree)                                                                                                                                                                                     |
+| `source`                        | string   | ✗           | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                                                                                                  |
+| `type`                          | string   | ✗           | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                                                                                        |
 
-> **Note:** The Web UI uses this same endpoint to create sessions directly from the browser. The UI provides a form with repo selection, prompt text area, command/agent type picker, timeout, priority slider, and label selection.
+An unknown `providerAccountId`/`commandId`, or a body with both/neither, is rejected `400` at create time.
+
+> **Note:** The Web UI uses this same endpoint to create sessions directly from the browser. The UI provides a form with repo selection, prompt text area, a target picker (`GET /session-targets` — Provider Accounts and standalone Commands), timeout, priority slider, and label selection.
 
 **Response:** `201 Created`
 
@@ -330,7 +332,8 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
   "id": "sess-x1y2z3",
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test in src/utils.test.ts",
-  "command": "codex -p",
+  "commandId": "cmd-codex-fix",
+  "targetLabel": "codex-fix",
   "status": "queued",
   "timeout": 1800,
   "priority": 10,
@@ -340,6 +343,8 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
   "createdAt": "2026-08-01T12:00:00Z"
 }
 ```
+
+`targetLabel` is a human-readable label for the resolved target (the Command's name, or `"<provider> — <account label>"`), useful for display without a second lookup. Once assigned, the session record also gains `resolvedArgv: string[]` — the exact argv the agent spawned.
 
 The session enters the `queued` state. The scheduler assigns it to an idle worktree that matches the repository and required labels on an online agent. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, it remains queued.
 
@@ -592,20 +597,20 @@ Create a scheduled task. **Operator or admin.**
 {
   "repositoryId": "repo-abc",
   "name": "daily-update",
-  "command": "git pull && pnpm install && pnpm lint:fix",
+  "commandId": "cmd-lint-fix",
   "cron": "0 6 * * *",
   "enabled": true
 }
 ```
 
-| Field          | Type    | Required | Description                                       |
-| -------------- | ------- | -------- | ------------------------------------------------- |
-| `repositoryId` | string  | ✓        | Target repository                                 |
-| `name`         | string  | ✓        | Human-readable name for the schedule              |
-| `command`      | string  | ✓        | Shell command to execute on the main checkout     |
-| `cron`         | string  | ✓        | Cron expression (5-field)                         |
-| `timeout`      | number  | ✗        | Max duration in seconds. Default: `3600` (1 hour) |
-| `enabled`      | boolean | ✗        | Default: `true`                                   |
+| Field                           | Type    | Required    | Description                                                    |
+| ------------------------------- | ------- | ----------- | -------------------------------------------------------------- |
+| `repositoryId`                  | string  | ✓           | Target repository                                              |
+| `name`                          | string  | ✓           | Human-readable name for the schedule                           |
+| `providerAccountId`/`commandId` | string  | exactly one | Same target model as sessions — never a free-form shell string |
+| `cron`                          | string  | ✓           | Cron expression (5-field)                                      |
+| `timeout`                       | number  | ✗           | Max duration in seconds. Default: `3600` (1 hour)              |
+| `enabled`                       | boolean | ✗           | Default: `true`                                                |
 
 **Response:** `201 Created`
 
@@ -614,7 +619,8 @@ Create a scheduled task. **Operator or admin.**
   "id": "sched-m1n2o3",
   "repositoryId": "repo-abc",
   "name": "daily-update",
-  "command": "git pull && pnpm install && pnpm lint:fix",
+  "commandId": "cmd-lint-fix",
+  "targetLabel": "lint-fix",
   "cron": "0 6 * * *",
   "enabled": true,
   "lastRunAt": null,
@@ -680,5 +686,69 @@ List connected agents and their status.
 #### `GET /agents/:id`
 
 Get agent details including worktrees and current sessions.
+
+---
+
+### Providers, Provider Accounts, and Commands
+
+Three global catalogs a session/schedule targets instead of a free-form command string (D4). A **Command** is a name + fixed `argv` + `appendPrompt`, optionally owned by a **Provider** (`providerId: null` = standalone, runs ungated on any worktree). A **Provider** (e.g. `claude`, `codex`) has a `defaultCommandId`. A **Provider Account** is a specific account of a Provider (e.g. an email), attached to one or more hosts; which Command it actually resolves to on a given worktree is a cascade — worktree override → repository override → host-level override/attachment → the provider's own default — walked at session-assign time, not at create time (see [websocket.md](websocket.md) `session:assign`).
+
+All CRUD below is **operator or admin**, and control-plane-only — there's no host-pane equivalent.
+
+#### `POST /providers`
+
+Create a provider. **Does not** create its default command — the control-plane UI's "Add provider" dialog does both in one step (create provider → create its command → `PATCH` `defaultCommandId`) to avoid shipping a provider with no default; scripting this yourself needs the same three calls.
+
+**Request:** `{ "name": "claude" }` (slug: lowercase letters, numbers, dashes)
+
+**Response:** `201 Created` — `{ "id", "name", "defaultCommandId": null, "createdAt", "updatedAt" }`
+
+#### `GET /providers`, `GET /providers/:id`, `PATCH /providers/:id`, `DELETE /providers/:id`
+
+Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommandId: null` clears it). `DELETE` fails `409` while any Provider Account or Command still references this provider — detach/reassign or delete those first.
+
+#### `POST /provider-accounts`
+
+**Request:** `{ "providerId": "prov-1", "label": "jonathanrichardong@gmail.com" }`
+
+**Response:** `201 Created` — `{ "id", "providerId", "label", "createdAt", "updatedAt" }`. `providerId` must reference an existing provider (`400` otherwise).
+
+#### `GET /provider-accounts`, `GET /provider-accounts/:id`, `PATCH /provider-accounts/:id`, `DELETE /provider-accounts/:id`
+
+Standard CRUD. Deleting an account does **not** detach it from any host that still lists it — that attachment becomes an orphaned reference (soft, no cascade delete).
+
+#### `POST /commands`
+
+**Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
+
+**Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+
+#### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
+
+Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is any provider's `defaultCommandId`.
+
+#### `GET /session-targets`
+
+Unified picker source for session/schedule creation: attached Provider Accounts (only ones attached to at least one host — an account that exists in the catalog but isn't attached anywhere is excluded, since it could never resolve to a runnable command) plus standalone Commands.
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "kind": "provider-account",
+      "id": "acct-1",
+      "label": "claude — jonathanrichardong@gmail.com",
+      "providerId": "prov-1"
+    },
+    { "kind": "command", "id": "cmd-1", "label": "echo hello world" }
+  ]
+}
+```
+
+#### Host inventory: attaching a Provider Account
+
+`PUT /agents/:agentId/config` (see [cli.md](cli.md)) carries `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an optional host-level command override per account. Per-repository and per-worktree overrides (`enabled?`, `commandId?`) live on the corresponding entries inside that same document's `repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
 
 ---

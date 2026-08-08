@@ -58,7 +58,7 @@ See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
 Install / update / teardown: **[deploy-agent.md](deploy-agent.md)**. Locally: `run-session` / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
 
-Agent config includes optional `apiUrl` / `apiKey` for cloud connect. **commandProfiles** stay required for all execution (D4). Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
+Agent config includes optional `apiUrl` / `apiKey` for cloud connect. All execution still resolves to **named, fixed argv** (D4), now via the global Provider/Provider Account/Command catalogs rather than host-local command profiles. Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
 
 ---
 
@@ -66,6 +66,6 @@ Agent config includes optional `apiUrl` / `apiKey` for cloud connect. **commandP
 
 - No secrets in prompts or REST session bodies
 - Agent holds git + AI credentials on the VPS
-- Free-form shell commands are not accepted over the API — only named `commandProfile`s
+- Free-form shell commands are not accepted over the API — only a catalog Provider Account or Command
 
 See [auth.md](auth.md), [security.md](security.md).

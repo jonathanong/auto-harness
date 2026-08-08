@@ -2,7 +2,7 @@
   "sessionId": "sess-local-1",
   "repositoryId": "demo",
   "prompt": "hello from local session",
-  "commandProfile": "echo-prompt",
+  "resolvedArgv": ["echo", "hello from local session"],
   "timeout": 60,
   "worktreeId": "wt-1",
   "ref": "main"

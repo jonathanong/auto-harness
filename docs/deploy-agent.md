@@ -32,7 +32,7 @@ On the agent host:
 1. Install Node, Git, and AI CLIs.
 2. Clone or install the agent package / monorepo checkout used for `auto-harness-agent`.
 3. Create a **bound** service account on the control plane (`boundAgentId` = this host’s `agentId`).
-4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths and named `commandProfiles` (D4 — no free-form shell).
+4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths, plus which catalog Provider Accounts are attached to this host. Commands resolve to named, fixed argv (D4 — no free-form shell) from the global Provider/Provider Account/Command catalogs, not a per-host profile map.
 5. Set **only** identity env vars on the host:
 
 | Variable            | Role                                             |
@@ -56,12 +56,12 @@ pnpm local:agent start
 pnpm local:agent start
 ```
 
-7. Confirm control plane shows agent online and profiles:
+7. Confirm control plane shows the agent online with its attached provider accounts:
 
 ```bash
 curl -sS "$HARNESS_API_URL/api/v1/agents"
 curl -sS "$HARNESS_API_URL/api/v1/agents/$HARNESS_AGENT_ID/config"
-curl -sS "$HARNESS_API_URL/api/v1/command-profiles"
+curl -sS "$HARNESS_API_URL/api/v1/session-targets"   # attached provider accounts + standalone commands
 ```
 
 Host inventory template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Runbooks: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, schedules, and agents. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
+Next.js UI for sessions, repositories, worktrees, schedules, hosts (agents), and the Providers/Commands catalog. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
 ## Authentication
 
@@ -81,7 +81,7 @@ The session list is the primary view for monitoring work. It displays all sessio
 | Status     | Badge: `queued` (yellow), `running` (blue, animated), `completed` (green), `failed` (red), `cancelled` (gray), `timed_out` (orange). If `errorCode === usage_limit`, show a distinct “Usage limit” subtitle on failed sessions |
 | Repository | Repository name                                                                                                                                                                                                                |
 | Prompt     | Truncated first line of the prompt (click to expand)                                                                                                                                                                           |
-| Command    | CLI command (e.g. `codex -p`)                                                                                                                                                                                                  |
+| Target     | Resolved target label (`targetLabel`) — a Command's name, or `"<provider> — <account label>"` for a Provider Account                                                                                                           |
 | Source     | Origin badge: `api`, `ui`, `webhook`, `schedule`                                                                                                                                                                               |
 | Priority   | Numeric priority value                                                                                                                                                                                                         |
 | Created    | Relative time (e.g. "2 minutes ago") with full timestamp on hover                                                                                                                                                              |
@@ -151,7 +151,7 @@ The header displays session metadata:
 | Session ID | Monospaced, copyable                                                                        |
 | Status     | Animated badge with status color                                                            |
 | Repository | Link to repository                                                                          |
-| Command    | Monospaced                                                                                  |
+| Target     | Monospaced `targetLabel`; once assigned, "Resolved argv" shows the exact spawned array      |
 | Agent      | Agent name (if assigned)                                                                    |
 | Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                         |
 | Priority   | Numeric value                                                                               |
@@ -236,14 +236,14 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 
 ### Form Fields
 
-| Field      | Type               | Required | Description                                                                                           |
-| ---------- | ------------------ | -------- | ----------------------------------------------------------------------------------------------------- |
-| Repository | Dropdown           | ✓        | Select from available repositories                                                                    |
-| Prompt     | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                        |
-| Command    | Dropdown + text    | ✓        | Preset options (`codex -p`, `claude --print`, etc.) with a custom option for arbitrary commands       |
-| Timeout    | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                     |
-| Priority   | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                          |
-| Labels     | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents. |
+| Field      | Type               | Required | Description                                                                                                                          |
+| ---------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Repository | Dropdown           | ✓        | Select from available repositories                                                                                                   |
+| Prompt     | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                                       |
+| Target     | Dropdown           | ✓        | `<optgroup>`s: Provider accounts, then Commands — sourced from `GET /session-targets`; no free-text option, never arbitrary commands |
+| Timeout    | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                                                    |
+| Priority   | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                                         |
+| Labels     | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                                |
 
 ### Submission
 
@@ -266,7 +266,7 @@ Displays all configured schedules in a table:
 | ---------- | ---------------------------------------------------------------------------- |
 | Name       | Schedule name                                                                |
 | Repository | Target repository                                                            |
-| Command    | Truncated command string                                                     |
+| Target     | Resolved `targetLabel`                                                       |
 | Cron       | Human-readable schedule (e.g. "Every day at 6:00 AM") with raw cron on hover |
 | Enabled    | Toggle switch                                                                |
 | Last Run   | Relative time + status badge (success/failed)                                |
@@ -274,19 +274,19 @@ Displays all configured schedules in a table:
 
 ### Schedule Detail
 
-- Edit schedule fields (name, command, cron, enabled)
+- Edit schedule fields (name, target, cron, enabled)
 - Run history — list of past sessions created by this schedule, with status and links to session detail
 - "Run Now" button — manually triggers via `POST /schedules/:id/trigger`, then redirects to the created session
 
 ### Create/Edit Schedule Form
 
-| Field      | Type         | Required | Description                                                                                     |
-| ---------- | ------------ | -------- | ----------------------------------------------------------------------------------------------- |
-| Repository | Dropdown     | ✓        | Target repository                                                                               |
-| Name       | Text input   | ✓        | Human-readable schedule name                                                                    |
-| Command    | Textarea     | ✓        | Shell command to run on main checkout                                                           |
-| Cron       | Cron builder | ✓        | Visual cron expression builder with preset options (hourly, daily, weekly) and a raw input mode |
-| Enabled    | Toggle       | ✗        | Default: enabled                                                                                |
+| Field      | Type       | Required | Description                                                                                                 |
+| ---------- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| Repository | Text input | ✓        | Target repository id                                                                                        |
+| Name       | Text input | ✓        | Human-readable schedule name                                                                                |
+| Target     | Dropdown   | ✓        | Same `SessionTargetSelect` as Create Session — Provider account or standalone Command, never a shell string |
+| Cron       | Text input | ✓        | Raw 5-field cron expression                                                                                 |
+| Enabled    | Toggle     | ✗        | Default: enabled                                                                                            |
 
 ---
 
@@ -308,6 +308,56 @@ Table of configured repositories:
 ### Add/Edit Repository
 
 Form with fields: name, git URL, default branch, setup script (optional).
+
+### Repository Detail
+
+Tabs: **Sessions** (default) · **Worktrees** · **Provider accounts** · **Settings**.
+
+The Provider accounts tab shows, for each host the repository is attached to, a labeled `ProviderScopeTable` block: every host-attached Provider Account's effective **Enabled** state (tri-state: inherited-on/inherited-off/explicit, with a "reset to inherited" option), which scope that value came from (**Inherited from**), and the **Effective command** with an inline override picker scoped to that account's provider's own commands. A repository can be attached to several hosts, so this tab can render several blocks.
+
+---
+
+## Worktrees
+
+Fleet-wide worktrees view, grouped by repository. Each worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts, Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to exactly one host, so there's only one block, and the worktree scope wins over its repository's).
+
+---
+
+## Hosts
+
+### Host List
+
+Table of registered hosts: agent id, online/offline status, attached repository count, drain control.
+
+### Host Detail
+
+Tabs: **Overview** (status, repository/worktree counts) · **Repositories & Worktrees** (attach/detach, add worktrees) · **Provider accounts**.
+
+The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one.
+
+---
+
+## Providers
+
+### Provider List
+
+Table: name, default command, attached-account count, owned-command count. "Add provider" opens a dialog that creates the provider **and** its default command in one submit — a provider is never left without a default, since that would make every account under it unresolvable.
+
+### Provider Detail
+
+Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an inline create form) · **Settings** (rename; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip).
+
+---
+
+## Commands
+
+### Command List
+
+Table: name, argv, owning provider (or "—" for standalone), append-prompt flag.
+
+### Command Detail
+
+Edit name/argv/append-prompt/provider inline. Delete is disabled while the command is some provider's default command (the one guard the backend enforces today — a "referenced by a scope override" guard is not yet implemented server-side).
 
 ---
 

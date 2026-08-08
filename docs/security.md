@@ -13,14 +13,14 @@ Trust boundaries, transport, operational controls, and host hardening. **Authent
 
 Session **prompts are attacker-influenced input**: they may originate from issue comments, CI failure text, or other untrusted sources. Design consequences (see also [plan.md](plan.md) D1/D4/D7):
 
-| Control                          | What it does                                                                 |
-| -------------------------------- | ---------------------------------------------------------------------------- |
-| Named `commandProfile` only (D4) | Operators cannot run arbitrary shell strings via the API                     |
-| Fine-grained GitHub token (D7)   | Compromised session write access is scoped to one repo’s contents/PRs/issues |
-| Agent-held credentials           | Control plane never becomes a second vault for git/AI secrets                |
-| No control-plane “publisher”     | Agent opens PRs/comments itself — trust the agent host, not a second hop     |
+| Control                                    | What it does                                                                                                                              |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Named Provider Account / Command only (D4) | Operators cannot run arbitrary shell strings via the API — a session targets a catalog entry, resolved control-plane-side into fixed argv |
+| Fine-grained GitHub token (D7)             | Compromised session write access is scoped to one repo’s contents/PRs/issues                                                              |
+| Agent-held credentials                     | Control plane never becomes a second vault for git/AI secrets                                                                             |
+| No control-plane “publisher”               | Agent opens PRs/comments itself — trust the agent host, not a second hop                                                                  |
 
-This does **not** protect against a fully compromised agent host, a malicious profile definition on that host, or exfiltration through whatever the AI CLI can reach with its own credentials.
+This does **not** protect against a fully compromised agent host, a malicious Command definition in the catalog, or exfiltration through whatever the AI CLI can reach with its own credentials.
 
 ## Transport security
 

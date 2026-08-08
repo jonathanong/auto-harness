@@ -23,11 +23,11 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepa
 
 ### Server → agent
 
-| Type             | Payload                                                                                                                                                                     | Purpose                                                                                                             |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `session:assign` | `sessionId`, `repositoryId`, `prompt`, `commandProfile`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); profile is named (D4), never a free command string |
-| `session:cancel` | `sessionId`                                                                                                                                                                 | Stop queued/running work                                                                                            |
-| `ping`           | `{}`                                                                                                                                                                        | Keepalive                                                                                                           |
+| Type             | Payload                                                                                                                                                                   | Purpose                                                                                                                                                                                                         |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session:assign` | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it |
+| `session:cancel` | `sessionId`                                                                                                                                                               | Stop queued/running work                                                                                                                                                                                        |
+| `ping`           | `{}`                                                                                                                                                                      | Keepalive                                                                                                                                                                                                       |
 
 ```json
 {
@@ -35,7 +35,7 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepa
   "sessionId": "sess-x1y2z3",
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test in src/utils.test.ts",
-  "commandProfile": "codex-fix",
+  "resolvedArgv": ["codex", "exec", "Fix the failing test in src/utils.test.ts"],
   "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",
@@ -51,7 +51,7 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepa
   "sessionId": "sess-r9s8t7",
   "repositoryId": "repo-abc",
   "prompt": "Continue: also fix the edge case",
-  "commandProfile": "codex-fix",
+  "resolvedArgv": ["codex", "exec", "Continue: also fix the edge case"],
   "ref": "main",
   "timeout": 1800,
   "worktreeId": "wt-1",

@@ -2,7 +2,7 @@
 
 **Audience:** coding agents (and humans) validating Auto Harness **locally** before any cloud deploy.
 
-**Bar:** the full control-plane + agent + (optional) web path works with **real** DynamoDB Local, **real** HTTP/WS, **real** git worktrees, and a **real non-interactive CLI** profile (e.g. `grok`, `codex`, or `echo` for a dry run). Do not claim “ready to deploy” after unit tests alone.
+**Bar:** the full control-plane + agent + (optional) web path works with **real** DynamoDB Local, **real** HTTP/WS, **real** git worktrees, and a **real non-interactive CLI** command (e.g. `grok`, `codex`, `claude`, or `echo` for a dry run). Do not claim “ready to deploy” after unit tests alone.
 
 Related: [local-development.md](local-development.md) (runbook), [deploy-local.md](deploy-local.md) (local ops), [deploy.md](deploy.md) (ops index), [cli.md](cli.md) (agent CLI), [api.md](api.md) (REST), [websocket.md](websocket.md), [plan.md](plan.md) (acceptance criteria).
 
@@ -10,13 +10,13 @@ Related: [local-development.md](local-development.md) (runbook), [deploy-local.m
 
 ## 0. Preconditions
 
-| Need            | Check                                                  |
-| --------------- | ------------------------------------------------------ |
-| Node.js ≥ 22.18 | `node -v`                                              |
-| pnpm            | `pnpm -v` (see root `packageManager`)                  |
-| Docker          | for DynamoDB Local                                     |
-| Git ≥ 2.20      | worktrees                                              |
-| Optional AI CLI | `which grok` / `which codex` / etc. for a real profile |
+| Need            | Check                                                                   |
+| --------------- | ----------------------------------------------------------------------- |
+| Node.js ≥ 22.18 | `node -v`                                                               |
+| pnpm            | `pnpm -v` (see root `packageManager`)                                   |
+| Docker          | for DynamoDB Local                                                      |
+| Git ≥ 2.20      | worktrees                                                               |
+| Optional AI CLI | `which grok` / `which codex` / `which claude` / etc. for a real command |
 
 ```bash
 cd /path/to/auto-harness
@@ -36,7 +36,7 @@ pnpm check                 # lint, fmt, tests+coverage, knip, depcruise, links
 pnpm test:integration      # real HTTP+WS server + real agent daemon + real echo subprocess
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
-pnpm local:e2e             # SessionRunner + ref + unknown profile + hooks
+pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
 pnpm local:cli-e2e         # documented pnpm local:agent run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201 queued
 pnpm local:ws-e2e          # real WebSocket create→assign→run
@@ -107,44 +107,54 @@ git add . && git commit -m "init"
 # Resolve a real CLI binary if you have one
 GROK_BIN="$(command -v grok || true)"
 CODEX_BIN="$(command -v codex || true)"
+CLAUDE_BIN="$(command -v claude || true)"
 ```
 
-### Command profiles (D4)
+### Providers, Provider Accounts, and Commands (D4)
 
-Profiles are **named → fixed argv**. Never put free-form shell strings in the API. Prefer a dry-run profile plus one real CLI:
+Sessions target either a **Provider Account** (cascade-resolved to a Command at assign time — worktree → repository → host → the provider's own default) or a standalone **Command** (`providerId: null`, runs ungated on any worktree). Either way the resolved `argv` is always a **named, fixed array** — never a free-form shell string. There is no host-inventory `commandProfiles` map to author by hand anymore; catalog entries are created once via REST, then attached to the host.
 
-| Profile                      | Purpose                                                      |
-| ---------------------------- | ------------------------------------------------------------ |
-| `echo-prompt`                | Always available; proves assign/checkout/logs without AI     |
-| `grok-print` / `codex-print` | Real non-interactive CLI (optional but preferred pre-deploy) |
+| Catalog entry                                          | Purpose                                                      |
+| ------------------------------------------------------ | ------------------------------------------------------------ |
+| standalone `echo`                                      | Always available; proves assign/checkout/logs without AI     |
+| `grok` / `codex` / `claude` Provider + default Command | Real non-interactive CLI (optional but preferred pre-deploy) |
 
-**Grok** (headless single-turn — flags verified against `grok --help`):
-
-```json
-"grok-print": {
-  "argv": ["/ABS/PATH/TO/grok", "--always-approve", "--max-turns", "3", "--output-format", "plain", "-p"],
-  "appendPrompt": true
-}
-```
-
-With `appendPrompt: true`, the session prompt is appended as the final argv element (so `-p` receives the prompt).
-
-Write host inventory JSON (substitute absolute paths), then **PUT it to the API** after the control plane is up:
+Create the catalog entries against the running API (Terminal B in §4 must already be up — or run these right after starting it, before creating any session):
 
 ```bash
-# From monorepo root after setting WORK / GROK_BIN
+API=http://127.0.0.1:7420
+
+# Standalone echo command — always create this one. Save its id for §5.
+ECHO_CMD=$(curl -fsS -X POST "$API/api/v1/commands" -H 'content-type: application/json' \
+  -d '{"name":"echo-prompt","argv":["echo"],"appendPrompt":true,"providerId":null}')
+ECHO_COMMAND_ID=$(printf '%s' "$ECHO_CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
+
+# Optional real CLIs — each is a Provider + its default Command + one account.
+# Flags below are empirically verified (see §5.2); omit whichever binary you don't have.
+if [ -n "$GROK_BIN" ]; then
+  PROV=$(curl -fsS -X POST "$API/api/v1/providers" -H 'content-type: application/json' -d '{"name":"grok"}')
+  PID=$(printf '%s' "$PROV" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
+  CMD=$(curl -fsS -X POST "$API/api/v1/commands" -H 'content-type: application/json' \
+    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_BIN\",\"--always-approve\",\"--max-turns\",\"3\",\"--output-format\",\"plain\",\"-p\"],\"appendPrompt\":true,\"providerId\":\"$PID\"}")
+  CID=$(printf '%s' "$CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
+  curl -fsS -X PATCH "$API/api/v1/providers/$PID" -H 'content-type: application/json' -d "{\"defaultCommandId\":\"$CID\"}"
+  ACCT=$(curl -fsS -X POST "$API/api/v1/provider-accounts" -H 'content-type: application/json' \
+    -d "{\"providerId\":\"$PID\",\"label\":\"e2e\"}")
+  GROK_ACCOUNT_ID=$(printf '%s' "$ACCT" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
+fi
+```
+
+Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p"]`) — see §5.2 for the exact commands.
+
+Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it's a list of `{providerAccountId}`, not fixed argv):
+
+```bash
 cat > "$WORK/config/agent-host.config.json" <<EOF
 {
-  "commandProfiles": {
-    "echo-prompt": {
-      "argv": ["echo"],
-      "appendPrompt": true
-    },
-    "grok-print": {
-      "argv": ["${GROK_BIN:-/usr/bin/false}", "--always-approve", "--max-turns", "3", "--output-format", "plain", "-p"],
-      "appendPrompt": true
-    }
-  },
+  "commandProfiles": {},
+  "providerAccounts": [
+    $([ -n "$GROK_ACCOUNT_ID" ] && echo "{\"providerAccountId\": \"$GROK_ACCOUNT_ID\"}")
+  ],
   "repositories": [
     {
       "id": "demo",
@@ -164,7 +174,7 @@ cat > "$WORK/config/agent-host.config.json" <<EOF
 EOF
 ```
 
-If `grok` is not installed, **omit** `grok-print` and only run the echo profile — still required for assign/WS proof. Document that a real CLI was skipped.
+If a CLI is not installed, **skip** creating its Provider/Account and only run the echo command — still required for assign/WS proof. Document that a real CLI was skipped.
 
 Agent process identity (env only):
 
@@ -211,7 +221,7 @@ pnpm local:agent start
 
 # Validate bootstrap
 pnpm local:agent status
-# expect agentId, repositories, commandProfiles from the control plane
+# expect agentId, repositories, providerAccounts from the control plane
 ```
 
 **Health checks:**
@@ -221,10 +231,11 @@ curl -sS http://127.0.0.1:7420/health
 # {"ok":true}
 
 curl -sS http://127.0.0.1:7420/api/v1/agents
-# items include agentId, online:true, commandProfiles, worktreeIds
+# items include agentId, online:true, worktreeIds
 
-curl -sS http://127.0.0.1:7420/api/v1/command-profiles
-# items list agent-reported names only (e.g. echo-prompt, grok-print)
+curl -sS http://127.0.0.1:7420/api/v1/session-targets
+# items list the unified picker source: attached provider accounts + standalone commands
+# (e.g. "echo-prompt", "grok — e2e") — this is what the web create-session/schedule forms fetch
 
 curl -sS http://127.0.0.1:7420/api/v1/sessions
 # {"items":[]} after a clean clear
@@ -243,14 +254,14 @@ Proves queue, claim, checkout, log stream, terminal status **without** an AI CLI
 ```bash
 CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -H 'content-type: application/json' \
-  -d '{
-    "repositoryId": "demo",
-    "prompt": "hello-from-e2e",
-    "commandProfile": "echo-prompt",
-    "timeout": 60,
-    "ref": "main",
-    "requiredLabels": ["echo"]
-  }')
+  -d "{
+    \"repositoryId\": \"demo\",
+    \"prompt\": \"hello-from-e2e\",
+    \"commandId\": \"$ECHO_COMMAND_ID\",
+    \"timeout\": 60,
+    \"ref\": \"main\",
+    \"requiredLabels\": [\"echo\"]
+  }")
 echo "$CREATE"
 SID=$(printf '%s' "$CREATE" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
 
@@ -268,29 +279,29 @@ done
 
 **Pass:**
 
-| Check     | Expect                                                                                |
-| --------- | ------------------------------------------------------------------------------------- |
-| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `commandProfile: "echo-prompt"` |
-| Assign    | one item for `$SID` / `wt-1` / your `agentId`                                         |
-| Terminal  | `status: "completed"`, `exitCode: 0`                                                  |
-| Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout   |
-| Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`             |
+| Check     | Expect                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------- |
+| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `commandId`, `targetLabel: "echo-prompt"` |
+| Assign    | one item for `$SID` / `wt-1` / your `agentId`                                                   |
+| Terminal  | `status: "completed"`, `exitCode: 0`                                                            |
+| Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout             |
+| Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`                       |
 
 ### 5.2 Real CLI (preferred pre-deploy) — Grok example
 
-Only if `grok` (or another profile) is installed and listed in `command-profiles`.
+Only if `grok` (or another provider) is installed and its Provider Account was created in §3. Targets the Provider Account (`providerAccountId`), not a fixed command — the cascade resolves it to the provider's default Command (`grok-print`) at assign time.
 
 ```bash
 CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -H 'content-type: application/json' \
-  -d '{
-    "repositoryId": "demo",
-    "prompt": "List the files in the current directory in one short sentence. Do not edit or create any files.",
-    "commandProfile": "grok-print",
-    "timeout": 180,
-    "ref": "main",
-    "requiredLabels": ["grok"]
-  }')
+  -d "{
+    \"repositoryId\": \"demo\",
+    \"prompt\": \"List the files in the current directory in one short sentence. Do not edit or create any files.\",
+    \"providerAccountId\": \"$GROK_ACCOUNT_ID\",
+    \"timeout\": 180,
+    \"ref\": \"main\",
+    \"requiredLabels\": [\"grok\"]
+  }")
 SID=$(printf '%s' "$CREATE" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
 curl -sS -X POST http://127.0.0.1:7420/api/v1/scheduler/assign
 
@@ -310,7 +321,7 @@ curl -sS "http://127.0.0.1:7420/api/v1/sessions/$SID/logs"
 
 | Check      | Expect                                                                                           |
 | ---------- | ------------------------------------------------------------------------------------------------ |
-| Spawn line | Agent log shows full `grok … -p <prompt>` (or your CLI argv) — **not** a shell string            |
+| Spawn line | Agent log shows full `grok … -p <prompt>` (the resolved Command's argv) — **not** a shell string |
 | Terminal   | `completed` with exit 0 for a simple read-only prompt (or documented non-zero if CLI fails auth) |
 | Stdout     | Session logs include CLI output (e.g. mentions `README.md` / repo files)                         |
 | Worktree   | `$WORK/worktrees/wt-1` is a git worktree on `main` (or the requested `ref`)                      |
@@ -318,38 +329,36 @@ curl -sS "http://127.0.0.1:7420/api/v1/sessions/$SID/logs"
 **Fail hard if:**
 
 - Assign returns a **different** `sessionId` than the one you just created → queue pollution; re-run §2 clear.
-- Session stays `queued` forever → agent offline, wrong `requiredLabels`, or worktree busy/offline.
-- Profile not in `GET /command-profiles` → agent did not register that name (config not loaded).
+- Session stays `queued` forever → agent offline, wrong `requiredLabels`, worktree busy/offline, or the Provider Account isn't attached to that host (`resolveSessionTargetArgv` returns `null` for that worktree — see `provider-cascade.ts`).
+- Account not in `GET /session-targets` → not attached to any host, or its provider has no default command.
 
-### 5.3 Negative: free-form / unknown profile
+#### Claude and Codex — empirically confirmed flags
+
+Verified live (throwaway git repo, prompt `"Reply with exactly: hello world. Do not use any tools."`):
+
+- **`claude -p "<prompt>"`** — exit 0, printed exactly `hello world`. No directory-trust prompt, no extra flags needed. Command: `argv: ["claude", "-p"], appendPrompt: true`.
+- **`codex exec "<prompt>"`** — exit 0, printed `hello world` plus codex's own session banner/token-count lines on stdout — assert a case-insensitive **substring** match (`/hello world/i`), not an exact line match. No sandbox/approval flag needed: default `approval: on-request` never triggers for a reply-only prompt that needs no tool calls, and stdin doesn't hang it (codex reads to EOF and proceeds once stdin is closed/empty, same as `spawn`'s default `"ignore"` stdio). Command: `argv: ["codex", "exec"], appendPrompt: true`. (`-p` on codex means `--profile`, unrelated to the prompt.)
+
+Create their Providers/Commands the same way as Grok in §3 (`argv: ["$CLAUDE_BIN", "-p"]` / `argv: ["$CODEX_BIN", "exec"]`), attach an account to the host, then repeat the §5.2 flow with that account's id and prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`.
+
+### 5.3 Negative: unknown Provider Account / Command
+
+Unlike the old free-form-shell risk, the API now only accepts a `providerAccountId` or `commandId` referencing an **existing catalog entry** — there's no string to inject. What's worth proving instead is that create-time validation actually rejects a bogus id, rather than silently queuing something that can never resolve:
 
 ```bash
-curl -sS -o /tmp/bad-profile.json -w "%{http_code}" -X POST http://127.0.0.1:7420/api/v1/sessions \
+curl -sS -o /tmp/bad-target.json -w "%{http_code}" -X POST http://127.0.0.1:7420/api/v1/sessions \
   -H 'content-type: application/json' \
   -d '{
     "repositoryId": "demo",
     "prompt": "x",
-    "commandProfile": "rm -rf /",
+    "commandId": "does-not-exist",
     "timeout": 10
   }'
-# create may succeed as queued; agent must not execute arbitrary shell.
-# Prefer web UI path which rejects unknown profiles before create:
+cat /tmp/bad-target.json
+# expect 400 — commandId not found (resolveSessionTargetLabel rejects at create time, D4)
 ```
 
-Web create path (D4):
-
-```bash
-# with API + web + registered agent running:
-curl -sS -X POST http://127.0.0.1:7421/api/create-session \
-  -H 'content-type: application/json' \
-  -d '{
-    "repositoryId": "demo",
-    "prompt": "x",
-    "commandProfile": "rm -rf /",
-    "timeout": 1
-  }'
-# expect HTTP 400 — profile not in agent-reported list
-```
+Also confirm the mutual-exclusivity rule (`validateCreateSessionInput`): a body with **both** `providerAccountId` and `commandId`, or **neither**, is rejected 400 the same way.
 
 ---
 
@@ -357,13 +366,15 @@ curl -sS -X POST http://127.0.0.1:7421/api/create-session \
 
 With `pnpm local:web` and API up:
 
-| URL                                | Check                                                          |
-| ---------------------------------- | -------------------------------------------------------------- |
-| http://127.0.0.1:7421/             | Create form; profile **dropdown** includes only agent profiles |
-| http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                      |
-| http://127.0.0.1:7421/hosts        | Shows host online + profiles                                   |
-| http://127.0.0.1:7421/repositories | List/add works against API                                     |
-| http://127.0.0.1:7421/schedules    | List/add/trigger works                                         |
+| URL                                | Check                                                                                                            |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| http://127.0.0.1:7421/             | Create form; target **dropdown** (`GET /session-targets`) lists attached provider accounts + standalone commands |
+| http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                                                                        |
+| http://127.0.0.1:7421/hosts        | Shows host online + its Provider accounts tab                                                                    |
+| http://127.0.0.1:7421/repositories | List/add works against API                                                                                       |
+| http://127.0.0.1:7421/schedules    | List/add/trigger works                                                                                           |
+| http://127.0.0.1:7421/providers    | List/add works; add-provider creates its default command too                                                     |
+| http://127.0.0.1:7421/commands     | List/add/edit/delete works                                                                                       |
 
 Automated: `pnpm local:manage-verify`.
 
@@ -377,11 +388,11 @@ Copy into the PR or agent final report:
 [ ] pnpm check green
 [ ] pnpm local:e2e / local:cli-e2e / local:api-smoke / local:ws-e2e / local:cloud-e2e green
 [ ] DynamoDB Local cleared; no stale queued sessions
-[ ] API :7420 health ok; agent online with expected commandProfiles
+[ ] API :7420 health ok; agent online; expected Provider Accounts attached
 [ ] Echo session: create → assign → completed; logs present
-[ ] Real CLI session (if available): create → assign → completed; spawn argv matches profile
-[ ] Unknown / free-form profile rejected on web create path (400)
-[ ] Web UI lists sessions/hosts; profile dropdown is not free text
+[ ] Real CLI session (if available): create → assign → completed; spawn argv matches the resolved Command
+[ ] Unknown providerAccountId/commandId rejected at session create (400)
+[ ] Web UI lists sessions/hosts; target dropdown is not free text
 [ ] No secrets in prompts or session JSON
 ```
 
@@ -410,15 +421,15 @@ rm -rf "$WORK"             # optional — drop demo workspace
 
 ## 9. Troubleshooting
 
-| Symptom                                  | Likely cause                                                 | Fix                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                         |
-| Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /agents`, `requiredLabels` vs worktree `labels`, agent log      |
-| `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                             |
-| Profile missing from dropdown            | Host config missing profile or agent offline                 | `PUT …/agents/:id/config` then restart agent                               |
-| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format |
-| Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                        |
-| Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                    |
+| Symptom                                  | Likely cause                                                 | Fix                                                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                                                  |
+| Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /agents`, `requiredLabels` vs worktree `labels`, agent log                               |
+| `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                                                      |
+| Target missing from dropdown             | Provider account not attached to any host, or agent offline  | Attach it on the host detail page's Provider accounts tab, or `POST /commands` for a standalone one |
+| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format                          |
+| Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                                                 |
+| Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                                             |
 
 ---
 

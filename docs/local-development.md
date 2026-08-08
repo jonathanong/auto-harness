@@ -98,8 +98,8 @@ What `local:e2e` does (real shipped modules):
 
 1. Creates a temporary git repo with branch `feature/local-e2e`
 2. Creates a session via the **local API create path** (`createLocalApp` / `POST /api/v1/sessions` handler)
-3. Asserts an **unknown `commandProfile`** fails with `errorCode: unknown_command_profile` (no shell fallback)
-4. Runs `SessionRunner` with `ref: feature/local-e2e` and profile `echo-prompt`
+3. Asserts an **unknown `commandId`** is rejected at create time (no shell fallback) — see `resolveSessionTargetLabel`
+4. Runs `SessionRunner` against a real `echo` standalone Command, with `ref: feature/local-e2e`
 5. Asserts worktree `HEAD` matches that feature commit, terminal hook env was set, and log `seq` is monotonic
 
 Expect JSON with `"ok": true` and `"status": "completed"`.
@@ -108,7 +108,7 @@ Expect JSON with `"ok": true` and `"status": "completed"`.
 
 ## Manual path A — configure host inventory, then `run-session`
 
-Agent identity is **env only**. Host inventory (paths + command profiles) lives on the control plane.
+Agent identity is **env only**. Host inventory (paths, worktrees, attached Provider Accounts) lives on the control plane; the Command/Provider catalog is separate and global.
 
 1. Start DynamoDB Local and the API:
 
@@ -127,9 +127,9 @@ curl -fsS -X PUT http://127.0.0.1:7420/api/v1/agents/local-1/config \
 # or use the Hosts page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /hosts
 ```
 
-**Body fields:** `commandProfiles` (named → fixed `argv`, never free-form shell), `repositories[]` with `id`, `path`, `worktrees[]`.
+**Body fields:** `commandProfiles` (legacy, always `{}` — no longer used for session targeting), `providerAccounts[]` (attached Provider Accounts, optionally with a host-level command override), `repositories[]` with `id`, `path`, `worktrees[]`.
 
-3. Write a session assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
+3. `run-session --file` reads a `SessionAssign` JSON with an already-resolved `resolvedArgv` (see [examples/local/session.assign.json](../examples/local/session.assign.json)) — this bypasses the control plane's own Provider/Command resolution entirely (useful for testing `SessionRunner` in isolation), so there's no catalog setup needed for this specific path.
 
 4. Run with env identity (a leading `--` from pnpm is stripped):
 
@@ -141,7 +141,7 @@ pnpm local:agent run-session --file /path/to/session.assign.json
 pnpm local:agent -- status
 ```
 
-On success the CLI prints a final JSON line with `"status":"completed"`. On failure (unknown profile, setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
+On success the CLI prints a final JSON line with `"status":"completed"`. On failure (setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
 
 More command detail: [cli.md](cli.md).
 
@@ -151,22 +151,27 @@ More command detail: [cli.md](cli.md).
 
 1. Start DynamoDB Local (if not already), then the API, and PUT host inventory as in path A.
 
-2. Create a session (fire-and-forget style):
+2. Create a standalone Command (once) and a session targeting it (fire-and-forget style):
 
 ```bash
+CMD=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/commands \
+  -H 'content-type: application/json' \
+  -d '{"name":"echo-prompt","argv":["echo"],"appendPrompt":true,"providerId":null}')
+CMD_ID=$(printf '%s' "$CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
+
 curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -H 'content-type: application/json' \
-  -d '{
-    "repositoryId": "demo",
-    "prompt": "hello from API",
-    "commandProfile": "echo-prompt",
-    "timeout": 60,
-    "ref": "main",
-    "requiredLabels": ["echo"]
-  }'
+  -d "{
+    \"repositoryId\": \"demo\",
+    \"prompt\": \"hello from API\",
+    \"commandId\": \"$CMD_ID\",
+    \"timeout\": 60,
+    \"ref\": \"main\",
+    \"requiredLabels\": [\"echo\"]
+  }"
 ```
 
-Response `201` includes `id`, `status: "queued"`, `url`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
+Response `201` includes `id`, `status: "queued"`, `url`, `targetLabel`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
 
 ```bash
 export HARNESS_AGENT_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
@@ -205,7 +210,8 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
 3. **Attach it to a host** (either place does the same thing — pick the catalog repo, give a local path):
    - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**
    - Host pane: http://127.0.0.1:7422/repositories → **Add repository**
-4. Agent polls inventory (~15s) and re-registers worktrees; then create a session and `POST /scheduler/assign`.
+4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step) → attach an account to the host on its detail page's Provider accounts tab.
+5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`) and `POST /scheduler/assign`.
 
 Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
@@ -215,14 +221,15 @@ Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=
 
 With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1` supports:
 
-| Resource     | Routes                                                                                |
-| ------------ | ------------------------------------------------------------------------------------- |
-| Repositories | `GET/POST /repositories`, `GET/PUT/DELETE /repositories/:id`                          |
-| Schedules    | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger` |
-| Sessions     | `GET /sessions`, `POST /sessions/:id/cancel`                                          |
-| Agents       | `GET /agents`, `POST /agents/drain`                                                   |
+| Resource                                 | Routes                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Repositories                             | `GET/POST /repositories`, `GET/PUT/DELETE /repositories/:id`                                                                         |
+| Schedules                                | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger`                                                |
+| Sessions                                 | `GET /sessions`, `POST /sessions/:id/cancel`                                                                                         |
+| Agents                                   | `GET /agents`, `POST /agents/drain`                                                                                                  |
+| Providers / Provider Accounts / Commands | `GET/POST /providers`, `/provider-accounts`, `/commands` (+ `GET/PUT/DELETE .../:id`); `GET /session-targets` for the unified picker |
 
-Also available: command profiles, worktrees, scheduler helpers, session logs/resume/archive — see [api.md](api.md) and [cli.md](cli.md) for the Phase 1 surface.
+Also available: worktrees, scheduler helpers, session logs/resume/archive — see [api.md](api.md) and [cli.md](cli.md) for the Phase 1 surface.
 
 Verify management paths:
 
@@ -248,7 +255,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 
 `pnpm check:data-pw` runs [`no-mistakes`](https://github.com/jonathanong/no-mistakes) against both Next.js apps, checking `data-pw` selector uniqueness and Playwright coverage (every route/selector exercised by an `e2e/` spec). It's split into two invocations (`.no-mistakes.control.yml`, `.no-mistakes.agent.yml`) — running both projects from the single root `.no-mistakes.yml` cross-contaminates findings ([no-mistakes#624](https://github.com/jonathanong/no-mistakes/issues/624)). Each config also sets `frontendRoot`/`selectorRoots` explicitly to work around `src/app` layout misdetection ([no-mistakes#625](https://github.com/jonathanong/no-mistakes/issues/625)).
 
-Currently report-only (not wired into `pnpm check`): 0 uniqueness violations, 43 `playwright-coverage` findings (22 control-web, 21 agent-web) not yet triaged/closed. Rough breakdown from a manual pass: ~10 are error/failure-path selectors (`*-error`, `*-not-found`) that need a test that deliberately triggers the failure; ~11 are container-only wrapper selectors whose children are already asserted by an existing spec (arguably fine as-is); ~22 are genuine missing happy-path coverage, concentrated in three flows that have no e2e test at all today: control-plane's "attach a repository to a host" form, the host pane's raw host-config JSON editor, and the host pane's "+ Add worktree" form (every current worktree spec seeds worktrees via REST instead of that UI).
+Currently report-only (not wired into `pnpm check`): 0 uniqueness violations, ~83 `playwright-coverage` findings not yet triaged/closed as of the Providers/Provider Accounts/Commands feature (most of the growth from ~43 is that feature's own new UI surface — see the `e2e/control/{providers,commands,host-providers,provider-overrides}.spec.ts` specs, which already close the happy-path gaps for it; what's left there is almost entirely `*-error` selectors). Rough breakdown from an earlier manual pass, still broadly representative: a large share are error/failure-path selectors (`*-error`, `*-not-found`) that need a test that deliberately triggers the failure; some are container-only wrapper selectors whose children are already asserted by an existing spec (arguably fine as-is); the rest are genuine missing happy-path coverage — pre-existing gaps include control-plane's "attach a repository to a host" form, the host pane's raw host-config JSON editor, and the host pane's "+ Add worktree" form (every current worktree spec seeds worktrees via REST instead of that UI).
 
 ---
 
@@ -257,7 +264,7 @@ Currently report-only (not wired into `pnpm check`): 0 uniqueness violations, 43
 - **No `tsc` / no `tsx` build.** Execute with Node ≥ 22.18 type stripping.
 - Relative TypeScript imports use **`.ts` extensions**.
 - Avoid TS features Node cannot strip (enums, namespaces, parameter properties).
-- **D4:** only named `commandProfile`s — never free-form shell command strings over the API.
+- **D4:** only named, catalog-resolved Provider Accounts/Commands — never free-form shell command strings over the API.
 - Secrets stay on the agent host (git + AI CLIs); not in REST session bodies. See [security.md](security.md), [auth.md](auth.md).
 
 ---

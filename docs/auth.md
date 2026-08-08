@@ -102,7 +102,7 @@ Service accounts have the same role system as user accounts (`read-only`, `opera
 
 User accounts with `admin` role have the same permissions as env-var admins but are tracked per-user in audit logs.
 
-Post-D4, `operator` means **run any configured command profile** — not arbitrary shell execution. Free-form `command` strings are not accepted ([plan.md](plan.md) D4).
+Post-D4, `operator` means **target any catalog Provider Account or Command** — not arbitrary shell execution. Free-form `command` strings are not accepted ([plan.md](plan.md) D4).
 
 ---
 

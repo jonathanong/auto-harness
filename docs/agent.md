@@ -221,23 +221,22 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 
 #### Command execution model
 
-| Piece             | Rule                                                                                                                                                             |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                               |
-| `command`         | From session — **non-interactive CLI** form only (e.g. `codex exec` / print flags, `claude -p`), not an Agent SDK process                                        |
-| `prompt`          | Passed as a **separate argument** (e.g. final argv after `-p`) or via stdin — **never** interpolated into a shell string                                         |
-| Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                          |
-| Environment       | Process env of the agent user + optional repo-local env files **sourced only inside setup scripts**, not by concatenating secrets into the control-plane payload |
-| Timeout           | `timeout` seconds from assign; on fire: SIGTERM → wait → SIGKILL; report `timed_out`                                                                             |
-| Cancel            | On `session:cancel`: same signal chain; report `cancelled`                                                                                                       |
+| Piece             | Rule                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                                                                                                                                                                                                                                                           |
+| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from a Provider Account/Command catalog entry (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero resolution of its own — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`), not something the agent should ever need to look up. |
+| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — **never** interpolated into a shell string                                                                                                                                                                                                                                                  |
+| Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                      |
+| Environment       | Process env of the agent user + optional repo-local env files **sourced only inside setup scripts**, not by concatenating secrets into the control-plane payload                                                                                                                                                                                                                             |
+| Timeout           | `timeout` seconds from assign; on fire: SIGTERM → wait → SIGKILL; report `timed_out`                                                                                                                                                                                                                                                                                                         |
+| Cancel            | On `session:cancel`: same signal chain; report `cancelled`                                                                                                                                                                                                                                                                                                                                   |
 
 Example (illustrative):
 
 ```text
-session.command = "codex -p"
-session.prompt  = "Fix the failing test"
+assign.resolvedArgv = ["codex", "exec", "Fix the failing test"]  // computed control-plane-side
 
-→ argv: ["codex", "-p", "Fix the failing test"]
+→ argv: ["codex", "exec", "Fix the failing test"]  // spawned as-is, no further resolution
 → cwd:  /home/harness/repos/my-app/.worktrees/wt-1
 → pty:  yes (cols/rows default 120x40)
 ```
@@ -366,7 +365,7 @@ Non-zero exit → session `failed`, worktree released.
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, command profile argv) is **not** a local file — configure with `PUT /api/v1/agents/:agentId/config` or the Agents UI.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/agents/:agentId/config` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 
