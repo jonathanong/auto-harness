@@ -1,8 +1,14 @@
-import { emptyHostInventory } from "@auto-harness/shared";
+import {
+  emptyHostInventory,
+  type Command,
+  type Provider,
+  type ProviderAccount,
+} from "@auto-harness/shared";
 import { DrainButton } from "@auto-harness/ui";
 
 import { HostConfigForm } from "../../components/host-config-form.tsx";
-import { agentId } from "../../lib/api.ts";
+import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
+import { agentId, apiGet } from "../../lib/api.ts";
 import { loadHostInventory } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +16,26 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const id = agentId();
   const inventory = await loadHostInventory(id);
+
+  let providers: Provider[] = [];
+  let providerAccounts: ProviderAccount[] = [];
+  let commands: Command[] = [];
+  try {
+    const [p, a, c] = await Promise.all([
+      apiGet<{ items: Provider[] }>("/api/v1/providers"),
+      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
+      apiGet<{ items: Command[] }>("/api/v1/commands"),
+    ]);
+    providers = p.items ?? [];
+    providerAccounts = a.items ?? [];
+    commands = c.items ?? [];
+  } catch {
+    /* ignore — provider accounts table shows raw ids only */
+  }
+  const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
+  const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
+  const commandsById = Object.fromEntries(commands.map((c) => [c.id, c]));
+
   const initialJson = JSON.stringify(
     {
       repositories: inventory.repositories,
@@ -42,6 +68,20 @@ export default async function SettingsPage() {
           label="Drain this host"
           pendingLabel="Draining…"
           pw="host-drain"
+        />
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-6">
+        <h3 className="text-lg font-medium">Provider accounts</h3>
+        <p className="text-sm text-muted-foreground">
+          Read-only — attach, detach, and override provider accounts from the control plane's host
+          detail page.
+        </p>
+        <ProviderAccountsReadonly
+          inventory={inventory}
+          accountsById={providerAccountsById}
+          providersById={providersById}
+          commandsById={commandsById}
         />
       </div>
 

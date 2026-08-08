@@ -22,4 +22,11 @@ test.describe("host pane settings", () => {
     await expect(page.getByTestId("host-drain")).toBeVisible();
     await expect(page.getByTestId("form-host-config-json")).toBeVisible();
   });
+
+  test("settings page shows a read-only provider accounts mirror", async ({ page }) => {
+    await page.goto("/settings");
+    // No accounts attached to this fresh e2e host — the empty state is the only reliable
+    // assertion without seeding a host-provider-account attachment for this spec.
+    await expect(page.getByTestId("provider-accounts-readonly-empty")).toBeVisible();
+  });
 });
