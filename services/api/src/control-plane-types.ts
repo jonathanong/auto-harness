@@ -3,14 +3,7 @@ import type { AgentWireMessage, SessionStatus } from "@auto-harness/shared";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 
-export type ConnectionRecord = {
-  connectionId: string;
-  type: "agent" | "client";
-  agentId: string;
-  connectedAt: string;
-  lastHeartbeatAt: string;
-  commandProfiles: string[];
-};
+export type { ConnectionRecord } from "./db/plane-storage-types.ts";
 
 export type ScheduleRecord = {
   id: string;
