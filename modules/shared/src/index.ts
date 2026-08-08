@@ -95,3 +95,9 @@ export {
 } from "./provider-account-parse.ts";
 
 export type { Command, Provider, ProviderAccount } from "./providers.ts";
+
+export {
+  resolveProviderAccountCommandId,
+  resolveProviderAccountEnabled,
+  type ProviderCatalog,
+} from "./provider-cascade.ts";
