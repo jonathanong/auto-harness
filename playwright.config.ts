@@ -48,6 +48,21 @@ export default defineConfig({
         baseURL: "http://127.0.0.1:7432",
       },
     },
+    // Real claude/codex sessions — needs local credentials, never runs in CI. Registered
+    // only when explicitly opted into, so a bare `playwright test` never picks it up even
+    // by accident; `test.skip` inside each spec further guards machines without the binary.
+    ...(process.env.HARNESS_REAL_CLI
+      ? [
+          {
+            name: "real-cli",
+            testMatch: "e2e/real-cli/**/*.spec.ts",
+            use: {
+              ...devices["Desktop Chrome"],
+              baseURL: "http://127.0.0.1:7431",
+            },
+          },
+        ]
+      : []),
   ],
   webServer: [
     {
