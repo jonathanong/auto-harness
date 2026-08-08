@@ -1,4 +1,4 @@
-import type { AgentWireMessage, SessionAssign, SessionLogChunk } from "@auto-harness/shared";
+import type { HostWireMessage, SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
 import type { AgentTransport } from "./agent-transport.ts";
 import type { AgentConfig } from "./config.ts";
@@ -79,7 +79,7 @@ export class AgentLoop {
 
   async register(): Promise<void> {
     await this.transport.send({
-      type: "agent:register",
+      type: "host:register",
       agentId: this.config.agentId,
       worktrees: this.config.repositories.flatMap((r) =>
         r.worktrees.map((w) => ({
@@ -96,7 +96,7 @@ export class AgentLoop {
 
   async keepalive(): Promise<void> {
     await this.transport.send({
-      type: "agent:keepalive",
+      type: "host:keepalive",
       agentId: this.config.agentId,
       at: this.now(),
     });
@@ -129,8 +129,8 @@ export class AgentLoop {
     this.transport.close();
   }
 
-  private async handleServerMessage(msg: AgentWireMessage): Promise<void> {
-    if (msg.type === "agent:drain") {
+  private async handleServerMessage(msg: HostWireMessage): Promise<void> {
+    if (msg.type === "host:drain") {
       this.beginDrain();
       return;
     }
@@ -157,7 +157,7 @@ export class AgentLoop {
   }
 
   private async runAssign(
-    msg: Extract<AgentWireMessage, { type: "session:assign" }>,
+    msg: Extract<HostWireMessage, { type: "session:assign" }>,
   ): Promise<void> {
     await this.transport.send({ type: "session:ack", sessionId: msg.sessionId });
 

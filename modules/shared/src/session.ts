@@ -63,7 +63,7 @@ export type CreateSessionFields = {
 };
 
 /** Wire messages on the agent control channel (REST-backed local hub or API GW WS). */
-export type AgentWireMessage =
+export type HostWireMessage =
   | {
       type: "session:assign";
       sessionId: string;
@@ -81,11 +81,11 @@ export type AgentWireMessage =
       assignedAt: string;
     }
   | { type: "session:cancel"; sessionId: string }
-  | { type: "agent:drain" };
+  | { type: "host:drain" };
 
-export type AgentToServerMessage =
+export type HostToServerMessage =
   | {
-      type: "agent:register";
+      type: "host:register";
       agentId: string;
       worktrees: Array<{
         id: string;
@@ -114,4 +114,4 @@ export type AgentToServerMessage =
       timestamp: string;
       seq: number;
     }
-  | { type: "agent:keepalive"; agentId: string; at: string };
+  | { type: "host:keepalive"; agentId: string; at: string };

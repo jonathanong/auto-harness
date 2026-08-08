@@ -1,4 +1,4 @@
-import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import type { AgentTransport } from "./agent-transport.ts";
 
@@ -7,9 +7,9 @@ import type { AgentTransport } from "./agent-transport.ts";
  * Local parity for API Gateway WebSocket (no network required).
  */
 export function createLoopbackTransport(opts: {
-  sendToServer: (msg: AgentToServerMessage) => void | Promise<void>;
-}): AgentTransport & { deliver(msg: AgentWireMessage): void } {
-  let handler: ((msg: AgentWireMessage) => void) | null = null;
+  sendToServer: (msg: HostToServerMessage) => void | Promise<void>;
+}): AgentTransport & { deliver(msg: HostWireMessage): void } {
+  let handler: ((msg: HostWireMessage) => void) | null = null;
   return {
     async send(msg) {
       await opts.sendToServer(msg);

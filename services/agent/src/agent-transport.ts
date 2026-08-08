@@ -1,8 +1,8 @@
-import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 export type AgentTransport = {
-  send(msg: AgentToServerMessage): Promise<void>;
+  send(msg: HostToServerMessage): Promise<void>;
   /** Register a handler for server→agent messages. */
-  onMessage(handler: (msg: AgentWireMessage) => void): void;
+  onMessage(handler: (msg: HostWireMessage) => void): void;
   close(): void;
 };

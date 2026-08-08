@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentWireMessage } from "@auto-harness/shared";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
@@ -117,7 +117,7 @@ describe("ControlPlane lifecycle", () => {
   });
 
   it("drain agent is sticky: released busy worktree stays offline", () => {
-    const msgs: AgentWireMessage[] = [];
+    const msgs: HostWireMessage[] = [];
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;
@@ -156,7 +156,7 @@ describe("ControlPlane lifecycle", () => {
     const drain = plane.drainAgent("a1");
     expect(drain.runningSessionIds).toEqual(["sess-1"]);
     expect(plane.isDraining("a1")).toBe(true);
-    expect(msgs.some((m) => m.type === "agent:drain")).toBe(true);
+    expect(msgs.some((m) => m.type === "host:drain")).toBe(true);
     expect(plane.getWorktree("wt-2")?.online).toBe(false);
 
     // finish in-flight session — release must keep worktree offline

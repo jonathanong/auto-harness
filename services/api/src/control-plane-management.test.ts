@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentWireMessage } from "@auto-harness/shared";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import {
@@ -165,7 +165,7 @@ describe("ControlPlane operator management", () => {
   });
 
   it("cancelSession queued and running", () => {
-    const messages: AgentWireMessage[] = [];
+    const messages: HostWireMessage[] = [];
     let n = 0;
     const plane = new ControlPlane({
       idFactory: () => `sess-${++n}`,

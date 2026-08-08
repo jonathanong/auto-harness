@@ -1,4 +1,4 @@
-import type { AgentWireMessage } from "@auto-harness/shared";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -78,7 +78,7 @@ export function assignQueued(
           assignedAtMs: nowMs,
         });
 
-        const msg: AgentWireMessage = {
+        const msg: HostWireMessage = {
           type: "session:assign",
           sessionId: session.id,
           repositoryId: session.repositoryId,

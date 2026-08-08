@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentWireMessage } from "@auto-harness/shared";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import {
@@ -19,7 +19,7 @@ describe("ControlPlane claim invariants", () => {
   });
 
   it("Invariant 1: exclusive worktree claim under concurrent assign", () => {
-    const messages: AgentWireMessage[] = [];
+    const messages: HostWireMessage[] = [];
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;

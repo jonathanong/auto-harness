@@ -1,4 +1,4 @@
-import type { AgentToServerMessage, AgentWireMessage, SessionStatus } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage, SessionStatus } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type {
@@ -33,7 +33,7 @@ export class ControlPlaneBase {
     this.state = createControlPlaneState(options);
   }
 
-  setOnAgentMessage(handler: ((agentId: string, msg: AgentWireMessage) => void) | undefined): void {
+  setOnAgentMessage(handler: ((agentId: string, msg: HostWireMessage) => void) | undefined): void {
     this.state.onAgentMessage = handler;
   }
 
@@ -136,7 +136,7 @@ export class ControlPlaneBase {
     return assign.enforceAckDeadlines(this.state, nowMs);
   }
 
-  handleAgentMessage(msg: AgentToServerMessage): { ok: boolean; error?: string } {
+  handleAgentMessage(msg: HostToServerMessage): { ok: boolean; error?: string } {
     return messages.handleAgentMessage(this.state, msg);
   }
 

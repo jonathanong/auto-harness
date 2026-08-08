@@ -76,7 +76,7 @@ describe("ControlPlane API edges", () => {
     expect(plane.handleAgentMessage({ type: "session:ack", sessionId: "nope" }).ok).toBe(false);
     expect(
       plane.handleAgentMessage({
-        type: "agent:keepalive",
+        type: "host:keepalive",
         agentId: "missing",
         at: "t",
       }).ok,

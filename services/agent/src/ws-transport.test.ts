@@ -50,13 +50,13 @@ describe("createWsTransport", () => {
       }
     });
     await transport.send({
-      type: "agent:register",
+      type: "host:register",
       agentId: "a1",
       worktrees: [],
       commandProfiles: ["c"],
     });
     await new Promise((r) => setTimeout(r, 100));
-    expect(got.some((m) => (m as { type: string }).type === "agent:register")).toBe(true);
+    expect(got.some((m) => (m as { type: string }).type === "host:register")).toBe(true);
     expect(assignSeen).toBe(true);
     transport.close();
     wss.close();

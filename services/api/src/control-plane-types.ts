@@ -1,4 +1,4 @@
-import type { AgentWireMessage, SessionStatus } from "@auto-harness/shared";
+import type { HostWireMessage, SessionStatus } from "@auto-harness/shared";
 
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -68,7 +68,7 @@ export type ControlPlaneOptions = {
   archivePrefix?: string;
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
-  onAgentMessage?: (agentId: string, msg: AgentWireMessage) => void;
+  onAgentMessage?: (agentId: string, msg: HostWireMessage) => void;
 };
 
 export type PublicSession = SessionRecord & { url: string };

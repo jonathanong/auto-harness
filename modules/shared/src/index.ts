@@ -11,8 +11,8 @@ export type {
 } from "./types.ts";
 
 export type {
-  AgentToServerMessage,
-  AgentWireMessage,
+  HostToServerMessage,
+  HostWireMessage,
   CreateSessionFields,
   SessionAssign,
   SessionLogChunk,

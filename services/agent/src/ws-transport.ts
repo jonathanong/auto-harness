@@ -1,4 +1,4 @@
-import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 import WebSocket from "ws";
 
 import type { AgentTransport } from "./agent-loop.ts";
@@ -24,7 +24,7 @@ export function createWsTransport(options: WsTransportOptions): AgentTransport &
       ? `${options.url}${options.url.includes("?") ? "&" : "?"}agentId=${encodeURIComponent(options.agentId)}`
       : options.url;
 
-  let handler: ((msg: AgentWireMessage) => void) | null = null;
+  let handler: ((msg: HostWireMessage) => void) | null = null;
   let openResolve: (() => void) | null = null;
   let openReject: ((err: Error) => void) | null = null;
   const ready = new Promise<void>((resolve, reject) => {
@@ -48,13 +48,13 @@ export function createWsTransport(options: WsTransportOptions): AgentTransport &
   });
   socket.on("message", (raw) => {
     try {
-      const msg = JSON.parse(String(raw)) as AgentWireMessage | { type: string };
+      const msg = JSON.parse(String(raw)) as HostWireMessage | { type: string };
       if (
         msg.type === "session:assign" ||
         msg.type === "session:cancel" ||
-        msg.type === "agent:drain"
+        msg.type === "host:drain"
       ) {
-        handler?.(msg as AgentWireMessage);
+        handler?.(msg as HostWireMessage);
       }
     } catch {
       // ignore non-JSON
@@ -63,7 +63,7 @@ export function createWsTransport(options: WsTransportOptions): AgentTransport &
 
   return {
     ready,
-    async send(msg: AgentToServerMessage) {
+    async send(msg: HostToServerMessage) {
       if (socket.readyState !== WebSocket.OPEN) {
         throw new Error("WebSocket not open");
       }

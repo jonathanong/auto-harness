@@ -7,7 +7,7 @@ import {
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
   newId,
-  type AgentWireMessage,
+  type HostWireMessage,
 } from "@auto-harness/shared";
 
 import type {
@@ -71,7 +71,7 @@ export type ControlPlaneState = {
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
-  onAgentMessage: ((agentId: string, msg: AgentWireMessage) => void) | undefined;
+  onAgentMessage: ((agentId: string, msg: HostWireMessage) => void) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {

@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import type { AgentWireMessage } from "@auto-harness/shared";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import type { ControlPlane } from "./control-plane.ts";
 import type { MemorySessionStore } from "./memory-store.ts";
@@ -17,7 +17,7 @@ export type LocalServerOptions = {
   useDynamo?: boolean;
   /** Attach /ws agent hub (default true for startLocalServer). */
   enableWs?: boolean;
-  onAgentMessage?: (agentId: string, msg: AgentWireMessage) => void;
+  onAgentMessage?: (agentId: string, msg: HostWireMessage) => void;
 };
 
 export type RouteCtx = {

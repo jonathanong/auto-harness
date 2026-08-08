@@ -201,7 +201,7 @@ export function drainAgent(
   const running = [...state.sessions.values()]
     .filter((s) => s.agentId === agentId && s.status === "running")
     .map((s) => s.id);
-  state.onAgentMessage?.(agentId, { type: "agent:drain" });
+  state.onAgentMessage?.(agentId, { type: "host:drain" });
   for (const wt of state.worktrees.values()) {
     if (wt.agentId === agentId) {
       // Idle: offline now. Busy: stay busy until release, then releaseWorktree keeps offline.

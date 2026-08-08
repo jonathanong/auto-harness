@@ -137,7 +137,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     expect(
       planeD.handleAgentMessage({
-        type: "agent:keepalive",
+        type: "host:keepalive",
         agentId: "alive",
         at: "2026-01-01T00:00:01.000Z",
       }).ok,

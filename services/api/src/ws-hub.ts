@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
-import type { AgentToServerMessage, AgentWireMessage } from "@auto-harness/shared";
+import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import type { ControlPlane } from "./control-plane.ts";
@@ -15,7 +15,7 @@ type AgentSocketMap = Map<string, WebSocket>;
 
 export function createWsDelivery(
   agentSockets: Map<string, WebSocket>,
-): (agentId: string, msg: AgentWireMessage) => void {
+): (agentId: string, msg: HostWireMessage) => void {
   return (agentId, msg) => {
     const sock = agentSockets.get(agentId);
     if (sock && sock.readyState === sock.OPEN) {
@@ -30,7 +30,7 @@ export function createWsDelivery(
  */
 export function createPlaneWsBridge(): {
   agentSockets: AgentSocketMap;
-  onAgentMessage: (agentId: string, msg: AgentWireMessage) => void;
+  onAgentMessage: (agentId: string, msg: HostWireMessage) => void;
   attach(server: HttpServer, plane: ControlPlane): WsHub;
 } {
   const agentSockets: AgentSocketMap = new Map();
@@ -46,22 +46,22 @@ export function createPlaneWsBridge(): {
         let boundAgentId: string | null = null;
 
         socket.on("message", (raw) => {
-          let msg: AgentToServerMessage;
+          let msg: HostToServerMessage;
           try {
-            msg = JSON.parse(String(raw)) as AgentToServerMessage;
+            msg = JSON.parse(String(raw)) as HostToServerMessage;
           } catch {
             socket.send(JSON.stringify({ type: "error", message: "invalid JSON" }));
             return;
           }
-          if (msg.type === "agent:register") {
+          if (msg.type === "host:register") {
             boundAgentId = msg.agentId;
             agentSockets.set(msg.agentId, socket);
           }
           const result = plane.handleAgentMessage(msg);
           if (!result.ok) {
             socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
-          } else if (msg.type === "agent:register") {
-            socket.send(JSON.stringify({ type: "agent:registered", agentId: msg.agentId }));
+          } else if (msg.type === "host:register") {
+            socket.send(JSON.stringify({ type: "host:registered", agentId: msg.agentId }));
           }
         });
 

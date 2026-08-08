@@ -50,7 +50,7 @@ describe("createPlaneWsBridge", () => {
       ws.on("open", () => {
         ws.send(
           JSON.stringify({
-            type: "agent:register",
+            type: "host:register",
             agentId: "a1",
             worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
@@ -60,7 +60,7 @@ describe("createPlaneWsBridge", () => {
       ws.on("message", (raw) => {
         const msg = JSON.parse(String(raw)) as { type: string };
         received.push(msg);
-        if (msg.type === "agent:registered") {
+        if (msg.type === "host:registered") {
           plane.createSession({
             repositoryId: "r1",
             prompt: "p",

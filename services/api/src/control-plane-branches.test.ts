@@ -54,7 +54,7 @@ describe("ControlPlane remaining branches", () => {
     // agent register via message + failed second register
     expect(
       plane.handleAgentMessage({
-        type: "agent:register",
+        type: "host:register",
         agentId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
@@ -62,7 +62,7 @@ describe("ControlPlane remaining branches", () => {
     ).toBe(true);
     expect(
       plane.handleAgentMessage({
-        type: "agent:register",
+        type: "host:register",
         agentId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],

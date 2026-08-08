@@ -30,7 +30,7 @@ test.describe("host pane sessions", () => {
         // (the documented substitute for a live WebSocket connection in e2e tests).
         await request.post(`${API}/api/v1/agent/messages`, {
           data: {
-            type: "agent:register",
+            type: "host:register",
             agentId: "local-1",
             worktrees: [
               {

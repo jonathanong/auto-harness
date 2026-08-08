@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentToServerMessage } from "@auto-harness/shared";
+import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { AgentLoop, createLoopbackTransport } from "./agent-loop.ts";
 import { makeRepo } from "./agent-loop-test-helpers.ts";
@@ -9,7 +9,7 @@ describe("AgentLoop errors", () => {
   it("rejects an empty resolvedArgv without shell spawn success", async () => {
     const { config, cleanup } = await makeRepo();
     try {
-      const serverMsgs: AgentToServerMessage[] = [];
+      const serverMsgs: HostToServerMessage[] = [];
       const transport = createLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
@@ -40,7 +40,7 @@ describe("AgentLoop errors", () => {
   it("maps optional assign fields and runner throw to setup_failed", async () => {
     const { config, cleanup } = await makeRepo();
     try {
-      const serverMsgs: AgentToServerMessage[] = [];
+      const serverMsgs: HostToServerMessage[] = [];
       const transport = createLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);

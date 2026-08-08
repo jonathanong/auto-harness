@@ -24,7 +24,7 @@ describe("AgentLoop drain", () => {
       await loop.start();
       loop.beginDrain();
       expect(loop.isDraining()).toBe(true);
-      transport.deliver({ type: "agent:drain" });
+      transport.deliver({ type: "host:drain" });
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-x",

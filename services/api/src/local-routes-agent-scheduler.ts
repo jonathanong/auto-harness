@@ -1,4 +1,4 @@
-import type { AgentToServerMessage } from "@auto-harness/shared";
+import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, type RouteCtx } from "./local-http.ts";
 
@@ -23,7 +23,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
 
   if (method === "POST" && url.pathname === "/api/v1/agent/messages") {
     try {
-      const body = (await readJson(req)) as AgentToServerMessage;
+      const body = (await readJson(req)) as HostToServerMessage;
       const result = plane.handleAgentMessage(body);
       if (!result.ok) {
         send(res, 400, {

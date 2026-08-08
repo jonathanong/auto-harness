@@ -1,6 +1,6 @@
 import {
   formatLogSortKey,
-  type AgentToServerMessage,
+  type HostToServerMessage,
   type SessionStatus,
 } from "@auto-harness/shared";
 
@@ -46,10 +46,10 @@ export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[
 
 export function handleAgentMessage(
   state: ControlPlaneState,
-  msg: AgentToServerMessage,
+  msg: HostToServerMessage,
 ): { ok: boolean; error?: string } {
   switch (msg.type) {
-    case "agent:register": {
+    case "host:register": {
       const r = registerAgent(state, {
         agentId: msg.agentId,
         worktrees: msg.worktrees,
@@ -82,7 +82,7 @@ export function handleAgentMessage(
       });
       return { ok: true };
     }
-    case "agent:keepalive": {
+    case "host:keepalive": {
       return heartbeat(state, msg.agentId, msg.at)
         ? { ok: true }
         : { ok: false, error: "agent not connected" };
