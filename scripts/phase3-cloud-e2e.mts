@@ -64,7 +64,7 @@ async function main(): Promise<void> {
     let plane!: ControlPlane;
     const transport = createLoopbackTransport({
       sendToServer: (msg) => {
-        plane.handleAgentMessage(msg);
+        plane.handleHostMessage(msg);
       },
     });
 
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
         return () => `sess-p3-${++n}`;
       })(),
       shardCount: 1,
-      onAgentMessage: (_hostId, msg) => {
+      onHostMessage: (_hostId, msg) => {
         transport.deliver(msg);
       },
     });

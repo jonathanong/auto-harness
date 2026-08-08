@@ -137,7 +137,7 @@ export default async function RepositoryDetailPage({
               content: (
                 <SessionsTable
                   items={sessions}
-                  showAgent
+                  showHost
                   hrefBase="/sessions"
                   emptyMessage="No recent sessions for this repository."
                 />
@@ -149,7 +149,7 @@ export default async function RepositoryDetailPage({
               content: (
                 <WorktreesHierarchy
                   groups={[group]}
-                  showAgent
+                  showHost
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees registered for this repository."
                 />

@@ -62,8 +62,8 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       ref: "main",
     });
     planeF.assignQueued();
-    planeF.handleAgentMessage({ type: "session:ack", sessionId: "f1" });
-    planeF.handleAgentMessage({
+    planeF.handleHostMessage({ type: "session:ack", sessionId: "f1" });
+    planeF.handleHostMessage({
       type: "session:status",
       sessionId: "f1",
       status: "completed",

@@ -78,7 +78,7 @@ export function WorktreeDetailsCard({
           </div>
           {worktree.hostId ? (
             <div>
-              <dt className="text-xs uppercase text-muted-foreground">Agent</dt>
+              <dt className="text-xs uppercase text-muted-foreground">Host</dt>
               <dd className="font-mono text-sm">
                 {hostHrefBase ? (
                   <Link

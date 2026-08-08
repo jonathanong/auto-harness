@@ -62,7 +62,7 @@ export default async function WorktreesPage() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <WorktreesHierarchy
         groups={groups}
-        showAgent
+        showHost
         hrefBase="/worktrees"
         emptyMessage="No worktrees registered yet."
       />

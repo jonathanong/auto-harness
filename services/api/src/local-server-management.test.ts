@@ -25,7 +25,7 @@ describe("createLocalApp operator management REST", () => {
       status: "idle",
       online: true,
     });
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],

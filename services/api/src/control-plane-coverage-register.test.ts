@@ -17,17 +17,17 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     });
     plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
 
-    // Register without worktrees so listAgents builds from connection only
-    const r1 = plane.registerAgent({
+    // Register without worktrees so listHosts builds from connection only
+    const r1 = plane.registerHost({
       hostId: "solo",
       worktrees: [],
       commandProfiles: ["p1"],
     });
     expect(r1.ok).toBe(true);
-    expect(plane.listAgents().some((a) => a.hostId === "solo")).toBe(true);
+    expect(plane.listHosts().some((a) => a.hostId === "solo")).toBe(true);
 
     // replaceExisting while still connected
-    const r2 = plane.registerAgent({
+    const r2 = plane.registerHost({
       hostId: "solo",
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
@@ -48,7 +48,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       status: "idle",
       online: false,
     });
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "solo",
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
@@ -110,12 +110,12 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     expect(assigned.length).toBe(1);
 
     // Session already bound with ack — skipped on next assign
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:ack",
       sessionId: assigned[0]!.session.id,
     });
     // put back to queued with agent/worktree/ack set (weird but tests skip branch)
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: assigned[0]!.session.id,
       status: "completed",
@@ -124,7 +124,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     // Resume with cliResumeRef
     const done = plane.listSessions()[0]!;
     // force hostId for resume
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: done.id,
       status: "completed",
@@ -160,8 +160,8 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     });
     planeR.assignQueued();
     const sid = planeR.listSessions()[0]!.id;
-    planeR.handleAgentMessage({ type: "session:ack", sessionId: sid });
-    planeR.handleAgentMessage({
+    planeR.handleHostMessage({ type: "session:ack", sessionId: sid });
+    planeR.handleHostMessage({
       type: "session:status",
       sessionId: sid,
       status: "completed",
@@ -186,7 +186,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
 
     // status for missing session
     expect(
-      plane.handleAgentMessage({
+      plane.handleHostMessage({
         type: "session:status",
         sessionId: "nope",
         status: "failed",

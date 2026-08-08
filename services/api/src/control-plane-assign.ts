@@ -42,8 +42,8 @@ export function assignQueued(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
-          !state.drainingAgents.has(w.hostId) &&
-          !state.disconnectedAgents.has(w.hostId) &&
+          !state.drainingHosts.has(w.hostId) &&
+          !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
       );
       if (session.pinnedHostId) {
@@ -99,7 +99,7 @@ export function assignQueued(
               }
             : {}),
         };
-        state.onAgentMessage?.(candidate.hostId, msg);
+        state.onHostMessage?.(candidate.hostId, msg);
         assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
         break;
       }

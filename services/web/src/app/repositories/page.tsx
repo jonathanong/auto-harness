@@ -68,7 +68,7 @@ export default async function RepositoriesPage() {
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <WorktreesHierarchy
         groups={groups}
-        showAgent
+        showHost
         hrefBase="/worktrees"
         emptyMessage="No repositories registered yet."
       />

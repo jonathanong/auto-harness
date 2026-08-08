@@ -24,14 +24,14 @@ describe("listSessionsPage", () => {
         }).ok,
       ).toBe(true);
     }
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo"],
     });
     const assigned = plane.assignQueued();
     for (const a of assigned) {
-      plane.handleAgentMessage({ type: "session:ack", sessionId: a.session.id });
+      plane.handleHostMessage({ type: "session:ack", sessionId: a.session.id });
     }
 
     const page1 = plane.listSessionsPage({ limit: 2 });
@@ -46,8 +46,8 @@ describe("listSessionsPage", () => {
     expect(rest.items.length).toBeGreaterThanOrEqual(1);
     expect(rest.nextCursor).toBeNull();
 
-    const byAgent = plane.listSessionsPage({ hostId: "a1", limit: 50 });
-    expect(byAgent.items.every((s) => s.hostId === "a1")).toBe(true);
+    const byHost = plane.listSessionsPage({ hostId: "a1", limit: 50 });
+    expect(byHost.items.every((s) => s.hostId === "a1")).toBe(true);
 
     const byQ = plane.listSessionsPage({ q: "p-0", limit: 50 });
     expect(byQ.items.some((s) => s.prompt === "p-0")).toBe(true);

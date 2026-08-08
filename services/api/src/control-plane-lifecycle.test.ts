@@ -15,7 +15,7 @@ describe("ControlPlane lifecycle", () => {
       shardCount: 1,
     });
     seedBaseCommand(plane);
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [
         { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] },
@@ -26,10 +26,10 @@ describe("ControlPlane lifecycle", () => {
     plane.heartbeat("a1", "2026-01-01T00:00:00.000Z");
     plane.createSession(baseSessionBody({ timeout: 3600 }));
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
 
     const t0 = Date.parse("2026-01-01T00:00:00.000Z");
-    const reclaimed = plane.reclaimStaleAgents(t0 + 2_000);
+    const reclaimed = plane.reclaimStaleHosts(t0 + 2_000);
     expect(reclaimed).toEqual(["sess-1"]);
     expect(plane.getSession("sess-1")?.status).toBe("queued");
     expect(plane.getWorktree("wt-1")?.status).toBe("idle");
@@ -48,7 +48,7 @@ describe("ControlPlane lifecycle", () => {
       shardCount: 1,
     });
     seedBaseCommand(plane);
-    const reg = plane.registerAgent({
+    const reg = plane.registerHost({
       hostId: "a1",
       worktrees: [
         { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] },
@@ -59,14 +59,14 @@ describe("ControlPlane lifecycle", () => {
     expect(reg.ok).toBe(true);
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
     expect(plane.getWorktree("wt-1")?.status).toBe("busy");
 
     if (!reg.ok) {
       return;
     }
-    expect(plane.disconnectAgent("missing-conn")).toEqual([]);
-    const freed = plane.disconnectAgent(reg.connectionId);
+    expect(plane.disconnectHost("missing-conn")).toEqual([]);
+    const freed = plane.disconnectHost(reg.connectionId);
     expect(freed).toEqual(["sess-1"]);
     expect(plane.getSession("sess-1")?.status).toBe("queued");
     expect(plane.getWorktree("wt-1")?.status).toBe("idle");
@@ -96,8 +96,8 @@ describe("ControlPlane lifecycle", () => {
     });
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.handleHostMessage({
       type: "session:log",
       sessionId: "sess-1",
       stream: "stdout",
@@ -105,7 +105,7 @@ describe("ControlPlane lifecycle", () => {
       timestamp: "2026-01-01T00:00:00.000Z",
       seq: 1,
     });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
       status: "completed",
@@ -125,7 +125,7 @@ describe("ControlPlane lifecycle", () => {
       })(),
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
-      onAgentMessage: (_a, m) => {
+      onHostMessage: (_a, m) => {
         msgs.push(m);
       },
     });
@@ -152,15 +152,15 @@ describe("ControlPlane lifecycle", () => {
     });
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
-    const drain = plane.drainAgent("a1");
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const drain = plane.drainHost("a1");
     expect(drain.runningSessionIds).toEqual(["sess-1"]);
     expect(plane.isDraining("a1")).toBe(true);
     expect(msgs.some((m) => m.type === "host:drain")).toBe(true);
     expect(plane.getWorktree("wt-2")?.online).toBe(false);
 
     // finish in-flight session — release must keep worktree offline
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
       status: "completed",

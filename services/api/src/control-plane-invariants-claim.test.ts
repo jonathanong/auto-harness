@@ -27,7 +27,7 @@ describe("ControlPlane claim invariants", () => {
       })(),
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
-      onAgentMessage: (_id, msg) => {
+      onHostMessage: (_id, msg) => {
         messages.push(msg);
       },
     });
@@ -61,12 +61,12 @@ describe("ControlPlane claim invariants", () => {
         return () => `conn-${++n}`;
       })(),
     });
-    const first = plane.registerAgent({
+    const first = plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],
     });
-    const second = plane.registerAgent({
+    const second = plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],
@@ -74,9 +74,9 @@ describe("ControlPlane claim invariants", () => {
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(false);
     if (first.ok) {
-      plane.disconnectAgent(first.connectionId);
+      plane.disconnectHost(first.connectionId);
     }
-    const third = plane.registerAgent({
+    const third = plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r", path: "/p", labels: ["echo"] }],
       commandProfiles: ["echo-prompt"],

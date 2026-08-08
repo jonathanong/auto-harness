@@ -2,16 +2,16 @@ import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
-import { offlineAgentAndRequeue } from "./control-plane-worktrees.ts";
+import { offlineHostAndRequeue } from "./control-plane-worktrees.ts";
 
-export function listAgents(state: ControlPlaneState): Array<{
+export function listHosts(state: ControlPlaneState): Array<{
   hostId: string;
   online: boolean;
   lastHeartbeatAt: string | null;
   commandProfiles: string[];
   worktreeIds: string[];
 }> {
-  const byAgent = new Map<
+  const byHost = new Map<
     string,
     {
       hostId: string;
@@ -22,7 +22,7 @@ export function listAgents(state: ControlPlaneState): Array<{
     }
   >();
   for (const wt of state.worktrees.values()) {
-    const cur = byAgent.get(wt.hostId) ?? {
+    const cur = byHost.get(wt.hostId) ?? {
       hostId: wt.hostId,
       online: false,
       lastHeartbeatAt: null,
@@ -30,10 +30,10 @@ export function listAgents(state: ControlPlaneState): Array<{
       worktreeIds: [] as string[],
     };
     cur.worktreeIds.push(wt.id);
-    byAgent.set(wt.hostId, cur);
+    byHost.set(wt.hostId, cur);
   }
   for (const conn of state.connections.values()) {
-    const cur = byAgent.get(conn.hostId) ?? {
+    const cur = byHost.get(conn.hostId) ?? {
       hostId: conn.hostId,
       online: true,
       lastHeartbeatAt: conn.lastHeartbeatAt,
@@ -43,12 +43,12 @@ export function listAgents(state: ControlPlaneState): Array<{
     cur.online = true;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.commandProfiles = [...conn.commandProfiles];
-    byAgent.set(conn.hostId, cur);
+    byHost.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
   for (const host of state.agentHosts.values()) {
-    if (!byAgent.has(host.hostId)) {
-      byAgent.set(host.hostId, {
+    if (!byHost.has(host.hostId)) {
+      byHost.set(host.hostId, {
         hostId: host.hostId,
         online: false,
         lastHeartbeatAt: null,
@@ -57,14 +57,14 @@ export function listAgents(state: ControlPlaneState): Array<{
       });
     }
   }
-  return [...byAgent.values()].toSorted((a, b) => a.hostId.localeCompare(b.hostId));
+  return [...byHost.values()].toSorted((a, b) => a.hostId.localeCompare(b.hostId));
 }
 
 /**
  * Conditional agent register (Invariant 3): one live connection per hostId.
  * Second register for same hostId fails unless force-replacing is explicit.
  */
-export function registerAgent(
+export function registerHost(
   state: ControlPlaneState,
   opts: {
     hostId: string;
@@ -126,9 +126,9 @@ export function registerAgent(
     queueWrite(state, state.storage.putConnection(conn));
   }
   state.agentConnection.set(opts.hostId, connectionId);
-  state.disconnectedAgents.delete(opts.hostId);
+  state.disconnectedHosts.delete(opts.hostId);
   // Re-register clears drain so a restarted agent can take work again.
-  state.drainingAgents.delete(opts.hostId);
+  state.drainingHosts.delete(opts.hostId);
 
   for (const wt of opts.worktrees) {
     const prev = state.worktrees.get(wt.id);
@@ -158,9 +158,9 @@ export function registerAgent(
  * Agent disconnect ($disconnect / crash). Immediately:
  * - marks ALL worktrees offline
  * - requeues running sessions and frees busy worktrees
- * - records disconnectedAgents so assigns cannot bind until re-register
+ * - records disconnectedHosts so assigns cannot bind until re-register
  */
-export function disconnectAgent(state: ControlPlaneState, connectionId: string): string[] {
+export function disconnectHost(state: ControlPlaneState, connectionId: string): string[] {
   const conn = state.connections.get(connectionId);
   if (!conn) {
     return [];
@@ -170,8 +170,8 @@ export function disconnectAgent(state: ControlPlaneState, connectionId: string):
   if (state.agentConnection.get(hostId) === connectionId) {
     state.agentConnection.delete(hostId);
   }
-  state.disconnectedAgents.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
-  return offlineAgentAndRequeue(state, hostId, "agent disconnected; requeued");
+  state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
+  return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
 }
 
 export function heartbeat(state: ControlPlaneState, hostId: string, at?: string): boolean {
@@ -193,15 +193,15 @@ export function heartbeat(state: ControlPlaneState, hostId: string, at?: string)
  * Phase 5: mark agent draining — no new assigns until re-register.
  * Sticky: released busy worktrees stay offline via releaseWorktree.
  */
-export function drainAgent(
+export function drainHost(
   state: ControlPlaneState,
   hostId: string,
 ): { ok: boolean; runningSessionIds: string[] } {
-  state.drainingAgents.add(hostId);
+  state.drainingHosts.add(hostId);
   const running = [...state.sessions.values()]
     .filter((s) => s.hostId === hostId && s.status === "running")
     .map((s) => s.id);
-  state.onAgentMessage?.(hostId, { type: "host:drain" });
+  state.onHostMessage?.(hostId, { type: "host:drain" });
   for (const wt of state.worktrees.values()) {
     if (wt.hostId === hostId) {
       // Idle: offline now. Busy: stay busy until release, then releaseWorktree keeps offline.
@@ -214,5 +214,5 @@ export function drainAgent(
 }
 
 export function isDraining(state: ControlPlaneState, hostId: string): boolean {
-  return state.drainingAgents.has(hostId);
+  return state.drainingHosts.has(hostId);
 }

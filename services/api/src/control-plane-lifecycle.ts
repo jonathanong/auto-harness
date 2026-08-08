@@ -2,16 +2,16 @@ import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
-import { offlineAgentAndRequeue, releaseWorktree } from "./control-plane-worktrees.ts";
+import { offlineHostAndRequeue, releaseWorktree } from "./control-plane-worktrees.ts";
 
 /**
  * Heartbeat-based stale reclaim (Phase 3): free worktrees of agents whose
  * heartbeat is older than heartbeatStaleMs — faster than full session timeout.
- * Also reclaims agents recorded in disconnectedAgents after disconnect/crash.
+ * Also reclaims agents recorded in disconnectedHosts after disconnect/crash.
  * Marks ALL of the agent's worktrees offline (idle + busy) so assigns cannot
  * bind to a zombie agent.
  */
-export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Date.now()): string[] {
+export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date.now()): string[] {
   const reclaimed: string[] = [];
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
 
@@ -26,7 +26,7 @@ export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Dat
       connectionId,
     });
   }
-  for (const [hostId, rec] of state.disconnectedAgents.entries()) {
+  for (const [hostId, rec] of state.disconnectedHosts.entries()) {
     if (!candidates.has(hostId)) {
       candidates.set(hostId, { lastHeartbeatAt: rec.lastHeartbeatAt });
     }
@@ -37,7 +37,7 @@ export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Dat
     if (nowMs - last < state.heartbeatStaleMs) {
       continue;
     }
-    const freed = offlineAgentAndRequeue(state, hostId, "agent heartbeat stale; requeued");
+    const freed = offlineHostAndRequeue(state, hostId, "agent heartbeat stale; requeued");
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) {
         reclaimed.push(sid);
@@ -47,7 +47,7 @@ export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Dat
       state.connections.delete(meta.connectionId);
     }
     state.agentConnection.delete(hostId);
-    state.disconnectedAgents.delete(hostId);
+    state.disconnectedHosts.delete(hostId);
   }
   return reclaimed;
 }
@@ -142,7 +142,7 @@ export function cancelSession(
   session.errorMessage = "cancelled by operator";
   session.completedAt = state.now();
   if (wasRunning && hostId) {
-    state.onAgentMessage?.(hostId, { type: "session:cancel", sessionId: id });
+    state.onHostMessage?.(hostId, { type: "session:cancel", sessionId: id });
     persistSession(state, session);
     return { ok: true, session: toPublic(state, session) };
   }

@@ -22,7 +22,7 @@ describe("host pane host inventory API", () => {
     });
     expect(put.ok).toBe(true);
     expect(plane.getAgentHostConfig("local-1")?.repositories[0]?.path).toBe("/repo");
-    plane.drainAgent("local-1");
+    plane.drainHost("local-1");
     expect(plane.isDraining("local-1")).toBe(true);
   });
 });

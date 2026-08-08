@@ -33,8 +33,8 @@ export class ControlPlaneBase {
     this.state = createControlPlaneState(options);
   }
 
-  setOnAgentMessage(handler: ((hostId: string, msg: HostWireMessage) => void) | undefined): void {
-    this.state.onAgentMessage = handler;
+  setOnHostMessage(handler: ((hostId: string, msg: HostWireMessage) => void) | undefined): void {
+    this.state.onHostMessage = handler;
   }
 
   async hydrateFromStorage(): Promise<void> {
@@ -61,8 +61,8 @@ export class ControlPlaneBase {
     return worktrees.getWorktree(this.state, id);
   }
 
-  listAgents(): ReturnType<typeof agents.listAgents> {
-    return agents.listAgents(this.state);
+  listHosts(): ReturnType<typeof agents.listHosts> {
+    return agents.listHosts(this.state);
   }
 
   listCommandProfiles(): string[] {
@@ -91,7 +91,7 @@ export class ControlPlaneBase {
     return sessions.listSessionsPage(this.state, query ?? {});
   }
 
-  registerAgent(opts: {
+  registerHost(opts: {
     hostId: string;
     worktrees: Array<{
       id: string;
@@ -103,11 +103,11 @@ export class ControlPlaneBase {
     commandProfiles: string[];
     replaceExisting?: boolean;
   }): { ok: true; connectionId: string } | { ok: false; error: string } {
-    return agents.registerAgent(this.state, opts);
+    return agents.registerHost(this.state, opts);
   }
 
-  disconnectAgent(connectionId: string): string[] {
-    return agents.disconnectAgent(this.state, connectionId);
+  disconnectHost(connectionId: string): string[] {
+    return agents.disconnectHost(this.state, connectionId);
   }
 
   heartbeat(hostId: string, at?: string): boolean {
@@ -136,8 +136,8 @@ export class ControlPlaneBase {
     return assign.enforceAckDeadlines(this.state, nowMs);
   }
 
-  handleAgentMessage(msg: HostToServerMessage): { ok: boolean; error?: string } {
-    return messages.handleAgentMessage(this.state, msg);
+  handleHostMessage(msg: HostToServerMessage): { ok: boolean; error?: string } {
+    return messages.handleHostMessage(this.state, msg);
   }
 
   resumeSession(

@@ -7,7 +7,7 @@ import {
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite } from "./control-plane-state.ts";
-import { heartbeat, registerAgent } from "./control-plane-agents.ts";
+import { heartbeat, registerHost } from "./control-plane-agents.ts";
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 
@@ -44,13 +44,13 @@ export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[
   return [...(state.logs.get(sessionId) ?? [])];
 }
 
-export function handleAgentMessage(
+export function handleHostMessage(
   state: ControlPlaneState,
   msg: HostToServerMessage,
 ): { ok: boolean; error?: string } {
   switch (msg.type) {
     case "host:register": {
-      const r = registerAgent(state, {
+      const r = registerHost(state, {
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         commandProfiles: msg.commandProfiles,

@@ -47,7 +47,7 @@ describe("ControlPlane storage write-through paths", () => {
       shardCount: 1,
     });
 
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt1", name: "wt1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["c"],
@@ -69,7 +69,7 @@ describe("ControlPlane storage write-through paths", () => {
       timestamp: "2026-01-01T00:00:00.000Z",
       seq: 1,
     });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "s1",
       status: "completed",

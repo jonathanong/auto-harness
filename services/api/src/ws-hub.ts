@@ -7,17 +7,17 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { ControlPlane } from "./control-plane.ts";
 
 export type WsHub = {
-  agentCount(): number;
+  hostCount(): number;
   close(): void;
 };
 
-type AgentSocketMap = Map<string, WebSocket>;
+type HostSocketMap = Map<string, WebSocket>;
 
 export function createWsDelivery(
-  agentSockets: Map<string, WebSocket>,
+  hostSockets: Map<string, WebSocket>,
 ): (hostId: string, msg: HostWireMessage) => void {
   return (hostId, msg) => {
-    const sock = agentSockets.get(hostId);
+    const sock = hostSockets.get(hostId);
     if (sock && sock.readyState === sock.OPEN) {
       sock.send(JSON.stringify(msg));
     }
@@ -29,16 +29,16 @@ export function createWsDelivery(
  * Path: /ws
  */
 export function createPlaneWsBridge(): {
-  agentSockets: AgentSocketMap;
-  onAgentMessage: (hostId: string, msg: HostWireMessage) => void;
+  hostSockets: HostSocketMap;
+  onHostMessage: (hostId: string, msg: HostWireMessage) => void;
   attach(server: HttpServer, plane: ControlPlane): WsHub;
 } {
-  const agentSockets: AgentSocketMap = new Map();
-  const onAgentMessage = createWsDelivery(agentSockets);
+  const hostSockets: HostSocketMap = new Map();
+  const onHostMessage = createWsDelivery(hostSockets);
 
   return {
-    agentSockets,
-    onAgentMessage,
+    hostSockets,
+    onHostMessage,
     attach(server, plane) {
       const wss = new WebSocketServer({ noServer: true });
 
@@ -55,9 +55,9 @@ export function createPlaneWsBridge(): {
           }
           if (msg.type === "host:register") {
             boundHostId = msg.hostId;
-            agentSockets.set(msg.hostId, socket);
+            hostSockets.set(msg.hostId, socket);
           }
-          const result = plane.handleAgentMessage(msg);
+          const result = plane.handleHostMessage(msg);
           if (!result.ok) {
             socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
           } else if (msg.type === "host:register") {
@@ -66,8 +66,8 @@ export function createPlaneWsBridge(): {
         });
 
         socket.on("close", () => {
-          if (boundHostId && agentSockets.get(boundHostId) === socket) {
-            agentSockets.delete(boundHostId);
+          if (boundHostId && hostSockets.get(boundHostId) === socket) {
+            hostSockets.delete(boundHostId);
           }
         });
       });
@@ -85,13 +85,13 @@ export function createPlaneWsBridge(): {
       server.on("upgrade", onUpgrade);
 
       return {
-        agentCount: () => agentSockets.size,
+        hostCount: () => hostSockets.size,
         close: () => {
           server.off("upgrade", onUpgrade);
-          for (const s of agentSockets.values()) {
+          for (const s of hostSockets.values()) {
             s.close();
           }
-          agentSockets.clear();
+          hostSockets.clear();
           wss.close();
         },
       };
@@ -101,6 +101,6 @@ export function createPlaneWsBridge(): {
 
 export function attachAgentWsHub(server: HttpServer, plane: ControlPlane): WsHub {
   const bridge = createPlaneWsBridge();
-  plane.setOnAgentMessage(bridge.onAgentMessage);
+  plane.setOnHostMessage(bridge.onHostMessage);
   return bridge.attach(server, plane);
 }

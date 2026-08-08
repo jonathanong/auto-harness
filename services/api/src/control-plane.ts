@@ -108,8 +108,8 @@ export class ControlPlane extends ControlPlaneCatalog {
     return schedules.tryClaimScheduleFire(this.state, scheduleId, expectedNextRunAt, nowIso);
   }
 
-  reclaimStaleAgents(nowMs: number = Date.now()): string[] {
-    return lifecycle.reclaimStaleAgents(this.state, nowMs);
+  reclaimStaleHosts(nowMs: number = Date.now()): string[] {
+    return lifecycle.reclaimStaleHosts(this.state, nowMs);
   }
 
   getHeartbeatStaleMs(): number {
@@ -140,8 +140,8 @@ export class ControlPlane extends ControlPlaneCatalog {
     return lifecycle.listWebhookDeliveries(this.state);
   }
 
-  drainAgent(hostId: string): { ok: boolean; runningSessionIds: string[] } {
-    return agents.drainAgent(this.state, hostId);
+  drainHost(hostId: string): { ok: boolean; runningSessionIds: string[] } {
+    return agents.drainHost(this.state, hostId);
   }
 
   isDraining(hostId: string): boolean {

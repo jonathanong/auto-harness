@@ -50,12 +50,12 @@ export type ControlPlaneState = {
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
   /** Agents in drain: no new assigns; worktrees stay offline after release (Phase 5). */
-  drainingAgents: Set<string>;
+  drainingHosts: Set<string>;
   /**
    * Agents without a live connection that still need heartbeat-style reclaim
    * (e.g. after disconnect while busy). lastHeartbeatAt is when they went offline.
    */
-  disconnectedAgents: Map<string, { lastHeartbeatAt: string }>;
+  disconnectedHosts: Map<string, { lastHeartbeatAt: string }>;
   publicBaseUrl: string;
   now: () => string;
   idFactory: () => string;
@@ -71,7 +71,7 @@ export type ControlPlaneState = {
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
-  onAgentMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
+  onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -92,8 +92,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),
-    drainingAgents: new Set(),
-    disconnectedAgents: new Map(),
+    drainingHosts: new Set(),
+    disconnectedHosts: new Map(),
     publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     now: options.now ?? (() => new Date().toISOString()),
     idFactory: options.idFactory ?? (() => `sess-${randomBytes(4).toString("hex")}`),
@@ -118,7 +118,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       : DEFAULT_USAGE_LIMIT_RETRY_CEILING,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
-    onAgentMessage: options.onAgentMessage,
+    onHostMessage: options.onHostMessage,
   };
 }
 export function queueWrite(state: ControlPlaneState, p: Promise<void>): void {

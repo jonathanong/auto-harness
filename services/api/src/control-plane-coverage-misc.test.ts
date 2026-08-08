@@ -54,9 +54,9 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       timeout: 1,
     });
     planeK.assignQueued();
-    planeK.handleAgentMessage({ type: "session:ack", sessionId: "k1" });
+    planeK.handleHostMessage({ type: "session:ack", sessionId: "k1" });
     planeK.state.sessions.get("k1")!.retryCount = 0;
-    planeK.handleAgentMessage({
+    planeK.handleHostMessage({
       type: "session:status",
       sessionId: "k1",
       status: "failed",
@@ -65,7 +65,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     expect(planeK.getSession("k1")?.retryCount).toBe(1);
     // resume with explicit pinExpiresAt
     planeK.state.sessions.get("k1")!.retryCount = 0;
-    planeK.handleAgentMessage({
+    planeK.handleHostMessage({
       type: "session:status",
       sessionId: "k1",
       status: "completed",
@@ -93,7 +93,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       timeout: 1,
       nextRunAt: "2099-01-01T00:00:00.000Z",
     });
-    bare.reclaimStaleAgents();
+    bare.reclaimStaleHosts();
     bare.enforceAckDeadlines();
 
     // reclaim: orphan agentConnection without connections map entry
@@ -102,18 +102,18 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       connectionIdFactory: () => "c-orph",
       now: () => "2026-01-01T00:00:00.000Z",
     });
-    planeOrphan.registerAgent({
+    planeOrphan.registerHost({
       hostId: "orph",
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["c"],
     });
     planeOrphan.state.connections.delete("c-orph");
     // orphan agentConnection → cleaned on reclaim
-    expect(planeOrphan.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 10_000)).toEqual(
+    expect(planeOrphan.reclaimStaleHosts(Date.parse("2026-01-01T00:00:00.000Z") + 10_000)).toEqual(
       [],
     );
-    // disconnectedAgents path without live connection
-    planeOrphan.state.disconnectedAgents.set("gone", {
+    // disconnectedHosts path without live connection
+    planeOrphan.state.disconnectedHosts.set("gone", {
       lastHeartbeatAt: "2020-01-01T00:00:00.000Z",
     });
     planeOrphan.seedWorktree({
@@ -126,7 +126,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       status: "idle",
       online: true,
     });
-    planeOrphan.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 10_000);
+    planeOrphan.reclaimStaleHosts(Date.parse("2026-01-01T00:00:00.000Z") + 10_000);
     expect(planeOrphan.getWorktree("wg")?.online).toBe(false);
 
     // supersedeSession defensive path via private call

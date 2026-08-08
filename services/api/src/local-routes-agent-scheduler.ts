@@ -7,7 +7,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/agents") {
-    send(res, 200, { items: plane.listAgents() });
+    send(res, 200, { items: plane.listHosts() });
     return true;
   }
 
@@ -24,7 +24,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
   if (method === "POST" && url.pathname === "/api/v1/agent/messages") {
     try {
       const body = (await readJson(req)) as HostToServerMessage;
-      const result = plane.handleAgentMessage(body);
+      const result = plane.handleHostMessage(body);
       if (!result.ok) {
         send(res, 400, {
           error: { code: "AGENT_MESSAGE_ERROR", message: result.error },
@@ -60,7 +60,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
   }
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/reclaim-stale") {
-    const reclaimed = plane.reclaimStaleAgents();
+    const reclaimed = plane.reclaimStaleHosts();
     send(res, 200, { reclaimed });
     return true;
   }
@@ -80,7 +80,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
         });
         return true;
       }
-      send(res, 200, plane.drainAgent(body.hostId));
+      send(res, 200, plane.drainHost(body.hostId));
       return true;
     } catch {
       send(res, 400, {

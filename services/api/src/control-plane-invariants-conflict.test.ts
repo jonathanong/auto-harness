@@ -34,7 +34,7 @@ describe("ControlPlane concurrency and late status", () => {
       })(),
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
-      onAgentMessage: (_a, msg) => {
+      onHostMessage: (_a, msg) => {
         if (msg.type === "session:cancel") {
           cancels.push(msg.sessionId);
         }
@@ -75,7 +75,7 @@ describe("ControlPlane concurrency and late status", () => {
     }
     const assigned1 = plane.assignQueued();
     expect(assigned1.map((a) => a.session.id)).toContain(first.session.id);
-    plane.handleAgentMessage({ type: "session:ack", sessionId: first.session.id });
+    plane.handleHostMessage({ type: "session:ack", sessionId: first.session.id });
     expect(plane.getSession(first.session.id)?.status).toBe("running");
 
     const second = plane.createSession(
@@ -94,7 +94,7 @@ describe("ControlPlane concurrency and late status", () => {
     expect(plane.assignQueued()).toHaveLength(0);
 
     // late completed must NOT flip cancelled → completed; releases worktree
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: first.session.id,
       status: "completed",
@@ -113,7 +113,7 @@ describe("ControlPlane concurrency and late status", () => {
       shardCount: 1,
     });
     seedBaseCommand(plane);
-    const reg = plane.registerAgent({
+    const reg = plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
@@ -124,14 +124,14 @@ describe("ControlPlane concurrency and late status", () => {
     }
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
-    plane.disconnectAgent(reg.connectionId);
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.disconnectHost(reg.connectionId);
     expect(plane.getSession("sess-1")?.status).toBe("queued");
 
     // late ack ignored
-    expect(plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
 
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
       status: "completed",

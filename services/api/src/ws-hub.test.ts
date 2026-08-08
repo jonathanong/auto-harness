@@ -10,7 +10,7 @@ describe("createPlaneWsBridge", () => {
   it("registers agent and delivers session:assign", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({
-      onAgentMessage: bridge.onAgentMessage,
+      onHostMessage: bridge.onHostMessage,
       idFactory: () => "sess-1",
       shardCount: 1,
     });
@@ -83,7 +83,7 @@ describe("createPlaneWsBridge", () => {
     expect(received.some((m) => (m as { type: string }).type === "session:assign")).toBe(true);
     await new Promise((r) => setTimeout(r, 50));
     hub.close();
-    expect(hub.agentCount()).toBe(0);
+    expect(hub.hostCount()).toBe(0);
     await new Promise<void>((resolve, reject) => {
       server.close((err) => {
         if (err) {

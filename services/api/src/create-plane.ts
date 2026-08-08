@@ -52,7 +52,7 @@ export async function createControlPlane(
       : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
     ...(options.webhookUrl !== undefined ? { webhookUrl: options.webhookUrl } : {}),
-    ...(options.onAgentMessage !== undefined ? { onAgentMessage: options.onAgentMessage } : {}),
+    ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),
   });
   await plane.hydrateFromStorage();
   return { plane, storage };

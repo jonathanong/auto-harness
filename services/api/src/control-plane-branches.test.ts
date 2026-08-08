@@ -53,7 +53,7 @@ describe("ControlPlane remaining branches", () => {
 
     // agent register via message + failed second register
     expect(
-      plane.handleAgentMessage({
+      plane.handleHostMessage({
         type: "host:register",
         hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
@@ -61,7 +61,7 @@ describe("ControlPlane remaining branches", () => {
       }).ok,
     ).toBe(true);
     expect(
-      plane.handleAgentMessage({
+      plane.handleHostMessage({
         type: "host:register",
         hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
@@ -69,9 +69,9 @@ describe("ControlPlane remaining branches", () => {
       }).ok,
     ).toBe(false);
     expect(plane.heartbeat("ax")).toBe(true);
-    const connId = plane.listAgents()[0] ? "conn-1" : "conn-1";
-    plane.disconnectAgent(connId);
-    plane.disconnectAgent("missing-conn");
+    const connId = plane.listHosts()[0] ? "conn-1" : "conn-1";
+    plane.disconnectHost(connId);
+    plane.disconnectHost("missing-conn");
 
     // session with retryAfter in future skipped
     plane.seedWorktree({
@@ -91,8 +91,8 @@ describe("ControlPlane remaining branches", () => {
       const s = plane.getSession(created.session.id)!;
       // force running path with assign then usage limit
       plane.assignQueued();
-      plane.handleAgentMessage({ type: "session:ack", sessionId: created.session.id });
-      plane.handleAgentMessage({
+      plane.handleHostMessage({ type: "session:ack", sessionId: created.session.id });
+      plane.handleHostMessage({
         type: "session:status",
         sessionId: created.session.id,
         status: "failed",
@@ -111,7 +111,7 @@ describe("ControlPlane remaining branches", () => {
     plane.assignQueued();
     const running = plane.listSessions().find((s) => s.status === "running");
     if (running) {
-      plane.handleAgentMessage({ type: "session:ack", sessionId: running.id });
+      plane.handleHostMessage({ type: "session:ack", sessionId: running.id });
       // still in pending until ack deletes — enforce should no-op requeue
       expect(plane.enforceAckDeadlines(Date.now() + 999999)).toEqual([]);
     }
@@ -147,12 +147,12 @@ describe("ControlPlane remaining branches", () => {
       connectionIdFactory: () => "c1",
       now: () => "2026-01-01T00:00:00.000Z",
     });
-    plane2.registerAgent({
+    plane2.registerHost({
       hostId: "fresh",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
-    expect(plane2.reclaimStaleAgents(Date.parse("2026-01-01T00:00:00.000Z") + 100)).toEqual([]);
+    expect(plane2.reclaimStaleHosts(Date.parse("2026-01-01T00:00:00.000Z") + 100)).toEqual([]);
 
     // release missing worktree
     plane2.seedWorktree({

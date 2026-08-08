@@ -31,13 +31,13 @@ describe("ControlPlane API edges", () => {
 
   it("lists agent command profiles for UI", () => {
     const plane = new ControlPlane();
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "r", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt", "codex-fix"],
     });
     expect(plane.listCommandProfiles()).toEqual(["codex-fix", "echo-prompt"]);
-    expect(plane.listAgents()[0]?.online).toBe(true);
+    expect(plane.listHosts()[0]?.online).toBe(true);
   });
 
   it("evaluateCron creates scheduled sessions", () => {
@@ -73,9 +73,9 @@ describe("ControlPlane API edges", () => {
       shardCount: 1,
     });
     seedBaseCommand(plane);
-    expect(plane.handleAgentMessage({ type: "session:ack", sessionId: "nope" }).ok).toBe(false);
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "nope" }).ok).toBe(false);
     expect(
-      plane.handleAgentMessage({
+      plane.handleHostMessage({
         type: "host:keepalive",
         hostId: "missing",
         at: "t",
@@ -95,8 +95,8 @@ describe("ControlPlane API edges", () => {
     });
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-1" });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
       status: "completed",

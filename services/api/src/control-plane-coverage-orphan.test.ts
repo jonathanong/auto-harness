@@ -11,7 +11,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       now: () => "2026-01-01T00:00:00.000Z",
     });
     seedBaseCommand(planeO);
-    planeO.registerAgent({
+    planeO.registerHost({
       hostId: "o1",
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["x"],
@@ -20,7 +20,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeO.state.connections.delete("orphan");
     expect(planeO.heartbeat("o1")).toBe(false);
     planeO.state.agentConnection.set("o1", "ghost");
-    expect(planeO.reclaimStaleAgents(Date.now() + 10_000)).toEqual([]);
+    expect(planeO.reclaimStaleHosts(Date.now() + 10_000)).toEqual([]);
 
     // ack deadline: pending without session; pending with acked session
     planeO.state.pendingAcks.set("gone", {
@@ -39,7 +39,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     // force terminal without claim
     const z = planeO.listSessions()[0]!;
-    planeO.handleAgentMessage({
+    planeO.handleHostMessage({
       type: "session:status",
       sessionId: z.id,
       status: "timed_out",
@@ -109,7 +109,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       timeout: 1,
     });
     planeD.assignQueued();
-    planeD.handleAgentMessage({ type: "session:ack", sessionId: "d1" });
+    planeD.handleHostMessage({ type: "session:ack", sessionId: "d1" });
     // pending cleared on ack; inject fake pending with acked session
     planeD.state.pendingAcks.set("d1", {
       sessionId: "d1",
@@ -129,14 +129,14 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     expect(planeD.enforceAckDeadlines(Date.now() + 1000)).toEqual(["d1"]);
 
     // keepalive success path
-    planeD.registerAgent({
+    planeD.registerHost({
       hostId: "alive",
       worktrees: [],
       commandProfiles: ["c"],
       replaceExisting: true,
     });
     expect(
-      planeD.handleAgentMessage({
+      planeD.handleHostMessage({
         type: "host:keepalive",
         hostId: "alive",
         at: "2026-01-01T00:00:01.000Z",

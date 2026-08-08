@@ -25,9 +25,9 @@ describe("ControlPlane retry and resume invariants", () => {
     });
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-u" });
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-u" });
 
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-u",
       status: "failed",
@@ -38,8 +38,8 @@ describe("ControlPlane retry and resume invariants", () => {
 
     nowMs += 60_000;
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-u" });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-u" });
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-u",
       status: "failed",
@@ -50,8 +50,8 @@ describe("ControlPlane retry and resume invariants", () => {
 
     nowMs += 60_000;
     plane.assignQueued();
-    plane.handleAgentMessage({ type: "session:ack", sessionId: "sess-u" });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-u" });
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-u",
       status: "failed",
@@ -91,11 +91,11 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.createSession(baseSessionBody({ ref: "feature/x" }));
     const firstAssign = plane.assignQueued();
     const originalWt = firstAssign[0]!.worktree.id;
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:ack",
       sessionId: firstAssign[0]!.session.id,
     });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: firstAssign[0]!.session.id,
       status: "completed",
@@ -115,11 +115,11 @@ describe("ControlPlane retry and resume invariants", () => {
     expect(resumed.session.pinnedHostId).toBe("agent-1");
     expect(resumed.session.ref).toBe("feature/x");
     // Finish intervening so wt free; resume can land on different worktree path
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:ack",
       sessionId: intervening[0]!.session.id,
     });
-    plane.handleAgentMessage({
+    plane.handleHostMessage({
       type: "session:status",
       sessionId: intervening[0]!.session.id,
       status: "completed",

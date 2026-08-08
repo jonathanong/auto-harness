@@ -63,7 +63,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const assigns: Array<{ sessionId: string; worktreeId: string | null; ref?: string }> = [];
       const transport = createLoopbackTransport({
         sendToServer: (msg) => {
-          plane.handleAgentMessage(msg);
+          plane.handleHostMessage(msg);
         },
       });
       plane = new ControlPlane({
@@ -72,7 +72,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
           return () => `sess-r${++n}`;
         })(),
         shardCount: 1,
-        onAgentMessage: (_a, msg) => {
+        onHostMessage: (_a, msg) => {
           if (msg.type === "session:assign") {
             assigns.push({
               sessionId: msg.sessionId,

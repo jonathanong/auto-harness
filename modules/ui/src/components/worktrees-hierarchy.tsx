@@ -28,7 +28,7 @@ export type WorktreeRepoGroup = {
 
 export type WorktreesHierarchyProps = {
   groups: WorktreeRepoGroup[];
-  showAgent?: boolean;
+  showHost?: boolean;
   emptyMessage?: string;
   /** Optional node rendered under each repo header (e.g. add-worktree form). */
   renderRepoActions?: (group: WorktreeRepoGroup) => ReactNode;
@@ -40,7 +40,7 @@ export type WorktreesHierarchyProps = {
 /** Hierarchical worktrees: repository → worktrees table. */
 export function WorktreesHierarchy({
   groups,
-  showAgent = false,
+  showHost = false,
   emptyMessage = "No worktrees yet.",
   renderRepoActions,
   renderWorktreeActions,
@@ -109,7 +109,7 @@ export function WorktreesHierarchy({
                     <TableHead>path</TableHead>
                     <TableHead>status</TableHead>
                     <TableHead>online</TableHead>
-                    {showAgent ? <TableHead>agent</TableHead> : null}
+                    {showHost ? <TableHead>host</TableHead> : null}
                     <TableHead>labels</TableHead>
                     {renderWorktreeActions ? <TableHead /> : null}
                   </TableRow>
@@ -141,7 +141,7 @@ export function WorktreesHierarchy({
                       <TableCell>
                         {wt.online === undefined ? "—" : <StatusBadge status={String(wt.online)} />}
                       </TableCell>
-                      {showAgent ? (
+                      {showHost ? (
                         <TableCell className="font-mono text-xs">{wt.hostId ?? "—"}</TableCell>
                       ) : null}
                       <TableCell className="text-xs">

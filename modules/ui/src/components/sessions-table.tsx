@@ -17,7 +17,7 @@ export type SessionRow = {
 export type SessionsTableProps = {
   items: SessionRow[];
   /** Show hostId column (control plane fleet view). */
-  showAgent?: boolean;
+  showHost?: boolean;
   emptyMessage?: string;
   /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
   hrefBase?: string;
@@ -26,18 +26,18 @@ export type SessionsTableProps = {
 /** Shared sessions table for control plane and host pane. */
 export function SessionsTable({
   items,
-  showAgent = false,
+  showHost = false,
   emptyMessage = "No sessions match filters.",
   hrefBase,
 }: SessionsTableProps) {
-  const cols = showAgent ? 6 : 5;
+  const cols = showHost ? 6 : 5;
   return (
     <Table data-pw="sessions-table">
       <TableHeader>
         <TableRow>
           <TableHead>ID</TableHead>
           <TableHead>Status</TableHead>
-          {showAgent ? <TableHead>Agent</TableHead> : null}
+          {showHost ? <TableHead>Host</TableHead> : null}
           <TableHead>Target</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
@@ -62,7 +62,7 @@ export function SessionsTable({
             <TableCell>
               <StatusBadge status={s.status} />
             </TableCell>
-            {showAgent ? (
+            {showHost ? (
               <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>
             ) : null}
             <TableCell>{s.targetLabel ?? "—"}</TableCell>

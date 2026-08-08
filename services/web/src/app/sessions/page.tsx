@@ -68,7 +68,7 @@ export default async function SessionsPage({
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} showAgent hrefBase="/sessions" />
+      <SessionsTable items={items} showHost hrefBase="/sessions" />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );

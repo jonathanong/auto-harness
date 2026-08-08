@@ -62,7 +62,7 @@ describe("agent host inventory", () => {
         commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
       }).ok,
     ).toBe(true);
-    const agents = plane.listAgents();
+    const agents = plane.listHosts();
     const offline = agents.find((a) => a.hostId === "slot-offline");
     expect(offline).toMatchObject({
       hostId: "slot-offline",
@@ -71,12 +71,12 @@ describe("agent host inventory", () => {
       worktreeIds: [],
     });
     // Host for an already-listed agent is skipped in the offline-host merge loop.
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "slot-offline",
       worktrees: [],
       commandProfiles: ["echo-prompt"],
     });
-    const afterReg = plane.listAgents().find((a) => a.hostId === "slot-offline");
+    const afterReg = plane.listHosts().find((a) => a.hostId === "slot-offline");
     expect(afterReg?.online).toBe(true);
     // Offline host with worktrees exposes worktreeIds in the fleet list.
     expect(
@@ -94,7 +94,7 @@ describe("agent host inventory", () => {
         commandProfiles: { p: { argv: ["true"] } },
       }).ok,
     ).toBe(true);
-    expect(plane.listAgents().find((a) => a.hostId === "host-with-wts")?.worktreeIds).toEqual([
+    expect(plane.listHosts().find((a) => a.hostId === "host-with-wts")?.worktreeIds).toEqual([
       "w1",
       "w2",
     ]);

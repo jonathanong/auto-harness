@@ -16,7 +16,7 @@ export async function manageWeb(scratch: string): Promise<void> {
     repositoryIdFactory: () => "repo-web",
     now: () => "2026-01-01T00:00:00.000Z",
   });
-  plane.registerAgent({
+  plane.registerHost({
     hostId: "a1",
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],

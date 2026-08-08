@@ -106,10 +106,10 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     store = new MemorySessionStore({ plane });
   }
 
-  if (bridge || options.onAgentMessage) {
-    plane.setOnAgentMessage((hostId, msg) => {
-      options.onAgentMessage?.(hostId, msg);
-      bridge?.onAgentMessage(hostId, msg);
+  if (bridge || options.onHostMessage) {
+    plane.setOnHostMessage((hostId, msg) => {
+      options.onHostMessage?.(hostId, msg);
+      bridge?.onHostMessage(hostId, msg);
     });
   }
 

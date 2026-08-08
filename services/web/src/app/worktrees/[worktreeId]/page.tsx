@@ -148,7 +148,7 @@ export default async function WorktreeDetailPage({
               content: (
                 <SessionsTable
                   items={sessions}
-                  showAgent
+                  showHost
                   hrefBase="/sessions"
                   emptyMessage="No recent sessions in this worktree."
                 />

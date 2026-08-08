@@ -171,7 +171,7 @@ describe("ControlPlane operator management", () => {
       idFactory: () => `sess-${++n}`,
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
-      onAgentMessage: (_id, msg) => {
+      onHostMessage: (_id, msg) => {
         messages.push(msg);
       },
     });
@@ -201,7 +201,7 @@ describe("ControlPlane operator management", () => {
     plane.createSession(baseSessionBody({ prompt: "running-cancel" }));
     plane.assignQueued();
     const running = plane.listSessions().find((s) => s.prompt === "running-cancel")!;
-    plane.handleAgentMessage({ type: "session:ack", sessionId: running.id });
+    plane.handleHostMessage({ type: "session:ack", sessionId: running.id });
     const cancelR = plane.cancelSession(running.id);
     expect(cancelR.ok).toBe(true);
     if (cancelR.ok) {

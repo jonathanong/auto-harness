@@ -30,7 +30,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       lastAssignedAt: "t0",
     });
     // re-register preserves busy
-    planeH.registerAgent({
+    planeH.registerHost({
       hostId: "ah",
       worktrees: [{ id: "wh", name: "wh", repositoryId: "repo-1", path: "/h", labels: [] }],
       commandProfiles: ["c"],

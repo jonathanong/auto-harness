@@ -14,7 +14,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       publicBaseUrl: "http://ui",
       shardCount: 1,
     });
-    plane.registerAgent({
+    plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
