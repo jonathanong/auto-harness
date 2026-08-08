@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane lifecycle", () => {
   it("reclaims stale agents and offlines all worktrees", () => {
@@ -14,6 +14,7 @@ describe("ControlPlane lifecycle", () => {
       connectionIdFactory: () => "conn-1",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     plane.registerAgent({
       agentId: "a1",
       worktrees: [
@@ -46,6 +47,7 @@ describe("ControlPlane lifecycle", () => {
       connectionIdFactory: () => "conn-1",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     const reg = plane.registerAgent({
       agentId: "a1",
       worktrees: [
@@ -81,6 +83,7 @@ describe("ControlPlane lifecycle", () => {
       webhookUrl: "https://example.test/hook",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -126,6 +129,7 @@ describe("ControlPlane lifecycle", () => {
         msgs.push(m);
       },
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",

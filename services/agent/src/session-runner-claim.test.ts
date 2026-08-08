@@ -19,20 +19,6 @@ describe("SessionRunner claim and checkout failures", () => {
   });
 
   it("stringifies non-Error claim failures", async () => {
-    const config = parseAgentConfig({
-      agentId: "a1",
-      commandProfiles: {
-        "echo-prompt": { argv: ["echo"], appendPrompt: true },
-      },
-      repositories: [
-        {
-          id: "repo-1",
-          path: "/repo",
-          defaultBranch: "main",
-          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
-        },
-      ],
-    });
     const worktrees = {
       claim: () => {
         throw "claim-nope";
@@ -43,7 +29,6 @@ describe("SessionRunner claim and checkout failures", () => {
       isBusy: () => false,
     } as unknown as WorktreeManager;
     const sessionRunner = new SessionRunner({
-      config,
       worktrees,
       processRunner: {
         async run() {
@@ -80,7 +65,6 @@ describe("SessionRunner claim and checkout failures", () => {
     };
     const worktrees = new WorktreeManager(config, git);
     const sessionRunner = new SessionRunner({
-      config,
       worktrees,
       processRunner: {
         async run() {
@@ -101,7 +85,6 @@ describe("SessionRunner claim and checkout failures", () => {
       revParse: async () => "x",
     });
     const runner2 = new SessionRunner({
-      config,
       worktrees: worktrees2,
       processRunner: {
         async run() {

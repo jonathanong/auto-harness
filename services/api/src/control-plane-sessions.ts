@@ -4,6 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
+import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 
 export {
@@ -24,7 +25,8 @@ export function createSession(
   const validated = validateCreateSessionInput({
     repositoryId: record.repositoryId,
     prompt: record.prompt,
-    commandProfile: record.commandProfile,
+    providerAccountId: record.providerAccountId,
+    commandId: record.commandId,
     timeout: record.timeout,
     priority: record.priority,
     requiredLabels: record.requiredLabels,
@@ -38,6 +40,10 @@ export function createSession(
   }
 
   const v = validated.value;
+  const target = resolveSessionTargetLabel(state, v.providerAccountId, v.commandId);
+  if (!target.ok) {
+    return { ok: false, error: target.error, code: "VALIDATION_ERROR" };
+  }
   // Invariant 9: concurrencyKey resolved at create time for queue|replace|reject.
   if (v.concurrencyKey) {
     const active = [...state.sessions.values()].filter(
@@ -67,7 +73,9 @@ export function createSession(
     id,
     repositoryId: v.repositoryId,
     prompt: v.prompt,
-    commandProfile: v.commandProfile,
+    ...(v.providerAccountId !== undefined ? { providerAccountId: v.providerAccountId } : {}),
+    ...(v.commandId !== undefined ? { commandId: v.commandId } : {}),
+    targetLabel: target.label,
     timeout: v.timeout,
     priority: v.priority,
     requiredLabels: v.requiredLabels,
@@ -160,7 +168,11 @@ export function resumeSession(
     id,
     repositoryId: source.repositoryId,
     prompt: source.prompt,
-    commandProfile: source.commandProfile,
+    ...(source.providerAccountId !== undefined
+      ? { providerAccountId: source.providerAccountId }
+      : {}),
+    ...(source.commandId !== undefined ? { commandId: source.commandId } : {}),
+    targetLabel: source.targetLabel,
     timeout: source.timeout,
     priority: source.priority,
     requiredLabels: [...source.requiredLabels],

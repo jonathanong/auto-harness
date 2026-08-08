@@ -7,7 +7,8 @@ describe("compare helpers", () => {
     const base = {
       repositoryId: "r",
       prompt: "p",
-      commandProfile: "c",
+      commandId: "c",
+      targetLabel: "c",
       timeout: 1,
       requiredLabels: [] as string[],
       onConflict: "queue" as const,

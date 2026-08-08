@@ -22,7 +22,7 @@ type Session = {
   id: string;
   status: string;
   worktreeId?: string | null;
-  commandProfile?: string;
+  targetLabel?: string;
   prompt?: string;
   source?: string;
 };

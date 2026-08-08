@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import {
+  BASE_COMMAND_ID,
+  baseSessionBody,
+  putScheduleOrThrow,
+  seedBaseCommand,
+} from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane remaining branches", () => {
   it("covers remaining branches: disabled cron, future fire, retryAfter, register replace, disconnect", () => {
@@ -17,22 +22,23 @@ describe("ControlPlane remaining branches", () => {
       shardCount: 1,
       ackDeadlineMs: 50,
     });
+    seedBaseCommand(plane);
 
     // disabled + future schedule
-    plane.putSchedule({
+    putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "off",
-      commandProfile: "echo-prompt",
+      commandId: BASE_COMMAND_ID,
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
       enabled: false,
     });
     expect(plane.evaluateCron()).toHaveLength(0);
-    const future = plane.putSchedule({
+    const future = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "later",
-      commandProfile: "echo-prompt",
+      commandId: BASE_COMMAND_ID,
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2099-01-01T00:00:00.000Z",
@@ -131,6 +137,7 @@ describe("ControlPlane remaining branches", () => {
 
     // resume without agent
     const noAgent = new ControlPlane({ idFactory: () => "s-na", now: () => "t" });
+    seedBaseCommand(noAgent);
     noAgent.createSession(baseSessionBody());
     expect(noAgent.resumeSession("s-na").ok).toBe(false);
 

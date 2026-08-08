@@ -6,6 +6,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
+import { buildProviderCatalog, resolveSessionTargetArgv } from "./control-plane-session-target.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -17,6 +18,7 @@ export function assignQueued(
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);
+  const catalog = buildProviderCatalog(state);
 
   for (let shard = 0; shard < state.shardCount; shard++) {
     const queued = [...state.sessions.values()]
@@ -56,6 +58,10 @@ export function assignQueued(
       idle.sort(compareWorktreesForRoundRobin);
 
       for (const candidate of idle) {
+        const resolvedArgv = resolveSessionTargetArgv(state, catalog, session, candidate);
+        if (!resolvedArgv) {
+          continue;
+        }
         const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
         if (!won) {
           continue;
@@ -64,6 +70,7 @@ export function assignQueued(
         session.worktreeId = candidate.id;
         session.agentId = candidate.agentId;
         session.startedAt = nowIso;
+        session.resolvedArgv = resolvedArgv;
         delete session.ackReceivedAt;
         state.pendingAcks.set(session.id, {
           sessionId: session.id,
@@ -76,7 +83,7 @@ export function assignQueued(
           sessionId: session.id,
           repositoryId: session.repositoryId,
           prompt: session.prompt,
-          commandProfile: session.commandProfile,
+          resolvedArgv,
           timeout: session.timeout,
           worktreeId: candidate.id,
           assignedAt: nowIso,

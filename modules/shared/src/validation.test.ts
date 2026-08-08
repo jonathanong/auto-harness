@@ -54,7 +54,7 @@ describe("validateCreateSessionInput", () => {
   const base = {
     repositoryId: "repo-1",
     prompt: "fix it",
-    commandProfile: "codex-fix",
+    commandId: "cmd-1",
     timeout: 1800,
   };
 
@@ -96,9 +96,42 @@ describe("validateCreateSessionInput", () => {
     expect(result).toEqual({ ok: false, error: "prompt is required" });
   });
 
-  it("rejects missing commandProfile", () => {
-    const result = validateCreateSessionInput({ ...base, commandProfile: "" });
-    expect(result).toEqual({ ok: false, error: "commandProfile is required" });
+  it("rejects when neither providerAccountId nor commandId is set", () => {
+    const { commandId: _commandId, ...withoutTarget } = base;
+    const result = validateCreateSessionInput(withoutTarget);
+    expect(result).toEqual({
+      ok: false,
+      error: "exactly one of providerAccountId or commandId is required",
+    });
+  });
+
+  it("rejects when both providerAccountId and commandId are set", () => {
+    const result = validateCreateSessionInput({ ...base, providerAccountId: "acct-1" });
+    expect(result).toEqual({
+      ok: false,
+      error: "exactly one of providerAccountId or commandId is required",
+    });
+  });
+
+  it("rejects an empty commandId", () => {
+    const result = validateCreateSessionInput({ ...base, commandId: "" });
+    expect(result).toEqual({ ok: false, error: "commandId must be a non-empty string" });
+  });
+
+  it("rejects an empty providerAccountId", () => {
+    const { commandId: _commandId, ...withoutCommand } = base;
+    const result = validateCreateSessionInput({ ...withoutCommand, providerAccountId: "" });
+    expect(result).toEqual({ ok: false, error: "providerAccountId must be a non-empty string" });
+  });
+
+  it("accepts a providerAccountId target", () => {
+    const { commandId: _commandId, ...withoutCommand } = base;
+    const result = validateCreateSessionInput({ ...withoutCommand, providerAccountId: "acct-1" });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.providerAccountId).toBe("acct-1");
+      expect(result.value.commandId).toBeUndefined();
+    }
   });
 
   it("rejects invalid timeout", () => {

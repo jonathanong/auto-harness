@@ -19,7 +19,7 @@ describe("createWsTransport", () => {
             sessionId: "s1",
             repositoryId: "r",
             prompt: "p",
-            commandProfile: "c",
+            resolvedArgv: ["c"],
             timeout: 1,
             worktreeId: "w",
             assignedAt: "t",

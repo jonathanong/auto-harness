@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane concurrency and late status", () => {
   it("Invariant 9: concurrencyKey + reject fails create", () => {
@@ -11,6 +11,7 @@ describe("ControlPlane concurrency and late status", () => {
         return () => `sess-${++n}`;
       })(),
     });
+    seedBaseCommand(plane);
     const first = plane.createSession(
       baseSessionBody({ concurrencyKey: "k1", onConflict: "reject" }),
     );
@@ -39,6 +40,7 @@ describe("ControlPlane concurrency and late status", () => {
         }
       },
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -110,6 +112,7 @@ describe("ControlPlane concurrency and late status", () => {
       connectionIdFactory: () => "conn-1",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     const reg = plane.registerAgent({
       agentId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],

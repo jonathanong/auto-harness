@@ -5,8 +5,10 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
+import { decodeSessionTargetOptionValue, type SessionTarget } from "../session-target.ts";
+import { SessionTargetSelect } from "./session-target-select.tsx";
 
-export function ScheduleCreateForm() {
+export function ScheduleCreateForm({ targets }: { targets: SessionTarget[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -20,10 +22,11 @@ export function ScheduleCreateForm() {
         setError(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
+        const target = decodeSessionTargetOptionValue(String(fd.get("target") ?? ""));
         const body = {
           repositoryId: String(fd.get("repositoryId") ?? ""),
           name: String(fd.get("name") ?? ""),
-          commandProfile: String(fd.get("commandProfile") ?? ""),
+          ...target,
           cron: String(fd.get("cron") ?? ""),
           timeout: Number(fd.get("timeout") ?? 600),
           nextRunAt: String(fd.get("nextRunAt") ?? new Date().toISOString()),
@@ -66,16 +69,10 @@ export function ScheduleCreateForm() {
         <Input id="name" name="name" required data-pw="schedule-name" />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="commandProfile" tip="Command profile name that agents must advertise">
-          commandProfile
+        <Label htmlFor="target" tip="Provider account (cascade-resolved) or standalone command">
+          target
         </Label>
-        <Input
-          id="commandProfile"
-          name="commandProfile"
-          required
-          defaultValue="echo-prompt"
-          data-pw="schedule-command-profile"
-        />
+        <SessionTargetSelect targets={targets} id="target" name="target" dataPw="schedule-target" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="cron" tip="Five-field cron expression (UTC) for automatic runs">

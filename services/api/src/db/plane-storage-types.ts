@@ -27,7 +27,10 @@ export type ScheduleRecord = {
   id: string;
   repositoryId: string;
   name: string;
-  commandProfile: string;
+  /** Exactly one of providerAccountId/commandId is set. */
+  providerAccountId?: string;
+  commandId?: string;
+  targetLabel: string;
   cron: string;
   enabled: boolean;
   timeout: number;

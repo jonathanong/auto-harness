@@ -10,10 +10,16 @@ describe("MemorySessionStore", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       idFactory: () => "sess-fixed",
     });
+    store.plane.createCommand({
+      id: "cmd-codex",
+      name: "codex-fix",
+      argv: ["codex"],
+      providerId: null,
+    });
     const created = store.create({
       repositoryId: "repo-1",
       prompt: "fix",
-      commandProfile: "codex-fix",
+      commandId: "cmd-codex",
       timeout: 60,
       ref: "main",
     });
@@ -37,10 +43,11 @@ describe("MemorySessionStore", () => {
 
   it("uses default id and clock factories", () => {
     const store = new MemorySessionStore();
+    store.plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const created = store.create({
       repositoryId: "r",
       prompt: "p",
-      commandProfile: "c",
+      commandId: "cmd-c",
       timeout: 1,
     });
     expect(created.ok).toBe(true);
@@ -52,11 +59,12 @@ describe("MemorySessionStore", () => {
 
   it("accepts an injected plane", () => {
     const plane = new ControlPlane({ idFactory: () => "sess-inj", now: () => "t" });
+    plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const store = new MemorySessionStore({ plane });
     const created = store.create({
       repositoryId: "r",
       prompt: "p",
-      commandProfile: "c",
+      commandId: "cmd-c",
       timeout: 1,
     });
     expect(created.ok).toBe(true);

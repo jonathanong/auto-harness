@@ -4,7 +4,13 @@ export type SessionRecord = {
   id: string;
   repositoryId: string;
   prompt: string;
-  commandProfile: string;
+  /** Exactly one of providerAccountId/commandId is set. */
+  providerAccountId?: string;
+  commandId?: string;
+  /** Human-readable label for display, e.g. "claude — jonathanrichardong@gmail.com" or "echo hello world". */
+  targetLabel: string;
+  /** Final argv, resolved once assigned to a worktree (cascade walk + prompt append). */
+  resolvedArgv?: string[];
   timeout: number;
   priority: number;
   requiredLabels: string[];

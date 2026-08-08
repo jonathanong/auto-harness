@@ -34,7 +34,8 @@ export function isOnConflict(value: unknown): value is OnConflict {
 export function validateCreateSessionInput(input: {
   repositoryId: unknown;
   prompt: unknown;
-  commandProfile: unknown;
+  providerAccountId?: unknown;
+  commandId?: unknown;
   timeout: unknown;
   priority?: unknown;
   requiredLabels?: unknown;
@@ -45,7 +46,8 @@ export function validateCreateSessionInput(input: {
 }): ValidationResult<{
   repositoryId: string;
   prompt: string;
-  commandProfile: string;
+  providerAccountId: string | undefined;
+  commandId: string | undefined;
   timeout: number;
   priority: number;
   requiredLabels: string[];
@@ -60,8 +62,21 @@ export function validateCreateSessionInput(input: {
   if (!isNonEmptyString(input.prompt)) {
     return { ok: false, error: "prompt is required" };
   }
-  if (!isNonEmptyString(input.commandProfile)) {
-    return { ok: false, error: "commandProfile is required" };
+  if ((input.providerAccountId !== undefined) === (input.commandId !== undefined)) {
+    return { ok: false, error: "exactly one of providerAccountId or commandId is required" };
+  }
+  let providerAccountId: string | undefined;
+  let commandId: string | undefined;
+  if (input.providerAccountId !== undefined) {
+    if (!isNonEmptyString(input.providerAccountId)) {
+      return { ok: false, error: "providerAccountId must be a non-empty string" };
+    }
+    providerAccountId = input.providerAccountId;
+  } else {
+    if (!isNonEmptyString(input.commandId)) {
+      return { ok: false, error: "commandId must be a non-empty string" };
+    }
+    commandId = input.commandId;
   }
   if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {
     return { ok: false, error: "timeout must be a positive number of seconds" };
@@ -130,7 +145,8 @@ export function validateCreateSessionInput(input: {
     value: {
       repositoryId: input.repositoryId,
       prompt: input.prompt,
-      commandProfile: input.commandProfile,
+      providerAccountId,
+      commandId,
       timeout: input.timeout,
       priority,
       requiredLabels,

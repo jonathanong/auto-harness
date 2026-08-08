@@ -11,6 +11,7 @@ import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts
 import { handleProviderRoutes } from "./local-routes-providers.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
+import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
 
@@ -64,6 +65,9 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       return;
     }
     if (await handleCommandRoutes(ctx)) {
+      return;
+    }
+    if (await handleSessionTargetRoutes(ctx)) {
       return;
     }
 

@@ -11,7 +11,7 @@ type Session = {
   status: string;
   repositoryId?: string;
   prompt?: string;
-  commandProfile?: string;
+  targetLabel?: string;
   source?: string;
   agentId?: string | null;
 };

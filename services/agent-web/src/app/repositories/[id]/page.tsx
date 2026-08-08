@@ -25,7 +25,7 @@ type Session = {
   id: string;
   status: string;
   repositoryId?: string | null;
-  commandProfile?: string;
+  targetLabel?: string;
   prompt?: string;
   source?: string;
 };

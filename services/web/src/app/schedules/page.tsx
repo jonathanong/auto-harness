@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet } from "../../lib/api.ts";
+import type { SessionTarget } from "../../session-target.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ type Schedule = {
   id: string;
   name: string;
   repositoryId: string;
-  commandProfile: string;
+  targetLabel: string;
   cron: string;
   enabled: boolean;
   nextRunAt: string;
@@ -19,10 +20,15 @@ type Schedule = {
 
 export default async function SchedulesPage() {
   let items: Schedule[] = [];
+  let targets: SessionTarget[] = [];
   let error: string | null = null;
   try {
-    const data = await apiGet<{ items: Schedule[] }>("/api/v1/schedules");
-    items = data.items ?? [];
+    const [schedulesData, targetsData] = await Promise.all([
+      apiGet<{ items: Schedule[] }>("/api/v1/schedules"),
+      apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
+    ]);
+    items = schedulesData.items ?? [];
+    targets = targetsData.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -56,7 +62,7 @@ export default async function SchedulesPage() {
                   {s.repositoryId}
                 </Link>
               </TableCell>
-              <TableCell>{s.commandProfile}</TableCell>
+              <TableCell>{s.targetLabel}</TableCell>
               <TableCell className="font-mono text-xs">{s.cron}</TableCell>
               <TableCell className="text-xs">{s.nextRunAt}</TableCell>
               <TableCell>
@@ -75,7 +81,7 @@ export default async function SchedulesPage() {
       </Table>
       <div>
         <h3 className="mb-2 text-lg font-medium">Add schedule</h3>
-        <ScheduleCreateForm />
+        <ScheduleCreateForm targets={targets} />
       </div>
     </div>
   );

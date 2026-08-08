@@ -15,6 +15,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       shardCount: 1,
       ackDeadlineMs: 1,
     });
+    plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
 
     // Register without worktrees so listAgents builds from connection only
     const r1 = plane.registerAgent({
@@ -96,7 +97,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "echo",
+      commandId: "cmd-echo",
       timeout: 1,
     });
     // Force first candidate (wt-2 by RR) to become non-idle via direct map mutation after sort:
@@ -139,6 +140,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    planeR.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     planeR.seedWorktree({
       id: "w",
       name: "w",
@@ -152,7 +154,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     planeR.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: "cmd-c",
       timeout: 1,
       ref: "main",
     });

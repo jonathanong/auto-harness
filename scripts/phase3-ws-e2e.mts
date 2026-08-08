@@ -94,13 +94,28 @@ async function main(): Promise<void> {
     stopAgent = daemon.stop;
     await sleep(100);
 
+    const cmdRes = await fetch(`http://127.0.0.1:${port}/api/v1/commands`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "echo-prompt",
+        argv: ["printf", "%s"],
+        appendPrompt: true,
+        providerId: null,
+      }),
+    });
+    if (cmdRes.status !== 201) {
+      throw new Error(`command create failed ${cmdRes.status} ${await cmdRes.text()}`);
+    }
+    const command = (await cmdRes.json()) as { id: string };
+
     const created = await fetch(`http://127.0.0.1:${port}/api/v1/sessions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         repositoryId: "demo",
         prompt: "hello-ws",
-        commandProfile: "echo-prompt",
+        commandId: command.id,
         timeout: 60,
         ref: "feature/ws",
         requiredLabels: ["echo"],

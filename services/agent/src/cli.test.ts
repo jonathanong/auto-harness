@@ -45,7 +45,7 @@ function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
         sessionId: "s1",
         repositoryId: "repo-1",
         prompt: "p",
-        commandProfile: "echo",
+        resolvedArgv: ["echo"],
         timeout: 5,
         worktreeId: "wt-1",
       }),

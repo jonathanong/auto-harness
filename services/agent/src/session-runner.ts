@@ -1,6 +1,5 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
-import type { AgentConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { LogStreamer } from "./log-streamer.ts";
 import { failSession, finishSession, type SessionRunResult } from "./session-outcome.ts";
@@ -10,7 +9,6 @@ import type { WorktreeManager } from "./worktree-manager.ts";
 export type { SessionRunResult } from "./session-outcome.ts";
 
 export type SessionRunnerDeps = {
-  config: AgentConfig;
   worktrees: WorktreeManager;
   processRunner: ProcessRunner;
   onLog?: (chunk: SessionLogChunk) => void;
@@ -85,14 +83,7 @@ export class SessionRunner {
         );
       }
 
-      return await runClaimedSession(
-        this.deps.config,
-        this.deps.processRunner,
-        streamer,
-        logs,
-        assign,
-        claimed,
-      );
+      return await runClaimedSession(this.deps.processRunner, streamer, logs, assign, claimed);
     } finally {
       this.deps.worktrees.release(assign.worktreeId);
     }

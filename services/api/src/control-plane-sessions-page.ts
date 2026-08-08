@@ -53,7 +53,7 @@ export function listSessionsPage(
       (s) =>
         s.id.toLowerCase().includes(q) ||
         s.prompt.toLowerCase().includes(q) ||
-        s.commandProfile.toLowerCase().includes(q),
+        s.targetLabel.toLowerCase().includes(q),
     );
   }
   if (query.cursor) {

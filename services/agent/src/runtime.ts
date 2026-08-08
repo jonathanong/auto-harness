@@ -26,7 +26,6 @@ export async function runAssignedSession(
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   const sessionRunner = new SessionRunner({
-    config,
     worktrees,
     processRunner,
     onLog: (c) => {

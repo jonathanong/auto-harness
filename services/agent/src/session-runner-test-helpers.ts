@@ -11,7 +11,7 @@ export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
     sessionId: "sess-1",
     repositoryId: "repo-1",
     prompt: "hello",
-    commandProfile: "echo-prompt",
+    resolvedArgv: ["echo", "hello"],
     timeout: 30,
     worktreeId: "wt-1",
     ...over,
@@ -55,7 +55,6 @@ export function setup(runner: ProcessRunner) {
   return {
     hooks,
     sessionRunner: new SessionRunner({
-      config,
       worktrees,
       processRunner: wrapped,
       now: () => "2026-08-01T00:00:00.000Z",

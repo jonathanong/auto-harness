@@ -1,7 +1,6 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
-import { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
-import type { AgentConfig, RepositoryConfig, WorktreeConfig } from "./config.ts";
+import type { RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { runSetupScript } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
@@ -16,9 +15,12 @@ type ClaimedWorktree = {
 
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
+ * argv is resolved control-plane-side (cascade walk + prompt append); the daemon
+ * just spawns it. A missing/empty resolvedArgv should be unreachable — the scheduler
+ * only assigns worktrees that already resolved a command — but is checked defensively
+ * rather than trusted blindly off the wire.
  */
 export async function runClaimedSession(
-  config: AgentConfig,
   processRunner: ProcessRunner,
   streamer: LogStreamer,
   logs: SessionLogChunk[],
@@ -28,16 +30,7 @@ export async function runClaimedSession(
   const setupFail = await runSetupIfNeeded(processRunner, streamer, logs, assign, claimed);
   if (setupFail) return setupFail;
 
-  let argv: string[];
-  try {
-    argv = resolveCommandArgv(config.commandProfiles, assign.commandProfile, assign.prompt);
-  } catch (err) {
-    const message =
-      err instanceof UnknownCommandProfileError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : String(err);
+  if (assign.resolvedArgv.length === 0) {
     return await finishSession(
       processRunner,
       streamer,
@@ -50,12 +43,19 @@ export async function runClaimedSession(
         status: "failed",
         exitCode: null,
         errorCode: "unknown_command_profile",
-        errorMessage: message,
+        errorMessage: "no resolved command argv for this session",
       },
     );
   }
 
-  return await runProcessAndFinish(processRunner, streamer, logs, assign, claimed, argv);
+  return await runProcessAndFinish(
+    processRunner,
+    streamer,
+    logs,
+    assign,
+    claimed,
+    assign.resolvedArgv,
+  );
 }
 
 async function runSetupIfNeeded(

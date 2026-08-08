@@ -3,7 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { AgentWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import {
+  baseSessionBody,
+  putScheduleOrThrow,
+  seedBaseCommand,
+} from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane operator management", () => {
   it("repository CRUD", () => {
@@ -80,11 +84,24 @@ describe("ControlPlane operator management", () => {
       scheduleIdFactory: () => "sched-auto",
       now: () => "2026-01-01T00:00:00.000Z",
     });
-    const sched = plane.putSchedule({
+    plane.createCommand({
+      id: "cmd-echo",
+      name: "echo-prompt",
+      argv: ["echo"],
+      providerId: null,
+    });
+    plane.createCommand({
+      id: "cmd-codex",
+      name: "codex-fix",
+      argv: ["codex"],
+      providerId: null,
+    });
+    plane.createCommand({ id: "cmd-c", name: "c", argv: ["c"], providerId: null });
+    const sched = putScheduleOrThrow(plane, {
       id: "sched-1",
       repositoryId: "repo-1",
       name: "nightly",
-      commandProfile: "echo-prompt",
+      commandId: "cmd-echo",
       cron: "0 0 * * *",
       timeout: 60,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -98,7 +115,7 @@ describe("ControlPlane operator management", () => {
 
     const updated = plane.updateSchedule("sched-1", {
       name: "nightly2",
-      commandProfile: "codex-fix",
+      commandId: "cmd-codex",
       cron: "0 1 * * *",
       timeout: 90,
       nextRunAt: "2026-01-02T00:00:00.000Z",
@@ -113,10 +130,10 @@ describe("ControlPlane operator management", () => {
     }
     expect(plane.updateSchedule("nope", { name: "x" }).ok).toBe(false);
 
-    const auto = plane.putSchedule({
+    const auto = putScheduleOrThrow(plane, {
       repositoryId: "r",
       name: "a",
-      commandProfile: "c",
+      commandId: "cmd-c",
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "t",
@@ -128,7 +145,7 @@ describe("ControlPlane operator management", () => {
     if (fired.ok) {
       expect(fired.session.type).toBe("scheduled");
       expect(fired.session.source).toBe("schedule");
-      expect(fired.session.commandProfile).toBe("codex-fix");
+      expect(fired.session.targetLabel).toBe("codex-fix");
       expect(fired.session.ref).toBe("develop");
       expect(fired.session.prompt).toBe("scheduled:nightly2");
     }
@@ -158,6 +175,7 @@ describe("ControlPlane operator management", () => {
         messages.push(msg);
       },
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane retry and resume invariants", () => {
   it("Invariant 6: usage_limit retries under cap only", () => {
@@ -12,6 +12,7 @@ describe("ControlPlane retry and resume invariants", () => {
       idFactory: () => "sess-u",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -66,6 +67,7 @@ describe("ControlPlane retry and resume invariants", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-a",
       name: "wt-a",

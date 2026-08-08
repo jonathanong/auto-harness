@@ -150,14 +150,15 @@ export class ControlPlaneBase {
   putSchedule(input: {
     repositoryId: string;
     name: string;
-    commandProfile: string;
+    providerAccountId?: string;
+    commandId?: string;
     cron: string;
     timeout: number;
     nextRunAt: string;
     enabled?: boolean;
     ref?: string;
     id?: string;
-  }): ScheduleRecord {
+  }): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
     return schedules.putSchedule(this.state, input);
   }
 

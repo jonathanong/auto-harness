@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { supersedeSession } from "./control-plane-sessions.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: schedule fail usage limit supersede defaults", () => {
   it("schedule fail usage limit supersede defaults", () => {
@@ -10,10 +11,11 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       idFactory: () => "sj-sess",
       now: () => "2026-01-01T00:00:00.000Z",
     });
+    seedBaseCommand(planeJ);
     planeJ.putSchedule({
       repositoryId: "repo-1",
       name: "n",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -34,6 +36,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(planeK);
     planeK.seedWorktree({
       id: "wk",
       name: "wk",
@@ -47,7 +50,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeK.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     planeK.assignQueued();
@@ -74,17 +77,18 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
 
     // default constructor factories
     const bare = new ControlPlane();
+    seedBaseCommand(bare);
     const created = bare.createSession({
       repositoryId: "r",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     expect(created.ok).toBe(true);
     bare.putSchedule({
       repositoryId: "r",
       name: "n",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2099-01-01T00:00:00.000Z",
@@ -127,10 +131,11 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
 
     // supersedeSession defensive path via private call
     const planeS = new ControlPlane({ idFactory: () => "s1", now: () => "t" });
+    seedBaseCommand(planeS);
     planeS.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     planeS.forceStatus("s1", "completed");
@@ -147,6 +152,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       now: () => "t",
       shardCount: 1,
     });
+    seedBaseCommand(planeQ);
     planeQ.seedWorktree({
       id: "wq",
       name: "wq",
@@ -160,7 +166,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeQ.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
       concurrencyKey: "kq",
       onConflict: "queue",

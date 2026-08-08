@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import { BASE_COMMAND_ID, baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane API edges", () => {
-  it("POST fields include ref, commandProfile, concurrencyKey, metadata, url", () => {
+  it("POST fields include ref, targetLabel, concurrencyKey, metadata, url", () => {
     const plane = new ControlPlane({
       publicBaseUrl: "http://ui",
       idFactory: () => "sess-x",
       now: () => "t",
     });
+    seedBaseCommand(plane);
     const r = plane.createSession(
       baseSessionBody({
         ref: "main",
@@ -22,7 +23,7 @@ describe("ControlPlane API edges", () => {
     if (r.ok) {
       expect(r.session.url).toBe("http://ui/sessions/sess-x");
       expect(r.session.ref).toBe("main");
-      expect(r.session.commandProfile).toBe("echo-prompt");
+      expect(r.session.targetLabel).toBe("echo-prompt");
       expect(r.session.concurrencyKey).toBe("ck");
       expect(r.session.metadata).toEqual({ pr: 1 });
     }
@@ -46,10 +47,11 @@ describe("ControlPlane API edges", () => {
       now: () => "2026-01-01T01:00:00.000Z",
       scheduleIdFactory: () => "sched-1",
     });
+    seedBaseCommand(plane);
     plane.putSchedule({
       repositoryId: "repo-1",
       name: "job",
-      commandProfile: "echo-prompt",
+      commandId: BASE_COMMAND_ID,
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -70,6 +72,7 @@ describe("ControlPlane API edges", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     expect(plane.handleAgentMessage({ type: "session:ack", sessionId: "nope" }).ok).toBe(false);
     expect(
       plane.handleAgentMessage({

@@ -45,11 +45,21 @@ test.describe("host pane sessions", () => {
           },
         });
 
+        const command = await request.post(`${API}/api/v1/commands`, {
+          data: {
+            name: `echo-prompt-${wtId}`,
+            argv: ["echo"],
+            appendPrompt: true,
+            providerId: null,
+          },
+        });
+        const { id: commandId } = (await command.json()) as { id: string };
+
         const created = await request.post(`${API}/api/v1/sessions`, {
           data: {
             repositoryId: repoId,
             prompt: `hello-${wtId}`,
-            commandProfile: "echo-prompt",
+            commandId,
             timeout: 30,
             requiredLabels: ["echo"],
           },

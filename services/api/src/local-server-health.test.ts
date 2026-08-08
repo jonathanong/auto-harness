@@ -10,6 +10,13 @@ describe("createLocalApp health and sessions", () => {
       now: () => "t0",
       publicBaseUrl: "http://ui",
     });
+    store.plane.createCommand({
+      id: "cmd-1",
+      name: "codex-fix",
+      argv: ["codex"],
+      providerId: null,
+    });
+    store.plane.createCommand({ id: "cmd-x", name: "x", argv: ["x"], providerId: null });
     const { handler } = createLocalApp({ store });
 
     const invoke = async (
@@ -54,7 +61,7 @@ describe("createLocalApp health and sessions", () => {
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
-      commandProfile: "codex-fix",
+      commandId: "cmd-1",
       timeout: 10,
     });
     expect(created.status).toBe(201);
@@ -72,7 +79,7 @@ describe("createLocalApp health and sessions", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "",
           prompt: "p",
-          commandProfile: "x",
+          commandId: "cmd-x",
           timeout: 1,
         })
       ).status,

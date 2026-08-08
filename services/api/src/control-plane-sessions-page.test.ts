@@ -13,12 +13,13 @@ describe("listSessionsPage", () => {
       })(),
       shardCount: 1,
     });
+    plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
     for (let i = 0; i < 5; i++) {
       expect(
         plane.createSession({
           repositoryId: "r1",
           prompt: `p-${i}`,
-          commandProfile: "echo",
+          commandId: "cmd-echo",
           timeout: 10,
         }).ok,
       ).toBe(true);

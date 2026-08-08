@@ -24,7 +24,7 @@ describe("AgentLoop run", () => {
         sessionId: "sess-loop",
         repositoryId: "demo",
         prompt: "hello-loop",
-        commandProfile: "echo-prompt",
+        resolvedArgv: ["printf", "%s", "hello-loop"],
         timeout: 30,
         worktreeId: "wt-1",
         ref: "main",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
+import { putScheduleOrThrow } from "./control-plane-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("StoPaths");
 
@@ -18,7 +19,8 @@ describe("ControlPlane storage write-through paths", () => {
       id: "sch1",
       repositoryId: "r1",
       name: "n",
-      commandProfile: "c",
+      commandId: "c",
+      targetLabel: "c",
       cron: "* * * * *",
       enabled: true,
       timeout: 1,
@@ -51,10 +53,12 @@ describe("ControlPlane storage write-through paths", () => {
       commandProfiles: ["c"],
       replaceExisting: true,
     });
+    plane.createCommand({ id: "c", name: "c", argv: ["echo"], providerId: null });
+    plane.createCommand({ id: "c2", name: "c2", argv: ["echo"], providerId: null });
     plane.createSession({
       repositoryId: "r1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: "c",
       timeout: 1,
     });
     plane.assignQueued();
@@ -92,10 +96,10 @@ describe("ControlPlane storage write-through paths", () => {
       expect(plane.deleteRepository(repo.repository.id).ok).toBe(true);
     }
 
-    const sch = plane.putSchedule({
+    const sch = putScheduleOrThrow(plane, {
       repositoryId: "r1",
       name: "job",
-      commandProfile: "c",
+      commandId: "c",
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -105,7 +109,7 @@ describe("ControlPlane storage write-through paths", () => {
     expect(
       plane.updateSchedule(sch.id, {
         name: "job2",
-        commandProfile: "c2",
+        commandId: "c2",
         cron: "0 * * * *",
         timeout: 2,
         nextRunAt: "2026-01-02T00:00:00.000Z",

@@ -1,14 +1,15 @@
 import { CreateSessionForm } from "../../../components/create-session-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import type { SessionTarget } from "../../../session-target.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewSessionPage() {
-  let profiles: string[] = [];
+  let targets: SessionTarget[] = [];
   let error: string | null = null;
   try {
-    const data = await apiGet<{ items: string[] }>("/api/v1/command-profiles");
-    profiles = data.items ?? [];
+    const data = await apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets");
+    targets = data.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -19,10 +20,10 @@ export default async function NewSessionPage() {
         New session
       </h2>
       <p className="text-sm text-muted-foreground">
-        Command profiles only (D4) — free-form shell is rejected.
+        Provider accounts and standalone commands only (D4) — free-form shell is rejected.
       </p>
-      {error ? <p className="text-sm text-red-700">Could not load profiles: {error}</p> : null}
-      <CreateSessionForm profiles={profiles} />
+      {error ? <p className="text-sm text-red-700">Could not load targets: {error}</p> : null}
+      <CreateSessionForm targets={targets} />
     </div>
   );
 }

@@ -16,10 +16,10 @@ describe("package exports", () => {
       sessionId: "s1",
       repositoryId: "r1",
       prompt: "p",
-      commandProfile: "codex-fix",
+      resolvedArgv: ["codex", "fix"],
       timeout: 60,
       worktreeId: "wt-1",
     };
-    expect(assign.commandProfile).toBe("codex-fix");
+    expect(assign.resolvedArgv).toEqual(["codex", "fix"]);
   });
 });

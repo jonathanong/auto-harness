@@ -96,10 +96,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "POST" && url.pathname === "/api/v1/schedules") {
     try {
       const body = (await readJson(req)) as Record<string, unknown>;
+      const hasAccount = typeof body.providerAccountId === "string";
+      const hasCommand = typeof body.commandId === "string";
       if (
         typeof body.repositoryId !== "string" ||
         typeof body.name !== "string" ||
-        typeof body.commandProfile !== "string" ||
+        hasAccount === hasCommand ||
         typeof body.cron !== "string" ||
         typeof body.timeout !== "number" ||
         typeof body.nextRunAt !== "string"
@@ -107,15 +109,17 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: "repositoryId, name, commandProfile, cron, timeout, nextRunAt are required",
+            message:
+              "repositoryId, name, cron, timeout, nextRunAt are required, plus exactly one of providerAccountId or commandId",
           },
         });
         return true;
       }
-      const rec = plane.putSchedule({
+      const result = plane.putSchedule({
         repositoryId: body.repositoryId,
         name: body.name,
-        commandProfile: body.commandProfile,
+        ...(hasAccount ? { providerAccountId: body.providerAccountId as string } : {}),
+        ...(hasCommand ? { commandId: body.commandId as string } : {}),
         cron: body.cron,
         timeout: body.timeout,
         nextRunAt: body.nextRunAt,
@@ -123,7 +127,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
       });
-      send(res, 201, rec);
+      if (!result.ok) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
+        return true;
+      }
+      send(res, 201, result.schedule);
       return true;
     } catch {
       send(res, 400, {
@@ -159,9 +167,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         const body = (await readJson(req)) as Record<string, unknown>;
         const result = plane.updateSchedule(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
-          ...(typeof body.commandProfile === "string"
-            ? { commandProfile: body.commandProfile }
+          ...(typeof body.providerAccountId === "string"
+            ? { providerAccountId: body.providerAccountId }
             : {}),
+          ...(typeof body.commandId === "string" ? { commandId: body.commandId } : {}),
           ...(typeof body.cron === "string" ? { cron: body.cron } : {}),
           ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
           ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),

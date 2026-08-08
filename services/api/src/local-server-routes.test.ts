@@ -19,6 +19,12 @@ describe("createLocalApp agent and scheduler routes", () => {
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
+    plane.createCommand({
+      id: "cmd-echo",
+      name: "echo-prompt",
+      argv: ["echo"],
+      providerId: null,
+    });
     const { handler } = createLocalApp({ plane });
 
     const invoke = async (
@@ -66,7 +72,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
-      commandProfile: "echo-prompt",
+      commandId: "cmd-echo",
       timeout: 10,
       ref: "main",
       metadata: { a: 1 },
@@ -120,7 +126,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p",
-          commandProfile: "echo-prompt",
+          commandId: "cmd-echo",
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",
@@ -132,7 +138,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p2",
-          commandProfile: "echo-prompt",
+          commandId: "cmd-echo",
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",

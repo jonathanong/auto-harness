@@ -31,6 +31,18 @@ describe("createLocalApp operator management REST", () => {
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
     });
+    plane.createCommand({
+      id: "cmd-echo",
+      name: "echo-prompt",
+      argv: ["echo"],
+      providerId: null,
+    });
+    plane.createCommand({
+      id: "cmd-codex",
+      name: "codex-fix",
+      argv: ["codex"],
+      providerId: null,
+    });
 
     const invoke = (method: string, path: string, body?: unknown) =>
       invokeHandler(handler, method, path, body);
@@ -84,7 +96,7 @@ describe("createLocalApp operator management REST", () => {
     const sched = await invoke("POST", "/api/v1/schedules", {
       repositoryId: "repo-1",
       name: "nightly",
-      commandProfile: "echo-prompt",
+      commandId: "cmd-echo",
       cron: "0 0 * * *",
       timeout: 30,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -105,7 +117,7 @@ describe("createLocalApp operator management REST", () => {
         await invoke("PATCH", "/api/v1/schedules/sched-1", {
           name: "nightly2",
           timeout: 45,
-          commandProfile: "codex-fix",
+          commandId: "cmd-codex",
           cron: "0 1 * * *",
           nextRunAt: "2026-01-02T00:00:00.000Z",
           enabled: true,
@@ -116,7 +128,7 @@ describe("createLocalApp operator management REST", () => {
     ).toMatchObject({
       name: "nightly2",
       timeout: 45,
-      commandProfile: "codex-fix",
+      targetLabel: "codex-fix",
       ref: "develop",
     });
     expect((await invoke("PATCH", "/api/v1/schedules/nope", { name: "x" })).status).toBe(404);
@@ -127,14 +139,14 @@ describe("createLocalApp operator management REST", () => {
       type: "scheduled",
       source: "schedule",
       prompt: "scheduled:nightly2",
-      commandProfile: "codex-fix",
+      targetLabel: "codex-fix",
     });
     expect((await invoke("POST", "/api/v1/schedules/missing/trigger")).status).toBe(400);
 
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "repo-1",
       prompt: "cancel-me",
-      commandProfile: "echo-prompt",
+      commandId: "cmd-echo",
       timeout: 10,
     });
     expect(created.status).toBe(201);

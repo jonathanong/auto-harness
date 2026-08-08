@@ -11,7 +11,8 @@ export type SessionSummary = {
   repositoryId?: string | null;
   agentId?: string | null;
   worktreeId?: string | null;
-  commandProfile?: string | null;
+  targetLabel?: string | null;
+  resolvedArgv?: string[] | null;
   prompt?: string | null;
   source?: string | null;
   ref?: string | null;
@@ -71,8 +72,8 @@ export function SessionDetail({
               </dd>
             </div>
             <div>
-              <dt className="text-xs uppercase text-muted-foreground">Command profile</dt>
-              <dd className="font-mono text-sm">{s.commandProfile ?? "—"}</dd>
+              <dt className="text-xs uppercase text-muted-foreground">Target</dt>
+              <dd className="font-mono text-sm">{s.targetLabel ?? "—"}</dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
@@ -160,6 +161,17 @@ export function SessionDetail({
             <dt className="text-xs uppercase text-muted-foreground">Prompt</dt>
             <dd className="whitespace-pre-wrap break-words text-sm">{s.prompt ?? "—"}</dd>
           </div>
+          {s.resolvedArgv && s.resolvedArgv.length > 0 ? (
+            <div>
+              <dt className="text-xs uppercase text-muted-foreground">Resolved argv</dt>
+              <dd
+                className="whitespace-pre-wrap break-words font-mono text-sm"
+                data-pw="session-detail-resolved-argv"
+              >
+                {s.resolvedArgv.join(" ")}
+              </dd>
+            </div>
+          ) : null}
           {s.errorMessage ? (
             <p
               className="rounded-md border border-destructive/40 bg-red-50 p-3 text-sm text-red-900"

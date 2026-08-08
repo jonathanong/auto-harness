@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => {
   it("orphan maps tryClaim and ack deadlines", () => {
@@ -9,6 +10,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       heartbeatStaleMs: 1,
       now: () => "2026-01-01T00:00:00.000Z",
     });
+    seedBaseCommand(planeO);
     planeO.registerAgent({
       agentId: "o1",
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
@@ -32,7 +34,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeO.createSession({
       repositoryId: "repo-1",
       prompt: "z",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     // force terminal without claim
@@ -49,6 +51,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(planeC);
     planeC.seedWorktree({
       id: "only",
       name: "only",
@@ -62,7 +65,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeC.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     // monkeypatch tryClaim by making worktree busy right before assign
@@ -88,6 +91,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       shardCount: 1,
       ackDeadlineMs: 1,
     });
+    seedBaseCommand(planeD);
     planeD.seedWorktree({
       id: "wd",
       name: "wd",
@@ -101,7 +105,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeD.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     planeD.assignQueued();

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: concurrency keys list and resume metadata", () => {
   it("concurrency keys list and resume metadata", () => {
@@ -15,6 +16,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(planeH);
     planeH.seedWorktree({
       id: "wh",
       name: "wh",
@@ -39,7 +41,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeH.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
       concurrencyKey: "done-key",
       onConflict: "reject",
@@ -49,7 +51,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       planeH.createSession({
         repositoryId: "repo-1",
         prompt: "p2",
-        commandProfile: "c",
+        commandId: BASE_COMMAND_ID,
         timeout: 1,
         concurrencyKey: "done-key",
         onConflict: "reject",
@@ -60,7 +62,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeH.createSession({
       repositoryId: "repo-1",
       prompt: "later",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     expect(planeH.listSessions().length).toBeGreaterThan(1);
@@ -75,6 +77,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       shardCount: 1,
     });
     planeI.state.sessions.set("src", {
+      id: "src",
       agentId: null,
       pinnedAgentId: "pin-agent",
       concurrencyKey: "ck",
@@ -82,7 +85,8 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       status: "completed",
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
+      targetLabel: "c",
       timeout: 1,
       priority: 0,
       requiredLabels: [],

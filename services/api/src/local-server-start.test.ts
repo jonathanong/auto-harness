@@ -6,11 +6,13 @@ import { MemorySessionStore } from "./memory-store.ts";
 describe("startLocalServer", () => {
   it("listens and closes", async () => {
     const port = 17420 + Math.floor(Math.random() * 1000);
+    const store = new MemorySessionStore({ idFactory: () => "sess-ls" });
+    store.plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     // Explicit in-process plane (unit test); production uses DynamoDB Local via useDynamo.
     const server = await startLocalServer({
       port,
       useDynamo: false,
-      store: new MemorySessionStore({ idFactory: () => "sess-ls" }),
+      store,
     });
     expect(server.port).toBe(port);
     const res = await fetch(`http://127.0.0.1:${port}/health`);
@@ -21,7 +23,7 @@ describe("startLocalServer", () => {
       body: JSON.stringify({
         repositoryId: "r",
         prompt: "p",
-        commandProfile: "c",
+        commandId: "cmd-c",
         timeout: 1,
       }),
     });

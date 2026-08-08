@@ -32,7 +32,8 @@ export class ControlPlane extends ControlPlaneCatalog {
     id: string,
     patch: Partial<{
       name: string;
-      commandProfile: string;
+      providerAccountId: string;
+      commandId: string;
       cron: string;
       timeout: number;
       nextRunAt: string;

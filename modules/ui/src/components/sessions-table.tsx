@@ -8,7 +8,7 @@ export type SessionRow = {
   status: string;
   repositoryId?: string | null;
   prompt?: string | null;
-  commandProfile?: string | null;
+  targetLabel?: string | null;
   source?: string | null;
   agentId?: string | null;
   createdAt?: string | null;
@@ -38,7 +38,7 @@ export function SessionsTable({
           <TableHead>ID</TableHead>
           <TableHead>Status</TableHead>
           {showAgent ? <TableHead>Agent</TableHead> : null}
-          <TableHead>Profile</TableHead>
+          <TableHead>Target</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
         </TableRow>
@@ -65,7 +65,7 @@ export function SessionsTable({
             {showAgent ? (
               <TableCell className="font-mono text-xs">{s.agentId ?? "—"}</TableCell>
             ) : null}
-            <TableCell>{s.commandProfile ?? "—"}</TableCell>
+            <TableCell>{s.targetLabel ?? "—"}</TableCell>
             <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
           </TableRow>

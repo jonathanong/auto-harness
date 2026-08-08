@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { AgentWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody } from "./control-plane-test-helpers.ts";
+import {
+  BASE_COMMAND_ID,
+  baseSessionBody,
+  putScheduleOrThrow,
+  seedBaseCommand,
+} from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane claim invariants", () => {
   it("hydrate and settle are no-ops without storage", async () => {
@@ -26,6 +31,7 @@ describe("ControlPlane claim invariants", () => {
         messages.push(msg);
       },
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -86,10 +92,11 @@ describe("ControlPlane claim invariants", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       scheduleIdFactory: () => "sched-1",
     });
-    const schedule = plane.putSchedule({
+    seedBaseCommand(plane);
+    const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "hourly",
-      commandProfile: "echo-prompt",
+      commandId: BASE_COMMAND_ID,
       cron: "0 * * * *",
       timeout: 60,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -131,6 +138,7 @@ describe("ControlPlane claim invariants", () => {
       idFactory: () => "sess-1",
       shardCount: 1,
     });
+    seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",

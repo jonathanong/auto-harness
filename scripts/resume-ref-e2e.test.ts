@@ -87,11 +87,19 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const loop = new AgentLoop({ config, transport });
       await loop.start();
 
+      plane.createCommand({
+        id: "cmd-echo",
+        name: "echo-prompt",
+        argv: ["printf", "%s"],
+        appendPrompt: true,
+        providerId: null,
+      });
+
       // First session on feature/resume
       const first = plane.createSession({
         repositoryId: "demo",
         prompt: "first",
-        commandProfile: "echo-prompt",
+        commandId: "cmd-echo",
         timeout: 60,
         ref: "feature/resume",
         requiredLabels: ["echo"],
@@ -108,7 +116,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const intervening = plane.createSession({
         repositoryId: "demo",
         prompt: "intervening",
-        commandProfile: "echo-prompt",
+        commandId: "cmd-echo",
         timeout: 60,
         ref: "main",
         requiredLabels: ["echo"],

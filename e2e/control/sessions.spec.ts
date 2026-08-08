@@ -21,11 +21,14 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("create-session-submit")).toBeVisible();
   });
 
-  test("create session via API-backed form when profiles exist", async ({ page, request }) => {
+  test("create session via API-backed form when targets exist", async ({ page, request }) => {
     await withLocalHostLock(async () => {
-      // Host config alone populates command-profiles (no agent register — parallel-safe).
+      // Host config populates the repo/worktree (no agent register — parallel-safe); the
+      // command itself comes from the global Command catalog, fed to the picker over
+      // GET /api/v1/session-targets.
       const repoId = `pw-sess-repo-${test.info().parallelIndex}-${Date.now()}`;
       const id = `pw-sess-${test.info().parallelIndex}-${Date.now()}`;
+      const commandName = `echo-prompt-${test.info().parallelIndex}-${Date.now()}`;
 
       await putHostRepo(request, {
         id: repoId,
@@ -33,14 +36,17 @@ test.describe("control plane sessions", () => {
         defaultBranch: "main",
         worktrees: [{ id: "wt-1", name: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
       });
+      await request.post("http://127.0.0.1:7430/api/v1/commands", {
+        data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },
+      });
 
       try {
         await page.goto("/sessions/new");
-        await expect(page.getByTestId("create-session-command-profile")).toBeEnabled({
+        await expect(page.getByTestId("create-session-target")).toBeEnabled({
           timeout: 15_000,
         });
         await page.getByTestId("create-session-repository-id").fill(repoId);
-        await page.getByTestId("create-session-command-profile").selectOption("echo-prompt");
+        await page.getByTestId("create-session-target").selectOption({ label: commandName });
         await page.getByTestId("create-session-prompt").fill(`hello-${id}`);
         await page.getByTestId("create-session-timeout").fill("30");
         await page.getByTestId("create-session-submit").click();

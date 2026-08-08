@@ -11,7 +11,8 @@ export type SessionAssign = {
   sessionId: string;
   repositoryId: string;
   prompt: string;
-  commandProfile: string;
+  /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
+  resolvedArgv: string[];
   timeout: number;
   worktreeId: string | null;
   ref?: string;
@@ -47,7 +48,9 @@ export type SessionStatusUpdate = {
 export type CreateSessionFields = {
   repositoryId: string;
   prompt: string;
-  commandProfile: string;
+  /** Exactly one of providerAccountId/commandId is set. */
+  providerAccountId?: string;
+  commandId?: string;
   timeout: number;
   priority: number;
   requiredLabels: string[];
@@ -66,7 +69,7 @@ export type AgentWireMessage =
       sessionId: string;
       repositoryId: string;
       prompt: string;
-      commandProfile: string;
+      resolvedArgv: string[];
       timeout: number;
       worktreeId: string | null;
       ref?: string;

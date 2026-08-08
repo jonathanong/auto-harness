@@ -4,6 +4,7 @@ import * as commands from "./control-plane-commands.ts";
 import type { CommandInput } from "./control-plane-commands.ts";
 import * as providerAccounts from "./control-plane-provider-accounts.ts";
 import * as providers from "./control-plane-providers.ts";
+import { listSessionTargets, type SessionTarget } from "./control-plane-session-targets.ts";
 
 /**
  * Provider/ProviderAccount/Command catalog delegators — split from
@@ -92,5 +93,9 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
 
   deleteCommand(id: string): { ok: true } | { ok: false; error: string } {
     return commands.deleteCommand(this.state, id);
+  }
+
+  listSessionTargets(): SessionTarget[] {
+    return listSessionTargets(this.state);
   }
 }

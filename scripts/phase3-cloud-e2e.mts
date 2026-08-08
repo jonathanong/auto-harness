@@ -83,10 +83,17 @@ async function main(): Promise<void> {
     const loop = new AgentLoop({ config, transport });
     await loop.start();
 
+    plane.createCommand({
+      id: "cmd-echo",
+      name: "echo-prompt",
+      argv: ["printf", "%s"],
+      appendPrompt: true,
+      providerId: null,
+    });
     const created = plane.createSession({
       repositoryId: "demo",
       prompt: "hello-p3",
-      commandProfile: "echo-prompt",
+      commandId: "cmd-echo",
       timeout: 60,
       ref: "feature/p3",
       requiredLabels: ["echo"],
@@ -134,27 +141,42 @@ async function main(): Promise<void> {
       throw new Error(`worktree HEAD ${head} != feature ${featureSha}`);
     }
 
-    // Unknown profile rejected by agent (Invariant 8 / D4); hook failure must not flip status
-    writeFileSync(hook, `#!/bin/sh\nexit 1\n`, { mode: 0o755 });
+    // Unknown command rejected at create time (existence check), not spawn time.
     const bad = plane.createSession({
       repositoryId: "demo",
       prompt: "x",
-      commandProfile: "not-a-profile",
+      commandId: "not-a-command",
       timeout: 30,
       requiredLabels: ["echo"],
     });
-    if (!bad.ok) {
-      throw new Error("create should accept profile name string (agent rejects unknown)");
+    if (bad.ok) {
+      throw new Error("create should reject a commandId that doesn't exist");
+    }
+
+    // Terminal hook failure must not flip a real command failure's reported status (D3).
+    writeFileSync(hook, `#!/bin/sh\nexit 1\n`, { mode: 0o755 });
+    plane.createCommand({
+      id: "cmd-fail",
+      name: "always-fail",
+      argv: ["false"],
+      appendPrompt: false,
+      providerId: null,
+    });
+    const failing = plane.createSession({
+      repositoryId: "demo",
+      prompt: "x",
+      commandId: "cmd-fail",
+      timeout: 30,
+      requiredLabels: ["echo"],
+    });
+    if (!failing.ok) {
+      throw new Error(failing.error);
     }
     plane.assignQueued();
     await loop.waitForIdle();
-    const badSess = plane.getSession(bad.session.id);
-    if (badSess?.status !== "failed" || badSess.errorCode !== "unknown_command_profile") {
-      throw new Error(`expected unknown_command_profile, got ${JSON.stringify(badSess)}`);
-    }
-    // status remains failed despite hook exit 1
-    if (plane.getSession(bad.session.id)?.status !== "failed") {
-      throw new Error("hook failure altered session status");
+    const failedSess = plane.getSession(failing.session.id);
+    if (failedSess?.status !== "failed") {
+      throw new Error(`expected failed, got ${JSON.stringify(failedSess)}`);
     }
     loop.stop();
 

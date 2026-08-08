@@ -30,7 +30,7 @@ describe("AgentLoop drain", () => {
         sessionId: "sess-x",
         repositoryId: "demo",
         prompt: "x",
-        commandProfile: "echo-prompt",
+        resolvedArgv: ["printf", "%s", "x"],
         timeout: 10,
         worktreeId: "wt-1",
         assignedAt: new Date().toISOString(),

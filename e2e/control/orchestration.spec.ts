@@ -51,9 +51,16 @@ test.describe("real orchestration", () => {
               worktrees: [{ id: wtId, name: wtId, path: wt, labels: ["echo"] }],
             },
           ],
-          commandProfiles: {
-            "echo-prompt": { argv: ["echo", "hello world"], appendPrompt: false },
-          },
+          commandProfiles: {},
+        },
+      });
+      const commandName = `echo-prompt-${test.info().parallelIndex}-${Date.now()}`;
+      await request.post(`${API}/api/v1/commands`, {
+        data: {
+          name: commandName,
+          argv: ["echo", "hello world"],
+          appendPrompt: false,
+          providerId: null,
         },
       });
 
@@ -72,11 +79,11 @@ test.describe("real orchestration", () => {
       await new Promise((r) => setTimeout(r, 200));
 
       await page.goto("/sessions/new");
-      await expect(page.getByTestId("create-session-command-profile")).toBeEnabled({
+      await expect(page.getByTestId("create-session-target")).toBeEnabled({
         timeout: 15_000,
       });
       await page.getByTestId("create-session-repository-id").fill(repoId);
-      await page.getByTestId("create-session-command-profile").selectOption("echo-prompt");
+      await page.getByTestId("create-session-target").selectOption({ label: commandName });
       await page.getByTestId("create-session-prompt").fill("unused");
       await page.getByTestId("create-session-timeout").fill("30");
       await page.getByTestId("create-session-submit").click();

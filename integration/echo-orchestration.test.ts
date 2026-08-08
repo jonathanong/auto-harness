@@ -86,14 +86,23 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
           worktrees: [{ id: "wt-1", name: "wt-1", path: wt, labels: ["echo"] }],
         },
       ],
-      commandProfiles: {
-        "echo-prompt": { argv: ["echo", "hello world"], appendPrompt: false },
-      },
+      providerAccounts: [],
+      commandProfiles: {},
     };
 
     const daemon = await startAgentDaemon({ config, log: () => undefined, error: () => undefined });
     stopAgent = daemon.stop;
     await sleep(100);
+
+    const commandResult = server.plane.createCommand({
+      name: "echo-prompt",
+      argv: ["echo", "hello world"],
+      appendPrompt: false,
+      providerId: null,
+    });
+    if (!commandResult.ok) {
+      throw new Error(commandResult.error);
+    }
 
     const created = await fetch(`http://127.0.0.1:${port}/api/v1/sessions`, {
       method: "POST",
@@ -101,7 +110,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
       body: JSON.stringify({
         repositoryId: "demo",
         prompt: "unused",
-        commandProfile: "echo-prompt",
+        commandId: commandResult.command.id,
         timeout: 60,
         requiredLabels: ["echo"],
       }),

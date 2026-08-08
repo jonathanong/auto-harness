@@ -5,6 +5,7 @@ import { SpawnProcessRunner } from "../../services/agent/src/executor.ts";
 import { createGitClient } from "../../services/agent/src/git.ts";
 import { SessionRunner } from "../../services/agent/src/session-runner.ts";
 import { WorktreeManager } from "../../services/agent/src/worktree-manager.ts";
+import { ControlPlane } from "../../services/api/src/control-plane.ts";
 import { createLocalApp } from "../../services/api/src/local-server.ts";
 import { MemorySessionStore } from "../../services/api/src/memory-store.ts";
 import { revParse } from "./git.mts";
@@ -13,7 +14,7 @@ import type { LocalE2ePaths } from "./setup.mts";
 const CREATE_BODY = {
   repositoryId: "demo",
   prompt: "hello-from-e2e",
-  commandProfile: "echo-prompt",
+  commandId: "cmd-e2e",
   timeout: 30,
   ref: "feature/local-e2e",
   requiredLabels: ["echo"],
@@ -23,14 +24,22 @@ export async function createSessionViaApi(): Promise<{
   id: string;
   status: string;
   url: string;
-  commandProfile: string;
+  targetLabel: string;
   ref?: string;
 }> {
-  const store = new MemorySessionStore({
+  const plane = new ControlPlane({
     publicBaseUrl: "http://localhost:7421",
     idFactory: () => "sess-e2e",
     now: () => new Date().toISOString(),
   });
+  plane.createCommand({
+    id: "cmd-e2e",
+    name: "echo-prompt",
+    argv: ["echo"],
+    appendPrompt: true,
+    providerId: null,
+  });
+  const store = new MemorySessionStore({ plane });
   const { handler } = createLocalApp({ store });
   let createStatus = 0;
   let createJson = "";
@@ -63,7 +72,7 @@ export async function createSessionViaApi(): Promise<{
     id: string;
     status: string;
     url: string;
-    commandProfile: string;
+    targetLabel: string;
     ref?: string;
   };
   if (created.status !== "queued" || !created.url.includes(created.id)) {
@@ -78,7 +87,6 @@ export async function assertUnknownProfileFails(config: AgentConfig): Promise<vo
   const worktrees = new WorktreeManager(config, gitClient);
   await worktrees.ensureAll();
   const sessionRunner = new SessionRunner({
-    config,
     worktrees,
     processRunner: runner,
   });
@@ -86,7 +94,7 @@ export async function assertUnknownProfileFails(config: AgentConfig): Promise<vo
     sessionId: "sess-bad-profile",
     repositoryId: "demo",
     prompt: "x",
-    commandProfile: "does-not-exist",
+    resolvedArgv: [],
     timeout: 30,
     worktreeId: "wt-1",
     ref: "feature/local-e2e",
@@ -107,7 +115,6 @@ export async function runHappyPath(
   const worktrees = new WorktreeManager(config, gitClient);
   await worktrees.ensureAll();
   const sessionRunner = new SessionRunner({
-    config,
     worktrees,
     processRunner,
   });
@@ -115,7 +122,7 @@ export async function runHappyPath(
     sessionId: created.id,
     repositoryId: "demo",
     prompt: CREATE_BODY.prompt,
-    commandProfile: CREATE_BODY.commandProfile,
+    resolvedArgv: ["echo", CREATE_BODY.prompt],
     timeout: CREATE_BODY.timeout,
     worktreeId: "wt-1",
     ref: "feature/local-e2e",

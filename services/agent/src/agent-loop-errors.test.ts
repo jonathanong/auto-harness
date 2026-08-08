@@ -6,7 +6,7 @@ import { AgentLoop, createLoopbackTransport } from "./agent-loop.ts";
 import { makeRepo } from "./agent-loop-test-helpers.ts";
 
 describe("AgentLoop errors", () => {
-  it("rejects unknown profile without shell spawn success", async () => {
+  it("rejects an empty resolvedArgv without shell spawn success", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: AgentToServerMessage[] = [];
@@ -22,7 +22,7 @@ describe("AgentLoop errors", () => {
         sessionId: "sess-bad",
         repositoryId: "demo",
         prompt: "x",
-        commandProfile: "does-not-exist",
+        resolvedArgv: [],
         timeout: 10,
         worktreeId: "wt-1",
         assignedAt: new Date().toISOString(),
@@ -70,7 +70,7 @@ describe("AgentLoop errors", () => {
         sessionId: "sess-opt",
         repositoryId: "demo",
         prompt: "x",
-        commandProfile: "echo-prompt",
+        resolvedArgv: ["printf", "%s", "x"],
         timeout: 10,
         worktreeId: "wt-1",
         ref: "main",
@@ -110,7 +110,7 @@ describe("AgentLoop errors", () => {
         sessionId: "sess-str",
         repositoryId: "demo",
         prompt: "x",
-        commandProfile: "echo-prompt",
+        resolvedArgv: ["printf", "%s", "x"],
         timeout: 10,
         worktreeId: "wt-1",
         assignedAt: new Date().toISOString(),

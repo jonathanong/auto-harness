@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
   it("bound sessions pin and offline claim", () => {
@@ -9,6 +10,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(planeE);
     planeE.seedWorktree({
       id: "we",
       name: "we",
@@ -22,7 +24,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeE.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     const es = planeE.state.sessions.get("e1")!;
@@ -41,6 +43,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       shardCount: 1,
       ackDeadlineMs: 60_000,
     });
+    seedBaseCommand(planeF);
     planeF.seedWorktree({
       id: "wf",
       name: "wf",
@@ -54,7 +57,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
       ref: "main",
     });
@@ -96,6 +99,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
+    seedBaseCommand(planeG);
     planeG.seedWorktree({
       id: "wg",
       name: "wg",
@@ -109,7 +113,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeG.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandProfile: "c",
+      commandId: BASE_COMMAND_ID,
       timeout: 1,
     });
     const gMap = planeG.state.worktrees;

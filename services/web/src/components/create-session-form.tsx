@@ -5,8 +5,10 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
+import { decodeSessionTargetOptionValue, type SessionTarget } from "../session-target.ts";
+import { SessionTargetSelect } from "./session-target-select.tsx";
 
-export function CreateSessionForm({ profiles }: { profiles: string[] }) {
+export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +21,11 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
         e.preventDefault();
         setError(null);
         const fd = new FormData(e.currentTarget);
+        const target = decodeSessionTargetOptionValue(String(fd.get("target") ?? ""));
         const body = {
           repositoryId: String(fd.get("repositoryId") ?? ""),
           prompt: String(fd.get("prompt") ?? ""),
-          commandProfile: String(fd.get("commandProfile") ?? ""),
+          ...target,
           timeout: Number(fd.get("timeout") ?? 600),
           ref: String(fd.get("ref") ?? "") || undefined,
         };
@@ -64,30 +67,18 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
         />
       </div>
       <div className="space-y-1">
-        <Label
-          htmlFor="commandProfile"
-          tip="Named command profile from an agent’s host inventory (e.g. echo-prompt)"
-        >
-          Command profile
+        <Label htmlFor="target" tip="Provider account (cascade-resolved) or standalone command">
+          Target
         </Label>
-        <select
-          id="commandProfile"
-          name="commandProfile"
-          required
-          data-pw="create-session-command-profile"
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          defaultValue={profiles[0] ?? ""}
-        >
-          {profiles.length === 0 ? <option value="">(no profiles — connect a host)</option> : null}
-          {profiles.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
+        <SessionTargetSelect
+          targets={targets}
+          id="target"
+          name="target"
+          dataPw="create-session-target"
+        />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="prompt" tip="Prompt text passed to the command profile on the agent">
+        <Label htmlFor="prompt" tip="Prompt text passed to the resolved command">
           Prompt
         </Label>
         <Textarea id="prompt" name="prompt" required rows={4} data-pw="create-session-prompt" />
@@ -120,14 +111,14 @@ export function CreateSessionForm({ profiles }: { profiles: string[] }) {
       ) : null}
       <WithTooltip
         tip={
-          profiles.length === 0
-            ? "Start an agent with command profiles first"
+          targets.length === 0
+            ? "Add a provider account or command first"
             : "Queue a session for assignment to an online agent worktree"
         }
       >
         <Button
           type="submit"
-          disabled={pending || profiles.length === 0}
+          disabled={pending || targets.length === 0}
           data-pw="create-session-submit"
         >
           {pending ? "Creating…" : "Create session"}

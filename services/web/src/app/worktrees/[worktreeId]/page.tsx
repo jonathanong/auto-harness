@@ -30,7 +30,7 @@ type Session = {
   status: string;
   worktreeId?: string | null;
   agentId?: string | null;
-  commandProfile?: string;
+  targetLabel?: string;
   prompt?: string;
   source?: string;
 };

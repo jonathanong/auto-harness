@@ -50,7 +50,6 @@ describe("SessionRunner success paths", () => {
     };
     const worktrees = new WorktreeManager(config, git);
     const sessionRunner = new SessionRunner({
-      config,
       worktrees,
       processRunner: {
         async run() {
@@ -62,7 +61,7 @@ describe("SessionRunner success paths", () => {
     expect(checkouts).toEqual(["feature/pr-1"]);
   });
 
-  it("rejects unknown command profiles without spawning", async () => {
+  it("rejects an empty resolvedArgv without spawning", async () => {
     const spawn = vi.fn();
     const runner: ProcessRunner = {
       async run(opts) {
@@ -71,10 +70,10 @@ describe("SessionRunner success paths", () => {
       },
     };
     const { sessionRunner } = setup(runner);
-    const result = await sessionRunner.run(baseAssign({ commandProfile: "nope" }));
+    const result = await sessionRunner.run(baseAssign({ resolvedArgv: [] }));
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("unknown_command_profile");
-    expect(spawn).not.toHaveBeenCalledWith(expect.arrayContaining(["nope"]));
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("marks usage_limit when output matches", async () => {
@@ -88,7 +87,7 @@ describe("SessionRunner success paths", () => {
       },
     };
     const { sessionRunner, hooks } = setup(runner);
-    const result = await sessionRunner.run(baseAssign({ commandProfile: "usage-cmd" }));
+    const result = await sessionRunner.run(baseAssign({ resolvedArgv: ["usage"] }));
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("usage_limit");
     expect(hooks).toEqual(["failed"]);
@@ -131,7 +130,6 @@ describe("SessionRunner success paths", () => {
     };
     const worktrees = new WorktreeManager(config, git);
     const sessionRunner = new SessionRunner({
-      config,
       worktrees,
       processRunner: {
         async run(opts) {

@@ -14,6 +14,12 @@ describe("createPlaneWsBridge", () => {
       idFactory: () => "sess-1",
       shardCount: 1,
     });
+    plane.createCommand({
+      id: "cmd-echo",
+      name: "echo-prompt",
+      argv: ["echo"],
+      providerId: null,
+    });
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -58,7 +64,7 @@ describe("createPlaneWsBridge", () => {
           plane.createSession({
             repositoryId: "r1",
             prompt: "p",
-            commandProfile: "echo-prompt",
+            commandId: "cmd-echo",
             timeout: 10,
           });
           plane.assignQueued();

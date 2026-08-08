@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentConfig } from "./config.ts";
 import { parseAgentConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import type { GitClient } from "./git.ts";
@@ -58,7 +57,6 @@ describe("SessionRunner process and profile failures", () => {
     const worktrees = new WorktreeManager(config, git);
     const hooks: string[] = [];
     const sessionRunner = new SessionRunner({
-      config,
       worktrees,
       processRunner: {
         async run(opts) {
@@ -81,67 +79,17 @@ describe("SessionRunner process and profile failures", () => {
     expect(result.logs.some((l) => l.content.includes("setup no"))).toBe(true);
   });
 
-  it("maps Error and non-Error throws from profile resolve", async () => {
-    const config = parseAgentConfig({
-      agentId: "a1",
-      commandProfiles: {
-        "echo-prompt": { argv: ["echo"], appendPrompt: true },
-      },
-      repositories: [
-        {
-          id: "repo-1",
-          path: "/repo",
-          defaultBranch: "main",
-          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
-        },
-      ],
-    });
-    const worktrees = new WorktreeManager(config, {
-      ensureRepo: async () => undefined,
-      ensureWorktree: async () => undefined,
-      checkoutRef: async () => undefined,
-      revParse: async () => "x",
-    });
-    const asError = new SessionRunner({
-      config: {
-        ...config,
-        commandProfiles: new Proxy(
-          {},
-          {
-            get() {
-              throw new Error("profile boom");
-            },
-          },
-        ) as AgentConfig["commandProfiles"],
-      },
-      worktrees,
-      processRunner: {
-        async run() {
-          return { exitCode: 0, timedOut: false, signal: null };
-        },
+  it("rejects an empty resolvedArgv without spawning (control-plane resolution failed)", async () => {
+    const spawn: string[][] = [];
+    const { sessionRunner } = setup({
+      async run(opts) {
+        spawn.push(opts.argv);
+        return { exitCode: 0, timedOut: false, signal: null };
       },
     });
-    expect((await asError.run(baseAssign())).errorMessage).toBe("profile boom");
-
-    const asString = new SessionRunner({
-      config: {
-        ...config,
-        commandProfiles: new Proxy(
-          {},
-          {
-            get() {
-              throw "string-throw";
-            },
-          },
-        ) as AgentConfig["commandProfiles"],
-      },
-      worktrees,
-      processRunner: {
-        async run() {
-          return { exitCode: 0, timedOut: false, signal: null };
-        },
-      },
-    });
-    expect((await asString.run(baseAssign())).errorMessage).toBe("string-throw");
+    const result = await sessionRunner.run(baseAssign({ resolvedArgv: [] }));
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("unknown_command_profile");
+    expect(spawn).toEqual([]);
   });
 });

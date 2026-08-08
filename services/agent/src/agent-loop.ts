@@ -46,7 +46,6 @@ export class AgentLoop {
     const git = createGitClient(processRunner);
     this.worktrees = new WorktreeManager(options.config, git);
     this.runner = new SessionRunner({
-      config: options.config,
       worktrees: this.worktrees,
       processRunner,
       onLog: (chunk) => {
@@ -166,7 +165,7 @@ export class AgentLoop {
       sessionId: msg.sessionId,
       repositoryId: msg.repositoryId,
       prompt: msg.prompt,
-      commandProfile: msg.commandProfile,
+      resolvedArgv: msg.resolvedArgv,
       timeout: msg.timeout,
       worktreeId: msg.worktreeId,
       ...(msg.ref !== undefined ? { ref: msg.ref } : {}),

@@ -57,7 +57,7 @@ describe("runtime helpers", () => {
         sessionId: "s",
         repositoryId: "repo-1",
         prompt: "hi",
-        commandProfile: "echo",
+        resolvedArgv: ["echo", "hi"],
         timeout: 10,
         worktreeId: "wt-1",
       },
