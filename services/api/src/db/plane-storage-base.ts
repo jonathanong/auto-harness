@@ -72,20 +72,20 @@ export class DynamoPlaneStorageBase {
     return sessions.setWorktreeOnline(this.ctx, worktreeId, online);
   }
 
-  tryAcquireAgentLock(opts: {
+  tryAcquireHostLock(opts: {
     hostId: string;
     connectionId: string;
     replaceExisting: boolean;
   }): Promise<boolean> {
-    return locks.tryAcquireAgentLock(this.ctx, opts);
+    return locks.tryAcquireHostLock(this.ctx, opts);
   }
 
-  releaseAgentLock(hostId: string, connectionId: string): Promise<void> {
-    return locks.releaseAgentLock(this.ctx, hostId, connectionId);
+  releaseHostLock(hostId: string, connectionId: string): Promise<void> {
+    return locks.releaseHostLock(this.ctx, hostId, connectionId);
   }
 
-  getAgentLock(hostId: string): Promise<string | null> {
-    return locks.getAgentLock(this.ctx, hostId);
+  getHostLock(hostId: string): Promise<string | null> {
+    return locks.getHostLock(this.ctx, hostId);
   }
 
   putConnection(conn: ConnectionRecord): Promise<void> {

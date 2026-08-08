@@ -103,7 +103,7 @@ export function registerHost(
     queueWrite(
       state,
       state.storage
-        .tryAcquireAgentLock({
+        .tryAcquireHostLock({
           hostId: opts.hostId,
           connectionId,
           replaceExisting: replaceLock,

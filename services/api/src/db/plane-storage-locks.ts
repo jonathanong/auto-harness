@@ -10,7 +10,7 @@ import {
  * Conditional agent lock (Invariant 3).
  * Returns false if hostId already locked and replace is false.
  */
-export async function tryAcquireAgentLock(
+export async function tryAcquireHostLock(
   ctx: PlaneStorageCtx,
   opts: { hostId: string; connectionId: string; replaceExisting: boolean },
 ): Promise<boolean> {
@@ -40,7 +40,7 @@ export async function tryAcquireAgentLock(
   }
 }
 
-export async function releaseAgentLock(
+export async function releaseHostLock(
   ctx: PlaneStorageCtx,
   hostId: string,
   connectionId: string,
@@ -62,7 +62,7 @@ export async function releaseAgentLock(
   }
 }
 
-export async function getAgentLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
+export async function getHostLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.hostLocks, Key: { hostId } }),
   );

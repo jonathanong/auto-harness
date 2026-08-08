@@ -61,26 +61,26 @@ describe("DynamoDB Local storage", () => {
     await s.setWorktreeOnline("wt-1", true);
 
     expect(
-      await s.tryAcquireAgentLock({
+      await s.tryAcquireHostLock({
         hostId: "ag1",
         connectionId: "c1",
         replaceExisting: false,
       }),
     ).toBe(true);
     expect(
-      await s.tryAcquireAgentLock({
+      await s.tryAcquireHostLock({
         hostId: "ag1",
         connectionId: "c2",
         replaceExisting: false,
       }),
     ).toBe(false);
-    expect(await s.getAgentLock("ag1")).toBe("c1");
-    await s.releaseAgentLock("ag1", "wrong");
-    expect(await s.getAgentLock("ag1")).toBe("c1");
-    await s.releaseAgentLock("ag1", "c1");
-    expect(await s.getAgentLock("ag1")).toBeNull();
+    expect(await s.getHostLock("ag1")).toBe("c1");
+    await s.releaseHostLock("ag1", "wrong");
+    expect(await s.getHostLock("ag1")).toBe("c1");
+    await s.releaseHostLock("ag1", "c1");
+    expect(await s.getHostLock("ag1")).toBeNull();
     expect(
-      await s.tryAcquireAgentLock({
+      await s.tryAcquireHostLock({
         hostId: "ag1",
         connectionId: "c3",
         replaceExisting: true,
