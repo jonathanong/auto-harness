@@ -4,7 +4,7 @@ import { createControlPlaneState } from "./control-plane-state.ts";
 import { listSessionTargets } from "./control-plane-session-targets.ts";
 
 describe("listSessionTargets", () => {
-  it("lists provider accounts and standalone commands, sorted by label", () => {
+  it("lists attached provider accounts and standalone commands, sorted by label", () => {
     const state = createControlPlaneState();
     state.providers.set("prov-1", {
       id: "prov-1",
@@ -18,6 +18,13 @@ describe("listSessionTargets", () => {
       providerId: "prov-1",
       label: "z@y.com",
       createdAt: "t",
+      updatedAt: "t",
+    });
+    state.agentHosts.set("host-1", {
+      agentId: "host-1",
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "acct-1" }],
+      commandProfiles: {},
       updatedAt: "t",
     });
     state.commands.set("cmd-standalone", {
@@ -45,6 +52,33 @@ describe("listSessionTargets", () => {
       { kind: "command", id: "cmd-standalone", label: "aardvark" },
       { kind: "provider-account", id: "acct-1", label: "claude — z@y.com", providerId: "prov-1" },
     ]);
+  });
+
+  it("excludes a provider account that exists but isn't attached to any host", () => {
+    const state = createControlPlaneState();
+    state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.providerAccounts.set("acct-unattached", {
+      id: "acct-unattached",
+      providerId: "prov-1",
+      label: "z@y.com",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    // A host inventory exists, but this account isn't in its providerAccounts list.
+    state.agentHosts.set("host-1", {
+      agentId: "host-1",
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+      updatedAt: "t",
+    });
+    expect(listSessionTargets(state)).toEqual([]);
   });
 
   it("skips a provider account whose provider record is missing (defensive)", () => {
