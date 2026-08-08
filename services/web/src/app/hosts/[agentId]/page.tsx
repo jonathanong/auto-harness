@@ -1,8 +1,8 @@
 import Link from "next/link";
-import type { HostInventory } from "@auto-harness/shared";
+import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { DrainButton, StatusBadge, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
-import { HostCommandProfilesSection } from "../../../components/host-command-profiles-section.tsx";
+import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
@@ -50,10 +50,13 @@ export default async function HostDetailPage({
     );
   }
 
-  const inv: HostInventory = inventory ?? {
+  const inv: HostInventory = {
     repositories: [],
-    providerAccounts: [],
     commandProfiles: {},
+    ...inventory,
+    // A record persisted before this field existed can genuinely lack it at runtime,
+    // despite the type saying it's required — never crash on stale storage data.
+    providerAccounts: inventory?.providerAccounts ?? [],
   };
 
   let catalog: RepoCatalogEntry[] = [];
@@ -75,6 +78,25 @@ export default async function HostDetailPage({
     /* ignore — worktree status shows unknown */
   }
   const liveById = Object.fromEntries(liveWorktrees.map((w) => [w.id, w]));
+
+  let providers: Provider[] = [];
+  let providerAccounts: ProviderAccount[] = [];
+  let commands: Command[] = [];
+  try {
+    const [p, a, c] = await Promise.all([
+      apiGet<{ items: Provider[] }>("/api/v1/providers"),
+      apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
+      apiGet<{ items: Command[] }>("/api/v1/commands"),
+    ]);
+    providers = p.items ?? [];
+    providerAccounts = a.items ?? [];
+    commands = c.items ?? [];
+  } catch {
+    /* ignore — provider accounts section shows nothing to attach */
+  }
+  const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
+  const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
+  const commandsById = Object.fromEntries(commands.map((c) => [c.id, c]));
 
   const repoCount = inv.repositories.length;
   const worktreeCount = inv.repositories.reduce((n, r) => n + r.worktrees.length, 0);
@@ -142,9 +164,17 @@ export default async function HostDetailPage({
             ),
           },
           {
-            key: "profiles",
-            label: "Command profiles",
-            content: <HostCommandProfilesSection agentId={agentId} inventory={inv} />,
+            key: "provider-accounts",
+            label: "Provider accounts",
+            content: (
+              <HostProviderAccountsSection
+                agentId={agentId}
+                inventory={inv}
+                accountsById={providerAccountsById}
+                providersById={providersById}
+                commandsById={commandsById}
+              />
+            ),
           },
         ]}
       />
