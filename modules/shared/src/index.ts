@@ -90,6 +90,11 @@ export {
   detachProviderAccountFromHost,
   setHostProviderAccountCommand,
 } from "./host-provider-accounts.ts";
+export {
+  setScopeProviderCommand,
+  setScopeProviderEnabled,
+  type ProviderAccountScope,
+} from "./scope-provider-accounts.ts";
 
 export { newId } from "./id.ts";
 export { isValidSlugName, SLUG_NAME_HINT, SLUG_PATTERN } from "./slug.ts";
@@ -108,3 +113,9 @@ export {
   resolveProviderAccountEnabled,
   type ProviderCatalog,
 } from "./provider-cascade.ts";
+export {
+  resolveProviderAccountsForScope,
+  type ProviderAccountCommandSource,
+  type ProviderAccountScopeResolution,
+  type ProviderAccountScopeSource,
+} from "./provider-cascade-scope.ts";

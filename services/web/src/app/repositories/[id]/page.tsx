@@ -8,10 +8,13 @@ import {
   type RepositorySummary,
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
+import type { HostInventory } from "@auto-harness/shared";
 
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
+import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +104,21 @@ export default async function RepositoryDetailPage({
     /* ignore — attached-hosts list stays empty */
   }
 
+  const { providersById, providerAccountsById, commandsById, catalog } =
+    await fetchProviderCatalogLookups();
+
+  const hostInventories = await Promise.all(
+    attachedHosts.map(async (h) => {
+      try {
+        return await apiGet<HostInventory>(
+          `/api/v1/agents/${encodeURIComponent(h.agentId)}/config`,
+        );
+      } catch {
+        return null;
+      }
+    }),
+  );
+
   return (
     <div data-pw="page-repository-detail">
       <RepositoryDetail
@@ -136,6 +154,21 @@ export default async function RepositoryDetailPage({
                   showAgent
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees registered for this repository."
+                />
+              ),
+            },
+            {
+              key: "provider-accounts",
+              label: "Provider accounts",
+              content: (
+                <RepositoryProviderAccountsTab
+                  repositoryId={repositoryId}
+                  attachedHosts={attachedHosts}
+                  hostInventories={hostInventories}
+                  catalog={catalog}
+                  providerAccountsById={providerAccountsById}
+                  providersById={providersById}
+                  commandsById={commandsById}
                 />
               ),
             },

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { HostInventory } from "@auto-harness/shared";
+import { resolveProviderAccountsForScope, type HostInventory } from "@auto-harness/shared";
 import {
   RemoveWorktreeButton,
   SessionsTable,
@@ -10,7 +10,9 @@ import {
 } from "@auto-harness/ui";
 
 import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
+import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -96,9 +98,17 @@ export default async function WorktreeDetailPage({
       /* ignore — edit/remove actions stay hidden below */
     }
   }
-  const hostWorktree = inventory?.repositories
-    .find((r) => r.id === worktree.repositoryId)
-    ?.worktrees.find((w) => w.id === worktree.id);
+  const hostRepository = inventory?.repositories.find((r) => r.id === worktree.repositoryId);
+  const hostWorktree = hostRepository?.worktrees.find((w) => w.id === worktree.id);
+
+  const { providersById, providerAccountsById, commandsById, catalog } =
+    await fetchProviderCatalogLookups();
+  const providerResolutions = resolveProviderAccountsForScope(
+    hostWorktree,
+    hostRepository,
+    inventory ?? undefined,
+    catalog,
+  );
 
   const row: WorktreeRow = {
     id: worktree.id,
@@ -142,6 +152,26 @@ export default async function WorktreeDetailPage({
                   hrefBase="/sessions"
                   emptyMessage="No recent sessions in this worktree."
                 />
+              ),
+            },
+            {
+              key: "provider-accounts",
+              label: "Provider accounts",
+              content: worktree.agentId ? (
+                <ProviderScopeTable
+                  agentId={worktree.agentId}
+                  scope={{ repositoryId: worktree.repositoryId, worktreeId: worktree.id }}
+                  inheritedEnabledLabel="repository"
+                  resolutions={providerResolutions}
+                  overridesAtScope={hostWorktree?.providerAccountOverrides ?? {}}
+                  accountsById={providerAccountsById}
+                  providersById={providersById}
+                  commandsById={commandsById}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Not associated with a host inventory.
+                </p>
               ),
             },
             {
