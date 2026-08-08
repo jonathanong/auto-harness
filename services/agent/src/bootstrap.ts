@@ -26,6 +26,7 @@ export function emptyAgentConfig(identity: AgentIdentity): AgentConfig {
     agentId: identity.agentId,
     apiUrl: identity.apiUrl,
     repositories: [],
+    providerAccounts: [],
     commandProfiles: {},
     logLevel: identity.logLevel,
   };

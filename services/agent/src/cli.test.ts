@@ -13,6 +13,7 @@ import {
 const sampleConfig: AgentConfig = {
   agentId: "a1",
   logLevel: "info",
+  providerAccounts: [],
   commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },
   repositories: [
     {

@@ -1,3 +1,5 @@
+import { parseProviderAccountOverrides, parseProviderAccounts } from "@auto-harness/shared";
+
 import type {
   AgentConfig,
   CommandProfileConfig,
@@ -63,6 +65,10 @@ function parseWorktree(raw: unknown, index: number, repoId: string): WorktreeCon
     }
     wt.setupScript = raw.setupScript;
   }
+  const wtOverrides = parseProviderAccountOverrides(raw.providerAccountOverrides, `worktree.${id}`);
+  if (wtOverrides !== undefined) {
+    wt.providerAccountOverrides = wtOverrides;
+  }
   return wt;
 }
 
@@ -97,6 +103,13 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
     }
     repo.terminalHookScript = raw.terminalHookScript;
   }
+  const repoOverrides = parseProviderAccountOverrides(
+    raw.providerAccountOverrides,
+    `repository.${id}`,
+  );
+  if (repoOverrides !== undefined) {
+    repo.providerAccountOverrides = repoOverrides;
+  }
   return repo;
 }
 
@@ -129,6 +142,7 @@ export function parseAgentConfig(raw: unknown, options: ParseAgentConfigOptions 
   const config: AgentConfig = {
     agentId,
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
+    providerAccounts: parseProviderAccounts(raw.providerAccounts),
     commandProfiles: parseCommandProfiles(raw.commandProfiles ?? {}),
     logLevel,
   };

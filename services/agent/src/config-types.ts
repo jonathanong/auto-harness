@@ -5,12 +5,19 @@ export type CommandProfileConfig = {
   appendPrompt: boolean;
 };
 
+/** Enable/command override for a provider account at a repository or worktree scope. */
+export type ProviderAccountOverride = {
+  enabled?: boolean;
+  commandId?: string;
+};
+
 export type WorktreeConfig = {
   id: string;
   name: string;
   path: string;
   labels: string[];
   setupScript?: string;
+  providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
 export type RepositoryConfig = {
@@ -20,6 +27,13 @@ export type RepositoryConfig = {
   setupScript?: string;
   terminalHookScript?: string;
   worktrees: WorktreeConfig[];
+  providerAccountOverrides?: Record<string, ProviderAccountOverride>;
+};
+
+/** A provider account attached to a host, with an optional command override. */
+export type HostProviderAccountConfig = {
+  providerAccountId: string;
+  commandId?: string;
 };
 
 /** Runtime config after bootstrap (identity + host inventory from control plane). */
@@ -28,6 +42,7 @@ export type AgentConfig = {
   apiUrl?: string;
   apiKey?: string;
   repositories: RepositoryConfig[];
+  providerAccounts: HostProviderAccountConfig[];
   commandProfiles: Record<string, CommandProfileConfig>;
   logLevel: "debug" | "info" | "warn" | "error";
 };

@@ -13,6 +13,7 @@ export default async function SettingsPage() {
   const initialJson = JSON.stringify(
     {
       repositories: inventory.repositories,
+      providerAccounts: inventory.providerAccounts,
       commandProfiles: inventory.commandProfiles,
       ...(inventory.logLevel !== undefined ? { logLevel: inventory.logLevel } : {}),
     },

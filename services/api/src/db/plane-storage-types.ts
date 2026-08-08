@@ -58,6 +58,9 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
+/** Enable/command override for a provider account at a repository or worktree scope. */
+export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
+
 /** Durable agent host inventory (paths + command profile argv). */
 export type AgentHostRecord = {
   agentId: string;
@@ -67,14 +70,17 @@ export type AgentHostRecord = {
     defaultBranch: string;
     setupScript?: string;
     terminalHookScript?: string;
+    providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     worktrees: Array<{
       id: string;
       name: string;
       path: string;
       labels: string[];
       setupScript?: string;
+      providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;
   }>;
+  providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
   logLevel?: "debug" | "info" | "warn" | "error";
   updatedAt: string;

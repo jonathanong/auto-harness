@@ -86,3 +86,10 @@ export { removeCommandProfile, setCommandProfile } from "./command-profiles.ts";
 
 export { newId } from "./id.ts";
 export { isValidSlugName, SLUG_NAME_HINT, SLUG_PATTERN } from "./slug.ts";
+
+export {
+  parseProviderAccountOverrides,
+  parseProviderAccounts,
+  type ParsedHostProviderAccount,
+  type ParsedProviderAccountOverride,
+} from "./provider-account-parse.ts";

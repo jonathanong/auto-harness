@@ -55,6 +55,7 @@ async function main(): Promise<void> {
           terminalHookScript: hook,
         },
       ],
+      providerAccounts: [],
       commandProfiles: {
         "echo-prompt": { argv: ["printf", "%s"], appendPrompt: true },
       },

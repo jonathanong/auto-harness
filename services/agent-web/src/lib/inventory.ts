@@ -58,6 +58,9 @@ export async function loadHostInventory(agentId: string): Promise<HostInventory>
       repositories: Array.isArray(cfg.repositories)
         ? (cfg.repositories as HostInventory["repositories"])
         : [],
+      providerAccounts: Array.isArray(cfg.providerAccounts)
+        ? (cfg.providerAccounts as HostInventory["providerAccounts"])
+        : [],
       commandProfiles:
         cfg.commandProfiles && typeof cfg.commandProfiles === "object"
           ? (cfg.commandProfiles as HostInventory["commandProfiles"])

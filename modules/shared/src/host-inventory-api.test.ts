@@ -69,18 +69,28 @@ describe("getInventory / putInventory", () => {
     try {
       const ok = await putInventory("host-1", {
         repositories: [],
+        providerAccounts: [],
         commandProfiles: {},
         logLevel: "warn",
       });
       expect(ok).toEqual({ ok: true });
-      expect(sentBody).toEqual({ repositories: [], commandProfiles: {}, logLevel: "warn" });
+      expect(sentBody).toEqual({
+        repositories: [],
+        providerAccounts: [],
+        commandProfiles: {},
+        logLevel: "warn",
+      });
     } finally {
       globalThis.fetch = original;
     }
 
     globalThis.fetch = (async () => new Response("bad request", { status: 400 })) as typeof fetch;
     try {
-      const failed = await putInventory("host-1", { repositories: [], commandProfiles: {} });
+      const failed = await putInventory("host-1", {
+        repositories: [],
+        providerAccounts: [],
+        commandProfiles: {},
+      });
       expect(failed).toEqual({ ok: false, error: "bad request" });
     } finally {
       globalThis.fetch = original;

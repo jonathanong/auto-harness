@@ -58,7 +58,9 @@ type HostRepo = {
 
 async function getConfig(request: APIRequestContext) {
   const res = await request.get(`${API}/api/v1/agents/local-1/config`);
-  return res.ok() ? await res.json() : { repositories: [], commandProfiles: {} };
+  return res.ok()
+    ? await res.json()
+    : { repositories: [], providerAccounts: [], commandProfiles: {} };
 }
 
 /** Caller must hold withLocalHostLock for the duration of use. */
@@ -71,6 +73,7 @@ export async function putHostRepo(request: APIRequestContext, repo: HostRepo): P
   await request.put(`${API}/api/v1/agents/local-1/config`, {
     data: {
       repositories,
+      providerAccounts: cfg.providerAccounts ?? [],
       commandProfiles: {
         ...cfg.commandProfiles,
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
@@ -84,7 +87,11 @@ export async function removeHostRepo(request: APIRequestContext, repoId: string)
   const cfg = await getConfig(request);
   const repositories = (cfg.repositories ?? []).filter((r: { id: string }) => r.id !== repoId);
   await request.put(`${API}/api/v1/agents/local-1/config`, {
-    data: { repositories, commandProfiles: cfg.commandProfiles ?? {} },
+    data: {
+      repositories,
+      providerAccounts: cfg.providerAccounts ?? [],
+      commandProfiles: cfg.commandProfiles ?? {},
+    },
   });
 }
 

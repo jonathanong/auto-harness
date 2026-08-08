@@ -198,7 +198,7 @@ describe("host-inventory", () => {
 
   it("cloneInventory (via any mutation) round-trips logLevel", () => {
     const seeded = upsertHostRepository(
-      { repositories: [], commandProfiles: {}, logLevel: "debug" },
+      { repositories: [], providerAccounts: [], commandProfiles: {}, logLevel: "debug" },
       { id: "demo", path: "/repo", defaultBranch: "main" },
     );
     expect(seeded.logLevel).toBe("debug");

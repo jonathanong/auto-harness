@@ -66,6 +66,7 @@ export async function makeRepo(): Promise<{
         terminalHookScript: hook,
       },
     ],
+    providerAccounts: [],
     commandProfiles: {
       "echo-prompt": { argv: ["printf", "%s"], appendPrompt: true },
     },

@@ -53,6 +53,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
             ],
           },
         ],
+        providerAccounts: [],
         commandProfiles: {
           "echo-prompt": { argv: ["printf", "%s"], appendPrompt: true },
         },

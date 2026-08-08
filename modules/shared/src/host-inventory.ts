@@ -1,5 +1,17 @@
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 
+/**
+ * Per-scope override of a provider account's enablement/command, on a
+ * `HostRepository` or `HostWorktree`. Absent = inherit from the parent scope
+ * (worktree -> repository -> host -> the provider's own default command).
+ */
+export type ProviderAccountOverride = {
+  /** Explicit `false` disables at this scope; absent = inherit. */
+  enabled?: boolean;
+  /** Explicit override; absent = inherit. */
+  commandId?: string;
+};
+
 export type HostWorktree = {
   /** Auto-generated (UUIDv7), immutable. */
   id: string;
@@ -8,6 +20,7 @@ export type HostWorktree = {
   path: string;
   labels: string[];
   setupScript?: string;
+  providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
 export type HostRepository = {
@@ -17,10 +30,19 @@ export type HostRepository = {
   worktrees: HostWorktree[];
   setupScript?: string;
   terminalHookScript?: string;
+  providerAccountOverrides?: Record<string, ProviderAccountOverride>;
+};
+
+/** A provider account made available on a host, with an optional host-level command override. */
+export type HostProviderAccount = {
+  providerAccountId: string;
+  commandId?: string;
 };
 
 export type HostInventory = {
   repositories: HostRepository[];
+  /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
+  providerAccounts: HostProviderAccount[];
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
   logLevel?: "debug" | "info" | "warn" | "error";
 };
@@ -50,6 +72,9 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
           ...r,
           worktrees: r.worktrees.map((w) => ({ ...w, labels: [...w.labels] })),
         }))
+      : [],
+    providerAccounts: existing?.providerAccounts
+      ? existing.providerAccounts.map((a) => ({ ...a }))
       : [],
     commandProfiles: seedProfiles(existing),
     ...(existing?.logLevel !== undefined ? { logLevel: existing.logLevel } : {}),
@@ -195,6 +220,7 @@ export function mergeHostRepository(
 export function emptyHostInventory(): HostInventory {
   return {
     repositories: [],
+    providerAccounts: [],
     commandProfiles: { ...DEFAULT_ECHO_PROFILE },
   };
 }

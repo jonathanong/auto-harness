@@ -18,6 +18,9 @@ export async function getInventory(agentId: string): Promise<HostInventory> {
     repositories: Array.isArray(cfg.repositories)
       ? (cfg.repositories as HostInventory["repositories"])
       : [],
+    providerAccounts: Array.isArray(cfg.providerAccounts)
+      ? (cfg.providerAccounts as HostInventory["providerAccounts"])
+      : [],
     commandProfiles:
       cfg.commandProfiles && typeof cfg.commandProfiles === "object"
         ? (cfg.commandProfiles as HostInventory["commandProfiles"])
@@ -40,6 +43,7 @@ export async function putInventory(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       repositories: inv.repositories,
+      providerAccounts: inv.providerAccounts,
       commandProfiles: inv.commandProfiles,
       ...(inv.logLevel !== undefined ? { logLevel: inv.logLevel } : {}),
     }),

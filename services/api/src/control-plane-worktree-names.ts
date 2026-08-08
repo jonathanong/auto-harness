@@ -50,6 +50,7 @@ export function validateRegisterWorktreeNames(
   return findWorktreeNameCollision(state, agentId, {
     agentId,
     repositories: [{ id: "_", path: "_", defaultBranch: "main", worktrees }],
+    providerAccounts: [],
     commandProfiles: {},
   });
 }

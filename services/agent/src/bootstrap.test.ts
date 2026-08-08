@@ -68,6 +68,7 @@ describe("fetchAgentHostConfig", () => {
       inventoryFingerprint({
         agentId: "a",
         repositories: [],
+        providerAccounts: [],
         commandProfiles: {},
         logLevel: "info",
       }),
