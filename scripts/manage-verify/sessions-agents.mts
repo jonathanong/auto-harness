@@ -29,6 +29,10 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
     commandProfiles: ["echo-prompt"],
     replaceExisting: true,
   });
+  const command = plane.createCommand({ name: "echo-prompt", argv: ["echo"], providerId: null });
+  if (!command.ok) {
+    throw new Error(command.error);
+  }
   const port = 18900 + Math.floor(Math.random() * 200);
   const api = await startLocalServer({ port, useDynamo: false, enableWs: false, plane });
   const base = `http://127.0.0.1:${port}`;
@@ -38,7 +42,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
     body: JSON.stringify({
       repositoryId: "r1",
       prompt: "cancel-me",
-      commandProfile: "echo-prompt",
+      commandId: command.command.id,
       timeout: 10,
     }),
   });

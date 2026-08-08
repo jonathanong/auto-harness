@@ -1,5 +1,5 @@
 /**
- * Real HTTP POST /sessions with ref + commandProfile → 201 + url.
+ * Real HTTP POST /sessions with ref + commandId → 201 + url.
  */
 import { createLocalApp } from "../services/api/src/local-server.ts";
 import { ControlPlane } from "../services/api/src/control-plane.ts";
@@ -12,6 +12,10 @@ async function main(): Promise<void> {
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: ["echo"] }],
     commandProfiles: ["echo-prompt"],
   });
+  const command = plane.createCommand({ name: "echo-prompt", argv: ["echo"], providerId: null });
+  if (!command.ok) {
+    throw new Error(command.error);
+  }
   const { handler } = createLocalApp({ plane });
   const server = createServer((req, res) => {
     void handler(req, res);
@@ -32,7 +36,7 @@ async function main(): Promise<void> {
     body: JSON.stringify({
       repositoryId: "demo",
       prompt: "phase2 post",
-      commandProfile: "echo-prompt",
+      commandId: command.command.id,
       timeout: 60,
       ref: "main",
       concurrencyKey: "ck-1",

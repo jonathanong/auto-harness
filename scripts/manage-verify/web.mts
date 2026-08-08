@@ -21,6 +21,10 @@ export async function manageWeb(scratch: string): Promise<void> {
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],
   });
+  const command = plane.createCommand({ name: "echo-prompt", argv: ["echo"], providerId: null });
+  if (!command.ok) {
+    throw new Error(command.error);
+  }
   const apiPort = 19100 + Math.floor(Math.random() * 200);
   const api = await startLocalServer({
     port: apiPort,
@@ -56,7 +60,7 @@ export async function manageWeb(scratch: string): Promise<void> {
     body: JSON.stringify({
       repositoryId: "demo",
       name: "nightly",
-      commandProfile: "echo-prompt",
+      commandId: command.command.id,
       cron: "0 * * * *",
       timeout: 60,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -67,7 +71,7 @@ export async function manageWeb(scratch: string): Promise<void> {
   plane.createSession({
     repositoryId: "demo",
     prompt: "web-cancel",
-    commandProfile: "echo-prompt",
+    commandId: command.command.id,
     timeout: 10,
   });
   const toCancel = plane.listSessions().find((s) => s.prompt === "web-cancel")!;

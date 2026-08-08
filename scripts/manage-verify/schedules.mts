@@ -13,6 +13,10 @@ export async function manageSchedules(scratch: string): Promise<void> {
     scheduleIdFactory: () => "sched-1",
     now: () => "2026-01-01T00:00:00.000Z",
   });
+  const command = plane.createCommand({ name: "echo-prompt", argv: ["echo"], providerId: null });
+  if (!command.ok) {
+    throw new Error(command.error);
+  }
   const port = 18700 + Math.floor(Math.random() * 200);
   const api = await startLocalServer({ port, useDynamo: false, enableWs: false, plane });
   const base = `http://127.0.0.1:${port}`;
@@ -22,7 +26,7 @@ export async function manageSchedules(scratch: string): Promise<void> {
     body: JSON.stringify({
       repositoryId: "demo",
       name: "nightly",
-      commandProfile: "echo-prompt",
+      commandId: command.command.id,
       cron: "0 0 * * *",
       timeout: 30,
       nextRunAt: "2026-01-01T00:00:00.000Z",
