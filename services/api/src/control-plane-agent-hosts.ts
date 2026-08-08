@@ -5,7 +5,7 @@ import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
 import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
 
 function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
-  const online = state.agentConnection.has(host.hostId);
+  const online = state.hostConnection.has(host.hostId);
   const configuredIds = new Set<string>();
   for (const repo of host.repositories) {
     for (const wt of repo.worktrees) {
@@ -33,7 +33,7 @@ function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryReco
   }
 }
 
-export function putAgentHostConfig(
+export function putHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
@@ -45,9 +45,9 @@ export function putAgentHostConfig(
       return { ok: false, error: collision };
     }
     const rec: HostInventoryRecord = { ...parsed, updatedAt: state.now() };
-    state.agentHosts.set(hostId, rec);
+    state.hostInventories.set(hostId, rec);
     if (state.storage) {
-      queueWrite(state, state.storage.putAgentHost({ ...rec }));
+      queueWrite(state, state.storage.putHostInventory({ ...rec }));
     }
     syncWorktreesFromHost(state, rec);
     return { ok: true, config: { ...rec } };
@@ -56,30 +56,30 @@ export function putAgentHostConfig(
   }
 }
 
-export function getAgentHostConfig(
+export function getHostInventory(
   state: ControlPlaneState,
   hostId: string,
 ): HostInventoryRecord | null {
-  const rec = state.agentHosts.get(hostId);
+  const rec = state.hostInventories.get(hostId);
   return rec ? { ...rec } : null;
 }
 
-export function listAgentHostConfigs(state: ControlPlaneState): HostInventoryRecord[] {
-  return [...state.agentHosts.values()]
+export function listHostInventories(state: ControlPlaneState): HostInventoryRecord[] {
+  return [...state.hostInventories.values()]
     .toSorted((a, b) => a.hostId.localeCompare(b.hostId))
     .map((h) => ({ ...h }));
 }
 
-export function deleteAgentHostConfig(
+export function deleteHostInventory(
   state: ControlPlaneState,
   hostId: string,
 ): { ok: true } | { ok: false; error: string } {
-  if (!state.agentHosts.has(hostId)) {
+  if (!state.hostInventories.has(hostId)) {
     return { ok: false, error: "agent host config not found" };
   }
-  state.agentHosts.delete(hostId);
+  state.hostInventories.delete(hostId);
   if (state.storage) {
-    queueWrite(state, state.storage.deleteAgentHost(hostId));
+    queueWrite(state, state.storage.deleteHostInventory(hostId));
   }
   // The host is gone entirely, so its worktree names must be released too —
   // otherwise they stay permanently reserved against a host that no longer exists.

@@ -65,7 +65,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       };
     };
 
-    expect((await invoke("GET", "/api/v1/agents")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/command-profiles")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
 
@@ -82,7 +82,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/assign")).status).toBe(200);
     expect(
       (
-        await invoke("POST", "/api/v1/agent/messages", {
+        await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "sess-1",
         })
@@ -90,7 +90,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(200);
     expect(
       (
-        await invoke("POST", "/api/v1/agent/messages", {
+        await invoke("POST", "/api/v1/host/messages", {
           type: "session:log",
           sessionId: "sess-1",
           stream: "stdout",
@@ -102,7 +102,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(200);
     expect(
       (
-        await invoke("POST", "/api/v1/agent/messages", {
+        await invoke("POST", "/api/v1/host/messages", {
           type: "session:status",
           sessionId: "sess-1",
           status: "completed",
@@ -119,8 +119,8 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/ack-deadlines")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/agents/drain", { hostId: "a1" })).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/agents/drain", {})).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
     expect(
       (
         await invoke("POST", "/api/v1/sessions", {
@@ -148,7 +148,7 @@ describe("createLocalApp agent and scheduler routes", () => {
 
     expect(
       (
-        await invoke("POST", "/api/v1/agent/messages", {
+        await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "missing",
         })
@@ -186,7 +186,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       await handler(req as never, res as never);
       return status;
     };
-    expect(await badJson("/api/v1/agent/messages")).toBe(400);
-    expect(await badJson("/api/v1/agents/drain")).toBe(400);
+    expect(await badJson("/api/v1/host/messages")).toBe(400);
+    expect(await badJson("/api/v1/hosts/drain")).toBe(400);
   });
 });

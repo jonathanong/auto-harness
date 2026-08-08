@@ -41,7 +41,7 @@ test.describe("real orchestration", () => {
       await git(repo, ["commit", "-m", "init"]);
       await git(repo, ["branch", "-M", "main"]);
 
-      await request.put(`${API}/api/v1/agents/${hostId}/config`, {
+      await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
         data: {
           repositories: [
             {
@@ -64,7 +64,7 @@ test.describe("real orchestration", () => {
         },
       });
 
-      // Real bootstrap fetch (GET /api/v1/agents/:id/config), same as `pnpm local:agent start`.
+      // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
       const config = await fetchAgentHostConfig({
         hostId,
         apiUrl: "ws://127.0.0.1:7430/ws",

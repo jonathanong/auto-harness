@@ -7,7 +7,7 @@ import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
  * changed it since, and PUT replaces the whole document (lost-update risk).
  */
 export async function getInventory(hostId: string): Promise<HostInventory> {
-  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
+  const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -38,7 +38,7 @@ export async function putInventory(
   hostId: string,
   inv: HostInventory,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
+  const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

@@ -28,7 +28,7 @@ test.describe("host pane sessions", () => {
         // Host config alone doesn't bring a worktree online — the scheduler only assigns to
         // online worktrees, and nothing here runs a real agent daemon. Register over REST
         // (the documented substitute for a live WebSocket connection in e2e tests).
-        await request.post(`${API}/api/v1/agent/messages`, {
+        await request.post(`${API}/api/v1/host/messages`, {
           data: {
             type: "host:register",
             hostId: "local-1",

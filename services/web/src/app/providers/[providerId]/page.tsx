@@ -61,7 +61,7 @@ export default async function ProviderDetailPage({
     const [a, c, h] = await Promise.all([
       apiGet<{ items: ProviderAccount[] }>("/api/v1/provider-accounts"),
       apiGet<{ items: Command[] }>("/api/v1/commands"),
-      apiGet<{ items: AgentHost[] }>("/api/v1/agent-hosts"),
+      apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories"),
     ]);
     accounts = (a.items ?? []).filter((x) => x.providerId === providerId);
     commands = (c.items ?? []).filter((x) => x.providerId === providerId);

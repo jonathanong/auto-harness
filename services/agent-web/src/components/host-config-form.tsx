@@ -30,7 +30,7 @@ export function HostConfigForm({ hostId, initialJson }: { hostId: string; initia
         }
         start(async () => {
           const res = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
+            `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
             {
               method: "PUT",
               headers: { "content-type": "application/json" },

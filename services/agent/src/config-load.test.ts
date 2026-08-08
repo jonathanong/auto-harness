@@ -85,7 +85,7 @@ describe("loadAgentConfig", () => {
     expect(config.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
     expect(config.apiKey).toBe("hns_test");
     expect(fetchFn).toHaveBeenCalledWith(
-      "http://127.0.0.1:7420/api/v1/agents/local-1/config",
+      "http://127.0.0.1:7420/api/v1/hosts/local-1/inventory",
       expect.objectContaining({
         headers: expect.objectContaining({ authorization: "Bearer hns_test" }),
       }),

@@ -40,7 +40,7 @@ export function resolveSessionTargetArgv(
   if (session.providerAccountId === undefined) {
     return null;
   }
-  const host = state.agentHosts.get(worktree.hostId);
+  const host = state.hostInventories.get(worktree.hostId);
   const hostRepo = host?.repositories.find((r) => r.id === worktree.repositoryId);
   const hostWorktree = hostRepo?.worktrees.find((w) => w.id === worktree.id);
   if (!resolveProviderAccountEnabled(session.providerAccountId, hostWorktree, hostRepo, host)) {

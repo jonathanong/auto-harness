@@ -92,7 +92,7 @@ export default async function WorktreeDetailPage({
   if (worktree.hostId) {
     try {
       inventory = await apiGet<HostInventory>(
-        `/api/v1/agents/${encodeURIComponent(worktree.hostId)}/config`,
+        `/api/v1/hosts/${encodeURIComponent(worktree.hostId)}/inventory`,
       );
     } catch {
       /* ignore — edit/remove actions stay hidden below */

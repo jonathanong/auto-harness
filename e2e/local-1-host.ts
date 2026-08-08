@@ -57,7 +57,7 @@ type HostRepo = {
 };
 
 async function getConfig(request: APIRequestContext) {
-  const res = await request.get(`${API}/api/v1/agents/local-1/config`);
+  const res = await request.get(`${API}/api/v1/hosts/local-1/inventory`);
   return res.ok()
     ? await res.json()
     : { repositories: [], providerAccounts: [], commandProfiles: {} };
@@ -70,7 +70,7 @@ export async function putHostRepo(request: APIRequestContext, repo: HostRepo): P
     ...(cfg.repositories ?? []).filter((r: { id: string }) => r.id !== repo.id),
     repo,
   ];
-  await request.put(`${API}/api/v1/agents/local-1/config`, {
+  await request.put(`${API}/api/v1/hosts/local-1/inventory`, {
     data: {
       repositories,
       providerAccounts: cfg.providerAccounts ?? [],
@@ -86,7 +86,7 @@ export async function putHostRepo(request: APIRequestContext, repo: HostRepo): P
 export async function removeHostRepo(request: APIRequestContext, repoId: string): Promise<void> {
   const cfg = await getConfig(request);
   const repositories = (cfg.repositories ?? []).filter((r: { id: string }) => r.id !== repoId);
-  await request.put(`${API}/api/v1/agents/local-1/config`, {
+  await request.put(`${API}/api/v1/hosts/local-1/inventory`, {
     data: {
       repositories,
       providerAccounts: cfg.providerAccounts ?? [],

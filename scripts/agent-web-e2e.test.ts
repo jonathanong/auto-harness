@@ -9,7 +9,7 @@ import { ControlPlane } from "../services/api/src/control-plane.ts";
 describe("host pane host inventory API", () => {
   it("stores host config for an agent id", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       repositories: [
         {
           id: "demo",
@@ -21,7 +21,7 @@ describe("host pane host inventory API", () => {
       commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
     });
     expect(put.ok).toBe(true);
-    expect(plane.getAgentHostConfig("local-1")?.repositories[0]?.path).toBe("/repo");
+    expect(plane.getHostInventory("local-1")?.repositories[0]?.path).toBe("/repo");
     plane.drainHost("local-1");
     expect(plane.isDraining("local-1")).toBe(true);
   });

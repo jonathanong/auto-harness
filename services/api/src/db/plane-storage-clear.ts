@@ -3,7 +3,7 @@ import { DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { listAllSessions, listAllWorktrees } from "./plane-storage-sessions.ts";
 import { listConnections } from "./plane-storage-locks.ts";
 import {
-  listAgentHosts,
+  listHostInventories,
   listArchives,
   listRepositories,
   listSchedules,
@@ -64,7 +64,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   for (const a of await listArchives(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.archives, Key: { key: a.key } }));
   }
-  for (const h of await listAgentHosts(ctx)) {
+  for (const h of await listHostInventories(ctx)) {
     await ctx.doc.send(
       new DeleteCommand({ TableName: ctx.tables.hostInventories, Key: { hostId: h.hostId } }),
     );

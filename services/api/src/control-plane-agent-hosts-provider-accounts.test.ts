@@ -5,7 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 describe("agent host inventory providerAccounts", () => {
   it("round-trips top-level providerAccounts and per-scope overrides", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       repositories: [
         {
           id: "demo",
@@ -29,7 +29,7 @@ describe("agent host inventory providerAccounts", () => {
       commandProfiles: {},
     });
     expect(put.ok).toBe(true);
-    const config = plane.getAgentHostConfig("local-1");
+    const config = plane.getHostInventory("local-1");
     expect(config?.providerAccounts).toEqual([
       { providerAccountId: "acct-1", commandId: "cmd-1" },
       { providerAccountId: "acct-2" },
@@ -44,13 +44,13 @@ describe("agent host inventory providerAccounts", () => {
 
   it("defaults providerAccounts to an empty array when omitted", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    plane.putAgentHostConfig("local-1", { repositories: [], commandProfiles: {} });
-    expect(plane.getAgentHostConfig("local-1")?.providerAccounts).toEqual([]);
+    plane.putHostInventory("local-1", { repositories: [], commandProfiles: {} });
+    expect(plane.getHostInventory("local-1")?.providerAccounts).toEqual([]);
   });
 
   it("rejects a non-array top-level providerAccounts", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       repositories: [],
       providerAccounts: "nope",
       commandProfiles: {},
@@ -60,7 +60,7 @@ describe("agent host inventory providerAccounts", () => {
 
   it("rejects a malformed worktree providerAccountOverrides", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       repositories: [
         {
           id: "demo",
@@ -83,7 +83,7 @@ describe("agent host inventory providerAccounts", () => {
 
   it("rejects a malformed repository providerAccountOverrides", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       repositories: [
         {
           id: "demo",

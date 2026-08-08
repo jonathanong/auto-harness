@@ -21,7 +21,7 @@ describe("listSessionTargets", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    state.agentHosts.set("host-1", {
+    state.hostInventories.set("host-1", {
       hostId: "host-1",
       repositories: [],
       providerAccounts: [{ providerAccountId: "acct-1" }],
@@ -72,7 +72,7 @@ describe("listSessionTargets", () => {
       updatedAt: "t",
     });
     // A host inventory exists, but this account isn't in its providerAccounts list.
-    state.agentHosts.set("host-1", {
+    state.hostInventories.set("host-1", {
       hostId: "host-1",
       repositories: [],
       providerAccounts: [],
@@ -105,7 +105,7 @@ describe("listSessionTargets", () => {
       repositories: [],
       commandProfiles: {},
     } as unknown as HostInventoryRecord;
-    state.agentHosts.set("host-1", stale);
+    state.hostInventories.set("host-1", stale);
     expect(listSessionTargets(state)).toEqual([]);
   });
 

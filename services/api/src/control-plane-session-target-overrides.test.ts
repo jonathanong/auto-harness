@@ -61,7 +61,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    state.agentHosts.set("host-1", {
+    state.hostInventories.set("host-1", {
       hostId: "host-1",
       repositories: [
         {
@@ -120,7 +120,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    state.agentHosts.set("host-1", {
+    state.hostInventories.set("host-1", {
       hostId: "host-1",
       repositories: [
         {
@@ -168,7 +168,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    state.agentHosts.set("host-1", {
+    state.hostInventories.set("host-1", {
       hostId: "host-1",
       repositories: [],
       providerAccounts: [{ providerAccountId: "acct-1" }],

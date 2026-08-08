@@ -46,7 +46,7 @@ test.describe("control plane provider account scope overrides", () => {
       })
     ).json();
 
-    await request.put(`${API}/api/v1/agents/${hostId}/config`, {
+    await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {
@@ -133,7 +133,7 @@ test.describe("control plane provider account scope overrides", () => {
   }) => {
     const hostId = `pw-overrides-empty-${test.info().parallelIndex}-${Date.now()}`;
     const worktreeId = `wt-${test.info().parallelIndex}-${Date.now()}`;
-    await request.put(`${API}/api/v1/agents/${hostId}/config`, {
+    await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {

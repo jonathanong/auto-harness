@@ -23,14 +23,16 @@ export default async function HostDetailPage({
 
   let inventory: HostInventory | null = null;
   try {
-    inventory = await apiGet<HostInventory>(`/api/v1/agents/${encodeURIComponent(hostId)}/config`);
+    inventory = await apiGet<HostInventory>(
+      `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+    );
   } catch {
     /* no config yet — may still be a live/known agent below */
   }
 
   let agents: Agent[] = [];
   try {
-    const data = await apiGet<{ items: Agent[] }>("/api/v1/agents");
+    const data = await apiGet<{ items: Agent[] }>("/api/v1/hosts");
     agents = data.items ?? [];
   } catch {
     /* ignore — status shows unknown */

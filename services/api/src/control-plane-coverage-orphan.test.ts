@@ -19,7 +19,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     // break consistency: delete connection but leave agent map
     planeO.state.connections.delete("orphan");
     expect(planeO.heartbeat("o1")).toBe(false);
-    planeO.state.agentConnection.set("o1", "ghost");
+    planeO.state.hostConnection.set("o1", "ghost");
     expect(planeO.reclaimStaleHosts(Date.now() + 10_000)).toEqual([]);
 
     // ack deadline: pending without session; pending with acked session

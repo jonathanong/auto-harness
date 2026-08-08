@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     const mainSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
     const hostId = "cli-e2e";
-    const put = await fetch(`${api}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
+    const put = await fetch(`${api}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({

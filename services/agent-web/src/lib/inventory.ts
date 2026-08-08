@@ -45,7 +45,7 @@ export async function loadRepoNamesById(): Promise<Record<string, string>> {
 
 export async function loadHostInventory(hostId: string): Promise<HostInventory> {
   try {
-    const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
+    const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
       cache: "no-store",
     });
     if (!res.ok) {

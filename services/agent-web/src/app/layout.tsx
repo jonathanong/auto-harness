@@ -16,7 +16,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let online: boolean | undefined;
   try {
     const agents = await apiGet<{ items: Array<{ hostId: string; online: boolean }> }>(
-      "/api/v1/agents",
+      "/api/v1/hosts",
     );
     online = agents.items?.find((a) => a.hostId === id)?.online;
   } catch {

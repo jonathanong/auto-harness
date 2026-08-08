@@ -74,11 +74,11 @@ describe("apiGet", () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9005";
     const original = globalThis.fetch;
     globalThis.fetch = (async (input: string | URL) => {
-      expect(String(input)).toBe("http://example.test:9005/api/v1/agents");
+      expect(String(input)).toBe("http://example.test:9005/api/v1/hosts");
       return new Response(JSON.stringify({ items: [] }), { status: 200 });
     }) as typeof fetch;
     try {
-      expect(await apiGet<{ items: unknown[] }>("/api/v1/agents")).toEqual({ items: [] });
+      expect(await apiGet<{ items: unknown[] }>("/api/v1/hosts")).toEqual({ items: [] });
     } finally {
       globalThis.fetch = original;
     }
@@ -89,7 +89,7 @@ describe("apiGet", () => {
     const original = globalThis.fetch;
     globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
     try {
-      await expect(apiGet("/api/v1/agents")).rejects.toThrow("GET /api/v1/agents → 500");
+      await expect(apiGet("/api/v1/hosts")).rejects.toThrow("GET /api/v1/hosts → 500");
     } finally {
       globalThis.fetch = original;
     }

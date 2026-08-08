@@ -33,7 +33,7 @@ export default defineConfig({
         "**/services/web/src/lib/attach-local-repo.ts",
         "**/services/agent-web/**",
         // Thin HTTP route wiring (exercised by local-server-management tests)
-        "**/local-routes-agent-config.ts",
+        "**/local-routes-host-inventory.ts",
         "**/ws-hub.ts",
         "**/ws-transport.ts",
         "**/start-daemon.ts",

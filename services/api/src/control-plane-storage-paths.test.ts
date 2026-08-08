@@ -126,7 +126,7 @@ describe("ControlPlane storage write-through paths", () => {
     expect(plane.triggerSchedule(sch.id, "2026-01-01T00:00:00.000Z").ok).toBe(true);
     expect(plane.deleteSchedule(sch.id).ok).toBe(true);
 
-    plane.putAgentHostConfig("a1", {
+    plane.putHostInventory("a1", {
       repositories: [
         {
           id: "r1",
@@ -141,11 +141,11 @@ describe("ControlPlane storage write-through paths", () => {
     await plane.hydrateFromStorage();
     expect(plane.listSchedules().some((s) => s.id === "sch1")).toBe(true);
     expect(plane.listRepositories().some((r) => r.id === "r1")).toBe(true);
-    expect(plane.getAgentHostConfig("a1")?.hostId).toBe("a1");
+    expect(plane.getHostInventory("a1")?.hostId).toBe("a1");
     expect(plane.listArchives().length).toBeGreaterThan(0);
 
     // Verify real persistence directly against storage, not just the in-process cache.
     expect(await storage.getSession("s1")).not.toBeNull();
-    expect((await storage.getAgentHost("a1"))?.hostId).toBe("a1");
+    expect((await storage.getHostInventory("a1"))?.hostId).toBe("a1");
   });
 });

@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 
 describe("worktree name uniqueness across hosts", () => {
-  it("putAgentHostConfig rejects duplicate names within one request and across hosts", () => {
+  it("putHostInventory rejects duplicate names within one request and across hosts", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const dup = plane.putAgentHostConfig("host-a", {
+    const dup = plane.putHostInventory("host-a", {
       repositories: [
         {
           id: "r1",
@@ -23,7 +23,7 @@ describe("worktree name uniqueness across hosts", () => {
       expect(dup.error).toContain("already used in this same request");
     }
 
-    const first = plane.putAgentHostConfig("host-a", {
+    const first = plane.putHostInventory("host-a", {
       repositories: [
         {
           id: "r1",
@@ -35,7 +35,7 @@ describe("worktree name uniqueness across hosts", () => {
     });
     expect(first.ok).toBe(true);
 
-    const collide = plane.putAgentHostConfig("host-b", {
+    const collide = plane.putHostInventory("host-b", {
       repositories: [
         {
           id: "r2",
@@ -63,7 +63,7 @@ describe("worktree name uniqueness across hosts", () => {
       expect(invalid.error).toContain("must be");
     }
 
-    const first = plane.putAgentHostConfig("host-d", {
+    const first = plane.putHostInventory("host-d", {
       repositories: [
         {
           id: "r1",

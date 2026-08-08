@@ -39,7 +39,7 @@ export function DrainButton({
         data-pw={pw}
         onClick={() => {
           start(async () => {
-            await fetch("/api/v1/agents/drain", {
+            await fetch("/api/v1/hosts/drain", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ hostId }),

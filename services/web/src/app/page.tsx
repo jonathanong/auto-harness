@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   try {
     const [s, h] = await Promise.all([
       apiGet<{ items: Session[] }>("/api/v1/sessions"),
-      apiGet<{ items: Host[] }>("/api/v1/agents"),
+      apiGet<{ items: Host[] }>("/api/v1/hosts"),
     ]);
     sessions = s.items ?? [];
     hosts = h.items ?? [];

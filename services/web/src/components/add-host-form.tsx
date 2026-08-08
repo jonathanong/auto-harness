@@ -31,7 +31,7 @@ export function AddHostForm() {
         }
         start(async () => {
           const existing = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
+            `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
             { cache: "no-store" },
           );
           if (existing.ok) {
@@ -41,7 +41,7 @@ export function AddHostForm() {
             return;
           }
           const res = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
+            `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
             {
               method: "PUT",
               headers: { "content-type": "application/json" },

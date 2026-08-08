@@ -27,7 +27,7 @@ export default async function RepositoriesPage() {
   try {
     const [repos, hosts, wts] = await Promise.all([
       apiGet<{ items: Repo[] }>("/api/v1/repositories"),
-      apiGet<{ items: Host[] }>("/api/v1/agents"),
+      apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
     items = repos.items ?? [];

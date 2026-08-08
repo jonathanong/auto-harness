@@ -15,10 +15,10 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
   const reclaimed: string[] = [];
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
 
-  for (const [hostId, connectionId] of state.agentConnection.entries()) {
+  for (const [hostId, connectionId] of state.hostConnection.entries()) {
     const conn = state.connections.get(connectionId);
     if (!conn) {
-      state.agentConnection.delete(hostId);
+      state.hostConnection.delete(hostId);
       continue;
     }
     candidates.set(hostId, {
@@ -46,7 +46,7 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
     if (meta.connectionId) {
       state.connections.delete(meta.connectionId);
     }
-    state.agentConnection.delete(hostId);
+    state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);
   }
   return reclaimed;

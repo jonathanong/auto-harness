@@ -171,19 +171,19 @@ export class DynamoPlaneStorageBase {
     return catalog.listArchives(this.ctx);
   }
 
-  putAgentHost(rec: HostInventoryRecord): Promise<void> {
-    return catalog.putAgentHost(this.ctx, rec);
+  putHostInventory(rec: HostInventoryRecord): Promise<void> {
+    return catalog.putHostInventory(this.ctx, rec);
   }
 
-  getAgentHost(hostId: string): Promise<HostInventoryRecord | null> {
-    return catalog.getAgentHost(this.ctx, hostId);
+  getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {
+    return catalog.getHostInventory(this.ctx, hostId);
   }
 
-  listAgentHosts(): Promise<HostInventoryRecord[]> {
-    return catalog.listAgentHosts(this.ctx);
+  listHostInventories(): Promise<HostInventoryRecord[]> {
+    return catalog.listHostInventories(this.ctx);
   }
 
-  deleteAgentHost(hostId: string): Promise<void> {
-    return catalog.deleteAgentHost(this.ctx, hostId);
+  deleteHostInventory(hostId: string): Promise<void> {
+    return catalog.deleteHostInventory(this.ctx, hostId);
   }
 }

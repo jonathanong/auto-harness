@@ -148,22 +148,22 @@ export class ControlPlane extends ControlPlaneCatalog {
     return agents.isDraining(this.state, hostId);
   }
 
-  putAgentHostConfig(
+  putHostInventory(
     hostId: string,
     body: unknown,
   ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
-    return agentHosts.putAgentHostConfig(this.state, hostId, body);
+    return agentHosts.putHostInventory(this.state, hostId, body);
   }
 
-  getAgentHostConfig(hostId: string): HostInventoryRecord | null {
-    return agentHosts.getAgentHostConfig(this.state, hostId);
+  getHostInventory(hostId: string): HostInventoryRecord | null {
+    return agentHosts.getHostInventory(this.state, hostId);
   }
 
-  listAgentHostConfigs(): HostInventoryRecord[] {
-    return agentHosts.listAgentHostConfigs(this.state);
+  listHostInventories(): HostInventoryRecord[] {
+    return agentHosts.listHostInventories(this.state);
   }
 
-  deleteAgentHostConfig(hostId: string): { ok: true } | { ok: false; error: string } {
-    return agentHosts.deleteAgentHostConfig(this.state, hostId);
+  deleteHostInventory(hostId: string): { ok: true } | { ok: false; error: string } {
+    return agentHosts.deleteHostInventory(this.state, hostId);
   }
 }

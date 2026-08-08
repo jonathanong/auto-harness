@@ -156,12 +156,12 @@ describe("createLocalApp operator management REST", () => {
     expect(cancelled.json).toMatchObject({ status: "cancelled" });
     expect((await invoke("POST", `/api/v1/sessions/${sid}/cancel`)).status).toBe(400);
 
-    expect((await invoke("GET", "/api/v1/agents")).json).toMatchObject({
+    expect((await invoke("GET", "/api/v1/hosts")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ hostId: "a1" })]),
     });
-    expect((await invoke("POST", "/api/v1/agents/drain", { hostId: "a1" })).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(200);
 
-    const hostPut = await invoke("PUT", "/api/v1/agents/a1/config", {
+    const hostPut = await invoke("PUT", "/api/v1/hosts/a1/inventory", {
       repositories: [
         {
           id: "repo-1",
@@ -173,12 +173,12 @@ describe("createLocalApp operator management REST", () => {
       commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
     });
     expect(hostPut.status).toBe(200);
-    expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(200);
-    expect((await invoke("GET", "/api/v1/agent-hosts")).json).toMatchObject({
+    expect((await invoke("GET", "/api/v1/hosts/a1/inventory")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/host-inventories")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ hostId: "a1" })]),
     });
-    expect((await invoke("DELETE", "/api/v1/agents/a1/config")).status).toBe(204);
-    expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(404);
+    expect((await invoke("DELETE", "/api/v1/hosts/a1/inventory")).status).toBe(204);
+    expect((await invoke("GET", "/api/v1/hosts/a1/inventory")).status).toBe(404);
 
     expect((await invoke("DELETE", "/api/v1/schedules/sched-1")).status).toBe(204);
     expect((await invoke("DELETE", "/api/v1/schedules/sched-1")).status).toBe(404);

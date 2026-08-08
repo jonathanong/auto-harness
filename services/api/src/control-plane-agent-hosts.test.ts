@@ -5,7 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 describe("agent host inventory", () => {
   it("stores config, syncs worktrees, and lists profiles", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
-    const put = plane.putAgentHostConfig("local-1", {
+    const put = plane.putHostInventory("local-1", {
       hostId: "local-1",
       logLevel: "debug",
       repositories: [
@@ -27,13 +27,13 @@ describe("agent host inventory", () => {
       },
     });
     expect(put.ok).toBe(true);
-    expect(plane.getAgentHostConfig("local-1")?.repositories[0]?.path).toBe("/repo");
+    expect(plane.getHostInventory("local-1")?.repositories[0]?.path).toBe("/repo");
     expect(plane.listWorktrees().filter((w) => w.hostId === "local-1")).toHaveLength(2);
     expect(plane.listCommandProfiles()).toEqual(expect.arrayContaining(["echo-prompt", "true"]));
-    expect(plane.listAgentHostConfigs()).toHaveLength(1);
+    expect(plane.listHostInventories()).toHaveLength(1);
 
     // Replace inventory: drop wt-2, keep wt-1
-    const replace = plane.putAgentHostConfig("local-1", {
+    const replace = plane.putHostInventory("local-1", {
       repositories: [
         {
           id: "demo",
@@ -47,7 +47,7 @@ describe("agent host inventory", () => {
     expect(plane.listWorktrees().map((w) => w.id)).toEqual(["wt-1"]);
 
     // Empty inventory is valid (add-agent / attach-repos-later).
-    const empty = plane.putAgentHostConfig("local-1", {
+    const empty = plane.putHostInventory("local-1", {
       repositories: [],
       commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
     });
@@ -57,7 +57,7 @@ describe("agent host inventory", () => {
     }
     // Offline host-only agent appears in fleet list.
     expect(
-      plane.putAgentHostConfig("slot-offline", {
+      plane.putHostInventory("slot-offline", {
         repositories: [],
         commandProfiles: { "echo-prompt": { argv: ["echo"], appendPrompt: true } },
       }).ok,
@@ -80,7 +80,7 @@ describe("agent host inventory", () => {
     expect(afterReg?.online).toBe(true);
     // Offline host with worktrees exposes worktreeIds in the fleet list.
     expect(
-      plane.putAgentHostConfig("host-with-wts", {
+      plane.putHostInventory("host-with-wts", {
         repositories: [
           {
             id: "r1",
@@ -99,10 +99,10 @@ describe("agent host inventory", () => {
       "w2",
     ]);
     // Still invalid: missing commandProfiles or non-array repositories.
-    expect(plane.putAgentHostConfig("local-1", { repositories: [] }).ok).toBe(false);
-    expect(plane.putAgentHostConfig("local-1", null).ok).toBe(false);
+    expect(plane.putHostInventory("local-1", { repositories: [] }).ok).toBe(false);
+    expect(plane.putHostInventory("local-1", null).ok).toBe(false);
     expect(
-      plane.putAgentHostConfig("local-1", {
+      plane.putHostInventory("local-1", {
         hostId: "other",
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
@@ -111,13 +111,13 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [{ id: "d", path: "/r", worktrees: "x" }],
         commandProfiles: {},
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: "x" }] },
         ],
@@ -125,19 +125,19 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [{ id: "d", path: "/r", worktrees: [null] }],
         commandProfiles: {},
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [null],
         commandProfiles: {},
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           {
             id: "d",
@@ -150,7 +150,7 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           {
             id: "d",
@@ -163,7 +163,7 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           {
             id: "d",
@@ -175,7 +175,7 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
         ],
@@ -183,7 +183,7 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
         ],
@@ -191,7 +191,7 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
     expect(
-      plane.putAgentHostConfig("x", {
+      plane.putHostInventory("x", {
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
         ],
@@ -199,8 +199,8 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(false);
 
-    expect(plane.deleteAgentHostConfig("local-1").ok).toBe(true);
-    expect(plane.getAgentHostConfig("local-1")).toBeNull();
-    expect(plane.deleteAgentHostConfig("local-1").ok).toBe(false);
+    expect(plane.deleteHostInventory("local-1").ok).toBe(true);
+    expect(plane.getHostInventory("local-1")).toBeNull();
+    expect(plane.deleteHostInventory("local-1").ok).toBe(false);
   });
 });

@@ -50,9 +50,9 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
   const listS = await fetch(`${base}/api/v1/sessions`);
   const cancel = await fetch(`${base}/api/v1/sessions/${sess.id}/cancel`, { method: "POST" });
   const cancelBody = (await cancel.json()) as { status?: string };
-  const listA = await fetch(`${base}/api/v1/agents`);
+  const listA = await fetch(`${base}/api/v1/hosts`);
   const agents = await listA.json();
-  const drain = await fetch(`${base}/api/v1/agents/drain`, {
+  const drain = await fetch(`${base}/api/v1/hosts/drain`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ hostId: "a1" }),

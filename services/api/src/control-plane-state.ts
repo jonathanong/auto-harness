@@ -38,11 +38,11 @@ export type ControlPlaneState = {
   worktrees: Map<string, WorktreeRecord>;
   connections: Map<string, ConnectionRecord>;
   /** hostId → connectionId (at most one live agent connection — Invariant 3). */
-  agentConnection: Map<string, string>;
+  hostConnection: Map<string, string>;
   logs: Map<string, LogRecord[]>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
-  agentHosts: Map<string, HostInventoryRecord>;
+  hostInventories: Map<string, HostInventoryRecord>;
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
@@ -81,11 +81,11 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     sessions: new Map(),
     worktrees: new Map(),
     connections: new Map(),
-    agentConnection: new Map(),
+    hostConnection: new Map(),
     logs: new Map(),
     schedules: new Map(),
     repositories: new Map(),
-    agentHosts: new Map(),
+    hostInventories: new Map(),
     providers: new Map(),
     providerAccounts: new Map(),
     commands: new Map(),
@@ -161,11 +161,11 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   state.sessions.clear();
   state.worktrees.clear();
   state.connections.clear();
-  state.agentConnection.clear();
+  state.hostConnection.clear();
   state.logs.clear();
   state.schedules.clear();
   state.repositories.clear();
-  state.agentHosts.clear();
+  state.hostInventories.clear();
   state.providers.clear();
   state.providerAccounts.clear();
   state.commands.clear();
@@ -178,7 +178,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   }
   for (const c of await state.storage.listConnections()) {
     state.connections.set(c.connectionId, c);
-    state.agentConnection.set(c.hostId, c.connectionId);
+    state.hostConnection.set(c.hostId, c.connectionId);
   }
   for (const sch of await state.storage.listSchedules()) {
     state.schedules.set(sch.id, sch);
@@ -186,8 +186,8 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   for (const r of await state.storage.listRepositories()) {
     state.repositories.set(r.id, r);
   }
-  for (const h of await state.storage.listAgentHosts()) {
-    state.agentHosts.set(h.hostId, h);
+  for (const h of await state.storage.listHostInventories()) {
+    state.hostInventories.set(h.hostId, h);
   }
   for (const p of await state.storage.listProviders()) {
     state.providers.set(p.id, p);

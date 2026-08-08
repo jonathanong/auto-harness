@@ -83,7 +83,7 @@ export async function runRealCliSession(opts: {
     ).toBeTruthy();
     const account = await accountRes.json();
 
-    const configRes = await request.put(`${API}/api/v1/agents/${hostId}/config`, {
+    const configRes = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {
@@ -99,7 +99,7 @@ export async function runRealCliSession(opts: {
     });
     expect(configRes.ok(), `attach account to host failed: ${await configRes.text()}`).toBeTruthy();
 
-    // Real bootstrap fetch (GET /api/v1/agents/:id/config), same as `pnpm local:agent start`.
+    // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
     const config = await fetchAgentHostConfig({
       hostId,
       apiUrl: "ws://127.0.0.1:7430/ws",

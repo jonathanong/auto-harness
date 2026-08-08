@@ -14,7 +14,7 @@ export async function attachLocalRepo(input: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = apiBase();
   let existing: HostInventory | null = null;
-  const get = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.hostId)}/config`);
+  const get = await fetch(`${base}/api/v1/hosts/${encodeURIComponent(input.hostId)}/inventory`);
   if (get.ok) {
     existing = (await get.json()) as HostInventory;
   }
@@ -25,7 +25,7 @@ export async function attachLocalRepo(input: {
     defaultBranch: input.defaultBranch,
   });
 
-  const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.hostId)}/config`, {
+  const put = await fetch(`${base}/api/v1/hosts/${encodeURIComponent(input.hostId)}/inventory`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(host),

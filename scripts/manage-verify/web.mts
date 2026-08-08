@@ -39,7 +39,7 @@ export async function manageWeb(scratch: string): Promise<void> {
     "/api/v1/sessions",
     "/api/v1/repositories",
     "/api/v1/schedules",
-    "/api/v1/agents",
+    "/api/v1/hosts",
   ]) {
     const r = await fetch(`${base}${path}`);
     pages[path] = r.status;
@@ -76,7 +76,7 @@ export async function manageWeb(scratch: string): Promise<void> {
   });
   const toCancel = plane.listSessions().find((s) => s.prompt === "web-cancel")!;
   const cancel = await fetch(`${base}/api/v1/sessions/${toCancel.id}/cancel`, { method: "POST" });
-  const drain = await fetch(`${base}/api/v1/agents/drain`, {
+  const drain = await fetch(`${base}/api/v1/hosts/drain`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ hostId: "a1" }),

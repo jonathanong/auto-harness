@@ -96,7 +96,7 @@ export default async function RepositoryDetailPage({
 
   let attachedHosts: AgentHost[] = [];
   try {
-    const data = await apiGet<{ items: AgentHost[] }>("/api/v1/agent-hosts");
+    const data = await apiGet<{ items: AgentHost[] }>("/api/v1/host-inventories");
     attachedHosts = (data.items ?? []).filter((h) =>
       h.repositories.some((r) => r.id === repositoryId),
     );
@@ -110,7 +110,9 @@ export default async function RepositoryDetailPage({
   const hostInventories = await Promise.all(
     attachedHosts.map(async (h) => {
       try {
-        return await apiGet<HostInventory>(`/api/v1/agents/${encodeURIComponent(h.hostId)}/config`);
+        return await apiGet<HostInventory>(
+          `/api/v1/hosts/${encodeURIComponent(h.hostId)}/inventory`,
+        );
       } catch {
         return null;
       }

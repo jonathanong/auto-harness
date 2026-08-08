@@ -46,7 +46,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     byHost.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
-  for (const host of state.agentHosts.values()) {
+  for (const host of state.hostInventories.values()) {
     if (!byHost.has(host.hostId)) {
       byHost.set(host.hostId, {
         hostId: host.hostId,
@@ -84,7 +84,7 @@ export function registerHost(
     return { ok: false, error: nameError };
   }
 
-  const existing = state.agentConnection.get(opts.hostId);
+  const existing = state.hostConnection.get(opts.hostId);
   if (existing && !opts.replaceExisting) {
     return {
       ok: false,
@@ -93,7 +93,7 @@ export function registerHost(
   }
   if (existing) {
     state.connections.delete(existing);
-    state.agentConnection.delete(opts.hostId);
+    state.hostConnection.delete(opts.hostId);
   }
 
   const connectionId = state.connectionIdFactory();
@@ -125,7 +125,7 @@ export function registerHost(
   if (state.storage) {
     queueWrite(state, state.storage.putConnection(conn));
   }
-  state.agentConnection.set(opts.hostId, connectionId);
+  state.hostConnection.set(opts.hostId, connectionId);
   state.disconnectedHosts.delete(opts.hostId);
   // Re-register clears drain so a restarted agent can take work again.
   state.drainingHosts.delete(opts.hostId);
@@ -167,22 +167,22 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
   }
   const hostId = conn.hostId;
   state.connections.delete(connectionId);
-  if (state.agentConnection.get(hostId) === connectionId) {
-    state.agentConnection.delete(hostId);
+  if (state.hostConnection.get(hostId) === connectionId) {
+    state.hostConnection.delete(hostId);
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
   return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
 }
 
 export function heartbeat(state: ControlPlaneState, hostId: string, at?: string): boolean {
-  const connectionId = state.agentConnection.get(hostId);
+  const connectionId = state.hostConnection.get(hostId);
   if (!connectionId) {
     return false;
   }
   const conn = state.connections.get(connectionId);
   // connectionId always maps to a live connection while agentConnection is consistent
   if (!conn) {
-    state.agentConnection.delete(hostId);
+    state.hostConnection.delete(hostId);
     return false;
   }
   conn.lastHeartbeatAt = at ?? state.now();

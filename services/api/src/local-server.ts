@@ -4,8 +4,8 @@ import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { applyLocalCors } from "./local-cors.ts";
 import { type LocalServerOptions, send } from "./local-http.ts";
-import { handleAgentConfigRoutes } from "./local-routes-agent-config.ts";
-import { handleAgentSchedulerRoutes } from "./local-routes-agent-scheduler.ts";
+import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
+import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
 import { handleCommandRoutes } from "./local-routes-commands.ts";
 import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts";
 import { handleProviderRoutes } from "./local-routes-providers.ts";
@@ -52,10 +52,10 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleScheduleRoutes(ctx)) {
       return;
     }
-    if (await handleAgentSchedulerRoutes(ctx)) {
+    if (await handleHostSchedulerRoutes(ctx)) {
       return;
     }
-    if (await handleAgentConfigRoutes(ctx)) {
+    if (await handleHostInventoryRoutes(ctx)) {
       return;
     }
     if (await handleProviderRoutes(ctx)) {

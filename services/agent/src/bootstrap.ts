@@ -46,7 +46,7 @@ export function inventoryFingerprint(config: AgentConfig): string {
 
 /**
  * Load host inventory from the control plane.
- * `GET /api/v1/agents/:hostId/config`
+ * `GET /api/v1/hosts/:hostId/inventory`
  * Missing config (404) → empty inventory so the agent can register first.
  */
 export async function fetchAgentHostConfig(
@@ -55,7 +55,7 @@ export async function fetchAgentHostConfig(
 ): Promise<AgentConfig> {
   const fetchFn = deps.fetchFn ?? fetch;
   const base = httpBaseFromApiUrl(identity.apiUrl);
-  const url = `${base}/api/v1/agents/${encodeURIComponent(identity.hostId)}/config`;
+  const url = `${base}/api/v1/hosts/${encodeURIComponent(identity.hostId)}/inventory`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (identity.apiKey) {
     headers.authorization = `Bearer ${identity.apiKey}`;

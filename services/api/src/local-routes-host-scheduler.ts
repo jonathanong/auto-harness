@@ -2,11 +2,11 @@ import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, type RouteCtx } from "./local-http.ts";
 
-/** Agents, worktrees, profiles, agent messages, and scheduler routes. */
-export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
+/** Hosts, worktrees, profiles, host messages, and scheduler routes. */
+export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
-  if (method === "GET" && url.pathname === "/api/v1/agents") {
+  if (method === "GET" && url.pathname === "/api/v1/hosts") {
     send(res, 200, { items: plane.listHosts() });
     return true;
   }
@@ -21,7 +21,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
     return true;
   }
 
-  if (method === "POST" && url.pathname === "/api/v1/agent/messages") {
+  if (method === "POST" && url.pathname === "/api/v1/host/messages") {
     try {
       const body = (await readJson(req)) as HostToServerMessage;
       const result = plane.handleHostMessage(body);
@@ -71,7 +71,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
     return true;
   }
 
-  if (method === "POST" && url.pathname === "/api/v1/agents/drain") {
+  if (method === "POST" && url.pathname === "/api/v1/hosts/drain") {
     try {
       const body = (await readJson(req)) as { hostId?: string };
       if (!body.hostId) {

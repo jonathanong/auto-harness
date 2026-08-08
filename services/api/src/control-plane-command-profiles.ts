@@ -14,7 +14,7 @@ export function listCommandProfiles(state: ControlPlaneState): string[] {
       }
     }
   }
-  for (const host of state.agentHosts.values()) {
+  for (const host of state.hostInventories.values()) {
     for (const name of Object.keys(host.commandProfiles)) {
       set.add(name);
     }

@@ -50,8 +50,8 @@ export default async function HostsPage({
   let error: string | null = null;
   try {
     const [h, inv] = await Promise.all([
-      apiGet<{ items: Host[] }>("/api/v1/agents"),
-      apiGet<{ items: HostInventorySummary[] }>("/api/v1/agent-hosts"),
+      apiGet<{ items: Host[] }>("/api/v1/hosts"),
+      apiGet<{ items: HostInventorySummary[] }>("/api/v1/host-inventories"),
     ]);
     hosts = h.items ?? [];
     inventories = inv.items ?? [];
