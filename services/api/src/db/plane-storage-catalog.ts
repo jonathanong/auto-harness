@@ -146,7 +146,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
 export async function putAgentHost(ctx: PlaneStorageCtx, rec: HostInventoryRecord): Promise<void> {
   await ctx.doc.send(
     new PutCommand({
-      TableName: ctx.tables.agentHosts,
+      TableName: ctx.tables.hostInventories,
       Item: { ...rec },
     }),
   );
@@ -157,16 +157,16 @@ export async function getAgentHost(
   hostId: string,
 ): Promise<HostInventoryRecord | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.agentHosts, Key: { hostId } }),
+    new GetCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }),
   );
   return (res.Item as HostInventoryRecord | undefined) ?? null;
 }
 
 export async function listAgentHosts(ctx: PlaneStorageCtx): Promise<HostInventoryRecord[]> {
-  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.agentHosts }));
+  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.hostInventories }));
   return (res.Items ?? []) as HostInventoryRecord[];
 }
 
 export async function deleteAgentHost(ctx: PlaneStorageCtx, hostId: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { hostId } }));
+  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }));
 }

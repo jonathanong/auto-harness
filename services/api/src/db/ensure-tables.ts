@@ -100,7 +100,7 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await createIfMissing(ddb, {
-    TableName: names.agentLocks,
+    TableName: names.hostLocks,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [{ AttributeName: "hostId", AttributeType: ScalarAttributeType.S }],
     KeySchema: [{ AttributeName: "hostId", KeyType: KeyType.HASH }],
@@ -141,7 +141,7 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await createIfMissing(ddb, {
-    TableName: names.agentHosts,
+    TableName: names.hostInventories,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [{ AttributeName: "hostId", AttributeType: ScalarAttributeType.S }],
     KeySchema: [{ AttributeName: "hostId", KeyType: KeyType.HASH }],

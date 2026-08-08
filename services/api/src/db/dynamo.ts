@@ -11,9 +11,9 @@ export type DynamoTableNames = {
   sessionLogs: string;
   schedules: string;
   repositories: string;
-  agentLocks: string;
+  hostLocks: string;
   archives: string;
-  agentHosts: string;
+  hostInventories: string;
   providers: string;
   providerAccounts: string;
   commands: string;
@@ -28,9 +28,9 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     sessionLogs: `${p}-SessionLogs`,
     schedules: `${p}-Schedules`,
     repositories: `${p}-Repositories`,
-    agentLocks: `${p}-AgentLocks`,
+    hostLocks: `${p}-HostLocks`,
     archives: `${p}-Archives`,
-    agentHosts: `${p}-AgentHosts`,
+    hostInventories: `${p}-HostInventories`,
     providers: `${p}-Providers`,
     providerAccounts: `${p}-ProviderAccounts`,
     commands: `${p}-Commands`,

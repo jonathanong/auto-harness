@@ -38,14 +38,14 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
     do {
       const res = await ctx.doc.send(
         new ScanCommand({
-          TableName: ctx.tables.agentLocks,
+          TableName: ctx.tables.hostLocks,
           ExclusiveStartKey: startKey,
         }),
       );
       for (const item of res.Items ?? []) {
         await ctx.doc.send(
           new DeleteCommand({
-            TableName: ctx.tables.agentLocks,
+            TableName: ctx.tables.hostLocks,
             Key: { hostId: item.hostId },
           }),
         );
@@ -66,7 +66,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   }
   for (const h of await listAgentHosts(ctx)) {
     await ctx.doc.send(
-      new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { hostId: h.hostId } }),
+      new DeleteCommand({ TableName: ctx.tables.hostInventories, Key: { hostId: h.hostId } }),
     );
   }
   for (const p of await listProviders(ctx)) {

@@ -17,7 +17,7 @@ export async function tryAcquireAgentLock(
   if (opts.replaceExisting) {
     await ctx.doc.send(
       new PutCommand({
-        TableName: ctx.tables.agentLocks,
+        TableName: ctx.tables.hostLocks,
         Item: { hostId: opts.hostId, connectionId: opts.connectionId },
       }),
     );
@@ -26,7 +26,7 @@ export async function tryAcquireAgentLock(
   try {
     await ctx.doc.send(
       new PutCommand({
-        TableName: ctx.tables.agentLocks,
+        TableName: ctx.tables.hostLocks,
         Item: { hostId: opts.hostId, connectionId: opts.connectionId },
         ConditionExpression: "attribute_not_exists(hostId)",
       }),
@@ -48,7 +48,7 @@ export async function releaseAgentLock(
   try {
     await ctx.doc.send(
       new DeleteCommand({
-        TableName: ctx.tables.agentLocks,
+        TableName: ctx.tables.hostLocks,
         Key: { hostId },
         ConditionExpression: "connectionId = :c",
         ExpressionAttributeValues: { ":c": connectionId },
@@ -64,7 +64,7 @@ export async function releaseAgentLock(
 
 export async function getAgentLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.agentLocks, Key: { hostId } }),
+    new GetCommand({ TableName: ctx.tables.hostLocks, Key: { hostId } }),
   );
   return (res.Item?.connectionId as string | undefined) ?? null;
 }
