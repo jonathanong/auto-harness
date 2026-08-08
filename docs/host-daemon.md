@@ -74,7 +74,7 @@ graph TB
 ### Package layout
 
 ```
-services/agent/
+services/host-daemon/
 ├── src/
 │   ├── index.ts              # CLI entry (start, status, …)
 │   ├── config.ts             # load + validate config / env
@@ -105,8 +105,8 @@ sequenceDiagram
     WTM->>WTM: git worktree add if needed - prune stale
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
-    Conn->>AWS: agent:register { hostId, worktrees[] }
-    AWS-->>Conn: agent:registered / session:assign (optional)
+    Conn->>AWS: host:register { hostId, worktrees[] }
+    AWS-->>Conn: host:registered / session:assign (optional)
     Note over Main: Event loop: messages, sessions, heartbeats
 ```
 
@@ -119,14 +119,14 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 ### Connection Manager
 
 - Opens WebSocket with `?token=<apiKey>`
-- Sends `agent:register` immediately after open
+- Sends `host:register` immediately after open
 - Routes inbound messages by `type` to Session Runner
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
 - On reconnect: re-register full inventory + any **in-progress** sessions still running locally
 - Responds to server `ping` with `pong`
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
-Outbound message types: `agent:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
+Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
 
 ### Config Loader
 
@@ -142,7 +142,7 @@ Outbound message types: `agent:register`, `session:ack`, `session:log`, `session
 | `ensureAll()`   | On startup: `git worktree list`; create missing via `git worktree add <path> <branch>` |
 | `claim(id)`     | Local mutex: fail if already busy; set busy + `currentSessionId`                       |
 | `release(id)`   | Clear session; set idle; emit `worktree:status`                                        |
-| `snapshot()`    | Array for `agent:register` and status CLI                                              |
+| `snapshot()`    | Array for `host:register` and status CLI                                               |
 | `markError(id)` | On unexpected git failures; report status `error`                                      |
 
 **Concurrency:** number of configured worktrees. Each worktree runs **at most one** session at a time.
@@ -318,7 +318,7 @@ For `type: scheduled` / `worktreeId: null`:
 
 1. Operator configures worktrees in agent config (paths + labels)
 2. Agent creates missing worktrees on startup
-3. Control plane learns inventory via `agent:register`
+3. Control plane learns inventory via `host:register`
 4. Scheduler assigns sessions to idle matching worktrees ([round-robin](aws.md#scheduler))
 5. Setup script resets branch/deps at **session start**
 6. Worktree is reused across sessions (not deleted after each run)
@@ -354,7 +354,7 @@ Non-zero exit → session `failed`, worktree released.
 
 ```text
 /home/harness/
-├── .env                          # HARNESS_AGENT_ID, HARNESS_API_URL, HARNESS_API_KEY
+├── .env                          # HARNESS_HOST_ID, HARNESS_API_URL, HARNESS_API_KEY
 ├── .env.codex                    # chmod 600 — AI CLI credentials
 ├── repos/
 │   └── my-app/                   # main checkout (paths configured via API/UI)
@@ -365,7 +365,7 @@ Non-zero exit → session `failed`, worktree released.
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/agents/:hostId/config` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 
@@ -464,7 +464,7 @@ sequenceDiagram
 
     Updater->>Agent: Update available (or drain + restart requested)
     Agent->>Agent: Enter draining mode
-    Agent->>AWS: agent:status { draining: true }
+    Agent->>AWS: host:status { draining: true }
     Note over Agent,AWS: Reject / ignore new session:assign
     Note over AWS: Scheduler skips this agent’s worktrees
 
@@ -476,7 +476,7 @@ sequenceDiagram
     Agent->>AWS: disconnect (optional clean close)
     Agent->>Agent: Exit 0
     Updater->>Agent: Start new binary / systemd restart
-    Agent->>AWS: connect + agent:register
+    Agent->>AWS: connect + host:register
     Note over Agent: draining = false - accept assigns again
 ```
 
@@ -485,7 +485,7 @@ sequenceDiagram
 1. **Detect update** — e.g. package updater, `auto-harness-agent update`, or `SIGUSR1` / systemd `ExecReload` mapped to drain-then-restart (not hard kill).
 2. **Enter draining**
    - Set local flag `draining = true`
-   - Notify control plane: `agent:status` (or equivalent) with `draining: true` so idle worktrees are not scheduled
+   - Notify control plane: `host:status` (or equivalent) with `draining: true` so idle worktrees are not scheduled
    - Stop listening for **new** jobs: do not `session:ack` new assigns; if an assign arrives, reply with a drain nack (or ignore so control plane retries elsewhere after timeout — prefer explicit nack so the session stays queued for other agents)
 3. **Keep running current jobs**
    - Continue log streaming, timeout watches, and cancel handling for sessions already claimed
@@ -496,7 +496,7 @@ sequenceDiagram
 5. **Restart**
    - Exit cleanly (code 0)
    - Supervisor (systemd `Restart=always`, or updater) starts the new version
-   - New process connects, `agent:register` with inventory, `draining: false`
+   - New process connects, `host:register` with inventory, `draining: false`
 
 ### What auto-update must not do
 
@@ -536,7 +536,7 @@ On re-register, include:
 
 ```json
 {
-  "type": "agent:register",
+  "type": "host:register",
   "hostId": "vps-prod-1",
   "worktrees": [
     {

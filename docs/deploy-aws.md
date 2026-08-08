@@ -2,7 +2,7 @@
 
 **Design target.** API Gateway, Lambda, DynamoDB, S3, EventBridge. Architecture: [aws.md](aws.md).
 
-Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-agent.md](deploy-agent.md).
+Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
 
 ---
 
@@ -23,7 +23,7 @@ Do **not** treat the commands below as battle-tested until that lands. They are 
 - AWS account + credentials with rights for CloudFormation/CDK, Lambda, API Gateway, DynamoDB, S3, EventBridge, IAM, (optional) KMS
 - Node 22.x for Lambda runtime alignment when packaging
 - `cdk` CLI / `aws` CLI bootstrap in the target account/region
-- Pre-deploy local proof green: [agent-e2e-testing.md](agent-e2e-testing.md)
+- Pre-deploy local proof green: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md)
 
 ---
 
@@ -59,19 +59,19 @@ pnpm --filter @auto-harness/cdk deploy
 
 ### Expected stack outputs
 
-| Output              | Consumer                                                              |
-| ------------------- | --------------------------------------------------------------------- |
-| `RestApiUrl`        | Web UI, CI `HARNESS_API_URL`                                          |
-| `WebSocketUrl`      | Agent connect (`wss://…/ws`) — see [deploy-agent.md](deploy-agent.md) |
-| `ArchiveBucketName` | Ops                                                                   |
-| `Region`            | Clients                                                               |
+| Output              | Consumer                                                                          |
+| ------------------- | --------------------------------------------------------------------------------- |
+| `RestApiUrl`        | Web UI, CI `HARNESS_API_URL`                                                      |
+| `WebSocketUrl`      | Agent connect (`wss://…/ws`) — see [deploy-host-daemon.md](deploy-host-daemon.md) |
+| `ArchiveBucketName` | Ops                                                                               |
+| `Region`            | Clients                                                                           |
 
 ### Post-deploy smoke (minimum)
 
 1. `GET {RestApiUrl}/health` or equivalent health route
 2. Create operator service account / bind agent key ([auth.md](auth.md#vps-agent-authentication))
 3. Register at least one repository
-4. Connect one agent ([deploy-agent.md](deploy-agent.md))
+4. Connect one agent ([deploy-host-daemon.md](deploy-host-daemon.md))
 5. `POST /sessions` + observe assign over WebSocket → terminal status
 
 ---
@@ -83,7 +83,7 @@ pnpm --filter @auto-harness/cdk deploy
 | Lambda/handler code         | Build/bundle → `cdk deploy` (or pipeline) → verify health + one session                                           |
 | Infra (tables, routes, IAM) | `cdk diff` → `cdk deploy` → watch CloudWatch for errors                                                           |
 | Env / secrets               | Update parameter store / CDK context → redeploy or `update-function-configuration` → smoke login + agent register |
-| Breaking API changes        | Drain agents ([deploy-agent.md](deploy-agent.md)) → deploy control plane → roll agents → re-run E2E               |
+| Breaking API changes        | Drain agents ([deploy-host-daemon.md](deploy-host-daemon.md)) → deploy control plane → roll agents → re-run E2E   |
 | Data migrations             | Prefer additive DynamoDB attributes; document any one-time backfill in the PR                                     |
 
 Prefer **control plane first**, then agents, so old agents fail closed on unknown messages rather than new agents talking to old APIs.
@@ -100,7 +100,7 @@ pnpm --filter @auto-harness/cdk destroy
 
 Also:
 
-1. Drain and stop all VPS agents ([deploy-agent.md](deploy-agent.md#teardown)).
+1. Drain and stop all VPS agents ([deploy-host-daemon.md](deploy-host-daemon.md#teardown)).
 2. Confirm DynamoDB tables and S3 archive bucket deletion policy (retain vs destroy — set retention in CDK before first prod deploy).
 3. Revoke service-account API keys and rotate any shared secrets.
 4. Remove DNS / custom domain bindings if used.
@@ -113,18 +113,18 @@ Until destroy is validated in a non-prod account, treat teardown as **manual Clo
 
 | When                    | Gate                                                                        |
 | ----------------------- | --------------------------------------------------------------------------- |
-| Before AWS deploy claim | Local E2E green ([agent-e2e-testing.md](agent-e2e-testing.md))              |
+| Before AWS deploy claim | Local E2E green ([host-daemon-e2e-testing.md](host-daemon-e2e-testing.md))  |
 | After AWS deploy        | Health, agent register, one full session lifecycle, CloudWatch errors quiet |
 
 ---
 
 ## Related
 
-| Doc                                | Role                 |
-| ---------------------------------- | -------------------- |
-| [deploy.md](deploy.md)             | Ops index            |
-| [deploy-local.md](deploy-local.md) | Local stack          |
-| [deploy-agent.md](deploy-agent.md) | VPS agent            |
-| [aws.md](aws.md)                   | Control plane design |
-| [auth.md](auth.md)                 | Keys, binding        |
-| [setup.md](setup.md)               | Install overview     |
+| Doc                                            | Role                 |
+| ---------------------------------------------- | -------------------- |
+| [deploy.md](deploy.md)                         | Ops index            |
+| [deploy-local.md](deploy-local.md)             | Local stack          |
+| [deploy-host-daemon.md](deploy-host-daemon.md) | VPS agent            |
+| [aws.md](aws.md)                               | Control plane design |
+| [auth.md](auth.md)                             | Keys, binding        |
+| [setup.md](setup.md)                           | Install overview     |

@@ -19,7 +19,7 @@ Deep “why product”: [why.md](why.md).
 | **Subscription / seat + plan limits** | Monthly seat; rate/usage limits inside the plan | **Primary design.** Sessions burn plan quota via the installed CLI logged into that plan on the VPS.                                                                                        |
 | **API keys (pay-per-token)**          | Metered by tokens/requests                      | Optional if a CLI is configured that way; **not** the economic rationale for the system. Infrastructure estimates below assume you are **not** modeling API spend as the main AI line item. |
 
-**Usage limits** on subscriptions show up as CLI errors (parsed as `usage_limit`) rather than an AWS invoice spike—see [agent.md — Usage limits](agent.md#usage-limits-ai-vendor--cli-quotas).
+**Usage limits** on subscriptions show up as CLI errors (parsed as `usage_limit`) rather than an AWS invoice spike—see [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
 ### Non-interactive CLI (required by this cost path)
 

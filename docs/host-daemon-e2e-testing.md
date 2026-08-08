@@ -37,10 +37,10 @@ pnpm test:integration      # real HTTP+WS server + real agent daemon + real echo
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
 pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
-pnpm local:cli-e2e         # documented pnpm local:agent run-session (ref: main)
+pnpm local:cli-e2e         # documented pnpm local:daemon run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201 queued
 pnpm local:ws-e2e          # real WebSocket create→assign→run
-pnpm local:cloud-e2e       # AgentLoop loopback
+pnpm local:cloud-e2e       # DaemonLoop loopback
 pnpm local:manage-verify   # repos/schedules/cancel/drain + thin web routes
 ```
 
@@ -149,7 +149,7 @@ Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$
 Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it's a list of `{providerAccountId}`, not fixed argv):
 
 ```bash
-cat > "$WORK/config/agent-host.config.json" <<EOF
+cat > "$WORK/config/host-inventory.config.json" <<EOF
 {
   "commandProfiles": {},
   "providerAccounts": [
@@ -179,7 +179,7 @@ If a CLI is not installed, **skip** creating its Provider/Account and only run t
 Agent process identity (env only):
 
 ```bash
-export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_HOST_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
 # optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL
 ```
@@ -200,27 +200,27 @@ pnpm local:api
 # → Auto Harness local API listening on http://127.0.0.1:7420
 
 # Publish host inventory (once API is up)
-curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-e2e-1/config" \
+curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-e2e-1/inventory" \
   -H 'content-type: application/json' \
-  -d @"$WORK/config/agent-host.config.json"
+  -d @"$WORK/config/host-inventory.config.json"
 
 # Terminal C — Control-plane UI (:7421)
 HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web
 
 # Terminal C2 — Host pane UI (:7422) — host inventory for this agent
-export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_HOST_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent-web
+pnpm local:host-pane
 # open http://127.0.0.1:7422/repositories  (or PUT config via curl as below)
 
 # Terminal D — Agent daemon (env identity only)
-export HARNESS_AGENT_ID=local-e2e-1
+export HARNESS_HOST_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent start
+pnpm local:daemon start
 # → connected … / agent … registered
 
 # Validate bootstrap
-pnpm local:agent status
+pnpm local:daemon status
 # expect hostId, repositories, providerAccounts from the control plane
 ```
 
@@ -230,7 +230,7 @@ pnpm local:agent status
 curl -sS http://127.0.0.1:7420/health
 # {"ok":true}
 
-curl -sS http://127.0.0.1:7420/api/v1/agents
+curl -sS http://127.0.0.1:7420/api/v1/hosts
 # items include hostId, online:true, worktreeIds
 
 curl -sS http://127.0.0.1:7420/api/v1/session-targets
@@ -450,6 +450,6 @@ Those are separate gates after local E2E is green.
 | [local-development.md](local-development.md) | Day-to-day local commands            |
 | [cli.md](cli.md)                             | Agent CLI reference                  |
 | [api.md](api.md)                             | REST shapes                          |
-| [agent.md](agent.md)                         | Agent internals                      |
+| [host-daemon.md](host-daemon.md)             | Agent internals                      |
 | [harness.md](harness.md)                     | Repo harness fire-and-forget pattern |
 | [plan.md](plan.md)                           | Phase acceptance criteria            |

@@ -2,7 +2,7 @@
 
 Phase 1 local tooling for the agent and API packages. CI callers use the [REST API](api.md) (fire-and-forget); they do not run this CLI.
 
-Full local runbook: [local-development.md](local-development.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
+Full local runbook: [local-development.md](local-development.md). Pre-deploy E2E: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ## Invocation (from monorepo root)
 
@@ -15,9 +15,9 @@ pnpm local:api
 # → http://127.0.0.1:7420
 
 # Configure host inventory (repos/worktrees) via API — not a local file
-curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/agents/local-1/config" \
+curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/inventory" \
   -H 'content-type: application/json' \
-  -d @examples/local/agent-host.config.json
+  -d @examples/local/host-inventory.config.json
 
 # A session/schedule targets a Provider Account or a standalone Command from the global
 # catalog, not the host config — create one before creating any session:
@@ -26,10 +26,10 @@ curl -fsS -X POST "http://127.0.0.1:7420/api/v1/commands" \
   -d '{"name":"echo-prompt","argv":["echo"],"appendPrompt":true,"providerId":null}'
 
 # Agent: identity via env only
-export HARNESS_AGENT_ID=local-1
+export HARNESS_HOST_ID=local-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent status
-pnpm local:agent run-session --file /path/to/session.assign.json
+pnpm local:daemon status
+pnpm local:daemon run-session --file /path/to/session.assign.json
 
 # One-shot create→run verification
 pnpm local:e2e
@@ -37,7 +37,7 @@ pnpm local:e2e
 pnpm local:cli-e2e
 ```
 
-Agent process env: `HARNESS_AGENT_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY` / `HARNESS_LOG_LEVEL`.
+Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY` / `HARNESS_LOG_LEVEL`.
 
 ---
 
@@ -48,8 +48,8 @@ Agent process env: `HARNESS_AGENT_ID`, `HARNESS_API_URL`, optional `HARNESS_API_
 Bootstraps host inventory from the control plane, then prints agent id, repositories, worktrees, and attached provider accounts.
 
 ```bash
-export HARNESS_AGENT_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent -- status
+export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:daemon -- status
 ```
 
 ### `run-session`
@@ -57,7 +57,7 @@ pnpm local:agent -- status
 Run one session from a JSON assign file (see [examples/local/session.assign.json](../examples/local/session.assign.json)).
 
 ```bash
-pnpm local:agent -- run-session --file ./session.assign.json
+pnpm local:daemon -- run-session --file ./session.assign.json
 ```
 
 Required assign fields: `sessionId`, `repositoryId`, `prompt`, `resolvedArgv` (the already-resolved argv — this is the same wire shape the control plane sends over `session:assign`, computed control-plane-side from a Provider Account/Command; the agent never resolves a target itself), `timeout` (seconds), `worktreeId`. Optional: `ref`, `setupScript`, `resume`, `metadata`.
@@ -69,7 +69,7 @@ Terminal line is JSON: `{ "status", "exitCode", "errorCode" }`. Exit code `0` on
 WebSocket daemon: bootstrap config → register → accept assigns.
 
 ```bash
-pnpm local:agent start
+pnpm local:daemon start
 # optional: --ws ws://127.0.0.1:7420/ws  (otherwise derived from HARNESS_API_URL)
 ```
 
@@ -100,9 +100,9 @@ No auto-dispatch to the agent yet — bridge with a session assign file for `run
 Repositories, worktrees, and which Provider Accounts (plus their per-repo/per-worktree enable/command overrides) are available on this host.
 
 ```bash
-PUT /api/v1/agents/:hostId/config
-GET /api/v1/agents/:hostId/config
-GET /api/v1/agent-hosts
+PUT /api/v1/hosts/:hostId/inventory
+GET /api/v1/hosts/:hostId/inventory
+GET /api/v1/host-inventories
 ```
 
 ```json
@@ -144,4 +144,4 @@ GET  /api/v1/session-targets      # unified picker: attached provider accounts +
 worktree → repository → host → the provider's own default command) or `commandId` (standalone,
 ungated). An unknown id is rejected at create time; free-form command strings are never accepted.
 
-Template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Or use the Hosts page in the local web UI.
+Template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Or use the Hosts page in the local web UI.

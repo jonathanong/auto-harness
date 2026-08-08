@@ -4,10 +4,10 @@
 
 Auto-Harness operates on two planes:
 
-| Plane               | Where                                                | Doc                      |
-| ------------------- | ---------------------------------------------------- | ------------------------ |
-| **Control plane**   | AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge | **[aws.md](aws.md)**     |
-| **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs          | **[agent.md](agent.md)** |
+| Plane               | Where                                                | Doc                                  |
+| ------------------- | ---------------------------------------------------- | ------------------------------------ |
+| **Control plane**   | AWS — API Gateway, Lambda, DynamoDB, S3, EventBridge | **[aws.md](aws.md)**                 |
+| **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs          | **[host-daemon.md](host-daemon.md)** |
 
 ```mermaid
 graph TB
@@ -104,7 +104,7 @@ sequenceDiagram
     API->>DDB: terminal status - free worktree - drain queue
 ```
 
-Details: [aws.md — Scheduler](aws.md#scheduler), [agent.md — Session lifecycle](agent.md#session-lifecycle-agent-view).
+Details: [aws.md — Scheduler](aws.md#scheduler), [host-daemon.md — Session lifecycle](host-daemon.md#session-lifecycle-agent-view).
 
 ### Agent connection and recovery
 
@@ -116,7 +116,7 @@ sequenceDiagram
 
     Agent->>API: Connect ?token=hns_…
     API->>DDB: Validate key - store Connection
-    Agent->>API: agent:register { worktrees }
+    Agent->>API: host:register { worktrees }
     API->>DDB: Upsert inventory - assign pending if any
 
     Note over Agent,API: Disconnect
@@ -125,7 +125,7 @@ sequenceDiagram
     API->>DDB: Reconcile online/busy state
 ```
 
-Details: [aws.md — Disconnect](aws.md#disconnect-handling), [agent.md — Recovery](agent.md#disconnect-and-crash-recovery).
+Details: [aws.md — Disconnect](aws.md#disconnect-handling), [host-daemon.md — Recovery](host-daemon.md#disconnect-and-crash-recovery).
 
 ### Scheduled update
 
@@ -146,7 +146,7 @@ sequenceDiagram
     Agent->>Sched: logs + status
 ```
 
-Details: [aws.md — Cron](aws.md#cron-evaluator), [agent.md — Non-worktree](agent.md#non-worktree-sessions-scheduled).
+Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-worktree](host-daemon.md#non-worktree-sessions-scheduled).
 
 ---
 
@@ -187,7 +187,7 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [agent.md — Non-worktree](a
 | [websocket.md](websocket.md)                 | Real-time protocol       |
 | [cli.md](cli.md)                             | Agent CLI                |
 | [aws.md](aws.md)                             | Control plane            |
-| [agent.md](agent.md)                         | Execution plane          |
+| [host-daemon.md](host-daemon.md)             | Execution plane          |
 | [plan.md](plan.md)                           | Phases + data model      |
 | [auth.md](auth.md)                           | Credentials / roles      |
 | [security.md](security.md)                   | Trust boundaries         |

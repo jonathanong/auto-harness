@@ -350,7 +350,7 @@ The session enters the `queued` state. The scheduler assigns it to an idle workt
 
 If the session exceeds `timeout` seconds while running, the agent kills the process and the status becomes `timed_out`.
 
-If the agent detects an **AI vendor usage/rate limit** in CLI output, the session ends as `failed` with `errorCode: "usage_limit"` (no automatic retry). See [agent.md — Usage limits](agent.md#usage-limits-ai-vendor--cli-quotas).
+If the agent detects an **AI vendor usage/rate limit** in CLI output, the session ends as `failed` with `errorCode: "usage_limit"` (no automatic retry). See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
 #### `GET /sessions`
 
@@ -484,7 +484,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 3. If the agent is offline or the worktree is busy, the session **stays queued** on that pin — it does **not** fall back to another agent/worktree.
 4. `session:assign` includes `resume: true`, `resumedFromSessionId`, and any stored `cliResumeRef` from the source.
 
-**Agent behavior:** see [agent.md — Resume](agent.md#session-resume). On success, status progresses normally; if resume is impossible, session `failed` with `errorCode: "resume_failed"` (or similar).
+**Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally; if resume is impossible, session `failed` with `errorCode: "resume_failed"` (or similar).
 
 **Errors:**
 

@@ -6,7 +6,7 @@ that are already settled, or re-discovering correctness bugs that are already kn
 
 **How to use this document:** this file owns _sequencing, structure, data model, and acceptance
 criteria_. It does not restate layer detail — control-plane internals live in [aws.md](aws.md),
-agent internals in [agent.md](agent.md), the wire formats in [api.md](api.md) and
+agent internals in [host-daemon.md](host-daemon.md), the wire formats in [api.md](api.md) and
 [websocket.md](websocket.md). Section 8 lists exactly what to change in those sibling docs; do
 that first, since phases below assume the amended API/data model, not the one currently written
 in those files.
@@ -63,7 +63,7 @@ Explicitly out of scope for this project, regardless of how easy any individual 
 `services/`. Dependency-cruiser forbids modules→services and service→service imports.
 
 Layer docs: [aws.md](aws.md) (control plane `services/cdk` + `services/api`),
-[agent.md](agent.md) (`services/agent`).
+[host-daemon.md](host-daemon.md) (`services/host-daemon`).
 
 ```
 auto-harness/
@@ -73,7 +73,7 @@ auto-harness/
 ├── services/
 │   ├── cdk/                    # @auto-harness/cdk — AWS CDK (see aws.md)
 │   ├── api/                    # @auto-harness/api — REST + WebSocket Lambda/local
-│   ├── agent/                  # @auto-harness/agent — VPS daemon (see agent.md)
+│   ├── host-daemon/            # @auto-harness/host-daemon — VPS daemon (see host-daemon.md)
 │   └── web/                    # @auto-harness/web — Next.js UI
 │
 ├── docs/
@@ -256,7 +256,7 @@ reference these by number; a phase is not done until its invariants have a passi
    receive `session:ack` within a bounded ack deadline returns to `queued` and its worktree
    returns to `idle`. No unbounded "ignore" outcome is allowed to leave a worktree wedged `busy`
    forever.
-3. **One live connection per agent.** `agent:register` is a conditional put keyed on `hostId`
+3. **One live connection per agent.** `host:register` is a conditional put keyed on `hostId`
    ("no existing connection for this `hostId`"); a stale row from a lost `$disconnect` must not
    let two connections both believe they own one agent identity.
 4. **A schedule fires at most once per `nextRunAt`.** The cron evaluator's claim _is_ the
@@ -280,7 +280,7 @@ resume_failed`) rather than waiting indefinitely.
 10. **The control plane can do everything; the host pane is debug-only.** Hosts connect to the
     control plane over WebSocket only — there is no reachable address for a host from the control
     plane's side. Every action a user needs on a host (attach/edit repositories, add/remove/edit
-    worktrees, manage command profiles) must be reachable from `services/web`. `services/agent-web`
+    worktrees, manage command profiles) must be reachable from `services/web`. `services/host-pane`
     (`:7422`) is a local debugging tool for that host, never a required step in a normal workflow.
 
 ---
@@ -401,7 +401,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
 
 - Two concurrent `POST /sessions` racing for the same idle worktree: exactly one wins the claim,
   the other is queued or assigned elsewhere (Invariant 1).
-- Two concurrent `agent:register` calls with the same `hostId`: exactly one connection row
+- Two concurrent `host:register` calls with the same `hostId`: exactly one connection row
   survives (Invariant 3).
 - A cron sweep re-invoked concurrently (simulating an EventBridge retry) creates at most one
   session per due schedule (Invariant 4).
@@ -426,7 +426,7 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
   the API Gateway WS connection alive; do **not** implement a server-originated timer-based
   `ping`, since Lambda has no persistent process to hold one (this replaces an earlier,
   unimplementable "server pings every 30s" design).
-- `agent:register` on connect — worktree inventory, validated against `boundHostId`.
+- `host:register` on connect — worktree inventory, validated against `boundHostId`.
 - **Ack-deadline enforcement**: `session:assign` without `session:ack` inside the deadline
   requeues the session and frees the worktree (Invariant 2) — implemented in the scheduler
   service, triggered by a short-lived timer or a re-check on next scheduling pass.
@@ -466,7 +466,7 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
-**Status (code-complete, local WS):** `AgentLoop` + **WebSocket** (`/ws` on local API,
+**Status (code-complete, local WS):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
 `auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
 deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), concurrency
 reject/replace (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
@@ -522,8 +522,8 @@ rewrite (usage-limit retry is now Phase 3, not Phase 5):
 - Audit logging.
 
 **Status:** session log archival (`archiveSessionLogs`), opt-in webhooks
-(`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainAgent` +
-`AgentLoop.beginDrain`).
+(`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainHost` +
+`DaemonLoop.beginDrain`).
 
 **Migration marker:** none of this gates any product-repo automation workflow.
 
@@ -541,11 +541,11 @@ with this table.
 | `api.md`                  | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link).                                                                                                                                                                                                                                   |
 | `api.md`                  | `POST /sessions/:id/resume`                    | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5).                                                                                                                                 |
 | `api.md`                  | `GET /sessions` query params                   | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns).                                                                                                                                                                      |
-| `agent.md`                | Executor                                       | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                                      |
-| `agent.md`                | Worktree Manager / Setup scripts               | Document `ref`-aware checkout (D6).                                                                                                                                                                                                                         |
-| `agent.md`                | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
-| `agent.md`                | Usage limits                                   | Replace "no auto-retry" with the narrow, capped retry described in D8/Invariant 6.                                                                                                                                                                          |
-| `agent.md`                | New section                                    | Terminal hook (D3): config shape, invocation contract, env vars, failure handling.                                                                                                                                                                          |
+| `host-daemon.md`          | Executor                                       | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                                      |
+| `host-daemon.md`          | Worktree Manager / Setup scripts               | Document `ref`-aware checkout (D6).                                                                                                                                                                                                                         |
+| `host-daemon.md`          | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
+| `host-daemon.md`          | Usage limits                                   | Replace "no auto-retry" with the narrow, capped retry described in D8/Invariant 6.                                                                                                                                                                          |
+| `host-daemon.md`          | New section                                    | Terminal hook (D3): config shape, invocation contract, env vars, failure handling.                                                                                                                                                                          |
 | `aws.md`                  | Scheduler                                      | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), `concurrencyKey`/`onConflict` resolution (Invariant 9).                                                                                                                   |
 | `aws.md`                  | Cron Evaluator                                 | Conditional `nextRunAt` claim (Invariant 4); heartbeat-based stale sweep (Phase 3) replacing the coarse `timeout + grace` version.                                                                                                                          |
 | `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
@@ -568,7 +568,7 @@ than as one final pass:
    under concurrent/racing conditions, not just the happy path.
 3. **Phase 3 exit ("migration marker"):** the acceptance criteria in Phase 3 pass in a real
    (non-local) deployment, and a plan-only workflow can be cut over per §6's marker.
-4. **Cross-doc consistency:** after applying §7's deltas, re-read `api.md`, `agent.md`, `aws.md`,
+4. **Cross-doc consistency:** after applying §7's deltas, re-read `api.md`, `host-daemon.md`, `aws.md`,
    `websocket.md` and confirm none of them still describe a behavior this document's §1 decisions
    or §5 invariants contradict (e.g. no lingering "server ping" language, no lingering
    worktree-pin resume language).

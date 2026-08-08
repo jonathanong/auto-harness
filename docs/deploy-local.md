@@ -2,9 +2,9 @@
 
 **Supported today.** DynamoDB Local + local API (+ optional web) + agent for development and pre-deploy proof.
 
-Ops index: [deploy.md](deploy.md). Day-to-day commands: [local-development.md](local-development.md). Full E2E checklist: [agent-e2e-testing.md](agent-e2e-testing.md).
+Ops index: [deploy.md](deploy.md). Day-to-day commands: [local-development.md](local-development.md). Full E2E checklist: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
-Other surfaces: [deploy-aws.md](deploy-aws.md) · [deploy-agent.md](deploy-agent.md).
+Other surfaces: [deploy-aws.md](deploy-aws.md) · [deploy-host-daemon.md](deploy-host-daemon.md).
 
 ---
 
@@ -49,9 +49,9 @@ pnpm local:web
 # → http://127.0.0.1:7421
 
 # Host pane + daemon (env defaults: local-1 → :7420)
-pnpm local:agent-web
+pnpm local:host-pane
 # → http://127.0.0.1:7422
-pnpm local:agent start
+pnpm local:daemon start
 # registers online; then add local repos at http://127.0.0.1:7422/repositories
 ```
 
@@ -61,25 +61,25 @@ Or run everything above — except DynamoDB Local, which stays in Docker — in 
 
 ```bash
 curl -sS http://127.0.0.1:7420/health
-curl -sS http://127.0.0.1:7420/api/v1/agents
+curl -sS http://127.0.0.1:7420/api/v1/hosts
 curl -sS http://127.0.0.1:7420/api/v1/session-targets   # attached provider accounts + standalone commands
 ```
 
-Session path after agent is online: `POST /api/v1/sessions` then `POST /api/v1/scheduler/assign` (local create does not auto-assign). Details: [agent-e2e-testing.md](agent-e2e-testing.md).
+Session path after agent is online: `POST /api/v1/sessions` then `POST /api/v1/scheduler/assign` (local create does not auto-assign). Details: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
 
 ## Update
 
-| Piece                | How                                                                                                                                       |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Monorepo code        | `git pull` → `pnpm install` → re-run `pnpm check` if changing code                                                                        |
-| API / web            | Stop process, restart `pnpm local:api` / `pnpm local:web` (no build step)                                                                 |
-| Agent binary/config  | Prefer **drain then restart** — same idea as production ([deploy-agent.md](deploy-agent.md)); restart `local:agent start` with new config |
-| DynamoDB Local image | `pnpm local:dynamodb:down` then `pnpm local:dynamodb` (data is container-local unless you bind a volume)                                  |
-| Schema / tables      | `pnpm local:dynamodb:ready` re-ensures tables for the current prefix                                                                      |
+| Piece                | How                                                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Monorepo code        | `git pull` → `pnpm install` → re-run `pnpm check` if changing code                                                                                     |
+| API / web            | Stop process, restart `pnpm local:api` / `pnpm local:web` (no build step)                                                                              |
+| Agent binary/config  | Prefer **drain then restart** — same idea as production ([deploy-host-daemon.md](deploy-host-daemon.md)); restart `local:daemon start` with new config |
+| DynamoDB Local image | `pnpm local:dynamodb:down` then `pnpm local:dynamodb` (data is container-local unless you bind a volume)                                               |
+| Schema / tables      | `pnpm local:dynamodb:ready` re-ensures tables for the current prefix                                                                                   |
 
-Local API drain: `POST /api/v1/agents/drain` with `{ "hostId": "…" }`. Agent drain semantics: [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
+Local API drain: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`. Agent drain semantics: [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
 
 ---
 
@@ -111,18 +111,18 @@ rm -rf .local-agent-e2e .local-grok-demo   # if you created them
 
 ## Gates
 
-| When                                | Gate                                                  |
-| ----------------------------------- | ----------------------------------------------------- |
-| Before claiming local stack is good | [agent-e2e-testing.md](agent-e2e-testing.md) sign-off |
-| After code change                   | `pnpm check` + relevant `pnpm local:*` scripts        |
+| When                                | Gate                                                              |
+| ----------------------------------- | ----------------------------------------------------------------- |
+| Before claiming local stack is good | [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) sign-off |
+| After code change                   | `pnpm check` + relevant `pnpm local:*` scripts                    |
 
 ---
 
 ## Related
 
-| Doc                                          | Role                     |
-| -------------------------------------------- | ------------------------ |
-| [deploy.md](deploy.md)                       | Ops index (all surfaces) |
-| [deploy-aws.md](deploy-aws.md)               | AWS control plane        |
-| [deploy-agent.md](deploy-agent.md)           | VPS agent                |
-| [local-development.md](local-development.md) | Day-to-day commands      |
+| Doc                                            | Role                     |
+| ---------------------------------------------- | ------------------------ |
+| [deploy.md](deploy.md)                         | Ops index (all surfaces) |
+| [deploy-aws.md](deploy-aws.md)                 | AWS control plane        |
+| [deploy-host-daemon.md](deploy-host-daemon.md) | VPS agent                |
+| [local-development.md](local-development.md)   | Day-to-day commands      |

@@ -2,9 +2,9 @@
 
 Install Auto Harness and run it in production-shaped environments. **Day-to-day local work (DynamoDB Local, `pnpm local:*`, e2e, manage UI) lives in [local-development.md](local-development.md).**
 
-**Deploy / update / teardown:** [deploy.md](deploy.md) (index) · [deploy-local.md](deploy-local.md) · [deploy-aws.md](deploy-aws.md) · [deploy-agent.md](deploy-agent.md). Pre-deploy E2E: [agent-e2e-testing.md](agent-e2e-testing.md).
+**Deploy / update / teardown:** [deploy.md](deploy.md) (index) · [deploy-local.md](deploy-local.md) · [deploy-aws.md](deploy-aws.md) · [deploy-host-daemon.md](deploy-host-daemon.md). Pre-deploy E2E: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
-Design details: [aws.md](aws.md), [agent.md](agent.md), [plan.md](plan.md).
+Design details: [aws.md](aws.md), [host-daemon.md](host-daemon.md), [plan.md](plan.md).
 
 ## Prerequisites
 
@@ -24,7 +24,7 @@ pnpm install
 
 ## Local development
 
-**→ [local-development.md](local-development.md)** — DynamoDB Local, `pnpm local:api` / `local:agent` / `local:web`, one-shot e2e, operator manage routes, and the quality gate.
+**→ [local-development.md](local-development.md)** — DynamoDB Local, `pnpm local:api` / `local:daemon` / `local:web`, one-shot e2e, operator manage routes, and the quality gate.
 
 Quick start:
 
@@ -48,7 +48,7 @@ Short checklist:
    - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
    - `WEB_ORIGIN` — browser origin for CORS
 3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (**only when the CDK app is fully implemented** — see [deploy-aws.md](deploy-aws.md))
-4. Create users / service accounts; bind agent API key; add repositories; install agents per [deploy-agent.md](deploy-agent.md)
+4. Create users / service accounts; bind agent API key; add repositories; install agents per [deploy-host-daemon.md](deploy-host-daemon.md)
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
@@ -56,7 +56,7 @@ See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 
 ## VPS agent (production shape)
 
-Install / update / teardown: **[deploy-agent.md](deploy-agent.md)**. Locally: `run-session` / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
+Install / update / teardown: **[deploy-host-daemon.md](deploy-host-daemon.md)**. Locally: `run-session` / e2e in [local-development.md](local-development.md) or daemon start in [deploy-local.md](deploy-local.md).
 
 Agent config includes optional `apiUrl` / `apiKey` for cloud connect. All execution still resolves to **named, fixed argv** (D4), now via the global Provider/Provider Account/Command catalogs rather than host-local command profiles. Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).
 

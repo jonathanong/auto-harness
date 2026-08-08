@@ -2,7 +2,7 @@
 
 Canonical vocabulary for UI copy, nav labels, docs, and `data-pw` selectors. When naming something new or renaming something existing, check here first — and update this file when the vocabulary changes.
 
-The short version: **a "Host" runs "Sessions".** Never call either one an "agent" in UI-facing text — "agent" is reserved for the underlying identifier/process (see below).
+The short version: **a "Host" runs "Sessions".** Never call either one an "agent" — the identity, env vars, CLI, and wire protocol all say "host"/"daemon" too, not just the UI copy.
 
 ---
 
@@ -19,18 +19,7 @@ The short version: **a "Host" runs "Sessions".** Never call either one an "agent
 | **Provider Account** | A specific account of a Provider (e.g. "claude — jonathanrichardong@gmail.com"), attached to one or more hosts. Sessions can target a Provider Account directly; the actual command resolves via the worktree → repository → host → provider-default cascade at assign time.                                        | `/providers/[id]` Accounts tab, host/repository/worktree detail pages' Provider accounts tab, session/schedule create forms               |
 | **Command**          | A global catalog entry: a named, fixed `argv` (never a free-form shell string). Either owned by a Provider (reached only via that provider's accounts) or standalone (`providerId: null` — runs ungated on any worktree).                                                                                           | `/commands`, `/commands/[id]`, session/schedule create forms                                                                              |
 | **Command profile**  | _Retired_ — the old flat, host-scoped `argv` map used for session targeting before Provider/Provider Account/Command existed. `HostInventory.commandProfiles` still exists in code for backward host-config compatibility, but nothing resolves session/schedule commands from it anymore; use **Command** instead. | n/a (superseded)                                                                                                                          |
-| **Host pane**        | The per-host local UI (`services/agent-web`) for managing that host's own inventory — status, repositories, worktrees, sessions. Provider accounts show there read-only; attach/detach/override happens on the control plane.                                                                                       | `services/agent-web`, port 7422                                                                                                           |
-
-## Deliberately still "agent" (not renamed)
-
-These are internal/API-level names, not UI copy. Renaming them would touch identity, env vars, CLI commands, and wire protocol — out of scope for the UI terminology cleanup. If you're writing UI-facing text, translate these to the terms above; if you're touching the underlying system, leave the names below alone.
-
-| Name                                         | Why it stays "agent"                                                                                                                                                                     |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `hostId` / `HARNESS_AGENT_ID`                | The stable identity a host registers under. Renaming is a breaking wire/env change.                                                                                                      |
-| `pnpm local:agent`, `services/agent/*`       | The daemon/CLI package that runs _on_ a host and connects to the control plane.                                                                                                          |
-| `services/agent-web`, `pnpm local:agent-web` | Package dir and pnpm script for the **Host pane** (see above). UI copy inside now says "Host pane" — only the dir/command name stays "agent", to avoid churning muscle memory and paths. |
-| `/api/v1/agents/*`, `/api/v1/agent-hosts`    | REST routes. Renaming would be a breaking API change.                                                                                                                                    |
+| **Host pane**        | The per-host local UI (`services/host-pane`) for managing that host's own inventory — status, repositories, worktrees, sessions. Provider accounts show there read-only; attach/detach/override happens on the control plane.                                                                                       | `services/host-pane`, port 7422                                                                                                           |
 
 ---
 
@@ -38,4 +27,4 @@ These are internal/API-level names, not UI copy. Renaming them would touch ident
 
 - [local-development.md](local-development.md) — ports, commands, the two UIs
 - [e2e.md](e2e.md) — `data-pw` selector conventions
-- [agent.md](agent.md) — agent daemon internals (the _process_, not the UI concept)
+- [host-daemon.md](host-daemon.md) — host daemon internals (the _process_, not the UI concept)

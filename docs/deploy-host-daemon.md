@@ -1,6 +1,6 @@
 # Deploy — VPS agent
 
-Agent host: trusted machine that holds git + AI credentials and runs non-interactive CLIs. Security: [security.md](security.md). Internals: [agent.md](agent.md). CLI: [cli.md](cli.md).
+Agent host: trusted machine that holds git + AI credentials and runs non-interactive CLIs. Security: [security.md](security.md). Internals: [host-daemon.md](host-daemon.md). CLI: [cli.md](cli.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). AWS control plane: [deploy-aws.md](deploy-aws.md).
 
@@ -8,11 +8,11 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                                    | Status                                                                                            |
-| --------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Local daemon (`pnpm local:agent start`) | **Supported** against local API/WS                                                                |
-| Production systemd unit                 | **Intended shape** — document and validate per host                                               |
-| Drain without killing in-flight CLIs    | **Implemented** in control plane / agent loop ([agent.md](agent.md#auto-update-graceful-restart)) |
+| Item                                     | Status                                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Local daemon (`pnpm local:daemon start`) | **Supported** against local API/WS                                                                            |
+| Production systemd unit                  | **Intended shape** — document and validate per host                                                           |
+| Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)) |
 
 ---
 
@@ -37,7 +37,7 @@ On the agent host:
 
 | Variable            | Role                                             |
 | ------------------- | ------------------------------------------------ |
-| `HARNESS_AGENT_ID`  | Required agent id                                |
+| `HARNESS_HOST_ID`   | Required agent id                                |
 | `HARNESS_API_URL`   | Control plane base (`https://…` or `wss://…/ws`) |
 | `HARNESS_API_KEY`   | Service account `hns_…`                          |
 | `HARNESS_LOG_LEVEL` | Optional (`info` default)                        |
@@ -45,26 +45,26 @@ On the agent host:
 6. Start daemon:
 
 ```bash
-export HARNESS_AGENT_ID=prod-1
+export HARNESS_HOST_ID=prod-1
 export HARNESS_API_URL=https://YOUR_API   # or wss://YOUR_API/ws
 export HARNESS_API_KEY=hns_…
 
 # Local control plane
-pnpm local:agent start
+pnpm local:daemon start
 
 # Production: same entry under systemd (Restart=always), long TimeoutStopSec for drain
-pnpm local:agent start
+pnpm local:daemon start
 ```
 
 7. Confirm control plane shows the agent online with its attached provider accounts:
 
 ```bash
-curl -sS "$HARNESS_API_URL/api/v1/agents"
-curl -sS "$HARNESS_API_URL/api/v1/agents/$HARNESS_AGENT_ID/config"
+curl -sS "$HARNESS_API_URL/api/v1/hosts"
+curl -sS "$HARNESS_API_URL/api/v1/hosts/$HARNESS_HOST_ID/inventory"
 curl -sS "$HARNESS_API_URL/api/v1/session-targets"   # attached provider accounts + standalone commands
 ```
 
-Host inventory template: [examples/local/agent-host.config.json](../examples/local/agent-host.config.json). Runbooks: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
+Host inventory template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Runbooks: [local-development.md](local-development.md), [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
 
@@ -72,10 +72,10 @@ Host inventory template: [examples/local/agent-host.config.json](../examples/loc
 
 ### Agent binary / package
 
-Preferred path — **drain, then restart** ([agent.md](agent.md#auto-update-graceful-restart)):
+Preferred path — **drain, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 
 1. Signal drain:
-   - Control plane: `POST /api/v1/agents/drain` with `{ "hostId": "…" }`
+   - Control plane: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`
    - And/or agent-local drain signal
 2. Wait until no running sessions on that agent.
 3. Deploy new agent code/binary.
@@ -86,7 +86,7 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 
 ### Command profiles / repos
 
-- Update host inventory via `PUT /api/v1/agents/:hostId/config` or the Agents UI.
+- Update host inventory via `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI.
 - Restart agent after drain so it re-bootstraps the new inventory.
 - Keep profile names stable when possible so schedules/UI selections keep working.
 
@@ -102,16 +102,16 @@ When the **API** changes: roll control plane first ([deploy-aws.md](deploy-aws.m
 2. Stop service (`systemctl stop …` or graceful stop of the start process).
 3. Optionally remove worktrees and config from disk.
 4. Delete or rotate the service-account API key on the control plane.
-5. Confirm `GET /api/v1/agents` no longer lists the agent as online.
+5. Confirm `GET /api/v1/hosts` no longer lists the agent as online.
 
 ---
 
 ## Gates
 
-| When                       | Gate                                                                                         |
-| -------------------------- | -------------------------------------------------------------------------------------------- |
-| After agent install/update | Online in `/hosts`, expected profiles, one smoke session                                     |
-| After hard kill / crash    | Re-register; reconcile running sessions ([agent.md](agent.md#disconnect-and-crash-recovery)) |
+| When                       | Gate                                                                                                     |
+| -------------------------- | -------------------------------------------------------------------------------------------------------- |
+| After agent install/update | Online in `/hosts`, expected profiles, one smoke session                                                 |
+| After hard kill / crash    | Re-register; reconcile running sessions ([host-daemon.md](host-daemon.md#disconnect-and-crash-recovery)) |
 
 ---
 
@@ -122,7 +122,7 @@ When the **API** changes: roll control plane first ([deploy-aws.md](deploy-aws.m
 | [deploy.md](deploy.md)             | Ops index                  |
 | [deploy-local.md](deploy-local.md) | Local control plane        |
 | [deploy-aws.md](deploy-aws.md)     | AWS control plane          |
-| [agent.md](agent.md)               | Drain / recovery internals |
+| [host-daemon.md](host-daemon.md)   | Drain / recovery internals |
 | [cli.md](cli.md)                   | Agent CLI                  |
 | [auth.md](auth.md)                 | Bound API keys             |
 | [security.md](security.md)         | Host hardening             |

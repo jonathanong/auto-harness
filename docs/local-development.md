@@ -2,7 +2,7 @@
 
 Run and test Auto Harness on your machine **without an AWS account**. Install/prereqs overview: [setup.md](setup.md). Agent CLI details: [cli.md](cli.md). Product sequencing: [plan.md](plan.md).
 
-**Pre-deploy end-to-end (full stack + real CLI):** [agent-e2e-testing.md](agent-e2e-testing.md). **Browser UI E2E (Playwright):** [e2e.md](e2e.md).
+**Pre-deploy end-to-end (full stack + real CLI):** [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md). **Browser UI E2E (Playwright):** [e2e.md](e2e.md).
 
 ## Prerequisites
 
@@ -68,11 +68,11 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                                        |
 | `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                                  |
 | `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                                      |
-| `pnpm local:agent-web`      | Host-pane Next.js UI on `:7422` (`HARNESS_AGENT_ID`)                                     |
-| `pnpm local:agent`          | Agent CLI (`status`, `run-session`, `start`)                                             |
+| `pnpm local:host-pane`      | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                                      |
+| `pnpm local:daemon`         | Agent CLI (`status`, `run-session`, `start`)                                             |
 | `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)            |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                              |
-| `pnpm local:cli-e2e`        | Documented `pnpm local:agent` path with `ref: main`                                      |
+| `pnpm local:cli-e2e`        | Documented `pnpm local:daemon` path with `ref: main`                                     |
 | `pnpm local:api-smoke`      | `POST /sessions` → 201                                                                   |
 | `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                                                         |
 | `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                                                |
@@ -118,12 +118,12 @@ pnpm local:api
 # http://127.0.0.1:7420
 ```
 
-2. PUT host inventory (edit absolute paths; template [examples/local/agent-host.config.json](../examples/local/agent-host.config.json)):
+2. PUT host inventory (edit absolute paths; template [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json)):
 
 ```bash
-curl -fsS -X PUT http://127.0.0.1:7420/api/v1/agents/local-1/config \
+curl -fsS -X PUT http://127.0.0.1:7420/api/v1/hosts/local-1/inventory \
   -H 'content-type: application/json' \
-  -d @examples/local/agent-host.config.json
+  -d @examples/local/host-inventory.config.json
 # or use the Hosts page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /hosts
 ```
 
@@ -134,11 +134,11 @@ curl -fsS -X PUT http://127.0.0.1:7420/api/v1/agents/local-1/config \
 4. Run with env identity (a leading `--` from pnpm is stripped):
 
 ```bash
-export HARNESS_AGENT_ID=local-1
+export HARNESS_HOST_ID=local-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent status
-pnpm local:agent run-session --file /path/to/session.assign.json
-pnpm local:agent -- status
+pnpm local:daemon status
+pnpm local:daemon run-session --file /path/to/session.assign.json
+pnpm local:daemon -- status
 ```
 
 On success the CLI prints a final JSON line with `"status":"completed"`. On failure (setup error, timeout, usage limit) status is non-completed and exit code is non-zero.
@@ -174,8 +174,8 @@ curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
 Response `201` includes `id`, `status: "queued"`, `url`, `targetLabel`, and the fields you sent. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
 
 ```bash
-export HARNESS_AGENT_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
-pnpm local:agent -- run-session --file /path/to/session.assign.json
+export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
+pnpm local:daemon -- run-session --file /path/to/session.assign.json
 ```
 
 > Local API create does **not** always auto-dispatch over WebSocket for every workflow. Bridge create → run with the assign file, use `pnpm local:e2e` (in-process), or `pnpm local:ws-e2e` for the real `/ws` agent channel.
@@ -189,7 +189,7 @@ Issue [#2](https://github.com/jonathanong/auto-harness/issues/2): **Next.js** fo
 | UI            | Port | Command                | Role                                                     |
 | ------------- | ---- | ---------------------- | -------------------------------------------------------- |
 | Control plane | 7421 | `pnpm local:web`       | Dashboard, sessions, repos, schedules, agent **fleet**   |
-| Host pane     | 7422 | `pnpm local:agent-web` | **This agent**: status, worktrees, host inventory, drain |
+| Host pane     | 7422 | `pnpm local:host-pane` | **This agent**: status, worktrees, host inventory, drain |
 
 Shared components: `modules/ui`.
 
@@ -197,8 +197,8 @@ Shared components: `modules/ui`.
 pnpm local:dynamodb && pnpm local:dynamodb:ready
 pnpm local:api         # :7420
 pnpm local:web         # :7421 control plane
-pnpm local:agent-web   # :7422 host pane
-pnpm local:agent start # registers even with no repos yet
+pnpm local:host-pane   # :7422 host pane
+pnpm local:daemon start # registers even with no repos yet
 ```
 
 Or start everything above (except DynamoDB Local, which runs in Docker) in one tmux session — one window each: `pnpm local:tmux`.
@@ -213,7 +213,7 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
 4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step) → attach an account to the host on its detail page's Provider accounts tab.
 5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`) and `POST /scheduler/assign`.
 
-Local defaults: `HARNESS_AGENT_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
+Local defaults: `HARNESS_HOST_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
 ---
 
@@ -244,7 +244,7 @@ pnpm local:manage-verify
 ```bash
 pnpm check
 pnpm local:e2e            # create handler + SessionRunner (feature ref)
-pnpm local:cli-e2e        # documented `pnpm local:agent` path with ref: main
+pnpm local:cli-e2e        # documented `pnpm local:daemon` path with ref: main
 pnpm local:api-smoke      # POST /sessions → 201
 pnpm local:ws-e2e         # WebSocket create→assign→run
 pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
@@ -280,6 +280,6 @@ Currently report-only (not wired into `pnpm check`): 0 uniqueness violations, ~8
 | [terminology.md](terminology.md)   | UI-facing vocabulary (Host, Session, ...) |
 | [api.md](api.md)                   | REST shapes                               |
 | [websocket.md](websocket.md)       | Agent + UI real-time protocol             |
-| [agent.md](agent.md)               | Agent internals                           |
+| [host-daemon.md](host-daemon.md)   | Agent internals                           |
 | [aws.md](aws.md)                   | Control-plane design                      |
 | [plan.md](plan.md)                 | Phases and acceptance criteria            |

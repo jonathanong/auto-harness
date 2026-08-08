@@ -1,6 +1,6 @@
 # WebSocket Protocol
 
-Real-time channel between the control plane, VPS agents, and the Web UI. REST CRUD is documented in [api.md](api.md). Agent internals: [agent.md](agent.md). Server routing/IAM: [aws.md](aws.md).
+Real-time channel between the control plane, VPS agents, and the Web UI. REST CRUD is documented in [api.md](api.md). Agent internals: [host-daemon.md](host-daemon.md). Server routing/IAM: [aws.md](aws.md).
 
 ## Endpoint
 
@@ -10,12 +10,12 @@ wss://<api-domain>/ws?token=<credential>
 
 | Connection | Credential                                                           | First message     |
 | ---------- | -------------------------------------------------------------------- | ----------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                  | `agent:register`  |
+| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                  | `host:register`   |
 | Web UI     | Short-lived ticket or session-derived token (see [auth.md](auth.md)) | `client:register` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
-Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepalive`); Lambda has no server-side ping timer.
+Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepalive`); Lambda has no server-side ping timer.
 
 ---
 
@@ -61,21 +61,21 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`agent:keepa
 }
 ```
 
-When `resume: true`, the agent must **not** treat this as a fresh clean setup (avoid destructive reset). See [agent.md — Session resume](agent.md#session-resume).
+When `resume: true`, the agent must **not** treat this as a fresh clean setup (avoid destructive reset). See [host-daemon.md — Session resume](host-daemon.md#session-resume).
 
 ### Agent → server
 
-| Type              | Payload                                                           | Purpose                                                                                                                                                                                       |
-| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent:register`  | `hostId`, `worktrees[]`, optional `runningSessions[]`             | Inventory + reclaim after reconnect                                                                                                                                                           |
-| `session:ack`     | `sessionId`                                                       | Accepted assign                                                                                                                                                                               |
-| `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [agent.md](agent.md#usage-limits-ai-vendor--cli-quotas)) |
-| `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                     | stdout / stderr / system chunk                                                                                                                                                                |
-| `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                       | idle / busy / error                                                                                                                                                                           |
-| `agent:status`    | `hostId`, `draining?`, `status?`                                  | Drain / health (e.g. auto-update)                                                                                                                                                             |
-| `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                               |
+| Type              | Payload                                                           | Purpose                                                                                                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host:register`   | `hostId`, `worktrees[]`, optional `runningSessions[]`             | Inventory + reclaim after reconnect                                                                                                                                                                       |
+| `session:ack`     | `sessionId`                                                       | Accepted assign                                                                                                                                                                                           |
+| `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [host-daemon.md](host-daemon.md#usage-limits-ai-vendor--cli-quotas)) |
+| `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                     | stdout / stderr / system chunk                                                                                                                                                                            |
+| `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                       | idle / busy / error                                                                                                                                                                                       |
+| `host:status`     | `hostId`, `draining?`, `status?`                                  | Drain / health (e.g. auto-update)                                                                                                                                                                         |
+| `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                                           |
 
-**Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
+**Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
 
 ```json
 {
@@ -87,7 +87,7 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 }
 ```
 
-`agent:register` worktree item shape:
+`host:register` worktree item shape:
 
 ```json
 {
@@ -117,7 +117,7 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 | ---------------- | ----------------------------------- |
 | `session:log`    | Same as agent log (forwarded)       |
 | `session:status` | `{ sessionId, status, exitCode? }`  |
-| `agent:status`   | `{ hostId, status }` online/offline |
+| `host:status`    | `{ hostId, status }` online/offline |
 
 ---
 
@@ -152,7 +152,7 @@ sequenceDiagram
     Lambda->>DDB: Validate key - store Connection
     GW-->>Agent: open
 
-    Agent->>GW: agent:register
+    Agent->>GW: host:register
     Lambda->>DDB: Upsert worktrees
     Lambda-->>Agent: session:assign (if queued match)
 
@@ -165,7 +165,7 @@ sequenceDiagram
     Lambda->>DDB: Remove Connection - mark worktrees offline
 ```
 
-Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [agent.md](agent.md#disconnect-and-crash-recovery).
+Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [host-daemon.md](host-daemon.md#disconnect-and-crash-recovery).
 
 ---
 
@@ -174,7 +174,7 @@ Disconnect and reconnect reconciliation: [aws.md](aws.md#disconnect-handling), [
 | Doc                                          | Role                                    |
 | -------------------------------------------- | --------------------------------------- |
 | [api.md](api.md)                             | REST                                    |
-| [agent.md](agent.md)                         | How the agent handles assign/log/status |
+| [host-daemon.md](host-daemon.md)             | How the agent handles assign/log/status |
 | [aws.md](aws.md)                             | Scheduler, fan-out, connections table   |
 | [web.md](web.md)                             | UI live terminal                        |
 | [setup.md](setup.md)                         | Deploy / URLs and tokens                |

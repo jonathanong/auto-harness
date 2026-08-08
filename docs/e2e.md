@@ -5,7 +5,7 @@ dedicated port range (and dedicated DynamoDB container), separate from the norma
 dev ports; see [How the stack is started](#how-the-stack-is-started). Unit/integration coverage
 remains under Vitest (`pnpm test`).
 
-Related: [local-development.md](local-development.md), [agent-e2e-testing.md](agent-e2e-testing.md).
+Related: [local-development.md](local-development.md), [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
 
@@ -23,7 +23,7 @@ pnpm exec playwright install chromium
 
 ## How the stack is started
 
-**Production UI builds only** — not `next dev`. `pnpm test:e2e` runs `pnpm build:web:e2e` first (cleans each app's `.next-e2e`, then `next build` for control + agent-web), then Playwright starts production servers via `next start`.
+**Production UI builds only** — not `next dev`. `pnpm test:e2e` runs `pnpm build:web:e2e` first (cleans each app's `.next-e2e`, then `next build` for control + host-pane), then Playwright starts production servers via `next start`.
 
 **Why a separate build, not just separate ports:** `HARNESS_API_HTTP=http://127.0.0.1:7430` has to
 be set for e2e at **two different times**, for two different code paths, and missing either one
@@ -60,7 +60,7 @@ so neither build needs to rewrite `tsconfig.json` itself.
 | ------------- | -------------------------------------------------------------------------------- | ------------------------------ |
 | `api`         | `pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e` | `http://127.0.0.1:7430/health` |
 | `control-web` | `pnpm local:web:start:e2e` (`next start` on `:7431`)                             | `http://127.0.0.1:7431`        |
-| `agent-web`   | `pnpm local:agent-web:start:e2e` (`next start` on `:7432`)                       | `http://127.0.0.1:7432`        |
+| `host-pane`   | `pnpm local:host-pane:start:e2e` (`next start` on `:7432`)                       | `http://127.0.0.1:7432`        |
 
 Every one of these is on the `743x` range — `+10` from the normal `local:*` dev ports (`742x`)
 and dev DynamoDB (`:7423`) — with its own `dynamodb-e2e` container (`:7433`), entirely separate
@@ -72,13 +72,13 @@ earlier run or a stale build. This is deliberate, not just a CI/local parity nic
 stale leftover process (mismatched `.next` build vs. a since-rebuilt one) has caused real,
 confusing failures here before.
 
-**Note:** The agent **daemon** (`pnpm local:agent start`) is **not** started by Playwright as a
-`webServer`. Most tests that need profiles seed host config + `agent:register` via REST, against
+**Note:** The agent **daemon** (`pnpm local:daemon start`) is **not** started by Playwright as a
+`webServer`. Most tests that need profiles seed host config + `host:register` via REST, against
 the e2e API (`:7430`), rather than running a real daemon. The one exception is
 `e2e/control/orchestration.spec.ts`, which starts a real daemon in-process (imports
-`startAgentDaemon` directly) to prove the full real path works, not just the UI/REST-substituted
+`startDaemon` directly) to prove the full real path works, not just the UI/REST-substituted
 half — see [Test inventory](#test-inventory) and
-[agent-e2e-testing.md](agent-e2e-testing.md).
+[host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
 
@@ -99,7 +99,7 @@ pnpm exec playwright test
 
 # One project
 pnpm exec playwright test --project=control
-pnpm exec playwright test --project=agent
+pnpm exec playwright test --project=host-pane
 
 # One file
 pnpm exec playwright test e2e/control/dashboard.spec.ts
@@ -110,7 +110,7 @@ pnpm exec playwright test e2e/control/dashboard.spec.ts
 ## Parallelism
 
 - Config: `fullyParallel: true` — every **test** can run in parallel across workers.
-- Projects `control` and `agent` use different `baseURL`s; tests under `e2e/control/` and `e2e/agent/` match separately.
+- Projects `control` and `host-pane` use different `baseURL`s; tests under `e2e/control/` and `e2e/host-pane/` match separately.
 - **No shared mutable fixtures — except `local-1`.** Every other mutation uses unique ids and
   needs no coordination:
 
@@ -120,8 +120,8 @@ const id = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;
 
 - Prefer seeding via `request` (Playwright APIRequestContext → e2e API :7430) over serial UI setup when possible.
 
-**The one real exception:** the host-pane app is bound to a single agent (`local-1`, no way to
-target a different one from its UI), and a few control-plane specs reuse that same agent rather
+**The one real exception:** the host-pane app is bound to a single host (`local-1`, no way to
+target a different one from its UI), and a few control-plane specs reuse that same host rather
 than register a second live one. Its host config is one full document with no partial-update
 API, so any test that reads or mutates it must wrap its whole body (setup → assertions →
 teardown) in `withLocalHostLock` from [`e2e/local-1-host.ts`](../e2e/local-1-host.ts) — a
@@ -195,7 +195,7 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 | `page-commands`, `commands-heading`, `add-command-open`, `add-command-dialog`, `form-command-catalog`, `command-catalog-name`, `command-catalog-argv`, `command-catalog-append-prompt`, `command-catalog-provider`, `command-catalog-submit`, `command-catalog-error`, `command-row-*`, `command-link-*`                                                                                                                                                                                                                                                                                                                                 | Commands list + add-command dialog                                                                                                                                 |
 | `page-command-detail`, `page-command-detail-not-found`, `command-detail-id`, `command-detail-provider`, `command-detail-argv`, `edit-command-open`, `form-edit-command`, `edit-command-name`, `edit-command-argv`, `edit-command-append-prompt`, `edit-command-provider`, `edit-command-submit`, `edit-command-error`, `delete-command-open`, `delete-command-confirm`, `delete-command-confirm-submit`, `delete-command-error`                                                                                                                                                                                                          | Command detail (`/commands/[id]`)                                                                                                                                  |
 
-### Host pane (`services/agent-web`)
+### Host pane (`services/host-pane`)
 
 | `data-pw`                                                                                                                                                                                               | Where                                                                                                                     |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
@@ -219,49 +219,49 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 
 ### Project `control` — baseURL `http://127.0.0.1:7431`
 
-| File                                     | Tests                                                                                        | What it covers                                                                                                                              |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `e2e/control/dashboard.spec.ts`          | loads shell and dashboard stats                                                              | Shell, heading, stat cards                                                                                                                  |
-|                                          | nav links are present                                                                        | All primary nav `data-pw` links                                                                                                             |
-| `e2e/control/sessions.spec.ts`           | sessions list page and filters                                                               | List page; status filter updates URL                                                                                                        |
-|                                          | new session form is present                                                                  | Form fields visible                                                                                                                         |
-|                                          | create session via API-backed form when targets exist                                        | Seeds a standalone Command via REST; submits form; lands on detail page; cancel unlocks resume                                              |
-|                                          | unknown session id shows a not-found state                                                   | `/sessions/[id]` 404-style state                                                                                                            |
-| `e2e/control/repositories.spec.ts`       | repositories page loads with add-repository dialog closed                                    | Page + closed modal + nested worktrees section                                                                                              |
-|                                          | create catalog repository via modal, then land on its detail page                            | Opens modal; parallel-safe catalog create; toast + navigate                                                                                 |
-|                                          | unknown repository id shows a not-found state                                                | `/repositories/[id]` 404-style state                                                                                                        |
-| `e2e/control/worktrees.spec.ts`          | worktrees page loads                                                                         | Page + heading                                                                                                                              |
-|                                          | unknown worktree id shows a not-found state                                                  | `/worktrees/[id]` 404-style state                                                                                                           |
-|                                          | clicking a worktree opens its fleet-wide detail page                                         | Seeds host config via API; click-through to detail page                                                                                     |
-| `e2e/control/providers.spec.ts`          | providers page loads with add-provider dialog closed                                         | Page + closed modal                                                                                                                         |
-|                                          | create provider with its default command, then manage accounts/settings                      | Full lifecycle: 3-step create, add/remove account, default-command select, edit name, delete after clearing accounts/commands               |
-|                                          | unknown provider id shows a not-found state                                                  | `/providers/[id]` 404-style state                                                                                                           |
-| `e2e/control/commands.spec.ts`           | commands page loads with add-command dialog closed                                           | Page + closed modal                                                                                                                         |
-|                                          | create standalone command, edit it, assign a provider, then delete with confirm              | Standalone + provider-owned creation, edit, delete-confirm flow                                                                             |
-|                                          | unknown command id shows a not-found state                                                   | `/commands/[id]` 404-style state                                                                                                            |
-| `e2e/control/host-providers.spec.ts`     | attach an account with a command override, then change, clear, and detach it                 | Host detail's Provider accounts tab: attach, override, clear override, detach                                                               |
-| `e2e/control/provider-overrides.spec.ts` | disable at repo scope, then re-enable and override the command at worktree scope, then reset | Repo/worktree `ProviderScopeTable`: disable inherits down to worktree; worktree override wins; reset restores inherited                     |
-|                                          | worktree with no host-attached provider accounts shows the empty state                       | `ProviderScopeTable`'s empty state                                                                                                          |
-| `e2e/control/schedules.spec.ts`          | schedules page and create form                                                               | Seeds repo + a standalone Command via API; creates schedule in UI                                                                           |
-| `e2e/control/hosts.spec.ts`              | hosts page loads with filters and add form                                                   | Page + add host form + online filter URL                                                                                                    |
-|                                          | add host creates empty host inventory slot                                                   | Parallel-safe empty host config                                                                                                             |
-| `e2e/control/orchestration.spec.ts`      | browser-created session runs on a real agent and completes                                   | Real agent daemon (real WS, real subprocess) — the only spec here that doesn't fake the agent side over REST; see docs/agent-e2e-testing.md |
+| File                                     | Tests                                                                                        | What it covers                                                                                                                                    |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `e2e/control/dashboard.spec.ts`          | loads shell and dashboard stats                                                              | Shell, heading, stat cards                                                                                                                        |
+|                                          | nav links are present                                                                        | All primary nav `data-pw` links                                                                                                                   |
+| `e2e/control/sessions.spec.ts`           | sessions list page and filters                                                               | List page; status filter updates URL                                                                                                              |
+|                                          | new session form is present                                                                  | Form fields visible                                                                                                                               |
+|                                          | create session via API-backed form when targets exist                                        | Seeds a standalone Command via REST; submits form; lands on detail page; cancel unlocks resume                                                    |
+|                                          | unknown session id shows a not-found state                                                   | `/sessions/[id]` 404-style state                                                                                                                  |
+| `e2e/control/repositories.spec.ts`       | repositories page loads with add-repository dialog closed                                    | Page + closed modal + nested worktrees section                                                                                                    |
+|                                          | create catalog repository via modal, then land on its detail page                            | Opens modal; parallel-safe catalog create; toast + navigate                                                                                       |
+|                                          | unknown repository id shows a not-found state                                                | `/repositories/[id]` 404-style state                                                                                                              |
+| `e2e/control/worktrees.spec.ts`          | worktrees page loads                                                                         | Page + heading                                                                                                                                    |
+|                                          | unknown worktree id shows a not-found state                                                  | `/worktrees/[id]` 404-style state                                                                                                                 |
+|                                          | clicking a worktree opens its fleet-wide detail page                                         | Seeds host config via API; click-through to detail page                                                                                           |
+| `e2e/control/providers.spec.ts`          | providers page loads with add-provider dialog closed                                         | Page + closed modal                                                                                                                               |
+|                                          | create provider with its default command, then manage accounts/settings                      | Full lifecycle: 3-step create, add/remove account, default-command select, edit name, delete after clearing accounts/commands                     |
+|                                          | unknown provider id shows a not-found state                                                  | `/providers/[id]` 404-style state                                                                                                                 |
+| `e2e/control/commands.spec.ts`           | commands page loads with add-command dialog closed                                           | Page + closed modal                                                                                                                               |
+|                                          | create standalone command, edit it, assign a provider, then delete with confirm              | Standalone + provider-owned creation, edit, delete-confirm flow                                                                                   |
+|                                          | unknown command id shows a not-found state                                                   | `/commands/[id]` 404-style state                                                                                                                  |
+| `e2e/control/host-providers.spec.ts`     | attach an account with a command override, then change, clear, and detach it                 | Host detail's Provider accounts tab: attach, override, clear override, detach                                                                     |
+| `e2e/control/provider-overrides.spec.ts` | disable at repo scope, then re-enable and override the command at worktree scope, then reset | Repo/worktree `ProviderScopeTable`: disable inherits down to worktree; worktree override wins; reset restores inherited                           |
+|                                          | worktree with no host-attached provider accounts shows the empty state                       | `ProviderScopeTable`'s empty state                                                                                                                |
+| `e2e/control/schedules.spec.ts`          | schedules page and create form                                                               | Seeds repo + a standalone Command via API; creates schedule in UI                                                                                 |
+| `e2e/control/hosts.spec.ts`              | hosts page loads with filters and add form                                                   | Page + add host form + online filter URL                                                                                                          |
+|                                          | add host creates empty host inventory slot                                                   | Parallel-safe empty host config                                                                                                                   |
+| `e2e/control/orchestration.spec.ts`      | browser-created session runs on a real agent and completes                                   | Real agent daemon (real WS, real subprocess) — the only spec here that doesn't fake the agent side over REST; see docs/host-daemon-e2e-testing.md |
 
 ### Project `agent` — baseURL `http://127.0.0.1:7432`
 
-| File                             | Tests                                                                | What it covers                                                                 |
-| -------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `e2e/agent/settings.spec.ts`     | / redirects to /sessions                                             | Shell, nav (Repositories/Sessions/Settings, no Status)                         |
-|                                  | header shows an online badge                                         | Online status now lives in the header, not a Status page                       |
-|                                  | settings page has drain control and raw host inventory JSON          | `/settings`: drain control + raw JSON editor                                   |
-|                                  | settings page shows a read-only provider accounts mirror             | `/settings`: empty state (local-1 has none attached during e2e)                |
-| `e2e/agent/repositories.spec.ts` | repositories page loads with add-repository dialog closed            | Page + closed modal                                                            |
-|                                  | attach repository via modal, nested worktrees section shows it empty | Modal attach flow (toast + navigate); Worktrees tab empty state                |
-|                                  | clicking a repository opens its detail page; removing redirects back | Modal attach flow; list-page link click-through; confirm-then-remove, redirect |
-|                                  | unknown repository id shows a not-found state                        | `/repositories/[id]` 404-style state                                           |
-| `e2e/agent/worktrees.spec.ts`    | clicking a worktree opens its detail page; removing redirects back   | Seeds host config via API; click-through, remove, redirect                     |
-| `e2e/agent/sessions.spec.ts`     | sessions page loads                                                  | Page + heading                                                                 |
-|                                  | clicking a session opens its detail page                             | Seeds + assigns a session via API; click-through                               |
+| File                                 | Tests                                                                | What it covers                                                                 |
+| ------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `e2e/host-pane/settings.spec.ts`     | / redirects to /sessions                                             | Shell, nav (Repositories/Sessions/Settings, no Status)                         |
+|                                      | header shows an online badge                                         | Online status now lives in the header, not a Status page                       |
+|                                      | settings page has drain control and raw host inventory JSON          | `/settings`: drain control + raw JSON editor                                   |
+|                                      | settings page shows a read-only provider accounts mirror             | `/settings`: empty state (local-1 has none attached during e2e)                |
+| `e2e/host-pane/repositories.spec.ts` | repositories page loads with add-repository dialog closed            | Page + closed modal                                                            |
+|                                      | attach repository via modal, nested worktrees section shows it empty | Modal attach flow (toast + navigate); Worktrees tab empty state                |
+|                                      | clicking a repository opens its detail page; removing redirects back | Modal attach flow; list-page link click-through; confirm-then-remove, redirect |
+|                                      | unknown repository id shows a not-found state                        | `/repositories/[id]` 404-style state                                           |
+| `e2e/host-pane/worktrees.spec.ts`    | clicking a worktree opens its detail page; removing redirects back   | Seeds host config via API; click-through, remove, redirect                     |
+| `e2e/host-pane/sessions.spec.ts`     | sessions page loads                                                  | Page + heading                                                                 |
+|                                      | clicking a session opens its detail page                             | Seeds + assigns a session via API; click-through                               |
 
 ---
 
@@ -300,7 +300,7 @@ CI=1 pnpm test:e2e
 
 ## Adding a test
 
-1. Prefer a new `test()` under the right project folder (`e2e/control` or `e2e/agent`).
+1. Prefer a new `test()` under the right project folder (`e2e/control` or `e2e/host-pane`).
 2. Use only `getByTestId(...)` / `data-pw` (add attributes in UI if missing).
 3. Keep the test self-contained and parallel-safe (unique resource ids).
 4. Document it in the **Test inventory** tables above.

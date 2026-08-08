@@ -2,7 +2,7 @@
 
 This document describes the **AWS control plane** in depth: API Gateway, Lambda handlers, DynamoDB, S3, scheduling, WebSocket fan-out, and how those pieces talk to VPS agents.
 
-Execution plane: [agent.md](agent.md). Overview: [architecture.md](architecture.md).  
+Execution plane: [host-daemon.md](host-daemon.md). Overview: [architecture.md](architecture.md).  
 REST: [api.md](api.md). WebSocket: [websocket.md](websocket.md). Install: [setup.md](setup.md). AWS deploy/update/teardown: [deploy-aws.md](deploy-aws.md). Ops index: [deploy.md](deploy.md). Local stack: [local-development.md](local-development.md).
 
 ---
@@ -23,7 +23,7 @@ The control plane owns:
 | Integrations                  | Slack (and future webhooks) via KMS-encrypted config           |
 | Audit trail                   | AuditLogs table                                                |
 
-The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([agent.md](agent.md), [security.md](security.md)). Authn/authz: [auth.md](auth.md).
+The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([host-daemon.md](host-daemon.md), [security.md](security.md)). Authn/authz: [auth.md](auth.md).
 
 ---
 
@@ -120,7 +120,7 @@ Route groups map 1:1 to handler modules under `services/api/src/handlers/rest/`.
   - `$disconnect` — delete connection; if agent, mark its worktrees offline / reconcile sessions
   - `$default` — parse JSON `{ type, … }`, dispatch by type
 - Two logical client kinds after connect:
-  - **Agent** — first app message `agent:register`
+  - **Agent** — first app message `host:register`
   - **UI client** — first app message `client:register`
 
 Keepalive: server `ping` every ~30s; agent/client `pong`. API Gateway idle timeout is respected via this heartbeat.
@@ -198,7 +198,7 @@ Handlers share:
 | AuditLogs    | `id`           | `timestamp` | `userId-timestamp`                            | Append-only audit; query by user                              |
 | Integrations | `id`           | —           | —                                             | Get/put Slack config                                          |
 
-> Worktrees are **registered by agents** on `agent:register` and updated on status changes. They are not created via REST.
+> Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
 **Capacity:** on-demand for all tables.
 
@@ -296,7 +296,7 @@ When a session ends or is cancelled:
 - Created by cron or `POST /schedules/:id/trigger`
 - Assigned with `worktreeId: null` to an **online agent that hosts that repository**
 - If multiple agents host the same repo path inventory, pick round-robin among those agents (by agent-level `lastAssignedAt` or last scheduled assign time)
-- Agent enforces **serial main-checkout lock** per repository (see [agent.md](agent.md))
+- Agent enforces **serial main-checkout lock** per repository (see [host-daemon.md](host-daemon.md))
 
 ### Multi-agent behavior summary
 
@@ -343,9 +343,9 @@ Server responsibilities only:
 
 ## Agent draining
 
-Used for **auto-update** and graceful agent restart. Protocol details: [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
+Used for **auto-update** and graceful agent restart. Protocol details: [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
 
-When the agent reports draining (e.g. `agent:status` with `draining: true`, or register flag):
+When the agent reports draining (e.g. `host:status` with `draining: true`, or register flag):
 
 1. Keep the Connection row and treat the agent as **connected**
 2. **Exclude all of its worktrees from the idle candidate set** for new `session:assign` (match + round-robin must not pick them)
@@ -370,7 +370,7 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 
 ### Agent reconnect
 
-1. New `$connect` + `agent:register` with current worktree inventory and any still-running local sessions
+1. New `$connect` + `host:register` with current worktree inventory and any still-running local sessions
 2. Control plane reconciles: worktrees online; running session IDs re-bound; queued sessions may assign to newly idle capacity
 
 ---
@@ -456,7 +456,7 @@ Execution always happens on the agent. The control plane only **schedules and ob
 | [local-development.md](local-development.md) | Local DynamoDB + `pnpm local:*` |
 | [api.md](api.md)                             | REST                            |
 | [websocket.md](websocket.md)                 | Real-time protocol              |
-| [agent.md](agent.md)                         | Execution plane                 |
+| [host-daemon.md](host-daemon.md)             | Execution plane                 |
 | [architecture.md](architecture.md)           | Flows                           |
 | [auth.md](auth.md)                           | Authn / authz                   |
 | [security.md](security.md)                   | Trust boundaries / hardening    |

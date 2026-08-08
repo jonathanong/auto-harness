@@ -171,10 +171,10 @@ When creating a service account for an agent, the admin specifies the `boundHost
 }
 ```
 
-The `boundHostId` is stored on the service account record. On WebSocket connect and `agent:register`, the server validates:
+The `boundHostId` is stored on the service account record. On WebSocket connect and `host:register`, the server validates:
 
 1. The API key is valid and has `operator` role
-2. The `hostId` in the `agent:register` message matches the `boundHostId` on the service account
+2. The `hostId` in the `host:register` message matches the `boundHostId` on the service account
 3. No other connection is already registered with the same `hostId`
 
 If any check fails, the connection is rejected with an error message and closed.
@@ -195,17 +195,17 @@ sequenceDiagram
     Lambda->>DDB: Store connection record (connectionId, boundHostId)
     Lambda-->>APIGW: Allow connection
     APIGW-->>Agent: Connected
-    Agent->>APIGW: agent:register { hostId: 'vps-prod-1', worktrees[] }
+    Agent->>APIGW: host:register { hostId: 'vps-prod-1', worktrees[] }
     APIGW->>Lambda: $default handler
     Lambda->>Lambda: Validate hostId matches boundHostId
     Lambda->>DDB: Check no existing connection for hostId
     Lambda->>DDB: Update worktree records
-    Lambda-->>Agent: agent:registered { ok: true }
+    Lambda-->>Agent: host:registered { ok: true }
 ```
 
-**Why this matters:** Without binding, a compromised CI service account could connect as `agent:register { hostId: "vps-prod-1" }` and receive sessions intended for a legitimate agent. Binding ensures each API key can only claim its designated agent identity.
+**Why this matters:** Without binding, a compromised CI service account could connect as `host:register { hostId: "vps-prod-1" }` and receive sessions intended for a legitimate agent. Binding ensures each API key can only claim its designated agent identity.
 
-**Reconnection:** On disconnect, the agent reconnects with exponential backoff (1s, 2s, 4s, ... max 60s). On reconnect, it re-sends `agent:register` and reports any in-progress sessions.
+**Reconnection:** On disconnect, the agent reconnects with exponential backoff (1s, 2s, 4s, ... max 60s). On reconnect, it re-sends `host:register` and reports any in-progress sessions.
 
 **Recommended role:** Use an `operator` service account dedicated to the agent. Do not reuse CI/CD keys.
 

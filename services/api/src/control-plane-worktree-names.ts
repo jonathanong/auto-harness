@@ -32,10 +32,10 @@ export function findWorktreeNameCollision(
 
 /**
  * Same invariant as findWorktreeNameCollision, for the flat worktree array shape
- * used by the WS `agent:register` path — this is a separate wire protocol from
+ * used by the WS `host:register` path — this is a separate wire protocol from
  * the HTTP PUT host-config path, so it needs its own slug + collision validation
  * rather than trusting the caller to have already checked (registerHost is
- * reachable by any client speaking the raw WS protocol, not just the bundled agent).
+ * reachable by any client speaking the raw WS protocol, not just the bundled daemon).
  */
 export function validateRegisterWorktreeNames(
   state: ControlPlaneState,

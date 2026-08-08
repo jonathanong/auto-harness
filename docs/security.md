@@ -114,10 +114,10 @@ Agent identity on the wire uses a **bound** service account API key — see [aut
 
 ## Related
 
-| Doc                          | Role                               |
-| ---------------------------- | ---------------------------------- |
-| [auth.md](auth.md)           | Credentials, roles, login, binding |
-| [api.md](api.md)             | REST surface                       |
-| [websocket.md](websocket.md) | Connect tokens                     |
-| [agent.md](agent.md)         | Host-side agent behavior           |
-| [setup.md](setup.md)         | Deploy secrets env vars            |
+| Doc                              | Role                               |
+| -------------------------------- | ---------------------------------- |
+| [auth.md](auth.md)               | Credentials, roles, login, binding |
+| [api.md](api.md)                 | REST surface                       |
+| [websocket.md](websocket.md)     | Connect tokens                     |
+| [host-daemon.md](host-daemon.md) | Host-side agent behavior           |
+| [setup.md](setup.md)             | Deploy secrets env vars            |
