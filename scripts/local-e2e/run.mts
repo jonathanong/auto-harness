@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 
-import type { AgentConfig } from "../../services/agent/src/config.ts";
-import { SpawnProcessRunner } from "../../services/agent/src/executor.ts";
-import { createGitClient } from "../../services/agent/src/git.ts";
-import { SessionRunner } from "../../services/agent/src/session-runner.ts";
-import { WorktreeManager } from "../../services/agent/src/worktree-manager.ts";
+import type { DaemonConfig } from "../../services/host-daemon/src/config.ts";
+import { SpawnProcessRunner } from "../../services/host-daemon/src/executor.ts";
+import { createGitClient } from "../../services/host-daemon/src/git.ts";
+import { SessionRunner } from "../../services/host-daemon/src/session-runner.ts";
+import { WorktreeManager } from "../../services/host-daemon/src/worktree-manager.ts";
 import { ControlPlane } from "../../services/api/src/control-plane.ts";
 import { createLocalApp } from "../../services/api/src/local-server.ts";
 import { MemorySessionStore } from "../../services/api/src/memory-store.ts";
@@ -81,7 +81,7 @@ export async function createSessionViaApi(): Promise<{
   return created;
 }
 
-export async function assertUnknownProfileFails(config: AgentConfig): Promise<void> {
+export async function assertUnknownProfileFails(config: DaemonConfig): Promise<void> {
   const runner = new SpawnProcessRunner();
   const gitClient = createGitClient(runner);
   const worktrees = new WorktreeManager(config, gitClient);
@@ -105,7 +105,7 @@ export async function assertUnknownProfileFails(config: AgentConfig): Promise<vo
 }
 
 export async function runHappyPath(
-  config: AgentConfig,
+  config: DaemonConfig,
   paths: LocalE2ePaths,
   created: { id: string },
   featureSha: string,

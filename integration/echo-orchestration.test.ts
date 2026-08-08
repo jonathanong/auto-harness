@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AgentConfig } from "../services/agent/src/config.ts";
-import { startAgentDaemon } from "../services/agent/src/start-daemon.ts";
+import type { DaemonConfig } from "../services/host-daemon/src/config.ts";
+import { startDaemon } from "../services/host-daemon/src/start-daemon.ts";
 import { startLocalServer } from "../services/api/src/local-server.ts";
 import type { LogRecord } from "../services/api/src/control-plane-types.ts";
 import { runCommandOk } from "../scripts/lib/run-command.mts";
@@ -27,17 +27,17 @@ async function sleep(ms: number): Promise<void> {
 }
 
 let root: string | undefined;
-let stopAgent: (() => Promise<void>) | undefined;
+let stopDaemon: (() => Promise<void>) | undefined;
 let closeServer: (() => Promise<void>) | undefined;
 
 afterEach(async () => {
-  await stopAgent?.();
+  await stopDaemon?.();
   await closeServer?.();
   if (root) {
     rmSync(root, { recursive: true, force: true });
   }
   root = undefined;
-  stopAgent = undefined;
+  stopDaemon = undefined;
   closeServer = undefined;
 });
 
@@ -74,7 +74,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
       online: true,
     });
 
-    const config: AgentConfig = {
+    const config: DaemonConfig = {
       hostId: "agent-echo",
       logLevel: "info",
       apiUrl: `ws://127.0.0.1:${port}/ws`,
@@ -90,8 +90,8 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
       commandProfiles: {},
     };
 
-    const daemon = await startAgentDaemon({ config, log: () => undefined, error: () => undefined });
-    stopAgent = daemon.stop;
+    const daemon = await startDaemon({ config, log: () => undefined, error: () => undefined });
+    stopDaemon = daemon.stop;
     await sleep(100);
 
     const commandResult = server.plane.createCommand({

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { runCommand } from "./lib/run-command.mts";
 
 describe("phase3 cloud e2e", () => {
-  it("create→assign→ack→run→completed via ControlPlane + AgentLoop", async () => {
+  it("create→assign→ack→run→completed via ControlPlane + DaemonLoop", async () => {
     const r = await runCommand("pnpm", ["exec", "node", "scripts/phase3-cloud-e2e.mts"], {
       cwd: process.cwd(),
     });

@@ -9,7 +9,7 @@ export function getServiceName(): string {
 export { MemorySessionStore } from "./memory-store.ts";
 export type { StoredSession } from "./memory-store.ts";
 export { createLocalApp, startLocalServer } from "./local-server.ts";
-export { createPlaneWsBridge, attachAgentWsHub, createWsDelivery } from "./ws-hub.ts";
+export { createPlaneWsBridge, attachHostWsHub, createWsDelivery } from "./ws-hub.ts";
 export { ControlPlane } from "./control-plane.ts";
 export type {
   ArchiveObject,

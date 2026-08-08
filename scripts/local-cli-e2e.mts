@@ -1,7 +1,7 @@
 /**
  * Documented CLI path:
  *   ephemeral local API + PUT host inventory +
- *   HARNESS_* env + pnpm local:agent run-session --file …
+ *   HARNESS_* env + pnpm local:daemon run-session --file …
  *
  * Uses async spawn so the in-process API event loop can serve bootstrap GETs.
  */
@@ -17,7 +17,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 function runAgent(args: string[], env: NodeJS.ProcessEnv) {
-  return runCommand("pnpm", ["local:agent", ...args], { cwd: process.cwd(), env });
+  return runCommand("pnpm", ["local:daemon", ...args], { cwd: process.cwd(), env });
 }
 
 async function main(): Promise<void> {
@@ -87,14 +87,14 @@ async function main(): Promise<void> {
 
     const env = {
       ...process.env,
-      HARNESS_AGENT_ID: hostId,
+      HARNESS_HOST_ID: hostId,
       HARNESS_API_URL: api,
     };
 
     const withSep = await runAgent(["--", "run-session", "--file", sessionPath], env);
     if (withSep.status !== 0) {
       throw new Error(
-        `pnpm local:agent -- run-session failed:\n${withSep.stdout}\n${withSep.stderr}`,
+        `pnpm local:daemon -- run-session failed:\n${withSep.stdout}\n${withSep.stderr}`,
       );
     }
     if (
@@ -127,7 +127,7 @@ async function main(): Promise<void> {
     );
     const noSep = await runAgent(["run-session", "--file", sessionPath], env);
     if (noSep.status !== 0) {
-      throw new Error(`pnpm local:agent run-session failed:\n${noSep.stdout}\n${noSep.stderr}`);
+      throw new Error(`pnpm local:daemon run-session failed:\n${noSep.stdout}\n${noSep.stderr}`);
     }
 
     console.log(

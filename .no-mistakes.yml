@@ -2,9 +2,9 @@ projects:
   control-web:
     type: nextjs
     root: services/web
-  agent-web:
+  host-pane:
     type: nextjs
-    root: services/agent-web
+    root: services/host-pane
 
 # No `rules:` here. Applying playwright-coverage/playwright-unique-test-ids for both
 # projects in one config cross-contaminates findings (see

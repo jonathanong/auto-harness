@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { assertUnknownProfileFails, createSessionViaApi, runHappyPath } from "./local-e2e/run.mts";
-import { buildAgentConfig, buildPaths, initFeatureRepo } from "./local-e2e/setup.mts";
+import { buildDaemonConfig, buildPaths, initFeatureRepo } from "./local-e2e/setup.mts";
 
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "ah-local-e2e-"));
@@ -20,7 +20,7 @@ async function main(): Promise<void> {
 
   try {
     const featureSha = await initFeatureRepo(paths);
-    const config = buildAgentConfig(paths);
+    const config = buildDaemonConfig(paths);
 
     // --- API create (documented local path) ---
     const created = await createSessionViaApi();

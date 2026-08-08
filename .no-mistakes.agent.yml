@@ -1,9 +1,9 @@
 # Isolated per-project config — see .no-mistakes.yml for why this is split out
 # (https://github.com/jonathanong/no-mistakes/issues/624).
 projects:
-  agent-web:
+  host-pane:
     type: nextjs
-    root: services/agent-web
+    root: services/host-pane
 
 # frontendRoot/selectorRoots work around no-mistakes not recognizing the
 # src/app Next.js layout (https://github.com/jonathanong/no-mistakes/issues/625) —
@@ -13,9 +13,9 @@ projects:
 tests:
   playwright:
     configs: playwright.config.ts
-    frontendRoot: services/agent-web/src/app
+    frontendRoot: services/host-pane/src/app
     selectorRoots:
-      - services/agent-web/src
+      - services/host-pane/src
     selectors:
       testIds:
         - data-pw

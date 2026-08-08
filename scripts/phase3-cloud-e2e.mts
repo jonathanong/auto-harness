@@ -1,5 +1,5 @@
 /**
- * Phase 3 local e2e: ControlPlane create → assign → AgentLoop ack/run → terminal.
+ * Phase 3 local e2e: ControlPlane create → assign → DaemonLoop ack/run → terminal.
  * Uses in-process loopback (local parity for API GW WS), not a reimplementation.
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -7,8 +7,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { ControlPlane } from "../services/api/src/control-plane.ts";
-import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.ts";
-import type { AgentConfig } from "../services/agent/src/config.ts";
+import { DaemonLoop, createLoopbackTransport } from "../services/host-daemon/src/daemon-loop.ts";
+import type { DaemonConfig } from "../services/host-daemon/src/config.ts";
 import { runCommandOk } from "./lib/run-command.mts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
       { mode: 0o755 },
     );
 
-    const config: AgentConfig = {
+    const config: DaemonConfig = {
       hostId: "agent-p3",
       logLevel: "info",
       repositories: [
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
       },
     });
 
-    const loop = new AgentLoop({ config, transport });
+    const loop = new DaemonLoop({ config, transport });
     await loop.start();
 
     plane.createCommand({

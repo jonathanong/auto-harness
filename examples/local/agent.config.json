@@ -1,5 +1,5 @@
 {
-  "_comment": "DEPRECATED local file. Agent identity is env-only (HARNESS_AGENT_ID, HARNESS_API_URL, HARNESS_API_KEY). Put host inventory via API: see agent-host.config.json",
+  "_comment": "DEPRECATED local file. Agent identity is env-only (HARNESS_HOST_ID, HARNESS_API_URL, HARNESS_API_KEY). Put host inventory via API: see agent-host.config.json",
   "hostId": "local-1",
   "logLevel": "info",
   "commandProfiles": {

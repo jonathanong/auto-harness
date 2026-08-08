@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { fetchAgentHostConfig } from "../../services/agent/src/bootstrap.ts";
-import { startAgentDaemon } from "../../services/agent/src/start-daemon.ts";
+import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
+import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
 
 const API = "http://127.0.0.1:7430";
@@ -29,7 +29,7 @@ test.describe("real orchestration", () => {
     const root = mkdtempSync(join(tmpdir(), "pw-orchestration-"));
     const repo = join(root, "repo");
     const wt = join(root, wtId);
-    let stopAgent: (() => Promise<void>) | undefined;
+    let stopDaemon: (() => Promise<void>) | undefined;
 
     try {
       mkdirSync(repo);
@@ -65,17 +65,17 @@ test.describe("real orchestration", () => {
       });
 
       // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
-      const config = await fetchAgentHostConfig({
+      const config = await fetchHostInventory({
         hostId,
         apiUrl: "ws://127.0.0.1:7430/ws",
         logLevel: "info",
       });
-      const daemon = await startAgentDaemon({
+      const daemon = await startDaemon({
         config,
         log: () => undefined,
         error: () => undefined,
       });
-      stopAgent = daemon.stop;
+      stopDaemon = daemon.stop;
       await new Promise((r) => setTimeout(r, 200));
 
       await page.goto("/sessions/new");
@@ -113,7 +113,7 @@ test.describe("real orchestration", () => {
         true,
       );
     } finally {
-      await stopAgent?.();
+      await stopDaemon?.();
       rmSync(root, { recursive: true, force: true });
     }
   });

@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseAgentConfig, type AgentConfig } from "../../services/agent/src/config.ts";
+import { parseDaemonConfig, type DaemonConfig } from "../../services/host-daemon/src/config.ts";
 import { git, revParse } from "./git.mts";
 
 export type LocalE2ePaths = {
@@ -50,8 +50,8 @@ export async function initFeatureRepo(paths: LocalE2ePaths): Promise<string> {
   return featureSha;
 }
 
-export function buildAgentConfig(paths: LocalE2ePaths): AgentConfig {
-  return parseAgentConfig({
+export function buildDaemonConfig(paths: LocalE2ePaths): DaemonConfig {
+  return parseDaemonConfig({
     hostId: "local-e2e",
     commandProfiles: {
       "echo-prompt": { argv: ["echo"], appendPrompt: true },

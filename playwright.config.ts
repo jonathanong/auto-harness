@@ -85,8 +85,8 @@ export default defineConfig({
       stderr: "pipe",
     },
     {
-      name: "agent-web",
-      command: "pnpm local:agent-web:start:e2e",
+      name: "host-pane",
+      command: "pnpm local:host-pane:start:e2e",
       url: "http://127.0.0.1:7432",
       reuseExistingServer: false,
       timeout: 60_000,

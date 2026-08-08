@@ -31,7 +31,7 @@ export default defineConfig({
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
         "**/services/web/src/lib/attach-local-repo.ts",
-        "**/services/agent-web/**",
+        "**/services/host-pane/**",
         // Thin HTTP route wiring (exercised by local-server-management tests)
         "**/local-routes-host-inventory.ts",
         "**/ws-hub.ts",

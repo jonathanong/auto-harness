@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-import { LOCAL_AGENT_WEB_HTTP, LOCAL_WEB_HTTP } from "@auto-harness/shared";
+import { LOCAL_HOST_PANE_HTTP, LOCAL_WEB_HTTP } from "@auto-harness/shared";
 
 const NAMED_LOCAL_ORIGINS = new Set([
   LOCAL_WEB_HTTP,
-  LOCAL_AGENT_WEB_HTTP,
+  LOCAL_HOST_PANE_HTTP,
   "http://localhost:7421",
   "http://localhost:7422",
 ]);

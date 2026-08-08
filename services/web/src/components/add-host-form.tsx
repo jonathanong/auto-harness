@@ -53,7 +53,7 @@ export function AddHostForm() {
             return;
           }
           setOk(
-            `Host slot ${hostId} created (empty inventory). Run: HARNESS_AGENT_ID=${hostId} pnpm local:agent start`,
+            `Host slot ${hostId} created (empty inventory). Run: HARNESS_HOST_ID=${hostId} pnpm local:agent start`,
           );
           form.reset();
           router.refresh();
@@ -63,7 +63,7 @@ export function AddHostForm() {
       <div className="space-y-1">
         <Label
           htmlFor="hostId"
-          tip="Stable host identity. Must match HARNESS_AGENT_ID on the host when you start the daemon. Does not start a process."
+          tip="Stable host identity. Must match HARNESS_HOST_ID on the host when you start the daemon. Does not start a process."
         >
           hostId
         </Label>

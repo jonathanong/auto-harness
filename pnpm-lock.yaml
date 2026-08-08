@@ -85,7 +85,32 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
-  services/agent:
+  services/api:
+    dependencies:
+      '@auto-harness/shared':
+        specifier: workspace:*
+        version: link:../../modules/shared
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.1101.0
+        version: 3.1101.0
+      '@aws-sdk/lib-dynamodb':
+        specifier: ^3.1101.0
+        version: 3.1101.0(@aws-sdk/client-dynamodb@3.1101.0)
+      ws:
+        specifier: ^8.21.1
+        version: 8.21.1
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+
+  services/cdk:
+    dependencies:
+      '@auto-harness/shared':
+        specifier: workspace:*
+        version: link:../../modules/shared
+
+  services/host-daemon:
     dependencies:
       '@auto-harness/shared':
         specifier: workspace:*
@@ -98,7 +123,7 @@ importers:
         specifier: ^8.18.1
         version: 8.18.1
 
-  services/agent-web:
+  services/host-pane:
     dependencies:
       '@auto-harness/shared':
         specifier: workspace:*
@@ -140,31 +165,6 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
-
-  services/api:
-    dependencies:
-      '@auto-harness/shared':
-        specifier: workspace:*
-        version: link:../../modules/shared
-      '@aws-sdk/client-dynamodb':
-        specifier: ^3.1101.0
-        version: 3.1101.0
-      '@aws-sdk/lib-dynamodb':
-        specifier: ^3.1101.0
-        version: 3.1101.0(@aws-sdk/client-dynamodb@3.1101.0)
-      ws:
-        specifier: ^8.21.1
-        version: 8.21.1
-    devDependencies:
-      '@types/ws':
-        specifier: ^8.18.1
-        version: 8.18.1
-
-  services/cdk:
-    dependencies:
-      '@auto-harness/shared':
-        specifier: workspace:*
-        version: link:../../modules/shared
 
   services/web:
     dependencies:

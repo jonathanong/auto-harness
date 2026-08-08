@@ -1,0 +1,147 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { parseDaemonConfig } from "./config.ts";
+import type { ProcessRunner } from "./executor.ts";
+import type { GitClient } from "./git.ts";
+import { SessionRunner } from "./session-runner.ts";
+import { baseAssign, setup } from "./session-runner-test-helpers.ts";
+import { WorktreeManager } from "./worktree-manager.ts";
+
+describe("SessionRunner success paths", () => {
+  it("completes a successful profile run and still runs hook", async () => {
+    const runner: ProcessRunner = {
+      async run(opts) {
+        expect(opts.argv).toEqual(["echo", "hello"]);
+        opts.onChunk({ stream: "stdout", data: "ok\n" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const { sessionRunner, hooks } = setup(runner);
+    const result = await sessionRunner.run(baseAssign({ ref: "main", metadata: { pr: 9 } }));
+    expect(result.status).toBe("completed");
+    expect(result.exitCode).toBe(0);
+    expect(hooks).toEqual(["completed"]);
+    expect(result.logs.some((l) => l.seq === 0)).toBe(true);
+  });
+
+  it("checks out provided ref", async () => {
+    const checkouts: string[] = [];
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      commandProfiles: {
+        "echo-prompt": { argv: ["echo"], appendPrompt: true },
+      },
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async ({ ref }) => {
+        checkouts.push(ref);
+      },
+      revParse: async () => "x",
+    };
+    const worktrees = new WorktreeManager(config, git);
+    const sessionRunner = new SessionRunner({
+      worktrees,
+      processRunner: {
+        async run() {
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+    await sessionRunner.run(baseAssign({ ref: "feature/pr-1" }));
+    expect(checkouts).toEqual(["feature/pr-1"]);
+  });
+
+  it("rejects an empty resolvedArgv without spawning", async () => {
+    const spawn = vi.fn();
+    const runner: ProcessRunner = {
+      async run(opts) {
+        spawn(opts.argv);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const { sessionRunner } = setup(runner);
+    const result = await sessionRunner.run(baseAssign({ resolvedArgv: [] }));
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("unknown_command_profile");
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("marks usage_limit when output matches", async () => {
+    const runner: ProcessRunner = {
+      async run(opts) {
+        opts.onChunk({
+          stream: "stderr",
+          data: "Error: insufficient_quota for request",
+        });
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+    const { sessionRunner, hooks } = setup(runner);
+    const result = await sessionRunner.run(baseAssign({ resolvedArgv: ["usage"] }));
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("usage_limit");
+    expect(hooks).toEqual(["failed"]);
+  });
+
+  it("returns timed_out when process times out", async () => {
+    const runner: ProcessRunner = {
+      async run() {
+        return { exitCode: null, timedOut: true, signal: "SIGTERM" };
+      },
+    };
+    const { sessionRunner, hooks } = setup(runner);
+    const result = await sessionRunner.run(baseAssign());
+    expect(result.status).toBe("timed_out");
+    expect(hooks).toEqual(["timed_out"]);
+  });
+
+  it("skips setup script on resume", async () => {
+    const setupSpy = vi.fn();
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      commandProfiles: {
+        "echo-prompt": { argv: ["echo"], appendPrompt: true },
+      },
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          setupScript: "should-not-run",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      revParse: async () => "x",
+    };
+    const worktrees = new WorktreeManager(config, git);
+    const sessionRunner = new SessionRunner({
+      worktrees,
+      processRunner: {
+        async run(opts) {
+          if (opts.argv[1] === "-c") {
+            setupSpy();
+          }
+          return { exitCode: 0, timedOut: false, signal: null };
+        },
+      },
+    });
+    const result = await sessionRunner.run(baseAssign({ resume: true }));
+    expect(result.status).toBe("completed");
+    expect(setupSpy).not.toHaveBeenCalled();
+  });
+});

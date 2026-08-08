@@ -1,6 +1,6 @@
 /**
  * Invariant 7 / D5: resume pins agent only; re-checkout via ref succeeds even
- * when the original worktree was reused (AgentLoop + real git).
+ * when the original worktree was reused (DaemonLoop + real git).
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -9,8 +9,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "../services/api/src/control-plane.ts";
-import { AgentLoop, createLoopbackTransport } from "../services/agent/src/agent-loop.ts";
-import type { AgentConfig } from "../services/agent/src/config.ts";
+import { DaemonLoop, createLoopbackTransport } from "../services/host-daemon/src/daemon-loop.ts";
+import type { DaemonConfig } from "../services/host-daemon/src/config.ts";
 import { runCommandOk } from "./lib/run-command.mts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -18,7 +18,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
 }
 
 describe("resume re-checks out ref after worktree reuse", () => {
-  it("AgentLoop lands resume session HEAD on original ref via different worktree", async () => {
+  it("DaemonLoop lands resume session HEAD on original ref via different worktree", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-resume-"));
     try {
       const repo = join(root, "repo");
@@ -39,7 +39,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const featureSha = await git(repo, ["rev-parse", "HEAD"]);
       await git(repo, ["checkout", "main"]);
 
-      const config: AgentConfig = {
+      const config: DaemonConfig = {
         hostId: "agent-resume",
         logLevel: "info",
         repositories: [
@@ -84,7 +84,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
         },
       });
 
-      const loop = new AgentLoop({ config, transport });
+      const loop = new DaemonLoop({ config, transport });
       await loop.start();
 
       plane.createCommand({

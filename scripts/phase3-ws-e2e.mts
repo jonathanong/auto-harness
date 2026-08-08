@@ -1,14 +1,14 @@
 /**
  * Phase 3 e2e over real local WebSocket:
- * API /ws + agent startAgentDaemon → create → assign → completed + hook env.
+ * API /ws + agent startDaemon → create → assign → completed + hook env.
  */
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startLocalServer } from "../services/api/src/local-server.ts";
-import { startAgentDaemon } from "../services/agent/src/start-daemon.ts";
-import type { AgentConfig } from "../services/agent/src/config.ts";
+import { startDaemon } from "../services/host-daemon/src/start-daemon.ts";
+import type { DaemonConfig } from "../services/host-daemon/src/config.ts";
 import { runCommandOk } from "./lib/run-command.mts";
 
 async function git(cwd: string, args: string[]): Promise<string> {
@@ -22,7 +22,7 @@ async function sleep(ms: number): Promise<void> {
 async function main(): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "ah-ws-e2e-"));
   let server: Awaited<ReturnType<typeof startLocalServer>> | undefined;
-  let stopAgent: (() => Promise<void>) | undefined;
+  let stopDaemon: (() => Promise<void>) | undefined;
   try {
     const repo = join(root, "repo");
     const wt = join(root, "wt-1");
@@ -67,7 +67,7 @@ async function main(): Promise<void> {
       online: true,
     });
 
-    const config: AgentConfig = {
+    const config: DaemonConfig = {
       hostId: "agent-ws",
       logLevel: "info",
       apiUrl: `ws://127.0.0.1:${port}/ws`,
@@ -86,12 +86,12 @@ async function main(): Promise<void> {
       },
     };
 
-    const daemon = await startAgentDaemon({
+    const daemon = await startDaemon({
       config,
       log: () => undefined,
       error: () => undefined,
     });
-    stopAgent = daemon.stop;
+    stopDaemon = daemon.stop;
     await sleep(100);
 
     const cmdRes = await fetch(`http://127.0.0.1:${port}/api/v1/commands`, {
@@ -179,7 +179,7 @@ async function main(): Promise<void> {
       }),
     );
   } finally {
-    await stopAgent?.();
+    await stopDaemon?.();
     await server?.close();
     rmSync(root, { recursive: true, force: true });
   }

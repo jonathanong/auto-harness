@@ -39,13 +39,13 @@ export const DEFAULT_QUEUE_SHARD_COUNT = 4;
 export const DEFAULT_ACK_DEADLINE_MS = 15_000;
 
 /**
- * Worktree reclaim if agent heartbeat is older than this (Phase 3).
+ * Worktree reclaim if host heartbeat is older than this (Phase 3).
  * Must be materially smaller than typical session timeouts.
  */
 export const DEFAULT_HEARTBEAT_STALE_MS = 60_000;
 
-/** Agent-initiated keepalive interval (not server-originated). */
-export const DEFAULT_AGENT_KEEPALIVE_MS = 20_000;
+/** Host-initiated keepalive interval (not server-originated). */
+export const DEFAULT_HOST_KEEPALIVE_MS = 20_000;
 
 /** Session log archival target prefix (Phase 5). */
 export const DEFAULT_ARCHIVE_PREFIX = "session-logs/";
@@ -60,6 +60,6 @@ export const PACKAGE_SCOPE = "@auto-harness" as const;
 export const LOCAL_API_HTTP = "http://127.0.0.1:7420" as const;
 export const LOCAL_API_WS = "ws://127.0.0.1:7420/ws" as const;
 export const LOCAL_WEB_HTTP = "http://127.0.0.1:7421" as const;
-export const LOCAL_AGENT_WEB_HTTP = "http://127.0.0.1:7422" as const;
+export const LOCAL_HOST_PANE_HTTP = "http://127.0.0.1:7422" as const;
 export const LOCAL_DDB_HTTP = "http://127.0.0.1:7423" as const;
-export const LOCAL_AGENT_ID = "local-1" as const;
+export const LOCAL_HOST_ID = "local-1" as const;

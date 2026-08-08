@@ -32,7 +32,7 @@
       "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
-    "services/agent": {
+    "services/host-daemon": {
       "entry": ["src/index.ts", "src/cli.ts"],
       "project": ["src/**/*.ts"],
     },
@@ -40,7 +40,7 @@
       "entry": ["src/index.ts", "src/app/**/page.tsx", "src/app/layout.tsx"],
       "project": ["src/**/*.{ts,tsx}"],
     },
-    "services/agent-web": {
+    "services/host-pane": {
       "entry": ["src/index.ts", "src/app/**/page.tsx", "src/app/layout.tsx"],
       "project": ["src/**/*.{ts,tsx}"],
     },

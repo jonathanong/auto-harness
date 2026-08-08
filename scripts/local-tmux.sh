@@ -7,9 +7,9 @@ set -euo pipefail
 #
 # Windows (left to right, matching the port order — see docs/local-development.md):
 #   api        :7420  pnpm local:api
-#   web        :7421  pnpm local:web       (control plane)
-#   agent-web  :7422  pnpm local:agent-web (agent pane)
-#   agent      —      pnpm local:agent start
+#   web        :7421  pnpm local:web        (control plane)
+#   host-pane  :7422  pnpm local:host-pane  (host pane)
+#   daemon     —      pnpm local:daemon start
 
 cd "$(dirname "$0")/.."
 
@@ -34,11 +34,11 @@ pnpm local:dynamodb:ready
 
 tmux new-session -d -s "$SESSION" -n api "pnpm local:api"
 tmux new-window -t "$SESSION" -n web "pnpm local:web"
-tmux new-window -t "$SESSION" -n agent-web "pnpm local:agent-web"
-# The agent daemon connects to the API's WebSocket on startup and exits (closing
+tmux new-window -t "$SESSION" -n host-pane "pnpm local:host-pane"
+# The host daemon connects to the API's WebSocket on startup and exits (closing
 # the window) if that fails, so wait for /health before launching it.
-tmux new-window -t "$SESSION" -n agent \
-  "until curl -fsS http://127.0.0.1:7420/health >/dev/null 2>&1; do sleep 1; done; pnpm local:agent start"
+tmux new-window -t "$SESSION" -n daemon \
+  "until curl -fsS http://127.0.0.1:7420/health >/dev/null 2>&1; do sleep 1; done; pnpm local:daemon start"
 tmux select-window -t "$SESSION:api"
 
 if [ -n "${TMUX:-}" ]; then

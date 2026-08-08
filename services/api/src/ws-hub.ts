@@ -99,7 +99,7 @@ export function createPlaneWsBridge(): {
   };
 }
 
-export function attachAgentWsHub(server: HttpServer, plane: ControlPlane): WsHub {
+export function attachHostWsHub(server: HttpServer, plane: ControlPlane): WsHub {
   const bridge = createPlaneWsBridge();
   plane.setOnHostMessage(bridge.onHostMessage);
   return bridge.attach(server, plane);
