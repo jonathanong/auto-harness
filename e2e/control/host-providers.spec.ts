@@ -41,6 +41,7 @@ test.describe("control plane host provider accounts", () => {
     await expect(page.getByTestId("add-host-ok")).toBeVisible({ timeout: 15_000 });
 
     await page.goto(`/hosts/${hostId}?tab=provider-accounts`);
+    await expect(page.getByTestId("host-provider-accounts-section")).toBeVisible();
     await expect(page.getByTestId("form-attach-provider-account")).toBeVisible();
     await page
       .getByTestId("attach-provider-account-select")
@@ -49,6 +50,9 @@ test.describe("control plane host provider accounts", () => {
 
     const row = page.getByTestId(`host-provider-account-row-${account.id}`);
     await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(
+      page.getByTestId(`host-provider-account-command-form-${account.id}`),
+    ).toBeVisible();
     // No override yet — effective command falls back to the provider default.
     await expect(row).toContainText(`${providerName}-default`);
 

@@ -70,9 +70,16 @@ test.describe("control plane provider account scope overrides", () => {
 
     // Disable at repository scope.
     await page.goto(`/repositories/${repoId}?tab=provider-accounts`);
+    await expect(page.getByTestId("repository-provider-accounts-tab")).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId(`repository-provider-accounts-host-${hostId}`)).toBeVisible();
+    await expect(page.getByTestId("provider-scope-table")).toBeVisible();
     const repoRow = page.getByTestId(`provider-scope-row-${account.id}`);
     await expect(repoRow).toBeVisible({ timeout: 15_000 });
     await expect(repoRow).toContainText(`${providerName}-default`);
+    await expect(page.getByTestId(`scope-provider-enabled-form-${account.id}`)).toBeVisible();
+    await expect(page.getByTestId(`scope-provider-command-form-${account.id}`)).toBeVisible();
     await page
       .getByTestId(`scope-provider-enabled-select-${account.id}`)
       .selectOption({ label: "Disabled" });
@@ -118,5 +125,37 @@ test.describe("control plane provider account scope overrides", () => {
       "repository",
       { timeout: 15_000 },
     );
+  });
+
+  test("worktree with no host-attached provider accounts shows the empty state", async ({
+    page,
+    request,
+  }) => {
+    const hostId = `pw-overrides-empty-${test.info().parallelIndex}-${Date.now()}`;
+    const worktreeId = `wt-${test.info().parallelIndex}-${Date.now()}`;
+    await request.put(`${API}/api/v1/agents/${hostId}/config`, {
+      data: {
+        repositories: [
+          {
+            id: "repo-empty",
+            path: "/tmp/repo-empty",
+            defaultBranch: "main",
+            worktrees: [
+              {
+                id: worktreeId,
+                name: worktreeId,
+                path: `/tmp/repo-empty/${worktreeId}`,
+                labels: [],
+              },
+            ],
+          },
+        ],
+        providerAccounts: [],
+        commandProfiles: {},
+      },
+    });
+
+    await page.goto(`/worktrees/${worktreeId}?tab=provider-accounts`);
+    await expect(page.getByTestId("provider-scope-table-empty")).toBeVisible({ timeout: 15_000 });
   });
 });
