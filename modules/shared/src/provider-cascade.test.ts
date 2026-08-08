@@ -106,6 +106,13 @@ describe("resolveProviderAccountEnabled", () => {
       ),
     ).toBe(true);
   });
+
+  it("doesn't crash on a stale real-storage record missing providerAccounts at runtime", () => {
+    // The field is typed as required, but a record persisted before it existed can still
+    // lack it — this must degrade to disabled, not throw.
+    const stale = { repositories: [], commandProfiles: {} } as unknown as HostInventory;
+    expect(resolveProviderAccountEnabled("acct1", undefined, undefined, stale)).toBe(false);
+  });
 });
 
 describe("resolveProviderAccountCommandId", () => {
@@ -187,5 +194,12 @@ describe("resolveProviderAccountCommandId", () => {
         providerAccounts: {},
       }),
     ).toBeUndefined();
+  });
+
+  it("falls back to the provider default (not a crash) on a stale record missing providerAccounts", () => {
+    const stale = { repositories: [], commandProfiles: {} } as unknown as HostInventory;
+    expect(resolveProviderAccountCommandId("acct1", undefined, undefined, stale, catalog)).toBe(
+      "cmd-default",
+    );
   });
 });

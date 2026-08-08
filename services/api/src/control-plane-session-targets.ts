@@ -6,7 +6,9 @@ export type SessionTarget =
 
 function isAttachedToAnyHost(state: ControlPlaneState, providerAccountId: string): boolean {
   for (const host of state.agentHosts.values()) {
-    if (host.providerAccounts.some((pa) => pa.providerAccountId === providerAccountId)) {
+    // Real-storage records written before this field existed can lack it at runtime
+    // despite the type saying it's required — don't crash the picker on stale data.
+    if (host.providerAccounts?.some((pa) => pa.providerAccountId === providerAccountId)) {
       return true;
     }
   }

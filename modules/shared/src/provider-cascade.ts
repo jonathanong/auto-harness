@@ -22,7 +22,7 @@ export function resolveProviderAccountEnabled(
   return (
     hostWorktree?.providerAccountOverrides?.[providerAccountId]?.enabled ??
     hostRepository?.providerAccountOverrides?.[providerAccountId]?.enabled ??
-    inventory?.providerAccounts.some((a) => a.providerAccountId === providerAccountId) ??
+    inventory?.providerAccounts?.some((a) => a.providerAccountId === providerAccountId) ??
     false
   );
 }
@@ -40,7 +40,7 @@ export function resolveProviderAccountCommandId(
   inventory: HostInventory | undefined,
   catalog: ProviderCatalog,
 ): string | undefined {
-  const hostAccount = inventory?.providerAccounts.find(
+  const hostAccount = inventory?.providerAccounts?.find(
     (a) => a.providerAccountId === providerAccountId,
   );
   const providerId = catalog.providerAccounts[providerAccountId]?.providerId;

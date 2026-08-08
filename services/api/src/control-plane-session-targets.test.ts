@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { AgentHostRecord } from "./db/plane-storage.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { listSessionTargets } from "./control-plane-session-targets.ts";
 
@@ -78,6 +79,33 @@ describe("listSessionTargets", () => {
       commandProfiles: {},
       updatedAt: "t",
     });
+    expect(listSessionTargets(state)).toEqual([]);
+  });
+
+  it("doesn't crash on a stale real-storage host record missing providerAccounts at runtime", () => {
+    const state = createControlPlaneState();
+    state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.providerAccounts.set("acct-1", {
+      id: "acct-1",
+      providerId: "prov-1",
+      label: "z@y.com",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    // The field is typed as required, but a record persisted before it existed can still
+    // lack it — the picker must degrade to "not attached", not throw.
+    const stale = {
+      agentId: "host-1",
+      repositories: [],
+      commandProfiles: {},
+    } as unknown as AgentHostRecord;
+    state.agentHosts.set("host-1", stale);
     expect(listSessionTargets(state)).toEqual([]);
   });
 
