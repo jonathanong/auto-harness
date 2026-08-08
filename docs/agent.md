@@ -105,7 +105,7 @@ sequenceDiagram
     WTM->>WTM: git worktree add if needed - prune stale
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
-    Conn->>AWS: agent:register { agentId, worktrees[] }
+    Conn->>AWS: agent:register { hostId, worktrees[] }
     AWS-->>Conn: agent:registered / session:assign (optional)
     Note over Main: Event loop: messages, sessions, heartbeats
 ```
@@ -132,7 +132,7 @@ Outbound message types: `agent:register`, `session:ack`, `session:log`, `session
 
 - Merge file + env
 - Resolve absolute paths
-- Validate unique worktree ids, non-overlapping paths, non-empty `agentId`
+- Validate unique worktree ids, non-overlapping paths, non-empty `hostId`
 - Expose immutable config snapshot to other modules
 
 ### Worktree Manager
@@ -168,7 +168,7 @@ Concurrent sessions: one runner instance per claimed worktree (and at most one m
 
 ### Session resume
 
-Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is **pinned** to the **same `agentId` + `worktreeId`** as the source. The agent then **tries to resume** in that workspace.
+Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is **pinned** to the **same `hostId` + `worktreeId`** as the source. The agent then **tries to resume** in that workspace.
 
 ```mermaid
 sequenceDiagram
@@ -190,7 +190,7 @@ sequenceDiagram
 
 | Rule           | Behavior                                                                      |
 | -------------- | ----------------------------------------------------------------------------- |
-| Pin            | Always `pinnedAgentId` + `pinnedWorktreeId` from source                       |
+| Pin            | Always `pinnedHostId` + `pinnedWorktreeId` from source                        |
 | Wait           | If that worktree is busy or agent offline/draining → stay `queued` on the pin |
 | No rehome      | Never assign a resume session to a different agent or worktree                |
 | Same host disk | Resume only makes sense on the machine that still has the worktree files      |
@@ -365,7 +365,7 @@ Non-zero exit → session `failed`, worktree released.
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/agents/:agentId/config` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/agents/:hostId/config` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 
@@ -537,7 +537,7 @@ On re-register, include:
 ```json
 {
   "type": "agent:register",
-  "agentId": "vps-prod-1",
+  "hostId": "vps-prod-1",
   "worktrees": [
     {
       "id": "wt-1",
@@ -596,7 +596,7 @@ ERROR: Failed to connect to wss://...
 ```
 
 - Check `HARNESS_API_URL` and API stage
-- Validate API key and `boundAgentId` match `agentId`
+- Validate API key and `boundHostId` match `hostId`
 - Outbound TCP 443 / corporate proxy
 
 ### Git worktree errors

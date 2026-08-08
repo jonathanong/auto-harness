@@ -40,7 +40,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       await git(repo, ["checkout", "main"]);
 
       const config: AgentConfig = {
-        agentId: "agent-resume",
+        hostId: "agent-resume",
         logLevel: "info",
         repositories: [
           {
@@ -129,8 +129,8 @@ describe("resume re-checks out ref after worktree reuse", () => {
       await loop.waitForIdle();
       expect(plane.getSession(intervening.session.id)?.status).toBe("completed");
 
-      // Ensure pin source has agent (complete keeps agentId)
-      plane.state.sessions.get(first.session.id)!.agentId = "agent-resume";
+      // Ensure pin source has agent (complete keeps hostId)
+      plane.state.sessions.get(first.session.id)!.hostId = "agent-resume";
 
       const resumed = plane.resumeSession(first.session.id);
       expect(resumed.ok).toBe(true);

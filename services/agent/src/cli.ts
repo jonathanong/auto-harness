@@ -21,7 +21,7 @@ Identity (env; local defaults shown):
   HARNESS_LOG_LEVEL  optional (debug|info|warn|error)
 
 Host inventory (repos, worktrees, commandProfiles) is configured via
-API/UI: PUT /api/v1/agents/:agentId/config — not a local config file.
+API/UI: PUT /api/v1/agents/:hostId/config — not a local config file.
 `);
 }
 
@@ -85,7 +85,7 @@ export async function runCli(
     deps.log(
       JSON.stringify(
         {
-          agentId: config.agentId,
+          hostId: config.hostId,
           repositories: config.repositories.map((r) => ({
             id: r.id,
             path: r.path,

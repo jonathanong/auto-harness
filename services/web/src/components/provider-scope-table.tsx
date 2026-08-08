@@ -25,7 +25,7 @@ const SOURCE_LABEL: Record<string, string> = {
  * and which scope it came from, with inline controls to override at *this* scope.
  */
 export function ProviderScopeTable({
-  agentId,
+  hostId,
   scope,
   inheritedEnabledLabel,
   resolutions,
@@ -34,7 +34,7 @@ export function ProviderScopeTable({
   providersById,
   commandsById,
 }: {
-  agentId: string;
+  hostId: string;
   scope: ProviderAccountScope;
   /** Label for the enabled picker's "(inherit from …)" option — e.g. "host" or "repository". */
   inheritedEnabledLabel: string;
@@ -82,7 +82,7 @@ export function ProviderScopeTable({
               <TableCell className="font-mono text-sm">{label}</TableCell>
               <TableCell>
                 <ScopeProviderEnabledForm
-                  agentId={agentId}
+                  hostId={hostId}
                   scope={scope}
                   providerAccountId={r.providerAccountId}
                   currentOverride={override?.enabled}
@@ -104,7 +104,7 @@ export function ProviderScopeTable({
                     {r.commandId ? (commandsById[r.commandId]?.name ?? r.commandId) : "— (none)"}
                   </span>
                   <ScopeProviderCommandForm
-                    agentId={agentId}
+                    hostId={hostId}
                     scope={scope}
                     providerAccountId={r.providerAccountId}
                     currentOverride={override?.commandId}

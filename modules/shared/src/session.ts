@@ -86,7 +86,7 @@ export type HostWireMessage =
 export type HostToServerMessage =
   | {
       type: "host:register";
-      agentId: string;
+      hostId: string;
       worktrees: Array<{
         id: string;
         name: string;
@@ -114,4 +114,4 @@ export type HostToServerMessage =
       timestamp: string;
       seq: number;
     }
-  | { type: "host:keepalive"; agentId: string; at: string };
+  | { type: "host:keepalive"; hostId: string; at: string };

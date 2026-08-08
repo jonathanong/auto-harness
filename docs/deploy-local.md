@@ -79,7 +79,7 @@ Session path after agent is online: `POST /api/v1/sessions` then `POST /api/v1/s
 | DynamoDB Local image | `pnpm local:dynamodb:down` then `pnpm local:dynamodb` (data is container-local unless you bind a volume)                                  |
 | Schema / tables      | `pnpm local:dynamodb:ready` re-ensures tables for the current prefix                                                                      |
 
-Local API drain: `POST /api/v1/agents/drain` with `{ "agentId": "…" }`. Agent drain semantics: [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
+Local API drain: `POST /api/v1/agents/drain` with `{ "hostId": "…" }`. Agent drain semantics: [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
 
 ---
 

@@ -40,7 +40,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeK.seedWorktree({
       id: "wk",
       name: "wk",
-      agentId: "ak",
+      hostId: "ak",
       repositoryId: "repo-1",
       path: "/k",
       labels: [],
@@ -71,8 +71,8 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       status: "completed",
     });
     // set agent after complete for resume
-    const kSess = planeK.state.sessions.get("k1") as { agentId?: string | null };
-    kSess.agentId = "ak";
+    const kSess = planeK.state.sessions.get("k1") as { hostId?: string | null };
+    kSess.hostId = "ak";
     expect(planeK.resumeSession("k1", { pinExpiresAt: "2099-01-01T00:00:00.000Z" }).ok).toBe(true);
 
     // default constructor factories
@@ -103,7 +103,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       now: () => "2026-01-01T00:00:00.000Z",
     });
     planeOrphan.registerAgent({
-      agentId: "orph",
+      hostId: "orph",
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["c"],
     });
@@ -119,7 +119,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeOrphan.seedWorktree({
       id: "wg",
       name: "wg",
-      agentId: "gone",
+      hostId: "gone",
       repositoryId: "repo-1",
       path: "/g",
       labels: [],
@@ -156,7 +156,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeQ.seedWorktree({
       id: "wq",
       name: "wq",
-      agentId: "aq",
+      hostId: "aq",
       repositoryId: "repo-1",
       path: "/q",
       labels: [],

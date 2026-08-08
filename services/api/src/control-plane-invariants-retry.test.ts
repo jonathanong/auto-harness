@@ -16,7 +16,7 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],
@@ -71,7 +71,7 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.seedWorktree({
       id: "wt-a",
       name: "wt-a",
-      agentId: "agent-1",
+      hostId: "agent-1",
       repositoryId: "repo-1",
       path: "/a",
       labels: [],
@@ -81,7 +81,7 @@ describe("ControlPlane retry and resume invariants", () => {
     plane.seedWorktree({
       id: "wt-b",
       name: "wt-b",
-      agentId: "agent-1",
+      hostId: "agent-1",
       repositoryId: "repo-1",
       path: "/b",
       labels: [],
@@ -112,7 +112,7 @@ describe("ControlPlane retry and resume invariants", () => {
     if (!resumed.ok) {
       return;
     }
-    expect(resumed.session.pinnedAgentId).toBe("agent-1");
+    expect(resumed.session.pinnedHostId).toBe("agent-1");
     expect(resumed.session.ref).toBe("feature/x");
     // Finish intervening so wt free; resume can land on different worktree path
     plane.handleAgentMessage({
@@ -127,7 +127,7 @@ describe("ControlPlane retry and resume invariants", () => {
     const resumeAssign = plane.assignQueued();
     const hit = resumeAssign.find((a) => a.session.id === resumed.session.id);
     expect(hit).toBeTruthy();
-    expect(hit?.worktree.agentId).toBe("agent-1");
+    expect(hit?.worktree.hostId).toBe("agent-1");
     // Worktree is not pinned — may differ from original after reuse.
     expect(["wt-a", "wt-b"]).toContain(hit?.worktree.id);
     expect(["wt-a", "wt-b"]).toContain(originalWt);

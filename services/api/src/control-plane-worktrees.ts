@@ -50,21 +50,21 @@ export function releaseWorktree(state: ControlPlaneState, worktreeId: string): v
   wt.status = "idle";
   wt.currentSessionId = null;
   // Drain / disconnect are sticky: released worktrees must not become assignable.
-  if (state.drainingAgents.has(wt.agentId) || state.disconnectedAgents.has(wt.agentId)) {
+  if (state.drainingAgents.has(wt.hostId) || state.disconnectedAgents.has(wt.hostId)) {
     wt.online = false;
   }
   persistWorktree(state, { ...wt });
 }
 
-/** Offline every worktree for agentId; requeue any running sessions. */
+/** Offline every worktree for hostId; requeue any running sessions. */
 export function offlineAgentAndRequeue(
   state: ControlPlaneState,
-  agentId: string,
+  hostId: string,
   reason: string,
 ): string[] {
   const requeued: string[] = [];
   for (const wt of state.worktrees.values()) {
-    if (wt.agentId !== agentId) {
+    if (wt.hostId !== hostId) {
       continue;
     }
     wt.online = false;
@@ -77,7 +77,7 @@ export function offlineAgentAndRequeue(
         if (session?.status === "running") {
           session.status = "queued";
           session.worktreeId = null;
-          session.agentId = null;
+          session.hostId = null;
           session.errorMessage = reason;
           state.pendingAcks.delete(sid);
           requeued.push(sid);

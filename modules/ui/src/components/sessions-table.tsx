@@ -10,13 +10,13 @@ export type SessionRow = {
   prompt?: string | null;
   targetLabel?: string | null;
   source?: string | null;
-  agentId?: string | null;
+  hostId?: string | null;
   createdAt?: string | null;
 };
 
 export type SessionsTableProps = {
   items: SessionRow[];
-  /** Show agentId column (control plane fleet view). */
+  /** Show hostId column (control plane fleet view). */
   showAgent?: boolean;
   emptyMessage?: string;
   /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
@@ -63,7 +63,7 @@ export function SessionsTable({
               <StatusBadge status={s.status} />
             </TableCell>
             {showAgent ? (
-              <TableCell className="font-mono text-xs">{s.agentId ?? "—"}</TableCell>
+              <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>
             ) : null}
             <TableCell>{s.targetLabel ?? "—"}</TableCell>
             <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>

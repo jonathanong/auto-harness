@@ -66,7 +66,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
     server.plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "agent-echo",
+      hostId: "agent-echo",
       repositoryId: "demo",
       path: wt,
       labels: ["echo"],
@@ -75,7 +75,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
     });
 
     const config: AgentConfig = {
-      agentId: "agent-echo",
+      hostId: "agent-echo",
       logLevel: "info",
       apiUrl: `ws://127.0.0.1:${port}/ws`,
       repositories: [

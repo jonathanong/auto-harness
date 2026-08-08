@@ -55,7 +55,7 @@ export async function makeRepo(): Promise<{
   writeFileSync(hook, "#!/bin/sh\necho ok\n", { mode: 0o755 });
 
   const config: AgentConfig = {
-    agentId: "agent-loop",
+    hostId: "agent-loop",
     logLevel: "info",
     repositories: [
       {

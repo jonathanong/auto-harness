@@ -16,7 +16,7 @@ describe("ControlPlane lifecycle", () => {
     });
     seedBaseCommand(plane);
     plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [
         { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] },
         { id: "wt-idle", name: "wt-idle", repositoryId: "repo-1", path: "/i", labels: [] },
@@ -49,7 +49,7 @@ describe("ControlPlane lifecycle", () => {
     });
     seedBaseCommand(plane);
     const reg = plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [
         { id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] },
         { id: "wt-2", name: "wt-2", repositoryId: "repo-1", path: "/w2", labels: [] },
@@ -87,7 +87,7 @@ describe("ControlPlane lifecycle", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],
@@ -133,7 +133,7 @@ describe("ControlPlane lifecycle", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w1",
       labels: [],
@@ -143,7 +143,7 @@ describe("ControlPlane lifecycle", () => {
     plane.seedWorktree({
       id: "wt-2",
       name: "wt-2",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w2",
       labels: [],

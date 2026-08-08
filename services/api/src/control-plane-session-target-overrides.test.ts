@@ -25,7 +25,7 @@ function worktree(over: Partial<WorktreeRecord> = {}): WorktreeRecord {
   return {
     id: "wt-1",
     name: "wt-1",
-    agentId: "host-1",
+    hostId: "host-1",
     repositoryId: "repo-1",
     path: "/w",
     labels: [],
@@ -62,7 +62,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       updatedAt: "t",
     });
     state.agentHosts.set("host-1", {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [
         {
           id: "repo-1",
@@ -121,7 +121,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       updatedAt: "t",
     });
     state.agentHosts.set("host-1", {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [
         {
           id: "repo-1",
@@ -169,7 +169,7 @@ describe("resolveSessionTargetArgv: repo/worktree overrides", () => {
       updatedAt: "t",
     });
     state.agentHosts.set("host-1", {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [],
       providerAccounts: [{ providerAccountId: "acct-1" }],
       commandProfiles: {},

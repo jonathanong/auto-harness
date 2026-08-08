@@ -28,14 +28,14 @@ describe("fetchAgentHostConfig", () => {
     );
     const config = await fetchAgentHostConfig(
       {
-        agentId: "local-1",
+        hostId: "local-1",
         apiUrl: "ws://127.0.0.1:7420/ws",
         apiKey: "hns_x",
         logLevel: "debug",
       },
       { fetchFn: fetchFn as unknown as typeof fetch },
     );
-    expect(config.agentId).toBe("local-1");
+    expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("ws://127.0.0.1:7420/ws");
     expect(config.apiKey).toBe("hns_x");
     expect(config.logLevel).toBe("debug");
@@ -47,17 +47,17 @@ describe("fetchAgentHostConfig", () => {
       async () => new Response("nope", { status: 404, statusText: "Not Found" }),
     );
     const config = await fetchAgentHostConfig(
-      { agentId: "a", apiUrl: "http://127.0.0.1:7420", logLevel: "info" },
+      { hostId: "a", apiUrl: "http://127.0.0.1:7420", logLevel: "info" },
       { fetchFn: fetchFn as unknown as typeof fetch },
     );
-    expect(config.agentId).toBe("a");
+    expect(config.hostId).toBe("a");
     expect(config.repositories).toEqual([]);
     expect(config.commandProfiles).toEqual({});
   });
 
   it("emptyAgentConfig and inventoryFingerprint", () => {
     const empty = emptyAgentConfig({
-      agentId: "a",
+      hostId: "a",
       apiUrl: "http://x",
       apiKey: "k",
       logLevel: "warn",
@@ -66,7 +66,7 @@ describe("fetchAgentHostConfig", () => {
     expect(empty.apiKey).toBe("k");
     expect(inventoryFingerprint(empty)).toBe(
       inventoryFingerprint({
-        agentId: "a",
+        hostId: "a",
         repositories: [],
         providerAccounts: [],
         commandProfiles: {},
@@ -88,7 +88,7 @@ describe("fetchAgentHostConfig", () => {
     });
     await expect(
       fetchAgentHostConfig(
-        { agentId: "a", apiUrl: "http://x", logLevel: "info" },
+        { hostId: "a", apiUrl: "http://x", logLevel: "info" },
         { fetchFn: fetchFn as unknown as typeof fetch },
       ),
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);

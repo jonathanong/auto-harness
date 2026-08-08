@@ -7,7 +7,7 @@ export type ListSessionsPageQuery = {
   limit?: number;
   /** Opaque cursor from a previous page's nextCursor. */
   cursor?: string;
-  agentId?: string;
+  hostId?: string;
   status?: string;
   q?: string;
 };
@@ -41,8 +41,8 @@ export function listSessionsPage(
   let rows = [...state.sessions.values()].toSorted(
     (a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id),
   );
-  if (query.agentId) {
-    rows = rows.filter((s) => s.agentId === query.agentId);
+  if (query.hostId) {
+    rows = rows.filter((s) => s.hostId === query.hostId);
   }
   if (query.status && query.status !== "all") {
     rows = rows.filter((s) => s.status === query.status);

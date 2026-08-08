@@ -68,7 +68,7 @@ export type ControlPlaneOptions = {
   archivePrefix?: string;
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
-  onAgentMessage?: (agentId: string, msg: HostWireMessage) => void;
+  onAgentMessage?: (hostId: string, msg: HostWireMessage) => void;
 };
 
 export type PublicSession = SessionRecord & { url: string };

@@ -172,7 +172,7 @@ Create a service account. **Admin only.**
   "name": "ci-frontend",
   "role": "operator",
   "allowedRepositories": ["repo-abc"],
-  "boundAgentId": "vps-prod-1"
+  "boundHostId": "vps-prod-1"
 }
 ```
 
@@ -181,7 +181,7 @@ Create a service account. **Admin only.**
 | `name`                | string   | ✓        | Human-readable name                                                                                                      |
 | `role`                | string   | ✓        | `read-only`, `operator`, or `admin`                                                                                      |
 | `allowedRepositories` | string[] | ✗        | Restrict to specific repos. Default: all repos.                                                                          |
-| `boundAgentId`        | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [auth.md](auth.md#agent-binding)). |
+| `boundHostId`         | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [auth.md](auth.md#agent-binding)). |
 
 **Response:** `201 Created`
 
@@ -395,13 +395,13 @@ Get session details.
   "source": "ui",
   "timeout": 1800,
   "priority": 10,
-  "agentId": "vps-prod-1",
+  "hostId": "vps-prod-1",
   "requiredLabels": ["codex"],
   "exitCode": null,
   "errorCode": null,
   "errorMessage": null,
   "resumedFromSessionId": null,
-  "pinnedAgentId": null,
+  "pinnedHostId": null,
   "pinnedWorktreeId": null,
   "cliResumeRef": null,
   "createdAt": "2026-08-01T12:00:00Z",
@@ -410,14 +410,14 @@ Get session details.
 }
 ```
 
-| Field                                | When set                                                                                                           |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `agentId` / `worktreeId`             | Set when assigned (used later for [resume](#post-sessionsidresume))                                                |
-| `errorCode`                          | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
-| `errorMessage`                       | Optional short human excerpt from the match / logs                                                                 |
-| `resumedFromSessionId`               | Set on sessions created via resume — parent session id                                                             |
-| `pinnedAgentId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree                                                           |
-| `cliResumeRef`                       | Optional opaque id from the AI CLI (if captured) for native resume                                                 |
+| Field                               | When set                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `hostId` / `worktreeId`             | Set when assigned (used later for [resume](#post-sessionsidresume))                                                |
+| `errorCode`                         | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
+| `errorMessage`                      | Optional short human excerpt from the match / logs                                                                 |
+| `resumedFromSessionId`              | Set on sessions created via resume — parent session id                                                             |
+| `pinnedHostId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree                                                           |
+| `cliResumeRef`                      | Optional opaque id from the AI CLI (if captured) for native resume                                                 |
 
 #### `POST /sessions/:id/clone`
 
@@ -438,7 +438,7 @@ Optional request body to override fields:
 
 Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same agent and worktree** as the source session, then the agent **tries to resume** in that workspace.
 
-**Operator or admin.** Source session must have been assigned at least once (`agentId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
+**Operator or admin.** Source session must have been assigned at least once (`hostId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
 
 **Request (optional body):**
 
@@ -471,7 +471,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
   "source": "api",
   "type": "prompt",
   "resumedFromSessionId": "sess-x1y2z3",
-  "pinnedAgentId": "vps-prod-1",
+  "pinnedHostId": "vps-prod-1",
   "pinnedWorktreeId": "wt-1",
   "createdAt": "2026-08-01T13:00:00Z"
 }
@@ -479,7 +479,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 
 **Scheduling (pinned):**
 
-1. New session is `queued` with `pinnedAgentId` + `pinnedWorktreeId` copied from the source (never round-robins away).
+1. New session is `queued` with `pinnedHostId` + `pinnedWorktreeId` copied from the source (never round-robins away).
 2. Scheduler assigns **only** when that worktree is idle **and** that agent is online (and not draining).
 3. If the agent is offline or the worktree is busy, the session **stays queued** on that pin — it does **not** fall back to another agent/worktree.
 4. `session:assign` includes `resume: true`, `resumedFromSessionId`, and any stored `cliResumeRef` from the source.
@@ -503,7 +503,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 | Workspace      | Fresh setup script (typical reset)  | Prefer keep tree; try CLI/workspace resume |
 | Prompt         | Copy or override as full new prompt | Continuation / resume-oriented             |
 
-You can also create a session with pin fields via advanced clients (`pinnedAgentId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
+You can also create a session with pin fields via advanced clients (`pinnedHostId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
 
 #### `POST /sessions/:id/cancel`
 
@@ -565,7 +565,7 @@ List all worktrees across all connected agents.
     {
       "id": "wt-1",
       "name": "codex-1",
-      "agentId": "vps-prod-1",
+      "hostId": "vps-prod-1",
       "repositoryId": "repo-abc",
       "path": "/home/harness/repos/my-app/.worktrees/wt-1",
       "labels": ["codex", "claude"],
@@ -749,6 +749,6 @@ Unified picker source for session/schedule creation: attached Provider Accounts 
 
 #### Host inventory: attaching a Provider Account
 
-`PUT /agents/:agentId/config` (see [cli.md](cli.md)) carries `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an optional host-level command override per account. Per-repository and per-worktree overrides (`enabled?`, `commandId?`) live on the corresponding entries inside that same document's `repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
+`PUT /agents/:hostId/config` (see [cli.md](cli.md)) carries `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an optional host-level command override per account. Per-repository and per-worktree overrides (`enabled?`, `commandId?`) live on the corresponding entries inside that same document's `repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
 
 ---

@@ -11,7 +11,7 @@ import {
 } from "./cli.ts";
 
 const sampleConfig: AgentConfig = {
-  agentId: "a1",
+  hostId: "a1",
   logLevel: "info",
   providerAccounts: [],
   commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },

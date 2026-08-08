@@ -33,7 +33,7 @@ export class ControlPlaneBase {
     this.state = createControlPlaneState(options);
   }
 
-  setOnAgentMessage(handler: ((agentId: string, msg: HostWireMessage) => void) | undefined): void {
+  setOnAgentMessage(handler: ((hostId: string, msg: HostWireMessage) => void) | undefined): void {
     this.state.onAgentMessage = handler;
   }
 
@@ -92,7 +92,7 @@ export class ControlPlaneBase {
   }
 
   registerAgent(opts: {
-    agentId: string;
+    hostId: string;
     worktrees: Array<{
       id: string;
       name: string;
@@ -110,8 +110,8 @@ export class ControlPlaneBase {
     return agents.disconnectAgent(this.state, connectionId);
   }
 
-  heartbeat(agentId: string, at?: string): boolean {
-    return agents.heartbeat(this.state, agentId, at);
+  heartbeat(hostId: string, at?: string): boolean {
+    return agents.heartbeat(this.state, hostId, at);
   }
 
   appendLog(opts: {

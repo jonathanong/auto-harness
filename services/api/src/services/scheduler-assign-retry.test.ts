@@ -10,7 +10,7 @@ describe("Scheduler assign retry and defaults", () => {
     worktrees.seed({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w1",
       labels: [],
@@ -21,7 +21,7 @@ describe("Scheduler assign retry and defaults", () => {
     worktrees.seed({
       id: "wt-2",
       name: "wt-2",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w2",
       labels: [],
@@ -42,7 +42,7 @@ describe("Scheduler assign retry and defaults", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "t0",
-      agentId: "a1",
+      hostId: "a1",
       worktreeId: "wt-x",
     });
     await sessions.putNew({
@@ -85,7 +85,7 @@ describe("Scheduler assign retry and defaults", () => {
     worktrees.seed({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w",
       labels: [],

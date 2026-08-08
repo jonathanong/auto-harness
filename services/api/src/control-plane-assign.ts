@@ -32,7 +32,7 @@ export function assignQueued(
       .toSorted(compareSessionsForQueue);
 
     for (const session of queued) {
-      if (session.agentId && session.worktreeId && session.ackReceivedAt) {
+      if (session.hostId && session.worktreeId && session.ackReceivedAt) {
         continue;
       }
       // Resume pin: only assign to pinned agent when set (Invariant 7).
@@ -42,18 +42,18 @@ export function assignQueued(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
-          !state.drainingAgents.has(w.agentId) &&
-          !state.disconnectedAgents.has(w.agentId) &&
+          !state.drainingAgents.has(w.hostId) &&
+          !state.disconnectedAgents.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
       );
-      if (session.pinnedAgentId) {
+      if (session.pinnedHostId) {
         if (session.pinExpiresAt && Date.parse(session.pinExpiresAt) < nowMs) {
           session.errorCode = "resume_failed";
           session.errorMessage = "pin expired";
           session.status = "failed";
           continue;
         }
-        idle = idle.filter((w) => w.agentId === session.pinnedAgentId);
+        idle = idle.filter((w) => w.hostId === session.pinnedHostId);
       }
       idle.sort(compareWorktreesForRoundRobin);
 
@@ -68,7 +68,7 @@ export function assignQueued(
         }
         session.status = "running";
         session.worktreeId = candidate.id;
-        session.agentId = candidate.agentId;
+        session.hostId = candidate.hostId;
         session.startedAt = nowIso;
         session.resolvedArgv = resolvedArgv;
         delete session.ackReceivedAt;
@@ -99,7 +99,7 @@ export function assignQueued(
               }
             : {}),
         };
-        state.onAgentMessage?.(candidate.agentId, msg);
+        state.onAgentMessage?.(candidate.hostId, msg);
         assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
         break;
       }
@@ -126,7 +126,7 @@ export function enforceAckDeadlines(
     releaseWorktree(state, pending.worktreeId);
     session.status = "queued";
     session.worktreeId = null;
-    session.agentId = null;
+    session.hostId = null;
     delete session.startedAt;
     state.pendingAcks.delete(sessionId);
     requeued.push(sessionId);

@@ -6,8 +6,8 @@ import type { AgentTransport } from "./agent-loop.ts";
 type WsTransportOptions = {
   /** e.g. ws://127.0.0.1:7420/ws */
   url: string;
-  /** Optional agentId query hint */
-  agentId?: string;
+  /** Optional hostId query hint */
+  hostId?: string;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (err: Error) => void;
@@ -20,8 +20,8 @@ export function createWsTransport(options: WsTransportOptions): AgentTransport &
   ready: Promise<void>;
 } {
   const url =
-    options.agentId !== undefined
-      ? `${options.url}${options.url.includes("?") ? "&" : "?"}agentId=${encodeURIComponent(options.agentId)}`
+    options.hostId !== undefined
+      ? `${options.url}${options.url.includes("?") ? "&" : "?"}hostId=${encodeURIComponent(options.hostId)}`
       : options.url;
 
   let handler: ((msg: HostWireMessage) => void) | null = null;

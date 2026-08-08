@@ -5,7 +5,7 @@ import {
   SLUG_NAME_HINT,
 } from "@auto-harness/shared";
 
-import type { AgentHostRecord } from "./db/plane-storage.ts";
+import type { HostInventoryRecord } from "./db/plane-storage.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -19,18 +19,21 @@ function requireString(obj: Record<string, unknown>, key: string, ctx: string): 
   return value;
 }
 
-export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRecord, "updatedAt"> {
+export function parseHostBody(
+  hostId: string,
+  body: unknown,
+): Omit<HostInventoryRecord, "updatedAt"> {
   if (!isRecord(body)) {
     throw new Error("body must be an object");
   }
-  if (body.agentId !== undefined && body.agentId !== agentId) {
-    throw new Error("body.agentId must match path agentId");
+  if (body.hostId !== undefined && body.hostId !== hostId) {
+    throw new Error("body.hostId must match path hostId");
   }
   // Empty repositories allowed: register agent / seed host before attaching repos.
   if (!Array.isArray(body.repositories)) {
     throw new Error("repositories must be an array");
   }
-  const repositories: AgentHostRecord["repositories"] = [];
+  const repositories: HostInventoryRecord["repositories"] = [];
   for (const [ri, rawRepo] of body.repositories.entries()) {
     if (!isRecord(rawRepo)) {
       throw new Error(`repositories[${ri}] must be an object`);
@@ -57,7 +60,7 @@ export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRec
       if (!Array.isArray(rawWt.labels) || !rawWt.labels.every((l) => typeof l === "string")) {
         throw new Error(`worktree.${wtId}.labels must be a string array`);
       }
-      const wt: AgentHostRecord["repositories"][0]["worktrees"][0] = {
+      const wt: HostInventoryRecord["repositories"][0]["worktrees"][0] = {
         id: wtId,
         name: wtName,
         path: wtPath,
@@ -78,7 +81,7 @@ export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRec
       }
       return wt;
     });
-    const repo: AgentHostRecord["repositories"][0] = { id, path, defaultBranch, worktrees };
+    const repo: HostInventoryRecord["repositories"][0] = { id, path, defaultBranch, worktrees };
     if (rawRepo.setupScript !== undefined) {
       if (typeof rawRepo.setupScript !== "string") {
         throw new Error(`repository.${id}.setupScript must be a string`);
@@ -106,7 +109,7 @@ export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRec
   if (!isRecord(body.commandProfiles)) {
     throw new Error("commandProfiles must be an object");
   }
-  const commandProfiles: AgentHostRecord["commandProfiles"] = {};
+  const commandProfiles: HostInventoryRecord["commandProfiles"] = {};
   for (const [name, profile] of Object.entries(body.commandProfiles)) {
     if (!isRecord(profile)) {
       throw new Error(`commandProfiles.${name} must be an object`);
@@ -124,7 +127,7 @@ export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRec
     };
   }
 
-  let logLevel: AgentHostRecord["logLevel"];
+  let logLevel: HostInventoryRecord["logLevel"];
   if (
     body.logLevel === "debug" ||
     body.logLevel === "info" ||
@@ -135,7 +138,7 @@ export function parseHostBody(agentId: string, body: unknown): Omit<AgentHostRec
   }
 
   return {
-    agentId,
+    hostId,
     repositories,
     providerAccounts,
     commandProfiles,

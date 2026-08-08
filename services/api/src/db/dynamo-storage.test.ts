@@ -35,7 +35,7 @@ describe("DynamoDB Local storage", () => {
     await s.putWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w",
       labels: ["echo"],
@@ -62,14 +62,14 @@ describe("DynamoDB Local storage", () => {
 
     expect(
       await s.tryAcquireAgentLock({
-        agentId: "ag1",
+        hostId: "ag1",
         connectionId: "c1",
         replaceExisting: false,
       }),
     ).toBe(true);
     expect(
       await s.tryAcquireAgentLock({
-        agentId: "ag1",
+        hostId: "ag1",
         connectionId: "c2",
         replaceExisting: false,
       }),
@@ -81,7 +81,7 @@ describe("DynamoDB Local storage", () => {
     expect(await s.getAgentLock("ag1")).toBeNull();
     expect(
       await s.tryAcquireAgentLock({
-        agentId: "ag1",
+        hostId: "ag1",
         connectionId: "c3",
         replaceExisting: true,
       }),
@@ -89,13 +89,13 @@ describe("DynamoDB Local storage", () => {
 
     await s.putConnection({
       connectionId: "c3",
-      type: "agent",
-      agentId: "ag1",
+      type: "host",
+      hostId: "ag1",
       connectedAt: "t",
       lastHeartbeatAt: "t",
       commandProfiles: ["echo"],
     });
-    expect((await s.getConnection("c3"))?.agentId).toBe("ag1");
+    expect((await s.getConnection("c3"))?.hostId).toBe("ag1");
     expect((await s.listConnections()).length).toBeGreaterThan(0);
     await s.deleteConnection("c3");
     expect(await s.getConnection("c3")).toBeNull();

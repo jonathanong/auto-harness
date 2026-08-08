@@ -7,14 +7,14 @@ import { apiBase } from "./api.ts";
  * Does not invent worktrees — add those on the agent host config UI.
  */
 export async function attachLocalRepo(input: {
-  agentId: string;
+  hostId: string;
   id: string;
   path: string;
   defaultBranch: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const base = apiBase();
   let existing: HostInventory | null = null;
-  const get = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.agentId)}/config`);
+  const get = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.hostId)}/config`);
   if (get.ok) {
     existing = (await get.json()) as HostInventory;
   }
@@ -25,7 +25,7 @@ export async function attachLocalRepo(input: {
     defaultBranch: input.defaultBranch,
   });
 
-  const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.agentId)}/config`, {
+  const put = await fetch(`${base}/api/v1/agents/${encodeURIComponent(input.hostId)}/config`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(host),

@@ -19,16 +19,16 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
 
     // Register without worktrees so listAgents builds from connection only
     const r1 = plane.registerAgent({
-      agentId: "solo",
+      hostId: "solo",
       worktrees: [],
       commandProfiles: ["p1"],
     });
     expect(r1.ok).toBe(true);
-    expect(plane.listAgents().some((a) => a.agentId === "solo")).toBe(true);
+    expect(plane.listAgents().some((a) => a.hostId === "solo")).toBe(true);
 
     // replaceExisting while still connected
     const r2 = plane.registerAgent({
-      agentId: "solo",
+      hostId: "solo",
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
       ],
@@ -41,7 +41,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.seedWorktree({
       id: "wt-old",
       name: "wt-old",
-      agentId: "solo",
+      hostId: "solo",
       repositoryId: "repo-1",
       path: "/old",
       labels: [],
@@ -49,7 +49,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       online: false,
     });
     plane.registerAgent({
-      agentId: "solo",
+      hostId: "solo",
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
       ],
@@ -61,7 +61,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.seedWorktree({
       id: "wt-off",
       name: "wt-off",
-      agentId: "offline",
+      hostId: "offline",
       repositoryId: "repo-1",
       path: "/off",
       labels: [],
@@ -75,7 +75,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/1",
       labels: [],
@@ -86,7 +86,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.seedWorktree({
       id: "wt-2",
       name: "wt-2",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/2",
       labels: [],
@@ -123,7 +123,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
 
     // Resume with cliResumeRef
     const done = plane.listSessions()[0]!;
-    // force agentId for resume
+    // force hostId for resume
     plane.handleAgentMessage({
       type: "session:status",
       sessionId: done.id,
@@ -144,7 +144,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     planeR.seedWorktree({
       id: "w",
       name: "w",
-      agentId: "ag",
+      hostId: "ag",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],
@@ -173,7 +173,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       planeR.seedWorktree({
         id: "w2",
         name: "w2",
-        agentId: "ag",
+        hostId: "ag",
         repositoryId: "repo-1",
         path: "/w2",
         labels: [],

@@ -1,5 +1,5 @@
 export const valid = {
-  agentId: "local-1",
+  hostId: "local-1",
   commandProfiles: {
     "echo-prompt": { argv: ["echo"], appendPrompt: true },
   },

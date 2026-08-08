@@ -6,8 +6,8 @@ import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
  * reuse a page-load-time `inventory` prop for this — another tab/action may have
  * changed it since, and PUT replaces the whole document (lost-update risk).
  */
-export async function getInventory(agentId: string): Promise<HostInventory> {
-  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
+export async function getInventory(hostId: string): Promise<HostInventory> {
+  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
     cache: "no-store",
   });
   if (!res.ok) {
@@ -35,10 +35,10 @@ export async function getInventory(agentId: string): Promise<HostInventory> {
 }
 
 export async function putInventory(
-  agentId: string,
+  hostId: string,
   inv: HostInventory,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
+  const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({

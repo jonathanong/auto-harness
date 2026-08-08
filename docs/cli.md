@@ -100,8 +100,8 @@ No auto-dispatch to the agent yet — bridge with a session assign file for `run
 Repositories, worktrees, and which Provider Accounts (plus their per-repo/per-worktree enable/command overrides) are available on this host.
 
 ```bash
-PUT /api/v1/agents/:agentId/config
-GET /api/v1/agents/:agentId/config
+PUT /api/v1/agents/:hostId/config
+GET /api/v1/agents/:hostId/config
 GET /api/v1/agent-hosts
 ```
 

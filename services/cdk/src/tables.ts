@@ -30,8 +30,8 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
     gsis: [
       {
-        name: "agentId-status",
-        partitionKey: { name: "agentId", type: "S" },
+        name: "hostId-status",
+        partitionKey: { name: "hostId", type: "S" },
         sortKey: { name: "status", type: "S" },
       },
     ],
@@ -70,9 +70,9 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "connectionId", type: "S" },
     gsis: [
       {
-        // Conditional put uniqueness on agentId (Invariant 3)
-        name: "agentId",
-        partitionKey: { name: "agentId", type: "S" },
+        // Conditional put uniqueness on hostId (Invariant 3)
+        name: "hostId",
+        partitionKey: { name: "hostId", type: "S" },
       },
     ],
   },

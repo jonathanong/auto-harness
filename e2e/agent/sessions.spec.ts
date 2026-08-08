@@ -31,7 +31,7 @@ test.describe("host pane sessions", () => {
         await request.post(`${API}/api/v1/agent/messages`, {
           data: {
             type: "host:register",
-            agentId: "local-1",
+            hostId: "local-1",
             worktrees: [
               {
                 id: wtId,

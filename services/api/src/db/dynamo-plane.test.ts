@@ -22,7 +22,7 @@ describe("DynamoDB Local control plane hydrate", () => {
     plane.seedWorktree({
       id: "wt-p",
       name: "wt-p",
-      agentId: "ap",
+      hostId: "ap",
       repositoryId: "r1",
       path: "/p",
       labels: [],
@@ -30,7 +30,7 @@ describe("DynamoDB Local control plane hydrate", () => {
       online: true,
     });
     const reg = plane.registerAgent({
-      agentId: "ap",
+      hostId: "ap",
       worktrees: [{ id: "wt-p", name: "wt-p", repositoryId: "r1", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
@@ -52,7 +52,7 @@ describe("DynamoDB Local control plane hydrate", () => {
     });
     expect(again.plane.getSession("sess-plane")?.prompt).toBe("from plane");
     expect(again.plane.listWorktrees().some((w) => w.id === "wt-p")).toBe(true);
-    expect(again.plane.listAgents().some((a) => a.agentId === "ap")).toBe(true);
+    expect(again.plane.listAgents().some((a) => a.hostId === "ap")).toBe(true);
     expect(again.plane.getArchive("sess-plane")).toBeTruthy();
     await st2.clearAll();
   });

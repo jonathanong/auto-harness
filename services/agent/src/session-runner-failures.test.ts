@@ -33,7 +33,7 @@ describe("SessionRunner process and profile failures", () => {
 
   it("fails setup script non-zero without changing hook failure status", async () => {
     const config = parseAgentConfig({
-      agentId: "a1",
+      hostId: "a1",
       commandProfiles: {
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
       },

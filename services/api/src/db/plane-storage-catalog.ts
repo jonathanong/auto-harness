@@ -9,7 +9,7 @@ import {
 
 import {
   isConditionalFailed,
-  type AgentHostRecord,
+  type HostInventoryRecord,
   type ArchiveObject,
   type LogRecord,
   type PlaneStorageCtx,
@@ -143,7 +143,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
   return (res.Items ?? []) as ArchiveObject[];
 }
 
-export async function putAgentHost(ctx: PlaneStorageCtx, rec: AgentHostRecord): Promise<void> {
+export async function putAgentHost(ctx: PlaneStorageCtx, rec: HostInventoryRecord): Promise<void> {
   await ctx.doc.send(
     new PutCommand({
       TableName: ctx.tables.agentHosts,
@@ -154,19 +154,19 @@ export async function putAgentHost(ctx: PlaneStorageCtx, rec: AgentHostRecord): 
 
 export async function getAgentHost(
   ctx: PlaneStorageCtx,
-  agentId: string,
-): Promise<AgentHostRecord | null> {
+  hostId: string,
+): Promise<HostInventoryRecord | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.agentHosts, Key: { agentId } }),
+    new GetCommand({ TableName: ctx.tables.agentHosts, Key: { hostId } }),
   );
-  return (res.Item as AgentHostRecord | undefined) ?? null;
+  return (res.Item as HostInventoryRecord | undefined) ?? null;
 }
 
-export async function listAgentHosts(ctx: PlaneStorageCtx): Promise<AgentHostRecord[]> {
+export async function listAgentHosts(ctx: PlaneStorageCtx): Promise<HostInventoryRecord[]> {
   const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.agentHosts }));
-  return (res.Items ?? []) as AgentHostRecord[];
+  return (res.Items ?? []) as HostInventoryRecord[];
 }
 
-export async function deleteAgentHost(ctx: PlaneStorageCtx, agentId: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { agentId } }));
+export async function deleteAgentHost(ctx: PlaneStorageCtx, hostId: string): Promise<void> {
+  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { hostId } }));
 }

@@ -25,7 +25,7 @@ export function RepositoryProviderAccountsTab({
   commandsById,
 }: {
   repositoryId: string;
-  attachedHosts: Array<{ agentId: string }>;
+  attachedHosts: Array<{ hostId: string }>;
   /** Same order/length as `attachedHosts`; `null` where the fetch failed. */
   hostInventories: Array<HostInventory | null>;
   catalog: ProviderCatalog;
@@ -53,16 +53,16 @@ export function RepositoryProviderAccountsTab({
           catalog,
         );
         return (
-          <div key={h.agentId} className="space-y-2">
+          <div key={h.hostId} className="space-y-2">
             <Link
-              href={`/hosts/${encodeURIComponent(h.agentId)}`}
+              href={`/hosts/${encodeURIComponent(h.hostId)}`}
               className="font-mono text-sm font-medium hover:underline"
-              data-pw={`repository-provider-accounts-host-${h.agentId}`}
+              data-pw={`repository-provider-accounts-host-${h.hostId}`}
             >
-              {h.agentId}
+              {h.hostId}
             </Link>
             <ProviderScopeTable
-              agentId={h.agentId}
+              hostId={h.hostId}
               scope={{ repositoryId }}
               inheritedEnabledLabel="host"
               resolutions={resolutions}

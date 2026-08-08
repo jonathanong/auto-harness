@@ -11,12 +11,12 @@ import {
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 export function EditWorktreeForm({
-  agentId,
+  hostId,
   inventory,
   repositoryId,
   worktree,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   repositoryId: string;
   worktree: HostWorktree;
@@ -64,7 +64,7 @@ export function EditWorktreeForm({
             path,
             labels,
           });
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

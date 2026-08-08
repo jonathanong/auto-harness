@@ -35,7 +35,7 @@ describe("compare helpers", () => {
     ).toBeLessThan(0);
 
     const wt = {
-      agentId: "a",
+      hostId: "a",
       repositoryId: "r",
       path: "/p",
       labels: [] as string[],

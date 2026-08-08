@@ -32,7 +32,7 @@ describe("ControlPlane API edges", () => {
   it("lists agent command profiles for UI", () => {
     const plane = new ControlPlane();
     plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "r", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt", "codex-fix"],
     });
@@ -77,7 +77,7 @@ describe("ControlPlane API edges", () => {
     expect(
       plane.handleAgentMessage({
         type: "host:keepalive",
-        agentId: "missing",
+        hostId: "missing",
         at: "t",
       }).ok,
     ).toBe(false);
@@ -86,7 +86,7 @@ describe("ControlPlane API edges", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],

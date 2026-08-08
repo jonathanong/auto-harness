@@ -25,19 +25,19 @@ type Wt = {
   path: string;
   status?: string;
   online?: boolean;
-  agentId?: string;
+  hostId?: string;
   labels?: string[];
 };
 type Session = {
   id: string;
   status: string;
   repositoryId?: string | null;
-  agentId?: string | null;
+  hostId?: string | null;
   targetLabel?: string;
   prompt?: string;
   source?: string;
 };
-type AgentHost = { agentId: string; repositories: Array<{ id: string }> };
+type AgentHost = { hostId: string; repositories: Array<{ id: string }> };
 
 export default async function RepositoryDetailPage({
   params,
@@ -110,9 +110,7 @@ export default async function RepositoryDetailPage({
   const hostInventories = await Promise.all(
     attachedHosts.map(async (h) => {
       try {
-        return await apiGet<HostInventory>(
-          `/api/v1/agents/${encodeURIComponent(h.agentId)}/config`,
-        );
+        return await apiGet<HostInventory>(`/api/v1/agents/${encodeURIComponent(h.hostId)}/config`);
       } catch {
         return null;
       }
@@ -185,13 +183,13 @@ export default async function RepositoryDetailPage({
                     ) : (
                       <ul className="space-y-1" data-pw="repository-attached-hosts">
                         {attachedHosts.map((h) => (
-                          <li key={h.agentId}>
+                          <li key={h.hostId}>
                             <Link
-                              href={`/hosts/${encodeURIComponent(h.agentId)}`}
+                              href={`/hosts/${encodeURIComponent(h.hostId)}`}
                               className="font-mono text-sm hover:underline"
-                              data-pw={`repository-attached-host-${h.agentId}`}
+                              data-pw={`repository-attached-host-${h.hostId}`}
                             >
-                              {h.agentId}
+                              {h.hostId}
                             </Link>
                           </li>
                         ))}

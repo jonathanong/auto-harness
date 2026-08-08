@@ -16,8 +16,8 @@ export type CommandRecord = Command;
 
 export type ConnectionRecord = {
   connectionId: string;
-  type: "agent" | "client";
-  agentId: string;
+  type: "host" | "client";
+  hostId: string;
   connectedAt: string;
   lastHeartbeatAt: string;
   commandProfiles: string[];
@@ -71,8 +71,8 @@ export type RepositoryRecord = {
 export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 
 /** Durable agent host inventory (paths + command profile argv). */
-export type AgentHostRecord = {
-  agentId: string;
+export type HostInventoryRecord = {
+  hostId: string;
   repositories: Array<{
     id: string;
     path: string;

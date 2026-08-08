@@ -12,7 +12,7 @@ import { valid } from "./config-test-helpers.ts";
 describe("loadAgentIdentity", () => {
   it("defaults to local agent id and API URL when env is empty", () => {
     expect(loadAgentIdentity({})).toEqual({
-      agentId: "local-1",
+      hostId: "local-1",
       apiUrl: "http://127.0.0.1:7420",
       logLevel: "info",
     });
@@ -27,7 +27,7 @@ describe("loadAgentIdentity", () => {
         HARNESS_LOG_LEVEL: "debug",
       }),
     ).toEqual({
-      agentId: "a1",
+      hostId: "a1",
       apiUrl: "http://127.0.0.1:7420",
       apiKey: "hns_x",
       logLevel: "debug",
@@ -46,7 +46,7 @@ describe("loadAgentConfig", () => {
         HARNESS_LOG_LEVEL: "debug",
       },
     });
-    expect(config.agentId).toBe("from-env");
+    expect(config.hostId).toBe("from-env");
     expect(config.apiUrl).toBe("ws://localhost/ws");
     expect(config.apiKey).toBe("hns_x");
     expect(config.logLevel).toBe("debug");
@@ -64,7 +64,7 @@ describe("loadAgentConfig", () => {
     const fetchFn = vi.fn(async () => {
       return new Response(
         JSON.stringify({
-          agentId: "local-1",
+          hostId: "local-1",
           repositories: valid.repositories,
           commandProfiles: valid.commandProfiles,
           logLevel: "info",
@@ -80,7 +80,7 @@ describe("loadAgentConfig", () => {
       },
       fetchFn: fetchFn as unknown as typeof fetch,
     });
-    expect(config.agentId).toBe("local-1");
+    expect(config.hostId).toBe("local-1");
     expect(config.repositories[0]?.id).toBe("repo-1");
     expect(config.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
     expect(config.apiKey).toBe("hns_test");
@@ -92,10 +92,10 @@ describe("loadAgentConfig", () => {
     );
   });
 
-  it("rejects missing agentId in parsed config", () => {
+  it("rejects missing hostId in parsed config", () => {
     expect(() =>
       parseAgentConfig({ repositories: valid.repositories, commandProfiles: {} }),
-    ).toThrow(/agentId/);
+    ).toThrow(/hostId/);
   });
 });
 

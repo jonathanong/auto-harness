@@ -53,7 +53,7 @@ export class Scheduler {
       queued.sort(compareSessionsForQueue);
 
       for (const session of queued) {
-        if (session.agentId && session.worktreeId) {
+        if (session.hostId && session.worktreeId) {
           continue;
         }
         const idle = await this.deps.worktrees.listIdleForRepo(session.repositoryId);
@@ -73,7 +73,7 @@ export class Scheduler {
           }
           session.status = "running";
           session.worktreeId = candidate.id;
-          session.agentId = candidate.agentId;
+          session.hostId = candidate.hostId;
           await this.deps.sessions.updateStatus(session.id, "running");
           assigned.push({ session, worktree: candidate });
           break;

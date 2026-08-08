@@ -14,11 +14,11 @@ import {
 } from "@auto-harness/ui";
 
 export function AddRepoDialog({
-  agentId,
+  hostId,
   inventory,
   catalog,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   catalog: RepoCatalogEntry[];
 }) {
@@ -38,7 +38,7 @@ export function AddRepoDialog({
           </DialogDescription>
         </DialogHeader>
         <AddRepoForm
-          agentId={agentId}
+          hostId={hostId}
           inventory={inventory}
           catalog={catalog}
           browseEndpoint="/api/browse"

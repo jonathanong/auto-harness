@@ -27,7 +27,7 @@ describe("SessionRunner success paths", () => {
   it("checks out provided ref", async () => {
     const checkouts: string[] = [];
     const config = parseAgentConfig({
-      agentId: "a1",
+      hostId: "a1",
       commandProfiles: {
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
       },
@@ -108,7 +108,7 @@ describe("SessionRunner success paths", () => {
   it("skips setup script on resume", async () => {
     const setupSpy = vi.fn();
     const config = parseAgentConfig({
-      agentId: "a1",
+      hostId: "a1",
       commandProfiles: {
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
       },

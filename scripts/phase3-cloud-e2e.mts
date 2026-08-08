@@ -44,7 +44,7 @@ async function main(): Promise<void> {
     );
 
     const config: AgentConfig = {
-      agentId: "agent-p3",
+      hostId: "agent-p3",
       logLevel: "info",
       repositories: [
         {
@@ -75,7 +75,7 @@ async function main(): Promise<void> {
         return () => `sess-p3-${++n}`;
       })(),
       shardCount: 1,
-      onAgentMessage: (_agentId, msg) => {
+      onAgentMessage: (_hostId, msg) => {
         transport.deliver(msg);
       },
     });

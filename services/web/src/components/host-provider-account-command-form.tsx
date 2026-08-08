@@ -7,12 +7,12 @@ import { getInventory, putInventory, setHostProviderAccountCommand } from "@auto
 import type { Command } from "@auto-harness/shared";
 
 export function HostProviderAccountCommandForm({
-  agentId,
+  hostId,
   providerAccountId,
   currentCommandId,
   providerCommands,
 }: {
-  agentId: string;
+  hostId: string;
   providerAccountId: string;
   currentCommandId: string | undefined;
   /** This account's provider's own commands — the sensible choices for a host-level override. */
@@ -32,13 +32,13 @@ export function HostProviderAccountCommandForm({
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
         start(async () => {
-          const current = await getInventory(agentId);
+          const current = await getInventory(hostId);
           const next = setHostProviderAccountCommand(
             current,
             providerAccountId,
             value || undefined,
           );
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

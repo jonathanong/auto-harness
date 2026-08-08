@@ -186,17 +186,17 @@ Handlers share:
 
 ### Tables and access patterns
 
-| Table        | PK             | SK          | GSIs                                           | Primary access patterns                                       |
-| ------------ | -------------- | ----------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| Users        | `id`           | —           | `username`, `apiKeyHash`                       | Login by username; auth by key hash; list users               |
-| Repositories | `id`           | —           | —                                              | CRUD by id; list all (scan or sparse GSI later if needed)     |
-| Sessions     | `id`           | —           | `status-createdAt`, `repositoryId-createdAt`   | Get by id; queue (`status=queued`); list by repo; sort/filter |
-| Schedules    | `id`           | —           | `repositoryId-nextRunAt`                       | List by repo; cron: due rows with `nextRunAt <= now`          |
-| SessionLogs  | `sessionId`    | `timestamp` | —                                              | Append logs; range read for REST/history                      |
-| Connections  | `connectionId` | —           | `agentId`                                      | Connect/disconnect; find agent connection for assign          |
-| Worktrees    | `id`           | —           | `agentId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo               |
-| AuditLogs    | `id`           | `timestamp` | `userId-timestamp`                             | Append-only audit; query by user                              |
-| Integrations | `id`           | —           | —                                              | Get/put Slack config                                          |
+| Table        | PK             | SK          | GSIs                                          | Primary access patterns                                       |
+| ------------ | -------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------- |
+| Users        | `id`           | —           | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users               |
+| Repositories | `id`           | —           | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)     |
+| Sessions     | `id`           | —           | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter |
+| Schedules    | `id`           | —           | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`          |
+| SessionLogs  | `sessionId`    | `timestamp` | —                                             | Append logs; range read for REST/history                      |
+| Connections  | `connectionId` | —           | `hostId`                                      | Connect/disconnect; find agent connection for assign          |
+| Worktrees    | `id`           | —           | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo               |
+| AuditLogs    | `id`           | `timestamp` | `userId-timestamp`                            | Append-only audit; query by user                              |
+| Integrations | `id`           | —           | —                                             | Get/put Slack config                                          |
 
 > Worktrees are **registered by agents** on `agent:register` and updated on status changes. They are not created via REST.
 
@@ -217,8 +217,8 @@ Handlers share:
 {
   "connectionId": "abc123=",
   "type": "agent",
-  "agentId": "vps-prod-1",
-  "boundAgentId": "vps-prod-1",
+  "hostId": "vps-prod-1",
+  "boundHostId": "vps-prod-1",
   "userId": null,
   "connectedAt": "2026-08-01T08:00:00Z"
 }
@@ -232,7 +232,7 @@ UI connections store `type: "client"` and `userId` from the authenticated princi
 {
   "id": "wt-1",
   "name": "codex-1",
-  "agentId": "vps-prod-1",
+  "hostId": "vps-prod-1",
   "repositoryId": "repo-abc",
   "path": "/home/harness/repos/my-app/.worktrees/wt-1",
   "labels": ["codex", "claude"],
@@ -259,7 +259,7 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 ### Assignment algorithm
 
 1. **Load session** (must be `queued`).
-2. **Pinned resume path** — if `pinnedWorktreeId` (and `pinnedAgentId`) are set (from [`POST /sessions/:id/resume`](api.md#post-sessionsidresume)):
+2. **Pinned resume path** — if `pinnedWorktreeId` (and `pinnedHostId`) are set (from [`POST /sessions/:id/resume`](api.md#post-sessionsidresume)):
    - Candidate set is **only** that worktree, and only if: `idle`, agent online, not draining, `repositoryId` matches
    - **No round-robin**, **no fallback** to other worktrees
    - If not ready → leave `queued` until that pin is free/online
@@ -267,7 +267,7 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 3. **Normal path** — filter candidates — worktrees where:
    - `repositoryId` matches session
    - `status === idle`
-   - agent is **online** (active Connection for `agentId`)
+   - agent is **online** (active Connection for `hostId`)
    - not draining
    - `labels` is a superset of session `requiredLabels` (empty requirements → any labels)
 4. If no candidates → leave session `queued`; return.
@@ -278,7 +278,7 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 6. **Assign:**
    - Set worktree `status=busy`, `currentSessionId`, `lastAssignedAt=now`
    - `postToConnection` → `session:assign` payload
-   - On agent `session:ack`: set session `status=running`, `worktreeId`, `startedAt`, `agentId`
+   - On agent `session:ack`: set session `status=running`, `worktreeId`, `startedAt`, `hostId`
 7. If `postToConnection` fails (stale connection): mark agent offline; for **pinned** sessions re-queue on same pin only; for normal sessions try next candidate or re-queue.
 
 ### Drain path (worktree free)
@@ -300,14 +300,14 @@ When a session ends or is cancelled:
 
 ### Multi-agent behavior summary
 
-| Situation                                         | Behavior                                                                                  |
-| ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Several matching idle worktrees                   | Round-robin by `lastAssignedAt`                                                           |
-| **Resume** (`pinnedAgentId` + `pinnedWorktreeId`) | Only that agent/worktree; wait if busy/offline — never rehome                             |
-| Matching worktrees only on offline agents         | Stay `queued`                                                                             |
-| Agent is **draining** (auto-update)               | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining)) |
-| Agent disconnect mid-session                      | See [Disconnect handling](#disconnect-handling)                                           |
-| No agent has the repository registered            | Stay `queued` until some agent registers it                                               |
+| Situation                                        | Behavior                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Several matching idle worktrees                  | Round-robin by `lastAssignedAt`                                                           |
+| **Resume** (`pinnedHostId` + `pinnedWorktreeId`) | Only that agent/worktree; wait if busy/offline — never rehome                             |
+| Matching worktrees only on offline agents        | Stay `queued`                                                                             |
+| Agent is **draining** (auto-update)              | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining)) |
+| Agent disconnect mid-session                     | See [Disconnect handling](#disconnect-handling)                                           |
+| No agent has the repository registered           | Stay `queued` until some agent registers it                                               |
 
 ---
 
@@ -362,7 +362,7 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 ### Agent disconnect (`$disconnect` or failed post)
 
 1. Delete Connection row for `connectionId`
-2. Mark all worktrees for that `agentId` as offline (`online=false` or `status=error`/offline flag)
+2. Mark all worktrees for that `hostId` as offline (`online=false` or `status=error`/offline flag)
 3. For sessions `running` on that agent:
    - Prefer **leave running briefly** (agent may reconnect and re-register in-progress sessions), or
    - After grace (e.g. 2 minutes) with no reconnect: mark `failed` or `timed_out`, clear worktree assignment so queue can move to other agents

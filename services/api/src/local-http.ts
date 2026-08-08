@@ -17,7 +17,7 @@ export type LocalServerOptions = {
   useDynamo?: boolean;
   /** Attach /ws agent hub (default true for startLocalServer). */
   enableWs?: boolean;
-  onAgentMessage?: (agentId: string, msg: HostWireMessage) => void;
+  onAgentMessage?: (hostId: string, msg: HostWireMessage) => void;
 };
 
 export type RouteCtx = {

@@ -6,7 +6,7 @@ describe("agent host inventory", () => {
   it("stores config, syncs worktrees, and lists profiles", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
     const put = plane.putAgentHostConfig("local-1", {
-      agentId: "local-1",
+      hostId: "local-1",
       logLevel: "debug",
       repositories: [
         {
@@ -28,7 +28,7 @@ describe("agent host inventory", () => {
     });
     expect(put.ok).toBe(true);
     expect(plane.getAgentHostConfig("local-1")?.repositories[0]?.path).toBe("/repo");
-    expect(plane.listWorktrees().filter((w) => w.agentId === "local-1")).toHaveLength(2);
+    expect(plane.listWorktrees().filter((w) => w.hostId === "local-1")).toHaveLength(2);
     expect(plane.listCommandProfiles()).toEqual(expect.arrayContaining(["echo-prompt", "true"]));
     expect(plane.listAgentHostConfigs()).toHaveLength(1);
 
@@ -63,20 +63,20 @@ describe("agent host inventory", () => {
       }).ok,
     ).toBe(true);
     const agents = plane.listAgents();
-    const offline = agents.find((a) => a.agentId === "slot-offline");
+    const offline = agents.find((a) => a.hostId === "slot-offline");
     expect(offline).toMatchObject({
-      agentId: "slot-offline",
+      hostId: "slot-offline",
       online: false,
       commandProfiles: ["echo-prompt"],
       worktreeIds: [],
     });
     // Host for an already-listed agent is skipped in the offline-host merge loop.
     plane.registerAgent({
-      agentId: "slot-offline",
+      hostId: "slot-offline",
       worktrees: [],
       commandProfiles: ["echo-prompt"],
     });
-    const afterReg = plane.listAgents().find((a) => a.agentId === "slot-offline");
+    const afterReg = plane.listAgents().find((a) => a.hostId === "slot-offline");
     expect(afterReg?.online).toBe(true);
     // Offline host with worktrees exposes worktreeIds in the fleet list.
     expect(
@@ -94,7 +94,7 @@ describe("agent host inventory", () => {
         commandProfiles: { p: { argv: ["true"] } },
       }).ok,
     ).toBe(true);
-    expect(plane.listAgents().find((a) => a.agentId === "host-with-wts")?.worktreeIds).toEqual([
+    expect(plane.listAgents().find((a) => a.hostId === "host-with-wts")?.worktreeIds).toEqual([
       "w1",
       "w2",
     ]);
@@ -103,7 +103,7 @@ describe("agent host inventory", () => {
     expect(plane.putAgentHostConfig("local-1", null).ok).toBe(false);
     expect(
       plane.putAgentHostConfig("local-1", {
-        agentId: "other",
+        hostId: "other",
         repositories: [
           { id: "d", path: "/r", worktrees: [{ id: "w", name: "w", path: "/w", labels: [] }] },
         ],

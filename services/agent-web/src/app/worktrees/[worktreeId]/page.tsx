@@ -9,7 +9,7 @@ import {
   type WorktreeRow,
 } from "@auto-harness/ui";
 
-import { agentId, apiGet } from "../../../lib/api.ts";
+import { hostId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,
   loadLiveWorktreesById,
@@ -36,7 +36,7 @@ export default async function AgentWorktreeDetailPage({
 }) {
   const { worktreeId } = await params;
   const { tab } = await searchParams;
-  const id = agentId();
+  const id = hostId();
   const inventory = await loadHostInventory(id);
 
   let repo: HostRepository | undefined;
@@ -72,7 +72,7 @@ export default async function AgentWorktreeDetailPage({
   try {
     // No server-side worktreeId filter yet — scan the most recent page and filter here.
     const data = await apiGet<{ items: Session[] }>(
-      `/api/v1/sessions?agentId=${encodeURIComponent(id)}&limit=100`,
+      `/api/v1/sessions?hostId=${encodeURIComponent(id)}&limit=100`,
     );
     sessions = (data.items ?? []).filter((s) => s.worktreeId === worktreeId);
   } catch {
@@ -87,7 +87,7 @@ export default async function AgentWorktreeDetailPage({
     labels: worktree.labels,
     status: live?.status,
     online: live?.online,
-    agentId: id,
+    hostId: id,
   };
 
   const repoWorktreesHref = `/repositories/${encodeURIComponent(repo.id)}?tab=worktrees`;
@@ -103,7 +103,7 @@ export default async function AgentWorktreeDetailPage({
         ]}
         actions={
           <RemoveWorktreeButton
-            agentId={id}
+            hostId={id}
             repositoryId={repo.id}
             worktreeId={worktree.id}
             redirectTo={repoWorktreesHref}

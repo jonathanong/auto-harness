@@ -179,7 +179,7 @@ describe("ControlPlane operator management", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],

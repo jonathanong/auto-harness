@@ -6,10 +6,10 @@ import { Button, Label, WithTooltip } from "@auto-harness/ui";
 import { attachProviderAccountToHost, getInventory, putInventory } from "@auto-harness/shared";
 
 export function AttachProviderAccountToHostForm({
-  agentId,
+  hostId,
   availableAccounts,
 }: {
-  agentId: string;
+  hostId: string;
   /** Catalog accounts not yet attached to this host, pre-labeled `<provider> — <account label>`. */
   availableAccounts: Array<{ id: string; label: string }>;
 }) {
@@ -35,9 +35,9 @@ export function AttachProviderAccountToHostForm({
         const fd = new FormData(e.currentTarget);
         const providerAccountId = String(fd.get("providerAccountId") ?? "");
         start(async () => {
-          const current = await getInventory(agentId);
+          const current = await getInventory(hostId);
           const next = attachProviderAccountToHost(current, { providerAccountId });
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

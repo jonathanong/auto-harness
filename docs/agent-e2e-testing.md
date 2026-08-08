@@ -221,7 +221,7 @@ pnpm local:agent start
 
 # Validate bootstrap
 pnpm local:agent status
-# expect agentId, repositories, providerAccounts from the control plane
+# expect hostId, repositories, providerAccounts from the control plane
 ```
 
 **Health checks:**
@@ -231,7 +231,7 @@ curl -sS http://127.0.0.1:7420/health
 # {"ok":true}
 
 curl -sS http://127.0.0.1:7420/api/v1/agents
-# items include agentId, online:true, worktreeIds
+# items include hostId, online:true, worktreeIds
 
 curl -sS http://127.0.0.1:7420/api/v1/session-targets
 # items list the unified picker source: attached provider accounts + standalone commands
@@ -282,7 +282,7 @@ done
 | Check     | Expect                                                                                          |
 | --------- | ----------------------------------------------------------------------------------------------- |
 | Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `commandId`, `targetLabel: "echo-prompt"` |
-| Assign    | one item for `$SID` / `wt-1` / your `agentId`                                                   |
+| Assign    | one item for `$SID` / `wt-1` / your `hostId`                                                    |
 | Terminal  | `status: "completed"`, `exitCode: 0`                                                            |
 | Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout             |
 | Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`                       |

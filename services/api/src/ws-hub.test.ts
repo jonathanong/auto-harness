@@ -23,7 +23,7 @@ describe("createPlaneWsBridge", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w",
       labels: [],
@@ -51,7 +51,7 @@ describe("createPlaneWsBridge", () => {
         ws.send(
           JSON.stringify({
             type: "host:register",
-            agentId: "a1",
+            hostId: "a1",
             worktrees: [{ id: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
           }),

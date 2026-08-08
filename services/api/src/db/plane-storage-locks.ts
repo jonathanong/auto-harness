@@ -8,17 +8,17 @@ import {
 
 /**
  * Conditional agent lock (Invariant 3).
- * Returns false if agentId already locked and replace is false.
+ * Returns false if hostId already locked and replace is false.
  */
 export async function tryAcquireAgentLock(
   ctx: PlaneStorageCtx,
-  opts: { agentId: string; connectionId: string; replaceExisting: boolean },
+  opts: { hostId: string; connectionId: string; replaceExisting: boolean },
 ): Promise<boolean> {
   if (opts.replaceExisting) {
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.agentLocks,
-        Item: { agentId: opts.agentId, connectionId: opts.connectionId },
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
       }),
     );
     return true;
@@ -27,8 +27,8 @@ export async function tryAcquireAgentLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.agentLocks,
-        Item: { agentId: opts.agentId, connectionId: opts.connectionId },
-        ConditionExpression: "attribute_not_exists(agentId)",
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
+        ConditionExpression: "attribute_not_exists(hostId)",
       }),
     );
     return true;
@@ -42,14 +42,14 @@ export async function tryAcquireAgentLock(
 
 export async function releaseAgentLock(
   ctx: PlaneStorageCtx,
-  agentId: string,
+  hostId: string,
   connectionId: string,
 ): Promise<void> {
   try {
     await ctx.doc.send(
       new DeleteCommand({
         TableName: ctx.tables.agentLocks,
-        Key: { agentId },
+        Key: { hostId },
         ConditionExpression: "connectionId = :c",
         ExpressionAttributeValues: { ":c": connectionId },
       }),
@@ -62,9 +62,9 @@ export async function releaseAgentLock(
   }
 }
 
-export async function getAgentLock(ctx: PlaneStorageCtx, agentId: string): Promise<string | null> {
+export async function getAgentLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.agentLocks, Key: { agentId } }),
+    new GetCommand({ TableName: ctx.tables.agentLocks, Key: { hostId } }),
   );
   return (res.Item?.connectionId as string | undefined) ?? null;
 }

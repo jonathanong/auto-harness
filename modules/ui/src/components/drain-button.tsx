@@ -10,7 +10,7 @@ const DEFAULT_DRAIN_TIP =
   "Stop accepting new sessions on this host. Running sessions finish; idle worktrees go offline. Restart the daemon to clear drain — not a full process kill.";
 
 export type DrainButtonProps = {
-  agentId: string;
+  hostId: string;
   label?: string;
   pendingLabel?: string;
   size?: ButtonProps["size"];
@@ -20,7 +20,7 @@ export type DrainButtonProps = {
 
 /** Drain a host — pure REST against the same-origin `/api/v1` proxy, no app wiring needed. */
 export function DrainButton({
-  agentId,
+  hostId,
   label = "Drain",
   pendingLabel = "…",
   size = "default",
@@ -42,7 +42,7 @@ export function DrainButton({
             await fetch("/api/v1/agents/drain", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ agentId }),
+              body: JSON.stringify({ hostId }),
             });
             router.refresh();
           });

@@ -15,7 +15,7 @@ type Session = {
   prompt?: string;
   targetLabel?: string;
   source?: string;
-  agentId?: string | null;
+  hostId?: string | null;
 };
 
 export default async function SessionsPage({

@@ -5,7 +5,7 @@ import type { ProcessRunner } from "./executor.ts";
 import { ensureAgentReady, runAssignedSession } from "./runtime.ts";
 
 const config = parseAgentConfig({
-  agentId: "a1",
+  hostId: "a1",
   commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },
   repositories: [
     {

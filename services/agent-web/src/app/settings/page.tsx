@@ -8,13 +8,13 @@ import { DrainButton } from "@auto-harness/ui";
 
 import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
-import { agentId, apiGet } from "../../lib/api.ts";
+import { hostId, apiGet } from "../../lib/api.ts";
 import { loadHostInventory } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const id = agentId();
+  const id = hostId();
   const inventory = await loadHostInventory(id);
 
   let providers: Provider[] = [];
@@ -63,12 +63,7 @@ export default async function SettingsPage() {
         <p className="text-sm text-muted-foreground">
           Stop accepting new sessions. Running sessions finish; idle worktrees go offline.
         </p>
-        <DrainButton
-          agentId={id}
-          label="Drain this host"
-          pendingLabel="Draining…"
-          pw="host-drain"
-        />
+        <DrainButton hostId={id} label="Drain this host" pendingLabel="Draining…" pw="host-drain" />
       </div>
 
       <div className="space-y-2 border-t border-border pt-6">
@@ -92,7 +87,7 @@ export default async function SettingsPage() {
           Repositories when possible.
         </p>
         <HostConfigForm
-          agentId={id}
+          hostId={id}
           initialJson={initialJson || JSON.stringify(emptyHostInventory(), null, 2)}
         />
       </div>

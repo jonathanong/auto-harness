@@ -11,13 +11,13 @@ import {
 } from "@auto-harness/shared";
 
 export function ScopeProviderEnabledForm({
-  agentId,
+  hostId,
   scope,
   providerAccountId,
   currentOverride,
   inheritedLabel,
 }: {
-  agentId: string;
+  hostId: string;
   scope: ProviderAccountScope;
   providerAccountId: string;
   /** The raw override value set AT THIS scope — undefined means "inherits". */
@@ -40,9 +40,9 @@ export function ScopeProviderEnabledForm({
         const value = String(fd.get("enabled") ?? "");
         const enabled = value === "" ? undefined : value === "true";
         start(async () => {
-          const current = await getInventory(agentId);
+          const current = await getInventory(hostId);
           const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

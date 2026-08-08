@@ -45,7 +45,7 @@ export async function startAgentDaemon(options: StartDaemonOptions): Promise<{
 
   const transport = createWsTransport({
     url: wsUrl,
-    agentId: options.config.agentId,
+    hostId: options.config.hostId,
     onError: (err) => {
       error(`ws error: ${err.message}`);
     },
@@ -65,7 +65,7 @@ export async function startAgentDaemon(options: StartDaemonOptions): Promise<{
   await loop.start();
   const repoCount = options.config.repositories.length;
   log(
-    `agent ${options.config.agentId} registered` +
+    `agent ${options.config.hostId} registered` +
       (repoCount === 0
         ? " (no host inventory yet — add local repos in the host pane UI)"
         : ` (${repoCount} repo(s))`),

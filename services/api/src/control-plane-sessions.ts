@@ -126,13 +126,13 @@ export function supersedeSession(
   }
   state.pendingAcks.delete(sessionId);
   const wasRunning = session.status === "running";
-  const agentId = session.agentId;
+  const hostId = session.hostId;
   const worktreeId = session.worktreeId;
   session.status = "cancelled";
   session.errorMessage = reason;
   session.completedAt = state.now();
-  if (wasRunning && agentId) {
-    state.onAgentMessage?.(agentId, { type: "session:cancel", sessionId });
+  if (wasRunning && hostId) {
+    state.onAgentMessage?.(hostId, { type: "session:cancel", sessionId });
     persistSession(state, session);
     return;
   }
@@ -140,7 +140,7 @@ export function supersedeSession(
     releaseWorktree(state, worktreeId);
   }
   session.worktreeId = null;
-  session.agentId = null;
+  session.hostId = null;
   persistSession(state, session);
 }
 
@@ -154,7 +154,7 @@ export function resumeSession(
   if (!source) {
     return { ok: false, error: "session not found" };
   }
-  const pin = source.agentId || source.pinnedAgentId;
+  const pin = source.hostId || source.pinnedHostId;
   if (!pin) {
     return { ok: false, error: "source session has no agent to pin" };
   }
@@ -182,7 +182,7 @@ export function resumeSession(
     createdAt,
     retryCount: 0,
     resumedFromSessionId: sessionId,
-    pinnedAgentId: pin,
+    pinnedHostId: pin,
     pinExpiresAt,
     ...(source.ref !== undefined ? { ref: source.ref } : {}),
     ...(source.cliResumeRef !== undefined ? { cliResumeRef: source.cliResumeRef } : {}),

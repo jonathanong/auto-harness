@@ -17,7 +17,7 @@ export async function manageWeb(scratch: string): Promise<void> {
     now: () => "2026-01-01T00:00:00.000Z",
   });
   plane.registerAgent({
-    agentId: "a1",
+    hostId: "a1",
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],
   });
@@ -79,7 +79,7 @@ export async function manageWeb(scratch: string): Promise<void> {
   const drain = await fetch(`${base}/api/v1/agents/drain`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "a1" }),
+    body: JSON.stringify({ hostId: "a1" }),
   });
   await api.close();
   writeFileSync(

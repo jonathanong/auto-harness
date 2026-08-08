@@ -8,7 +8,7 @@ import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
 export type {
-  AgentHostRecord,
+  HostInventoryRecord,
   CommandRecord,
   ProviderAccountRecord,
   ProviderRecord,

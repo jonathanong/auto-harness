@@ -25,11 +25,11 @@ const NAV = [
 ];
 
 export function HostShell({
-  agentId,
+  hostId,
   online,
   children,
 }: {
-  agentId: string;
+  hostId: string;
   /** Undefined when the online-status fetch failed — renders no badge. */
   online?: boolean;
   children: React.ReactNode;
@@ -49,8 +49,8 @@ export function HostShell({
           </WithTooltip>
         )
       }
-      subtitle={`Host UI for ${agentId}`}
-      subtitleTip={`Managing agentId “${agentId}”. Repos/worktrees here must exist on this machine.`}
+      subtitle={`Host UI for ${hostId}`}
+      subtitleTip={`Managing hostId “${hostId}”. Repos/worktrees here must exist on this machine.`}
       nav={NAV}
       pathname={pathname}
     >

@@ -11,11 +11,11 @@ import {
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 export function HostRepoSettingsForm({
-  agentId,
+  hostId,
   inventory,
   repo,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   repo: HostRepository;
 }) {
@@ -62,7 +62,7 @@ export function HostRepoSettingsForm({
             setupScript,
             terminalHookScript,
           });
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

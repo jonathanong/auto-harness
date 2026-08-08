@@ -12,7 +12,7 @@ import {
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 
-import { agentId, apiGet } from "../../../lib/api.ts";
+import { hostId, apiGet } from "../../../lib/api.ts";
 import {
   loadHostInventory,
   loadLiveWorktreesById,
@@ -39,7 +39,7 @@ export default async function AgentRepositoryDetailPage({
 }) {
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
-  const agent = agentId();
+  const agent = hostId();
   const inventory = await loadHostInventory(agent);
 
   const repo: HostRepository | undefined = inventory.repositories.find(
@@ -83,7 +83,7 @@ export default async function AgentRepositoryDetailPage({
   let sessions: Session[] = [];
   try {
     const data = await apiGet<{ items: Session[] }>(
-      `/api/v1/sessions?agentId=${encodeURIComponent(agent)}&limit=100`,
+      `/api/v1/sessions?hostId=${encodeURIComponent(agent)}&limit=100`,
     );
     sessions = (data.items ?? []).filter((s) => s.repositoryId === repositoryId);
   } catch {
@@ -101,14 +101,14 @@ export default async function AgentRepositoryDetailPage({
           <>
             {activeTab === "worktrees" ? (
               <AddWorktreeForm
-                agentId={agent}
+                hostId={agent}
                 inventory={inventory}
                 repo={repo}
                 repoName={repoName}
                 browseEndpoint="/api/browse"
               />
             ) : null}
-            <RemoveRepoButton agentId={agent} repositoryId={repo.id} redirectTo="/repositories" />
+            <RemoveRepoButton hostId={agent} repositoryId={repo.id} redirectTo="/repositories" />
           </>
         }
       >
@@ -138,7 +138,7 @@ export default async function AgentRepositoryDetailPage({
                   emptyMessage="No worktrees yet."
                   renderWorktreeActions={(wt) => (
                     <RemoveWorktreeButton
-                      agentId={agent}
+                      hostId={agent}
                       repositoryId={repo.id}
                       worktreeId={wt.id}
                     />

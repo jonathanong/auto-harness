@@ -12,7 +12,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     seedBaseCommand(planeO);
     planeO.registerAgent({
-      agentId: "o1",
+      hostId: "o1",
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["x"],
     });
@@ -55,7 +55,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeC.seedWorktree({
       id: "only",
       name: "only",
-      agentId: "a",
+      hostId: "a",
       repositoryId: "repo-1",
       path: "/p",
       labels: [],
@@ -95,7 +95,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     planeD.seedWorktree({
       id: "wd",
       name: "wd",
-      agentId: "ad",
+      hostId: "ad",
       repositoryId: "repo-1",
       path: "/d",
       labels: [],
@@ -130,7 +130,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
 
     // keepalive success path
     planeD.registerAgent({
-      agentId: "alive",
+      hostId: "alive",
       worktrees: [],
       commandProfiles: ["c"],
       replaceExisting: true,
@@ -138,7 +138,7 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     expect(
       planeD.handleAgentMessage({
         type: "host:keepalive",
-        agentId: "alive",
+        hostId: "alive",
         at: "2026-01-01T00:00:01.000Z",
       }).ok,
     ).toBe(true);

@@ -14,12 +14,12 @@ import { WithTooltip } from "./tooltip.tsx";
 export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
 
 export function AddRepoForm({
-  agentId,
+  hostId,
   inventory,
   catalog,
   browseEndpoint,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   catalog: RepoCatalogEntry[];
   /** Filesystem browse endpoint for the path field (host pane only). */
@@ -55,7 +55,7 @@ export function AddRepoForm({
         }
         start(async () => {
           const next = upsertHostRepository(inventory, { id, path, defaultBranch });
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

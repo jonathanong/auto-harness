@@ -107,9 +107,9 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   }
 
   if (bridge || options.onAgentMessage) {
-    plane.setOnAgentMessage((agentId, msg) => {
-      options.onAgentMessage?.(agentId, msg);
-      bridge?.onAgentMessage(agentId, msg);
+    plane.setOnAgentMessage((hostId, msg) => {
+      options.onAgentMessage?.(hostId, msg);
+      bridge?.onAgentMessage(hostId, msg);
     });
   }
 

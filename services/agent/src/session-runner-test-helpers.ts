@@ -20,7 +20,7 @@ export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
 
 export function setup(runner: ProcessRunner) {
   const config = parseAgentConfig({
-    agentId: "a1",
+    hostId: "a1",
     commandProfiles: {
       "echo-prompt": { argv: ["echo"], appendPrompt: true },
       "usage-cmd": { argv: ["usage"], appendPrompt: false },

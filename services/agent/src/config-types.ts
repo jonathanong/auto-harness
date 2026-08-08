@@ -38,7 +38,7 @@ export type HostProviderAccountConfig = {
 
 /** Runtime config after bootstrap (identity + host inventory from control plane). */
 export type AgentConfig = {
-  agentId: string;
+  hostId: string;
   apiUrl?: string;
   apiKey?: string;
   repositories: RepositoryConfig[];
@@ -49,7 +49,7 @@ export type AgentConfig = {
 
 /** Process identity only — the only values the agent binary needs from env. */
 export type AgentIdentity = {
-  agentId: string;
+  hostId: string;
   /** Control plane base URL (http(s) or ws(s)). */
   apiUrl: string;
   /** Service-account token (`hns_…`); optional for unsecured local stacks. */

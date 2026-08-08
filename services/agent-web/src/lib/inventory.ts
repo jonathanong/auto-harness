@@ -6,16 +6,14 @@ import { apiBase, apiGet } from "./api.ts";
 type LiveWorktree = { status?: string; online?: boolean };
 
 /** Control-plane worktree status/online for this agent, keyed by worktree id. */
-export async function loadLiveWorktreesById(
-  agentId: string,
-): Promise<Record<string, LiveWorktree>> {
+export async function loadLiveWorktreesById(hostId: string): Promise<Record<string, LiveWorktree>> {
   try {
     const data = await apiGet<{
-      items: Array<{ id: string; agentId?: string; status?: string; online?: boolean }>;
+      items: Array<{ id: string; hostId?: string; status?: string; online?: boolean }>;
     }>("/api/v1/worktrees");
     const out: Record<string, LiveWorktree> = {};
     for (const w of data.items ?? []) {
-      if (w.agentId === agentId) {
+      if (w.hostId === hostId) {
         out[w.id] = { status: w.status, online: w.online };
       }
     }
@@ -45,9 +43,9 @@ export async function loadRepoNamesById(): Promise<Record<string, string>> {
   return Object.fromEntries(catalog.map((r) => [r.id, r.name]));
 }
 
-export async function loadHostInventory(agentId: string): Promise<HostInventory> {
+export async function loadHostInventory(hostId: string): Promise<HostInventory> {
   try {
-    const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
+    const res = await fetch(`${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
       cache: "no-store",
     });
     if (!res.ok) {

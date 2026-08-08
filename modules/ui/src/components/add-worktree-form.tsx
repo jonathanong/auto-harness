@@ -18,13 +18,13 @@ import { PathInput } from "./path-input.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 export function AddWorktreeForm({
-  agentId,
+  hostId,
   inventory,
   repo,
   repoName,
   browseEndpoint,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   repo: HostRepository;
   repoName: string;
@@ -79,7 +79,7 @@ export function AddWorktreeForm({
                 .map((s) => s.trim())
                 .filter(Boolean),
             });
-            const r = await putInventory(agentId, next);
+            const r = await putInventory(hostId, next);
             if (!r.ok) {
               setError(r.error);
               return;

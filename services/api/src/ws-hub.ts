@@ -15,9 +15,9 @@ type AgentSocketMap = Map<string, WebSocket>;
 
 export function createWsDelivery(
   agentSockets: Map<string, WebSocket>,
-): (agentId: string, msg: HostWireMessage) => void {
-  return (agentId, msg) => {
-    const sock = agentSockets.get(agentId);
+): (hostId: string, msg: HostWireMessage) => void {
+  return (hostId, msg) => {
+    const sock = agentSockets.get(hostId);
     if (sock && sock.readyState === sock.OPEN) {
       sock.send(JSON.stringify(msg));
     }
@@ -30,7 +30,7 @@ export function createWsDelivery(
  */
 export function createPlaneWsBridge(): {
   agentSockets: AgentSocketMap;
-  onAgentMessage: (agentId: string, msg: HostWireMessage) => void;
+  onAgentMessage: (hostId: string, msg: HostWireMessage) => void;
   attach(server: HttpServer, plane: ControlPlane): WsHub;
 } {
   const agentSockets: AgentSocketMap = new Map();
@@ -43,7 +43,7 @@ export function createPlaneWsBridge(): {
       const wss = new WebSocketServer({ noServer: true });
 
       wss.on("connection", (socket) => {
-        let boundAgentId: string | null = null;
+        let boundHostId: string | null = null;
 
         socket.on("message", (raw) => {
           let msg: HostToServerMessage;
@@ -54,20 +54,20 @@ export function createPlaneWsBridge(): {
             return;
           }
           if (msg.type === "host:register") {
-            boundAgentId = msg.agentId;
-            agentSockets.set(msg.agentId, socket);
+            boundHostId = msg.hostId;
+            agentSockets.set(msg.hostId, socket);
           }
           const result = plane.handleAgentMessage(msg);
           if (!result.ok) {
             socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
           } else if (msg.type === "host:register") {
-            socket.send(JSON.stringify({ type: "host:registered", agentId: msg.agentId }));
+            socket.send(JSON.stringify({ type: "host:registered", hostId: msg.hostId }));
           }
         });
 
         socket.on("close", () => {
-          if (boundAgentId && agentSockets.get(boundAgentId) === socket) {
-            agentSockets.delete(boundAgentId);
+          if (boundHostId && agentSockets.get(boundHostId) === socket) {
+            agentSockets.delete(boundHostId);
           }
         });
       });

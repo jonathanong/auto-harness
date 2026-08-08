@@ -20,7 +20,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeH.seedWorktree({
       id: "wh",
       name: "wh",
-      agentId: "ah",
+      hostId: "ah",
       repositoryId: "repo-1",
       path: "/h",
       labels: [],
@@ -31,7 +31,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     // re-register preserves busy
     planeH.registerAgent({
-      agentId: "ah",
+      hostId: "ah",
       worktrees: [{ id: "wh", name: "wh", repositoryId: "repo-1", path: "/h", labels: [] }],
       commandProfiles: ["c"],
     });
@@ -67,7 +67,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     expect(planeH.listSessions().length).toBeGreaterThan(1);
 
-    // resume with concurrencyKey + metadata + pinnedAgentId only
+    // resume with concurrencyKey + metadata + pinnedHostId only
     const planeI = new ControlPlane({
       idFactory: (() => {
         let i = 0;
@@ -78,8 +78,8 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     planeI.state.sessions.set("src", {
       id: "src",
-      agentId: null,
-      pinnedAgentId: "pin-agent",
+      hostId: null,
+      pinnedHostId: "pin-agent",
       concurrencyKey: "ck",
       metadata: { m: 1 },
       status: "completed",
@@ -97,7 +97,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     const r = planeI.resumeSession("src");
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.session.pinnedAgentId).toBe("pin-agent");
+      expect(r.session.pinnedHostId).toBe("pin-agent");
       expect(r.session.concurrencyKey).toBe("ck");
     }
     expect(planeI.getArchive("nope")).toBeNull();

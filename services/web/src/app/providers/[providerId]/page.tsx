@@ -21,7 +21,7 @@ import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
-type AgentHost = { agentId: string; providerAccounts?: Array<{ providerAccountId: string }> };
+type AgentHost = { hostId: string; providerAccounts?: Array<{ providerAccountId: string }> };
 
 export default async function ProviderDetailPage({
   params,

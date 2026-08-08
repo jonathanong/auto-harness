@@ -47,7 +47,7 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
       items: assigned.map((a) => ({
         sessionId: a.session.id,
         worktreeId: a.worktree.id,
-        agentId: a.worktree.agentId,
+        hostId: a.worktree.hostId,
       })),
     });
     return true;
@@ -73,14 +73,14 @@ export async function handleAgentSchedulerRoutes(ctx: RouteCtx): Promise<boolean
 
   if (method === "POST" && url.pathname === "/api/v1/agents/drain") {
     try {
-      const body = (await readJson(req)) as { agentId?: string };
-      if (!body.agentId) {
+      const body = (await readJson(req)) as { hostId?: string };
+      if (!body.hostId) {
         send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "agentId required" },
+          error: { code: "VALIDATION_ERROR", message: "hostId required" },
         });
         return true;
       }
-      send(res, 200, plane.drainAgent(body.agentId));
+      send(res, 200, plane.drainAgent(body.hostId));
       return true;
     } catch {
       send(res, 400, {

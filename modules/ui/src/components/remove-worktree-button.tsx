@@ -6,12 +6,12 @@ import { getInventory, putInventory, removeHostWorktree } from "@auto-harness/sh
 import { ConfirmButton } from "./confirm-button.tsx";
 
 export function RemoveWorktreeButton({
-  agentId,
+  hostId,
   repositoryId,
   worktreeId,
   redirectTo,
 }: {
-  agentId: string;
+  hostId: string;
   repositoryId: string;
   worktreeId: string;
   /** Navigate here after a successful removal instead of refreshing in place (e.g. the detail page). */
@@ -25,9 +25,9 @@ export function RemoveWorktreeButton({
       confirmDescription="Removes it from host inventory. Does not delete disk files."
       pw={`worktree-remove-${worktreeId}`}
       onConfirm={async () => {
-        const current = await getInventory(agentId);
+        const current = await getInventory(hostId);
         const next = removeHostWorktree(current, repositoryId, worktreeId);
-        const r = await putInventory(agentId, next);
+        const r = await putInventory(hostId, next);
         if (!r.ok) {
           return;
         }

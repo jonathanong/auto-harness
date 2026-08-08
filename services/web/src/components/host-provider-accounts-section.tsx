@@ -13,13 +13,13 @@ import { HostProviderAccountCommandForm } from "./host-provider-account-command-
 import { RemoveProviderAccountFromHostButton } from "./remove-provider-account-from-host-button.tsx";
 
 export function HostProviderAccountsSection({
-  agentId,
+  hostId,
   inventory,
   accountsById,
   providersById,
   commandsById,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   accountsById: Record<string, ProviderAccount>;
   providersById: Record<string, Provider>;
@@ -79,7 +79,7 @@ export function HostProviderAccountsSection({
                   </TableCell>
                   <TableCell>
                     <HostProviderAccountCommandForm
-                      agentId={agentId}
+                      hostId={hostId}
                       providerAccountId={hostAccount.providerAccountId}
                       currentCommandId={hostAccount.commandId}
                       providerCommands={providerCommands}
@@ -87,7 +87,7 @@ export function HostProviderAccountsSection({
                   </TableCell>
                   <TableCell>
                     <RemoveProviderAccountFromHostButton
-                      agentId={agentId}
+                      hostId={hostId}
                       providerAccountId={hostAccount.providerAccountId}
                       label={label}
                     />
@@ -98,7 +98,7 @@ export function HostProviderAccountsSection({
           </TableBody>
         </Table>
       )}
-      <AttachProviderAccountToHostForm agentId={agentId} availableAccounts={availableAccounts} />
+      <AttachProviderAccountToHostForm hostId={hostId} availableAccounts={availableAccounts} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@auto-harness/shared";
 import { CursorPagination, SessionFilters, SessionsTable } from "@auto-harness/ui";
 
-import { agentId, apiGet } from "../../lib/api.ts";
+import { hostId, apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ type Session = {
   prompt?: string;
   targetLabel?: string;
   source?: string;
-  agentId?: string | null;
+  hostId?: string | null;
 };
 
 export default async function AgentSessionsPage({
@@ -21,7 +21,7 @@ export default async function AgentSessionsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const id = agentId();
+  const id = hostId();
   const raw = await searchParams;
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(raw)) {
@@ -36,7 +36,7 @@ export default async function AgentSessionsPage({
   let error: string | null = null;
   try {
     const data = await apiGet<{ items: Session[]; nextCursor: string | null }>(
-      buildSessionsApiPath(filters, { agentId: id }),
+      buildSessionsApiPath(filters, { hostId: id }),
     );
     items = data.items ?? [];
     nextCursor = data.nextCursor ?? null;

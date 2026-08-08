@@ -5,7 +5,7 @@ import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts
 import { offlineAgentAndRequeue } from "./control-plane-worktrees.ts";
 
 export function listAgents(state: ControlPlaneState): Array<{
-  agentId: string;
+  hostId: string;
   online: boolean;
   lastHeartbeatAt: string | null;
   commandProfiles: string[];
@@ -14,7 +14,7 @@ export function listAgents(state: ControlPlaneState): Array<{
   const byAgent = new Map<
     string,
     {
-      agentId: string;
+      hostId: string;
       online: boolean;
       lastHeartbeatAt: string | null;
       commandProfiles: string[];
@@ -22,19 +22,19 @@ export function listAgents(state: ControlPlaneState): Array<{
     }
   >();
   for (const wt of state.worktrees.values()) {
-    const cur = byAgent.get(wt.agentId) ?? {
-      agentId: wt.agentId,
+    const cur = byAgent.get(wt.hostId) ?? {
+      hostId: wt.hostId,
       online: false,
       lastHeartbeatAt: null,
       commandProfiles: [] as string[],
       worktreeIds: [] as string[],
     };
     cur.worktreeIds.push(wt.id);
-    byAgent.set(wt.agentId, cur);
+    byAgent.set(wt.hostId, cur);
   }
   for (const conn of state.connections.values()) {
-    const cur = byAgent.get(conn.agentId) ?? {
-      agentId: conn.agentId,
+    const cur = byAgent.get(conn.hostId) ?? {
+      hostId: conn.hostId,
       online: true,
       lastHeartbeatAt: conn.lastHeartbeatAt,
       commandProfiles: conn.commandProfiles,
@@ -43,13 +43,13 @@ export function listAgents(state: ControlPlaneState): Array<{
     cur.online = true;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.commandProfiles = [...conn.commandProfiles];
-    byAgent.set(conn.agentId, cur);
+    byAgent.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
   for (const host of state.agentHosts.values()) {
-    if (!byAgent.has(host.agentId)) {
-      byAgent.set(host.agentId, {
-        agentId: host.agentId,
+    if (!byAgent.has(host.hostId)) {
+      byAgent.set(host.hostId, {
+        hostId: host.hostId,
         online: false,
         lastHeartbeatAt: null,
         commandProfiles: Object.keys(host.commandProfiles),
@@ -57,17 +57,17 @@ export function listAgents(state: ControlPlaneState): Array<{
       });
     }
   }
-  return [...byAgent.values()].toSorted((a, b) => a.agentId.localeCompare(b.agentId));
+  return [...byAgent.values()].toSorted((a, b) => a.hostId.localeCompare(b.hostId));
 }
 
 /**
- * Conditional agent register (Invariant 3): one live connection per agentId.
- * Second register for same agentId fails unless force-replacing is explicit.
+ * Conditional agent register (Invariant 3): one live connection per hostId.
+ * Second register for same hostId fails unless force-replacing is explicit.
  */
 export function registerAgent(
   state: ControlPlaneState,
   opts: {
-    agentId: string;
+    hostId: string;
     worktrees: Array<{
       id: string;
       name: string;
@@ -79,21 +79,21 @@ export function registerAgent(
     replaceExisting?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
-  const nameError = validateRegisterWorktreeNames(state, opts.agentId, opts.worktrees);
+  const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {
     return { ok: false, error: nameError };
   }
 
-  const existing = state.agentConnection.get(opts.agentId);
+  const existing = state.agentConnection.get(opts.hostId);
   if (existing && !opts.replaceExisting) {
     return {
       ok: false,
-      error: `agentId ${opts.agentId} already has an active connection`,
+      error: `hostId ${opts.hostId} already has an active connection`,
     };
   }
   if (existing) {
     state.connections.delete(existing);
-    state.agentConnection.delete(opts.agentId);
+    state.agentConnection.delete(opts.hostId);
   }
 
   const connectionId = state.connectionIdFactory();
@@ -104,7 +104,7 @@ export function registerAgent(
       state,
       state.storage
         .tryAcquireAgentLock({
-          agentId: opts.agentId,
+          hostId: opts.hostId,
           connectionId,
           replaceExisting: replaceLock,
         })
@@ -115,8 +115,8 @@ export function registerAgent(
   }
   const conn: ConnectionRecord = {
     connectionId,
-    type: "agent",
-    agentId: opts.agentId,
+    type: "host",
+    hostId: opts.hostId,
     connectedAt: at,
     lastHeartbeatAt: at,
     commandProfiles: [...opts.commandProfiles],
@@ -125,17 +125,17 @@ export function registerAgent(
   if (state.storage) {
     queueWrite(state, state.storage.putConnection(conn));
   }
-  state.agentConnection.set(opts.agentId, connectionId);
-  state.disconnectedAgents.delete(opts.agentId);
+  state.agentConnection.set(opts.hostId, connectionId);
+  state.disconnectedAgents.delete(opts.hostId);
   // Re-register clears drain so a restarted agent can take work again.
-  state.drainingAgents.delete(opts.agentId);
+  state.drainingAgents.delete(opts.hostId);
 
   for (const wt of opts.worktrees) {
     const prev = state.worktrees.get(wt.id);
     persistWorktree(state, {
       id: wt.id,
       name: wt.name,
-      agentId: opts.agentId,
+      hostId: opts.hostId,
       repositoryId: wt.repositoryId,
       path: wt.path,
       labels: wt.labels,
@@ -146,7 +146,7 @@ export function registerAgent(
     });
   }
   for (const wt of state.worktrees.values()) {
-    if (wt.agentId === opts.agentId && !opts.worktrees.some((w) => w.id === wt.id)) {
+    if (wt.hostId === opts.hostId && !opts.worktrees.some((w) => w.id === wt.id)) {
       wt.online = true;
       persistWorktree(state, { ...wt });
     }
@@ -165,24 +165,24 @@ export function disconnectAgent(state: ControlPlaneState, connectionId: string):
   if (!conn) {
     return [];
   }
-  const agentId = conn.agentId;
+  const hostId = conn.hostId;
   state.connections.delete(connectionId);
-  if (state.agentConnection.get(agentId) === connectionId) {
-    state.agentConnection.delete(agentId);
+  if (state.agentConnection.get(hostId) === connectionId) {
+    state.agentConnection.delete(hostId);
   }
-  state.disconnectedAgents.set(agentId, { lastHeartbeatAt: conn.lastHeartbeatAt });
-  return offlineAgentAndRequeue(state, agentId, "agent disconnected; requeued");
+  state.disconnectedAgents.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
+  return offlineAgentAndRequeue(state, hostId, "agent disconnected; requeued");
 }
 
-export function heartbeat(state: ControlPlaneState, agentId: string, at?: string): boolean {
-  const connectionId = state.agentConnection.get(agentId);
+export function heartbeat(state: ControlPlaneState, hostId: string, at?: string): boolean {
+  const connectionId = state.agentConnection.get(hostId);
   if (!connectionId) {
     return false;
   }
   const conn = state.connections.get(connectionId);
   // connectionId always maps to a live connection while agentConnection is consistent
   if (!conn) {
-    state.agentConnection.delete(agentId);
+    state.agentConnection.delete(hostId);
     return false;
   }
   conn.lastHeartbeatAt = at ?? state.now();
@@ -195,15 +195,15 @@ export function heartbeat(state: ControlPlaneState, agentId: string, at?: string
  */
 export function drainAgent(
   state: ControlPlaneState,
-  agentId: string,
+  hostId: string,
 ): { ok: boolean; runningSessionIds: string[] } {
-  state.drainingAgents.add(agentId);
+  state.drainingAgents.add(hostId);
   const running = [...state.sessions.values()]
-    .filter((s) => s.agentId === agentId && s.status === "running")
+    .filter((s) => s.hostId === hostId && s.status === "running")
     .map((s) => s.id);
-  state.onAgentMessage?.(agentId, { type: "host:drain" });
+  state.onAgentMessage?.(hostId, { type: "host:drain" });
   for (const wt of state.worktrees.values()) {
-    if (wt.agentId === agentId) {
+    if (wt.hostId === hostId) {
       // Idle: offline now. Busy: stay busy until release, then releaseWorktree keeps offline.
       if (wt.status === "idle") {
         wt.online = false;
@@ -213,6 +213,6 @@ export function drainAgent(
   return { ok: true, runningSessionIds: running };
 }
 
-export function isDraining(state: ControlPlaneState, agentId: string): boolean {
-  return state.drainingAgents.has(agentId);
+export function isDraining(state: ControlPlaneState, hostId: string): boolean {
+  return state.drainingAgents.has(hostId);
 }

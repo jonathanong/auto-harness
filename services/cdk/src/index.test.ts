@@ -10,7 +10,7 @@ describe("cdk tables", () => {
     expect(logs?.sortKey?.name).toBe("timestampSeq");
     expect(logs?.ttlAttribute).toBe("ttl");
     const connections = DYNAMO_TABLES.find((t) => t.name === "Connections");
-    expect(connections?.gsis?.some((g) => g.name === "agentId")).toBe(true);
+    expect(connections?.gsis?.some((g) => g.name === "hostId")).toBe(true);
     expect(statusShardKey("queued", 2)).toBe("queued#2");
     const plane = describeControlPlane();
     expect(plane.tables.length).toBeGreaterThan(5);

@@ -39,7 +39,7 @@ export async function runRealCliSession(opts: {
   expectStdout: RegExp;
 }): Promise<void> {
   const { page, request, providerName, argv, appendPrompt, expectStdout } = opts;
-  const agentId = `pw-real-${providerName}-${Date.now()}`;
+  const hostId = `pw-real-${providerName}-${Date.now()}`;
   const repoId = `pw-real-repo-${providerName}-${Date.now()}`;
   const wtId = `wt-${Date.now()}`;
   const root = mkdtempSync(join(tmpdir(), `pw-real-cli-${providerName}-`));
@@ -83,7 +83,7 @@ export async function runRealCliSession(opts: {
     ).toBeTruthy();
     const account = await accountRes.json();
 
-    const configRes = await request.put(`${API}/api/v1/agents/${agentId}/config`, {
+    const configRes = await request.put(`${API}/api/v1/agents/${hostId}/config`, {
       data: {
         repositories: [
           {
@@ -101,7 +101,7 @@ export async function runRealCliSession(opts: {
 
     // Real bootstrap fetch (GET /api/v1/agents/:id/config), same as `pnpm local:agent start`.
     const config = await fetchAgentHostConfig({
-      agentId,
+      hostId,
       apiUrl: "ws://127.0.0.1:7430/ws",
       logLevel: "info",
     });

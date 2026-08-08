@@ -15,29 +15,29 @@ export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Dat
   const reclaimed: string[] = [];
   const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
 
-  for (const [agentId, connectionId] of state.agentConnection.entries()) {
+  for (const [hostId, connectionId] of state.agentConnection.entries()) {
     const conn = state.connections.get(connectionId);
     if (!conn) {
-      state.agentConnection.delete(agentId);
+      state.agentConnection.delete(hostId);
       continue;
     }
-    candidates.set(agentId, {
+    candidates.set(hostId, {
       lastHeartbeatAt: conn.lastHeartbeatAt,
       connectionId,
     });
   }
-  for (const [agentId, rec] of state.disconnectedAgents.entries()) {
-    if (!candidates.has(agentId)) {
-      candidates.set(agentId, { lastHeartbeatAt: rec.lastHeartbeatAt });
+  for (const [hostId, rec] of state.disconnectedAgents.entries()) {
+    if (!candidates.has(hostId)) {
+      candidates.set(hostId, { lastHeartbeatAt: rec.lastHeartbeatAt });
     }
   }
 
-  for (const [agentId, meta] of candidates) {
+  for (const [hostId, meta] of candidates) {
     const last = Date.parse(meta.lastHeartbeatAt);
     if (nowMs - last < state.heartbeatStaleMs) {
       continue;
     }
-    const freed = offlineAgentAndRequeue(state, agentId, "agent heartbeat stale; requeued");
+    const freed = offlineAgentAndRequeue(state, hostId, "agent heartbeat stale; requeued");
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) {
         reclaimed.push(sid);
@@ -46,8 +46,8 @@ export function reclaimStaleAgents(state: ControlPlaneState, nowMs: number = Dat
     if (meta.connectionId) {
       state.connections.delete(meta.connectionId);
     }
-    state.agentConnection.delete(agentId);
-    state.disconnectedAgents.delete(agentId);
+    state.agentConnection.delete(hostId);
+    state.disconnectedAgents.delete(hostId);
   }
   return reclaimed;
 }
@@ -136,13 +136,13 @@ export function cancelSession(
   }
   state.pendingAcks.delete(id);
   const wasRunning = session.status === "running";
-  const agentId = session.agentId;
+  const hostId = session.hostId;
   const worktreeId = session.worktreeId;
   session.status = "cancelled";
   session.errorMessage = "cancelled by operator";
   session.completedAt = state.now();
-  if (wasRunning && agentId) {
-    state.onAgentMessage?.(agentId, { type: "session:cancel", sessionId: id });
+  if (wasRunning && hostId) {
+    state.onAgentMessage?.(hostId, { type: "session:cancel", sessionId: id });
     persistSession(state, session);
     return { ok: true, session: toPublic(state, session) };
   }
@@ -150,7 +150,7 @@ export function cancelSession(
     releaseWorktree(state, worktreeId);
   }
   session.worktreeId = null;
-  session.agentId = null;
+  session.hostId = null;
   persistSession(state, session);
   return { ok: true, session: toPublic(state, session) };
 }

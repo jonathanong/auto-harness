@@ -51,7 +51,7 @@ export function handleAgentMessage(
   switch (msg.type) {
     case "host:register": {
       const r = registerAgent(state, {
-        agentId: msg.agentId,
+        hostId: msg.hostId,
         worktrees: msg.worktrees,
         commandProfiles: msg.commandProfiles,
       });
@@ -83,7 +83,7 @@ export function handleAgentMessage(
       return { ok: true };
     }
     case "host:keepalive": {
-      return heartbeat(state, msg.agentId, msg.at)
+      return heartbeat(state, msg.hostId, msg.at)
         ? { ok: true }
         : { ok: false, error: "agent not connected" };
     }
@@ -119,7 +119,7 @@ function applySessionStatus(
         releaseWorktree(state, session.worktreeId);
       }
       session.worktreeId = null;
-      session.agentId = null;
+      session.hostId = null;
     }
     return { ok: true };
   }
@@ -160,7 +160,7 @@ function applySessionStatus(
       session.retryAfter = new Date(Date.parse(state.now()) + backoffMs).toISOString();
       session.status = "queued";
       session.worktreeId = null;
-      session.agentId = null;
+      session.hostId = null;
       delete session.completedAt;
     } else {
       session.worktreeId = null;

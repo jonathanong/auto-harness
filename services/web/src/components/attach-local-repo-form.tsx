@@ -10,12 +10,12 @@ import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 type Repo = { id: string; name: string; defaultBranch?: string };
 
 /** Control-plane form: attach an existing catalog repository's local path to a selected host. */
-export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; repos: Repo[] }) {
+export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; repos: Repo[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
-  if (agentIds.length === 0) {
+  if (hostIds.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
         No hosts yet. Use <strong>Add host</strong> on the{" "}
@@ -43,16 +43,16 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
         e.preventDefault();
         setError(null);
         const fd = new FormData(e.currentTarget);
-        const agentId = String(fd.get("agentId") ?? "").trim();
+        const hostId = String(fd.get("hostId") ?? "").trim();
         const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
-        if (!agentId || !id || !path) {
+        if (!hostId || !id || !path) {
           setError("host, repository, and absolute path on the host are required");
           return;
         }
         start(async () => {
-          const result = await attachLocalRepo({ agentId, id, path, defaultBranch });
+          const result = await attachLocalRepo({ hostId, id, path, defaultBranch });
           if (!result.ok) {
             setError(result.error);
             return;
@@ -61,25 +61,25 @@ export function AttachLocalRepoForm({ agentIds, repos }: { agentIds: string[]; r
           router.push(
             withToast(
               `/repositories/${id}`,
-              `Attached ${repoName} on host ${agentId} with no worktrees.`,
+              `Attached ${repoName} on host ${hostId} with no worktrees.`,
             ),
           );
         });
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="agentId" tip="Which host's inventory receives this repository path">
+        <Label htmlFor="hostId" tip="Which host's inventory receives this repository path">
           host
         </Label>
         <select
-          id="agentId"
-          name="agentId"
+          id="hostId"
+          name="hostId"
           required
           data-pw="attach-repo-agent-id"
           className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-          defaultValue={agentIds[0]}
+          defaultValue={hostIds[0]}
         >
-          {agentIds.map((a) => (
+          {hostIds.map((a) => (
             <option key={a} value={a}>
               {a}
             </option>

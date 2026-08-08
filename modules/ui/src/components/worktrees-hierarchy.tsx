@@ -11,7 +11,7 @@ export type WorktreeRow = {
   path: string;
   status?: string;
   online?: boolean;
-  agentId?: string;
+  hostId?: string;
   labels?: string[];
 };
 
@@ -142,7 +142,7 @@ export function WorktreesHierarchy({
                         {wt.online === undefined ? "—" : <StatusBadge status={String(wt.online)} />}
                       </TableCell>
                       {showAgent ? (
-                        <TableCell className="font-mono text-xs">{wt.agentId ?? "—"}</TableCell>
+                        <TableCell className="font-mono text-xs">{wt.hostId ?? "—"}</TableCell>
                       ) : null}
                       <TableCell className="text-xs">
                         {(wt.labels ?? []).length ? (wt.labels ?? []).join(", ") : "—"}

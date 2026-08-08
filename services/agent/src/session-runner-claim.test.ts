@@ -42,7 +42,7 @@ describe("SessionRunner claim and checkout failures", () => {
 
   it("fails checkout errors as setup_failed", async () => {
     const config = parseAgentConfig({
-      agentId: "a1",
+      hostId: "a1",
       commandProfiles: {
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
       },

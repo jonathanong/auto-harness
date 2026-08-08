@@ -11,7 +11,7 @@ type Wt = {
   path: string;
   status?: string;
   online?: boolean;
-  agentId?: string;
+  hostId?: string;
   labels?: string[];
 };
 type Repo = { id: string; name: string };
@@ -39,7 +39,7 @@ export default async function WorktreesPage() {
       path: w.path,
       status: w.status,
       online: w.online,
-      agentId: w.agentId,
+      hostId: w.hostId,
       labels: w.labels,
     })),
   ).map((g) => ({

@@ -80,7 +80,7 @@ export class AgentLoop {
   async register(): Promise<void> {
     await this.transport.send({
       type: "host:register",
-      agentId: this.config.agentId,
+      hostId: this.config.hostId,
       worktrees: this.config.repositories.flatMap((r) =>
         r.worktrees.map((w) => ({
           id: w.id,
@@ -97,7 +97,7 @@ export class AgentLoop {
   async keepalive(): Promise<void> {
     await this.transport.send({
       type: "host:keepalive",
-      agentId: this.config.agentId,
+      hostId: this.config.hostId,
       at: this.now(),
     });
   }

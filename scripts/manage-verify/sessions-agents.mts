@@ -16,7 +16,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
   plane.seedWorktree({
     id: "wt-1",
     name: "wt-1",
-    agentId: "a1",
+    hostId: "a1",
     repositoryId: "r1",
     path: "/w",
     labels: [],
@@ -24,7 +24,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
     online: true,
   });
   plane.registerAgent({
-    agentId: "a1",
+    hostId: "a1",
     worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
     commandProfiles: ["echo-prompt"],
     replaceExisting: true,
@@ -55,7 +55,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
   const drain = await fetch(`${base}/api/v1/agents/drain`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ agentId: "a1" }),
+    body: JSON.stringify({ hostId: "a1" }),
   });
   const drainBody = (await drain.json()) as { ok?: boolean };
   await api.close();

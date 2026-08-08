@@ -46,7 +46,7 @@ type HostProviderAccountConfig = {
  * this document is fetched from the control plane on start.
  */
 export type AgentHostConfig = {
-  agentId: string;
+  hostId: string;
   repositories: HostRepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
   commandProfiles: Record<string, CommandProfileDef>;

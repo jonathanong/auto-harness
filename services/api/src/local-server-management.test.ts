@@ -18,7 +18,7 @@ describe("createLocalApp operator management REST", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/w",
       labels: [],
@@ -26,7 +26,7 @@ describe("createLocalApp operator management REST", () => {
       online: true,
     });
     plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
       replaceExisting: true,
@@ -157,9 +157,9 @@ describe("createLocalApp operator management REST", () => {
     expect((await invoke("POST", `/api/v1/sessions/${sid}/cancel`)).status).toBe(400);
 
     expect((await invoke("GET", "/api/v1/agents")).json).toMatchObject({
-      items: expect.arrayContaining([expect.objectContaining({ agentId: "a1" })]),
+      items: expect.arrayContaining([expect.objectContaining({ hostId: "a1" })]),
     });
-    expect((await invoke("POST", "/api/v1/agents/drain", { agentId: "a1" })).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/agents/drain", { hostId: "a1" })).status).toBe(200);
 
     const hostPut = await invoke("PUT", "/api/v1/agents/a1/config", {
       repositories: [
@@ -175,7 +175,7 @@ describe("createLocalApp operator management REST", () => {
     expect(hostPut.status).toBe(200);
     expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/agent-hosts")).json).toMatchObject({
-      items: expect.arrayContaining([expect.objectContaining({ agentId: "a1" })]),
+      items: expect.arrayContaining([expect.objectContaining({ hostId: "a1" })]),
     });
     expect((await invoke("DELETE", "/api/v1/agents/a1/config")).status).toBe(204);
     expect((await invoke("GET", "/api/v1/agents/a1/config")).status).toBe(404);

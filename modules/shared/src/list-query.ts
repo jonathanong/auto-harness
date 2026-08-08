@@ -39,10 +39,7 @@ export function sessionListHref(state: Partial<SessionListQuery>, basePath = "/s
   return s ? `${basePath}?${s}` : basePath;
 }
 
-export function buildSessionsApiPath(
-  query: SessionListQuery,
-  extra?: { agentId?: string },
-): string {
+export function buildSessionsApiPath(query: SessionListQuery, extra?: { hostId?: string }): string {
   const p = new URLSearchParams();
   p.set("limit", String(query.limit));
   if (query.cursor) {
@@ -54,8 +51,8 @@ export function buildSessionsApiPath(
   if (query.q) {
     p.set("q", query.q);
   }
-  if (extra?.agentId) {
-    p.set("agentId", extra.agentId);
+  if (extra?.hostId) {
+    p.set("hostId", extra.hostId);
   }
   return `/api/v1/sessions?${p.toString()}`;
 }

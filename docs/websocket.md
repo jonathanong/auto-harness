@@ -10,7 +10,7 @@ wss://<api-domain>/ws?token=<credential>
 
 | Connection | Credential                                                           | First message     |
 | ---------- | -------------------------------------------------------------------- | ----------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `agentId`                 | `agent:register`  |
+| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                  | `agent:register`  |
 | Web UI     | Short-lived ticket or session-derived token (see [auth.md](auth.md)) | `client:register` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
@@ -67,12 +67,12 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 | Type              | Payload                                                           | Purpose                                                                                                                                                                                       |
 | ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `agent:register`  | `agentId`, `worktrees[]`, optional `runningSessions[]`            | Inventory + reclaim after reconnect                                                                                                                                                           |
+| `agent:register`  | `hostId`, `worktrees[]`, optional `runningSessions[]`             | Inventory + reclaim after reconnect                                                                                                                                                           |
 | `session:ack`     | `sessionId`                                                       | Accepted assign                                                                                                                                                                               |
 | `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [agent.md](agent.md#usage-limits-ai-vendor--cli-quotas)) |
 | `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                     | stdout / stderr / system chunk                                                                                                                                                                |
 | `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                       | idle / busy / error                                                                                                                                                                           |
-| `agent:status`    | `agentId`, `draining?`, `status?`                                 | Drain / health (e.g. auto-update)                                                                                                                                                             |
+| `agent:status`    | `hostId`, `draining?`, `status?`                                  | Drain / health (e.g. auto-update)                                                                                                                                                             |
 | `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                               |
 
 **Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [agent.md — Auto-update](agent.md#auto-update-graceful-restart).
@@ -113,11 +113,11 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 
 ### Server → client
 
-| Type             | Payload                              |
-| ---------------- | ------------------------------------ |
-| `session:log`    | Same as agent log (forwarded)        |
-| `session:status` | `{ sessionId, status, exitCode? }`   |
-| `agent:status`   | `{ agentId, status }` online/offline |
+| Type             | Payload                             |
+| ---------------- | ----------------------------------- |
+| `session:log`    | Same as agent log (forwarded)       |
+| `session:status` | `{ sessionId, status, exitCode? }`  |
+| `agent:status`   | `{ hostId, status }` online/offline |
 
 ---
 

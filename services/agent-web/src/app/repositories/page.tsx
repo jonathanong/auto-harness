@@ -1,13 +1,13 @@
 import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
-import { agentId } from "../../lib/api.ts";
+import { hostId } from "../../lib/api.ts";
 import { loadHostInventory, loadLiveWorktreesById, loadRepoCatalog } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function AgentRepositoriesPage() {
-  const id = agentId();
+  const id = hostId();
   const [inventory, liveById, catalog] = await Promise.all([
     loadHostInventory(id),
     loadLiveWorktreesById(id),
@@ -45,7 +45,7 @@ export default async function AgentRepositoriesPage() {
           </p>
         </div>
         <AddRepoDialog
-          agentId={id}
+          hostId={id}
           inventory={inventory}
           catalog={catalog.filter((r) => !attachedIds.has(r.id))}
         />

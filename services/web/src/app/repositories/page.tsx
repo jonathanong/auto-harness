@@ -7,7 +7,7 @@ import { apiGet } from "../../lib/api.ts";
 export const dynamic = "force-dynamic";
 
 type Repo = { id: string; name: string; url: string; defaultBranch?: string };
-type Host = { agentId: string };
+type Host = { hostId: string };
 type Wt = {
   id: string;
   name: string;
@@ -15,13 +15,13 @@ type Wt = {
   path: string;
   status?: string;
   online?: boolean;
-  agentId?: string;
+  hostId?: string;
   labels?: string[];
 };
 
 export default async function RepositoriesPage() {
   let items: Repo[] = [];
-  let agentIds: string[] = [];
+  let hostIds: string[] = [];
   let worktrees: Wt[] = [];
   let error: string | null = null;
   try {
@@ -31,7 +31,7 @@ export default async function RepositoriesPage() {
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
     items = repos.items ?? [];
-    agentIds = (hosts.items ?? []).map((h) => h.agentId);
+    hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
@@ -75,7 +75,7 @@ export default async function RepositoriesPage() {
 
       <div className="border-t border-border pt-6">
         <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-        <AttachLocalRepoForm agentIds={agentIds} repos={items} />
+        <AttachLocalRepoForm hostIds={hostIds} repos={items} />
       </div>
     </div>
   );

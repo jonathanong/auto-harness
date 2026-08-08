@@ -15,7 +15,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       shardCount: 1,
     });
     plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
@@ -113,13 +113,13 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/sessions/sess-1/archive")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/resume")).status).toBe(201);
     expect(
-      (await invoke("GET", "/api/v1/sessions?limit=5&cursor=&agentId=a1&status=completed&q=p"))
+      (await invoke("GET", "/api/v1/sessions?limit=5&cursor=&hostId=a1&status=completed&q=p"))
         .status,
     ).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/ack-deadlines")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/agents/drain", { agentId: "a1" })).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/agents/drain", { hostId: "a1" })).status).toBe(200);
     expect((await invoke("POST", "/api/v1/agents/drain", {})).status).toBe(400);
     expect(
       (

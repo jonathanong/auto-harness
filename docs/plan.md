@@ -120,7 +120,7 @@ erDiagram
 
     Worktree {
         string id PK
-        string agentId FK
+        string hostId FK
         string repositoryId FK
         string path
         string[] labels "e.g. codex, claude"
@@ -135,7 +135,7 @@ erDiagram
         string id PK
         string repositoryId FK
         string worktreeId FK "nullable until assigned"
-        string agentId FK "nullable until assigned"
+        string hostId FK "nullable until assigned"
         string userId FK
         string prompt
         string commandProfile "named profile resolved on the agent, e.g. codex-fix, claude-print"
@@ -156,7 +156,7 @@ erDiagram
         number retryCount "usage_limit retries attempted, default 0"
         string retryAfter "nullable — ISO timestamp; cron requeues at/after this time (usage_limit only)"
         string resumedFromSessionId FK "nullable"
-        string pinnedAgentId "nullable, resume affinity — agent only, no pinnedWorktreeId"
+        string pinnedHostId "nullable, resume affinity — agent only, no pinnedWorktreeId"
         string pinExpiresAt "nullable — pinned resume assign fails clearly past this time"
         string cliResumeRef "nullable, tool-native resume id"
         string slackThreadTs "nullable"
@@ -190,8 +190,8 @@ erDiagram
     Connection {
         string connectionId PK
         string type "agent | client"
-        string agentId "nullable"
-        string boundAgentId "required for agent type, validated on register"
+        string hostId "nullable"
+        string boundHostId "required for agent type, validated on register"
         string userId "nullable"
         string connectedAt
     }
@@ -238,7 +238,7 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 | Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent** before batching; the server never reorders.                                                                         |
 | Range-read logs for REST/history    | SessionLogs   | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
 | Idle matching worktrees             | Worktrees     | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
-| Find agent connection for assign    | Connections   | GSI `agentId`                                                                       | Conditional put on register — see Invariant 3.                                                                                                                                         |
+| Find agent connection for assign    | Connections   | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                         |
 | Due schedules                       | Schedules     | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                     |
 
 ---
@@ -256,8 +256,8 @@ reference these by number; a phase is not done until its invariants have a passi
    receive `session:ack` within a bounded ack deadline returns to `queued` and its worktree
    returns to `idle`. No unbounded "ignore" outcome is allowed to leave a worktree wedged `busy`
    forever.
-3. **One live connection per agent.** `agent:register` is a conditional put keyed on `agentId`
-   ("no existing connection for this `agentId`"); a stale row from a lost `$disconnect` must not
+3. **One live connection per agent.** `agent:register` is a conditional put keyed on `hostId`
+   ("no existing connection for this `hostId`"); a stale row from a lost `$disconnect` must not
    let two connections both believe they own one agent identity.
 4. **A schedule fires at most once per `nextRunAt`.** The cron evaluator's claim _is_ the
    conditional advance of `nextRunAt` (`ConditionExpression: nextRunAt = :expected`). A retried or
@@ -268,7 +268,7 @@ reference these by number; a phase is not done until its invariants have a passi
 6. **`usage_limit` retry is capped and exclusive to that error code.** No other terminal status
    (`failed` without that code, `timed_out`, `cancelled`) is auto-retried. `retryCount` has a hard
    ceiling (default 2); exceeding it leaves the session terminal with no further retry.
-7. **Resume assigns only to `pinnedAgentId`, on an agent-only pin, with an expiry.** Past
+7. **Resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** Past
    `pinExpiresAt`, a still-queued pinned resume fails clearly (`status: failed`, `errorCode:
 resume_failed`) rather than waiting indefinitely.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
@@ -380,7 +380,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
     Slack config CRUD.
 - `services/api` WebSocket handlers:
   - `$connect`/`$disconnect` — validate token, manage Connections table with the **conditional put
-    on `agentId`** (Invariant 3).
+    on `hostId`** (Invariant 3).
   - `$default` — route by `type`.
   - Task dispatch: `session:assign` to agent, including `ref` when set.
   - Status/log forwarding: agent → DynamoDB, agent → subscribed clients.
@@ -401,7 +401,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
 
 - Two concurrent `POST /sessions` racing for the same idle worktree: exactly one wins the claim,
   the other is queued or assigned elsewhere (Invariant 1).
-- Two concurrent `agent:register` calls with the same `agentId`: exactly one connection row
+- Two concurrent `agent:register` calls with the same `hostId`: exactly one connection row
   survives (Invariant 3).
 - A cron sweep re-invoked concurrently (simulating an EventBridge retry) creates at most one
   session per due schedule (Invariant 4).
@@ -426,7 +426,7 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
   the API Gateway WS connection alive; do **not** implement a server-originated timer-based
   `ping`, since Lambda has no persistent process to hold one (this replaces an earlier,
   unimplementable "server pings every 30s" design).
-- `agent:register` on connect — worktree inventory, validated against `boundAgentId`.
+- `agent:register` on connect — worktree inventory, validated against `boundHostId`.
 - **Ack-deadline enforcement**: `session:assign` without `session:ack` inside the deadline
   requeues the session and frees the worktree (Invariant 2) — implemented in the scheduler
   service, triggered by a short-lived timer or a re-check on next scheduling pass.
@@ -436,7 +436,7 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 - Queue management with priority; **`concurrencyKey`/`onConflict` resolution** (Invariant 9) in
   the scheduler at session-create time.
 - Worktree label matching; multi-agent round-robin by `lastAssignedAt`.
-- **Session resume** — pin to `pinnedAgentId` only; agent re-checks-out via `ref` +
+- **Session resume** — pin to `pinnedHostId` only; agent re-checks-out via `ref` +
   `cliResumeRef`/native CLI resume rather than relying on undisturbed worktree state; pin honors
   `pinExpiresAt` (Invariant 7, D5).
 - **Usage-limit retry** (D8, Invariant 6): on `errorCode: usage_limit`, set `retryAfter` and

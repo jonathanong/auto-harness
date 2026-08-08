@@ -1,6 +1,6 @@
 import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 
-import type { AgentHostRecord } from "./db/plane-storage.ts";
+import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
 /**
@@ -10,8 +10,8 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
  */
 export function findWorktreeNameCollision(
   state: ControlPlaneState,
-  agentId: string,
-  parsed: Omit<AgentHostRecord, "updatedAt">,
+  hostId: string,
+  parsed: Omit<HostInventoryRecord, "updatedAt">,
 ): string | null {
   const namesInBody = new Set<string>();
   for (const repo of parsed.repositories) {
@@ -23,8 +23,8 @@ export function findWorktreeNameCollision(
     }
   }
   for (const wt of state.worktrees.values()) {
-    if (wt.agentId !== agentId && namesInBody.has(wt.name)) {
-      return `worktree name already in use on host ${wt.agentId}: ${wt.name}`;
+    if (wt.hostId !== hostId && namesInBody.has(wt.name)) {
+      return `worktree name already in use on host ${wt.hostId}: ${wt.name}`;
     }
   }
   return null;
@@ -39,7 +39,7 @@ export function findWorktreeNameCollision(
  */
 export function validateRegisterWorktreeNames(
   state: ControlPlaneState,
-  agentId: string,
+  hostId: string,
   worktrees: Array<{ id: string; name: string; path: string; labels: string[] }>,
 ): string | null {
   for (const wt of worktrees) {
@@ -47,8 +47,8 @@ export function validateRegisterWorktreeNames(
       return `worktree.${wt.id}.name must be ${SLUG_NAME_HINT}`;
     }
   }
-  return findWorktreeNameCollision(state, agentId, {
-    agentId,
+  return findWorktreeNameCollision(state, hostId, {
+    hostId,
     repositories: [{ id: "_", path: "_", defaultBranch: "main", worktrees }],
     providerAccounts: [],
     commandProfiles: {},

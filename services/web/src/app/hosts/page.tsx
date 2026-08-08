@@ -19,14 +19,14 @@ import { parseHostListState } from "../../lib/url-state.ts";
 export const dynamic = "force-dynamic";
 
 type Host = {
-  agentId: string;
+  hostId: string;
   online: boolean;
   commandProfiles?: string[];
   worktreeIds?: string[];
 };
 
 type HostInventorySummary = {
-  agentId: string;
+  hostId: string;
   commandProfiles?: Record<string, unknown>;
   repositories?: unknown[];
 };
@@ -59,7 +59,7 @@ export default async function HostsPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const inventoryById = new Map(inventories.map((inv) => [inv.agentId, inv]));
+  const inventoryById = new Map(inventories.map((inv) => [inv.hostId, inv]));
   let rows = hosts;
   if (filters.online === "online") {
     rows = rows.filter((h) => h.online);
@@ -94,7 +94,7 @@ export default async function HostsPage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>agentId</TableHead>
+              <TableHead>hostId</TableHead>
               <TableHead>online</TableHead>
               <TableHead>profiles</TableHead>
               <TableHead>repos</TableHead>
@@ -104,19 +104,19 @@ export default async function HostsPage({
           </TableHeader>
           <TableBody>
             {rows.map((h) => {
-              const inventory = inventoryById.get(h.agentId);
+              const inventory = inventoryById.get(h.hostId);
               const repoCount = Array.isArray(inventory?.repositories)
                 ? inventory.repositories.length
                 : 0;
               return (
-                <TableRow key={h.agentId} data-pw={`host-row-${h.agentId}`}>
+                <TableRow key={h.hostId} data-pw={`host-row-${h.hostId}`}>
                   <TableCell className="font-mono text-xs">
                     <Link
-                      href={`/hosts/${encodeURIComponent(h.agentId)}`}
+                      href={`/hosts/${encodeURIComponent(h.hostId)}`}
                       className="hover:underline"
-                      data-pw={`host-link-${h.agentId}`}
+                      data-pw={`host-link-${h.hostId}`}
                     >
-                      {h.agentId}
+                      {h.hostId}
                     </Link>
                   </TableCell>
                   <TableCell>
@@ -128,7 +128,7 @@ export default async function HostsPage({
                   <TableCell className="text-xs">{repoCount}</TableCell>
                   <TableCell>{inventory ? "yes" : "no"}</TableCell>
                   <TableCell>
-                    <DrainButton agentId={h.agentId} size="sm" pw={`host-drain-${h.agentId}`} />
+                    <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
                   </TableCell>
                 </TableRow>
               );

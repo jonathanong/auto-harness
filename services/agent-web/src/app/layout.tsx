@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "@auto-harness/ui/globals.css";
 
 import { HostShell } from "../components/host-shell.tsx";
-import { agentId, apiGet } from "../lib/api.ts";
+import { hostId, apiGet } from "../lib/api.ts";
 
 export const metadata: Metadata = {
   title: "Auto Harness — Host pane",
@@ -12,13 +12,13 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const id = agentId();
+  const id = hostId();
   let online: boolean | undefined;
   try {
-    const agents = await apiGet<{ items: Array<{ agentId: string; online: boolean }> }>(
+    const agents = await apiGet<{ items: Array<{ hostId: string; online: boolean }> }>(
       "/api/v1/agents",
     );
-    online = agents.items?.find((a) => a.agentId === id)?.online;
+    online = agents.items?.find((a) => a.hostId === id)?.online;
   } catch {
     /* leave undefined — the header renders no badge rather than throwing */
   }
@@ -26,7 +26,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body>
-        <HostShell agentId={id} online={online}>
+        <HostShell hostId={id} online={online}>
           {children}
         </HostShell>
       </body>

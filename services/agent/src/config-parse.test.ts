@@ -11,7 +11,7 @@ describe("parseAgentConfig", () => {
       apiKey: "hns_x",
       logLevel: "warn",
     });
-    expect(config.agentId).toBe("local-1");
+    expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("wss://example/ws");
     expect(config.apiKey).toBe("hns_x");
     expect(config.logLevel).toBe("warn");
@@ -21,7 +21,7 @@ describe("parseAgentConfig", () => {
 
   it("defaults branch and log level", () => {
     const config = parseAgentConfig({
-      agentId: "x",
+      hostId: "x",
       logLevel: "nope",
       repositories: [
         {
@@ -37,7 +37,7 @@ describe("parseAgentConfig", () => {
   });
 
   it("rejects empty repositories", () => {
-    expect(() => parseAgentConfig({ agentId: "x", repositories: [], commandProfiles: {} })).toThrow(
+    expect(() => parseAgentConfig({ hostId: "x", repositories: [], commandProfiles: {} })).toThrow(
       /repositories/,
     );
   });
@@ -67,14 +67,14 @@ describe("parseAgentConfig", () => {
   it("rejects invalid worktree and repo fields", () => {
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [{ id: "r", path: "/r", worktrees: "x" }],
       }),
     ).toThrow(/worktrees/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [
           {
@@ -87,14 +87,14 @@ describe("parseAgentConfig", () => {
     ).toThrow(/labels/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [null],
       }),
     ).toThrow(/object/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [
           {
@@ -108,7 +108,7 @@ describe("parseAgentConfig", () => {
     ).toThrow(/setupScript/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [
           {
@@ -122,7 +122,7 @@ describe("parseAgentConfig", () => {
     ).toThrow(/terminalHookScript/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [
           {
@@ -135,7 +135,7 @@ describe("parseAgentConfig", () => {
     ).toThrow(/setupScript/);
     expect(() =>
       parseAgentConfig({
-        agentId: "x",
+        hostId: "x",
         commandProfiles: {},
         repositories: [
           {

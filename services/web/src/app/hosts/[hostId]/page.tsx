@@ -8,22 +8,22 @@ import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
-type Agent = { agentId: string; online: boolean };
-type LiveWorktree = { id: string; agentId?: string; status?: string; online?: boolean };
+type Agent = { hostId: string; online: boolean };
+type LiveWorktree = { id: string; hostId?: string; status?: string; online?: boolean };
 
 export default async function HostDetailPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ agentId: string }>;
+  params: Promise<{ hostId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { agentId } = await params;
+  const { hostId } = await params;
   const { tab } = await searchParams;
 
   let inventory: HostInventory | null = null;
   try {
-    inventory = await apiGet<HostInventory>(`/api/v1/agents/${encodeURIComponent(agentId)}/config`);
+    inventory = await apiGet<HostInventory>(`/api/v1/agents/${encodeURIComponent(hostId)}/config`);
   } catch {
     /* no config yet — may still be a live/known agent below */
   }
@@ -35,7 +35,7 @@ export default async function HostDetailPage({
   } catch {
     /* ignore — status shows unknown */
   }
-  const agent = agents.find((a) => a.agentId === agentId);
+  const agent = agents.find((a) => a.hostId === hostId);
 
   if (!inventory && !agent) {
     return (
@@ -44,7 +44,7 @@ export default async function HostDetailPage({
           ← Back to hosts
         </Link>
         <p className="text-sm text-muted-foreground">
-          No host <code className="font-mono">{agentId}</code> known to the control plane.
+          No host <code className="font-mono">{hostId}</code> known to the control plane.
         </p>
       </div>
     );
@@ -73,7 +73,7 @@ export default async function HostDetailPage({
   let liveWorktrees: LiveWorktree[] = [];
   try {
     const data = await apiGet<{ items: LiveWorktree[] }>("/api/v1/worktrees");
-    liveWorktrees = (data.items ?? []).filter((w) => w.agentId === agentId);
+    liveWorktrees = (data.items ?? []).filter((w) => w.hostId === hostId);
   } catch {
     /* ignore — worktree status shows unknown */
   }
@@ -113,14 +113,14 @@ export default async function HostDetailPage({
             ← Back to hosts
           </Link>
           <h2 className="text-2xl font-semibold tracking-tight" data-pw="host-detail-id">
-            {agentId}
+            {hostId}
           </h2>
         </div>
-        <DrainButton agentId={agentId} pw="host-detail-drain" />
+        <DrainButton hostId={hostId} pw="host-detail-drain" />
       </div>
 
       <Tabs
-        basePath={`/hosts/${encodeURIComponent(agentId)}`}
+        basePath={`/hosts/${encodeURIComponent(hostId)}`}
         active={typeof tab === "string" ? tab : "overview"}
         pw="host-detail-tabs"
         tabs={[
@@ -155,7 +155,7 @@ export default async function HostDetailPage({
             label: "Repositories & Worktrees",
             content: (
               <HostRepositoriesSection
-                agentId={agentId}
+                hostId={hostId}
                 inventory={inv}
                 namesById={namesById}
                 unattachedCatalog={unattachedCatalog}
@@ -168,7 +168,7 @@ export default async function HostDetailPage({
             label: "Provider accounts",
             content: (
               <HostProviderAccountsSection
-                agentId={agentId}
+                hostId={hostId}
                 inventory={inv}
                 accountsById={providerAccountsById}
                 providersById={providersById}

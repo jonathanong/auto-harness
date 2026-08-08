@@ -11,7 +11,7 @@ import {
 } from "@auto-harness/shared";
 
 import type {
-  AgentHostRecord,
+  HostInventoryRecord,
   CommandRecord,
   DynamoPlaneStorage,
   ProviderAccountRecord,
@@ -37,12 +37,12 @@ export type ControlPlaneState = {
   sessions: Map<string, SessionRecord>;
   worktrees: Map<string, WorktreeRecord>;
   connections: Map<string, ConnectionRecord>;
-  /** agentId → connectionId (at most one live agent connection — Invariant 3). */
+  /** hostId → connectionId (at most one live agent connection — Invariant 3). */
   agentConnection: Map<string, string>;
   logs: Map<string, LogRecord[]>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
-  agentHosts: Map<string, AgentHostRecord>;
+  agentHosts: Map<string, HostInventoryRecord>;
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
@@ -71,7 +71,7 @@ export type ControlPlaneState = {
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
-  onAgentMessage: ((agentId: string, msg: HostWireMessage) => void) | undefined;
+  onAgentMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -178,7 +178,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   }
   for (const c of await state.storage.listConnections()) {
     state.connections.set(c.connectionId, c);
-    state.agentConnection.set(c.agentId, c.connectionId);
+    state.agentConnection.set(c.hostId, c.connectionId);
   }
   for (const sch of await state.storage.listSchedules()) {
     state.schedules.set(sch.id, sch);
@@ -187,7 +187,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
     state.repositories.set(r.id, r);
   }
   for (const h of await state.storage.listAgentHosts()) {
-    state.agentHosts.set(h.agentId, h);
+    state.agentHosts.set(h.hostId, h);
   }
   for (const p of await state.storage.listProviders()) {
     state.providers.set(p.id, p);

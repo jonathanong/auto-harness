@@ -23,7 +23,7 @@ type Wt = {
   path: string;
   status?: string;
   online?: boolean;
-  agentId?: string;
+  hostId?: string;
   labels?: string[];
 };
 type Repo = { id: string; name: string; url: string };
@@ -31,7 +31,7 @@ type Session = {
   id: string;
   status: string;
   worktreeId?: string | null;
-  agentId?: string | null;
+  hostId?: string | null;
   targetLabel?: string;
   prompt?: string;
   source?: string;
@@ -89,10 +89,10 @@ export default async function WorktreeDetailPage({
   }
 
   let inventory: HostInventory | null = null;
-  if (worktree.agentId) {
+  if (worktree.hostId) {
     try {
       inventory = await apiGet<HostInventory>(
-        `/api/v1/agents/${encodeURIComponent(worktree.agentId)}/config`,
+        `/api/v1/agents/${encodeURIComponent(worktree.hostId)}/config`,
       );
     } catch {
       /* ignore — edit/remove actions stay hidden below */
@@ -118,7 +118,7 @@ export default async function WorktreeDetailPage({
     labels: worktree.labels,
     status: worktree.status,
     online: worktree.online,
-    agentId: worktree.agentId,
+    hostId: worktree.hostId,
   };
 
   return (
@@ -127,9 +127,9 @@ export default async function WorktreeDetailPage({
         worktree={row}
         breadcrumbs={[{ label: "Worktrees", href: "/worktrees" }, { label: worktree.name }]}
         actions={
-          worktree.agentId ? (
+          worktree.hostId ? (
             <RemoveWorktreeButton
-              agentId={worktree.agentId}
+              hostId={worktree.hostId}
               repositoryId={worktree.repositoryId}
               worktreeId={worktree.id}
               redirectTo="/worktrees"
@@ -157,9 +157,9 @@ export default async function WorktreeDetailPage({
             {
               key: "provider-accounts",
               label: "Provider accounts",
-              content: worktree.agentId ? (
+              content: worktree.hostId ? (
                 <ProviderScopeTable
-                  agentId={worktree.agentId}
+                  hostId={worktree.hostId}
                   scope={{ repositoryId: worktree.repositoryId, worktreeId: worktree.id }}
                   inheritedEnabledLabel="repository"
                   resolutions={providerResolutions}
@@ -186,9 +186,9 @@ export default async function WorktreeDetailPage({
                     repoPath={repoPath}
                     hostHrefBase="/hosts"
                   />
-                  {worktree.agentId && inventory && hostWorktree ? (
+                  {worktree.hostId && inventory && hostWorktree ? (
                     <EditWorktreeForm
-                      agentId={worktree.agentId}
+                      hostId={worktree.hostId}
                       inventory={inventory}
                       repositoryId={worktree.repositoryId}
                       worktree={hostWorktree}

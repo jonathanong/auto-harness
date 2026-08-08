@@ -1,4 +1,4 @@
-import type { AgentHostRecord, RepositoryRecord } from "./db/plane-storage.ts";
+import type { HostInventoryRecord, RepositoryRecord } from "./db/plane-storage.ts";
 import type {
   ArchiveObject,
   PublicSession,
@@ -140,30 +140,30 @@ export class ControlPlane extends ControlPlaneCatalog {
     return lifecycle.listWebhookDeliveries(this.state);
   }
 
-  drainAgent(agentId: string): { ok: boolean; runningSessionIds: string[] } {
-    return agents.drainAgent(this.state, agentId);
+  drainAgent(hostId: string): { ok: boolean; runningSessionIds: string[] } {
+    return agents.drainAgent(this.state, hostId);
   }
 
-  isDraining(agentId: string): boolean {
-    return agents.isDraining(this.state, agentId);
+  isDraining(hostId: string): boolean {
+    return agents.isDraining(this.state, hostId);
   }
 
   putAgentHostConfig(
-    agentId: string,
+    hostId: string,
     body: unknown,
-  ): { ok: true; config: AgentHostRecord } | { ok: false; error: string } {
-    return agentHosts.putAgentHostConfig(this.state, agentId, body);
+  ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
+    return agentHosts.putAgentHostConfig(this.state, hostId, body);
   }
 
-  getAgentHostConfig(agentId: string): AgentHostRecord | null {
-    return agentHosts.getAgentHostConfig(this.state, agentId);
+  getAgentHostConfig(hostId: string): HostInventoryRecord | null {
+    return agentHosts.getAgentHostConfig(this.state, hostId);
   }
 
-  listAgentHostConfigs(): AgentHostRecord[] {
+  listAgentHostConfigs(): HostInventoryRecord[] {
     return agentHosts.listAgentHostConfigs(this.state);
   }
 
-  deleteAgentHostConfig(agentId: string): { ok: true } | { ok: false; error: string } {
-    return agentHosts.deleteAgentHostConfig(this.state, agentId);
+  deleteAgentHostConfig(hostId: string): { ok: true } | { ok: false; error: string } {
+    return agentHosts.deleteAgentHostConfig(this.state, hostId);
   }
 }

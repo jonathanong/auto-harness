@@ -46,7 +46,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         await ctx.doc.send(
           new DeleteCommand({
             TableName: ctx.tables.agentLocks,
-            Key: { agentId: item.agentId },
+            Key: { hostId: item.hostId },
           }),
         );
       }
@@ -66,7 +66,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   }
   for (const h of await listAgentHosts(ctx)) {
     await ctx.doc.send(
-      new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { agentId: h.agentId } }),
+      new DeleteCommand({ TableName: ctx.tables.agentHosts, Key: { hostId: h.hostId } }),
     );
   }
   for (const p of await listProviders(ctx)) {

@@ -14,7 +14,7 @@ import { apiGet } from "../lib/api.ts";
 export const dynamic = "force-dynamic";
 
 type Session = { id: string; status: string; prompt?: string };
-type Host = { agentId: string; online: boolean };
+type Host = { hostId: string; online: boolean };
 
 export default async function DashboardPage() {
   let sessions: Session[] = [];

@@ -14,7 +14,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeE.seedWorktree({
       id: "we",
       name: "we",
-      agentId: "ae",
+      hostId: "ae",
       repositoryId: "repo-1",
       path: "/e",
       labels: [],
@@ -28,7 +28,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       timeout: 1,
     });
     const es = planeE.state.sessions.get("e1")!;
-    es.agentId = "ae";
+    es.hostId = "ae";
     es.worktreeId = "we";
     es.ackReceivedAt = "t";
     expect(planeE.assignQueued()).toHaveLength(0);
@@ -47,7 +47,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.seedWorktree({
       id: "wf",
       name: "wf",
-      agentId: "af",
+      hostId: "af",
       repositoryId: "repo-1",
       path: "/f",
       labels: [],
@@ -69,14 +69,14 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       status: "completed",
     });
     // force agent pin without cliResumeRef
-    planeF.state.sessions.get("f1")!.agentId = "af";
+    planeF.state.sessions.get("f1")!.hostId = "af";
     delete planeF.state.sessions.get("f1")!.cliResumeRef;
     const resF = planeF.resumeSession("f1");
     expect(resF.ok).toBe(true);
     planeF.seedWorktree({
       id: "wf2",
       name: "wf2",
-      agentId: "af",
+      hostId: "af",
       repositoryId: "repo-1",
       path: "/f2",
       labels: [],
@@ -103,7 +103,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeG.seedWorktree({
       id: "wg",
       name: "wg",
-      agentId: "ag",
+      hostId: "ag",
       repositoryId: "repo-1",
       path: "/g",
       labels: [],

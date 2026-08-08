@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentHostRecord } from "./db/plane-storage.ts";
+import type { HostInventoryRecord } from "./db/plane-storage.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import { listSessionTargets } from "./control-plane-session-targets.ts";
 
@@ -22,7 +22,7 @@ describe("listSessionTargets", () => {
       updatedAt: "t",
     });
     state.agentHosts.set("host-1", {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [],
       providerAccounts: [{ providerAccountId: "acct-1" }],
       commandProfiles: {},
@@ -73,7 +73,7 @@ describe("listSessionTargets", () => {
     });
     // A host inventory exists, but this account isn't in its providerAccounts list.
     state.agentHosts.set("host-1", {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [],
       providerAccounts: [],
       commandProfiles: {},
@@ -101,10 +101,10 @@ describe("listSessionTargets", () => {
     // The field is typed as required, but a record persisted before it existed can still
     // lack it — the picker must degrade to "not attached", not throw.
     const stale = {
-      agentId: "host-1",
+      hostId: "host-1",
       repositories: [],
       commandProfiles: {},
-    } as unknown as AgentHostRecord;
+    } as unknown as HostInventoryRecord;
     state.agentHosts.set("host-1", stale);
     expect(listSessionTargets(state)).toEqual([]);
   });

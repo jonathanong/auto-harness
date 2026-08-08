@@ -10,7 +10,7 @@ describe("Scheduler ordering", () => {
     worktrees.seed({
       id: "wt-b",
       name: "wt-b",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/b",
       labels: [],
@@ -21,7 +21,7 @@ describe("Scheduler ordering", () => {
     worktrees.seed({
       id: "wt-a",
       name: "wt-a",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/a",
       labels: [],
@@ -88,7 +88,7 @@ describe("Scheduler ordering", () => {
     worktrees.seed({
       id: "wt-old",
       name: "wt-old",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/o",
       labels: [],
@@ -99,7 +99,7 @@ describe("Scheduler ordering", () => {
     worktrees.seed({
       id: "wt-unset",
       name: "wt-unset",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/u",
       labels: [],
@@ -110,7 +110,7 @@ describe("Scheduler ordering", () => {
     worktrees.seed({
       id: "wt-new",
       name: "wt-new",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "r1",
       path: "/n",
       labels: [],

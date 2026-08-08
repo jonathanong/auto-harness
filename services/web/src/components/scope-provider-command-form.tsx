@@ -12,13 +12,13 @@ import {
 } from "@auto-harness/shared";
 
 export function ScopeProviderCommandForm({
-  agentId,
+  hostId,
   scope,
   providerAccountId,
   currentOverride,
   providerCommands,
 }: {
-  agentId: string;
+  hostId: string;
   scope: ProviderAccountScope;
   providerAccountId: string;
   /** The raw commandId override set AT THIS scope — undefined means "inherits". */
@@ -40,14 +40,14 @@ export function ScopeProviderCommandForm({
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
         start(async () => {
-          const current = await getInventory(agentId);
+          const current = await getInventory(hostId);
           const next = setScopeProviderCommand(
             current,
             scope,
             providerAccountId,
             value || undefined,
           );
-          const r = await putInventory(agentId, next);
+          const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;

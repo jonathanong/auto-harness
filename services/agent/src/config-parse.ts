@@ -123,7 +123,7 @@ export function parseAgentConfig(raw: unknown, options: ParseAgentConfigOptions 
   if (!isRecord(raw)) {
     throw new Error("config root must be an object");
   }
-  const agentId = requireString(raw, "agentId", "config");
+  const hostId = requireString(raw, "hostId", "config");
   if (!Array.isArray(raw.repositories)) {
     throw new Error("repositories must be an array");
   }
@@ -140,7 +140,7 @@ export function parseAgentConfig(raw: unknown, options: ParseAgentConfigOptions 
       : "info";
 
   const config: AgentConfig = {
-    agentId,
+    hostId,
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
     providerAccounts: parseProviderAccounts(raw.providerAccounts),
     commandProfiles: parseCommandProfiles(raw.commandProfiles ?? {}),

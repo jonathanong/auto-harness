@@ -9,7 +9,7 @@ export type SessionSummary = {
   id: string;
   status: string;
   repositoryId?: string | null;
-  agentId?: string | null;
+  hostId?: string | null;
   worktreeId?: string | null;
   targetLabel?: string | null;
   resolvedArgv?: string[] | null;
@@ -34,7 +34,7 @@ export type SessionDetailProps = {
   children?: ReactNode;
   /** When set, the repository field links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
   repoHrefBase?: string;
-  /** When set, the host field links to `${hostHrefBase}/${encodeURIComponent(agentId)}` (control plane only — the host pane has no per-host route). */
+  /** When set, the host field links to `${hostHrefBase}/${encodeURIComponent(hostId)}` (control plane only — the host pane has no per-host route). */
   hostHrefBase?: string;
   /** When set, the worktree field links to `${worktreeHrefBase}/${encodeURIComponent(worktreeId)}`. */
   worktreeHrefBase?: string;
@@ -98,19 +98,19 @@ export function SessionDetail({
               <dt className="text-xs uppercase text-muted-foreground">Ref</dt>
               <dd className="font-mono text-sm">{s.ref ?? "—"}</dd>
             </div>
-            {s.agentId ? (
+            {s.hostId ? (
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Host</dt>
                 <dd className="font-mono text-sm">
                   {hostHrefBase ? (
                     <Link
-                      href={`${hostHrefBase}/${encodeURIComponent(s.agentId)}`}
+                      href={`${hostHrefBase}/${encodeURIComponent(s.hostId)}`}
                       className="hover:underline"
                     >
-                      {s.agentId}
+                      {s.hostId}
                     </Link>
                   ) : (
-                    s.agentId
+                    s.hostId
                   )}
                 </dd>
               </div>

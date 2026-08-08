@@ -40,7 +40,7 @@ describe("createWsTransport", () => {
 
     const transport = createWsTransport({
       url: `ws://127.0.0.1:${addr.port}/ws`,
-      agentId: "a1",
+      hostId: "a1",
     });
     await transport.ready;
     let assignSeen = false;
@@ -51,7 +51,7 @@ describe("createWsTransport", () => {
     });
     await transport.send({
       type: "host:register",
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [],
       commandProfiles: ["c"],
     });

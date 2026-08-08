@@ -33,7 +33,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     const page = plane.listSessionsPage({
       ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
       ...(url.searchParams.get("cursor") ? { cursor: url.searchParams.get("cursor")! } : {}),
-      ...(url.searchParams.get("agentId") ? { agentId: url.searchParams.get("agentId")! } : {}),
+      ...(url.searchParams.get("hostId") ? { hostId: url.searchParams.get("hostId")! } : {}),
       ...(url.searchParams.get("status") ? { status: url.searchParams.get("status")! } : {}),
       ...(url.searchParams.get("q") ? { q: url.searchParams.get("q")! } : {}),
     });

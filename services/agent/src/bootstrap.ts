@@ -23,7 +23,7 @@ export type FetchHostConfigDeps = {
 /** Identity only — no host inventory yet (register first, attach repos via UI). */
 export function emptyAgentConfig(identity: AgentIdentity): AgentConfig {
   const config: AgentConfig = {
-    agentId: identity.agentId,
+    hostId: identity.hostId,
     apiUrl: identity.apiUrl,
     repositories: [],
     providerAccounts: [],
@@ -46,7 +46,7 @@ export function inventoryFingerprint(config: AgentConfig): string {
 
 /**
  * Load host inventory from the control plane.
- * `GET /api/v1/agents/:agentId/config`
+ * `GET /api/v1/agents/:hostId/config`
  * Missing config (404) → empty inventory so the agent can register first.
  */
 export async function fetchAgentHostConfig(
@@ -55,7 +55,7 @@ export async function fetchAgentHostConfig(
 ): Promise<AgentConfig> {
   const fetchFn = deps.fetchFn ?? fetch;
   const base = httpBaseFromApiUrl(identity.apiUrl);
-  const url = `${base}/api/v1/agents/${encodeURIComponent(identity.agentId)}/config`;
+  const url = `${base}/api/v1/agents/${encodeURIComponent(identity.hostId)}/config`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (identity.apiKey) {
     headers.authorization = `Bearer ${identity.apiKey}`;
@@ -71,7 +71,7 @@ export async function fetchAgentHostConfig(
   const body = (await res.json()) as unknown;
   const raw =
     typeof body === "object" && body !== null
-      ? { ...(body as Record<string, unknown>), agentId: identity.agentId }
+      ? { ...(body as Record<string, unknown>), hostId: identity.hostId }
       : body;
   const config = parseAgentConfig(raw, { allowEmptyRepositories: true });
   config.apiUrl = identity.apiUrl;

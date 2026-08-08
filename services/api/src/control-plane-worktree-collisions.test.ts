@@ -54,7 +54,7 @@ describe("worktree name uniqueness across hosts", () => {
   it("registerAgent rejects invalid slug names and cross-host name collisions", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
     const invalid = plane.registerAgent({
-      agentId: "host-c",
+      hostId: "host-c",
       worktrees: [{ id: "w1", name: "Not_A_Slug", repositoryId: "r1", path: "/r/w1", labels: [] }],
       commandProfiles: [],
     });
@@ -76,7 +76,7 @@ describe("worktree name uniqueness across hosts", () => {
     expect(first.ok).toBe(true);
 
     const collide = plane.registerAgent({
-      agentId: "host-e",
+      hostId: "host-e",
       worktrees: [{ id: "w2", name: "taken", repositoryId: "r2", path: "/r2/w2", labels: [] }],
       commandProfiles: [],
     });

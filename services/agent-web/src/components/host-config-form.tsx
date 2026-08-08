@@ -6,7 +6,7 @@ import { Button, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "../lib/api.ts";
 
-export function HostConfigForm({ agentId, initialJson }: { agentId: string; initialJson: string }) {
+export function HostConfigForm({ hostId, initialJson }: { hostId: string; initialJson: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +30,7 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
         }
         start(async () => {
           const res = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
+            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
             {
               method: "PUT",
               headers: { "content-type": "application/json" },
@@ -73,7 +73,7 @@ export function HostConfigForm({ agentId, initialJson }: { agentId: string; init
           Saved.
         </p>
       ) : null}
-      <WithTooltip tip="Replace the entire host inventory for this agentId">
+      <WithTooltip tip="Replace the entire host inventory for this hostId">
         <Button type="submit" disabled={pending} data-pw="host-config-submit">
           {pending ? "Saving…" : "Save host config"}
         </Button>

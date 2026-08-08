@@ -59,7 +59,7 @@ async function main(): Promise<void> {
     server.plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "agent-ws",
+      hostId: "agent-ws",
       repositoryId: "demo",
       path: wt,
       labels: ["echo"],
@@ -68,7 +68,7 @@ async function main(): Promise<void> {
     });
 
     const config: AgentConfig = {
-      agentId: "agent-ws",
+      hostId: "agent-ws",
       logLevel: "info",
       apiUrl: `ws://127.0.0.1:${port}/ws`,
       repositories: [

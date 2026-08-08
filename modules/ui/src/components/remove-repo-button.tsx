@@ -6,11 +6,11 @@ import { getInventory, putInventory, removeHostRepository } from "@auto-harness/
 import { ConfirmButton } from "./confirm-button.tsx";
 
 export function RemoveRepoButton({
-  agentId,
+  hostId,
   repositoryId,
   redirectTo,
 }: {
-  agentId: string;
+  hostId: string;
   repositoryId: string;
   /** Navigate here after a successful removal instead of refreshing in place (e.g. the detail page). */
   redirectTo?: string;
@@ -23,9 +23,9 @@ export function RemoveRepoButton({
       confirmDescription="Removes it and its worktrees from host inventory. Does not delete disk files."
       pw={`repo-remove-${repositoryId}`}
       onConfirm={async () => {
-        const current = await getInventory(agentId);
+        const current = await getInventory(hostId);
         const next = removeHostRepository(current, repositoryId);
-        const r = await putInventory(agentId, next);
+        const r = await putInventory(hostId, next);
         if (!r.ok) {
           return;
         }

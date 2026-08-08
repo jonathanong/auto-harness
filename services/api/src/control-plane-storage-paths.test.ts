@@ -48,7 +48,7 @@ describe("ControlPlane storage write-through paths", () => {
     });
 
     plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [{ id: "wt1", name: "wt1", repositoryId: "r1", path: "/w", labels: [] }],
       commandProfiles: ["c"],
       replaceExisting: true,
@@ -141,11 +141,11 @@ describe("ControlPlane storage write-through paths", () => {
     await plane.hydrateFromStorage();
     expect(plane.listSchedules().some((s) => s.id === "sch1")).toBe(true);
     expect(plane.listRepositories().some((r) => r.id === "r1")).toBe(true);
-    expect(plane.getAgentHostConfig("a1")?.agentId).toBe("a1");
+    expect(plane.getAgentHostConfig("a1")?.hostId).toBe("a1");
     expect(plane.listArchives().length).toBeGreaterThan(0);
 
     // Verify real persistence directly against storage, not just the in-process cache.
     expect(await storage.getSession("s1")).not.toBeNull();
-    expect((await storage.getAgentHost("a1"))?.agentId).toBe("a1");
+    expect((await storage.getAgentHost("a1"))?.hostId).toBe("a1");
   });
 });

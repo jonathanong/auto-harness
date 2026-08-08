@@ -31,7 +31,7 @@ On the agent host:
 
 1. Install Node, Git, and AI CLIs.
 2. Clone or install the agent package / monorepo checkout used for `auto-harness-agent`.
-3. Create a **bound** service account on the control plane (`boundAgentId` = this host’s `agentId`).
+3. Create a **bound** service account on the control plane (`boundHostId` = this host’s `hostId`).
 4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths, plus which catalog Provider Accounts are attached to this host. Commands resolve to named, fixed argv (D4 — no free-form shell) from the global Provider/Provider Account/Command catalogs, not a per-host profile map.
 5. Set **only** identity env vars on the host:
 
@@ -75,7 +75,7 @@ Host inventory template: [examples/local/agent-host.config.json](../examples/loc
 Preferred path — **drain, then restart** ([agent.md](agent.md#auto-update-graceful-restart)):
 
 1. Signal drain:
-   - Control plane: `POST /api/v1/agents/drain` with `{ "agentId": "…" }`
+   - Control plane: `POST /api/v1/agents/drain` with `{ "hostId": "…" }`
    - And/or agent-local drain signal
 2. Wait until no running sessions on that agent.
 3. Deploy new agent code/binary.
@@ -86,7 +86,7 @@ Do **not** kill in-flight AI CLIs for routine upgrades.
 
 ### Command profiles / repos
 
-- Update host inventory via `PUT /api/v1/agents/:agentId/config` or the Agents UI.
+- Update host inventory via `PUT /api/v1/agents/:hostId/config` or the Agents UI.
 - Restart agent after drain so it re-bootstraps the new inventory.
 - Keep profile names stable when possible so schedules/UI selections keep working.
 

@@ -45,8 +45,8 @@ async function main(): Promise<void> {
     await git(repo, ["branch", "-M", "main"]);
     const mainSha = (await git(repo, ["rev-parse", "HEAD"])).trim();
 
-    const agentId = "cli-e2e";
-    const put = await fetch(`${api}/api/v1/agents/${encodeURIComponent(agentId)}/config`, {
+    const hostId = "cli-e2e";
+    const put = await fetch(`${api}/api/v1/agents/${encodeURIComponent(hostId)}/config`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
 
     const env = {
       ...process.env,
-      HARNESS_AGENT_ID: agentId,
+      HARNESS_AGENT_ID: hostId,
       HARNESS_API_URL: api,
     };
 

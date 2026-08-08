@@ -20,7 +20,7 @@ export type SessionRecord = {
   createdAt: string;
   ref?: string;
   worktreeId?: string | null;
-  agentId?: string | null;
+  hostId?: string | null;
   concurrencyKey?: string;
   metadata?: Record<string, unknown>;
   errorCode?: string;
@@ -36,14 +36,14 @@ export type SessionRecord = {
   exitCode?: number | null;
   cliResumeRef?: string;
   resumedFromSessionId?: string;
-  pinnedAgentId?: string | null;
+  pinnedHostId?: string | null;
   pinExpiresAt?: string;
 };
 
 export type WorktreeRecord = {
   id: string;
   name: string;
-  agentId: string;
+  hostId: string;
   repositoryId: string;
   path: string;
   labels: string[];

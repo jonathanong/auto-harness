@@ -44,11 +44,11 @@ describe("list-query", () => {
   it("builds API paths", () => {
     const path = buildSessionsApiPath(
       { status: "queued", q: "", cursor: "", limit: 10 },
-      { agentId: "local-1" },
+      { hostId: "local-1" },
     );
     expect(path).toContain("limit=10");
     expect(path).toContain("status=queued");
-    expect(path).toContain("agentId=local-1");
+    expect(path).toContain("hostId=local-1");
   });
 
   it("includes cursor and q when present", () => {

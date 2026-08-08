@@ -55,7 +55,7 @@ describe("ControlPlane remaining branches", () => {
     expect(
       plane.handleAgentMessage({
         type: "host:register",
-        agentId: "ax",
+        hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
       }).ok,
@@ -63,7 +63,7 @@ describe("ControlPlane remaining branches", () => {
     expect(
       plane.handleAgentMessage({
         type: "host:register",
-        agentId: "ax",
+        hostId: "ax",
         worktrees: [{ id: "wt-x", name: "wt-x", repositoryId: "repo-1", path: "/x", labels: [] }],
         commandProfiles: ["echo-prompt"],
       }).ok,
@@ -77,7 +77,7 @@ describe("ControlPlane remaining branches", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],
@@ -122,7 +122,7 @@ describe("ControlPlane remaining branches", () => {
     plane.seedWorktree({
       id: "wt-2",
       name: "wt-2",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w2",
       labels: [],
@@ -148,7 +148,7 @@ describe("ControlPlane remaining branches", () => {
       now: () => "2026-01-01T00:00:00.000Z",
     });
     plane2.registerAgent({
-      agentId: "fresh",
+      hostId: "fresh",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/p", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
@@ -158,7 +158,7 @@ describe("ControlPlane remaining branches", () => {
     plane2.seedWorktree({
       id: "wt-gone",
       name: "wt-gone",
-      agentId: "fresh",
+      hostId: "fresh",
       repositoryId: "repo-1",
       path: "/g",
       labels: [],

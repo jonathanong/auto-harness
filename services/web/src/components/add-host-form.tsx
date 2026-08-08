@@ -24,24 +24,24 @@ export function AddHostForm() {
         setOk(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
-        const agentId = String(fd.get("agentId") ?? "").trim();
-        if (!agentId) {
-          setError("agentId is required");
+        const hostId = String(fd.get("hostId") ?? "").trim();
+        if (!hostId) {
+          setError("hostId is required");
           return;
         }
         start(async () => {
           const existing = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
+            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
             { cache: "no-store" },
           );
           if (existing.ok) {
-            setOk(`Host slot ${agentId} already exists — left its inventory untouched.`);
+            setOk(`Host slot ${hostId} already exists — left its inventory untouched.`);
             form.reset();
             router.refresh();
             return;
           }
           const res = await fetch(
-            `${apiBase()}/api/v1/agents/${encodeURIComponent(agentId)}/config`,
+            `${apiBase()}/api/v1/agents/${encodeURIComponent(hostId)}/config`,
             {
               method: "PUT",
               headers: { "content-type": "application/json" },
@@ -53,7 +53,7 @@ export function AddHostForm() {
             return;
           }
           setOk(
-            `Host slot ${agentId} created (empty inventory). Run: HARNESS_AGENT_ID=${agentId} pnpm local:agent start`,
+            `Host slot ${hostId} created (empty inventory). Run: HARNESS_AGENT_ID=${hostId} pnpm local:agent start`,
           );
           form.reset();
           router.refresh();
@@ -62,12 +62,12 @@ export function AddHostForm() {
     >
       <div className="space-y-1">
         <Label
-          htmlFor="agentId"
+          htmlFor="hostId"
           tip="Stable host identity. Must match HARNESS_AGENT_ID on the host when you start the daemon. Does not start a process."
         >
-          agentId
+          hostId
         </Label>
-        <Input id="agentId" name="agentId" required placeholder="local-1" data-pw="add-host-id" />
+        <Input id="hostId" name="hostId" required placeholder="local-1" data-pw="add-host-id" />
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="add-host-error">

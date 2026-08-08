@@ -14,13 +14,13 @@ import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 type LiveWorktree = { status?: string; online?: boolean };
 
 export function HostRepositoriesSection({
-  agentId,
+  hostId,
   inventory,
   namesById,
   unattachedCatalog,
   liveById,
 }: {
-  agentId: string;
+  hostId: string;
   inventory: HostInventory;
   namesById: Record<string, string>;
   unattachedCatalog: RepoCatalogEntry[];
@@ -47,7 +47,7 @@ export function HostRepositoriesSection({
     <div className="space-y-6" data-pw="host-repositories-section">
       <section className="space-y-2">
         <h3 className="text-lg font-medium">Attach a repository</h3>
-        <AddRepoForm agentId={agentId} inventory={inventory} catalog={unattachedCatalog} />
+        <AddRepoForm hostId={hostId} inventory={inventory} catalog={unattachedCatalog} />
       </section>
       <section className="space-y-3">
         <h3 className="text-lg font-medium">Attached repositories</h3>
@@ -62,22 +62,22 @@ export function HostRepositoriesSection({
             }
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
-                <HostRepoSettingsForm agentId={agentId} inventory={inventory} repo={repo} />
+                <HostRepoSettingsForm hostId={hostId} inventory={inventory} repo={repo} />
                 <div className="flex gap-2">
                   <AddWorktreeForm
-                    agentId={agentId}
+                    hostId={hostId}
                     inventory={inventory}
                     repo={repo}
                     repoName={g.repositoryName ?? repo.id}
                   />
-                  <RemoveRepoButton agentId={agentId} repositoryId={repo.id} />
+                  <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
                 </div>
               </div>
             );
           }}
           renderWorktreeActions={(wt) => (
             <RemoveWorktreeButton
-              agentId={agentId}
+              hostId={hostId}
               repositoryId={wt.repositoryId}
               worktreeId={wt.id}
             />

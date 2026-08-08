@@ -52,7 +52,7 @@ export async function initFeatureRepo(paths: LocalE2ePaths): Promise<string> {
 
 export function buildAgentConfig(paths: LocalE2ePaths): AgentConfig {
   return parseAgentConfig({
-    agentId: "local-e2e",
+    hostId: "local-e2e",
     commandProfiles: {
       "echo-prompt": { argv: ["echo"], appendPrompt: true },
       "nope-profile": { argv: ["false"], appendPrompt: false },

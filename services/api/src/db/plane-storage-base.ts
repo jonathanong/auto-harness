@@ -4,7 +4,7 @@ import type { SessionStatus } from "@auto-harness/shared";
 import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, WorktreeRecord } from "./types.ts";
 import {
-  type AgentHostRecord,
+  type HostInventoryRecord,
   type ArchiveObject,
   type ConnectionRecord,
   type LogRecord,
@@ -73,19 +73,19 @@ export class DynamoPlaneStorageBase {
   }
 
   tryAcquireAgentLock(opts: {
-    agentId: string;
+    hostId: string;
     connectionId: string;
     replaceExisting: boolean;
   }): Promise<boolean> {
     return locks.tryAcquireAgentLock(this.ctx, opts);
   }
 
-  releaseAgentLock(agentId: string, connectionId: string): Promise<void> {
-    return locks.releaseAgentLock(this.ctx, agentId, connectionId);
+  releaseAgentLock(hostId: string, connectionId: string): Promise<void> {
+    return locks.releaseAgentLock(this.ctx, hostId, connectionId);
   }
 
-  getAgentLock(agentId: string): Promise<string | null> {
-    return locks.getAgentLock(this.ctx, agentId);
+  getAgentLock(hostId: string): Promise<string | null> {
+    return locks.getAgentLock(this.ctx, hostId);
   }
 
   putConnection(conn: ConnectionRecord): Promise<void> {
@@ -171,19 +171,19 @@ export class DynamoPlaneStorageBase {
     return catalog.listArchives(this.ctx);
   }
 
-  putAgentHost(rec: AgentHostRecord): Promise<void> {
+  putAgentHost(rec: HostInventoryRecord): Promise<void> {
     return catalog.putAgentHost(this.ctx, rec);
   }
 
-  getAgentHost(agentId: string): Promise<AgentHostRecord | null> {
-    return catalog.getAgentHost(this.ctx, agentId);
+  getAgentHost(hostId: string): Promise<HostInventoryRecord | null> {
+    return catalog.getAgentHost(this.ctx, hostId);
   }
 
-  listAgentHosts(): Promise<AgentHostRecord[]> {
+  listAgentHosts(): Promise<HostInventoryRecord[]> {
     return catalog.listAgentHosts(this.ctx);
   }
 
-  deleteAgentHost(agentId: string): Promise<void> {
-    return catalog.deleteAgentHost(this.ctx, agentId);
+  deleteAgentHost(hostId: string): Promise<void> {
+    return catalog.deleteAgentHost(this.ctx, hostId);
   }
 }

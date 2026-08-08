@@ -23,7 +23,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
  */
 test.describe("real orchestration", () => {
   test("browser-created session runs on a real agent and completes", async ({ page, request }) => {
-    const agentId = `pw-orch-${test.info().parallelIndex}-${Date.now()}`;
+    const hostId = `pw-orch-${test.info().parallelIndex}-${Date.now()}`;
     const repoId = `pw-orch-repo-${test.info().parallelIndex}-${Date.now()}`;
     const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
     const root = mkdtempSync(join(tmpdir(), "pw-orchestration-"));
@@ -41,7 +41,7 @@ test.describe("real orchestration", () => {
       await git(repo, ["commit", "-m", "init"]);
       await git(repo, ["branch", "-M", "main"]);
 
-      await request.put(`${API}/api/v1/agents/${agentId}/config`, {
+      await request.put(`${API}/api/v1/agents/${hostId}/config`, {
         data: {
           repositories: [
             {
@@ -66,7 +66,7 @@ test.describe("real orchestration", () => {
 
       // Real bootstrap fetch (GET /api/v1/agents/:id/config), same as `pnpm local:agent start`.
       const config = await fetchAgentHostConfig({
-        agentId,
+        hostId,
         apiUrl: "ws://127.0.0.1:7430/ws",
         logLevel: "info",
       });

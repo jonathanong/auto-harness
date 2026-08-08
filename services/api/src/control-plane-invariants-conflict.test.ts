@@ -44,7 +44,7 @@ describe("ControlPlane concurrency and late status", () => {
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
-      agentId: "a1",
+      hostId: "a1",
       repositoryId: "repo-1",
       path: "/w",
       labels: [],
@@ -114,7 +114,7 @@ describe("ControlPlane concurrency and late status", () => {
     });
     seedBaseCommand(plane);
     const reg = plane.registerAgent({
-      agentId: "a1",
+      hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });

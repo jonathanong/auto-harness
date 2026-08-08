@@ -27,7 +27,7 @@ export {
  * Optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL.
  */
 export function loadAgentIdentity(env: NodeJS.ProcessEnv = process.env): AgentIdentity {
-  const agentId = env.HARNESS_AGENT_ID?.trim() || LOCAL_AGENT_ID;
+  const hostId = env.HARNESS_AGENT_ID?.trim() || LOCAL_AGENT_ID;
   const apiUrl = env.HARNESS_API_URL?.trim() || env.HARNESS_API_HTTP?.trim() || LOCAL_API_HTTP;
   const logLevelRaw = env.HARNESS_LOG_LEVEL;
   const logLevel =
@@ -37,7 +37,7 @@ export function loadAgentIdentity(env: NodeJS.ProcessEnv = process.env): AgentId
     logLevelRaw === "error"
       ? logLevelRaw
       : "info";
-  const identity: AgentIdentity = { agentId, apiUrl, logLevel };
+  const identity: AgentIdentity = { hostId, apiUrl, logLevel };
   if (env.HARNESS_API_KEY) {
     identity.apiKey = env.HARNESS_API_KEY;
   }
@@ -61,7 +61,7 @@ export async function loadAgentConfig(options: LoadConfigOptions = {}): Promise<
   if (options.inline !== undefined) {
     const config = parseAgentConfig(options.inline);
     if (env.HARNESS_AGENT_ID) {
-      config.agentId = env.HARNESS_AGENT_ID;
+      config.hostId = env.HARNESS_AGENT_ID;
     }
     if (env.HARNESS_API_URL) {
       config.apiUrl = env.HARNESS_API_URL;

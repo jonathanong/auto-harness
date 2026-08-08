@@ -16,13 +16,13 @@ export async function handleAgentConfigRoutes(ctx: RouteCtx): Promise<boolean> {
   if (!match) {
     return false;
   }
-  const agentId = decodeURIComponent(match[1]!);
+  const hostId = decodeURIComponent(match[1]!);
 
   if (method === "GET") {
-    const config = plane.getAgentHostConfig(agentId);
+    const config = plane.getAgentHostConfig(hostId);
     if (!config) {
       send(res, 404, {
-        error: { code: "NOT_FOUND", message: `no host config for agent ${agentId}` },
+        error: { code: "NOT_FOUND", message: `no host config for agent ${hostId}` },
       });
       return true;
     }
@@ -33,7 +33,7 @@ export async function handleAgentConfigRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "PUT") {
     try {
       const body = await readJson(req);
-      const result = plane.putAgentHostConfig(agentId, body);
+      const result = plane.putAgentHostConfig(hostId, body);
       if (!result.ok) {
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: result.error },
@@ -51,7 +51,7 @@ export async function handleAgentConfigRoutes(ctx: RouteCtx): Promise<boolean> {
   }
 
   if (method === "DELETE") {
-    const result = plane.deleteAgentHostConfig(agentId);
+    const result = plane.deleteAgentHostConfig(hostId);
     if (!result.ok) {
       send(res, 404, {
         error: { code: "NOT_FOUND", message: result.error },
