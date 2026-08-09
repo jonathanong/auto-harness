@@ -830,6 +830,14 @@ describe("durable control-plane transitions", () => {
     await freshDrainer.hydrateFromStorage();
     freshDrainer.state.hostConnection.clear();
     expect((await freshDrainer.drainHostDurable("host-review-durable")).ok).toBe(true);
+    const losingStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
+    losingStorage.markHostDraining = async () => false;
+    const losingDrainer = new ControlPlane({ storage: losingStorage });
+    losingDrainer.state.hostConnection.set("host-review-lost-lease", "connection-lost-lease");
+    expect(await losingDrainer.drainHostDurable("host-review-lost-lease")).toEqual({
+      ok: false,
+      runningSessionIds: [],
+    });
     const assigned = await staleScheduler.assignQueuedDurable();
     expect(assigned.some((item) => item.session.id === "session-review-drain")).toBe(false);
     const expired = await ctx.storage.getSession("session-review-expired-pin");

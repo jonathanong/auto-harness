@@ -120,6 +120,8 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/cron")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(200);
+    plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
+    expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(409);
     expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
     expect(
       (
