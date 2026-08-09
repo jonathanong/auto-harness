@@ -3,7 +3,7 @@ import type { ProcessRunner } from "./executor.ts";
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
   ensureWorktree(opts: { repoPath: string; worktreePath: string; branch: string }): Promise<void>;
-  checkoutRef(opts: { cwd: string; ref: string }): Promise<void>;
+  checkoutRef(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
 
@@ -11,6 +11,7 @@ async function runGit(
   runner: ProcessRunner,
   cwd: string,
   args: string[],
+  signal?: AbortSignal,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   let stdout = "";
   let stderr = "";
@@ -18,6 +19,7 @@ async function runGit(
     argv: ["git", ...args],
     cwd,
     timeoutMs: 120_000,
+    ...(signal ? { signal } : {}),
     onChunk: (c) => {
       if (c.stream === "stdout") {
         stdout += c.data;
@@ -69,21 +71,21 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
     },
 
-    async checkoutRef({ cwd, ref }) {
+    async checkoutRef({ cwd, ref, signal }) {
       // Prefer detached checkout so a branch already used by the main repo
       // (e.g. ref "main" while primary tree is on main) still works.
-      let resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref]);
+      let resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref], signal);
       if (resolved.exitCode !== 0) {
-        await runGit(runner, cwd, ["fetch", "--all", "--tags"]);
-        resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref]);
+        await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+        resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref], signal);
       }
       if (resolved.exitCode !== 0) {
         throw new Error(`Failed to resolve ref ${ref}: ${resolved.stderr}`);
       }
       const sha = resolved.stdout.trim();
-      let co = await runGit(runner, cwd, ["switch", "--detach", sha]);
+      let co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
       if (co.exitCode !== 0) {
-        co = await runGit(runner, cwd, ["checkout", "--detach", sha]);
+        co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
       }
       if (co.exitCode !== 0) {
         throw new Error(`Failed to checkout ref ${ref}: ${co.stderr}`);

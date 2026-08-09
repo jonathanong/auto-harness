@@ -1,0 +1,109 @@
+import { describe, expect, it } from "vitest";
+
+import type { ProcessRunner } from "./executor.ts";
+import { LogStreamer } from "./log-streamer.ts";
+import { runClaimedSession } from "./session-run-claimed.ts";
+import { baseAssign } from "./session-runner-test-helpers.ts";
+
+const claimed = {
+  repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+  worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
+  cwd: "/wt",
+};
+
+describe("claimed session cancellation", () => {
+  it("honors a cancellation already present before setup is spawned", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        cancellableRunner,
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ setupScript: "slow" }),
+        claimed,
+        controller.signal,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "cancelled" });
+  });
+
+  it("does not start the primary command after cancellation without setup", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let started = false;
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run() {
+            started = true;
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign(),
+        claimed,
+        controller.signal,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    expect(started).toBe(false);
+  });
+
+  it("reports timeout when setup is entered after the deadline", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        cancellableRunner,
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ setupScript: "slow" }),
+        claimed,
+        controller.signal,
+        () => true,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "timed_out" });
+  });
+
+  it("runs a claimed command without a cancellation signal", async () => {
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run() {
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign(),
+        claimed,
+        undefined,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "completed" });
+  });
+});
+
+const cancellableRunner: ProcessRunner = {
+  async run(options) {
+    const isSetup = options.argv[0] === "/bin/sh" && options.argv[1] === "-c";
+    if (!isSetup) return { exitCode: 0, timedOut: false, signal: null };
+    return await new Promise((resolve) => {
+      options.signal?.addEventListener(
+        "abort",
+        () => resolve({ exitCode: null, timedOut: false, cancelled: true, signal: "SIGTERM" }),
+        { once: true },
+      );
+    });
+  },
+};

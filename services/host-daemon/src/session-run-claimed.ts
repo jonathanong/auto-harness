@@ -1,17 +1,10 @@
 import type { SessionAssign, SessionLogChunk } from "@auto-harness/shared";
 
-import type { RepositoryConfig, WorktreeConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
-import { runSetupScript } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
+import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { finishSession, type SessionRunResult } from "./session-outcome.ts";
 import { detectUsageLimit } from "./usage-limit.ts";
-
-type ClaimedWorktree = {
-  repository: RepositoryConfig;
-  worktree: WorktreeConfig;
-  cwd: string;
-};
 
 /**
  * Run setup + command for an already-claimed worktree (checkout already done).
@@ -26,9 +19,34 @@ export async function runClaimedSession(
   logs: SessionLogChunk[],
   assign: SessionAssign,
   claimed: ClaimedWorktree,
+  signal: AbortSignal | undefined,
+  timedOut: () => boolean,
+  remainingMs: () => number,
 ): Promise<SessionRunResult> {
-  const setupFail = await runSetupIfNeeded(processRunner, streamer, logs, assign, claimed);
+  const setupFail = await runSetupIfNeeded(
+    processRunner,
+    streamer,
+    logs,
+    assign,
+    claimed,
+    signal,
+    timedOut,
+    remainingMs,
+  );
   if (setupFail) return setupFail;
+
+  if (signal?.aborted) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+    );
+  }
 
   if (assign.resolvedArgv.length === 0) {
     return await finishSession(
@@ -55,46 +73,9 @@ export async function runClaimedSession(
     assign,
     claimed,
     assign.resolvedArgv,
-  );
-}
-
-async function runSetupIfNeeded(
-  processRunner: ProcessRunner,
-  streamer: LogStreamer,
-  logs: SessionLogChunk[],
-  assign: SessionAssign,
-  claimed: ClaimedWorktree,
-): Promise<SessionRunResult | null> {
-  const setupScript =
-    assign.setupScript ?? claimed.worktree.setupScript ?? claimed.repository.setupScript;
-  if (!setupScript || assign.resume) return null;
-
-  streamer.write("system", "Running setup script");
-  const setup = await runSetupScript(
-    processRunner,
-    setupScript,
-    claimed.cwd,
-    Math.min(assign.timeout * 1000, 600_000),
-    (c) => {
-      streamer.write(c.stream, c.data);
-    },
-  );
-  if (setup.exitCode === 0) return null;
-
-  return await finishSession(
-    processRunner,
-    streamer,
-    logs,
-    assign,
-    claimed.worktree.id,
-    claimed.cwd,
-    claimed.repository.terminalHookScript,
-    {
-      status: "failed",
-      exitCode: setup.exitCode,
-      errorCode: "setup_failed",
-      errorMessage: "setup script failed",
-    },
+    signal,
+    timedOut,
+    remainingMs,
   );
 }
 
@@ -105,15 +86,21 @@ async function runProcessAndFinish(
   assign: SessionAssign,
   claimed: ClaimedWorktree,
   argv: string[],
+  signal: AbortSignal | undefined,
+  timedOut: () => boolean,
+  remainingMs: () => number,
 ): Promise<SessionRunResult> {
   streamer.write("system", `Spawning: ${argv.join(" ")}`);
   let combined = "";
   const result = await processRunner.run({
     argv,
     cwd: claimed.cwd,
-    timeoutMs: assign.timeout * 1000,
+    timeoutMs: remainingMs(),
+    ...(signal ? { signal } : {}),
     onChunk: (c) => {
-      combined += c.data;
+      // Usage-limit detection only needs recent output; retaining every byte of
+      // a long-running command made daemon memory grow without a bound.
+      combined = (combined + c.data).slice(-256 * 1024);
       streamer.write(c.stream, c.data);
     },
   });
@@ -130,8 +117,12 @@ async function runProcessAndFinish(
       outcome,
     );
 
-  if (result.timedOut) {
+  if (result.timedOut || timedOut()) {
     return await finish({ status: "timed_out", exitCode: result.exitCode });
+  }
+
+  if (result.cancelled || signal?.aborted) {
+    return await finish({ status: "cancelled", exitCode: result.exitCode });
   }
 
   if (detectUsageLimit(combined)) {

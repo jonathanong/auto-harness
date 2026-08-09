@@ -1,5 +1,6 @@
 import type { SessionErrorCode, SessionStatus } from "@auto-harness/shared";
 
+import { createChildEnv } from "./child-env.ts";
 import type { ProcessRunner } from "./executor.ts";
 
 type TerminalHookInput = {
@@ -23,7 +24,7 @@ export async function runTerminalHook(
   log: (message: string) => void = console.error,
 ): Promise<void> {
   const env: NodeJS.ProcessEnv = {
-    ...process.env,
+    ...createChildEnv(),
     HARNESS_SESSION_ID: input.sessionId,
     HARNESS_STATUS: input.status,
     HARNESS_WORKTREE_PATH: input.worktreePath,

@@ -19,6 +19,7 @@ Identity (env; local defaults shown):
   HARNESS_API_URL    default http://127.0.0.1:7420  (alias: HARNESS_API_HTTP)
   HARNESS_API_KEY    service account token (when auth enabled)
   HARNESS_LOG_LEVEL  optional (debug|info|warn|error)
+  HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
 
 Host inventory (repos, worktrees, commandProfiles) is configured via
 API/UI: PUT /api/v1/hosts/:hostId/inventory — not a local config file.

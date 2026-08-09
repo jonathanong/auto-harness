@@ -18,4 +18,40 @@ describe("LogStreamer", () => {
     expect(chunks[0]!.sk < chunks[1]!.sk).toBe(true);
     expect(streamer.nextSeq()).toBe(2);
   });
+
+  it("caps total retained chunks and UTF-8 bytes", () => {
+    const chunks: string[] = [];
+    const streamer = new LogStreamer(
+      "sess-1",
+      (chunk) => chunks.push(chunk.content),
+      undefined,
+      0,
+      { maxChunks: 2, maxBytes: 5 },
+    );
+    streamer.write("stdout", "ééé");
+    streamer.write("stdout", "x");
+    expect(streamer.write("stdout", "y")).toBeNull();
+    expect(chunks).toEqual(["éé", "x"]);
+    expect(Buffer.byteLength(chunks.join(""), "utf8")).toBe(5);
+  });
+
+  it("drops a character that cannot fit into the remaining byte budget", () => {
+    const streamer = new LogStreamer("sess-1", () => undefined, undefined, 0, { maxBytes: 1 });
+    expect(streamer.write("stdout", "é")).toBeNull();
+  });
+
+  it("counts chunks independently from a continued sequence", () => {
+    const chunks: number[] = [];
+    const streamer = new LogStreamer(
+      "sess-1",
+      (chunk) => chunks.push(chunk.seq),
+      undefined,
+      10_000,
+      { maxChunks: 2 },
+    );
+    streamer.write("stdout", "a");
+    streamer.write("stdout", "b");
+    expect(streamer.write("stdout", "c")).toBeNull();
+    expect(chunks).toEqual([10_000, 10_001]);
+  });
 });

@@ -1,16 +1,15 @@
-import type { HostWireMessage, SessionAssign, SessionLogChunk } from "@auto-harness/shared";
-
+import type { HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport.ts";
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SpawnProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
+import { OutboundQueue } from "./outbound-queue.ts";
+import { sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
-
 export type { DaemonTransport } from "./daemon-transport.ts";
-
 export type DaemonLoopOptions = {
   config: DaemonConfig;
   transport: DaemonTransport;
@@ -20,53 +19,48 @@ export type DaemonLoopOptions = {
   onLog?: (line: string) => void;
   now?: () => string;
 };
-
-/**
- * Phase 3 agent loop: register → receive assign → ack → run profile → status/logs.
- * Does not kill in-flight CLIs on drain (Phase 5); only refuses new work.
- */
+type InflightSession = {
+  controller: AbortController;
+  work: Promise<void>;
+};
 export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
-  private readonly inflight = new Map<string, Promise<void>>();
+  private readonly inflight = new Map<string, InflightSession>();
+  private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
   private readonly isDrainingExternal: (() => boolean) | undefined;
   private readonly onLog: ((line: string) => void) | undefined;
   private readonly now: () => string;
   private readonly config: DaemonConfig;
   private readonly transport: DaemonTransport;
-
+  private readonly outbound: OutboundQueue;
   constructor(options: DaemonLoopOptions) {
     this.config = options.config;
     this.transport = options.transport;
     this.isDrainingExternal = options.isDraining ?? undefined;
     this.onLog = options.onLog ?? undefined;
     this.now = options.now ?? (() => new Date().toISOString());
+    this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     const git = createGitClient(processRunner);
     this.worktrees = new WorktreeManager(options.config, git);
     this.runner = new SessionRunner({
       worktrees: this.worktrees,
       processRunner,
-      onLog: (chunk) => {
-        void this.emitLog(chunk);
-      },
+      onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });
   }
-
   async start(): Promise<void> {
     await this.worktrees.ensureAll();
     this.transport.onMessage((msg) => {
-      void this.handleServerMessage(msg);
+      void this.handleServerMessage(msg).catch((err: unknown) => {
+        this.onLog?.(`server message failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
     });
     await this.register();
   }
-
-  /**
-   * Hot-apply host inventory from the control plane (repos/profiles added via UI).
-   * Mutates the shared config object used by the session runner / worktree manager.
-   */
   async applyInventory(next: DaemonConfig): Promise<void> {
     this.config.repositories = next.repositories;
     this.config.commandProfiles = next.commandProfiles;
@@ -78,7 +72,7 @@ export class DaemonLoop {
   }
 
   async register(): Promise<void> {
-    await this.transport.send({
+    await this.outbound.send({
       type: "host:register",
       hostId: this.config.hostId,
       worktrees: this.config.repositories.flatMap((r) =>
@@ -95,7 +89,7 @@ export class DaemonLoop {
   }
 
   async keepalive(): Promise<void> {
-    await this.transport.send({
+    await this.outbound.send({
       type: "host:keepalive",
       hostId: this.config.hostId,
       at: this.now(),
@@ -108,13 +102,7 @@ export class DaemonLoop {
   }
 
   isDraining(): boolean {
-    if (this.draining) {
-      return true;
-    }
-    if (this.isDrainingExternal) {
-      return this.isDrainingExternal();
-    }
-    return false;
+    return this.draining || this.isDrainingExternal?.() === true;
   }
 
   inflightCount(): number {
@@ -122,7 +110,7 @@ export class DaemonLoop {
   }
 
   async waitForIdle(): Promise<void> {
-    await Promise.all(this.inflight.values());
+    await Promise.all([...this.inflight.values()].map((entry) => entry.work));
   }
 
   stop(): void {
@@ -135,8 +123,11 @@ export class DaemonLoop {
       return;
     }
     if (msg.type === "session:cancel") {
-      // Soft cancel: runner has no mid-flight cancel API yet; log only.
+      const current = this.inflight.get(msg.sessionId);
       this.onLog?.(`cancel requested for ${msg.sessionId}`);
+      if (current) {
+        current.controller.abort();
+      }
       return;
     }
     if (msg.type !== "session:assign") {
@@ -147,8 +138,14 @@ export class DaemonLoop {
       return;
     }
 
-    const work = this.runAssign(msg);
-    this.inflight.set(msg.sessionId, work);
+    if (this.inflight.has(msg.sessionId)) {
+      this.onLog?.(`duplicate assign ignored for ${msg.sessionId}`);
+      return;
+    }
+
+    const controller = new AbortController();
+    const work = this.runAssign(msg, controller.signal);
+    this.inflight.set(msg.sessionId, { controller, work });
     try {
       await work;
     } finally {
@@ -158,29 +155,18 @@ export class DaemonLoop {
 
   private async runAssign(
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
+    signal: AbortSignal,
   ): Promise<void> {
-    await this.transport.send({ type: "session:ack", sessionId: msg.sessionId });
+    await this.outbound.send({ type: "session:ack", sessionId: msg.sessionId });
 
-    const assign: SessionAssign = {
-      sessionId: msg.sessionId,
-      repositoryId: msg.repositoryId,
-      prompt: msg.prompt,
-      resolvedArgv: msg.resolvedArgv,
-      timeout: msg.timeout,
-      worktreeId: msg.worktreeId,
-      ...(msg.ref !== undefined ? { ref: msg.ref } : {}),
-      ...(msg.setupScript !== undefined ? { setupScript: msg.setupScript } : {}),
-      ...(msg.resume !== undefined ? { resume: msg.resume } : {}),
-      ...(msg.resumedFromSessionId !== undefined
-        ? { resumedFromSessionId: msg.resumedFromSessionId }
-        : {}),
-      ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-      ...(msg.metadata !== undefined ? { metadata: msg.metadata } : {}),
-    };
+    const assign = sessionAssignFromWire(msg);
 
     let result: SessionRunResult;
     try {
-      result = await this.runner.run(assign);
+      result = await this.runner.run(assign, {
+        signal,
+        initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
+      });
     } catch (err) {
       result = {
         status: "failed",
@@ -191,7 +177,11 @@ export class DaemonLoop {
       };
     }
 
-    await this.transport.send({
+    if (result.logs.length > 0) {
+      this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);
+    }
+    await this.outbound.flush();
+    await this.outbound.send({
       type: "session:status",
       sessionId: msg.sessionId,
       status: result.status,
@@ -203,14 +193,18 @@ export class DaemonLoop {
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
     this.onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
-    await this.transport.send({
-      type: "session:log",
-      sessionId: chunk.sessionId,
-      stream: chunk.stream,
-      content: chunk.content,
-      timestamp: chunk.timestamp,
-      seq: chunk.seq,
-    });
+    await this.outbound
+      .send({
+        type: "session:log",
+        sessionId: chunk.sessionId,
+        stream: chunk.stream,
+        content: chunk.content,
+        timestamp: chunk.timestamp,
+        seq: chunk.seq,
+      })
+      .catch((err: unknown) => {
+        this.onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);
+      });
   }
 }
 

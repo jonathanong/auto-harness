@@ -144,4 +144,25 @@ describe("SessionRunner success paths", () => {
     expect(result.status).toBe("completed");
     expect(setupSpy).not.toHaveBeenCalled();
   });
+
+  it("uses the remaining session deadline for the primary command after setup", async () => {
+    const timeouts: number[] = [];
+    const { sessionRunner } = setup({
+      async run(options) {
+        if (options.argv[0] === "/bin/sh" && options.argv[1] === "-c") {
+          await new Promise<void>((resolve) => setTimeout(resolve, 30));
+        } else {
+          timeouts.push(options.timeoutMs);
+        }
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    await expect(
+      sessionRunner.run(baseAssign({ timeout: 1, setupScript: "slow" })),
+    ).resolves.toMatchObject({
+      status: "completed",
+    });
+    expect(timeouts[0]).toBeGreaterThan(0);
+    expect(timeouts[0]).toBeLessThan(1_000);
+  });
 });

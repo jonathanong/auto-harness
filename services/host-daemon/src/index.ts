@@ -26,6 +26,7 @@ export type {
 export { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
 export { SpawnProcessRunner, runSetupScript } from "./executor.ts";
 export type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+export { createChildEnv } from "./child-env.ts";
 export { createGitClient } from "./git.ts";
 export type { GitClient } from "./git.ts";
 export { LogStreamer } from "./log-streamer.ts";

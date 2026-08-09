@@ -31,6 +31,34 @@ describe("runTerminalHook", () => {
     expect(seenEnv?.HARNESS_WORKTREE_PATH).toBe("/wt");
   });
 
+  it("injects hook metadata without inheriting daemon credentials", async () => {
+    const original = process.env.HARNESS_API_KEY;
+    process.env.HARNESS_API_KEY = "do-not-forward";
+    try {
+      let seen: NodeJS.ProcessEnv | undefined;
+      await runTerminalHook(
+        {
+          async run(opts) {
+            seen = opts.env;
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        {
+          scriptPath: "/h.sh",
+          cwd: "/wt",
+          sessionId: "s",
+          status: "completed",
+          worktreePath: "/wt",
+        },
+      );
+      expect(seen?.HARNESS_API_KEY).toBeUndefined();
+      expect(seen?.HARNESS_SESSION_ID).toBe("s");
+    } finally {
+      if (original === undefined) delete process.env.HARNESS_API_KEY;
+      else process.env.HARNESS_API_KEY = original;
+    }
+  });
+
   it("swallows hook failures", async () => {
     const log = vi.fn();
     const runner: ProcessRunner = {
