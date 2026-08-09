@@ -65,43 +65,78 @@ export function createPlaneWsBridge(): {
         let boundHostId: string | null = null;
         let windowStartedAt = Date.now();
         let messageCount = 0;
+        let accepting = true;
+        let pendingRegistration: { hostId: string; closed: boolean } | null = null;
 
+        const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
+          if (!accepting) return;
+          if (!isAllowedMessage(plane, msg, boundHostId, principal, auth?.mode === "required")) {
+            accepting = false;
+            socket.close(1008, "message not authorized");
+            return;
+          }
+          const registration =
+            msg.type === "host:register" ? { hostId: msg.hostId, closed: false } : null;
+          if (registration) pendingRegistration = registration;
+          const result = await plane.handleHostMessageDurable(msg);
+          if (!result.ok) {
+            if (registration && pendingRegistration === registration) pendingRegistration = null;
+            if (socket.readyState === socket.OPEN) {
+              socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
+            }
+            return;
+          }
+          if (msg.type === "host:register") {
+            if (pendingRegistration === registration) pendingRegistration = null;
+            // A durable registration can finish after the peer has gone away.
+            // Do not publish the dead socket; release the lease and let the
+            // normal disconnect path mark its inventory offline/requeue work.
+            if (registration?.closed || socket.readyState !== socket.OPEN) {
+              const connectionId = result.connectionId;
+              if (connectionId) await plane.disconnectHostDurable(connectionId);
+              return;
+            }
+            // Do not overwrite a live socket until the control plane accepted the claim.
+            boundHostId = msg.hostId;
+            hostSockets.set(msg.hostId, socket);
+            socket.send(JSON.stringify({ type: "host:registered", hostId: msg.hostId }));
+          }
+        };
+        // The ws EventEmitter does not await async listeners. Keep host messages in wire
+        // order so a keepalive or status cannot race an in-flight durable registration.
+        // Store a recovered tail so one failed durable operation cannot block later frames.
+        let messageTail: Promise<void> = Promise.resolve();
         socket.on("message", (raw) => {
+          if (!accepting || socket.readyState !== socket.OPEN) return;
           const now = Date.now();
           if (now - windowStartedAt >= 1000) {
             windowStartedAt = now;
             messageCount = 0;
           }
           if (++messageCount > MAX_WS_MESSAGES_PER_SECOND) {
+            accepting = false;
             socket.close(1008, "message rate exceeded");
             return;
           }
           const msg = parseHostMessage(raw);
           if (!msg) {
+            accepting = false;
             socket.close(1008, "invalid message");
             return;
           }
-          if (!isAllowedMessage(plane, msg, boundHostId, principal, auth?.mode === "required")) {
-            socket.close(1008, "message not authorized");
-            return;
-          }
-          const result = plane.handleHostMessage(msg);
-          if (!result.ok) {
-            socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
-            return;
-          }
-          if (msg.type === "host:register") {
-            // Do not overwrite a live socket until the control plane accepted the claim.
-            boundHostId = msg.hostId;
-            hostSockets.set(msg.hostId, socket);
-            socket.send(JSON.stringify({ type: "host:registered", hostId: msg.hostId }));
-          }
+          messageTail = messageTail
+            .then(() => handleMessage(msg))
+            .catch(() => {
+              accepting = false;
+              socket.close(1011, "message handling failed");
+            });
         });
         socket.on("close", () => {
+          if (pendingRegistration) pendingRegistration.closed = true;
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
             const connectionId = plane.state.hostConnection.get(boundHostId);
-            if (connectionId) plane.disconnectHost(connectionId);
+            if (connectionId) void plane.disconnectHostDurable(connectionId);
           }
         });
       };

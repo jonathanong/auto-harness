@@ -1,5 +1,3 @@
-import type { HostToServerMessage } from "@auto-harness/shared";
-
 import { readJson, send, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { parseHostMessage } from "./ws-hub.ts";
@@ -63,7 +61,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
           return true;
         }
       }
-      const result = plane.handleHostMessage(body as HostToServerMessage);
+      const result = await plane.handleHostMessageDurable(body);
       if (!result.ok) {
         send(res, 400, {
           error: { code: "AGENT_MESSAGE_ERROR", message: result.error },
@@ -81,7 +79,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/assign") {
-    const assigned = plane.assignQueued();
+    const assigned = await plane.assignQueuedDurable();
     send(res, 200, {
       items: assigned.map((a) => ({
         sessionId: a.session.id,
@@ -93,19 +91,19 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/ack-deadlines") {
-    const requeued = plane.enforceAckDeadlines();
+    const requeued = await plane.enforceAckDeadlinesDurable();
     send(res, 200, { requeued });
     return true;
   }
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/reclaim-stale") {
-    const reclaimed = plane.reclaimStaleHosts();
+    const reclaimed = await plane.reclaimStaleHostsDurable();
     send(res, 200, { reclaimed });
     return true;
   }
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/cron") {
-    const created = plane.evaluateCron();
+    const created = await plane.evaluateCronDurable();
     send(res, 200, { items: created });
     return true;
   }
@@ -123,7 +121,14 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
-      send(res, 200, plane.drainHost(body.hostId));
+      const drained = await plane.drainHostDurable(body.hostId);
+      if (!drained.ok) {
+        send(res, 409, {
+          error: { code: "CONFLICT", message: "host connection changed while draining" },
+        });
+        return true;
+      }
+      send(res, 200, drained);
       return true;
     } catch {
       send(res, 400, {

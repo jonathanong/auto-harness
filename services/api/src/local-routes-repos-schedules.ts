@@ -171,7 +171,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       hidden(res);
       return true;
     }
-    const result = plane.triggerSchedule(schedTrigger[1]!);
+    const result = await plane.triggerScheduleDurable(schedTrigger[1]!, new Date().toISOString());
     if (!result.ok) {
       send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
       return true;

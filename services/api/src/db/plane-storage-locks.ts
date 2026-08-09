@@ -1,7 +1,16 @@
-import { DeleteCommand, GetCommand, PutCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
+/* eslint-disable max-lines */
+import {
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  ScanCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 
 import {
   isConditionalFailed,
+  isConditionalTransactionFailed,
   type ConnectionRecord,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
@@ -18,7 +27,7 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
       }),
     );
     return true;
@@ -27,8 +36,187 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
         ConditionExpression: "attribute_not_exists(hostId)",
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Acquire the host lease and persist the connection atomically. The lock is
+ * the authority for duplicate registration; putting the connection first (or
+ * queueing either write) leaves a window where two API processes disagree
+ * about the owner.
+ */
+export async function tryRegisterHost(
+  ctx: PlaneStorageCtx,
+  opts: {
+    hostId: string;
+    connection: ConnectionRecord;
+    replaceExisting: boolean;
+    existingConnectionId?: string;
+  },
+): Promise<boolean> {
+  try {
+    // A fresh API process may not yet have the current owner in its local
+    // cache. Resolve it from DynamoDB and use that exact value in the
+    // transaction; otherwise force-replacement overwrites the lease but leaks
+    // the prior connection row forever.
+    const existingConnectionId = opts.replaceExisting
+      ? (opts.existingConnectionId ?? (await getHostLock(ctx, opts.hostId)))
+      : undefined;
+    const lockValues = existingConnectionId
+      ? {
+          ":connectionId": opts.connection.connectionId,
+          ":existing": existingConnectionId,
+          ":false": false,
+        }
+      : { ":connectionId": opts.connection.connectionId, ":false": false };
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              UpdateExpression: "SET connectionId = :connectionId, draining = :false",
+              ...(opts.replaceExisting
+                ? existingConnectionId
+                  ? {
+                      ConditionExpression:
+                        "attribute_not_exists(connectionId) OR connectionId = :existing",
+                    }
+                  : {}
+                : { ConditionExpression: "attribute_not_exists(connectionId)" }),
+              ExpressionAttributeValues: lockValues,
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.connections,
+              Item: { ...opts.connection },
+              ConditionExpression: "attribute_not_exists(connectionId)",
+            },
+          },
+          ...(existingConnectionId
+            ? [
+                {
+                  Delete: {
+                    TableName: ctx.tables.connections,
+                    Key: { connectionId: existingConnectionId },
+                  },
+                },
+              ]
+            : []),
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Release both the connection row and its host lease, guarded by ownership. */
+export async function releaseHostConnection(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Delete: {
+              TableName: ctx.tables.connections,
+              Key: { connectionId: opts.connectionId },
+            },
+          },
+          {
+            Delete: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Update a heartbeat only while this connection still owns the host lease. */
+export async function heartbeatConnection(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string; at: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.connections,
+              Key: { connectionId: opts.connectionId },
+              UpdateExpression: "SET lastHeartbeatAt = :at",
+              ConditionExpression: "hostId = :hostId",
+              ExpressionAttributeValues: { ":at": opts.at, ":hostId": opts.hostId },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Persist a host drain against the exact lease owner. Assignment transactions
+ * check this flag, so a scheduler with a stale worktree cache cannot commit
+ * work after the drain request has completed.
+ */
+export async function markHostDraining(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        UpdateExpression: "SET draining = :true",
+        ConditionExpression: "connectionId = :connectionId",
+        ExpressionAttributeValues: { ":true": true, ":connectionId": opts.connectionId },
       }),
     );
     return true;

@@ -130,3 +130,22 @@ export function isConditionalFailed(err: unknown): boolean {
     (err as { name: string }).name === "ConditionalCheckFailedException"
   );
 }
+
+/** A transaction is retryable only when a condition, not infrastructure,
+ * canceled it. AWS exposes per-item cancellation reasons; do not turn a
+ * throttling or validation cancellation into a false claim loss. */
+export function isConditionalTransactionFailed(err: unknown): boolean {
+  if (isConditionalFailed(err)) {
+    return true;
+  }
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    !("name" in err) ||
+    (err as { name?: string }).name !== "TransactionCanceledException"
+  ) {
+    return false;
+  }
+  const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
+  return reasons?.some((reason) => reason.Code === "ConditionalCheckFailed") ?? false;
+}

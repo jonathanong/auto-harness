@@ -56,6 +56,13 @@ export class ControlPlane extends ControlPlaneCatalog {
     return schedules.triggerSchedule(this.state, id, nowIso);
   }
 
+  async triggerScheduleDurable(
+    id: string,
+    nowIso: string = this.state.now(),
+  ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+    return schedules.triggerScheduleDurable(this.state, id, nowIso);
+  }
+
   createRepository(input: {
     id?: string;
     name: string;
@@ -100,6 +107,10 @@ export class ControlPlane extends ControlPlaneCatalog {
     return schedules.evaluateCron(this.state, nowIso);
   }
 
+  async evaluateCronDurable(nowIso: string = this.state.now()): Promise<PublicSession[]> {
+    return schedules.evaluateCronDurable(this.state, nowIso);
+  }
+
   tryClaimScheduleFire(
     scheduleId: string,
     expectedNextRunAt: string,
@@ -108,8 +119,20 @@ export class ControlPlane extends ControlPlaneCatalog {
     return schedules.tryClaimScheduleFire(this.state, scheduleId, expectedNextRunAt, nowIso);
   }
 
+  async tryClaimScheduleFireDurable(
+    scheduleId: string,
+    expectedNextRunAt: string,
+    nowIso: string,
+  ): Promise<PublicSession | null> {
+    return schedules.tryClaimScheduleFireDurable(this.state, scheduleId, expectedNextRunAt, nowIso);
+  }
+
   reclaimStaleHosts(nowMs: number = Date.now()): string[] {
     return lifecycle.reclaimStaleHosts(this.state, nowMs);
+  }
+
+  async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
+    return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
   }
 
   getHeartbeatStaleMs(): number {

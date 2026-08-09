@@ -1,7 +1,10 @@
+/* eslint-disable max-lines */
 import type { PublicSession } from "./control-plane-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { queueWrite } from "./control-plane-state.ts";
+import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
+import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
 
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
@@ -19,27 +22,61 @@ export function triggerSchedule(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return target;
+  }
+  const result = createSession(state, scheduledSessionInput(schedule));
+  if (!result.ok) {
+    return { ok: false, error: result.error };
+  }
   schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   schedule.lastRunAt = nowIso;
   if (state.storage) {
     queueWrite(state, state.storage.putSchedule({ ...schedule }));
   }
-  const result = createSession(state, {
-    repositoryId: schedule.repositoryId,
-    prompt: `scheduled:${schedule.name}`,
-    ...(schedule.providerAccountId !== undefined
-      ? { providerAccountId: schedule.providerAccountId }
-      : {}),
-    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
-    timeout: schedule.timeout,
-    type: "scheduled",
-    source: "schedule",
-    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
-  });
-  if (!result.ok) {
-    return { ok: false, error: result.error };
-  }
   return { ok: true, session: result.session };
+}
+
+/**
+ * Durable manual trigger. Unlike cron, an operator-triggered run is allowed
+ * before nextRunAt; the expected cursor still prevents two API processes from
+ * creating duplicate sessions or advancing the schedule independently.
+ */
+export async function triggerScheduleDurable(
+  state: ControlPlaneState,
+  id: string,
+  nowIso: string = state.now(),
+): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+  if (!state.storage) {
+    return triggerSchedule(state, id, nowIso);
+  }
+  const schedule = state.schedules.get(id);
+  if (!schedule) {
+    return { ok: false, error: "schedule not found" };
+  }
+  if (!schedule.enabled) {
+    return { ok: false, error: "schedule is disabled" };
+  }
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return target;
+  }
+  const session = createScheduledSession(state, schedule, target.label);
+  const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  const won = await state.storage.tryClaimScheduleAndCreateSession({
+    scheduleId: id,
+    expectedNextRunAt: schedule.nextRunAt,
+    newNextRunAt,
+    lastRunAt: nowIso,
+    session,
+  });
+  if (!won) {
+    return { ok: false, error: "schedule was updated or claimed concurrently" };
+  }
+  state.schedules.set(id, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
+  state.sessions.set(session.id, session);
+  return { ok: true, session: toPublic(state, session) };
 }
 
 /**
@@ -86,9 +123,131 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return null;
+  }
+  const result = createSession(state, scheduledSessionInput(schedule));
+  if (!result.ok) {
+    return null;
+  }
   schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   schedule.lastRunAt = nowIso;
-  const result = createSession(state, {
+  return result.session;
+}
+
+/** Durable cron evaluator; DynamoDB owns the nextRunAt compare-and-swap. */
+export async function evaluateCronDurable(
+  state: ControlPlaneState,
+  nowIso: string = state.now(),
+): Promise<PublicSession[]> {
+  if (!state.storage) {
+    return evaluateCron(state, nowIso);
+  }
+  const created: PublicSession[] = [];
+  const nowMs = Date.parse(nowIso);
+  for (const schedule of state.schedules.values()) {
+    if (!schedule.enabled || Date.parse(schedule.nextRunAt) > nowMs) {
+      continue;
+    }
+    const session = await tryClaimScheduleFireDurable(
+      state,
+      schedule.id,
+      schedule.nextRunAt,
+      nowIso,
+    );
+    if (session) {
+      created.push(session);
+    }
+  }
+  return created;
+}
+
+/** Atomically claim one schedule and create exactly one scheduled session. */
+export async function tryClaimScheduleFireDurable(
+  state: ControlPlaneState,
+  scheduleId: string,
+  expectedNextRunAt: string,
+  nowIso: string,
+): Promise<PublicSession | null> {
+  if (!state.storage) {
+    return tryClaimScheduleFire(state, scheduleId, expectedNextRunAt, nowIso);
+  }
+  const schedule = state.schedules.get(scheduleId);
+  if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
+    return null;
+  }
+  if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
+    return null;
+  }
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return null;
+  }
+  const session = createScheduledSession(state, schedule, target.label);
+  const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  const won = await state.storage.tryClaimScheduleAndCreateSession({
+    scheduleId,
+    expectedNextRunAt,
+    newNextRunAt,
+    lastRunAt: nowIso,
+    session,
+  });
+  if (!won) {
+    return null;
+  }
+  state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
+  state.sessions.set(session.id, session);
+  return toPublic(state, session);
+}
+
+function createScheduledSession(
+  state: ControlPlaneState,
+  schedule: import("./db/types.ts").ScheduleRecord,
+  targetLabel: string,
+): SessionRecord {
+  const id = state.idFactory();
+  return {
+    id,
+    repositoryId: schedule.repositoryId,
+    prompt: `scheduled:${schedule.name}`,
+    ...(schedule.providerAccountId !== undefined
+      ? { providerAccountId: schedule.providerAccountId }
+      : {}),
+    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
+    targetLabel,
+    timeout: schedule.timeout,
+    priority: 0,
+    requiredLabels: [],
+    onConflict: "queue",
+    status: "queued",
+    queueShard: Math.abs(hashString(id)) % state.shardCount,
+    createdAt: state.now(),
+    retryCount: 0,
+    type: "scheduled",
+    source: "schedule",
+    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+  };
+}
+
+function resolveScheduledTarget(
+  state: ControlPlaneState,
+  schedule: import("./db/types.ts").ScheduleRecord,
+): { ok: true; label: string } | { ok: false; error: string } {
+  return resolveSessionTargetLabel(state, schedule.providerAccountId, schedule.commandId);
+}
+
+function scheduledSessionInput(schedule: import("./db/types.ts").ScheduleRecord): {
+  repositoryId: string;
+  prompt: string;
+  providerAccountId?: string;
+  commandId?: string;
+  timeout: number;
+  type: string;
+  source: string;
+  ref?: string;
+} {
+  return {
     repositoryId: schedule.repositoryId,
     prompt: `scheduled:${schedule.name}`,
     ...(schedule.providerAccountId !== undefined
@@ -99,9 +258,5 @@ export function tryClaimScheduleFire(
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
-  });
-  if (!result.ok) {
-    return null;
-  }
-  return result.session;
+  };
 }

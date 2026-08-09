@@ -134,4 +134,46 @@ describe("putSchedule / updateSchedule targeting", () => {
       expect(result.schedule.name).toBe("renamed");
     }
   });
+
+  it("keeps schedule cursors unchanged when a command or provider account is deleted", () => {
+    const plane = new ControlPlane({
+      scheduleIdFactory: (() => {
+        let n = 0;
+        return () => `stale-target-${++n}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    seedBaseCommand(plane);
+    const commandSchedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "command",
+      commandId: "cmd-base",
+      cron: "* * * * *",
+      timeout: 1,
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    });
+    plane.deleteCommand("cmd-base");
+    expect(plane.triggerSchedule(commandSchedule.id).ok).toBe(false);
+    expect(plane.getSchedule(commandSchedule.id)?.nextRunAt).toBe("2026-01-01T00:00:00.000Z");
+
+    plane.createProvider({ id: "prov-stale", name: "claude", defaultCommandId: null });
+    plane.createProviderAccount({ id: "acct-stale", providerId: "prov-stale", label: "x@y.com" });
+    const accountSchedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "account",
+      providerAccountId: "acct-stale",
+      cron: "* * * * *",
+      timeout: 1,
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    });
+    plane.deleteProviderAccount("acct-stale");
+    expect(
+      plane.tryClaimScheduleFire(
+        accountSchedule.id,
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).toBeNull();
+    expect(plane.getSchedule(accountSchedule.id)?.nextRunAt).toBe("2026-01-01T00:00:00.000Z");
+  });
 });

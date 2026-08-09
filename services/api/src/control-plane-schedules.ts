@@ -5,8 +5,11 @@ import { resolveSessionTargetLabel } from "./control-plane-session-target-label.
 
 export {
   evaluateCron,
+  evaluateCronDurable,
   triggerSchedule,
+  triggerScheduleDurable,
   tryClaimScheduleFire,
+  tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
 
 export function putSchedule(

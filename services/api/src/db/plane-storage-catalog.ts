@@ -1,14 +1,17 @@
+/* eslint-disable max-lines */
 import {
   DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
+  TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 import {
   isConditionalFailed,
+  isConditionalTransactionFailed,
   type HostInventoryRecord,
   type ArchiveObject,
   type LogRecord,
@@ -16,6 +19,8 @@ import {
   type RepositoryRecord,
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
+import type { SessionRecord } from "./types.ts";
+import { sessionToItem } from "./plane-storage-types.ts";
 
 export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void> {
   await ctx.doc.send(
@@ -128,6 +133,58 @@ export async function tryClaimSchedule(
     return true;
   } catch (err) {
     if (isConditionalFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Claim a due schedule and insert its session in one DynamoDB transaction.
+ * This is deliberately separate from `tryClaimSchedule`: advancing the cron
+ * cursor without the corresponding session creates a silent missed run.
+ */
+export async function tryClaimScheduleAndCreateSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    lastRunAt: string;
+    session: SessionRecord;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :n, lastRunAt = :l",
+              ConditionExpression: "nextRunAt = :e AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":n": opts.newNextRunAt,
+                ":l": opts.lastRunAt,
+                ":e": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.sessions,
+              Item: sessionToItem(opts.session),
+              ConditionExpression: "attribute_not_exists(id)",
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
       return false;
     }
     throw err;
