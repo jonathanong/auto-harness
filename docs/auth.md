@@ -92,12 +92,12 @@ The user can change their password after first login.
 
 Service accounts are for machines — CI/CD systems, VPS agents, and external integrations. Created by admins.
 
-| Property    | Value                                                                                         |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| Format      | `hns_` prefix + 48 random characters                                                          |
-| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                            |
-| Rotation    | Create a new key, update consumers, delete the old key                                        |
-| Auth method | `Authorization: Bearer <api-key>` header (REST) or `?token=<api-key>` query param (WebSocket) |
+| Property    | Value                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| Format      | `hns_` prefix + 48 random characters                               |
+| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation. |
+| Rotation    | Create a new key, update consumers, delete the old key             |
+| Auth method | `Authorization: Bearer <api-key>` header (REST and WebSocket)      |
 
 Service accounts have the same role system as user accounts (`read-only`, `operator`, `admin`) and can optionally be scoped to specific repositories:
 
@@ -207,7 +207,7 @@ sequenceDiagram
     participant Lambda
     participant DDB as DynamoDB
 
-    Agent->>APIGW: WebSocket connect<br/>wss://...?token=hns_xxx
+    Agent->>APIGW: WebSocket connect<br/>Authorization: Bearer hns_xxx
     APIGW->>Lambda: $connect handler
     Lambda->>DDB: Lookup API key hash
     DDB-->>Lambda: Service account found (role: operator, boundHostId: vps-prod-1)

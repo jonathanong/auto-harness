@@ -132,9 +132,7 @@ export function createPlaneWsBridge(): {
 function authenticateSocket(req: IncomingMessage, auth: AuthService | undefined): Principal | null {
   if (!auth) return null;
   const bearer = req.headers.authorization;
-  const token = bearer?.startsWith("Bearer ")
-    ? bearer.slice("Bearer ".length)
-    : new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
+  const token = bearer?.startsWith("Bearer ") ? bearer.slice("Bearer ".length) : null;
   return token ? auth.authenticateApiKey(token) : null;
 }
 

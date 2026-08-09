@@ -5,7 +5,7 @@ Real-time channel between the control plane, VPS agents, and the Web UI. REST CR
 ## Endpoint
 
 ```
-wss://<api-domain>/ws?token=<credential>
+wss://<api-domain>/ws with `Authorization: Bearer <credential>`
 ```
 
 | Connection | Credential                                                           | First message     |
@@ -147,7 +147,7 @@ sequenceDiagram
     participant Lambda
     participant DDB as DynamoDB
 
-    Agent->>GW: Connect ?token=hns_…
+    Agent->>GW: Connect with Authorization: Bearer hns_…
     GW->>Lambda: $connect
     Lambda->>DDB: Validate key - store Connection
     GW-->>Agent: open
