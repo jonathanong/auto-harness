@@ -5,6 +5,7 @@ import {
   PutCommand,
   ScanCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 import {
@@ -26,7 +27,7 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
       }),
     );
     return true;
@@ -35,7 +36,7 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId },
+        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
         ConditionExpression: "attribute_not_exists(hostId)",
       }),
     );
@@ -72,8 +73,12 @@ export async function tryRegisterHost(
       ? (opts.existingConnectionId ?? (await getHostLock(ctx, opts.hostId)))
       : undefined;
     const lockValues = existingConnectionId
-      ? { ":connectionId": opts.connection.connectionId, ":existing": existingConnectionId }
-      : { ":connectionId": opts.connection.connectionId };
+      ? {
+          ":connectionId": opts.connection.connectionId,
+          ":existing": existingConnectionId,
+          ":false": false,
+        }
+      : { ":connectionId": opts.connection.connectionId, ":false": false };
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
@@ -81,7 +86,7 @@ export async function tryRegisterHost(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              UpdateExpression: "SET connectionId = :connectionId",
+              UpdateExpression: "SET connectionId = :connectionId, draining = :false",
               ...(opts.replaceExisting
                 ? existingConnectionId
                   ? {
@@ -189,6 +194,34 @@ export async function heartbeatConnection(
     return true;
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Persist a host drain against the exact lease owner. Assignment transactions
+ * check this flag, so a scheduler with a stale worktree cache cannot commit
+ * work after the drain request has completed.
+ */
+export async function markHostDraining(
+  ctx: PlaneStorageCtx,
+  opts: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.hostLocks,
+        Key: { hostId: opts.hostId },
+        UpdateExpression: "SET draining = :true",
+        ConditionExpression: "connectionId = :connectionId",
+        ExpressionAttributeValues: { ":true": true, ":connectionId": opts.connectionId },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) {
       return false;
     }
     throw err;

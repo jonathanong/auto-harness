@@ -359,6 +359,49 @@ export function drainHost(
   return { ok: true, runningSessionIds: running };
 }
 
+/**
+ * Storage-backed drain. The lease flag is committed before publishing
+ * `host:drain`, and every durable assignment checks that same flag in its
+ * transaction. That closes the stale-cache window between candidate selection
+ * and assignment without trusting process-local `drainingHosts` state.
+ */
+export async function drainHostDurable(
+  state: ControlPlaneState,
+  hostId: string,
+): Promise<{ ok: boolean; runningSessionIds: string[] }> {
+  if (!state.storage) {
+    return drainHost(state, hostId);
+  }
+  // A freshly hydrated API process may have worktrees but not the owning
+  // socket in its local map. The durable lease is authoritative for drain,
+  // just as it is for assignment.
+  const connectionId =
+    state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
+  if (connectionId) {
+    const marked = await state.storage.markHostDraining(hostId, connectionId);
+    if (!marked) {
+      return { ok: false, runningSessionIds: [] };
+    }
+  }
+
+  state.drainingHosts.add(hostId);
+  const running = [...state.sessions.values()]
+    .filter((s) => s.hostId === hostId && s.status === "running")
+    .map((s) => s.id);
+  for (const wt of state.worktrees.values()) {
+    if (wt.hostId !== hostId || wt.status !== "idle") {
+      continue;
+    }
+    // Keep the durable inventory truthful for readers and restart hydration.
+    // The preceding lock transition is the scheduler authority if a write
+    // races or a second process has a stale worktree cache.
+    await state.storage.setWorktreeOnline(wt.id, false);
+    state.worktrees.set(wt.id, { ...wt, online: false });
+  }
+  state.onHostMessage?.(hostId, { type: "host:drain" });
+  return { ok: true, runningSessionIds: running };
+}
+
 export function isDraining(state: ControlPlaneState, hostId: string): boolean {
   return state.drainingHosts.has(hostId);
 }

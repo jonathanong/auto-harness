@@ -214,8 +214,9 @@ export async function tryAssignSession(
             ConditionCheck: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+              ConditionExpression:
+                "connectionId = :connectionId AND (attribute_not_exists(draining) OR draining = :false)",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
             },
           },
         ],
@@ -224,6 +225,43 @@ export async function tryAssignSession(
     return true;
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * A resume pin is a deadline, not a scheduling preference. Guard the failure
+ * transition with the observed pin value so a concurrent retry/resume cannot
+ * be overwritten by a scheduler that hydrated an older queued row.
+ */
+export async function failExpiredResumeSession(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; queueShard: number; pinExpiresAt: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :failed, statusShard = :statusShard, errorCode = :errorCode, errorMessage = :errorMessage",
+        ConditionExpression: "#s = :queued AND pinExpiresAt = :pinExpiresAt",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":failed": "failed",
+          ":statusShard": statusShardAttr("failed", opts.queueShard),
+          ":errorCode": "resume_failed",
+          ":errorMessage": "pin expired",
+          ":queued": "queued",
+          ":pinExpiresAt": opts.pinExpiresAt,
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) {
       return false;
     }
     throw err;

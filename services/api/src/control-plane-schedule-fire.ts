@@ -4,6 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
+import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
 
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
@@ -21,25 +22,18 @@ export function triggerSchedule(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return target;
+  }
+  const result = createSession(state, scheduledSessionInput(schedule));
+  if (!result.ok) {
+    return { ok: false, error: result.error };
+  }
   schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   schedule.lastRunAt = nowIso;
   if (state.storage) {
     queueWrite(state, state.storage.putSchedule({ ...schedule }));
-  }
-  const result = createSession(state, {
-    repositoryId: schedule.repositoryId,
-    prompt: `scheduled:${schedule.name}`,
-    ...(schedule.providerAccountId !== undefined
-      ? { providerAccountId: schedule.providerAccountId }
-      : {}),
-    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
-    timeout: schedule.timeout,
-    type: "scheduled",
-    source: "schedule",
-    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
-  });
-  if (!result.ok) {
-    return { ok: false, error: result.error };
   }
   return { ok: true, session: result.session };
 }
@@ -64,7 +58,11 @@ export async function triggerScheduleDurable(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
-  const session = createScheduledSession(state, schedule);
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return target;
+  }
+  const session = createScheduledSession(state, schedule, target.label);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const won = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
@@ -125,23 +123,16 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
-  schedule.lastRunAt = nowIso;
-  const result = createSession(state, {
-    repositoryId: schedule.repositoryId,
-    prompt: `scheduled:${schedule.name}`,
-    ...(schedule.providerAccountId !== undefined
-      ? { providerAccountId: schedule.providerAccountId }
-      : {}),
-    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
-    timeout: schedule.timeout,
-    type: "scheduled",
-    source: "schedule",
-    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
-  });
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return null;
+  }
+  const result = createSession(state, scheduledSessionInput(schedule));
   if (!result.ok) {
     return null;
   }
+  schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  schedule.lastRunAt = nowIso;
   return result.session;
 }
 
@@ -189,7 +180,11 @@ export async function tryClaimScheduleFireDurable(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
-  const session = createScheduledSession(state, schedule);
+  const target = resolveScheduledTarget(state, schedule);
+  if (!target.ok) {
+    return null;
+  }
+  const session = createScheduledSession(state, schedule, target.label);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const won = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
@@ -209,6 +204,7 @@ export async function tryClaimScheduleFireDurable(
 function createScheduledSession(
   state: ControlPlaneState,
   schedule: import("./db/types.ts").ScheduleRecord,
+  targetLabel: string,
 ): SessionRecord {
   const id = state.idFactory();
   return {
@@ -219,7 +215,7 @@ function createScheduledSession(
       ? { providerAccountId: schedule.providerAccountId }
       : {}),
     ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
-    targetLabel: schedule.targetLabel,
+    targetLabel,
     timeout: schedule.timeout,
     priority: 0,
     requiredLabels: [],
@@ -228,6 +224,37 @@ function createScheduledSession(
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt: state.now(),
     retryCount: 0,
+    type: "scheduled",
+    source: "schedule",
+    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+  };
+}
+
+function resolveScheduledTarget(
+  state: ControlPlaneState,
+  schedule: import("./db/types.ts").ScheduleRecord,
+): { ok: true; label: string } | { ok: false; error: string } {
+  return resolveSessionTargetLabel(state, schedule.providerAccountId, schedule.commandId);
+}
+
+function scheduledSessionInput(schedule: import("./db/types.ts").ScheduleRecord): {
+  repositoryId: string;
+  prompt: string;
+  providerAccountId?: string;
+  commandId?: string;
+  timeout: number;
+  type: string;
+  source: string;
+  ref?: string;
+} {
+  return {
+    repositoryId: schedule.repositoryId,
+    prompt: `scheduled:${schedule.name}`,
+    ...(schedule.providerAccountId !== undefined
+      ? { providerAccountId: schedule.providerAccountId }
+      : {}),
+    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
+    timeout: schedule.timeout,
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),

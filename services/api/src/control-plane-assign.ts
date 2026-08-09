@@ -146,6 +146,19 @@ export async function assignQueuedDurable(
       );
       if (session.pinnedHostId) {
         if (session.pinExpiresAt && Date.parse(session.pinExpiresAt) < nowMs) {
+          const failed = await state.storage.failExpiredResumeSession({
+            sessionId: session.id,
+            queueShard: session.queueShard,
+            pinExpiresAt: session.pinExpiresAt,
+          });
+          if (failed) {
+            state.sessions.set(session.id, {
+              ...session,
+              status: "failed",
+              errorCode: "resume_failed",
+              errorMessage: "pin expired",
+            });
+          }
           continue;
         }
         idle = idle.filter((w) => w.hostId === session.pinnedHostId);

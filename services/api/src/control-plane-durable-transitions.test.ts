@@ -724,6 +724,203 @@ describe("durable control-plane transitions", () => {
     expect(new ControlPlaneBase().listSessionsPage().items).toEqual([]);
   });
 
+  it("persists scheduler deadlines, drain ownership, and scheduled target validation", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    await ctx.storage.putCommand({
+      id: "cmd-review-durable",
+      name: "review durable",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const owner = new ControlPlane({
+      storage: ctx.storage,
+      connectionIdFactory: () => "connection-review-durable",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    expect(
+      (
+        await owner.registerHostDurable({
+          hostId: "host-review-durable",
+          worktrees: [
+            {
+              id: "worktree-review-durable",
+              name: "worktree-review-durable",
+              repositoryId: "repo-review-durable",
+              path: "/tmp/review-durable",
+              labels: [],
+            },
+          ],
+          commandProfiles: ["review durable"],
+          replaceExisting: true,
+        })
+      ).ok,
+    ).toBe(true);
+    await ctx.storage.putSession({
+      id: "session-review-expired-pin",
+      repositoryId: "repo-review-durable",
+      prompt: "expired",
+      commandId: "cmd-review-durable",
+      targetLabel: "review durable",
+      timeout: 1,
+      priority: 1,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      pinnedHostId: "host-review-durable",
+      pinExpiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    await ctx.storage.putSession({
+      id: "session-review-drain",
+      repositoryId: "repo-review-durable",
+      prompt: "must not assign after drain",
+      commandId: "cmd-review-durable",
+      targetLabel: "review durable",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const staleScheduler = new ControlPlane({
+      storage: ctx.storage,
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    await staleScheduler.hydrateFromStorage();
+    // A later resume can extend the deadline. The stale scheduler must not
+    // overwrite that newer pin while failing the genuinely expired session.
+    await ctx.storage.putSession({
+      id: "session-review-refreshed-pin",
+      repositoryId: "repo-review-durable",
+      prompt: "refreshed",
+      commandId: "cmd-review-durable",
+      targetLabel: "review durable",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      pinnedHostId: "host-review-durable",
+      pinExpiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    staleScheduler.state.sessions.set("session-review-refreshed-pin", {
+      ...(await ctx.storage.getSession("session-review-refreshed-pin"))!,
+      pinExpiresAt: "2000-01-01T00:00:00.000Z",
+    });
+    await ctx.storage.putSession({
+      ...(await ctx.storage.getSession("session-review-refreshed-pin"))!,
+      pinExpiresAt: "2099-01-01T00:00:00.000Z",
+    });
+    // This process deliberately has no local socket owner; it must resolve
+    // the durable lease before persisting the drain flag.
+    const freshDrainer = new ControlPlane({ storage: ctx.storage });
+    await freshDrainer.hydrateFromStorage();
+    freshDrainer.state.hostConnection.clear();
+    expect((await freshDrainer.drainHostDurable("host-review-durable")).ok).toBe(true);
+    const assigned = await staleScheduler.assignQueuedDurable();
+    expect(assigned.some((item) => item.session.id === "session-review-drain")).toBe(false);
+    const expired = await ctx.storage.getSession("session-review-expired-pin");
+    expect(expired?.status).toBe("failed");
+    expect(expired?.errorCode).toBe("resume_failed");
+    expect((await ctx.storage.getSession("session-review-refreshed-pin"))?.status).toBe("queued");
+    expect((await ctx.storage.getSession("session-review-refreshed-pin"))?.pinExpiresAt).toBe(
+      "2099-01-01T00:00:00.000Z",
+    );
+    expect((await ctx.storage.getSession("session-review-drain"))?.status).toBe("queued");
+    expect((await ctx.storage.getWorktree("worktree-review-durable"))?.online).toBe(false);
+
+    await ctx.storage.putSchedule({
+      id: "schedule-review-missing-target",
+      repositoryId: "repo-review-target",
+      name: "missing target",
+      commandId: "cmd-review-durable",
+      targetLabel: "review durable",
+      cron: "* * * * *",
+      enabled: true,
+      timeout: 1,
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+      lastRunAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const schedulePlane = new ControlPlane({
+      storage: ctx.storage,
+      idFactory: () => "session-review-missing-target",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    await schedulePlane.hydrateFromStorage();
+    await ctx.storage.deleteCommand("cmd-review-durable");
+    schedulePlane.state.commands.delete("cmd-review-durable");
+    expect(await schedulePlane.triggerScheduleDurable("schedule-review-missing-target")).toEqual({
+      ok: false,
+      error: "commandId cmd-review-durable not found",
+    });
+    expect(
+      await schedulePlane.tryClaimScheduleFireDurable(
+        "schedule-review-missing-target",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).toBeNull();
+    expect((await ctx.storage.getSchedule("schedule-review-missing-target"))?.nextRunAt).toBe(
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(await ctx.storage.getSession("session-review-missing-target")).toBeNull();
+
+    await ctx.storage.putProvider({ id: "provider-review-missing", name: "review provider" });
+    await ctx.storage.putProviderAccount({
+      id: "account-review-missing",
+      providerId: "provider-review-missing",
+      label: "review account",
+    });
+    await ctx.storage.putSchedule({
+      id: "schedule-review-missing-account",
+      repositoryId: "repo-review-account",
+      name: "missing account",
+      providerAccountId: "account-review-missing",
+      targetLabel: "review provider — review account",
+      cron: "* * * * *",
+      enabled: true,
+      timeout: 1,
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+      lastRunAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const providerSchedulePlane = new ControlPlane({
+      storage: ctx.storage,
+      idFactory: () => "session-review-missing-account",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    await providerSchedulePlane.hydrateFromStorage();
+    await ctx.storage.deleteProviderAccount("account-review-missing");
+    providerSchedulePlane.state.providerAccounts.delete("account-review-missing");
+    expect(
+      await providerSchedulePlane.tryClaimScheduleFireDurable(
+        "schedule-review-missing-account",
+        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).toBeNull();
+    expect((await ctx.storage.getSchedule("schedule-review-missing-account"))?.nextRunAt).toBe(
+      "2026-01-01T00:00:00.000Z",
+    );
+    expect(await ctx.storage.getSession("session-review-missing-account")).toBeNull();
+  });
+
   it("covers durable guard branches and optional transition fields", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);

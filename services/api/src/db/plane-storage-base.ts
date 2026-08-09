@@ -79,6 +79,14 @@ export class DynamoPlaneStorageBase {
     return sessions.tryAssignSession(this.ctx, opts);
   }
 
+  failExpiredResumeSession(opts: {
+    sessionId: string;
+    queueShard: number;
+    pinExpiresAt: string;
+  }): Promise<boolean> {
+    return sessions.failExpiredResumeSession(this.ctx, opts);
+  }
+
   releaseCancelledSessionWorktree(opts: {
     sessionId: string;
     worktreeId: string;
@@ -151,6 +159,10 @@ export class DynamoPlaneStorageBase {
 
   heartbeatConnection(hostId: string, connectionId: string, at: string): Promise<boolean> {
     return locks.heartbeatConnection(this.ctx, { hostId, connectionId, at });
+  }
+
+  markHostDraining(hostId: string, connectionId: string): Promise<boolean> {
+    return locks.markHostDraining(this.ctx, { hostId, connectionId });
   }
 
   getHostLock(hostId: string): Promise<string | null> {

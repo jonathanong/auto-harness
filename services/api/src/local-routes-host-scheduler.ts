@@ -121,7 +121,14 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
-      send(res, 200, plane.drainHost(body.hostId));
+      const drained = await plane.drainHostDurable(body.hostId);
+      if (!drained.ok) {
+        send(res, 409, {
+          error: { code: "CONFLICT", message: "host connection changed while draining" },
+        });
+        return true;
+      }
+      send(res, 200, drained);
       return true;
     } catch {
       send(res, 400, {

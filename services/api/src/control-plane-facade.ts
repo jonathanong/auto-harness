@@ -167,6 +167,10 @@ export class ControlPlaneBase {
     return agents.disconnectHostDurable(this.state, connectionId);
   }
 
+  async drainHostDurable(hostId: string): Promise<{ ok: boolean; runningSessionIds: string[] }> {
+    return agents.drainHostDurable(this.state, hostId);
+  }
+
   async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
     return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
   }
