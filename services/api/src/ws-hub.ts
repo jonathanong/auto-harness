@@ -65,23 +65,12 @@ export function createPlaneWsBridge(): {
         let boundHostId: string | null = null;
         let windowStartedAt = Date.now();
         let messageCount = 0;
+        let accepting = true;
 
-        socket.on("message", async (raw) => {
-          const now = Date.now();
-          if (now - windowStartedAt >= 1000) {
-            windowStartedAt = now;
-            messageCount = 0;
-          }
-          if (++messageCount > MAX_WS_MESSAGES_PER_SECOND) {
-            socket.close(1008, "message rate exceeded");
-            return;
-          }
-          const msg = parseHostMessage(raw);
-          if (!msg) {
-            socket.close(1008, "invalid message");
-            return;
-          }
+        const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
+          if (!accepting) return;
           if (!isAllowedMessage(plane, msg, boundHostId, principal, auth?.mode === "required")) {
+            accepting = false;
             socket.close(1008, "message not authorized");
             return;
           }
@@ -96,6 +85,35 @@ export function createPlaneWsBridge(): {
             hostSockets.set(msg.hostId, socket);
             socket.send(JSON.stringify({ type: "host:registered", hostId: msg.hostId }));
           }
+        };
+        // The ws EventEmitter does not await async listeners. Keep host messages in wire
+        // order so a keepalive or status cannot race an in-flight durable registration.
+        // Store a recovered tail so one failed durable operation cannot block later frames.
+        let messageTail: Promise<void> = Promise.resolve();
+        socket.on("message", (raw) => {
+          if (!accepting || socket.readyState !== socket.OPEN) return;
+          const now = Date.now();
+          if (now - windowStartedAt >= 1000) {
+            windowStartedAt = now;
+            messageCount = 0;
+          }
+          if (++messageCount > MAX_WS_MESSAGES_PER_SECOND) {
+            accepting = false;
+            socket.close(1008, "message rate exceeded");
+            return;
+          }
+          const msg = parseHostMessage(raw);
+          if (!msg) {
+            accepting = false;
+            socket.close(1008, "invalid message");
+            return;
+          }
+          messageTail = messageTail
+            .then(() => handleMessage(msg))
+            .catch(() => {
+              accepting = false;
+              socket.close(1011, "message handling failed");
+            });
         });
         socket.on("close", () => {
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
