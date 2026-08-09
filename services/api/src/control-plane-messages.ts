@@ -166,17 +166,19 @@ export function handleHostMessage(
 export async function handleHostMessageDurable(
   state: ControlPlaneState,
   msg: HostToServerMessage,
-): Promise<{ ok: boolean; error?: string }> {
-  if (!state.storage) {
-    return handleHostMessage(state, msg);
-  }
+): Promise<{ ok: boolean; error?: string; connectionId?: string }> {
   if (msg.type === "host:register") {
     const result = await registerHostDurable(state, {
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       commandProfiles: msg.commandProfiles,
     });
-    return result.ok ? { ok: true } : { ok: false, error: result.error };
+    return result.ok
+      ? { ok: true, connectionId: result.connectionId }
+      : { ok: false, error: result.error };
+  }
+  if (!state.storage) {
+    return handleHostMessage(state, msg);
   }
   if (msg.type === "host:keepalive") {
     return (await heartbeatDurable(state, msg.hostId, msg.at))
