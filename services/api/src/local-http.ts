@@ -8,7 +8,7 @@ import type { AuthMode } from "./auth.ts";
 import type { AuthService } from "./auth.ts";
 import type { Principal } from "./auth.ts";
 
-export const MAX_JSON_BODY_BYTES = 1024 * 1024;
+const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
 export type LocalServerOptions = {
   port?: number;

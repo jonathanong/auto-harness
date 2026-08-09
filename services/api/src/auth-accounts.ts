@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import type { AuthAccountRecord } from "./db/plane-storage.ts";
-import type { Principal, Role } from "./auth.ts";
+import type { Principal, Role } from "./auth-types.ts";
 
 export type User = Principal & { passwordHash: string };
 export type ServiceAccount = Principal & { keyHash: string; name: string };
@@ -89,7 +89,7 @@ export async function createServiceAccount(
   return { account: { ...publicPrincipal(account), name: account.name }, apiKey };
 }
 
-export function toRecord(value: User | ServiceAccount): AuthAccountRecord {
+function toRecord(value: User | ServiceAccount): AuthAccountRecord {
   const at = new Date().toISOString();
   return {
     id: value.id,

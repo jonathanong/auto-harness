@@ -4,6 +4,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { Principal, Role } from "./auth-types.ts";
+export type { Principal, Role } from "./auth-types.ts";
 import {
   createServiceAccount,
   createUser,
@@ -16,16 +18,6 @@ import {
 } from "./auth-accounts.ts";
 
 export type AuthMode = "disabled" | "required";
-export type Role = "read-only" | "operator" | "admin";
-export type Principal = {
-  id: string;
-  username: string;
-  role: Role;
-  kind: "admin" | "user" | "service-account";
-  allowedRepositoryIds?: string[];
-  boundHostId?: string;
-};
-
 const COOKIE = "auto_harness_session";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
