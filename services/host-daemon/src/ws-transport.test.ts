@@ -15,34 +15,34 @@ describe("createWsTransport", () => {
       authorization = request.headers.authorization;
       requestUrl = request.url;
     });
-    await new Promise<void>((resolve, reject) => {
-      server.listen(0, "127.0.0.1", resolve);
-      server.on("error", reject);
-    });
-    const addr = server.address();
-    if (!addr || typeof addr === "string") {
-      throw new Error("no port");
-    }
-
-    const transport = createWsTransport({
-      url: `ws://127.0.0.1:${addr.port}/ws`,
-      hostId: "a1",
-      apiKey: "hns_test-key",
-    });
-    await transport.ready;
-    expect(authorization).toBe("Bearer hns_test-key");
-    expect(requestUrl).toBe("/ws?hostId=a1");
-    transport.close();
-    wss.close();
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-        resolve();
+    let transport: ReturnType<typeof createWsTransport> | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.listen(0, "127.0.0.1", resolve);
+        server.on("error", reject);
       });
-    });
+      const addr = server.address();
+      if (!addr || typeof addr === "string") {
+        throw new Error("no port");
+      }
+
+      transport = createWsTransport({
+        url: `ws://127.0.0.1:${addr.port}/ws`,
+        hostId: "a1",
+        apiKey: "hns_test-key",
+      });
+      await transport.ready;
+      expect(authorization).toBe("Bearer hns_test-key");
+      expect(requestUrl).toBe("/ws?hostId=a1");
+    } finally {
+      transport?.close();
+      await new Promise<void>((resolve) => {
+        wss.close(() => resolve());
+      });
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
   });
 
   it("connects, sends, and receives assign", async () => {

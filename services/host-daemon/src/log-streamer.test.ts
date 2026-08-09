@@ -39,4 +39,19 @@ describe("LogStreamer", () => {
     const streamer = new LogStreamer("sess-1", () => undefined, undefined, 0, { maxBytes: 1 });
     expect(streamer.write("stdout", "é")).toBeNull();
   });
+
+  it("counts chunks independently from a continued sequence", () => {
+    const chunks: number[] = [];
+    const streamer = new LogStreamer(
+      "sess-1",
+      (chunk) => chunks.push(chunk.seq),
+      undefined,
+      10_000,
+      { maxChunks: 2 },
+    );
+    streamer.write("stdout", "a");
+    streamer.write("stdout", "b");
+    expect(streamer.write("stdout", "c")).toBeNull();
+    expect(chunks).toEqual([10_000, 10_001]);
+  });
 });

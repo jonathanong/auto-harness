@@ -76,6 +76,15 @@ export class SpawnProcessRunner implements ProcessRunner {
       throw new Error(formatSpawnEnoent(command, options.cwd));
     }
 
+    if (options.signal?.aborted) {
+      return {
+        exitCode: null,
+        timedOut: false,
+        cancelled: true,
+        signal: null,
+      };
+    }
+
     return await new Promise<ProcessResult>((resolve, reject) => {
       const child = spawn(command, args, {
         cwd: options.cwd,
@@ -90,6 +99,7 @@ export class SpawnProcessRunner implements ProcessRunner {
       let timedOut = false;
       let cancelled = false;
       let closed = false;
+      let stopping = false;
       let escalation: ReturnType<typeof setTimeout> | undefined;
 
       const signalProcess = (signal: NodeJS.Signals): void => {
@@ -110,22 +120,22 @@ export class SpawnProcessRunner implements ProcessRunner {
       };
 
       const stop = (reason: "timeout" | "cancel"): void => {
-        if (closed || escalation) return;
+        if (closed || stopping) return;
+        stopping = true;
         timedOut = reason === "timeout";
         cancelled = reason === "cancel";
         signalProcess("SIGTERM");
         escalation = setTimeout(() => {
-          if (!closed) signalProcess("SIGKILL");
+          // The direct child may close after SIGTERM while descendants in its
+          // detached POSIX process group survive. Escalate the group anyway.
+          signalProcess("SIGKILL");
+          escalation = undefined;
         }, options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS);
       };
 
       const timer = setTimeout(() => stop("timeout"), options.timeoutMs);
       const onAbort = () => stop("cancel");
-      if (options.signal?.aborted) {
-        stop("cancel");
-      } else {
-        options.signal?.addEventListener("abort", onAbort, { once: true });
-      }
+      options.signal?.addEventListener("abort", onAbort, { once: true });
 
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
         // Keep a malicious/noisy process from allocating unbounded memory in
@@ -164,7 +174,6 @@ export class SpawnProcessRunner implements ProcessRunner {
       child.on("close", (code, signal) => {
         closed = true;
         clearTimeout(timer);
-        if (escalation) clearTimeout(escalation);
         options.signal?.removeEventListener("abort", onAbort);
         resolve({
           exitCode: code,

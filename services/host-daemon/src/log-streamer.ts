@@ -34,6 +34,7 @@ export class LogStreamer {
   private readonly now: () => string;
   private readonly maxChunks: number;
   private readonly maxBytes: number;
+  private emittedChunks = 0;
   private emittedBytes = 0;
 
   constructor(
@@ -56,7 +57,7 @@ export class LogStreamer {
   }
 
   write(stream: LogStream, content: string): SessionLogChunk | null {
-    if (this.seq >= this.maxChunks || this.emittedBytes >= this.maxBytes) {
+    if (this.emittedChunks >= this.maxChunks || this.emittedBytes >= this.maxBytes) {
       return null;
     }
     const bounded = truncateUtf8(content, this.maxBytes - this.emittedBytes);
@@ -70,6 +71,7 @@ export class LogStreamer {
       timestamp,
       seq,
     };
+    this.emittedChunks += 1;
     this.emittedBytes += Buffer.byteLength(bounded, "utf8");
     this.emit(chunk);
     return chunk;

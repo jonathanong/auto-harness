@@ -42,6 +42,19 @@ export async function runClaimedSession(
   );
   if (setupFail) return setupFail;
 
+  if (signal?.aborted) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+    );
+  }
+
   if (assign.resolvedArgv.length === 0) {
     return await finishSession(
       processRunner,

@@ -135,6 +135,35 @@ describe("SessionRunner cancellation", () => {
     ).resolves.toMatchObject({ status: "cancelled" });
   });
 
+  it("does not start the primary command after cancellation without setup", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let started = false;
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run() {
+            started = true;
+            return { exitCode: 0, timedOut: false, signal: null };
+          },
+        },
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign(),
+        {
+          repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
+          worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
+          cwd: "/wt",
+        },
+        controller.signal,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "cancelled" });
+    expect(started).toBe(false);
+  });
+
   it("reports timeout when checkout returns after the session deadline", async () => {
     const runner = new SessionRunner({
       worktrees: fakeWorktrees(

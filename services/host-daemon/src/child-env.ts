@@ -26,7 +26,11 @@ function extraKeys(value: string | undefined): string[] {
   return value
     .split(",")
     .map((key) => key.trim())
-    .filter((key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !key.startsWith("HARNESS_"));
+    .filter(
+      (key) =>
+        /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
+        !key.toUpperCase().startsWith("HARNESS_"),
+    );
 }
 
 /**
@@ -40,7 +44,7 @@ export function createChildEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.
   for (const [key, value] of Object.entries(source)) {
     if (
       value !== undefined &&
-      !key.startsWith("HARNESS_") &&
+      !key.toUpperCase().startsWith("HARNESS_") &&
       (isBaselineKey(key) || allowed.has(key))
     ) {
       env[key] = value;

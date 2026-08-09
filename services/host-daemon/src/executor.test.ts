@@ -1,3 +1,8 @@
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { createChildEnv } from "./child-env.ts";
@@ -76,19 +81,62 @@ describe("SpawnProcessRunner cancellation", () => {
     await expect(run).resolves.toMatchObject({ cancelled: true, timedOut: false });
   });
 
-  it("handles a signal that was already aborted before spawn", async () => {
+  it("does not spawn when the signal was already aborted", async () => {
     const controller = new AbortController();
     controller.abort();
-    await expect(
-      new SpawnProcessRunner().run({
-        argv: [process.execPath, "-e", "setInterval(() => {}, 1_000)"],
-        cwd: process.cwd(),
-        timeoutMs: 10_000,
-        terminationGraceMs: 20,
-        signal: controller.signal,
-        onChunk: () => undefined,
-      }),
-    ).resolves.toMatchObject({ cancelled: true });
+    const directory = await mkdtemp(join(tmpdir(), "auto-harness-executor-"));
+    const marker = join(directory, "started");
+    try {
+      await expect(
+        new SpawnProcessRunner().run({
+          argv: [
+            process.execPath,
+            "-e",
+            `require('node:fs').writeFileSync(${JSON.stringify(marker)}, 'started')`,
+          ],
+          cwd: process.cwd(),
+          timeoutMs: 10_000,
+          terminationGraceMs: 20,
+          signal: controller.signal,
+          onChunk: () => undefined,
+        }),
+      ).resolves.toMatchObject({ cancelled: true, exitCode: null, signal: null });
+      expect(existsSync(marker)).toBe(false);
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
+
+  it("escalates the process group after its SIGTERM leader closes", async () => {
+    const controller = new AbortController();
+    let helperPid: number | undefined;
+    const runner = new SpawnProcessRunner();
+    const run = runner.run({
+      argv: [
+        process.execPath,
+        "-e",
+        [
+          "const { spawn } = require('node:child_process');",
+          "const helper = spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); setInterval(() => {}, 1_000)\"], { stdio: 'ignore' });",
+          "console.log(helper.pid);",
+          "setInterval(() => {}, 1_000);",
+        ].join(" "),
+      ],
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+      terminationGraceMs: 30,
+      signal: controller.signal,
+      onChunk: (chunk) => {
+        if (chunk.stream !== "stdout" || helperPid !== undefined) return;
+        helperPid = Number.parseInt(chunk.data, 10);
+        controller.abort();
+      },
+    });
+
+    await expect(run).resolves.toMatchObject({ cancelled: true, timedOut: false });
+    expect(helperPid).toBeTypeOf("number");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(() => process.kill(helperPid!, 0)).toThrow();
   });
 
   it("truncates an oversized output event", async () => {
