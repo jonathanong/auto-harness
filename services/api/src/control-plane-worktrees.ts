@@ -87,3 +87,67 @@ export function offlineHostAndRequeue(
   }
   return requeued;
 }
+
+/** Durable host disconnect recovery. Each session/worktree pair is released
+ * atomically; a late duplicate disconnect simply observes the already-requeued
+ * state and becomes a no-op. */
+export async function offlineHostAndRequeueDurable(
+  state: ControlPlaneState,
+  hostId: string,
+  reason: string,
+): Promise<string[]> {
+  if (!state.storage) {
+    return offlineHostAndRequeue(state, hostId, reason);
+  }
+  const requeued: string[] = [];
+  for (const wt of state.worktrees.values()) {
+    if (wt.hostId !== hostId) {
+      continue;
+    }
+    if (wt.status !== "busy" || !wt.currentSessionId) {
+      const next = { ...wt, online: false };
+      await state.storage.setWorktreeOnline(wt.id, false);
+      state.worktrees.set(wt.id, next);
+      continue;
+    }
+    const sessionId = wt.currentSessionId;
+    const won = await state.storage.tryRequeueSession({
+      sessionId,
+      worktreeId: wt.id,
+      reason,
+      forceOffline: true,
+    });
+    if (won) {
+      const session = state.sessions.get(sessionId);
+      if (session) {
+        state.sessions.set(sessionId, {
+          ...session,
+          status: "queued",
+          worktreeId: null,
+          hostId: null,
+          errorMessage: reason,
+        });
+      }
+      state.pendingAcks.delete(sessionId);
+      state.worktrees.set(wt.id, {
+        ...wt,
+        status: "idle",
+        currentSessionId: null,
+        online: false,
+      });
+      requeued.push(sessionId);
+    } else {
+      // A terminal update may have won the race. Refreshing the local row
+      // prevents this process from retrying the same stale ownership forever.
+      const latest = await state.storage.getWorktree(wt.id);
+      if (latest) {
+        state.worktrees.set(wt.id, latest);
+      }
+      const latestSession = await state.storage.getSession(sessionId);
+      if (latestSession) {
+        state.sessions.set(sessionId, latestSession);
+      }
+    }
+  }
+  return requeued;
+}

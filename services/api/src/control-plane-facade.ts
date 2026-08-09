@@ -15,6 +15,7 @@ import {
 } from "./control-plane-state.ts";
 import * as agents from "./control-plane-agents.ts";
 import * as assign from "./control-plane-assign.ts";
+import * as lifecycle from "./control-plane-lifecycle.ts";
 import { listCommandProfiles } from "./control-plane-command-profiles.ts";
 import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
@@ -132,12 +133,42 @@ export class ControlPlaneBase {
     return assign.assignQueued(this.state);
   }
 
+  async assignQueuedDurable(): Promise<
+    Array<{ session: PublicSession; worktree: WorktreeRecord }>
+  > {
+    return assign.assignQueuedDurable(this.state);
+  }
+
   enforceAckDeadlines(nowMs: number = Date.now()): string[] {
     return assign.enforceAckDeadlines(this.state, nowMs);
   }
 
+  async enforceAckDeadlinesDurable(nowMs: number = Date.now()): Promise<string[]> {
+    return assign.enforceAckDeadlinesDurable(this.state, nowMs);
+  }
+
   handleHostMessage(msg: HostToServerMessage): { ok: boolean; error?: string } {
     return messages.handleHostMessage(this.state, msg);
+  }
+
+  async handleHostMessageDurable(
+    msg: HostToServerMessage,
+  ): Promise<{ ok: boolean; error?: string }> {
+    return messages.handleHostMessageDurable(this.state, msg);
+  }
+
+  async registerHostDurable(
+    opts: Parameters<typeof agents.registerHost>[1],
+  ): Promise<ReturnType<typeof agents.registerHost>> {
+    return agents.registerHostDurable(this.state, opts);
+  }
+
+  async disconnectHostDurable(connectionId: string): Promise<string[]> {
+    return agents.disconnectHostDurable(this.state, connectionId);
+  }
+
+  async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
+    return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
   }
 
   resumeSession(

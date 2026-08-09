@@ -66,7 +66,7 @@ export function createPlaneWsBridge(): {
         let windowStartedAt = Date.now();
         let messageCount = 0;
 
-        socket.on("message", (raw) => {
+        socket.on("message", async (raw) => {
           const now = Date.now();
           if (now - windowStartedAt >= 1000) {
             windowStartedAt = now;
@@ -85,7 +85,7 @@ export function createPlaneWsBridge(): {
             socket.close(1008, "message not authorized");
             return;
           }
-          const result = plane.handleHostMessage(msg);
+          const result = await plane.handleHostMessageDurable(msg);
           if (!result.ok) {
             socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
             return;
@@ -101,7 +101,7 @@ export function createPlaneWsBridge(): {
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
             const connectionId = plane.state.hostConnection.get(boundHostId);
-            if (connectionId) plane.disconnectHost(connectionId);
+            if (connectionId) void plane.disconnectHostDurable(connectionId);
           }
         });
       };

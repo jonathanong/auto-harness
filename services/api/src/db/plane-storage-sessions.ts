@@ -1,8 +1,10 @@
+/* eslint-disable max-lines */
 import {
   GetCommand,
   PutCommand,
   QueryCommand,
   ScanCommand,
+  TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { SessionStatus } from "@auto-harness/shared";
@@ -12,6 +14,7 @@ import type { SessionRecord, WorktreeRecord } from "./types.ts";
 import {
   itemToSession,
   isConditionalFailed,
+  isConditionalTransactionFailed,
   sessionToItem,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
@@ -138,6 +141,243 @@ export async function tryClaimWorktree(
   } catch (err) {
     if (isConditionalFailed(err)) {
       return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Atomically claim a worktree and move its session to running.
+ *
+ * The old control-plane path updated the two rows independently and queued the
+ * writes, which allowed two hydrated API processes to both emit an assignment.
+ * Keeping the condition on both rows makes the operation safe to retry: one
+ * caller wins and the other observes a conditional failure without changing
+ * either row.
+ */
+export async function tryAssignSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    hostId: string;
+    now: string;
+    resolvedArgv: string[];
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.worktrees,
+              Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #s = :busy, currentSessionId = :sid, lastAssignedAt = :now",
+              ConditionExpression: "#s = :idle AND #o = :true",
+              ExpressionAttributeNames: { "#s": "status", "#o": "online" },
+              ExpressionAttributeValues: {
+                ":busy": "busy",
+                ":idle": "idle",
+                ":true": true,
+                ":sid": opts.sessionId,
+                ":now": opts.now,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :running, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv REMOVE ackReceivedAt",
+              ConditionExpression: "#s = :queued",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":running": "running",
+                ":queued": "queued",
+                ":wid": opts.worktreeId,
+                ":hid": opts.hostId,
+                ":now": opts.now,
+                ":argv": opts.resolvedArgv,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Atomically release a worktree and requeue its running session. */
+export async function tryRequeueSession(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; worktreeId: string; reason?: string; forceOffline?: boolean },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.worktrees,
+              Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :online",
+              ConditionExpression: "currentSessionId = :sid",
+              ExpressionAttributeNames: { "#s": "status", "#o": "online" },
+              ExpressionAttributeValues: {
+                ":idle": "idle",
+                ":null": null,
+                ":online": opts.forceOffline !== true,
+                ":sid": opts.sessionId,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :queued, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt",
+              ConditionExpression: "#s = :running",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":queued": "queued",
+                ":running": "running",
+                ":null": null,
+                ":reason": opts.reason ?? "agent disconnected; requeued",
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Idempotent acknowledgement of an assigned running session. */
+export async function acknowledgeSession(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  acknowledgedAt: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: sessionId },
+        UpdateExpression: "SET ackReceivedAt = :at",
+        ConditionExpression: "#s = :running AND attribute_not_exists(ackReceivedAt)",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":at": acknowledgedAt, ":running": "running" },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) {
+      // A duplicate ack is a successful no-op, while a late ack for a terminal
+      // session is also harmless to the caller.
+      const current = await getSession(ctx, sessionId);
+      return current?.ackReceivedAt !== undefined || current?.status !== "running";
+    }
+    throw err;
+  }
+}
+
+/** Atomically apply a terminal/retry transition and release its worktree. */
+export async function finishSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    worktreeId?: string | null;
+    status: string;
+    completedAt?: string;
+    errorCode?: string;
+    errorMessage?: string;
+    exitCode?: number | null;
+    cliResumeRef?: string;
+    retryCount?: number;
+    retryAfter?: string;
+  },
+): Promise<boolean> {
+  const values: Record<string, unknown> = {
+    ":status": opts.status,
+    ":running": "running",
+    ":null": null,
+  };
+  const names: Record<string, string> = { "#s": "status" };
+  const sets = ["#s = :status", "worktreeId = :null", "hostId = :null"];
+  if (opts.completedAt !== undefined) {
+    sets.push("completedAt = :completedAt");
+    values[":completedAt"] = opts.completedAt;
+  }
+  if (opts.errorCode !== undefined) {
+    sets.push("errorCode = :errorCode");
+    values[":errorCode"] = opts.errorCode;
+  }
+  if (opts.errorMessage !== undefined) {
+    sets.push("errorMessage = :errorMessage");
+    values[":errorMessage"] = opts.errorMessage;
+  }
+  if (opts.exitCode !== undefined) {
+    sets.push("exitCode = :exitCode");
+    values[":exitCode"] = opts.exitCode;
+  }
+  if (opts.cliResumeRef !== undefined) {
+    sets.push("cliResumeRef = :cliResumeRef");
+    values[":cliResumeRef"] = opts.cliResumeRef;
+  }
+  if (opts.retryCount !== undefined) {
+    sets.push("retryCount = :retryCount");
+    values[":retryCount"] = opts.retryCount;
+  }
+  if (opts.retryAfter !== undefined) {
+    sets.push("retryAfter = :retryAfter");
+    values[":retryAfter"] = opts.retryAfter;
+  }
+  const transactItems: Array<Record<string, unknown>> = [
+    {
+      Update: {
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ConditionExpression: "#s = :running",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+      },
+    },
+  ];
+  if (opts.worktreeId) {
+    transactItems.push({
+      Update: {
+        TableName: ctx.tables.worktrees,
+        Key: { id: opts.worktreeId },
+        UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+        ConditionExpression: "currentSessionId = :sid",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+      },
+    });
+  }
+  try {
+    await ctx.doc.send(new TransactWriteCommand({ TransactItems: transactItems }));
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      const current = await getSession(ctx, opts.sessionId);
+      return current?.status === opts.status;
     }
     throw err;
   }

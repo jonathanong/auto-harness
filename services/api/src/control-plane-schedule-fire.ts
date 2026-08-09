@@ -1,6 +1,8 @@
+/* eslint-disable max-lines */
 import type { PublicSession } from "./control-plane-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { queueWrite } from "./control-plane-state.ts";
+import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 
 /**
@@ -104,4 +106,87 @@ export function tryClaimScheduleFire(
     return null;
   }
   return result.session;
+}
+
+/** Durable cron evaluator; DynamoDB owns the nextRunAt compare-and-swap. */
+export async function evaluateCronDurable(
+  state: ControlPlaneState,
+  nowIso: string = state.now(),
+): Promise<PublicSession[]> {
+  if (!state.storage) {
+    return evaluateCron(state, nowIso);
+  }
+  const created: PublicSession[] = [];
+  const nowMs = Date.parse(nowIso);
+  for (const schedule of state.schedules.values()) {
+    if (!schedule.enabled || Date.parse(schedule.nextRunAt) > nowMs) {
+      continue;
+    }
+    const session = await tryClaimScheduleFireDurable(
+      state,
+      schedule.id,
+      schedule.nextRunAt,
+      nowIso,
+    );
+    if (session) {
+      created.push(session);
+    }
+  }
+  return created;
+}
+
+/** Atomically claim one schedule and create exactly one scheduled session. */
+export async function tryClaimScheduleFireDurable(
+  state: ControlPlaneState,
+  scheduleId: string,
+  expectedNextRunAt: string,
+  nowIso: string,
+): Promise<PublicSession | null> {
+  if (!state.storage) {
+    return tryClaimScheduleFire(state, scheduleId, expectedNextRunAt, nowIso);
+  }
+  const schedule = state.schedules.get(scheduleId);
+  if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
+    return null;
+  }
+  if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
+    return null;
+  }
+  const id = state.idFactory();
+  const createdAt = state.now();
+  const session: SessionRecord = {
+    id,
+    repositoryId: schedule.repositoryId,
+    prompt: `scheduled:${schedule.name}`,
+    ...(schedule.providerAccountId !== undefined
+      ? { providerAccountId: schedule.providerAccountId }
+      : {}),
+    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
+    targetLabel: schedule.targetLabel,
+    timeout: schedule.timeout,
+    priority: 0,
+    requiredLabels: [],
+    onConflict: "queue",
+    status: "queued",
+    queueShard: Math.abs(hashString(id)) % state.shardCount,
+    createdAt,
+    retryCount: 0,
+    type: "scheduled",
+    source: "schedule",
+    ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+  };
+  const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  const won = await state.storage.tryClaimScheduleAndCreateSession({
+    scheduleId,
+    expectedNextRunAt,
+    newNextRunAt,
+    lastRunAt: nowIso,
+    session,
+  });
+  if (!won) {
+    return null;
+  }
+  state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
+  state.sessions.set(id, session);
+  return toPublic(state, session);
 }

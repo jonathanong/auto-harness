@@ -171,12 +171,23 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       hidden(res);
       return true;
     }
-    const result = plane.triggerSchedule(schedTrigger[1]!);
-    if (!result.ok) {
-      send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
+    const schedule = plane.getSchedule(schedTrigger[1]!);
+    if (!schedule) {
+      send(res, 400, { error: { code: "TRIGGER_ERROR", message: "schedule not found" } });
       return true;
     }
-    send(res, 201, result.session);
+    const session = await plane.tryClaimScheduleFireDurable(
+      schedule.id,
+      schedule.nextRunAt,
+      new Date().toISOString(),
+    );
+    if (!session) {
+      send(res, 409, {
+        error: { code: "TRIGGER_ERROR", message: "schedule is not due or was already claimed" },
+      });
+      return true;
+    }
+    send(res, 201, session);
     return true;
   }
   const schedMatch = /^\/api\/v1\/schedules\/([^/]+)$/.exec(url.pathname);

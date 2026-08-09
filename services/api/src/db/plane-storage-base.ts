@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { SessionStatus } from "@auto-harness/shared";
 
@@ -66,6 +67,44 @@ export class DynamoPlaneStorageBase {
     return sessions.tryClaimWorktree(this.ctx, opts);
   }
 
+  tryAssignSession(opts: {
+    sessionId: string;
+    worktreeId: string;
+    hostId: string;
+    now: string;
+    resolvedArgv: string[];
+  }): Promise<boolean> {
+    return sessions.tryAssignSession(this.ctx, opts);
+  }
+
+  tryRequeueSession(opts: {
+    sessionId: string;
+    worktreeId: string;
+    reason?: string;
+    forceOffline?: boolean;
+  }): Promise<boolean> {
+    return sessions.tryRequeueSession(this.ctx, opts);
+  }
+
+  acknowledgeSession(sessionId: string, acknowledgedAt: string): Promise<boolean> {
+    return sessions.acknowledgeSession(this.ctx, sessionId, acknowledgedAt);
+  }
+
+  finishSession(opts: {
+    sessionId: string;
+    worktreeId?: string | null;
+    status: string;
+    completedAt?: string;
+    errorCode?: string;
+    errorMessage?: string;
+    exitCode?: number | null;
+    cliResumeRef?: string;
+    retryCount?: number;
+    retryAfter?: string;
+  }): Promise<boolean> {
+    return sessions.finishSession(this.ctx, opts);
+  }
+
   releaseWorktree(worktreeId: string, opts?: { forceOffline?: boolean }): Promise<void> {
     return sessions.releaseWorktree(this.ctx, worktreeId, opts);
   }
@@ -82,8 +121,25 @@ export class DynamoPlaneStorageBase {
     return locks.tryAcquireHostLock(this.ctx, opts);
   }
 
+  tryRegisterHost(opts: {
+    hostId: string;
+    connection: ConnectionRecord;
+    replaceExisting: boolean;
+    existingConnectionId?: string;
+  }): Promise<boolean> {
+    return locks.tryRegisterHost(this.ctx, opts);
+  }
+
   releaseHostLock(hostId: string, connectionId: string): Promise<void> {
     return locks.releaseHostLock(this.ctx, hostId, connectionId);
+  }
+
+  releaseHostConnection(hostId: string, connectionId: string): Promise<boolean> {
+    return locks.releaseHostConnection(this.ctx, { hostId, connectionId });
+  }
+
+  heartbeatConnection(hostId: string, connectionId: string, at: string): Promise<boolean> {
+    return locks.heartbeatConnection(this.ctx, { hostId, connectionId, at });
   }
 
   getHostLock(hostId: string): Promise<string | null> {
@@ -163,6 +219,16 @@ export class DynamoPlaneStorageBase {
       newNextRunAt,
       lastRunAt,
     );
+  }
+
+  tryClaimScheduleAndCreateSession(opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    lastRunAt: string;
+    session: import("./types.ts").SessionRecord;
+  }): Promise<boolean> {
+    return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);
   }
 
   putArchive(obj: ArchiveObject): Promise<void> {

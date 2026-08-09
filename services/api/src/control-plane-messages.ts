@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import {
   formatLogSortKey,
   type HostToServerMessage,
@@ -7,7 +8,12 @@ import {
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite } from "./control-plane-state.ts";
-import { heartbeat, registerHost } from "./control-plane-agents.ts";
+import {
+  heartbeat,
+  heartbeatDurable,
+  registerHost,
+  registerHostDurable,
+} from "./control-plane-agents.ts";
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 
@@ -53,6 +59,35 @@ export function appendLog(
       queueWrite(state, state.storage.deleteLog(removed.sessionId, removed.timestampSeq));
     }
   }
+  return rec;
+}
+
+/** Persist first, then publish the log to the local cache. */
+export async function appendLogDurable(
+  state: ControlPlaneState,
+  opts: {
+    sessionId: string;
+    stream: string;
+    content: string;
+    timestamp: string;
+    seq: number;
+  },
+): Promise<LogRecord> {
+  const rec: LogRecord = {
+    sessionId: opts.sessionId,
+    timestampSeq: formatLogSortKey(opts.timestamp, opts.seq),
+    stream: opts.stream,
+    content: opts.content,
+    timestamp: opts.timestamp,
+    seq: opts.seq,
+  };
+  if (state.storage) {
+    await state.storage.putLog(rec);
+  }
+  const list = state.logs.get(opts.sessionId) ?? [];
+  list.push(rec);
+  list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
+  state.logs.set(opts.sessionId, list);
   return rec;
 }
 
@@ -107,6 +142,136 @@ export function handleHostMessage(
         : { ok: false, error: "agent not connected" };
     }
   }
+}
+
+/**
+ * Storage-backed message path. Critical ack/status transitions await their
+ * conditional DynamoDB write before mutating the process cache. The original
+ * synchronous handler remains the storage-less local CAS implementation.
+ */
+export async function handleHostMessageDurable(
+  state: ControlPlaneState,
+  msg: HostToServerMessage,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!state.storage) {
+    return handleHostMessage(state, msg);
+  }
+  if (msg.type === "host:register") {
+    const result = await registerHostDurable(state, {
+      hostId: msg.hostId,
+      worktrees: msg.worktrees,
+      commandProfiles: msg.commandProfiles,
+    });
+    return result.ok ? { ok: true } : { ok: false, error: result.error };
+  }
+  if (msg.type === "host:keepalive") {
+    return (await heartbeatDurable(state, msg.hostId, msg.at))
+      ? { ok: true }
+      : { ok: false, error: "agent not connected" };
+  }
+  if (msg.type === "session:log") {
+    await appendLogDurable(state, {
+      sessionId: msg.sessionId,
+      stream: msg.stream,
+      content: msg.content,
+      timestamp: msg.timestamp,
+      seq: msg.seq,
+    });
+    return { ok: true };
+  }
+  if (msg.type === "session:ack") {
+    const session = state.sessions.get(msg.sessionId);
+    if (!session) {
+      return { ok: false, error: "session not found" };
+    }
+    const accepted = await state.storage.acknowledgeSession(msg.sessionId, state.now());
+    if (accepted) {
+      state.sessions.set(msg.sessionId, {
+        ...session,
+        ackReceivedAt: session.ackReceivedAt ?? state.now(),
+      });
+      state.pendingAcks.delete(msg.sessionId);
+    }
+    return { ok: true };
+  }
+  if (msg.type === "session:status") {
+    return applySessionStatusDurable(state, msg);
+  }
+  return { ok: false, error: "unsupported host message" };
+}
+
+async function applySessionStatusDurable(
+  state: ControlPlaneState,
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
+): Promise<{ ok: boolean; error?: string }> {
+  const session = state.sessions.get(msg.sessionId);
+  if (!session) {
+    return { ok: false, error: "session not found" };
+  }
+  const terminal =
+    msg.status === "completed" ||
+    msg.status === "failed" ||
+    msg.status === "cancelled" ||
+    msg.status === "timed_out";
+  if (!terminal || session.status !== "running") {
+    return { ok: true };
+  }
+  const retries = session.retryCount ?? 0;
+  const shouldRetry =
+    msg.status === "failed" &&
+    msg.errorCode === "usage_limit" &&
+    retries < state.usageLimitRetryCeiling;
+  const retryCount = shouldRetry ? retries + 1 : undefined;
+  const retryAfter = shouldRetry
+    ? new Date(Date.parse(state.now()) + 1000 * 2 ** retries).toISOString()
+    : undefined;
+  const nextStatus = shouldRetry ? "queued" : msg.status;
+  const committed = await state.storage.finishSession({
+    sessionId: msg.sessionId,
+    worktreeId: session.worktreeId,
+    status: nextStatus,
+    ...(shouldRetry ? {} : { completedAt: state.now() }),
+    ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+    ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
+    ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+    ...(retryCount !== undefined ? { retryCount } : {}),
+    ...(retryAfter !== undefined ? { retryAfter } : {}),
+  });
+  if (!committed) {
+    return { ok: true };
+  }
+  const worktreeId = session.worktreeId;
+  if (worktreeId) {
+    const wt = state.worktrees.get(worktreeId);
+    if (wt) {
+      state.worktrees.set(worktreeId, {
+        ...wt,
+        status: "idle",
+        currentSessionId: null,
+      });
+    }
+  }
+  const nextSession = {
+    ...session,
+    status: nextStatus,
+    ...(shouldRetry ? {} : { completedAt: state.now() }),
+    worktreeId: null,
+    hostId: null,
+    ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+    ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+    ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
+    ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+    ...(retryCount !== undefined ? { retryCount } : {}),
+    ...(retryAfter !== undefined ? { retryAfter } : {}),
+  };
+  state.sessions.set(msg.sessionId, nextSession);
+  state.pendingAcks.delete(msg.sessionId);
+  if (!shouldRetry) {
+    await archiveSessionLogs(state, msg.sessionId);
+    maybeDeliverWebhook(state, nextSession);
+  }
+  return { ok: true };
 }
 
 function applySessionStatus(

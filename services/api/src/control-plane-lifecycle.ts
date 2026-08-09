@@ -2,7 +2,11 @@ import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
-import { offlineHostAndRequeue, releaseWorktree } from "./control-plane-worktrees.ts";
+import {
+  offlineHostAndRequeue,
+  offlineHostAndRequeueDurable,
+  releaseWorktree,
+} from "./control-plane-worktrees.ts";
 
 /**
  * Heartbeat-based stale reclaim (Phase 3): free worktrees of agents whose
@@ -45,6 +49,54 @@ export function reclaimStaleHosts(state: ControlPlaneState, nowMs: number = Date
     }
     if (meta.connectionId) {
       state.connections.delete(meta.connectionId);
+    }
+    state.hostConnection.delete(hostId);
+    state.disconnectedHosts.delete(hostId);
+  }
+  return reclaimed;
+}
+
+/** Durable stale recovery. Each host lease is released conditionally and each
+ * running session is requeued with a transaction, so two API processes can
+ * safely run the sweeper at the same time. */
+export async function reclaimStaleHostsDurable(
+  state: ControlPlaneState,
+  nowMs: number = Date.now(),
+): Promise<string[]> {
+  if (!state.storage) {
+    return reclaimStaleHosts(state, nowMs);
+  }
+  const reclaimed: string[] = [];
+  const candidates = new Map<string, { lastHeartbeatAt: string; connectionId?: string }>();
+  for (const [hostId, connectionId] of state.hostConnection.entries()) {
+    const conn = state.connections.get(connectionId);
+    if (conn) {
+      candidates.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt, connectionId });
+    }
+  }
+  for (const [hostId, rec] of state.disconnectedHosts.entries()) {
+    if (!candidates.has(hostId)) {
+      candidates.set(hostId, { lastHeartbeatAt: rec.lastHeartbeatAt });
+    }
+  }
+  for (const [hostId, meta] of candidates) {
+    if (nowMs - Date.parse(meta.lastHeartbeatAt) < state.heartbeatStaleMs) {
+      continue;
+    }
+    if (meta.connectionId) {
+      const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
+      if (!released) {
+        continue;
+      }
+      state.connections.delete(meta.connectionId);
+    }
+    const freed = await offlineHostAndRequeueDurable(
+      state,
+      hostId,
+      "agent heartbeat stale; requeued",
+    );
+    for (const sid of freed) {
+      if (!reclaimed.includes(sid)) reclaimed.push(sid);
     }
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);

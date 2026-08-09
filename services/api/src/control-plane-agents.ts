@@ -1,8 +1,9 @@
+/* eslint-disable max-lines */
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
-import { offlineHostAndRequeue } from "./control-plane-worktrees.ts";
+import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
 export function listHosts(state: ControlPlaneState): Array<{
   hostId: string;
@@ -154,6 +155,95 @@ export function registerHost(
   return { ok: true, connectionId };
 }
 
+/** Durable registration. The host lease and connection row are committed
+ * before the process cache is replaced, so a rejected replacement cannot
+ * evict the currently valid socket from this process. */
+export async function registerHostDurable(
+  state: ControlPlaneState,
+  opts: {
+    hostId: string;
+    worktrees: Array<{
+      id: string;
+      name: string;
+      repositoryId: string;
+      path: string;
+      labels: string[];
+    }>;
+    commandProfiles: string[];
+    replaceExisting?: boolean;
+  },
+): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
+  if (!state.storage) {
+    return registerHost(state, opts);
+  }
+  const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
+  if (nameError) {
+    return { ok: false, error: nameError };
+  }
+  const existing = state.hostConnection.get(opts.hostId);
+  if (existing && !opts.replaceExisting) {
+    return { ok: false, error: `hostId ${opts.hostId} already has an active connection` };
+  }
+  const connectionId = state.connectionIdFactory();
+  const at = state.now();
+  const conn: ConnectionRecord = {
+    connectionId,
+    type: "host",
+    hostId: opts.hostId,
+    connectedAt: at,
+    lastHeartbeatAt: at,
+    commandProfiles: [...opts.commandProfiles],
+  };
+  const won = await state.storage.tryRegisterHost({
+    hostId: opts.hostId,
+    connection: conn,
+    replaceExisting: opts.replaceExisting === true,
+    ...(existing ? { existingConnectionId: existing } : {}),
+  });
+  if (!won) {
+    return { ok: false, error: `hostId ${opts.hostId} already has an active connection` };
+  }
+  // The transaction committed. Finish all related row writes before changing
+  // this process's cache; a failed inventory/worktree write must not make the
+  // cache claim a state that was never durably persisted.
+  const nextWorktrees = [] as Array<import("./db/types.ts").WorktreeRecord>;
+  for (const wt of opts.worktrees) {
+    const prev = state.worktrees.get(wt.id);
+    const next = {
+      id: wt.id,
+      name: wt.name,
+      hostId: opts.hostId,
+      repositoryId: wt.repositoryId,
+      path: wt.path,
+      labels: wt.labels,
+      status: prev?.status === "busy" ? ("busy" as const) : ("idle" as const),
+      online: true,
+      currentSessionId: prev?.currentSessionId ?? null,
+      lastAssignedAt: prev?.lastAssignedAt ?? null,
+    };
+    nextWorktrees.push(next);
+  }
+  for (const wt of state.worktrees.values()) {
+    if (wt.hostId === opts.hostId && !opts.worktrees.some((w) => w.id === wt.id)) {
+      nextWorktrees.push({ ...wt, online: true });
+    }
+  }
+  for (const next of nextWorktrees) {
+    await state.storage.putWorktree(next);
+  }
+  if (existing) {
+    state.connections.delete(existing);
+  }
+  state.connections.set(connectionId, conn);
+  state.hostConnection.set(opts.hostId, connectionId);
+  state.disconnectedHosts.delete(opts.hostId);
+  state.drainingHosts.delete(opts.hostId);
+  for (const next of nextWorktrees) {
+    state.worktrees.set(next.id, next);
+  }
+  return { ok: true, connectionId };
+}
+
 /**
  * Agent disconnect ($disconnect / crash). Immediately:
  * - marks ALL worktrees offline
@@ -174,6 +264,30 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
   return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
 }
 
+/** Durable disconnect: release the lease before changing local ownership. */
+export async function disconnectHostDurable(
+  state: ControlPlaneState,
+  connectionId: string,
+): Promise<string[]> {
+  if (!state.storage) {
+    return disconnectHost(state, connectionId);
+  }
+  const conn = state.connections.get(connectionId);
+  if (!conn) {
+    return [];
+  }
+  const released = await state.storage.releaseHostConnection(conn.hostId, connectionId);
+  if (!released) {
+    return [];
+  }
+  state.connections.delete(connectionId);
+  if (state.hostConnection.get(conn.hostId) === connectionId) {
+    state.hostConnection.delete(conn.hostId);
+  }
+  state.disconnectedHosts.set(conn.hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
+  return offlineHostAndRequeueDurable(state, conn.hostId, "agent disconnected; requeued");
+}
+
 export function heartbeat(state: ControlPlaneState, hostId: string, at?: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
   if (!connectionId) {
@@ -186,6 +300,30 @@ export function heartbeat(state: ControlPlaneState, hostId: string, at?: string)
     return false;
   }
   conn.lastHeartbeatAt = at ?? state.now();
+  return true;
+}
+
+export async function heartbeatDurable(
+  state: ControlPlaneState,
+  hostId: string,
+  at?: string,
+): Promise<boolean> {
+  if (!state.storage) {
+    return heartbeat(state, hostId, at);
+  }
+  const connectionId = state.hostConnection.get(hostId);
+  if (!connectionId || !state.connections.has(connectionId)) {
+    return false;
+  }
+  const nextAt = at ?? state.now();
+  const updated = await state.storage.heartbeatConnection(hostId, connectionId, nextAt);
+  if (!updated) {
+    return false;
+  }
+  const conn = state.connections.get(connectionId);
+  if (conn) {
+    state.connections.set(connectionId, { ...conn, lastHeartbeatAt: nextAt });
+  }
   return true;
 }
 
