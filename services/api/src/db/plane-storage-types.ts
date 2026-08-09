@@ -14,6 +14,21 @@ export type ProviderRecord = Provider;
 export type ProviderAccountRecord = ProviderAccount;
 export type CommandRecord = Command;
 
+/** Authentication principal record stored in the dedicated Users table. */
+export type AuthAccountRecord = {
+  id: string;
+  username: string;
+  name?: string;
+  kind: "user" | "service-account";
+  role: "read-only" | "operator" | "admin";
+  passwordHash?: string;
+  apiKeyHash?: string;
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ConnectionRecord = {
   connectionId: string;
   type: "host" | "client";

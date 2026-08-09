@@ -51,6 +51,13 @@ cors: {
 | `GET` endpoints    | 300 requests/minute per service account |
 | WebSocket messages | 100 messages/second per connection      |
 
+Local ingress also rejects HTTP JSON bodies over 1 MiB, WebSocket frames over
+128 KiB, and individual log chunks over 32 KiB. In-memory session log retention
+is capped at 10,000 chunks / 10 MiB per session. A WebSocket host must
+authenticate with a service-account key bound to its `hostId`; it can only ack,
+log, or report status for sessions assigned to that host. Closing the socket
+immediately disconnects and requeues its host connection.
+
 Rate limit headers are returned on all REST responses:
 
 - `X-RateLimit-Limit`

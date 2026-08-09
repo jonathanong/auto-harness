@@ -1,10 +1,16 @@
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, basename, join } from "node:path";
+import { dirname, basename, join, relative, resolve } from "node:path";
 
 export const dynamic = "force-dynamic";
 
 const MAX_RESULTS = 20;
+const browseRoot = resolve(process.env.HARNESS_HOST_PANE_BROWSE_ROOT ?? homedir());
+
+function isWithinBrowseRoot(path: string): boolean {
+  const rel = relative(browseRoot, resolve(path));
+  return rel === "" || (!rel.startsWith("..") && !rel.includes("../"));
+}
 
 /**
  * Directory-only autocomplete for path fields — this host's own filesystem,
@@ -13,9 +19,11 @@ const MAX_RESULTS = 20;
  */
 export async function GET(request: Request): Promise<Response> {
   const raw = new URL(request.url).searchParams.get("path")?.trim() ?? "";
-  const input = raw || homedir();
+  const input = raw || browseRoot;
+  if (!isWithinBrowseRoot(input)) return Response.json({ items: [] });
 
   const searchDir = input.endsWith("/") ? input : dirname(input);
+  if (!isWithinBrowseRoot(searchDir)) return Response.json({ items: [] });
   const prefix = input.endsWith("/") ? "" : basename(input).toLowerCase();
 
   let entries: Array<{ name: string; isDirectory: () => boolean }> = [];

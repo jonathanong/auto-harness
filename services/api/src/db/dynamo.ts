@@ -5,6 +5,7 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7423";
 
 export type DynamoTableNames = {
+  users: string;
   sessions: string;
   worktrees: string;
   connections: string;
@@ -22,6 +23,7 @@ export type DynamoTableNames = {
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
   const p = prefix.replace(/[^a-zA-Z0-9_.-]/g, "") || "AutoHarness";
   return {
+    users: `${p}-Users`,
     sessions: `${p}-Sessions`,
     worktrees: `${p}-Worktrees`,
     connections: `${p}-Connections`,

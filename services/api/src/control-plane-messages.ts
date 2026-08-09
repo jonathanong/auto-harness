@@ -11,6 +11,10 @@ import { heartbeat, registerHost } from "./control-plane-agents.ts";
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 
+const MAX_LOG_CHUNK_BYTES = 32 * 1024;
+const MAX_RETAINED_LOG_CHUNKS = 10_000;
+const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
+
 export function appendLog(
   state: ControlPlaneState,
   opts: {
@@ -33,6 +37,11 @@ export function appendLog(
   const list = state.logs.get(opts.sessionId) ?? [];
   list.push(rec);
   list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
+  let retainedBytes = list.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
+  while (list.length > MAX_RETAINED_LOG_CHUNKS || retainedBytes > MAX_RETAINED_LOG_BYTES) {
+    const removed = list.shift();
+    if (removed) retainedBytes -= Buffer.byteLength(removed.content);
+  }
   state.logs.set(opts.sessionId, list);
   if (state.storage) {
     queueWrite(state, state.storage.putLog(rec));
@@ -73,6 +82,9 @@ export function handleHostMessage(
       return applySessionStatus(state, msg);
     }
     case "session:log": {
+      if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
+        return { ok: false, error: "log chunk exceeds 32 KiB" };
+      }
       appendLog(state, {
         sessionId: msg.sessionId,
         stream: msg.stream,

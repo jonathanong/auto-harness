@@ -4,7 +4,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   const args = argv.slice(2);
   if (args[0] === "help" || args[0] === "--help") {
     console.log(`Usage:
-  auto-harness-api serve [--port 7420]
+  auto-harness-api serve [--port 7420] [--host 127.0.0.1]
 `);
     return 0;
   }
@@ -15,6 +15,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   }
 
   let port = 7420;
+  let host = process.env.HARNESS_API_HOST ?? "127.0.0.1";
   const portIdx = args.indexOf("--port");
   if (portIdx >= 0) {
     const raw = args[portIdx + 1];
@@ -25,9 +26,18 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     }
     port = n;
   }
+  const hostIdx = args.indexOf("--host");
+  if (hostIdx >= 0) {
+    const raw = args[hostIdx + 1];
+    if (!raw || raw.startsWith("-")) {
+      console.error("--host must be a hostname or IP address");
+      return 1;
+    }
+    host = raw;
+  }
 
-  const server = await startLocalServer({ port, useDynamo: true });
-  console.log(`Auto Harness local API listening on http://127.0.0.1:${server.port}`);
+  const server = await startLocalServer({ port, host, useDynamo: true });
+  console.log(`Auto Harness local API listening on http://${host}:${server.port}`);
   console.log(`POST http://127.0.0.1:${server.port}/api/v1/sessions`);
   console.log(
     `DynamoDB: ${process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:7423"} (pnpm local:dynamodb)`,

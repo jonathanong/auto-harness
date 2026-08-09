@@ -4,9 +4,18 @@ import type { HostWireMessage } from "@auto-harness/shared";
 
 import type { ControlPlane } from "./control-plane.ts";
 import type { MemorySessionStore } from "./memory-store.ts";
+import type { AuthMode } from "./auth.ts";
+import type { AuthService } from "./auth.ts";
+
+export const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
 export type LocalServerOptions = {
   port?: number;
+  /** Bind interface. Defaults to loopback; public binds require required auth. */
+  host?: string;
+  authMode?: AuthMode;
+  /** Injectable for tests and local account administration. */
+  authService?: AuthService;
   store?: MemorySessionStore;
   plane?: ControlPlane;
   publicBaseUrl?: string;
@@ -31,10 +40,20 @@ export type RouteCtx = {
 export function readJson(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let size = 0;
+    let rejected = false;
     req.on("data", (c: Buffer) => {
+      size += c.length;
+      if (size > MAX_JSON_BODY_BYTES) {
+        rejected = true;
+        req.destroy();
+        reject(new Error("request body exceeds 1 MiB"));
+        return;
+      }
       chunks.push(c);
     });
     req.on("end", () => {
+      if (rejected) return;
       if (chunks.length === 0) {
         resolve({});
         return;

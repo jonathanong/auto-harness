@@ -52,6 +52,23 @@ export async function ensureControlPlaneTables(opts: {
   const ddb = opts.client;
 
   await createIfMissing(ddb, {
+    TableName: names.users,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "id", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "username", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "username",
+        KeySchema: [{ AttributeName: "username", KeyType: KeyType.HASH }],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
+  });
+
+  await createIfMissing(ddb, {
     TableName: names.sessions,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [

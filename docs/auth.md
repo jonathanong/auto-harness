@@ -12,6 +12,25 @@ Auto Harness has three tiers of credentials:
 | User accounts    | Human operators          | Username + password (basic auth) | Admins               |
 | Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins               |
 
+## Local authentication and public binds
+
+The local API and both local UIs bind only to `127.0.0.1` by default. Set an
+explicit host (`HARNESS_API_HOST`, `HARNESS_WEB_HOST`, or
+`HARNESS_HOST_PANE_HOST`) only when remote access is intended. A non-loopback
+bind is refused unless all of the following are set:
+
+```bash
+HARNESS_AUTH_MODE=required
+HARNESS_SESSION_SECRET=<long random secret>
+HARNESS_ADMINS=<base64 JSON bootstrap admins>
+```
+
+`HARNESS_AUTH_MODE=disabled` is the loopback-only developer mode. In required
+mode, users and service accounts are stored in the `Users` table; bootstrap
+admins remain environment-only and can administer those accounts. Passwords
+are bcrypt hashes and API keys are SHA-256 hashes. The one-time plain API key
+is never stored or returned again after creation.
+
 ### Admin accounts
 
 Admin accounts are bootstrapped via environment variable on the Lambda. This is the root credential — it exists before any database records.
