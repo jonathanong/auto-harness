@@ -27,9 +27,7 @@ function extraKeys(value: string | undefined): string[] {
     .split(",")
     .map((key) => key.trim())
     .filter(
-      (key) =>
-        /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) &&
-        !key.toUpperCase().startsWith("HARNESS_"),
+      (key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !key.toUpperCase().startsWith("HARNESS_"),
     );
 }
 

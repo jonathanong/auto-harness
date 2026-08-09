@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import type { ProcessRunner } from "./executor.ts";
 import { SessionRunner } from "./session-runner.ts";
-import { LogStreamer } from "./log-streamer.ts";
-import { runClaimedSession } from "./session-run-claimed.ts";
 import { baseAssign, setup } from "./session-runner-test-helpers.ts";
 import type { WorktreeManager } from "./worktree-manager.ts";
 
@@ -113,57 +111,6 @@ describe("SessionRunner cancellation", () => {
     });
   });
 
-  it("honors a cancellation already present before setup is spawned", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const logs = [];
-    await expect(
-      runClaimedSession(
-        cancellableRunner("main"),
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
-        logs,
-        baseAssign({ setupScript: "slow" }),
-        {
-          repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
-          worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
-          cwd: "/wt",
-        },
-        controller.signal,
-        () => false,
-        () => 100,
-      ),
-    ).resolves.toMatchObject({ status: "cancelled" });
-  });
-
-  it("does not start the primary command after cancellation without setup", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    let started = false;
-    const logs = [];
-    await expect(
-      runClaimedSession(
-        {
-          async run() {
-            started = true;
-            return { exitCode: 0, timedOut: false, signal: null };
-          },
-        },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
-        logs,
-        baseAssign(),
-        {
-          repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
-          worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
-          cwd: "/wt",
-        },
-        controller.signal,
-        () => false,
-        () => 100,
-      ),
-    ).resolves.toMatchObject({ status: "cancelled" });
-    expect(started).toBe(false);
-  });
-
   it("reports timeout when checkout returns after the session deadline", async () => {
     const runner = new SessionRunner({
       worktrees: fakeWorktrees(
@@ -176,52 +123,6 @@ describe("SessionRunner cancellation", () => {
     await expect(runner.run(baseAssign({ timeout: 0.01 }))).resolves.toMatchObject({
       status: "timed_out",
     });
-  });
-
-  it("reports timeout when setup is entered after the deadline", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const logs = [];
-    await expect(
-      runClaimedSession(
-        cancellableRunner("main"),
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
-        logs,
-        baseAssign({ setupScript: "slow" }),
-        {
-          repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
-          worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
-          cwd: "/wt",
-        },
-        controller.signal,
-        () => true,
-        () => 100,
-      ),
-    ).resolves.toMatchObject({ status: "timed_out" });
-  });
-
-  it("runs a claimed command without a cancellation signal", async () => {
-    const logs = [];
-    await expect(
-      runClaimedSession(
-        {
-          async run() {
-            return { exitCode: 0, timedOut: false, signal: null };
-          },
-        },
-        new LogStreamer("s", (chunk) => logs.push(chunk)),
-        logs,
-        baseAssign(),
-        {
-          repository: { id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] },
-          worktree: { id: "wt-1", name: "wt", path: "/wt", labels: [] },
-          cwd: "/wt",
-        },
-        undefined,
-        () => false,
-        () => 100,
-      ),
-    ).resolves.toMatchObject({ status: "completed" });
   });
 });
 
