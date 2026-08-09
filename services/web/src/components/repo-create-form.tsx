@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 export function RepoCreateForm() {
   const router = useRouter();

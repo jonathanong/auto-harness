@@ -12,6 +12,25 @@ Auto Harness has three tiers of credentials:
 | User accounts    | Human operators          | Username + password (basic auth) | Admins               |
 | Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins               |
 
+## Local authentication and public binds
+
+The local API and both local UIs bind only to `127.0.0.1` by default. Set an
+explicit host (`HARNESS_API_HOST`, `HARNESS_WEB_HOST`, or
+`HARNESS_HOST_PANE_HOST`) only when remote access is intended. A non-loopback
+bind is refused unless all of the following are set:
+
+```bash
+HARNESS_AUTH_MODE=required
+HARNESS_SESSION_SECRET=<at least 32 random characters>
+HARNESS_ADMINS=<base64 JSON bootstrap admins>
+```
+
+`HARNESS_AUTH_MODE=disabled` is the loopback-only developer mode. In required
+mode, users and service accounts are stored in the `Users` table; bootstrap
+admins remain environment-only and can administer those accounts. Passwords
+are bcrypt hashes and API keys are SHA-256 hashes. The one-time plain API key
+is never stored or returned again after creation.
+
 ### Admin accounts
 
 Admin accounts are bootstrapped via environment variable on the Lambda. This is the root credential — it exists before any database records.
@@ -73,12 +92,12 @@ The user can change their password after first login.
 
 Service accounts are for machines — CI/CD systems, VPS agents, and external integrations. Created by admins.
 
-| Property    | Value                                                                                         |
-| ----------- | --------------------------------------------------------------------------------------------- |
-| Format      | `hns_` prefix + 48 random characters                                                          |
-| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                            |
-| Rotation    | Create a new key, update consumers, delete the old key                                        |
-| Auth method | `Authorization: Bearer <api-key>` header (REST) or `?token=<api-key>` query param (WebSocket) |
+| Property    | Value                                                              |
+| ----------- | ------------------------------------------------------------------ |
+| Format      | `hns_` prefix + 48 random characters                               |
+| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation. |
+| Rotation    | Create a new key, update consumers, delete the old key             |
+| Auth method | `Authorization: Bearer <api-key>` header (REST and WebSocket)      |
 
 Service accounts have the same role system as user accounts (`read-only`, `operator`, `admin`) and can optionally be scoped to specific repositories:
 
@@ -188,7 +207,7 @@ sequenceDiagram
     participant Lambda
     participant DDB as DynamoDB
 
-    Agent->>APIGW: WebSocket connect<br/>wss://...?token=hns_xxx
+    Agent->>APIGW: WebSocket connect<br/>Authorization: Bearer hns_xxx
     APIGW->>Lambda: $connect handler
     Lambda->>DDB: Lookup API key hash
     DDB-->>Lambda: Service account found (role: operator, boundHostId: vps-prod-1)

@@ -8,6 +8,8 @@ type WsTransportOptions = {
   url: string;
   /** Optional hostId query hint */
   hostId?: string;
+  /** Service-account credential sent as an Authorization header, never in the URL. */
+  apiKey?: string;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (err: Error) => void;
@@ -32,7 +34,10 @@ export function createWsTransport(options: WsTransportOptions): DaemonTransport 
     openReject = reject;
   });
 
-  const socket = new WebSocket(url);
+  const socketOptions = options.apiKey
+    ? { headers: { authorization: `Bearer ${options.apiKey}` } }
+    : undefined;
+  const socket = new WebSocket(url, socketOptions);
 
   socket.on("open", () => {
     options.onOpen?.();

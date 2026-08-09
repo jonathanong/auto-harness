@@ -11,7 +11,7 @@ import {
   WithTooltip,
 } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 export function EditRepoForm({ repository }: { repository: RepositorySummary }) {
   const router = useRouter();

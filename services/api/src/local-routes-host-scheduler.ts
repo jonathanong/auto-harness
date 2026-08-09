@@ -1,13 +1,26 @@
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import { parseHostMessage } from "./ws-hub.ts";
 
 /** Hosts, worktrees, profiles, host messages, and scheduler routes. */
 export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/hosts") {
-    send(res, 200, { items: plane.listHosts() });
+    send(res, 200, {
+      items: plane
+        .listHosts()
+        .filter(
+          (host) =>
+            mayAccessHost(ctx.principal, host.hostId) &&
+            (!ctx.principal?.allowedRepositoryIds ||
+              host.worktreeIds.some((id) =>
+                mayAccessRepository(ctx.principal, plane.getWorktree(id)?.repositoryId),
+              )),
+        ),
+    });
     return true;
   }
 
@@ -17,14 +30,40 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
-    send(res, 200, { items: plane.listWorktrees() });
+    send(res, 200, {
+      items: plane
+        .listWorktrees()
+        .filter(
+          (worktree) =>
+            mayAccessHost(ctx.principal, worktree.hostId) &&
+            (!ctx.principal || mayAccessRepository(ctx.principal, worktree.repositoryId)),
+        ),
+    });
     return true;
   }
 
   if (method === "POST" && url.pathname === "/api/v1/host/messages") {
     try {
-      const body = (await readJson(req)) as HostToServerMessage;
-      const result = plane.handleHostMessage(body);
+      const body = parseHostMessage(await readJson(req));
+      if (!body) {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid host message" },
+        });
+        return true;
+      }
+      if (body.type === "host:register" || body.type === "host:keepalive") {
+        if (!mayAccessHost(ctx.principal, body.hostId)) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+          return true;
+        }
+      } else if (ctx.principal?.boundHostId) {
+        const session = plane.getSession(body.sessionId);
+        if (!session || !mayAccessHost(ctx.principal, session.hostId)) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+          return true;
+        }
+      }
+      const result = plane.handleHostMessage(body as HostToServerMessage);
       if (!result.ok) {
         send(res, 400, {
           error: { code: "AGENT_MESSAGE_ERROR", message: result.error },
@@ -78,6 +117,10 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: "hostId required" },
         });
+        return true;
+      }
+      if (!mayAccessHost(ctx.principal, body.hostId)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
       send(res, 200, plane.drainHost(body.hostId));

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 export function RemoveProviderAccountButton({
   accountId,

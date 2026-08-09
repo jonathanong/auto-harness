@@ -96,6 +96,9 @@ importers:
       '@aws-sdk/lib-dynamodb':
         specifier: ^3.1101.0
         version: 3.1101.0(@aws-sdk/client-dynamodb@3.1101.0)
+      bcryptjs:
+        specifier: ^3.0.3
+        version: 3.0.3
       ws:
         specifier: ^8.21.1
         version: 8.21.1
@@ -1635,6 +1638,10 @@ packages:
   baseline-browser-mapping@2.11.11:
     resolution: {integrity: sha512-/yImnXwyTvgMkhgekLHok/Rx5vO6E0BmStWlSqKWMVm2a2ITuZ1Tn+9bgLS+gZRdZmWtd8nxuhHpdmCUOWsTQQ==}
     engines: {node: '>=6.0.0'}
+    hasBin: true
+
+  bcryptjs@3.0.3:
+    resolution: {integrity: sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==}
     hasBin: true
 
   binary-extensions@2.3.0:
@@ -3792,6 +3799,8 @@ snapshots:
   balanced-match@4.0.4: {}
 
   baseline-browser-mapping@2.11.11: {}
+
+  bcryptjs@3.0.3: {}
 
   binary-extensions@2.3.0: {}
 

@@ -114,7 +114,7 @@ sequenceDiagram
     participant API as Control plane
     participant DDB as DynamoDB
 
-    Agent->>API: Connect ?token=hns_…
+  Agent->>API: Connect with Authorization: Bearer hns_…
     API->>DDB: Validate key - store Connection
     Agent->>API: host:register { worktrees }
     API->>DDB: Upsert inventory - assign pending if any

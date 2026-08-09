@@ -1,11 +1,21 @@
+/* eslint-disable max-lines -- repository and schedule scope gates share one route module. */
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessRepository } from "./auth-policy.ts";
+
+function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
+  return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
+}
+
+function hidden(res: RouteCtx["res"]): void {
+  send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+}
 
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
-    send(res, 200, { items: plane.listRepositories() });
+    send(res, 200, { items: plane.listRepositories().filter((repo) => scoped(ctx, repo.id)) });
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
@@ -40,7 +50,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     const id = repoMatch[1]!;
     if (method === "GET") {
       const repo = plane.getRepository(id);
-      if (!repo) {
+      if (!repo || !scoped(ctx, repo.id)) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "repository not found" } });
         return true;
       }
@@ -48,6 +58,10 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
+      if (!scoped(ctx, id)) {
+        hidden(res);
+        return true;
+      }
       try {
         const body = (await readJson(req)) as Record<string, unknown>;
         const result = plane.updateRepository(id, {
@@ -73,6 +87,10 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       }
     }
     if (method === "DELETE") {
+      if (!scoped(ctx, id)) {
+        hidden(res);
+        return true;
+      }
       const result = plane.deleteRepository(id);
       if (!result.ok) {
         send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
@@ -90,7 +108,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/schedules") {
-    send(res, 200, { items: plane.listSchedules() });
+    send(res, 200, {
+      items: plane.listSchedules().filter((schedule) => scoped(ctx, schedule.repositoryId)),
+    });
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/schedules") {
@@ -113,6 +133,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
               "repositoryId, name, cron, timeout, nextRunAt are required, plus exactly one of providerAccountId or commandId",
           },
         });
+        return true;
+      }
+      if (!scoped(ctx, body.repositoryId)) {
+        hidden(res);
         return true;
       }
       const result = plane.putSchedule({
@@ -142,6 +166,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   }
   const schedTrigger = /^\/api\/v1\/schedules\/([^/]+)\/trigger$/.exec(url.pathname);
   if (method === "POST" && schedTrigger) {
+    const existing = plane.getSchedule(schedTrigger[1]!);
+    if (existing && !scoped(ctx, existing.repositoryId)) {
+      hidden(res);
+      return true;
+    }
     const result = plane.triggerSchedule(schedTrigger[1]!);
     if (!result.ok) {
       send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
@@ -153,8 +182,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   const schedMatch = /^\/api\/v1\/schedules\/([^/]+)$/.exec(url.pathname);
   if (schedMatch) {
     const id = schedMatch[1]!;
+    const existing = plane.getSchedule(id);
+    if (existing && !scoped(ctx, existing.repositoryId)) {
+      hidden(res);
+      return true;
+    }
     if (method === "GET") {
-      const s = plane.getSchedule(id);
+      const s = existing;
       if (!s) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "schedule not found" } });
         return true;
@@ -165,6 +199,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     if (method === "PUT" || method === "PATCH") {
       try {
         const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.repositoryId === "string" && !scoped(ctx, body.repositoryId)) {
+          hidden(res);
+          return true;
+        }
         const result = plane.updateSchedule(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(typeof body.providerAccountId === "string"

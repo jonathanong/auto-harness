@@ -33,6 +33,11 @@ Control-plane and host-pane UIs are adjacent (7421/7422) so they're easy to tell
 | **Host pane UI**     | 7422 | `http://127.0.0.1:7422` |
 | DynamoDB Local       | 7423 | `http://127.0.0.1:7423` |
 
+All three HTTP listeners use loopback by default. Do not expose a local stack
+on a LAN interface with `HARNESS_AUTH_MODE=disabled`; startup rejects that
+combination. See [auth.md](auth.md#local-authentication-and-public-binds) for
+the required public-bind configuration.
+
 `pnpm test:e2e` (Playwright) never touches these — it runs its own stack on `743x`, `+10`
 offset, with its own DynamoDB container that gets wiped on every run. See
 [e2e.md](e2e.md#how-the-stack-is-started).

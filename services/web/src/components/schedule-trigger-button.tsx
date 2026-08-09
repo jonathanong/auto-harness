@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 export function ScheduleTriggerButton({ id }: { id: string }) {
   const router = useRouter();

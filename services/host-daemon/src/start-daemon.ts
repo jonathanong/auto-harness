@@ -46,6 +46,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
+    apiKey: options.config.apiKey,
     onError: (err) => {
       error(`ws error: ${err.message}`);
     },

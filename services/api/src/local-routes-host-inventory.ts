@@ -1,4 +1,5 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 
 /**
  * Host inventory routes (paths + command profile argv).
@@ -8,7 +9,20 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/host-inventories") {
-    send(res, 200, { items: plane.listHostInventories() });
+    send(res, 200, {
+      items: plane
+        .listHostInventories()
+        .filter((inventory) => mayAccessHost(ctx.principal, inventory.hostId))
+        .map((inventory) => ({
+          ...inventory,
+          repositories: inventory.repositories.filter(
+            (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+          ),
+        }))
+        .filter(
+          (inventory) => inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
+        ),
+    });
     return true;
   }
 
@@ -18,6 +32,11 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   }
   const hostId = decodeURIComponent(match[1]!);
 
+  if (!mayAccessHost(ctx.principal, hostId)) {
+    send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+    return true;
+  }
+
   if (method === "GET") {
     const config = plane.getHostInventory(hostId);
     if (!config) {
@@ -26,13 +45,34 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     }
-    send(res, 200, config);
+    const repositories = config.repositories.filter(
+      (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+    );
+    if (repositories.length === 0 && ctx.principal?.allowedRepositoryIds) {
+      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+      return true;
+    }
+    send(res, 200, { ...config, repositories });
     return true;
   }
 
   if (method === "PUT") {
     try {
       const body = await readJson(req);
+      if (
+        ctx.principal?.allowedRepositoryIds &&
+        (!body ||
+          typeof body !== "object" ||
+          !Array.isArray((body as { repositories?: unknown }).repositories) ||
+          !(body as { repositories: Array<{ id?: unknown }> }).repositories.every(
+            (repository) =>
+              typeof repository.id === "string" &&
+              mayAccessRepository(ctx.principal, repository.id),
+          ))
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+        return true;
+      }
       const result = plane.putHostInventory(hostId, body);
       if (!result.ok) {
         send(res, 400, {
@@ -40,7 +80,13 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
-      send(res, 200, result.config);
+      const config = result.config;
+      send(res, 200, {
+        ...config,
+        repositories: config.repositories.filter((repository) =>
+          mayAccessRepository(ctx.principal, repository.id),
+        ),
+      });
       return true;
     } catch {
       send(res, 400, {

@@ -7,6 +7,7 @@ import {
   type HostInventoryRecord,
   type ArchiveObject,
   type ConnectionRecord,
+  type AuthAccountRecord,
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
@@ -15,6 +16,7 @@ import {
 import * as sessions from "./plane-storage-sessions.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
+import * as auth from "./plane-storage-auth.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -108,6 +110,10 @@ export class DynamoPlaneStorageBase {
     return catalog.putLog(this.ctx, rec);
   }
 
+  deleteLog(sessionId: string, timestampSeq: string): Promise<void> {
+    return catalog.deleteLog(this.ctx, sessionId, timestampSeq);
+  }
+
   listLogs(sessionId: string): Promise<LogRecord[]> {
     return catalog.listLogs(this.ctx, sessionId);
   }
@@ -185,5 +191,25 @@ export class DynamoPlaneStorageBase {
 
   deleteHostInventory(hostId: string): Promise<void> {
     return catalog.deleteHostInventory(this.ctx, hostId);
+  }
+
+  putAuthAccount(rec: AuthAccountRecord): Promise<void> {
+    return auth.putAuthAccount(this.ctx, rec);
+  }
+
+  getAuthAccount(id: string): Promise<AuthAccountRecord | null> {
+    return auth.getAuthAccount(this.ctx, id);
+  }
+
+  getAuthAccountByUsername(username: string): Promise<AuthAccountRecord | null> {
+    return auth.getAuthAccountByUsername(this.ctx, username);
+  }
+
+  listAuthAccounts(): Promise<AuthAccountRecord[]> {
+    return auth.listAuthAccounts(this.ctx);
+  }
+
+  deleteAuthAccount(id: string): Promise<void> {
+    return auth.deleteAuthAccount(this.ctx, id);
   }
 }

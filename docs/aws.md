@@ -114,7 +114,7 @@ Route groups map 1:1 to handler modules under `services/api/src/handlers/rest/`.
 
 ### WebSocket (WSS)
 
-- Endpoint: `wss://…/ws?token=…`
+- Endpoint: `wss://…/ws` with `Authorization: Bearer …`
 - Routes:
   - `$connect` — authenticate, write `Connections` row
   - `$disconnect` — delete connection; if agent, mark its worktrees offline / reconcile sessions

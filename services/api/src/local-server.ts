@@ -1,9 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 
+import { AuthService } from "./auth.ts";
+import { authorize } from "./auth-policy.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { applyLocalCors } from "./local-cors.ts";
 import { type LocalServerOptions, send } from "./local-http.ts";
+import { handleAuthRoutes } from "./local-routes-auth.ts";
 import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
 import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
 import { handleCommandRoutes } from "./local-routes-commands.ts";
@@ -20,6 +23,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   plane: ControlPlane;
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
 } {
+  const auth = options.authService ?? new AuthService({ mode: options.authMode });
   const plane =
     options.plane ??
     options.store?.plane ??
@@ -36,12 +40,33 @@ export function createLocalApp(options: LocalServerOptions = {}): {
 
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
-    const ctx = { plane, req, res, url, method };
+    const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
 
     if (method === "GET" && url.pathname === "/health") {
       send(res, 200, { ok: true });
       return;
     }
+
+    const authRoute = url.pathname.startsWith("/api/v1/auth/");
+    const sessionRoute =
+      url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout";
+    if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
+
+    if (auth.mode === "required") {
+      const principal = await auth.authenticate(req);
+      if (!principal) {
+        send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
+        return;
+      }
+      if (!authorize(principal, method, url.pathname)) {
+        send(res, 403, {
+          error: { code: "FORBIDDEN", message: "insufficient role for this operation" },
+        });
+        return;
+      }
+      ctx.principal = principal;
+    }
+    if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
 
     if (await handleSessionRoutes(ctx)) {
       return;
@@ -85,6 +110,16 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   ws?: WsHub;
 }> {
   const port = options.port ?? 7420;
+  const host = options.host ?? "127.0.0.1";
+  // Keep the injected authenticator as the source of truth.  Apart from making
+  // tests deterministic, this is important for deployments that hydrate
+  // accounts before starting the listener: constructing a second AuthService
+  // here would silently discard the configured secret/accounts and could make
+  // the listener accept the wrong authentication policy.
+  const auth = options.authService ?? new AuthService({ mode: options.authMode });
+  if (!isLoopback(host) && auth.mode !== "required") {
+    throw new Error("non-loopback API bind requires HARNESS_AUTH_MODE=required");
+  }
   const enableWs = options.enableWs !== false;
   const bridge = enableWs ? createPlaneWsBridge() : null;
 
@@ -115,18 +150,20 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
 
   const app = createLocalApp({
     ...options,
+    authService: auth,
     plane,
     store: store ?? new MemorySessionStore({ plane }),
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
+  await auth.hydrate(resolvedPlane.state.storage);
   const server = createServer((req, res) => {
     void handler(req, res);
   });
 
-  const wsHub = bridge ? bridge.attach(server, resolvedPlane) : undefined;
+  const wsHub = bridge ? bridge.attach(server, resolvedPlane, auth) : undefined;
 
   await new Promise<void>((resolve, reject) => {
-    server.listen(port, () => {
+    server.listen(port, host, () => {
       resolve();
     });
     server.on("error", reject);
@@ -149,4 +186,8 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
         });
       }),
   };
+}
+
+function isLoopback(host: string): boolean {
+  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }

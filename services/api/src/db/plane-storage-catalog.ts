@@ -26,6 +26,16 @@ export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void
   );
 }
 
+export async function deleteLog(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  timestampSeq: string,
+): Promise<void> {
+  await ctx.doc.send(
+    new DeleteCommand({ TableName: ctx.tables.sessionLogs, Key: { sessionId, timestampSeq } }),
+  );
+}
+
 export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise<LogRecord[]> {
   const res = await ctx.doc.send(
     new QueryCommand({

@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { emptyHostInventory } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 /** Control-plane: seed a host inventory slot (the host's daemon may be offline). */
 export function AddHostForm() {

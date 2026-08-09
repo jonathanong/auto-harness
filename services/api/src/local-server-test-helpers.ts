@@ -4,12 +4,14 @@ export async function invokeHandler(
   method: string,
   path: string,
   body?: unknown,
+  headers: Record<string, string> = {},
 ): Promise<{ status: number; json: unknown; raw: string }> {
   const chunks: Buffer[] = [];
   let statusCode = 0;
   const req = {
     method,
     url: path,
+    headers,
     on(event: string, cb: (...args: unknown[]) => void) {
       if (event === "data" && body !== undefined) {
         cb(Buffer.from(JSON.stringify(body)));
@@ -20,13 +22,13 @@ export async function invokeHandler(
       return req;
     },
   };
-  const headers = new Map<string, string | number | string[]>();
+  const responseHeaders = new Map<string, string | number | string[]>();
   const res = {
     setHeader(name: string, value: string | number | string[]) {
-      headers.set(name.toLowerCase(), value);
+      responseHeaders.set(name.toLowerCase(), value);
     },
     getHeader(name: string) {
-      return headers.get(name.toLowerCase());
+      return responseHeaders.get(name.toLowerCase());
     },
     writeHead(code: number) {
       statusCode = code;
