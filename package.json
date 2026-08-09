@@ -51,7 +51,7 @@
     "@vitest/coverage-v8": "^3.2.4",
     "dependency-cruiser": "^16.10.2",
     "knip": "^5.61.3",
-    "no-mistakes": "^0.39.0",
+    "no-mistakes": "^0.41.0",
     "oxfmt": "^0.26.0",
     "oxlint": "^1.28.0",
     "typescript": "^5.8.3",

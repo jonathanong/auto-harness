@@ -27,8 +27,8 @@ importers:
         specifier: ^5.61.3
         version: 5.88.1(@types/node@22.20.1)(typescript@5.9.3)
       no-mistakes:
-        specifier: ^0.39.0
-        version: 0.39.0
+        specifier: ^0.41.0
+        version: 0.41.0
       oxfmt:
         specifier: ^0.26.0
         version: 0.26.0
@@ -278,6 +278,9 @@ packages:
   '@aws-sdk/core@3.977.4':
     resolution: {integrity: sha512-CEkcQlMOQJCvul60U7wdAOACjtdgFWDsfJI+6wUOGdhGNV2lGbuJpi/R50QLpFG3Tp+sQxa/RmzC3X7KHbhuTA==}
     engines: {node: '>=20.0.0'}
+    deprecated: |-
+      Deprecated due to Document number parsing bug in JSON, see
+        https://github.com/aws/aws-sdk-js-v3/issues/8246. Newer version available.
 
   '@aws-sdk/credential-provider-env@3.972.65':
     resolution: {integrity: sha512-lJT2aRw9wCV8jPHyFJjdZLD4HTydL6/22AnCSOB8e/LqOc55nEJGLHkJQeSxhn8QiqyjFwPKQFtMw0ovjRUY/g==}
@@ -2079,8 +2082,8 @@ packages:
       sass:
         optional: true
 
-  no-mistakes@0.39.0:
-    resolution: {integrity: sha512-9VdRP74DcMGgZkS0/J5acFHOUkRD+mjKS/danjeQeQEufJ5Nc5eAkBZKYEjZA2Yqxm/i9IkdA69ICHT27LVvFg==}
+  no-mistakes@0.41.0:
+    resolution: {integrity: sha512-gmunFTWnrjohoqGrAg/0OORFFhjf152CklpqgnI9fwy/WfSa9dVkPLDSpoa0Ie8swR/Ms5KFRLUSNy6HWCDbbA==}
     hasBin: true
 
   node-releases@2.0.51:
@@ -4238,7 +4241,7 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  no-mistakes@0.39.0: {}
+  no-mistakes@0.41.0: {}
 
   node-releases@2.0.51: {}
 
