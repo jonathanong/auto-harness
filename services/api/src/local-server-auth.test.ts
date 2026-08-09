@@ -45,7 +45,7 @@ describe("createLocalApp authentication routes", () => {
       items: [expect.objectContaining({ username: "alice" })],
     });
 
-    const account = await invoke("POST", "/api/v1/auth/service-accounts", {
+    const invalidAccount = await invoke("POST", "/api/v1/auth/service-accounts", {
       name: "agent-a",
       role: "operator",
       allowedRepositoryIds: ["repo-a", 4],
@@ -55,6 +55,13 @@ describe("createLocalApp authentication routes", () => {
       (await invoke("POST", "/api/v1/auth/service-accounts", { name: "bad", role: "invalid" }))
         .status,
     ).toBe(400);
+    expect(invalidAccount.status).toBe(400);
+    const account = await invoke("POST", "/api/v1/auth/service-accounts", {
+      name: "agent-a",
+      role: "operator",
+      allowedRepositoryIds: ["repo-a"],
+      boundHostId: "host-a",
+    });
     expect(account.status).toBe(201);
     expect(account.json).toMatchObject({
       account: { name: "agent-a" },
@@ -155,5 +162,27 @@ describe("createLocalApp authentication routes", () => {
         })
       ).status,
     ).toBe(400);
+  });
+
+  it("protects account administration in required mode", async () => {
+    const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
+    const { apiKey } = await auth.createServiceAccount({ name: "operator", role: "operator" });
+    const { handler } = createLocalApp({ plane: new ControlPlane(), authService: auth });
+    const body = { username: "alice", password: "password", role: "operator" };
+    expect((await invokeHandler(handler, "POST", "/api/v1/auth/users", body)).status).toBe(401);
+    expect(
+      (
+        await invokeHandler(handler, "POST", "/api/v1/auth/users", body, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/auth/users", undefined, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(403);
   });
 });

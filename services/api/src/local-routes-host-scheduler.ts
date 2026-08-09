@@ -51,6 +51,18 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
+      if (body.type === "host:register" || body.type === "host:keepalive") {
+        if (!mayAccessHost(ctx.principal, body.hostId)) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+          return true;
+        }
+      } else if (ctx.principal?.boundHostId) {
+        const session = plane.getSession(body.sessionId);
+        if (!session || !mayAccessHost(ctx.principal, session.hostId)) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+          return true;
+        }
+      }
       const result = plane.handleHostMessage(body as HostToServerMessage);
       if (!result.ok) {
         send(res, 400, {

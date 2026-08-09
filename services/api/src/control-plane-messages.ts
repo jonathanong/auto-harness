@@ -38,13 +38,20 @@ export function appendLog(
   list.push(rec);
   list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
   let retainedBytes = list.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
+  const evicted: LogRecord[] = [];
   while (list.length > MAX_RETAINED_LOG_CHUNKS || retainedBytes > MAX_RETAINED_LOG_BYTES) {
     const removed = list.shift();
-    if (removed) retainedBytes -= Buffer.byteLength(removed.content);
+    if (removed) {
+      retainedBytes -= Buffer.byteLength(removed.content);
+      evicted.push(removed);
+    }
   }
   state.logs.set(opts.sessionId, list);
   if (state.storage) {
     queueWrite(state, state.storage.putLog(rec));
+    for (const removed of evicted) {
+      queueWrite(state, state.storage.deleteLog(removed.sessionId, removed.timestampSeq));
+    }
   }
   return rec;
 }

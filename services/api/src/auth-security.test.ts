@@ -62,7 +62,7 @@ describe("control-plane authentication security", () => {
     await expect(createAccount({ name: "", role: "operator" }, new Map())).rejects.toThrow();
     const first = new AuthService({
       mode: "required",
-      secret: "secret",
+      secret: "a".repeat(32),
       admins: admins([{ username: "root", password: "root" }]),
     });
     const created = await first.createServiceAccount(
@@ -103,7 +103,7 @@ describe("control-plane authentication security", () => {
 
     const second = new AuthService({
       mode: "required",
-      secret: "secret",
+      secret: "a".repeat(32),
       admins: admins([{ username: "root", password: "root" }]),
     });
     await second.hydrate(undefined);
@@ -116,6 +116,22 @@ describe("control-plane authentication security", () => {
     expect(await second.authenticatePassword("persisted-user", "password")).toMatchObject(
       createdUser,
     );
+    const persistedUser = records.find((record) => record.username === "persisted-user")!;
+    const lazy = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    });
+    await lazy.hydrate({
+      listAuthAccounts: async () => [],
+      getAuthAccountByUsername: async (username) =>
+        username === "persisted-user" ? persistedUser : null,
+      putAuthAccount: async () => undefined,
+      deleteAuthAccount: async () => undefined,
+    });
+    expect(await lazy.authenticatePassword("persisted-user", "password")).toMatchObject(
+      createdUser,
+    );
     expect(second.authenticateApiKey(`${created.apiKey}x`)).toBeNull();
     expect(second.authenticateApiKey("anything")).toBeNull();
     await second.deleteUser("persisted-user", storage);
@@ -125,7 +141,7 @@ describe("control-plane authentication security", () => {
   it("preserves colons in Basic passwords and revokes deleted users' cookies", async () => {
     const auth = new AuthService({
       mode: "required",
-      secret: "secret",
+      secret: "a".repeat(32),
       admins: admins([{ username: "root", password: "root" }]),
     });
     const user = await auth.createUser({ username: "alice", password: "p:a:ss", role: "operator" });
@@ -170,8 +186,19 @@ describe("control-plane authentication security", () => {
     expect(
       await auth.authenticate(request({ cookie: "auto_harness_session=malformed" })),
     ).toBeNull();
+    for (const token of ["..signature", "header..signature", "header.payload."]) {
+      expect(
+        await auth.authenticate(request({ cookie: `auto_harness_session=${token}` })),
+      ).toBeNull();
+    }
     await expect(
       auth.createUser({ username: "", password: "x", role: "operator" }),
+    ).rejects.toThrow();
+    await expect(
+      auth.createUser({ username: "bad\u0000name", password: "x", role: "operator" }),
+    ).rejects.toThrow();
+    await expect(
+      auth.createUser({ username: "x".repeat(257), password: "x", role: "operator" }),
     ).rejects.toThrow();
     await expect(
       auth.createUser({ username: "root", password: "x", role: "operator" }),
@@ -198,9 +225,10 @@ describe("control-plane authentication security", () => {
   });
 
   it("rejects tampered or stale cookie claims", async () => {
+    const secret = "a".repeat(32);
     const auth = new AuthService({
       mode: "required",
-      secret: "secret",
+      secret,
       admins: admins([{ username: "root", password: "root" }]),
     });
     const base = { id: "admin:root", username: "root", role: "admin", kind: "admin" };
@@ -208,24 +236,29 @@ describe("control-plane authentication security", () => {
     expect(
       await auth.authenticate(
         request({
-          cookie: signedCookie("secret", { ...base, exp: future }, { alg: "none", typ: "JWT" }),
+          cookie: signedCookie(secret, { ...base, exp: future }, { alg: "none", typ: "JWT" }),
         }),
       ),
     ).toBeNull();
     expect(
       await auth.authenticate(
-        request({ cookie: signedCookie("secret", { ...base, kind: "unknown", exp: future }) }),
+        request({ cookie: signedCookie(secret, { ...base, kind: "unknown", exp: future }) }),
       ),
     ).toBeNull();
     expect(
       await auth.authenticate(
-        request({ cookie: signedCookie("secret", { ...base, role: "bogus", exp: future }) }),
+        request({ cookie: signedCookie(secret, { ...base, role: "bogus", exp: future }) }),
       ),
     ).toBeNull();
     expect(
-      await auth.authenticate(request({ cookie: signedCookie("secret", { ...base, exp: 0 }) })),
+      await auth.authenticate(request({ cookie: signedCookie(secret, { ...base, exp: 0 }) })),
     ).toBeNull();
-    const valid = signedCookie("secret", { ...base, exp: future });
+    expect(
+      await auth.authenticate(
+        request({ cookie: signedCookie("b".repeat(32), { ...base, exp: future }) }),
+      ),
+    ).toBeNull();
+    const valid = signedCookie(secret, { ...base, exp: future });
     expect(await auth.authenticate(request({ cookie: `${valid}x` }))).toBeNull();
     const root = await auth.authenticatePassword("root", "root");
     expect(root).toMatchObject(base);
@@ -236,9 +269,10 @@ describe("control-plane authentication security", () => {
     );
     const cookie = setCookie.split(";")[0]!;
     expect(await auth.authenticate(request({ cookie }))).toMatchObject(base);
+    expect(await auth.authenticate(request({ cookie: `${cookie}.junk` }))).toBeNull();
     expect(
       await auth.authenticate(
-        request({ cookie: signedCookie("secret", { ...base, id: "admin:missing", exp: future }) }),
+        request({ cookie: signedCookie(secret, { ...base, id: "admin:missing", exp: future }) }),
       ),
     ).toBeNull();
     const service = await auth.createServiceAccount({ name: "agent", role: "operator" });
@@ -250,7 +284,7 @@ describe("control-plane authentication security", () => {
     const service2 = await auth.createServiceAccount({ name: "agent-2", role: "operator" });
     await auth.deleteServiceAccount(service.account.id);
     expect(await auth.authenticate(request({ cookie: serviceCookie.split(";")[0]! }))).toBeNull();
-    const mismatch = signedCookie("secret", {
+    const mismatch = signedCookie(secret, {
       id: service2.account.id,
       username: "wrong",
       role: "operator",
@@ -271,5 +305,32 @@ describe("control-plane authentication security", () => {
       role: "operator",
       kind: "service-account",
     });
+    const scoped = await auth.createServiceAccount({
+      name: "scoped",
+      role: "operator",
+      allowedRepositoryIds: ["repo-a"],
+      boundHostId: "host-a",
+    });
+    const scopedClaims = {
+      id: scoped.account.id,
+      username: scoped.account.username,
+      role: scoped.account.role,
+      kind: scoped.account.kind,
+      allowedRepositoryIds: ["repo-a"],
+      boundHostId: "host-a",
+      exp: future,
+    };
+    expect(
+      await auth.authenticate(request({ cookie: signedCookie(secret, scopedClaims) })),
+    ).toMatchObject({ id: scoped.account.id });
+    for (const claims of [
+      { ...scopedClaims, allowedRepositoryIds: undefined },
+      { ...scopedClaims, allowedRepositoryIds: ["repo-a", "repo-b"] },
+      { ...scopedClaims, allowedRepositoryIds: ["repo-b"] },
+      { ...scopedClaims, boundHostId: "host-b" },
+      { ...scopedClaims, unexpected: true },
+    ]) {
+      expect(await auth.authenticate(request({ cookie: signedCookie(secret, claims) }))).toBeNull();
+    }
   });
 });

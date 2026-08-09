@@ -110,6 +110,10 @@ export class DynamoPlaneStorageBase {
     return catalog.putLog(this.ctx, rec);
   }
 
+  deleteLog(sessionId: string, timestampSeq: string): Promise<void> {
+    return catalog.deleteLog(this.ctx, sessionId, timestampSeq);
+  }
+
   listLogs(sessionId: string): Promise<LogRecord[]> {
     return catalog.listLogs(this.ctx, sessionId);
   }
@@ -195,6 +199,10 @@ export class DynamoPlaneStorageBase {
 
   getAuthAccount(id: string): Promise<AuthAccountRecord | null> {
     return auth.getAuthAccount(this.ctx, id);
+  }
+
+  getAuthAccountByUsername(username: string): Promise<AuthAccountRecord | null> {
+    return auth.getAuthAccountByUsername(this.ctx, username);
   }
 
   listAuthAccounts(): Promise<AuthAccountRecord[]> {

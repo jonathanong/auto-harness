@@ -12,6 +12,8 @@ import {
   hashApiKey,
   hydrateAccounts,
   publicPrincipal,
+  toUser,
+  validateCredential,
   type AuthStorage,
   type ServiceAccount,
   type User,
@@ -20,6 +22,8 @@ import {
 export type AuthMode = "disabled" | "required";
 const COOKIE = "auto_harness_session";
 const DAY_MS = 24 * 60 * 60 * 1000;
+// Keep password verification work comparable for unknown usernames.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("auto-harness-dummy-password", 12);
 
 function b64url(value: string | Buffer): string {
   return Buffer.from(value).toString("base64url");
@@ -51,7 +55,12 @@ function parseAdmins(raw: string | undefined): User[] {
       throw new Error(`HARNESS_ADMINS entry ${index} is invalid`);
     }
     const { username, password } = item as { username: string; password: string };
-    if (!username || !password) throw new Error(`HARNESS_ADMINS entry ${index} is invalid`);
+    try {
+      validateCredential(username, "username");
+      validateCredential(password, "password");
+    } catch {
+      throw new Error(`HARNESS_ADMINS entry ${index} is invalid`);
+    }
     return {
       id: `admin:${username}`,
       username,
@@ -72,18 +81,22 @@ export class AuthService {
   private readonly admins: User[];
   private readonly users = new Map<string, User>();
   private readonly serviceAccounts = new Map<string, ServiceAccount>();
+  private storage: AuthStorage | undefined;
 
   constructor(options: { mode?: AuthMode; secret?: string; admins?: string } = {}) {
     this.mode = options.mode ?? authModeFromEnv();
     this.secret = options.secret ?? process.env.HARNESS_SESSION_SECRET ?? "";
     this.admins = parseAdmins(options.admins ?? process.env.HARNESS_ADMINS);
-    if (this.mode === "required" && (!this.secret || this.admins.length === 0)) {
-      throw new Error("HARNESS_AUTH_MODE=required needs HARNESS_SESSION_SECRET and HARNESS_ADMINS");
+    if (this.mode === "required" && (this.secret.length < 32 || this.admins.length === 0)) {
+      throw new Error(
+        "HARNESS_AUTH_MODE=required needs HARNESS_SESSION_SECRET (at least 32 characters) and HARNESS_ADMINS",
+      );
     }
   }
 
   async hydrate(storage: AuthStorage | undefined): Promise<void> {
     await hydrateAccounts(storage, this.users, this.serviceAccounts);
+    this.storage = storage;
   }
 
   async createUser(
@@ -156,11 +169,17 @@ export class AuthService {
   }
 
   async authenticatePassword(username: string, password: string): Promise<Principal | null> {
-    const user =
+    let user =
       this.admins.find((candidate) => candidate.username === username) ?? this.users.get(username);
-    return user && (await bcrypt.compare(password, user.passwordHash))
-      ? publicPrincipal(user)
-      : null;
+    if (!user) {
+      const record = await this.storage?.getAuthAccountByUsername?.(username);
+      if (record?.kind === "user" && record.passwordHash) {
+        user = toUser(record);
+        this.users.set(user.username, user);
+      }
+    }
+    const valid = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    return user && valid ? publicPrincipal(user) : null;
   }
 
   authenticateApiKey(key: string): Principal | null {
@@ -181,17 +200,19 @@ export class AuthService {
     const signature = createHmac("sha256", this.secret).update(unsigned).digest("base64url");
     res.setHeader(
       "Set-Cookie",
-      `${COOKIE}=${unsigned}.${signature}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`,
+      `${COOKIE}=${unsigned}.${signature}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=86400`,
     );
   }
 
   clearCookie(res: ServerResponse): void {
-    res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+    res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
   }
 
   private verifySession(token: string): Principal | null {
-    const [header, payload, signature] = token.split(".");
-    if (!header || !payload || !signature || !this.secret) return null;
+    const parts = token.split(".");
+    if (parts.length !== 3 || !this.secret) return null;
+    const [header, payload, signature] = parts as [string, string, string];
+    if (!header || !payload || !signature) return null;
     const expected = createHmac("sha256", this.secret)
       .update(`${header}.${payload}`)
       .digest("base64url");
@@ -219,7 +240,7 @@ export class AuthService {
       return null;
     const current = this.findCurrentPrincipal(value);
     const { exp: _exp, ...claims } = value;
-    if (!current || JSON.stringify(current) !== JSON.stringify({ ...claims, role })) return null;
+    if (!current || !samePrincipalClaims(current, claims)) return null;
     return current;
   }
 
@@ -235,6 +256,34 @@ export class AuthService {
     const account = this.serviceAccounts.get(value.id);
     return account && account.username === value.username ? publicPrincipal(account) : null;
   }
+}
+
+function samePrincipalClaims(current: Principal, claims: Record<string, unknown>): boolean {
+  const allowed = new Set([
+    "id",
+    "username",
+    "role",
+    "kind",
+    "allowedRepositoryIds",
+    "boundHostId",
+  ]);
+  if (Object.keys(claims).some((key) => !allowed.has(key))) return false;
+  if (
+    claims.id !== current.id ||
+    claims.username !== current.username ||
+    claims.role !== current.role ||
+    claims.kind !== current.kind ||
+    claims.boundHostId !== current.boundHostId
+  )
+    return false;
+  const actual = claims.allowedRepositoryIds;
+  const expected = current.allowedRepositoryIds;
+  if (actual === undefined || expected === undefined) return actual === expected;
+  return (
+    Array.isArray(actual) &&
+    actual.length === expected.length &&
+    actual.every((value, index) => value === expected[index])
+  );
 }
 
 export function authModeFromEnv(value = process.env.HARNESS_AUTH_MODE): AuthMode {

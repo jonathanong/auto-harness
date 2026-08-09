@@ -126,7 +126,7 @@ describe("createPlaneWsBridge", () => {
   it("authenticates a bound service account through the Authorization header", async () => {
     const auth = new AuthService({
       mode: "required",
-      secret: "secret",
+      secret: "a".repeat(32),
       admins: Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
         "base64url",
       ),

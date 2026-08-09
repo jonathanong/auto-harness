@@ -38,7 +38,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
   const server = await startLocalServer({ port, host, useDynamo: true });
   console.log(`Auto Harness local API listening on http://${host}:${server.port}`);
-  console.log(`POST http://127.0.0.1:${server.port}/api/v1/sessions`);
+  console.log(`POST http://${host}:${server.port}/api/v1/sessions`);
   console.log(
     `DynamoDB: ${process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:7423"} (pnpm local:dynamodb)`,
   );

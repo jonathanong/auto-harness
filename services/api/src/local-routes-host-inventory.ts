@@ -59,6 +59,20 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   if (method === "PUT") {
     try {
       const body = await readJson(req);
+      if (
+        ctx.principal?.allowedRepositoryIds &&
+        (!body ||
+          typeof body !== "object" ||
+          !Array.isArray((body as { repositories?: unknown }).repositories) ||
+          !(body as { repositories: Array<{ id?: unknown }> }).repositories.every(
+            (repository) =>
+              typeof repository.id === "string" &&
+              mayAccessRepository(ctx.principal, repository.id),
+          ))
+      ) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+        return true;
+      }
       const result = plane.putHostInventory(hostId, body);
       if (!result.ok) {
         send(res, 400, {
@@ -66,7 +80,13 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
-      send(res, 200, result.config);
+      const config = result.config;
+      send(res, 200, {
+        ...config,
+        repositories: config.repositories.filter((repository) =>
+          mayAccessRepository(ctx.principal, repository.id),
+        ),
+      });
       return true;
     } catch {
       send(res, 400, {

@@ -53,8 +53,11 @@ export function createPlaneWsBridge(): {
     onHostMessage,
     attach(server, plane, auth) {
       const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_FRAME_BYTES });
-      wss.on("connection", (socket, req) => {
-        const principal = authenticateSocket(req, auth);
+      const handleConnection = (
+        socket: WebSocket,
+        req: IncomingMessage,
+        principal: Principal | null,
+      ) => {
         if (auth?.mode === "required" && !principal) {
           socket.close(1008, "authentication required");
           return;
@@ -101,19 +104,22 @@ export function createPlaneWsBridge(): {
             if (connectionId) plane.disconnectHost(connectionId);
           }
         });
-      });
+      };
 
       const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
         if (new URL(req.url ?? "/", "http://localhost").pathname !== "/ws") {
           socket.destroy();
           return;
         }
-        if (auth?.mode === "required" && !authenticateSocket(req, auth)) {
-          socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+        const principal = authenticateSocket(req, auth);
+        if (auth?.mode === "required" && !principal) {
+          socket.write(
+            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+          );
           socket.destroy();
           return;
         }
-        wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+        wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, req, principal));
       };
       server.on("upgrade", onUpgrade);
       return {

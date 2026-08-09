@@ -91,11 +91,15 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
         const body = (await readJson(req)) as Record<string, unknown>;
         if (typeof body.name !== "string" || !isRole(body.role))
           throw new Error("name and role are required");
-        const allowedRepositoryIds =
-          Array.isArray(body.allowedRepositoryIds) &&
-          body.allowedRepositoryIds.every((value) => typeof value === "string")
-            ? body.allowedRepositoryIds
-            : undefined;
+        const rawRepositories = body.allowedRepositoryIds ?? body.allowedRepositories;
+        if (
+          rawRepositories !== undefined &&
+          (!Array.isArray(rawRepositories) ||
+            !rawRepositories.every((value) => typeof value === "string" && value.length > 0))
+        ) {
+          throw new Error("allowedRepositories must be an array of non-empty strings");
+        }
+        const allowedRepositoryIds = rawRepositories as string[] | undefined;
         const result = await auth.createServiceAccount(
           {
             name: body.name,

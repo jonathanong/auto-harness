@@ -9,6 +9,11 @@ function sendForbidden(res: RouteCtx["res"]): void {
   send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
 }
 
+function canCancel(ctx: RouteCtx, session: { metadata?: Record<string, unknown> }): boolean {
+  if (!ctx.principal || ctx.principal.role === "admin") return true;
+  return session.metadata?.createdBy === ctx.principal.id;
+}
+
 /** Session collection + sub-resource routes. Returns true if handled. */
 export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -24,7 +29,19 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
         sendForbidden(res);
         return true;
       }
-      const result = plane.createSession(body);
+      const input =
+        ctx.principal && body && typeof body === "object"
+          ? {
+              ...(body as Record<string, unknown>),
+              metadata: {
+                ...((body as Record<string, unknown>).metadata as
+                  | Record<string, unknown>
+                  | undefined),
+                createdBy: ctx.principal.id,
+              },
+            }
+          : body;
+      const result = plane.createSession(input);
       if (!result.ok) {
         send(res, result.code === "CONFLICT" ? 409 : 400, {
           error: {
@@ -58,7 +75,6 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     send(res, 200, {
       ...page,
       items,
-      ...(items.length !== page.items.length ? { nextCursor: null } : {}),
     });
     return true;
   }
@@ -66,7 +82,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
   if (method === "POST" && cancelMatch) {
     const session = plane.getSession(cancelMatch[1]!);
-    if (session && !canAccess(ctx, session.repositoryId)) {
+    if (session && (!canAccess(ctx, session.repositoryId) || !canCancel(ctx, session))) {
       sendForbidden(res);
       return true;
     }

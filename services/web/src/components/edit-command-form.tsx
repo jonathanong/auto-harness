@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 import type { Command, Provider } from "@auto-harness/shared";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;

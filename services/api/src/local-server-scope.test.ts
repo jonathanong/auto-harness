@@ -6,9 +6,8 @@ import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
 function admins(): string {
-  return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
-    "base64url",
-  );
+  const encoded = JSON.stringify([{ username: "root", password: "root" }]);
+  return Buffer.from(encoded).toString("base64url");
 }
 
 describe("scoped control-plane REST resources", () => {
@@ -64,7 +63,7 @@ describe("scoped control-plane REST resources", () => {
     plane.createSession({ repositoryId: "repo-b", prompt: "b", commandId: "cmd-a", timeout: 10 });
     const sessionB = plane.listSessions().find((session) => session.repositoryId === "repo-b")!;
 
-    const auth = new AuthService({ mode: "required", secret: "secret", admins: admins() });
+    const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
       name: "scoped-agent",
       role: "operator",
@@ -74,6 +73,7 @@ describe("scoped control-plane REST resources", () => {
     const { apiKey: adminKey } = await auth.createServiceAccount({
       name: "host-admin",
       role: "admin",
+      allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
     const { handler } = createLocalApp({ plane, authService: auth });
@@ -130,30 +130,73 @@ describe("scoped control-plane REST resources", () => {
     expect((await invoke("GET", "/api/v1/hosts")).json).toMatchObject({
       items: [expect.objectContaining({ hostId: "host-a" })],
     });
-    expect(
-      (await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" }, adminKey)).status,
-    ).toBe(404);
+    const drain = await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" }, adminKey);
+    expect(drain.status).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/schedule-b/trigger")).status).toBe(404);
-    expect(
-      (
-        await invoke(
-          "POST",
-          "/api/v1/repositories",
-          {
-            name: "repo-c",
-            url: "/c",
-            defaultBranch: "main",
-            setupScript: "setup",
-            terminalHookScript: "hook",
-          },
-          adminKey,
-        )
-      ).status,
-    ).toBe(201);
+    const repoC = {
+      name: "repo-c",
+      url: "/c",
+      defaultBranch: "main",
+      setupScript: "setup",
+      terminalHookScript: "hook",
+    };
+    expect((await invoke("POST", "/api/v1/repositories", repoC, adminKey)).status).toBe(403);
     expect((await invoke("GET", `/api/v1/sessions/${sessionB.id}`)).status).toBe(404);
     expect((await invoke("POST", `/api/v1/sessions/${sessionB.id}/cancel`)).status).toBe(404);
     expect((await invoke("GET", `/api/v1/sessions/${sessionB.id}/logs`)).status).toBe(404);
     expect((await invoke("POST", `/api/v1/sessions/${sessionB.id}/archive`)).status).toBe(404);
     expect((await invoke("GET", "/api/v1/hosts/host-b/inventory")).status).toBe(404);
+    expect(
+      (
+        await invoke("POST", "/api/v1/host/messages", {
+          type: "host:keepalive",
+          hostId: "host-b",
+          at: new Date().toISOString(),
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invoke("POST", "/api/v1/host/messages", {
+          type: "session:ack",
+          sessionId: sessionB.id,
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invoke(
+          "PUT",
+          "/api/v1/hosts/host-a/inventory",
+          {
+            repositories: [{ id: "repo-b", path: "/b", worktrees: [] }],
+            commandProfiles: {},
+          },
+          adminKey,
+        )
+      ).status,
+    ).toBe(404);
+    const owned = await invoke("POST", "/api/v1/sessions", {
+      repositoryId: "repo-a",
+      prompt: "owned",
+      commandId: "cmd-a",
+      timeout: 10,
+    });
+    expect(owned.status).toBe(201);
+    const ownedSession = owned.json as { id: string; metadata: { createdBy: string } };
+    expect(ownedSession.metadata.createdBy).toContain("service:");
+    const peer = await auth.createServiceAccount({
+      name: "peer",
+      role: "operator",
+      allowedRepositoryIds: ["repo-a"],
+    });
+    const denied = await invoke(
+      "POST",
+      `/api/v1/sessions/${ownedSession.id}/cancel`,
+      undefined,
+      peer.apiKey,
+    );
+    expect(denied.status).toBe(404);
+    expect((await invoke("POST", `/api/v1/sessions/${ownedSession.id}/cancel`)).status).toBe(200);
   });
 });

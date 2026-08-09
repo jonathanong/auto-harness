@@ -21,7 +21,7 @@ bind is refused unless all of the following are set:
 
 ```bash
 HARNESS_AUTH_MODE=required
-HARNESS_SESSION_SECRET=<long random secret>
+HARNESS_SESSION_SECRET=<at least 32 random characters>
 HARNESS_ADMINS=<base64 JSON bootstrap admins>
 ```
 

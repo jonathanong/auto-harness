@@ -1,6 +1,4 @@
-import { upsertHostRepository, type HostInventory } from "@auto-harness/shared";
-
-import { apiBase } from "./api.ts";
+import { apiBase, upsertHostRepository, type HostInventory } from "@auto-harness/shared";
 
 /**
  * Attach an existing catalog repository's local path to a host.

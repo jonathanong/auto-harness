@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 
 export function HostConfigForm({ hostId, initialJson }: { hostId: string; initialJson: string }) {
   const router = useRouter();

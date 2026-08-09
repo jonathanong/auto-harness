@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
-import { apiBase } from "../lib/api.ts";
+import { apiBase } from "@auto-harness/shared";
 import { decodeSessionTargetOptionValue, type SessionTarget } from "../session-target.ts";
 import { SessionTargetSelect } from "./session-target-select.tsx";
 
