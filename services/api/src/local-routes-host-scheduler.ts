@@ -1,6 +1,7 @@
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessRepository } from "./auth-policy.ts";
 
 /** Hosts, worktrees, profiles, host messages, and scheduler routes. */
 export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -17,7 +18,13 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
-    send(res, 200, { items: plane.listWorktrees() });
+    send(res, 200, {
+      items: plane
+        .listWorktrees()
+        .filter(
+          (worktree) => !ctx.principal || mayAccessRepository(ctx.principal, worktree.repositoryId),
+        ),
+    });
     return true;
   }
 

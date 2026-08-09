@@ -40,7 +40,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
 
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
-    const ctx = { plane, req, res, url, method };
+    const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
 
     if (method === "GET" && url.pathname === "/health") {
       send(res, 200, { ok: true });
@@ -64,6 +64,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
         });
         return;
       }
+      ctx.principal = principal;
     }
     if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
 

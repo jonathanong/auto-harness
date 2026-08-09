@@ -1,4 +1,13 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessRepository } from "./auth-policy.ts";
+
+function canAccess(ctx: RouteCtx, repositoryId: string | undefined): boolean {
+  return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
+}
+
+function sendForbidden(res: RouteCtx["res"]): void {
+  send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+}
 
 /** Session collection + sub-resource routes. Returns true if handled. */
 export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -7,6 +16,14 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "POST" && url.pathname === "/api/v1/sessions") {
     try {
       const body = await readJson(req);
+      const repositoryId =
+        typeof (body as { repositoryId?: unknown }).repositoryId === "string"
+          ? (body as { repositoryId: string }).repositoryId
+          : undefined;
+      if (!canAccess(ctx, repositoryId)) {
+        sendForbidden(res);
+        return true;
+      }
       const result = plane.createSession(body);
       if (!result.ok) {
         send(res, result.code === "CONFLICT" ? 409 : 400, {
@@ -37,12 +54,22 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       ...(url.searchParams.get("status") ? { status: url.searchParams.get("status")! } : {}),
       ...(url.searchParams.get("q") ? { q: url.searchParams.get("q")! } : {}),
     });
-    send(res, 200, page);
+    const items = page.items.filter((session) => canAccess(ctx, session.repositoryId));
+    send(res, 200, {
+      ...page,
+      items,
+      ...(items.length !== page.items.length ? { nextCursor: null } : {}),
+    });
     return true;
   }
 
   const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
   if (method === "POST" && cancelMatch) {
+    const session = plane.getSession(cancelMatch[1]!);
+    if (session && !canAccess(ctx, session.repositoryId)) {
+      sendForbidden(res);
+      return true;
+    }
     const result = plane.cancelSession(cancelMatch[1]!);
     if (!result.ok) {
       send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
@@ -55,6 +82,11 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const resumeMatch = /^\/api\/v1\/sessions\/([^/]+)\/resume$/.exec(url.pathname);
   if (method === "POST" && resumeMatch) {
     const id = resumeMatch[1]!;
+    const existing = plane.getSession(id);
+    if (existing && !canAccess(ctx, existing.repositoryId)) {
+      sendForbidden(res);
+      return true;
+    }
     const result = plane.resumeSession(id);
     if (!result.ok) {
       send(res, 400, {
@@ -69,6 +101,11 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
   if (method === "GET" && logsMatch) {
     const id = logsMatch[1]!;
+    const session = plane.getSession(id);
+    if (session && !canAccess(ctx, session.repositoryId)) {
+      sendForbidden(res);
+      return true;
+    }
     send(res, 200, { items: plane.getLogs(id) });
     return true;
   }
@@ -76,6 +113,11 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
   if (method === "POST" && archiveMatch) {
     const id = archiveMatch[1]!;
+    const session = plane.getSession(id);
+    if (session && !canAccess(ctx, session.repositoryId)) {
+      sendForbidden(res);
+      return true;
+    }
     const archived = plane.archiveSessionLogs(id);
     send(res, 200, archived);
     return true;
@@ -85,7 +127,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "GET" && sessionMatch) {
     const id = sessionMatch[1]!;
     const session = plane.getSession(id);
-    if (!session) {
+    if (!session || !canAccess(ctx, session.repositoryId)) {
       send(res, 404, {
         error: { code: "NOT_FOUND", message: "session not found" },
       });

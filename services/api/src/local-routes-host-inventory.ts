@@ -1,4 +1,5 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { mayAccessRepository } from "./auth-policy.ts";
 
 /**
  * Host inventory routes (paths + command profile argv).
@@ -8,7 +9,19 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/host-inventories") {
-    send(res, 200, { items: plane.listHostInventories() });
+    send(res, 200, {
+      items: plane
+        .listHostInventories()
+        .map((inventory) => ({
+          ...inventory,
+          repositories: inventory.repositories.filter(
+            (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+          ),
+        }))
+        .filter(
+          (inventory) => inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
+        ),
+    });
     return true;
   }
 
@@ -26,7 +39,14 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     }
-    send(res, 200, config);
+    const repositories = config.repositories.filter(
+      (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+    );
+    if (repositories.length === 0 && ctx.principal?.allowedRepositoryIds) {
+      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+      return true;
+    }
+    send(res, 200, { ...config, repositories });
     return true;
   }
 

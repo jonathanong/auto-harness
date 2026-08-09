@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, basename, join, relative, resolve } from "node:path";
 
@@ -27,8 +27,15 @@ export async function GET(request: Request): Promise<Response> {
   const prefix = input.endsWith("/") ? "" : basename(input).toLowerCase();
 
   let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
+  let resolvedSearchDir = searchDir;
   try {
-    entries = await readdir(searchDir, { withFileTypes: true });
+    const [resolvedRoot, actualSearchDir] = await Promise.all([
+      realpath(browseRoot),
+      realpath(searchDir),
+    ]);
+    if (!isWithin(resolvedRoot, actualSearchDir)) return Response.json({ items: [] });
+    resolvedSearchDir = actualSearchDir;
+    entries = await readdir(actualSearchDir, { withFileTypes: true });
   } catch {
     return Response.json({ items: [] });
   }
@@ -40,7 +47,12 @@ export async function GET(request: Request): Promise<Response> {
     .map((e) => e.name)
     .toSorted((a, b) => a.localeCompare(b))
     .slice(0, MAX_RESULTS)
-    .map((name) => join(searchDir, name));
+    .map((name) => join(resolvedSearchDir, name));
 
   return Response.json({ items });
+}
+
+function isWithin(root: string, path: string): boolean {
+  const rel = relative(root, path);
+  return rel === "" || (!rel.startsWith("..") && !rel.includes("../"));
 }

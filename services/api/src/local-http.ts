@@ -6,6 +6,7 @@ import type { ControlPlane } from "./control-plane.ts";
 import type { MemorySessionStore } from "./memory-store.ts";
 import type { AuthMode } from "./auth.ts";
 import type { AuthService } from "./auth.ts";
+import type { Principal } from "./auth.ts";
 
 export const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -35,6 +36,7 @@ export type RouteCtx = {
   res: ServerResponse;
   url: URL;
   method: string;
+  principal?: Principal;
 };
 
 export function readJson(req: IncomingMessage): Promise<unknown> {
