@@ -118,7 +118,7 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 
 ### Connection Manager
 
-- Opens WebSocket with `?token=<apiKey>`
+- Opens WebSocket with `Authorization: Bearer <apiKey>` (the key is kept out of URL/query logs)
 - Sends `host:register` immediately after open
 - Routes inbound messages by `type` to Session Runner
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**

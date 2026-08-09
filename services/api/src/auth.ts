@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- authentication and account lifecycle share one security boundary. */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import bcrypt from "bcryptjs";
@@ -151,9 +152,10 @@ export class AuthService {
     if (authorization.startsWith("Bearer ")) return this.authenticateApiKey(authorization.slice(7));
     if (!authorization.startsWith("Basic ")) return null;
     try {
-      const [username, password] = Buffer.from(authorization.slice(6), "base64")
-        .toString("utf8")
-        .split(":");
+      const credentials = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+      const separator = credentials.indexOf(":");
+      const username = separator < 0 ? credentials : credentials.slice(0, separator);
+      const password = separator < 0 ? "" : credentials.slice(separator + 1);
       if (!username || !password) return null;
       return this.authenticatePassword(username, password);
     } catch {
@@ -170,8 +172,10 @@ export class AuthService {
   }
 
   authenticateApiKey(key: string): Principal | null {
+    if (!key) return null;
     const hash = hashApiKey(key);
     for (const account of this.serviceAccounts.values()) {
+      if (account.keyHash.length !== hash.length) continue;
       if (timingSafeEqual(Buffer.from(hash), Buffer.from(account.keyHash)))
         return publicPrincipal(account);
     }
@@ -204,9 +208,13 @@ export class AuthService {
       !timingSafeEqual(Buffer.from(signature), Buffer.from(expected))
     )
       return null;
+    const parsedHeader = parseB64urlJson<{ alg?: unknown; typ?: unknown }>(header);
     const value = parseB64urlJson<Principal & { exp?: unknown }>(payload);
     const role = value && asRole(value.role);
     if (
+      !parsedHeader ||
+      parsedHeader.alg !== "HS256" ||
+      parsedHeader.typ !== "JWT" ||
       !value ||
       !role ||
       typeof value.id !== "string" ||
@@ -217,7 +225,23 @@ export class AuthService {
       return null;
     if (value.kind !== "admin" && value.kind !== "user" && value.kind !== "service-account")
       return null;
-    return { ...value, role };
+    const current = this.findCurrentPrincipal(value);
+    const { exp: _exp, ...claims } = value;
+    if (!current || JSON.stringify(current) !== JSON.stringify({ ...claims, role })) return null;
+    return current;
+  }
+
+  private findCurrentPrincipal(value: Principal): Principal | null {
+    if (value.kind === "admin") {
+      const admin = this.admins.find((candidate) => candidate.id === value.id);
+      return admin ? publicPrincipal(admin) : null;
+    }
+    if (value.kind === "user") {
+      const user = this.users.get(value.username);
+      return user && user.id === value.id ? publicPrincipal(user) : null;
+    }
+    const account = this.serviceAccounts.get(value.id);
+    return account && account.username === value.username ? publicPrincipal(account) : null;
   }
 }
 

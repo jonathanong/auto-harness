@@ -199,6 +199,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     if (method === "PUT" || method === "PATCH") {
       try {
         const body = (await readJson(req)) as Record<string, unknown>;
+        if (typeof body.repositoryId === "string" && !scoped(ctx, body.repositoryId)) {
+          hidden(res);
+          return true;
+        }
         const result = plane.updateSchedule(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(typeof body.providerAccountId === "string"

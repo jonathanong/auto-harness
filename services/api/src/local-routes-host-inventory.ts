@@ -1,5 +1,5 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
-import { mayAccessRepository } from "./auth-policy.ts";
+import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 
 /**
  * Host inventory routes (paths + command profile argv).
@@ -12,6 +12,7 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
     send(res, 200, {
       items: plane
         .listHostInventories()
+        .filter((inventory) => mayAccessHost(ctx.principal, inventory.hostId))
         .map((inventory) => ({
           ...inventory,
           repositories: inventory.repositories.filter(
@@ -30,6 +31,11 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
     return false;
   }
   const hostId = decodeURIComponent(match[1]!);
+
+  if (!mayAccessHost(ctx.principal, hostId)) {
+    send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+    return true;
+  }
 
   if (method === "GET") {
     const config = plane.getHostInventory(hostId);

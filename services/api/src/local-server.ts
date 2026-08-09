@@ -111,7 +111,12 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
 }> {
   const port = options.port ?? 7420;
   const host = options.host ?? "127.0.0.1";
-  const auth = new AuthService({ mode: options.authMode });
+  // Keep the injected authenticator as the source of truth.  Apart from making
+  // tests deterministic, this is important for deployments that hydrate
+  // accounts before starting the listener: constructing a second AuthService
+  // here would silently discard the configured secret/accounts and could make
+  // the listener accept the wrong authentication policy.
+  const auth = options.authService ?? new AuthService({ mode: options.authMode });
   if (!isLoopback(host) && auth.mode !== "required") {
     throw new Error("non-loopback API bind requires HARNESS_AUTH_MODE=required");
   }

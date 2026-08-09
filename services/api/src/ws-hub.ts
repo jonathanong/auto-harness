@@ -1,7 +1,12 @@
+/* eslint-disable max-lines -- WebSocket ingress validation and ownership are one boundary. */
 import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
-import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
+import {
+  isSessionStatus,
+  type HostToServerMessage,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 import { WebSocketServer, type WebSocket } from "ws";
 
 import type { AuthService, Principal } from "./auth.ts";
@@ -10,6 +15,14 @@ import type { ControlPlane } from "./control-plane.ts";
 const MAX_WS_FRAME_BYTES = 128 * 1024;
 const MAX_WS_MESSAGES_PER_SECOND = 100;
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
+
+function boundedText(candidate: unknown, max = 512): candidate is string {
+  return typeof candidate === "string" && candidate.length > 0 && candidate.length <= max;
+}
+
+function optionalText(candidate: unknown, max = 512): boolean {
+  return candidate === undefined || (typeof candidate === "string" && candidate.length <= max);
+}
 
 export type WsHub = {
   hostCount(): number;
@@ -118,40 +131,85 @@ export function createPlaneWsBridge(): {
 
 function authenticateSocket(req: IncomingMessage, auth: AuthService | undefined): Principal | null {
   if (!auth) return null;
-  const token = new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
+  const bearer = req.headers.authorization;
+  const token = bearer?.startsWith("Bearer ")
+    ? bearer.slice("Bearer ".length)
+    : new URL(req.url ?? "/", "http://localhost").searchParams.get("token");
   return token ? auth.authenticateApiKey(token) : null;
 }
 
-function parseHostMessage(raw: unknown): HostToServerMessage | null {
-  if (typeof raw !== "string" && !Buffer.isBuffer(raw)) return null;
+export function parseHostMessage(raw: unknown): HostToServerMessage | null {
+  if (typeof raw !== "string" && !Buffer.isBuffer(raw) && (!raw || typeof raw !== "object"))
+    return null;
   try {
-    const value = JSON.parse(String(raw)) as Record<string, unknown>;
-    if (!value || typeof value.type !== "string") return null;
-    if (value.type === "host:register") {
-      return typeof value.hostId === "string" &&
-        Array.isArray(value.worktrees) &&
-        Array.isArray(value.commandProfiles)
-        ? (value as HostToServerMessage)
+    const value =
+      typeof raw === "string" || Buffer.isBuffer(raw) ? (JSON.parse(String(raw)) as unknown) : raw;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    const message = value as Record<string, unknown>;
+    if (!boundedText(message.type, 64)) return null;
+    if (message.type === "host:register") {
+      if (
+        !boundedText(message.hostId) ||
+        !Array.isArray(message.worktrees) ||
+        message.worktrees.length > 1_000 ||
+        !message.worktrees.every((candidate) => {
+          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+          const worktree = candidate as Record<string, unknown>;
+          return (
+            boundedText(worktree.id) &&
+            boundedText(worktree.name) &&
+            boundedText(worktree.repositoryId) &&
+            boundedText(worktree.path, 4_096) &&
+            Array.isArray(worktree.labels) &&
+            worktree.labels.length <= 100 &&
+            worktree.labels.every((label) => boundedText(label, 128))
+          );
+        }) ||
+        !Array.isArray(message.commandProfiles) ||
+        message.commandProfiles.length > 1_000 ||
+        !message.commandProfiles.every((profile) => boundedText(profile))
+      ) {
+        return null;
+      }
+      return message as HostToServerMessage;
+    }
+    if (message.type === "session:ack") {
+      return boundedText(message.sessionId) ? (message as HostToServerMessage) : null;
+    }
+    if (message.type === "session:status") {
+      const exitCode = message.exitCode;
+      const validExitCode =
+        exitCode === undefined ||
+        exitCode === null ||
+        (typeof exitCode === "number" && Number.isSafeInteger(exitCode));
+      return boundedText(message.sessionId) &&
+        isSessionStatus(message.status) &&
+        validExitCode &&
+        optionalText(message.errorCode, 128) &&
+        optionalText(message.errorMessage, 4_096) &&
+        optionalText(message.cliResumeRef, 512)
+        ? (message as HostToServerMessage)
         : null;
     }
-    if (value.type === "session:ack")
-      return typeof value.sessionId === "string" ? (value as HostToServerMessage) : null;
-    if (value.type === "session:status")
-      return typeof value.sessionId === "string" && typeof value.status === "string"
-        ? (value as HostToServerMessage)
-        : null;
-    if (value.type === "session:log") {
-      return typeof value.sessionId === "string" &&
-        typeof value.stream === "string" &&
-        typeof value.content === "string" &&
-        typeof value.timestamp === "string" &&
-        typeof value.seq === "number" &&
-        Buffer.byteLength(value.content) <= MAX_LOG_CHUNK_BYTES
-        ? (value as HostToServerMessage)
+    if (message.type === "session:log") {
+      const timestamp = message.timestamp;
+      const stream = message.stream;
+      return boundedText(message.sessionId) &&
+        (stream === "stdout" || stream === "stderr" || stream === "system") &&
+        typeof message.content === "string" &&
+        Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&
+        boundedText(timestamp, 128) &&
+        Number.isSafeInteger(message.seq) &&
+        (message.seq as number) >= 0 &&
+        Number.isFinite(Date.parse(timestamp))
+        ? (message as HostToServerMessage)
         : null;
     }
-    return value.type === "host:keepalive" && typeof value.hostId === "string"
-      ? (value as HostToServerMessage)
+    return message.type === "host:keepalive" &&
+      boundedText(message.hostId) &&
+      boundedText(message.at, 128) &&
+      Number.isFinite(Date.parse(message.at))
+      ? (message as HostToServerMessage)
       : null;
   } catch {
     return null;
