@@ -1,5 +1,3 @@
-import type { HostToServerMessage } from "@auto-harness/shared";
-
 import { readJson, send, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { parseHostMessage } from "./ws-hub.ts";

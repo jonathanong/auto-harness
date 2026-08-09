@@ -163,6 +163,7 @@ export async function tryAssignSession(
     hostId: string;
     now: string;
     resolvedArgv: string[];
+    queueShard: number;
   },
 ): Promise<boolean> {
   try {
@@ -190,11 +191,12 @@ export async function tryAssignSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :running, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv REMOVE ackReceivedAt",
+                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv REMOVE ackReceivedAt",
               ConditionExpression: "#s = :queued",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":running": "running",
+                ":statusShard": statusShardAttr("running", opts.queueShard),
                 ":queued": "queued",
                 ":wid": opts.worktreeId,
                 ":hid": opts.hostId,
@@ -218,7 +220,13 @@ export async function tryAssignSession(
 /** Atomically release a worktree and requeue its running session. */
 export async function tryRequeueSession(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; worktreeId: string; reason?: string; forceOffline?: boolean },
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    queueShard: number;
+    reason?: string;
+    forceOffline?: boolean;
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -244,11 +252,12 @@ export async function tryRequeueSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt",
+                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt",
               ConditionExpression: "#s = :running",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":queued": "queued",
+                ":statusShard": statusShardAttr("queued", opts.queueShard),
                 ":running": "running",
                 ":null": null,
                 ":reason": opts.reason ?? "agent disconnected; requeued",
@@ -303,6 +312,7 @@ export async function finishSession(
     sessionId: string;
     worktreeId?: string | null;
     status: string;
+    queueShard: number;
     completedAt?: string;
     errorCode?: string;
     errorMessage?: string;
@@ -314,11 +324,17 @@ export async function finishSession(
 ): Promise<boolean> {
   const values: Record<string, unknown> = {
     ":status": opts.status,
+    ":statusShard": statusShardAttr(opts.status, opts.queueShard),
     ":running": "running",
     ":null": null,
   };
   const names: Record<string, string> = { "#s": "status" };
-  const sets = ["#s = :status", "worktreeId = :null", "hostId = :null"];
+  const sets = [
+    "#s = :status",
+    "statusShard = :statusShard",
+    "worktreeId = :null",
+    "hostId = :null",
+  ];
   if (opts.completedAt !== undefined) {
     sets.push("completedAt = :completedAt");
     values[":completedAt"] = opts.completedAt;

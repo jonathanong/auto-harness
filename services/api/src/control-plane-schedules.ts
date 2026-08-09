@@ -7,6 +7,7 @@ export {
   evaluateCron,
   evaluateCronDurable,
   triggerSchedule,
+  triggerScheduleDurable,
   tryClaimScheduleFire,
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";

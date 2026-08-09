@@ -86,6 +86,12 @@ describe("durable control-plane transitions", () => {
     ]);
     expect(a.length + b.length).toBe(1);
     expect((await ctx.storage.getSession(session.id))?.status).toBe("running");
+    expect(
+      (await ctx.storage.listSessionsByStatus("queued", 0)).some((s) => s.id === session.id),
+    ).toBe(false);
+    expect(
+      (await ctx.storage.listSessionsByStatus("running", 0)).some((s) => s.id === session.id),
+    ).toBe(true);
     expect((await ctx.storage.getWorktree("worktree-durable"))?.currentSessionId).toBe(session.id);
   });
 
@@ -192,6 +198,61 @@ describe("durable control-plane transitions", () => {
     expect((await ctx.storage.getWorktree("worktree-schedule"))?.online).toBe(false);
   });
 
+  it("allows exactly one durable manual trigger before a schedule is due", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    await ctx.storage.putCommand({
+      id: "cmd-manual-durable",
+      name: "manual durable",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    await ctx.storage.putSchedule({
+      id: "schedule-manual-durable",
+      repositoryId: "repo-manual-durable",
+      name: "manual",
+      commandId: "cmd-manual-durable",
+      targetLabel: "manual durable",
+      cron: "* * * * *",
+      enabled: true,
+      timeout: 30,
+      nextRunAt: "2030-01-01T00:00:00.000Z",
+      lastRunAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const first = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      idFactory: () => "manual-durable-first",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    const second = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      idFactory: () => "manual-durable-second",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    await Promise.all([first.plane.hydrateFromStorage(), second.plane.hydrateFromStorage()]);
+    const [a, b] = await Promise.all([
+      first.plane.triggerScheduleDurable("schedule-manual-durable"),
+      second.plane.triggerScheduleDurable("schedule-manual-durable"),
+    ]);
+    expect(Number(a.ok) + Number(b.ok)).toBe(1);
+    expect(
+      (await ctx.storage.listAllSessions()).filter((s) => s.repositoryId === "repo-manual-durable"),
+    ).toHaveLength(1);
+    expect((await ctx.storage.getSchedule("schedule-manual-durable"))?.nextRunAt).toBe(
+      "2026-01-01T00:01:00.000Z",
+    );
+  });
+
   it("does not let a stale connection disconnect a replacement lease", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
@@ -215,6 +276,9 @@ describe("durable control-plane transitions", () => {
       connectionIdFactory: () => "connection-new",
     });
     await replacementCreated.plane.hydrateFromStorage();
+    // Simulate a separate API process that has not cached the old connection.
+    replacementCreated.plane.state.connections.clear();
+    replacementCreated.plane.state.hostConnection.clear();
     const replacement = await replacementCreated.plane.registerHostDurable({
       hostId: "host-replacement",
       worktrees: [],
@@ -224,6 +288,7 @@ describe("durable control-plane transitions", () => {
     expect(replacement.ok).toBe(true);
     expect(await oldCreated.plane.disconnectHostDurable("connection-old")).toEqual([]);
     expect(await ctx.storage.getHostLock("host-replacement")).toBe("connection-new");
+    expect(await ctx.storage.getConnection("connection-old")).toBeNull();
     expect(await ctx.storage.getConnection("connection-new")).not.toBeNull();
   });
 
@@ -335,6 +400,16 @@ describe("durable control-plane transitions", () => {
     expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
     expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
     expect((await ctx.storage.getSession("session-idempotent"))?.status).toBe("completed");
+    expect(
+      (await ctx.storage.listSessionsByStatus("running", 0)).some(
+        (s) => s.id === "session-idempotent",
+      ),
+    ).toBe(false);
+    expect(
+      (await ctx.storage.listSessionsByStatus("completed", 0)).some(
+        (s) => s.id === "session-idempotent",
+      ),
+    ).toBe(true);
     expect((await ctx.storage.getWorktree("worktree-idempotent"))?.status).toBe("idle");
 
     await ctx.storage.putSession({
@@ -496,6 +571,7 @@ describe("durable control-plane transitions", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
     });
     expect(await plane.evaluateCronDurable("2026-01-01T00:00:00.000Z")).toHaveLength(1);
+    expect((await plane.triggerScheduleDurable("local-durable-schedule")).ok).toBe(true);
     expect(
       (
         await plane.handleHostMessageDurable({
@@ -833,6 +909,8 @@ describe("durable control-plane transitions", () => {
       enabled: true,
       nextRunAt: "2027-01-01T00:00:00.000Z",
     });
+    expect((await plane.triggerScheduleDurable("missing-coverage-schedule")).ok).toBe(false);
+    expect((await plane.triggerScheduleDurable("coverage-disabled")).ok).toBe(false);
     expect(
       await plane.tryClaimScheduleFireDurable(
         "coverage-disabled",
@@ -938,6 +1016,32 @@ describe("durable control-plane transitions", () => {
       [],
     );
     expect(idle.state.worktrees.get("coverage-idle-worktree")?.online).toBe(false);
+
+    const missingSessionStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
+    missingSessionStorage.getSession = async () => null;
+    missingSessionStorage.setWorktreeOnline = async () => undefined;
+    const missingSession = new ControlPlane({ storage: missingSessionStorage });
+    missingSession.state.worktrees.set("coverage-missing-session-worktree", {
+      id: "coverage-missing-session-worktree",
+      name: "coverage-missing-session-worktree",
+      hostId: "coverage-missing-session-host",
+      repositoryId: "coverage-repo",
+      path: "/tmp/coverage-missing-session",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "coverage-missing-session",
+    });
+    expect(
+      await offlineHostAndRequeueDurable(
+        missingSession.state,
+        "coverage-missing-session-host",
+        "offline",
+      ),
+    ).toEqual([]);
+    expect(missingSession.state.worktrees.get("coverage-missing-session-worktree")?.online).toBe(
+      false,
+    );
 
     const scheduleStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
     scheduleStorage.tryClaimScheduleAndCreateSession = async () => false;

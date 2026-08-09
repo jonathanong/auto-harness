@@ -111,23 +111,31 @@ export async function offlineHostAndRequeueDurable(
       continue;
     }
     const sessionId = wt.currentSessionId;
+    // A process can hold a stale worktree cache after another instance creates
+    // a session. Read the durable row before calculating the GSI shard instead
+    // of fabricating shard zero and corrupting the status index.
+    const session = state.sessions.get(sessionId) ?? (await state.storage.getSession(sessionId));
+    if (!session) {
+      const next = { ...wt, online: false };
+      await state.storage.setWorktreeOnline(wt.id, false);
+      state.worktrees.set(wt.id, next);
+      continue;
+    }
     const won = await state.storage.tryRequeueSession({
       sessionId,
       worktreeId: wt.id,
+      queueShard: session.queueShard,
       reason,
       forceOffline: true,
     });
     if (won) {
-      const session = state.sessions.get(sessionId);
-      if (session) {
-        state.sessions.set(sessionId, {
-          ...session,
-          status: "queued",
-          worktreeId: null,
-          hostId: null,
-          errorMessage: reason,
-        });
-      }
+      state.sessions.set(sessionId, {
+        ...session,
+        status: "queued",
+        worktreeId: null,
+        hostId: null,
+        errorMessage: reason,
+      });
       state.pendingAcks.delete(sessionId);
       state.worktrees.set(wt.id, {
         ...wt,

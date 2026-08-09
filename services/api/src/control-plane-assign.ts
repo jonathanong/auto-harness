@@ -162,6 +162,7 @@ export async function assignQueuedDurable(
           hostId: candidate.hostId,
           now: nowIso,
           resolvedArgv,
+          queueShard: session.queueShard,
         });
         if (!won) {
           continue;
@@ -264,6 +265,7 @@ export async function enforceAckDeadlinesDurable(
     const won = await state.storage.tryRequeueSession({
       sessionId,
       worktreeId: pending.worktreeId,
+      queueShard: session.queueShard,
       reason: "agent did not acknowledge assignment; requeued",
     });
     if (!won) {

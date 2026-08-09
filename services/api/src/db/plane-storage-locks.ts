@@ -64,8 +64,15 @@ export async function tryRegisterHost(
   },
 ): Promise<boolean> {
   try {
-    const lockValues = opts.existingConnectionId
-      ? { ":connectionId": opts.connection.connectionId, ":existing": opts.existingConnectionId }
+    // A fresh API process may not yet have the current owner in its local
+    // cache. Resolve it from DynamoDB and use that exact value in the
+    // transaction; otherwise force-replacement overwrites the lease but leaks
+    // the prior connection row forever.
+    const existingConnectionId = opts.replaceExisting
+      ? (opts.existingConnectionId ?? (await getHostLock(ctx, opts.hostId)))
+      : undefined;
+    const lockValues = existingConnectionId
+      ? { ":connectionId": opts.connection.connectionId, ":existing": existingConnectionId }
       : { ":connectionId": opts.connection.connectionId };
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -76,7 +83,7 @@ export async function tryRegisterHost(
               Key: { hostId: opts.hostId },
               UpdateExpression: "SET connectionId = :connectionId",
               ...(opts.replaceExisting
-                ? opts.existingConnectionId
+                ? existingConnectionId
                   ? {
                       ConditionExpression:
                         "attribute_not_exists(connectionId) OR connectionId = :existing",
@@ -93,12 +100,12 @@ export async function tryRegisterHost(
               ConditionExpression: "attribute_not_exists(connectionId)",
             },
           },
-          ...(opts.existingConnectionId
+          ...(existingConnectionId
             ? [
                 {
                   Delete: {
                     TableName: ctx.tables.connections,
-                    Key: { connectionId: opts.existingConnectionId },
+                    Key: { connectionId: existingConnectionId },
                   },
                 },
               ]

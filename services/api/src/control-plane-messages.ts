@@ -230,6 +230,7 @@ async function applySessionStatusDurable(
     sessionId: msg.sessionId,
     worktreeId: session.worktreeId,
     status: nextStatus,
+    queueShard: session.queueShard,
     ...(shouldRetry ? {} : { completedAt: state.now() }),
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),

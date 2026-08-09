@@ -73,6 +73,7 @@ export class DynamoPlaneStorageBase {
     hostId: string;
     now: string;
     resolvedArgv: string[];
+    queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
   }
@@ -80,6 +81,7 @@ export class DynamoPlaneStorageBase {
   tryRequeueSession(opts: {
     sessionId: string;
     worktreeId: string;
+    queueShard: number;
     reason?: string;
     forceOffline?: boolean;
   }): Promise<boolean> {
@@ -94,6 +96,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     worktreeId?: string | null;
     status: string;
+    queueShard: number;
     completedAt?: string;
     errorCode?: string;
     errorMessage?: string;

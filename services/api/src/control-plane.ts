@@ -56,6 +56,13 @@ export class ControlPlane extends ControlPlaneCatalog {
     return schedules.triggerSchedule(this.state, id, nowIso);
   }
 
+  async triggerScheduleDurable(
+    id: string,
+    nowIso: string = this.state.now(),
+  ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+    return schedules.triggerScheduleDurable(this.state, id, nowIso);
+  }
+
   createRepository(input: {
     id?: string;
     name: string;
