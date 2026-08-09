@@ -58,8 +58,12 @@ export class WorktreeManager {
    * Prepare worktree checkout for a session ref (D6).
    * When ref is omitted, reset to the repository default branch.
    */
-  async prepareCheckout(claimed: ClaimedWorktree, ref: string | undefined): Promise<void> {
+  async prepareCheckout(
+    claimed: ClaimedWorktree,
+    ref: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<void> {
     const target = ref ?? claimed.repository.defaultBranch;
-    await this.git.checkoutRef({ cwd: claimed.cwd, ref: target });
+    await this.git.checkoutRef({ cwd: claimed.cwd, ref: target, ...(signal ? { signal } : {}) });
   }
 }

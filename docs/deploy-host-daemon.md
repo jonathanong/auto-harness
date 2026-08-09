@@ -35,12 +35,13 @@ On the agent host:
 4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths, plus which catalog Provider Accounts are attached to this host. Commands resolve to named, fixed argv (D4 — no free-form shell) from the global Provider/Provider Account/Command catalogs, not a per-host profile map.
 5. Set **only** identity env vars on the host:
 
-| Variable            | Role                                             |
-| ------------------- | ------------------------------------------------ |
-| `HARNESS_HOST_ID`   | Required agent id                                |
-| `HARNESS_API_URL`   | Control plane base (`https://…` or `wss://…/ws`) |
-| `HARNESS_API_KEY`   | Service account `hns_…`                          |
-| `HARNESS_LOG_LEVEL` | Optional (`info` default)                        |
+| Variable                      | Role                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_HOST_ID`             | Required agent id                                                                                             |
+| `HARNESS_API_URL`             | Control plane base (`https://…` or `wss://…/ws`)                                                              |
+| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                       |
+| `HARNESS_LOG_LEVEL`           | Optional (`info` default)                                                                                     |
+| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`) |
 
 6. Start daemon:
 
@@ -48,6 +49,9 @@ On the agent host:
 export HARNESS_HOST_ID=prod-1
 export HARNESS_API_URL=https://YOUR_API   # or wss://YOUR_API/ws
 export HARNESS_API_KEY=hns_…
+# Only variables named here are inherited by repository commands. The daemon's
+# HARNESS_API_KEY and other HARNESS_* control-plane values are never forwarded.
+export HARNESS_CHILD_ENV_ALLOWLIST=GITHUB_TOKEN
 
 # Local control plane
 pnpm local:daemon start

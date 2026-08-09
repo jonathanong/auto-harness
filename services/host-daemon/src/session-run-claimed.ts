@@ -26,8 +26,20 @@ export async function runClaimedSession(
   logs: SessionLogChunk[],
   assign: SessionAssign,
   claimed: ClaimedWorktree,
+  signal: AbortSignal | undefined,
+  timedOut: () => boolean,
+  remainingMs: () => number,
 ): Promise<SessionRunResult> {
-  const setupFail = await runSetupIfNeeded(processRunner, streamer, logs, assign, claimed);
+  const setupFail = await runSetupIfNeeded(
+    processRunner,
+    streamer,
+    logs,
+    assign,
+    claimed,
+    signal,
+    timedOut,
+    remainingMs,
+  );
   if (setupFail) return setupFail;
 
   if (assign.resolvedArgv.length === 0) {
@@ -55,6 +67,9 @@ export async function runClaimedSession(
     assign,
     claimed,
     assign.resolvedArgv,
+    signal,
+    timedOut,
+    remainingMs,
   );
 }
 
@@ -64,21 +79,61 @@ async function runSetupIfNeeded(
   logs: SessionLogChunk[],
   assign: SessionAssign,
   claimed: ClaimedWorktree,
+  signal: AbortSignal | undefined,
+  timedOut: () => boolean,
+  remainingMs: () => number,
 ): Promise<SessionRunResult | null> {
   const setupScript =
     assign.setupScript ?? claimed.worktree.setupScript ?? claimed.repository.setupScript;
   if (!setupScript || assign.resume) return null;
 
   streamer.write("system", "Running setup script");
+  if (signal?.aborted) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+    );
+  }
   const setup = await runSetupScript(
     processRunner,
     setupScript,
     claimed.cwd,
-    Math.min(assign.timeout * 1000, 600_000),
+    Math.min(remainingMs(), 600_000),
     (c) => {
       streamer.write(c.stream, c.data);
     },
+    signal,
   );
+  if (setup.timedOut || timedOut()) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      { status: "timed_out", exitCode: setup.exitCode },
+    );
+  }
+  if (setup.cancelled || signal?.aborted) {
+    return await finishSession(
+      processRunner,
+      streamer,
+      logs,
+      assign,
+      claimed.worktree.id,
+      claimed.cwd,
+      claimed.repository.terminalHookScript,
+      { status: "cancelled", exitCode: setup.exitCode },
+    );
+  }
   if (setup.exitCode === 0) return null;
 
   return await finishSession(
@@ -105,15 +160,21 @@ async function runProcessAndFinish(
   assign: SessionAssign,
   claimed: ClaimedWorktree,
   argv: string[],
+  signal: AbortSignal | undefined,
+  timedOut: () => boolean,
+  remainingMs: () => number,
 ): Promise<SessionRunResult> {
   streamer.write("system", `Spawning: ${argv.join(" ")}`);
   let combined = "";
   const result = await processRunner.run({
     argv,
     cwd: claimed.cwd,
-    timeoutMs: assign.timeout * 1000,
+    timeoutMs: remainingMs(),
+    ...(signal ? { signal } : {}),
     onChunk: (c) => {
-      combined += c.data;
+      // Usage-limit detection only needs recent output; retaining every byte of
+      // a long-running command made daemon memory grow without a bound.
+      combined = (combined + c.data).slice(-256 * 1024);
       streamer.write(c.stream, c.data);
     },
   });
@@ -130,8 +191,12 @@ async function runProcessAndFinish(
       outcome,
     );
 
-  if (result.timedOut) {
+  if (result.timedOut || timedOut()) {
     return await finish({ status: "timed_out", exitCode: result.exitCode });
+  }
+
+  if (result.cancelled || signal?.aborted) {
+    return await finish({ status: "cancelled", exitCode: result.exitCode });
   }
 
   if (detectUsageLimit(combined)) {

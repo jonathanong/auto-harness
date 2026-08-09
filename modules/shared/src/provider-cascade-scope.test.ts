@@ -51,6 +51,17 @@ const catalog: ProviderCatalog = {
 describe("resolveProviderAccountsForScope", () => {
   it("returns an empty list when no accounts are host-attached", () => {
     expect(resolveProviderAccountsForScope(undefined, undefined, inventory(), catalog)).toEqual([]);
+    expect(resolveProviderAccountsForScope(undefined, undefined, undefined, catalog)).toEqual([]);
+  });
+
+  it("reports no provider default when the attached account is absent from the catalog", () => {
+    const result = resolveProviderAccountsForScope(
+      undefined,
+      undefined,
+      inventory([{ providerAccountId: "missing" }]),
+      catalog,
+    );
+    expect(result[0]).toMatchObject({ commandId: undefined, commandSource: "none" });
   });
 
   it("defaults to enabled/host-sourced with the provider default command, no overrides", () => {

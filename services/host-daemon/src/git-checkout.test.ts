@@ -72,4 +72,17 @@ describe("createGitClient checkout and revParse", () => {
     );
     await expect(git.revParse("/repo", "HEAD")).resolves.toBe("abc123");
   });
+
+  it("forwards a session abort signal to every checkout command", async () => {
+    const controller = new AbortController();
+    const seen: AbortSignal[] = [];
+    const git = createGitClient({
+      async run(options) {
+        if (options.signal) seen.push(options.signal);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    await git.checkoutRef({ cwd: "/repo/wt", ref: "main", signal: controller.signal });
+    expect(seen).toEqual([controller.signal, controller.signal]);
+  });
 });
