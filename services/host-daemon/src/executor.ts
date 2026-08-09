@@ -6,6 +6,19 @@ import { createChildEnv } from "./child-env.ts";
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
 
+function truncateUtf8(data: string, maxBytes: number): string {
+  if (Buffer.byteLength(data, "utf8") <= maxBytes) return data;
+  let bytes = 0;
+  let result = "";
+  for (const char of data) {
+    const size = Buffer.byteLength(char, "utf8");
+    if (bytes + size > maxBytes) break;
+    result += char;
+    bytes += size;
+  }
+  return result;
+}
+
 export type OutputChunk = {
   stream: "stdout" | "stderr";
   data: string;
@@ -117,7 +130,13 @@ export class SpawnProcessRunner implements ProcessRunner {
       const emitChunk = (stream: OutputChunk["stream"], buf: Buffer): void => {
         // Keep a malicious/noisy process from allocating unbounded memory in
         // either the agent or the control-plane log transport.
-        const data = buf.subarray(0, MAX_OUTPUT_CHUNK_BYTES).toString("utf8");
+        // Buffer#toString may turn a truncated multi-byte character into U+FFFD,
+        // which is larger than the original incomplete sequence. Bound the
+        // encoded string too: the wire limit is measured in bytes, not chars.
+        const data = truncateUtf8(
+          buf.subarray(0, MAX_OUTPUT_CHUNK_BYTES).toString("utf8"),
+          MAX_OUTPUT_CHUNK_BYTES,
+        );
         options.onChunk({ stream, data });
         if (buf.length > MAX_OUTPUT_CHUNK_BYTES) {
           options.onChunk({ stream, data: "\n[output chunk truncated]\n" });

@@ -100,6 +100,21 @@ export class SessionRunner {
           `Checked out ref ${assign.ref ?? claimed.repository.defaultBranch}`,
         );
       } catch (err) {
+        // A checkout can reject because its git child was aborted. Preserve the
+        // requested terminal state instead of misreporting cancellation as a
+        // checkout/setup failure.
+        if (signal.aborted) {
+          return await finishSession(
+            this.deps.processRunner,
+            streamer,
+            logs,
+            assign,
+            claimed.worktree.id,
+            claimed.cwd,
+            claimed.repository.terminalHookScript,
+            { status: expired ? "timed_out" : "cancelled", exitCode: null },
+          );
+        }
         return await finishSession(
           this.deps.processRunner,
           streamer,

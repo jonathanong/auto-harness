@@ -64,12 +64,16 @@ describe("SessionRunner cancellation", () => {
     expect(released).toBe(true);
   });
 
-  it("cancels after checkout before setup starts", async () => {
+  it("preserves cancellation when an interrupted checkout rejects", async () => {
     const controller = new AbortController();
     const runner = new SessionRunner({
       worktrees: fakeWorktrees(
-        () => controller.abort(),
         () => undefined,
+        () => undefined,
+        async () => {
+          controller.abort();
+          throw new Error("git checkout interrupted");
+        },
       ),
       processRunner: cancellableRunner("main"),
     });

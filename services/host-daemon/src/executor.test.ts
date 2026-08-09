@@ -108,6 +108,24 @@ describe("SpawnProcessRunner cancellation", () => {
     ).toBe(true);
   });
 
+  it("keeps output below the byte cap when a UTF-8 character is split at the boundary", async () => {
+    const chunks: string[] = [];
+    const runner = new SpawnProcessRunner();
+    await runner.run({
+      argv: [
+        process.execPath,
+        "-e",
+        "process.stdout.write(Buffer.concat([Buffer.alloc(32767, 0x61), Buffer.from([0xc3])]))",
+      ],
+      cwd: process.cwd(),
+      timeoutMs: 10_000,
+      onChunk: (chunk) => chunks.push(chunk.data),
+    });
+    expect(
+      Math.max(...chunks.map((chunk) => Buffer.byteLength(chunk, "utf8"))),
+    ).toBeLessThanOrEqual(32 * 1024);
+  });
+
   it("surfaces non-ENOENT spawn errors", async () => {
     await expect(
       new SpawnProcessRunner().run({
