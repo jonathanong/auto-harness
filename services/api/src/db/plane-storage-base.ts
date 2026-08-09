@@ -71,11 +71,19 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     worktreeId: string;
     hostId: string;
+    connectionId: string;
     now: string;
     resolvedArgv: string[];
     queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
+  }
+
+  releaseCancelledSessionWorktree(opts: {
+    sessionId: string;
+    worktreeId: string;
+  }): Promise<boolean> {
+    return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
 
   tryRequeueSession(opts: {

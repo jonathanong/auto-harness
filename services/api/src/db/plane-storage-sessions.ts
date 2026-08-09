@@ -161,6 +161,7 @@ export async function tryAssignSession(
     sessionId: string;
     worktreeId: string;
     hostId: string;
+    connectionId: string;
     now: string;
     resolvedArgv: string[];
     queueShard: number;
@@ -205,6 +206,18 @@ export async function tryAssignSession(
               },
             },
           },
+          {
+            // A hydrated scheduler can retain an online worktree after a
+            // different process disconnects its host. The lease is the
+            // authority for reachability, so require the exact connection
+            // that was live when this candidate was selected.
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+            },
+          },
         ],
       }),
     );
@@ -212,6 +225,61 @@ export async function tryAssignSession(
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
       return false;
+    }
+    throw err;
+  }
+}
+
+/**
+ * A running session cancelled by an operator deliberately keeps its worktree
+ * busy until the agent reports a terminal status. Release that exact claim
+ * without changing the cancelled status, and detach the terminal session so a
+ * duplicate late report is an idempotent no-op.
+ */
+export async function releaseCancelledSessionWorktree(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; worktreeId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression: "SET worktreeId = :null, hostId = :null",
+              ConditionExpression: "#s = :cancelled AND worktreeId = :worktreeId",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":cancelled": "cancelled",
+                ":null": null,
+                ":worktreeId": opts.worktreeId,
+              },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.worktrees,
+              Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+              ConditionExpression: "currentSessionId = :sid",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":idle": "idle",
+                ":null": null,
+                ":sid": opts.sessionId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      const current = await getSession(ctx, opts.sessionId);
+      return current?.status === "cancelled" && current.worktreeId == null;
     }
     throw err;
   }

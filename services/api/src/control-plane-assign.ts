@@ -152,6 +152,10 @@ export async function assignQueuedDurable(
       }
       idle.sort(compareWorktreesForRoundRobin);
       for (const candidate of idle) {
+        const connectionId = state.hostConnection.get(candidate.hostId);
+        if (!connectionId) {
+          continue;
+        }
         const resolvedArgv = resolveSessionTargetArgv(state, catalog, session, candidate);
         if (!resolvedArgv) {
           continue;
@@ -160,6 +164,7 @@ export async function assignQueuedDurable(
           sessionId: session.id,
           worktreeId: candidate.id,
           hostId: candidate.hostId,
+          connectionId,
           now: nowIso,
           resolvedArgv,
           queueShard: session.queueShard,

@@ -21,6 +21,28 @@ const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
+function retainLogs(
+  state: ControlPlaneState,
+  rec: LogRecord,
+): {
+  retained: LogRecord[];
+  evicted: LogRecord[];
+} {
+  const retained = [...(state.logs.get(rec.sessionId) ?? []), rec].toSorted((a, b) =>
+    a.timestampSeq.localeCompare(b.timestampSeq),
+  );
+  let retainedBytes = retained.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
+  const evicted: LogRecord[] = [];
+  while (retained.length > MAX_RETAINED_LOG_CHUNKS || retainedBytes > MAX_RETAINED_LOG_BYTES) {
+    const removed = retained.shift();
+    if (removed) {
+      retainedBytes -= Buffer.byteLength(removed.content);
+      evicted.push(removed);
+    }
+  }
+  return { retained, evicted };
+}
+
 export function appendLog(
   state: ControlPlaneState,
   opts: {
@@ -40,19 +62,8 @@ export function appendLog(
     timestamp: opts.timestamp,
     seq: opts.seq,
   };
-  const list = state.logs.get(opts.sessionId) ?? [];
-  list.push(rec);
-  list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
-  let retainedBytes = list.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
-  const evicted: LogRecord[] = [];
-  while (list.length > MAX_RETAINED_LOG_CHUNKS || retainedBytes > MAX_RETAINED_LOG_BYTES) {
-    const removed = list.shift();
-    if (removed) {
-      retainedBytes -= Buffer.byteLength(removed.content);
-      evicted.push(removed);
-    }
-  }
-  state.logs.set(opts.sessionId, list);
+  const { retained, evicted } = retainLogs(state, rec);
+  state.logs.set(opts.sessionId, retained);
   if (state.storage) {
     queueWrite(state, state.storage.putLog(rec));
     for (const removed of evicted) {
@@ -84,10 +95,13 @@ export async function appendLogDurable(
   if (state.storage) {
     await state.storage.putLog(rec);
   }
-  const list = state.logs.get(opts.sessionId) ?? [];
-  list.push(rec);
-  list.sort((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
-  state.logs.set(opts.sessionId, list);
+  const { retained, evicted } = retainLogs(state, rec);
+  if (state.storage) {
+    for (const removed of evicted) {
+      await state.storage.deleteLog(removed.sessionId, removed.timestampSeq);
+    }
+  }
+  state.logs.set(opts.sessionId, retained);
   return rec;
 }
 
@@ -170,6 +184,9 @@ export async function handleHostMessageDurable(
       : { ok: false, error: "agent not connected" };
   }
   if (msg.type === "session:log") {
+    if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
+      return { ok: false, error: "log chunk exceeds 32 KiB" };
+    }
     await appendLogDurable(state, {
       sessionId: msg.sessionId,
       stream: msg.stream,
@@ -213,7 +230,26 @@ async function applySessionStatusDurable(
     msg.status === "failed" ||
     msg.status === "cancelled" ||
     msg.status === "timed_out";
-  if (!terminal || session.status !== "running") {
+  if (!terminal) {
+    return { ok: true };
+  }
+  if (session.status === "cancelled" && session.worktreeId) {
+    const worktreeId = session.worktreeId;
+    const released = await state.storage.releaseCancelledSessionWorktree({
+      sessionId: session.id,
+      worktreeId,
+    });
+    if (released) {
+      const wt = state.worktrees.get(worktreeId);
+      if (wt?.currentSessionId === session.id) {
+        state.worktrees.set(worktreeId, { ...wt, status: "idle", currentSessionId: null });
+      }
+      state.sessions.set(session.id, { ...session, worktreeId: null, hostId: null });
+      state.pendingAcks.delete(session.id);
+    }
+    return { ok: true };
+  }
+  if (session.status !== "running") {
     return { ok: true };
   }
   const retries = session.retryCount ?? 0;

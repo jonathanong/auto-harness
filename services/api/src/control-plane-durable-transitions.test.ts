@@ -292,6 +292,130 @@ describe("durable control-plane transitions", () => {
     expect(await ctx.storage.getConnection("connection-new")).not.toBeNull();
   });
 
+  it("does not assign from a stale scheduler after its host lease is released", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    await ctx.storage.putCommand({
+      id: "cmd-lease-guard",
+      name: "lease guard",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const owner = new ControlPlane({
+      storage: ctx.storage,
+      connectionIdFactory: () => "connection-lease-guard",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    expect(
+      (
+        await owner.registerHostDurable({
+          hostId: "host-lease-guard",
+          worktrees: [
+            {
+              id: "worktree-lease-guard",
+              name: "worktree-lease-guard",
+              repositoryId: "repo-lease-guard",
+              path: "/tmp/lease-guard",
+              labels: [],
+            },
+          ],
+          commandProfiles: ["lease guard"],
+          replaceExisting: true,
+        })
+      ).ok,
+    ).toBe(true);
+    await ctx.storage.putSession({
+      id: "session-lease-guard",
+      repositoryId: "repo-lease-guard",
+      prompt: "lease guard",
+      commandId: "cmd-lease-guard",
+      targetLabel: "lease guard",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    const scheduler = new ControlPlane({ storage: ctx.storage, shardCount: 1 });
+    await scheduler.hydrateFromStorage();
+    expect(
+      await ctx.storage.releaseHostConnection("host-lease-guard", "connection-lease-guard"),
+    ).toBe(true);
+
+    expect(await scheduler.assignQueuedDurable()).toEqual([]);
+    expect((await ctx.storage.getSession("session-lease-guard"))?.status).toBe("queued");
+    expect((await ctx.storage.getWorktree("worktree-lease-guard"))?.currentSessionId).toBeNull();
+  });
+
+  it("releases a cancelled session's worktree when its late terminal report arrives", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    await ctx.storage.putWorktree({
+      id: "worktree-cancelled-late-terminal",
+      name: "worktree-cancelled-late-terminal",
+      hostId: "host-cancelled-late-terminal",
+      repositoryId: "repo-cancelled-late-terminal",
+      path: "/tmp/cancelled-late-terminal",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "session-cancelled-late-terminal",
+    });
+    await ctx.storage.putSession({
+      id: "session-cancelled-late-terminal",
+      repositoryId: "repo-cancelled-late-terminal",
+      prompt: "cancelled",
+      targetLabel: "cancelled",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "cancelled",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      completedAt: "2026-01-01T00:00:01.000Z",
+      worktreeId: "worktree-cancelled-late-terminal",
+      hostId: "host-cancelled-late-terminal",
+    });
+    const plane = new ControlPlane({ storage: ctx.storage });
+    await plane.hydrateFromStorage();
+
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "session:status",
+          sessionId: "session-cancelled-late-terminal",
+          status: "completed",
+        })
+      ).ok,
+    ).toBe(true);
+    expect((await ctx.storage.getWorktree("worktree-cancelled-late-terminal"))?.status).toBe(
+      "idle",
+    );
+    const terminal = await ctx.storage.getSession("session-cancelled-late-terminal");
+    expect(terminal?.status).toBe("cancelled");
+    expect(terminal?.worktreeId).toBeNull();
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "session:status",
+          sessionId: "session-cancelled-late-terminal",
+          status: "completed",
+        })
+      ).ok,
+    ).toBe(true);
+  });
+
   it("makes duplicate acknowledgements and terminal reports idempotent", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
@@ -468,6 +592,7 @@ describe("durable control-plane transitions", () => {
     };
     const planeCreated = new ControlPlane({
       storage: failing,
+      connectionIdFactory: () => "connection-failing-write",
     });
     await expect(
       planeCreated.registerHostDurable({
@@ -487,6 +612,8 @@ describe("durable control-plane transitions", () => {
     ).rejects.toThrow("worktree write failed");
     expect(planeCreated.state.connections.size).toBe(0);
     expect(planeCreated.getWorktree("worktree-failing-write")).toBeNull();
+    expect(await ctx.storage.getHostLock("host-failing-write")).toBeNull();
+    expect(await ctx.storage.getConnection("connection-failing-write")).toBeNull();
 
     const logFailing = Object.create(ctx.storage) as DynamoPlaneStorage;
     logFailing.putLog = async () => {

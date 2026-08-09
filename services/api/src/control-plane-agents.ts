@@ -228,8 +228,16 @@ export async function registerHostDurable(
       nextWorktrees.push({ ...wt, online: true });
     }
   }
-  for (const next of nextWorktrees) {
-    await state.storage.putWorktree(next);
+  try {
+    for (const next of nextWorktrees) {
+      await state.storage.putWorktree(next);
+    }
+  } catch (err) {
+    // The lease+connection transaction has already committed, but no local
+    // process has adopted it until inventory persistence succeeds. Release
+    // exactly this lease so a transient write failure cannot strand a host.
+    await state.storage.releaseHostConnection(opts.hostId, connectionId);
+    throw err;
   }
   if (existing) {
     state.connections.delete(existing);
