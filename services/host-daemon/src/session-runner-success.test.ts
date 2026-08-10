@@ -24,6 +24,46 @@ describe("SessionRunner success paths", () => {
     expect(result.logs.some((l) => l.seq === 0)).toBe(true);
   });
 
+  it("captures a configured CLI resume reference without logging the opaque value", async () => {
+    const emitted: string[] = [];
+    const { sessionRunner } = setup({
+      async run(opts) {
+        opts.onChunk({ stream: "stdout", data: "resume-ref: native-" });
+        opts.onChunk({ stream: "stdout", data: "conversation-1\n" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    const result = await sessionRunner.run(
+      baseAssign({
+        resumeRefCapture: { stream: "stdout", linePrefix: "resume-ref: " },
+      }),
+    );
+    for (const chunk of result.logs) {
+      emitted.push(chunk.content);
+    }
+    expect(result).toMatchObject({ status: "completed", cliResumeRef: "native-conversation-1" });
+    expect(emitted).toContain("Captured CLI resume reference");
+    expect(emitted).toContain("[CLI resume reference redacted]\n");
+    expect(emitted.some((line) => line.includes("native-conversation-1"))).toBe(false);
+  });
+
+  it("does not copy an opaque native resume reference into system logs", async () => {
+    const { sessionRunner } = setup({
+      async run(opts) {
+        expect(opts.argv).toEqual(["tool", "resume", "opaque-ref"]);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    const result = await sessionRunner.run(
+      baseAssign({ resume: true, resolvedArgv: ["tool", "resume", "opaque-ref"] }),
+    );
+    expect(
+      result.logs.some(
+        (chunk) => chunk.stream === "system" && chunk.content.includes("opaque-ref"),
+      ),
+    ).toBe(false);
+  });
+
   it("checks out provided ref", async () => {
     const checkouts: string[] = [];
     const config = parseDaemonConfig({

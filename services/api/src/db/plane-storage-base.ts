@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type { SessionStatus } from "@auto-harness/shared";
+import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, WorktreeRecord } from "./types.ts";
@@ -95,6 +96,7 @@ export class DynamoPlaneStorageBase {
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    resumeSpec: SessionResumeSpec;
     queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -115,6 +117,7 @@ export class DynamoPlaneStorageBase {
      * cleanup deliberately sets this false. Make the distinction explicit at
      * every callsite instead of deriving it from the terminal session. */
     online: boolean;
+    cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);

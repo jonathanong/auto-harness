@@ -5,6 +5,13 @@ import type {
   SessionStatus,
   SessionType,
 } from "./types.ts";
+import type { CommandResumeSpec } from "./command-resume.ts";
+
+export type SessionResumeSpec = CommandResumeSpec & {
+  /** Frozen normal command argv, without an appended prompt. */
+  argv: string[];
+  appendPrompt: boolean;
+};
 
 /** Payload used when assigning work to an agent (control plane → agent). */
 export type SessionAssign = {
@@ -20,6 +27,7 @@ export type SessionAssign = {
   resume?: boolean;
   resumedFromSessionId?: string;
   cliResumeRef?: string;
+  resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
   metadata?: Record<string, unknown>;
 };
 
@@ -77,6 +85,7 @@ export type HostWireMessage =
       resume?: boolean;
       resumedFromSessionId?: string;
       cliResumeRef?: string;
+      resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
       metadata?: Record<string, unknown>;
       assignedAt: string;
     }

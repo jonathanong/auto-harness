@@ -65,11 +65,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     expect(planeK.getSession("k1")?.retryCount).toBe(1);
     // resume with explicit pinExpiresAt
     planeK.state.sessions.get("k1")!.retryCount = 0;
-    planeK.handleHostMessage({
-      type: "session:status",
-      sessionId: "k1",
-      status: "completed",
-    });
+    planeK.forceStatus("k1", "completed");
     // set agent after complete for resume
     const kSess = planeK.state.sessions.get("k1") as { hostId?: string | null };
     kSess.hostId = "ak";

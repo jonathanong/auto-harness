@@ -28,8 +28,17 @@ export type Command = {
   argv: string[];
   /** When true, session prompt is appended as the final argv element. */
   appendPrompt: boolean;
+  /** Optional argv-only native resume command. Supports {cliResumeRef} and {prompt}. */
+  resumeArgvTemplate?: string[];
+  /** Bounded literal-prefix policy used by the agent to extract a native resume reference. */
+  resumeRefCapture?: ResumeRefCapture;
   /** FK to Provider, or null for a standalone command that runs anywhere ungated. */
   providerId: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type ResumeRefCapture = {
+  stream: "stdout" | "stderr" | "either";
+  linePrefix: string;
 };

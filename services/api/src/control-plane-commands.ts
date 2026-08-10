@@ -1,20 +1,19 @@
 import type { CommandRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-
-function isValidArgv(argv: unknown): argv is string[] {
-  return (
-    Array.isArray(argv) &&
-    argv.length > 0 &&
-    argv.every((a) => typeof a === "string" && a.length > 0)
-  );
-}
+import {
+  validateCommandArgv,
+  validateCommandResumeSpec,
+  type ResumeRefCapture,
+} from "@auto-harness/shared";
 
 export type CommandInput = {
   id?: string;
   name: string;
   argv: string[];
   appendPrompt?: boolean;
+  resumeArgvTemplate?: string[] | null;
+  resumeRefCapture?: ResumeRefCapture | null;
   /** Soft FK — the UI filters/suggests by it; a mismatched value is never hard-blocked. */
   providerId?: string | null;
 };
@@ -26,8 +25,13 @@ export function createCommand(
   if (!input.name) {
     return { ok: false, error: "name is required" };
   }
-  if (!isValidArgv(input.argv)) {
-    return { ok: false, error: "argv must be a non-empty array of non-empty strings" };
+  const argv = validateCommandArgv(input.argv);
+  if (!argv.ok) {
+    return { ok: false, error: argv.error };
+  }
+  const resume = validateCommandResumeSpec(input);
+  if (!resume.ok) {
+    return resume;
   }
   const id = input.id ?? state.commandIdFactory();
   if (state.commands.has(id)) {
@@ -37,8 +41,9 @@ export function createCommand(
   const rec: CommandRecord = {
     id,
     name: input.name,
-    argv: input.argv,
+    argv: argv.value,
     appendPrompt: input.appendPrompt !== false,
+    ...resume.value,
     providerId: input.providerId ?? null,
     createdAt: at,
     updatedAt: at,
@@ -69,15 +74,20 @@ export function updateCommand(
     argv: string[];
     appendPrompt: boolean;
     providerId: string | null;
+    resumeArgvTemplate: string[] | null;
+    resumeRefCapture: ResumeRefCapture | null;
   }>,
 ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
   const existing = state.commands.get(id);
   if (!existing) {
     return { ok: false, error: "command not found" };
   }
-  if (patch.argv !== undefined && !isValidArgv(patch.argv)) {
-    return { ok: false, error: "argv must be a non-empty array of non-empty strings" };
+  if (patch.argv !== undefined) {
+    const argv = validateCommandArgv(patch.argv);
+    if (!argv.ok) return { ok: false, error: argv.error };
   }
+  const resume = validateCommandResumeSpec(patch);
+  if (!resume.ok) return resume;
   const next: CommandRecord = {
     ...existing,
     updatedAt: state.now(),
@@ -85,7 +95,15 @@ export function updateCommand(
     ...(patch.argv !== undefined ? { argv: patch.argv } : {}),
     ...(patch.appendPrompt !== undefined ? { appendPrompt: patch.appendPrompt } : {}),
     ...(patch.providerId !== undefined ? { providerId: patch.providerId } : {}),
+    ...(patch.resumeArgvTemplate !== undefined && patch.resumeArgvTemplate !== null
+      ? { resumeArgvTemplate: resume.value.resumeArgvTemplate }
+      : {}),
+    ...(patch.resumeRefCapture !== undefined && patch.resumeRefCapture !== null
+      ? { resumeRefCapture: resume.value.resumeRefCapture }
+      : {}),
   };
+  if (patch.resumeArgvTemplate === null) delete next.resumeArgvTemplate;
+  if (patch.resumeRefCapture === null) delete next.resumeRefCapture;
   state.commands.set(id, next);
   if (state.storage) {
     queueWrite(state, state.storage.putCommand({ ...next }));

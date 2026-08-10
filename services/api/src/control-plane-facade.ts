@@ -185,7 +185,7 @@ export class ControlPlaneBase {
 
   resumeSession(
     sessionId: string,
-    opts: { pinExpiresAt?: string } = {},
+    opts: { pinExpiresAt?: string; prompt?: string; timeout?: number; priority?: number } = {},
   ): { ok: true; session: PublicSession } | { ok: false; error: string } {
     return sessions.resumeSession(this.state, sessionId, opts);
   }

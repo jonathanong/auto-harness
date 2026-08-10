@@ -303,6 +303,7 @@ async function applySessionStatusDurable(
       sessionId: session.id,
       worktreeId,
       online: true,
+      ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(fence ? { fence } : {}),
     });
     if (released) {
@@ -315,7 +316,11 @@ async function applySessionStatusDurable(
           online: true,
         });
       }
-      state.sessions.set(session.id, { ...session, worktreeId: null, hostId: null });
+      state.sessions.set(session.id, {
+        ...session,
+        worktreeId: null,
+        ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
+      });
       state.pendingAcks.delete(session.id);
     }
     return { ok: true };
@@ -366,7 +371,7 @@ async function applySessionStatusDurable(
     status: nextStatus,
     ...(shouldRetry ? {} : { completedAt: state.now() }),
     worktreeId: null,
-    hostId: null,
+    ...(shouldRetry ? { hostId: null } : {}),
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
@@ -412,8 +417,9 @@ function applySessionStatus(
         releaseWorktree(state, session.worktreeId);
       }
       session.worktreeId = null;
-      session.hostId = null;
     }
+    if (msg.cliResumeRef !== undefined) session.cliResumeRef = msg.cliResumeRef;
+    persistSession(state, session);
     return { ok: true };
   }
 

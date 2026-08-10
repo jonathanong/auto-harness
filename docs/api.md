@@ -402,7 +402,6 @@ Get session details.
   "errorMessage": null,
   "resumedFromSessionId": null,
   "pinnedHostId": null,
-  "pinnedWorktreeId": null,
   "cliResumeRef": null,
   "createdAt": "2026-08-01T12:00:00Z",
   "startedAt": "2026-08-01T12:00:05Z",
@@ -410,14 +409,14 @@ Get session details.
 }
 ```
 
-| Field                               | When set                                                                                                           |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `hostId` / `worktreeId`             | Set when assigned (used later for [resume](#post-sessionsidresume))                                                |
-| `errorCode`                         | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
-| `errorMessage`                      | Optional short human excerpt from the match / logs                                                                 |
-| `resumedFromSessionId`              | Set on sessions created via resume — parent session id                                                             |
-| `pinnedHostId` / `pinnedWorktreeId` | When set, scheduler must assign only this agent/worktree                                                           |
-| `cliResumeRef`                      | Optional opaque id from the AI CLI (if captured) for native resume                                                 |
+| Field                   | When set                                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `hostId` / `worktreeId` | Set when assigned (used later for [resume](#post-sessionsidresume))                                                |
+| `errorCode`             | Optional machine-readable failure reason, e.g. `usage_limit` when the agent parsed a vendor quota/rate-limit error |
+| `errorMessage`          | Optional short human excerpt from the match / logs                                                                 |
+| `resumedFromSessionId`  | Set on sessions created via resume — parent session id                                                             |
+| `pinnedHostId`          | Resume affinity: when set, scheduler assigns only this host; any eligible idle worktree on that host may be used   |
+| `cliResumeRef`          | Optional opaque id from the AI CLI (if captured) for native resume                                                 |
 
 #### `POST /sessions/:id/clone`
 
@@ -436,9 +435,9 @@ Optional request body to override fields:
 
 #### `POST /sessions/:id/resume`
 
-Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same agent and worktree** as the source session, then the agent **tries to resume** in that workspace.
+Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same host** as the source session. The scheduler may use any eligible idle worktree on that host, re-checks out the source `ref` when present (otherwise the repository default branch), skips setup, and then invokes native resume when configured.
 
-**Operator or admin.** Source session must have been assigned at least once (`hostId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
+**Operator or admin.** The source must be terminal (`completed`, `failed`, `cancelled`, or `timed_out`) and must retain the host recorded by its prior assignment. Terminal cleanup releases and clears its worktree claim; the continuation may use any eligible idle worktree on that same host.
 
 **Request (optional body):**
 
@@ -450,11 +449,11 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 }
 ```
 
-| Field      | Type   | Required | Description                                                                                                                                          |
-| ---------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`   | string | ✗        | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
-| `timeout`  | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                       |
-| `priority` | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                  |
+| Field      | Type   | Required | Description                                                                                     |
+| ---------- | ------ | -------- | ----------------------------------------------------------------------------------------------- |
+| `prompt`   | string | ✗        | Continuation instruction. If omitted, defaults exactly to `Continue from the previous session.` |
+| `timeout`  | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                  |
+| `priority` | number | ✗        | Queue priority. Default: source session’s priority.                                             |
 
 **Response:** `201 Created`
 
@@ -472,38 +471,37 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
   "type": "prompt",
   "resumedFromSessionId": "sess-x1y2z3",
   "pinnedHostId": "vps-prod-1",
-  "pinnedWorktreeId": "wt-1",
   "createdAt": "2026-08-01T13:00:00Z"
 }
 ```
 
-**Scheduling (pinned):**
+**Scheduling (host-pinned):**
 
-1. New session is `queued` with `pinnedHostId` + `pinnedWorktreeId` copied from the source (never round-robins away).
-2. Scheduler assigns **only** when that worktree is idle **and** that agent is online (and not draining).
-3. If the agent is offline or the worktree is busy, the session **stays queued** on that pin — it does **not** fall back to another agent/worktree.
-4. `session:assign` includes `resume: true`, `resumedFromSessionId`, and any stored `cliResumeRef` from the source.
+1. New session is `queued` with `pinnedHostId` copied from the source; it is not pinned to a worktree.
+2. Scheduler assigns any eligible idle worktree on that online, non-draining host.
+3. If the host is offline, draining, or has no eligible worktree, the session stays queued until `pinExpiresAt`; expiry fails with `resume_failed`.
+4. `session:assign` includes `resume: true`, `resumedFromSessionId`, optional source `ref`, and any stored `cliResumeRef`.
 
 **Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally; if resume is impossible, session `failed` with `errorCode: "resume_failed"` (or similar).
 
 **Errors:**
 
-| Status | Code               | When                                                                       |
-| ------ | ------------------ | -------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued` |
-| 404    | `NOT_FOUND`        | Unknown session id                                                         |
-| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)              |
+| Status | Code               | When                                                                                   |
+| ------ | ------------------ | -------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued`             |
+| 404    | `NOT_FOUND`        | Unknown session id                                                                     |
+| 409    | `RESUME_ERROR`     | Policy reject: source type is `scheduled` (scheduled work has no worktree resume path) |
 
 **Clone vs resume:**
 
-|                | Clone                               | Resume                                     |
-| -------------- | ----------------------------------- | ------------------------------------------ |
-| New session id | ✓                                   | ✓                                          |
-| Placement      | Any matching worktree (round-robin) | **Same** agent + worktree only             |
-| Workspace      | Fresh setup script (typical reset)  | Prefer keep tree; try CLI/workspace resume |
-| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented             |
+|                | Clone                               | Resume                                                                                                          |
+| -------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| New session id | ✓                                   | ✓                                                                                                               |
+| Placement      | Any matching worktree (round-robin) | Any eligible worktree on the pinned host                                                                        |
+| Workspace      | Fresh setup script (typical reset)  | Re-checkout `ref` when present (otherwise default branch); skip setup; native resume or frozen command fallback |
+| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented                                                                                  |
 
-You can also create a session with pin fields via advanced clients (`pinnedHostId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
+The supported product path is **`POST /sessions/:id/resume`**; callers do not need to supply pin fields.
 
 #### `POST /sessions/:id/cancel`
 
@@ -719,9 +717,9 @@ Standard CRUD. Deleting an account does **not** detach it from any host that sti
 
 #### `POST /commands`
 
-**Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
+**Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "resumeArgvTemplate": ["claude", "--resume", "{cliResumeRef}", "{prompt}"], "resumeRefCapture": { "stream": "stdout", "linePrefix": "session id: " }, "providerId": "prov-1" }` (`providerId: null` for standalone)
 
-**Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+**Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "resumeArgvTemplate"?, "resumeRefCapture"?, "providerId", "createdAt", "updatedAt" }`. `argv` and `resumeArgvTemplate` are bounded argv arrays — never shell strings. Resume templates must contain exactly one `{cliResumeRef}` and may use `{prompt}`; `resumeRefCapture` contains `stream` (`stdout`, `stderr`, or `either`) and a bounded literal `linePrefix`, never a regular expression.
 
 #### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
 

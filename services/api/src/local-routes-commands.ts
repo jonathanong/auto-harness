@@ -1,10 +1,13 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import type { ResumeRefCapture } from "@auto-harness/shared";
 
 function commandPatchFromBody(body: Record<string, unknown>): {
   name?: string;
   argv?: string[];
   appendPrompt?: boolean;
   providerId?: string | null;
+  resumeArgvTemplate?: string[] | null;
+  resumeRefCapture?: ResumeRefCapture | null;
 } {
   return {
     ...(typeof body.name === "string" ? { name: body.name } : {}),
@@ -12,6 +15,12 @@ function commandPatchFromBody(body: Record<string, unknown>): {
     ...(typeof body.appendPrompt === "boolean" ? { appendPrompt: body.appendPrompt } : {}),
     ...(typeof body.providerId === "string" || body.providerId === null
       ? { providerId: body.providerId }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(body, "resumeArgvTemplate")
+      ? { resumeArgvTemplate: body.resumeArgvTemplate as string[] | null }
+      : {}),
+    ...(Object.prototype.hasOwnProperty.call(body, "resumeRefCapture")
+      ? { resumeRefCapture: body.resumeRefCapture as ResumeRefCapture | null }
       : {}),
   };
 }
@@ -60,7 +69,13 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
         const body = (await readJson(req)) as Record<string, unknown>;
         const result = plane.updateCommand(id, commandPatchFromBody(body));
         if (!result.ok) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const status = plane.getCommand(id) ? 400 : 404;
+          send(res, status, {
+            error: {
+              code: status === 404 ? "NOT_FOUND" : "VALIDATION_ERROR",
+              message: result.error,
+            },
+          });
           return true;
         }
         send(res, 200, result.command);

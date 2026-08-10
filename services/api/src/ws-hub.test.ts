@@ -24,6 +24,22 @@ describe("createPlaneWsBridge", () => {
     );
     expect(
       parseHostMessage({
+        type: "session:status",
+        sessionId: "s",
+        status: "completed",
+        cliResumeRef: "bad\u0000ref",
+      }),
+    ).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:status",
+        sessionId: "s",
+        status: "completed",
+        cliResumeRef: "💾".repeat(129),
+      }),
+    ).toBe(null);
+    expect(
+      parseHostMessage({
         type: "session:log",
         sessionId: "s",
         stream: "stdout",

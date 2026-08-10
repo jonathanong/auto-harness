@@ -153,26 +153,26 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-workt
 
 ## Key Design Decisions
 
-| Decision                               | Rationale                                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Two-plane split                        | Cloud stays secret-light and elastic; heavy/untrusted execution stays on your VPS                                              |
-| WebSocket over polling                 | Low-latency assign + log streaming                                                                                             |
-| Worktree reuse                         | Fast start; setup scripts reset state                                                                                          |
-| Labels on worktrees                    | Route Codex vs Claude (etc.) like Actions runners                                                                              |
-| Match then round-robin                 | Filter repo/labels/online idle worktrees, then least-recently-assigned                                                         |
-| No Docker wrapping the agent           | Trusted host; Docker optional inside repos                                                                                     |
-| PTY (`node-pty`)                       | AI CLIs often need a TTY                                                                                                       |
-| Prompt as argv/stdin, not shell string | Avoid injection from untrusted prompts                                                                                         |
-| Priority queue + FIFO ties             | CI fixes can preempt batch work                                                                                                |
-| DynamoDB on-demand                     | Bursty session traffic                                                                                                         |
-| Scheduled on main checkout             | Maintenance without burning worktree slots; serial per repo                                                                    |
-| xterm.js in UI                         | Faithful ANSI / progress rendering                                                                                             |
-| Session `source`                       | Audit and filter by api / ui / webhook / schedule                                                                              |
-| Agent auto-update drains               | Stop new assigns, finish in-flight CLIs, then restart — never kill CLIs for the upgrade path                                   |
-| Usage limits: parse then fail          | Detect AI vendor quota/rate-limit text in CLI output; fail the session with `usage_limit` — no auto-retry                      |
-| Session resume pins placement          | Resume by session id → same agent + worktree only; agent tries CLI/workspace resume without destructive reset                  |
-| Subscriptions via non-interactive CLI  | Cost path is vendor seats/quota, not Agent SDKs / API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md)) |
-| Repo harness fire-and-forget           | Callers (e.g. GHA) only `POST /sessions`; Slack + GitHub are human feedback, not long-running CI ([harness.md](harness.md))    |
+| Decision                               | Rationale                                                                                                                                                                          |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two-plane split                        | Cloud stays secret-light and elastic; heavy/untrusted execution stays on your VPS                                                                                                  |
+| WebSocket over polling                 | Low-latency assign + log streaming                                                                                                                                                 |
+| Worktree reuse                         | Fast start; setup scripts reset state                                                                                                                                              |
+| Labels on worktrees                    | Route Codex vs Claude (etc.) like Actions runners                                                                                                                                  |
+| Match then round-robin                 | Filter repo/labels/online idle worktrees, then least-recently-assigned                                                                                                             |
+| No Docker wrapping the agent           | Trusted host; Docker optional inside repos                                                                                                                                         |
+| PTY (`node-pty`)                       | AI CLIs often need a TTY                                                                                                                                                           |
+| Prompt as argv/stdin, not shell string | Avoid injection from untrusted prompts                                                                                                                                             |
+| Priority queue + FIFO ties             | CI fixes can preempt batch work                                                                                                                                                    |
+| DynamoDB on-demand                     | Bursty session traffic                                                                                                                                                             |
+| Scheduled on main checkout             | Maintenance without burning worktree slots; serial per repo                                                                                                                        |
+| xterm.js in UI                         | Faithful ANSI / progress rendering                                                                                                                                                 |
+| Session `source`                       | Audit and filter by api / ui / webhook / schedule                                                                                                                                  |
+| Agent auto-update drains               | Stop new assigns, finish in-flight CLIs, then restart — never kill CLIs for the upgrade path                                                                                       |
+| Usage limits: parse then fail          | Detect AI vendor quota/rate-limit text in CLI output; fail the session with `usage_limit` — no auto-retry                                                                          |
+| Session resume pins placement          | Resume by session id → source host only; any eligible worktree re-checks out `ref` when present (otherwise its default branch), skips setup, and runs native/frozen-command resume |
+| Subscriptions via non-interactive CLI  | Cost path is vendor seats/quota, not Agent SDKs / API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md))                                                     |
+| Repo harness fire-and-forget           | Callers (e.g. GHA) only `POST /sessions`; Slack + GitHub are human feedback, not long-running CI ([harness.md](harness.md))                                                        |
 
 ---
 

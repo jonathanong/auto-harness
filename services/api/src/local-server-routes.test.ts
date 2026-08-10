@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
+import { invokeHandler } from "./local-server-test-helpers.ts";
 
 describe("createLocalApp agent and scheduler routes", () => {
   it("covers agents, profiles, scheduler, logs, resume, drain routes", async () => {
@@ -27,43 +28,8 @@ describe("createLocalApp agent and scheduler routes", () => {
     });
     const { handler } = createLocalApp({ plane });
 
-    const invoke = async (
-      method: string,
-      path: string,
-      body?: unknown,
-    ): Promise<{ status: number; json: unknown }> => {
-      const chunks: Buffer[] = [];
-      let statusCode = 0;
-      const req = {
-        method,
-        url: path,
-        on(event: string, cb: (...args: unknown[]) => void) {
-          if (event === "data" && body !== undefined) {
-            cb(Buffer.from(JSON.stringify(body)));
-          }
-          if (event === "end") {
-            cb();
-          }
-          return req;
-        },
-      };
-      const res = {
-        setHeader() {
-          /* cors */
-        },
-        writeHead(code: number) {
-          statusCode = code;
-        },
-        end(payload: string) {
-          chunks.push(Buffer.from(payload));
-        },
-      };
-      await handler(req as never, res as never);
-      return {
-        status: statusCode,
-        json: JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as unknown,
-      };
-    };
+    const invoke = (method: string, path: string, body?: unknown) =>
+      invokeHandler(handler as never, method, path, body);
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/command-profiles")).status).toBe(200);
@@ -128,7 +94,30 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(true);
     expect((await invoke("GET", "/api/v1/sessions/sess-1/logs")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/archive")).status).toBe(200);
-    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume")).status).toBe(201);
+    const resumed = await invoke("POST", "/api/v1/sessions/sess-1/resume", {
+      prompt: "continue with the edge case",
+      timeout: 20,
+      priority: 4,
+    });
+    expect(resumed.status).toBe(201);
+    expect(resumed.json).toMatchObject({
+      prompt: "continue with the edge case",
+      timeout: 20,
+      priority: 4,
+    });
+    expect(
+      (await invoke("POST", "/api/v1/sessions/sess-1/resume", { commandId: "override" })).status,
+    ).toBe(400);
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", { timeout: "20" })).status).toBe(
+      400,
+    );
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", { prompt: "" })).status).toBe(
+      400,
+    );
+    expect(
+      (await invoke("POST", "/api/v1/sessions/sess-1/resume", { priority: "high" })).status,
+    ).toBe(400);
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", [])).status).toBe(400);
     expect(
       (await invoke("GET", "/api/v1/sessions?limit=5&cursor=&hostId=a1&status=completed&q=p"))
         .status,
@@ -173,7 +162,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         })
       ).status,
     ).toBe(410);
-    expect((await invoke("POST", "/api/v1/sessions/nope/resume")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/sessions/nope/resume")).status).toBe(404);
 
     // invalid JSON on agent messages / drain
     const badJson = async (path: string) => {
@@ -207,5 +196,6 @@ describe("createLocalApp agent and scheduler routes", () => {
     };
     expect(await badJson("/api/v1/host/messages")).toBe(400);
     expect(await badJson("/api/v1/hosts/drain")).toBe(400);
+    expect(await badJson("/api/v1/sessions/sess-1/resume")).toBe(400);
   });
 });

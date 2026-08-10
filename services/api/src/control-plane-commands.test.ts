@@ -67,4 +67,40 @@ describe("ControlPlane command CRUD", () => {
     plane.updateProvider("prov-1", { defaultCommandId: null });
     expect(plane.deleteCommand("cmd-1").ok).toBe(true);
   });
+
+  it("validates and persists native resume configuration", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    expect(
+      plane.createCommand({
+        name: "invalid",
+        argv: ["tool"],
+        resumeArgvTemplate: ["tool", "{unknown}"],
+      }).ok,
+    ).toBe(false);
+    const created = plane.createCommand({
+      name: "codex",
+      argv: ["codex", "exec"],
+      resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
+      resumeRefCapture: { stream: "stdout", linePrefix: "session id: " },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok) throw new Error("unreachable");
+    expect(created.command.resumeArgvTemplate).toEqual([
+      "codex",
+      "resume",
+      "{cliResumeRef}",
+      "{prompt}",
+    ]);
+    expect(created.command.resumeRefCapture).toEqual({
+      stream: "stdout",
+      linePrefix: "session id: ",
+    });
+    expect(
+      plane.updateCommand(created.command.id, { resumeArgvTemplate: ["x", "{unknown}"] }).ok,
+    ).toBe(false);
+    expect(plane.updateCommand(created.command.id, { resumeArgvTemplate: null }).ok).toBe(true);
+    expect(plane.getCommand(created.command.id)?.resumeArgvTemplate).toBeUndefined();
+    expect(plane.updateCommand(created.command.id, { resumeRefCapture: null }).ok).toBe(true);
+    expect(plane.getCommand(created.command.id)?.resumeRefCapture).toBeUndefined();
+  });
 });
