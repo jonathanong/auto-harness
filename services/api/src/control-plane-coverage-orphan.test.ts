@@ -183,7 +183,9 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     const assignment = plane.assignQueued()[0]!;
     const running = plane.state.sessions.get(assignment.session.id)!;
+    let sessionReads = 0;
     plane.state.storage = {
+      listWorktreesByHost: async () => [assignment.worktree],
       tryRequeueSession: async () => false,
       getWorktree: async () => ({
         ...assignment.worktree,
@@ -191,12 +193,15 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
         online: false,
         currentSessionId: null,
       }),
-      getSession: async () => ({
-        ...running,
-        status: "completed",
-        worktreeId: null,
-        hostId: null,
-      }),
+      getSession: async () =>
+        sessionReads++ === 0
+          ? running
+          : {
+              ...running,
+              status: "completed",
+              worktreeId: null,
+              hostId: null,
+            },
     } as never;
 
     expect(await offlineHostAndRequeueDurable(plane.state, "race-host", "race lost")).toEqual([]);

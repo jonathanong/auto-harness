@@ -1,7 +1,10 @@
+/* eslint-disable max-lines */
 import {
+  materializeResumeArgv,
   resolveProviderAccountCommandId,
   resolveProviderAccountEnabled,
   type ProviderCatalog,
+  type SessionResumeSpec,
   type TargetRef,
 } from "@auto-harness/shared";
 
@@ -14,6 +17,7 @@ type ResolvedSessionRoute = {
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
+  resumeSpec?: SessionResumeSpec;
 };
 
 export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog {
@@ -72,8 +76,57 @@ export function resolveSessionTargetRouteAt(
     nowMs,
     session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
   );
-  const resolved = route ? { ...route, targetIndex } : null;
+  const resolved = route
+    ? { ...route, targetIndex }
+    : resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
   return resolved && matchesNativeResumePin(session, resolved) ? resolved : null;
+}
+
+/** A pinned continuation can use its frozen command snapshot after catalog edits. */
+function resolveNativeResumeRoute(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  targetIndex: number,
+): ResolvedSessionRoute | null {
+  const spec = session.resumeSpec;
+  if (
+    !session.resumedFromSessionId ||
+    !spec ||
+    (!session.cliResumeRef && !session.resumeFallback) ||
+    session.pinnedTargetIndex !== targetIndex ||
+    session.pinnedCommandId === undefined
+  ) {
+    return null;
+  }
+  const host = state.hostInventories.get(worktree.hostId);
+  const repository = host?.repositories.find((item) => item.id === worktree.repositoryId);
+  const hostWorktree = repository?.worktrees.find((item) => item.id === worktree.id);
+  const accountId = session.pinnedProviderAccountId ?? undefined;
+  if (accountId) {
+    const account = state.providerAccounts.get(accountId);
+    if (
+      !account ||
+      (account.usageLimitedUntil && Date.parse(account.usageLimitedUntil) > nowMs) ||
+      !resolveProviderAccountEnabled(accountId, hostWorktree, repository, host)
+    ) {
+      return null;
+    }
+  }
+  if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
+  return {
+    targetIndex,
+    commandId: session.pinnedCommandId,
+    ...(accountId ? { providerAccountId: accountId } : {}),
+    resolvedArgv: spec.resumeArgvTemplate
+      ? materializeResumeArgv(spec.resumeArgvTemplate, session.cliResumeRef!, session.prompt)
+      : spec.appendPrompt
+        ? [...spec.argv, session.prompt]
+        : [...spec.argv],
+    resumeSpec: copyResumeSpec(spec),
+  };
 }
 
 /** A CLI resume is valid only on precisely the route that produced its ref. */
@@ -117,7 +170,9 @@ function resolveTarget(
     if (!command) return null;
     if (command.providerId === null) {
       const resolvedArgv = buildArgv(command, prompt);
-      return resolvedArgv ? { commandId: command.id, resolvedArgv } : null;
+      return resolvedArgv
+        ? { commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }
+        : null;
     }
     const account = resolveEligibleAccount(
       state,
@@ -129,7 +184,12 @@ function resolveTarget(
     );
     const resolvedArgv = buildArgv(command, prompt);
     return account && resolvedArgv
-      ? { providerAccountId: account.id, commandId: command.id, resolvedArgv }
+      ? {
+          providerAccountId: account.id,
+          commandId: command.id,
+          resolvedArgv,
+          resumeSpec: commandResumeSpec(command),
+        }
       : null;
   }
   const account = resolveEligibleAccount(
@@ -147,7 +207,12 @@ function resolveTarget(
   const commandId = resolveProviderAccountCommandId(account.id, hostWorktree, repo, host, catalog);
   const resolvedArgv = commandId ? buildArgv(state.commands.get(commandId), prompt) : null;
   return resolvedArgv && commandId
-    ? { providerAccountId: account.id, commandId, resolvedArgv }
+    ? {
+        providerAccountId: account.id,
+        commandId,
+        resolvedArgv,
+        resumeSpec: commandResumeSpec(state.commands.get(commandId)!),
+      }
     : null;
 }
 
@@ -178,4 +243,22 @@ function resolveEligibleAccount(
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
   return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
+}
+
+function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
+  return {
+    argv: [...command.argv],
+    appendPrompt: command.appendPrompt,
+    ...(command.resumeArgvTemplate ? { resumeArgvTemplate: [...command.resumeArgvTemplate] } : {}),
+    ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
+  };
+}
+
+function copyResumeSpec(spec: SessionResumeSpec): SessionResumeSpec {
+  return {
+    argv: [...spec.argv],
+    appendPrompt: spec.appendPrompt,
+    ...(spec.resumeArgvTemplate ? { resumeArgvTemplate: [...spec.resumeArgvTemplate] } : {}),
+    ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
+  };
 }

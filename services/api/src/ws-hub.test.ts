@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { createServer } from "node:http";
 
 import { describe, expect, it } from "vitest";
@@ -124,7 +125,19 @@ describe("createPlaneWsBridge", () => {
           plane.assignQueued();
         }
         if (msg.type === "session:assign") {
-          ws.send(JSON.stringify({ type: "session:ack", sessionId: "sess-1" }));
+          const assignment = msg as unknown as {
+            sessionId: string;
+            worktreeId: string;
+            attemptId: string;
+          };
+          ws.send(
+            JSON.stringify({
+              type: "session:ack",
+              sessionId: assignment.sessionId,
+              worktreeId: assignment.worktreeId,
+              attemptId: assignment.attemptId,
+            }),
+          );
         }
         if (msg.type === "session:acknowledged") {
           // Keep the in-memory socket open long enough to catch a duplicate

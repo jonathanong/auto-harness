@@ -77,8 +77,28 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       status: "completed",
     });
     // set agent after complete for resume
-    const kSess = planeK.state.sessions.get("k1") as { hostId?: string | null };
+    const kSess = planeK.state.sessions.get("k1") as {
+      hostId?: string | null;
+      status: "queued" | "running";
+      worktreeId?: string | null;
+    };
+    // The usage-limit branch requeues the source, so create a fresh running
+    // assignment before exercising the terminal/resume path.
+    kSess.status = "running";
+    kSess.worktreeId = kAssignment.worktree.id;
     kSess.hostId = "ak";
+    planeK.state.worktrees.set(kAssignment.worktree.id, {
+      ...kAssignment.worktree,
+      status: "busy",
+      currentSessionId: "k1",
+    });
+    planeK.handleHostMessage({
+      type: "session:status",
+      sessionId: "k1",
+      worktreeId: kAssignment.worktree.id,
+      attemptId: kAssignment.session.attemptId!,
+      status: "completed",
+    });
     expect(planeK.resumeSession("k1", { pinExpiresAt: "2099-01-01T00:00:00.000Z" }).ok).toBe(true);
 
     // default constructor factories

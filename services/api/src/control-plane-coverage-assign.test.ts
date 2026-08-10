@@ -62,10 +62,18 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       ref: "main",
     });
     planeF.assignQueued();
-    planeF.handleHostMessage({ type: "session:ack", sessionId: "f1" });
+    const first = planeF.getSession("f1")!;
+    planeF.handleHostMessage({
+      type: "session:ack",
+      sessionId: "f1",
+      worktreeId: first.worktreeId!,
+      attemptId: first.attemptId!,
+    });
     planeF.handleHostMessage({
       type: "session:status",
       sessionId: "f1",
+      worktreeId: first.worktreeId!,
+      attemptId: first.attemptId!,
       status: "completed",
     });
     // force agent pin without cliResumeRef
@@ -89,6 +97,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.state.pendingAcks.set("pending-early", {
       sessionId: "x",
       worktreeId: "wf2",
+      attemptId: "attempt-early",
       assignedAtMs: assignMs,
     });
     expect(planeF.enforceAckDeadlines(assignMs)).toEqual([]);

@@ -97,7 +97,7 @@ export class DynamoPlaneStorageBase {
     now: string;
     attemptId: string;
     resolvedArgv: string[];
-    resumeSpec: SessionResumeSpec;
+    resumeSpec?: SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
     queueShard: number;

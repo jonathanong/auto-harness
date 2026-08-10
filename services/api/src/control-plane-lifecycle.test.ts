@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
@@ -107,7 +108,13 @@ describe("ControlPlane lifecycle", () => {
     }
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.getSession("sess-1")!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     plane.disconnectHost(registration.connectionId);
     const deadline = Date.parse(plane.getSession("sess-1")!.reconnectDeadlineAt!);
     expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);

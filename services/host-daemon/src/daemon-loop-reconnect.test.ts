@@ -38,6 +38,7 @@ describe("DaemonLoop reconnect", () => {
         resolvedArgv: ["printf", "%s", "hello"],
         timeout: 30,
         worktreeId: "wt-1",
+        attemptId: "attempt-before-ack",
         assignedAt: new Date().toISOString(),
       });
       await Promise.resolve();
@@ -72,6 +73,8 @@ describe("DaemonLoop reconnect", () => {
       expect(transport.sent).toContainEqual({
         type: "session:ack",
         sessionId: "write-without-server-ack",
+        worktreeId: "wt-1",
+        attemptId: "attempt-write-without-server-ack",
       });
 
       // `send()` completed, but the peer has not processed the frame. The
@@ -264,6 +267,7 @@ describe("DaemonLoop reconnect", () => {
         resolvedArgv: ["printf", "%s", "hello"],
         timeout: 30,
         worktreeId: "wt-1",
+        attemptId: "attempt-over-capacity",
         assignedAt: new Date().toISOString(),
       });
       expect(loop.inflightCount()).toBe(64);
@@ -461,6 +465,7 @@ function assignMessage(sessionId: string): Extract<HostWireMessage, { type: "ses
     resolvedArgv: ["printf", "%s", "hello"],
     timeout: 30,
     worktreeId: "wt-1",
+    attemptId: `attempt-${sessionId}`,
     assignedAt: new Date().toISOString(),
   };
 }

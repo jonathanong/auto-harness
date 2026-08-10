@@ -561,6 +561,11 @@ function applySessionStatus(
       void assignQueued(state);
     } else {
       session.worktreeId = null;
+      // A continuation reference is single-use: a resumed command must report
+      // a fresh one if it wants to support another native continuation.
+      if (session.resumedFromSessionId && msg.cliResumeRef === undefined) {
+        delete session.cliResumeRef;
+      }
       void archiveSessionLogs(state, session.id);
       void maybeDeliverWebhook(state, session);
     }

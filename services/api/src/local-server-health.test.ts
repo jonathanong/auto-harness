@@ -75,7 +75,7 @@ describe("createLocalApp health and sessions", () => {
     expect((await invoke("GET", "/api/v1/sessions/missing/logs")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/missing/cancel")).status).toBe(400);
-    expect((await invoke("POST", "/api/v1/sessions/missing/resume")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/sessions/missing/resume")).status).toBe(404);
     expect(
       (
         await invoke("POST", "/api/v1/sessions", {

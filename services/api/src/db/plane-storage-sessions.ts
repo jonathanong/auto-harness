@@ -206,12 +206,39 @@ export async function tryAssignSession(
     now: string;
     attemptId: string;
     resolvedArgv: string[];
-    resumeSpec: import("@auto-harness/shared").SessionResumeSpec;
+    resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
     resolvedRoute: SessionRecord["resolvedRoute"];
     providerAccountId?: string;
     queueShard: number;
   },
 ): Promise<boolean> {
+  const sessionSets = [
+    "#s = :running",
+    "statusShard = :statusShard",
+    "worktreeId = :wid",
+    "hostId = :hid",
+    "startedAt = :now",
+    "attemptId = :attemptId",
+    "resolvedArgv = :argv",
+    "resolvedRoute = :route",
+    "assignmentConnectionId = :connectionId",
+  ];
+  const sessionValues: Record<string, unknown> = {
+    ":running": "running",
+    ":statusShard": statusShardAttr("running", opts.queueShard),
+    ":queued": "queued",
+    ":wid": opts.worktreeId,
+    ":hid": opts.hostId,
+    ":now": opts.now,
+    ":attemptId": opts.attemptId,
+    ":argv": opts.resolvedArgv,
+    ":connectionId": opts.connectionId,
+    ":route": opts.resolvedRoute,
+  };
+  if (opts.resumeSpec !== undefined) {
+    sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
+    sessionValues[":resumeSpec"] = opts.resumeSpec;
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -238,23 +265,10 @@ export async function tryAssignSession(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, attemptId = :attemptId, resolvedArgv = :argv, resolvedRoute = :route, resumeSpec = if_not_exists(resumeSpec, :resumeSpec), assignmentConnectionId = :connectionId REMOVE ackReceivedAt, reconnectDeadlineAt",
+              UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt`,
               ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
               ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: {
-                ":running": "running",
-                ":statusShard": statusShardAttr("running", opts.queueShard),
-                ":queued": "queued",
-                ":wid": opts.worktreeId,
-                ":hid": opts.hostId,
-                ":now": opts.now,
-                ":attemptId": opts.attemptId,
-                ":argv": opts.resolvedArgv,
-                ":resumeSpec": opts.resumeSpec,
-                ":connectionId": opts.connectionId,
-                ":route": opts.resolvedRoute,
-              },
+              ExpressionAttributeValues: sessionValues,
             },
           },
           {
@@ -384,6 +398,7 @@ export async function releaseCancelledSessionWorktree(
     online: boolean;
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
+    attemptId: string;
   },
 ): Promise<boolean> {
   try {
@@ -407,7 +422,7 @@ export async function releaseCancelledSessionWorktree(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                `SET worktreeId = :null, hostId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
+                `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
                 "REMOVE assignmentConnectionId, reconnectDeadlineAt",
               ConditionExpression:
                 "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId",
@@ -593,7 +608,7 @@ export async function acknowledgeSession(
 ): Promise<boolean> {
   const legacy = typeof arg === "string";
   const sessionId = legacy ? arg : arg.sessionId;
-  const attempt = legacy ? undefined : arg;
+  const attempt = legacy ? null : arg;
   try {
     if (legacy && fence) {
       await ctx.doc.send(
@@ -629,13 +644,13 @@ export async function acknowledgeSession(
         UpdateExpression: "SET ackReceivedAt = :at",
         ConditionExpression:
           "#s = :running" +
-          (attempt ? " AND worktreeId = :worktreeId AND attemptId = :attemptId" : "") +
+          (attempt !== null ? " AND worktreeId = :worktreeId AND attemptId = :attemptId" : "") +
           " AND attribute_not_exists(ackReceivedAt)",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
-          ":at": legacy ? acknowledgedAt : attempt.acknowledgedAt,
+          ":at": attempt?.acknowledgedAt ?? acknowledgedAt!,
           ":running": "running",
-          ...(attempt
+          ...(attempt !== null
             ? { ":worktreeId": attempt.worktreeId, ":attemptId": attempt.attemptId }
             : {}),
         },
@@ -650,8 +665,8 @@ export async function acknowledgeSession(
       return legacy
         ? current?.ackReceivedAt !== undefined || current?.status !== "running"
         : current?.status === "running" &&
-            current.worktreeId === attempt.worktreeId &&
-            current.attemptId === attempt.attemptId &&
+            current.worktreeId === attempt!.worktreeId &&
+            current.attemptId === attempt!.attemptId &&
             current.ackReceivedAt !== undefined;
     }
     throw err;

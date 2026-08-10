@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
@@ -97,6 +97,9 @@ export function assignQueued(
           session.hostId = candidate.hostId;
           session.startedAt = nowIso;
           session.resolvedArgv = route.resolvedArgv;
+          if (session.resumeSpec === undefined && route.resumeSpec !== undefined) {
+            session.resumeSpec = route.resumeSpec;
+          }
           session.resolvedRoute = {
             targetIndex: route.targetIndex,
             commandId: route.commandId,
@@ -128,6 +131,9 @@ export function assignQueued(
             attemptId,
             ...(session.ref !== undefined ? { ref: session.ref } : {}),
             ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+            ...(session.resumeSpec?.resumeRefCapture
+              ? { resumeRefCapture: session.resumeSpec.resumeRefCapture }
+              : {}),
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             commandId: route.commandId,
             targetIndex: route.targetIndex,
@@ -261,6 +267,7 @@ export async function assignQueuedDurable(
             connectionId,
             now: nowIso,
             resolvedArgv: route.resolvedArgv,
+            ...(route.resumeSpec ? { resumeSpec: route.resumeSpec } : {}),
             resolvedRoute: {
               targetIndex: route.targetIndex,
               commandId: route.commandId,
@@ -276,6 +283,7 @@ export async function assignQueuedDurable(
           if (!won) {
             continue;
           }
+          const resumeSpec = session.resumeSpec ?? route.resumeSpec;
           const nextSession = {
             ...session,
             status: "running" as const,
@@ -283,6 +291,7 @@ export async function assignQueuedDurable(
             hostId: candidate.hostId,
             startedAt: nowIso,
             resolvedArgv: route.resolvedArgv,
+            ...(resumeSpec !== undefined ? { resumeSpec } : {}),
             resolvedRoute: {
               targetIndex: route.targetIndex,
               commandId: route.commandId,
@@ -321,6 +330,9 @@ export async function assignQueuedDurable(
             attemptId,
             ...(session.ref !== undefined ? { ref: session.ref } : {}),
             ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+            ...(nextSession.resumeSpec?.resumeRefCapture
+              ? { resumeRefCapture: nextSession.resumeSpec.resumeRefCapture }
+              : {}),
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             commandId: route.commandId,
             targetIndex: route.targetIndex,

@@ -46,7 +46,9 @@ export function resumeSession(
   if (source.type === "scheduled") {
     return { ok: false, error: "scheduled sessions do not support worktree resume" };
   }
-  const pin = source.hostId || source.pinnedHostId;
+  // Terminal transitions detach host/worktree, so the immutable resolved route
+  // is the authoritative native-continuation location.
+  const pin = source.resolvedRoute?.hostId || source.hostId || source.pinnedHostId;
   if (!pin) return { ok: false, error: "source session has no agent to pin" };
   if (source.resumeSpec?.resumeArgvTemplate && !source.cliResumeRef) {
     return { ok: false, error: "source session has no captured CLI resume reference" };
@@ -69,11 +71,11 @@ export function resumeSession(
     id,
     repositoryId: source.repositoryId,
     prompt: opts.prompt ?? DEFAULT_CONTINUATION_PROMPT,
-    ...(source.providerAccountId !== undefined
-      ? { providerAccountId: source.providerAccountId }
-      : {}),
-    ...(source.commandId !== undefined ? { commandId: source.commandId } : {}),
-    targetLabel: source.targetLabel,
+    target: source.target,
+    fallbacks: [...source.fallbacks],
+    targetLabels: [...source.targetLabels],
+    queueTtlSeconds: source.queueTtlSeconds,
+    queueExpiresAt: new Date(Date.parse(createdAt) + source.queueTtlSeconds * 1000).toISOString(),
     timeout: opts.timeout ?? source.timeout,
     priority: opts.priority ?? source.priority,
     requiredLabels: [...source.requiredLabels],
@@ -81,10 +83,21 @@ export function resumeSession(
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt,
-    retryCount: 0,
     resumedFromSessionId: sessionId,
     pinnedHostId: pin,
+    ...(source.resolvedRoute?.providerAccountId
+      ? { pinnedProviderAccountId: source.resolvedRoute.providerAccountId }
+      : {}),
+    ...(source.resolvedRoute
+      ? {
+          pinnedTargetIndex: source.resolvedRoute.targetIndex,
+          pinnedCommandId: source.resolvedRoute.commandId,
+        }
+      : {}),
     pinExpiresAt,
+    ...(source.cliResumeRef === undefined && source.resumedFromSessionId === undefined
+      ? { resumeFallback: true }
+      : {}),
     ...(source.ref !== undefined ? { ref: source.ref } : {}),
     ...(source.cliResumeRef !== undefined ? { cliResumeRef: source.cliResumeRef } : {}),
     ...(source.resumeSpec !== undefined ? { resumeSpec: copyResumeSpec(source.resumeSpec) } : {}),
