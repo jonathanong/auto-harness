@@ -76,15 +76,22 @@ export async function deleteLog(
 }
 
 export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise<LogRecord[]> {
-  const res = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.sessionLogs,
-      KeyConditionExpression: "sessionId = :s",
-      ExpressionAttributeValues: { ":s": sessionId },
-      ScanIndexForward: true,
-    }),
-  );
-  return (res.Items ?? []) as LogRecord[];
+  const records: LogRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessionLogs,
+        KeyConditionExpression: "sessionId = :s",
+        ExpressionAttributeValues: { ":s": sessionId },
+        ScanIndexForward: true,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as LogRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
 }
 
 export async function putSchedule(ctx: PlaneStorageCtx, rec: ScheduleRecord): Promise<void> {
@@ -105,8 +112,19 @@ export async function getSchedule(
 }
 
 export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecord[]> {
-  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.schedules }));
-  return (res.Items ?? []) as ScheduleRecord[];
+  const records: ScheduleRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.schedules,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as ScheduleRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
 }
 
 export async function deleteSchedule(ctx: PlaneStorageCtx, id: string): Promise<void> {
@@ -133,8 +151,19 @@ export async function getRepository(
 }
 
 export async function listRepositories(ctx: PlaneStorageCtx): Promise<RepositoryRecord[]> {
-  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.repositories }));
-  return (res.Items ?? []) as RepositoryRecord[];
+  const records: RepositoryRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.repositories,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as RepositoryRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
 }
 
 export async function deleteRepository(ctx: PlaneStorageCtx, id: string): Promise<void> {
@@ -315,8 +344,19 @@ export async function getArchive(ctx: PlaneStorageCtx, key: string): Promise<Arc
 }
 
 export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[]> {
-  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.archives }));
-  return (res.Items ?? []) as ArchiveObject[];
+  const records: ArchiveObject[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.archives,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as ArchiveObject[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
 }
 
 export async function putHostInventory(
@@ -342,8 +382,19 @@ export async function getHostInventory(
 }
 
 export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInventoryRecord[]> {
-  const res = await ctx.doc.send(new ScanCommand({ TableName: ctx.tables.hostInventories }));
-  return (res.Items ?? []) as HostInventoryRecord[];
+  const records: HostInventoryRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.hostInventories,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as HostInventoryRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
 }
 
 export async function deleteHostInventory(ctx: PlaneStorageCtx, hostId: string): Promise<void> {
