@@ -43,8 +43,9 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("edit-schedule-enabled")).toBeChecked();
     await page.getByTestId("edit-schedule-ref").fill("main");
     await page.getByTestId("edit-schedule-submit").click();
+    await expect(page.getByTestId("edit-schedule-error")).toBeHidden();
+    await page.reload();
     await expect(page.getByTestId("edit-schedule-ref")).toHaveValue("main");
-    page.getByTestId("edit-schedule-error");
 
     await page.getByRole("button", { name: "Trigger" }).click();
     await expect(page).toHaveURL(/\/sessions\/[^/?]+/);
