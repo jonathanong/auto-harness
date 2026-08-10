@@ -1,4 +1,4 @@
-import type { SessionResumeSpec, SessionStatus, TargetRef } from "@auto-harness/shared";
+import type { SessionResumeSpec, TargetRef } from "@auto-harness/shared";
 
 export type SessionRecord = {
   id: string;
@@ -83,20 +83,3 @@ export type WorktreeRecord = {
   connectionId?: string;
   lastAssignedAt?: string | null;
 };
-
-export interface SessionRepository {
-  putNew(session: SessionRecord): Promise<void>;
-  get(id: string): Promise<SessionRecord | null>;
-  listByStatus(status: SessionStatus, shard: number): Promise<SessionRecord[]>;
-  updateStatus(id: string, status: SessionStatus): Promise<void>;
-}
-
-export interface WorktreeRepository {
-  /**
-   * Conditional claim: idle → busy only if status is currently idle (Invariant 1).
-   * Returns true if this caller won the claim.
-   */
-  tryClaim(opts: { worktreeId: string; sessionId: string; now: string }): Promise<boolean>;
-  release(worktreeId: string): Promise<void>;
-  listIdleForRepo(repositoryId: string): Promise<WorktreeRecord[]>;
-}

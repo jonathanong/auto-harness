@@ -30,16 +30,5 @@ export {
 } from "./db/dynamo.ts";
 export { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 export { DynamoPlaneStorage } from "./db/plane-storage.ts";
-export { MemorySessionRepository, MemoryWorktreeRepository } from "./db/memory-repos.ts";
-export type {
-  SessionRecord,
-  SessionRepository,
-  WorktreeRecord,
-  WorktreeRepository,
-} from "./db/types.ts";
-export {
-  Scheduler,
-  compareSessionsForQueue,
-  compareWorktreesForRoundRobin,
-} from "./services/scheduler.ts";
+export type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 export { main as apiCliMain } from "./cli.ts";

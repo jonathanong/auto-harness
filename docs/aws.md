@@ -162,7 +162,7 @@ Keepalive: server `ping` every ~30s; agent/client `pong`. API Gateway idle timeo
 Handlers share:
 
 - `services/api/src/db/client.ts` — DynamoDB Document Client
-- `services/api/src/services/scheduler.ts` — assignment logic
+- `services/api/src/control-plane-assign.ts` — worktree assignment logic
 - `services/api/src/services/session-service.ts` — status transitions, validation
 - `services/api/src/services/notification.ts` — Slack thread updates
 - `modules/shared` — types, constants, Zod (or equivalent) schemas
