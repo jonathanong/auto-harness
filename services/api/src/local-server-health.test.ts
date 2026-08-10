@@ -69,8 +69,34 @@ describe("createLocalApp health and sessions", () => {
     expect(await invoke("GET", "/api/v1/sessions/sess-1")).toMatchObject({
       status: 200,
     });
-    expect((await invoke("GET", "/api/v1/sessions?limit=not-a-number")).status).toBe(200);
-    expect((await invoke("GET", "/api/v1/sessions?limit=5&hostId=host&q=prompt")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions?limit=not-a-number")).status).toBe(400);
+    for (const query of [
+      "limit=0",
+      "limit=-1",
+      "limit=1.5",
+      "limit=101",
+      "limit=0x10",
+      "limit=Infinity",
+      "status=unknown",
+      "status=",
+      "repositoryId=",
+      "hostId=",
+      "concurrencyId=",
+      "scheduleId=",
+      "repositoryId=r1&repositoryId=r2",
+      "hostId=h1&hostId=h2",
+      "concurrencyId=c1&concurrencyId=c2",
+      "scheduleId=s1&scheduleId=s2",
+    ]) {
+      expect((await invoke("GET", `/api/v1/sessions?${query}`)).json).toMatchObject({
+        error: { code: "VALIDATION_ERROR" },
+      });
+    }
+    expect((await invoke("GET", "/api/v1/sessions?limit=1&status=all")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions?limit=5&hostId=host&sort=oldest")).status).toBe(
+      200,
+    );
+    expect((await invoke("GET", "/api/v1/sessions?cursor=bogus")).status).toBe(400);
     expect((await invoke("GET", "/api/v1/sessions/missing")).status).toBe(404);
     expect((await invoke("GET", "/api/v1/sessions/missing/logs")).status).toBe(404);
     expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(200);

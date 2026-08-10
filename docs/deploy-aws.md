@@ -35,6 +35,7 @@ CloudFormation shape only.
 | ------------------------ | ----------------------------------------------------------- |
 | `HARNESS_ADMINS`         | Base64 JSON `[{ "username", "password" }]` bootstrap admins |
 | `HARNESS_SESSION_SECRET` | JWT signing for UI session cookies                          |
+| `HARNESS_CURSOR_SECRET`  | Stable HMAC key for session-list cursors (same on every API worker) |
 | `WEB_ORIGIN`             | CORS allow-list for the web UI origin                       |
 | Table names / prefix     | From stack (see [aws.md](aws.md) env table)                 |
 | `ARCHIVE_BUCKET`         | S3 archive bucket                                           |

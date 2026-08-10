@@ -75,6 +75,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "id", AttributeType: ScalarAttributeType.S },
       { AttributeName: "statusShard", AttributeType: ScalarAttributeType.S },
       { AttributeName: "createdAt", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
     ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
     GlobalSecondaryIndexes: [
@@ -82,6 +83,14 @@ export async function ensureControlPlaneTables(opts: {
         IndexName: "statusShard-createdAt",
         KeySchema: [
           { AttributeName: "statusShard", KeyType: KeyType.HASH },
+          { AttributeName: "createdAt", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+      {
+        IndexName: "repositoryId-createdAt",
+        KeySchema: [
+          { AttributeName: "repositoryId", KeyType: KeyType.HASH },
           { AttributeName: "createdAt", KeyType: KeyType.RANGE },
         ],
         Projection: { ProjectionType: ProjectionType.ALL },

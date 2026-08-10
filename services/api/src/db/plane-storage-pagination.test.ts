@@ -8,9 +8,16 @@ import {
   listRepositories,
   listSchedules,
 } from "./plane-storage-catalog.ts";
-import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
-import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
-import { listSessionsByStatus, listWorktreesForRepo } from "./plane-storage-sessions.ts";
+import {
+  listCommands,
+  listProviderAccounts,
+  listProviders,
+} from "./plane-storage-catalog-providers.ts";
+import {
+  listSessionsByRepository,
+  listSessionsByStatus,
+  listWorktreesForRepo,
+} from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("DynamoDB storage pagination", () => {
@@ -154,6 +161,34 @@ describe("DynamoDB storage pagination", () => {
     expect(second.input).toMatchObject({
       Limit: 1,
       ExclusiveStartKey: { sessionId: "session-1", timestampSeq: "first" },
+    });
+  });
+
+  it("reads repository-scoped sessions through the repository-createdAt index", async () => {
+    const commands: Array<{ input: Record<string, unknown> }> = [];
+    const send = async (command: { input: Record<string, unknown> }) => {
+      commands.push(command);
+      return commands.length === 1
+        ? {
+            Items: [{ id: "session-1", repositoryId: "repo-1", createdAt: "2026-01-01" }],
+            LastEvaluatedKey: { id: "session-1" },
+          }
+        : { Items: [{ id: "session-2", repositoryId: "repo-1", createdAt: "2026-01-02" }] };
+    };
+    const ctx = {
+      doc: { send },
+      tables: { sessions: "Sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
+      { id: "session-1" },
+      { id: "session-2" },
+    ]);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]?.input).toMatchObject({
+      IndexName: "repositoryId-createdAt",
+      KeyConditionExpression: "repositoryId = :repositoryId",
+      ExpressionAttributeValues: { ":repositoryId": "repo-1" },
     });
   });
 });

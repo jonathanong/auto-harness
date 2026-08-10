@@ -27,6 +27,20 @@ export async function listSessionsDurable(state: ControlPlaneState): Promise<Ses
   return sessions.map((session) => ({ ...session }));
 }
 
+export async function listSessionsForRepositoriesDurable(
+  state: ControlPlaneState,
+  repositoryIds: readonly string[],
+): Promise<SessionRecord[]> {
+  if (!state.storage) {
+    const allowed = new Set(repositoryIds);
+    return [...state.sessions.values()].filter((session) => allowed.has(session.repositoryId));
+  }
+  const pages = await Promise.all(
+    repositoryIds.map((repositoryId) => state.storage!.listSessionsByRepository(repositoryId)),
+  );
+  return pages.flat();
+}
+
 export async function listQueuedSessionsDurable(
   state: ControlPlaneState,
   type: SessionRecord["type"],

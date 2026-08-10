@@ -81,6 +81,7 @@ export type ControlPlaneState = {
   reconnectGraceMs: number;
   usageLimitRetryCeiling: number;
   archivePrefix: string;
+  sessionCursorSecret: string;
   webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
 };
@@ -131,6 +132,11 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
     usageLimitRetryCeiling: options.usageLimitRetryCeiling ?? 3,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
+    sessionCursorSecret:
+      options.sessionCursorSecret ??
+      process.env.HARNESS_CURSOR_SECRET ??
+      process.env.HARNESS_SESSION_SECRET ??
+      randomBytes(32).toString("base64url"),
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,
   };

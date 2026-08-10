@@ -17,6 +17,10 @@ export { resumeSession } from "./control-plane-session-resume.ts";
 export {
   listSessions,
   listSessionsPage,
+  InvalidSessionCursorError,
+  InvalidSessionListQueryError,
+  type SessionListScope,
+  type SessionListSort,
   type ListSessionsPageQuery,
   type ListSessionsPageResult,
 } from "./control-plane-sessions-page.ts";

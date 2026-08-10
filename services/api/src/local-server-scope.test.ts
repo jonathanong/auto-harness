@@ -72,7 +72,10 @@ describe("scoped control-plane REST resources", () => {
       target: { commandId: "cmd-a" },
       timeout: 10,
     });
+    const sessionA = plane.listSessions().find((session) => session.repositoryId === "repo-a")!;
     const sessionB = plane.listSessions().find((session) => session.repositoryId === "repo-b")!;
+    plane.state.sessions.get(sessionA.id)!.hostId = "host-a";
+    plane.state.sessions.get(sessionB.id)!.hostId = "host-b";
 
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
@@ -196,6 +199,13 @@ describe("scoped control-plane REST resources", () => {
     expect((await invoke("GET", "/api/v1/hosts")).json).toMatchObject({
       items: [expect.objectContaining({ hostId: "host-a" })],
     });
+    const scopedSessions = await invoke("GET", "/api/v1/sessions?limit=10");
+    expect(scopedSessions.status).toBe(200);
+    expect(
+      (
+        scopedSessions.json as { items: Array<{ repositoryId?: string; hostId?: string }> }
+      ).items.every((session) => session.repositoryId === "repo-a" && session.hostId !== "host-b"),
+    ).toBe(true);
     const drain = await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" }, adminKey);
     expect(drain.status).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/schedule-b/trigger")).status).toBe(404);

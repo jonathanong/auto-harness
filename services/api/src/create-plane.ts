@@ -54,6 +54,9 @@ export async function createControlPlane(
       ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }
       : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
+    ...(options.sessionCursorSecret !== undefined
+      ? { sessionCursorSecret: options.sessionCursorSecret }
+      : {}),
     ...(options.webhookUrl !== undefined ? { webhookUrl: options.webhookUrl } : {}),
     ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),
   });

@@ -35,8 +35,23 @@ export class ControlPlaneReadFacade extends ControlPlaneBase {
   async listSessionsPageDurable(
     query?: sessions.ListSessionsPageQuery,
   ): Promise<sessions.ListSessionsPageResult> {
-    await durableRuntime.listSessionsDurable(this.state);
-    return sessions.listSessionsPage(this.state, query ?? {});
+    const requested = query ?? {};
+    const repositoryIds = requested.repositoryId
+      ? requested.scope?.repositoryIds
+        ? requested.scope.repositoryIds.includes(requested.repositoryId)
+          ? [requested.repositoryId]
+          : []
+        : [requested.repositoryId]
+      : requested.scope?.repositoryIds;
+    if (repositoryIds !== undefined) {
+      const records = await durableRuntime.listSessionsForRepositoriesDurable(
+        this.state,
+        repositoryIds,
+      );
+      return sessions.listSessionsPage(this.state, requested, records);
+    }
+    const records = await durableRuntime.listSessionsDurable(this.state);
+    return sessions.listSessionsPage(this.state, requested, records);
   }
 
   async getLogsDurable(sessionId: string, query?: LogQuery): Promise<LogRecord[]> {

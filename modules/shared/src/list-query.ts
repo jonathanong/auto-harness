@@ -6,6 +6,9 @@ export type SessionListQuery = {
   concurrencyId: string;
   cursor: string;
   limit: number;
+  repositoryId: string;
+  scheduleId: string;
+  sort: "latest" | "oldest" | "priority_desc" | "priority_asc";
 };
 
 export function parseSessionListQuery(
@@ -13,13 +16,21 @@ export function parseSessionListQuery(
   defaults: { limit?: number } = {},
 ): SessionListQuery {
   const limitRaw = sp.get("limit");
-  const limitNum = limitRaw ? Number(limitRaw) : (defaults.limit ?? 20);
+  const limitNum = limitRaw ? Number(limitRaw) : (defaults.limit ?? 50);
+  const sortRaw = sp.get("sort");
+  const sort =
+    sortRaw === "oldest" || sortRaw === "priority_desc" || sortRaw === "priority_asc"
+      ? sortRaw
+      : "latest";
   return {
     status: sp.get("status") ?? "all",
     q: sp.get("q") ?? "",
     concurrencyId: sp.get("concurrencyId") ?? "",
     cursor: sp.get("cursor") ?? "",
-    limit: Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 100) : 20,
+    limit: Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 100) : 50,
+    repositoryId: sp.get("repositoryId") ?? "",
+    scheduleId: sp.get("scheduleId") ?? "",
+    sort,
   };
 }
 
@@ -34,10 +45,19 @@ export function sessionListHref(state: Partial<SessionListQuery>, basePath = "/s
   if (state.concurrencyId) {
     p.set("concurrencyId", state.concurrencyId);
   }
+  if (state.repositoryId) {
+    p.set("repositoryId", state.repositoryId);
+  }
+  if (state.scheduleId) {
+    p.set("scheduleId", state.scheduleId);
+  }
+  if (state.sort && state.sort !== "latest") {
+    p.set("sort", state.sort);
+  }
   if (state.cursor) {
     p.set("cursor", state.cursor);
   }
-  if (state.limit && state.limit !== 20) {
+  if (state.limit && state.limit !== 50) {
     p.set("limit", String(state.limit));
   }
   const s = p.toString();
@@ -53,8 +73,14 @@ export function buildSessionsApiPath(query: SessionListQuery, extra?: { hostId?:
   if (query.status && query.status !== "all") {
     p.set("status", query.status);
   }
-  if (query.q) {
-    p.set("q", query.q);
+  if (query.repositoryId) {
+    p.set("repositoryId", query.repositoryId);
+  }
+  if (query.scheduleId) {
+    p.set("scheduleId", query.scheduleId);
+  }
+  if (query.sort && query.sort !== "latest") {
+    p.set("sort", query.sort);
   }
   if (query.concurrencyId) {
     p.set("concurrencyId", query.concurrencyId);

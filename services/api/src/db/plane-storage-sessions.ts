@@ -265,6 +265,32 @@ export async function listAllSessions(
   return items.map(itemToSession);
 }
 
+/** Query the repository access path; callers apply the remaining filters locally. */
+export async function listSessionsByRepository(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+): Promise<SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: "repositoryId-createdAt",
+        KeyConditionExpression: "repositoryId = :repositoryId",
+        ExpressionAttributeValues: { ":repositoryId": repositoryId },
+        ScanIndexForward: true,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(
+      ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
+    );
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
+  return records;
+}
+
 export async function listSessionsByStatus(
   ctx: PlaneStorageCtx,
   status: SessionStatus,

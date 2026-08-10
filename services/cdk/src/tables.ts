@@ -47,6 +47,11 @@ export const DYNAMO_TABLES: TableDef[] = [
         partitionKey: { name: "statusShard", type: "S" },
         sortKey: { name: "createdAt", type: "S" },
       },
+      {
+        name: "repositoryId-createdAt",
+        partitionKey: { name: "repositoryId", type: "S" },
+        sortKey: { name: "createdAt", type: "S" },
+      },
     ],
   },
   {

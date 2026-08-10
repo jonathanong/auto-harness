@@ -36,6 +36,11 @@ describe("CDK table catalog", () => {
       partitionKey: { name: "scope" },
       sortKey: { name: "timestampId" },
     });
+    const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
+    expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);
+    expect(sessions?.gsis?.some((g) => g.name === "repositoryId-createdAt")).toBe(true);
+    const connections = DYNAMO_TABLES.find((t) => t.name === "Connections");
+    expect(connections?.gsis?.some((g) => g.name === "hostId")).toBe(true);
     expect(statusShardKey("queued", 2)).toBe("queued#2");
     expect(describeControlPlane().tables).toBe(DYNAMO_TABLES);
     expect(getServiceName()).toBe("@auto-harness/cdk");

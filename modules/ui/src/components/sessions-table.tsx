@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 
 import { StatusBadge } from "./status-badge.tsx";
@@ -36,6 +38,8 @@ export type SessionsTableProps = {
   emptyMessage?: string;
   /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
   hrefBase?: string;
+  /** Client-side search over the rows loaded on this page only. */
+  search?: string;
 };
 
 /** Shared sessions table for control plane and host pane. */
@@ -44,7 +48,22 @@ export function SessionsTable({
   showHost = false,
   emptyMessage = "No sessions match filters.",
   hrefBase,
+  search = "",
 }: SessionsTableProps) {
+  const needle = search.trim().toLowerCase();
+  const visibleItems = needle
+    ? items.filter((session) =>
+        [
+          session.id,
+          session.prompt,
+          session.concurrencyId,
+          session.targetLabel,
+          ...(session.targetLabels ?? []),
+        ]
+          .filter((value): value is string => Boolean(value))
+          .some((value) => value.toLowerCase().includes(needle)),
+      )
+    : items;
   const cols = showHost ? 7 : 6;
   return (
     <Table data-pw="sessions-table">
@@ -61,7 +80,7 @@ export function SessionsTable({
         </TableRow>
       </TableHeader>
       <TableBody>
-        {items.map((s) => (
+        {visibleItems.map((s) => (
           <TableRow key={s.id} data-pw={`session-row-${s.id}`}>
             <TableCell className="font-mono text-xs">
               {hrefBase ? (
@@ -123,7 +142,7 @@ export function SessionsTable({
             </TableCell>
           </TableRow>
         ))}
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <TableRow>
             <TableCell colSpan={cols} className="text-muted-foreground">
               {emptyMessage}

@@ -13,8 +13,11 @@ describe("url-state", () => {
       status: "all",
       q: "",
       cursor: "",
-      limit: 20,
+      limit: 50,
       concurrencyId: "",
+      repositoryId: "",
+      scheduleId: "",
+      sort: "latest",
     });
     const sp = new URLSearchParams(
       "status=running&q=sess&cursor=abc&concurrencyId=filaments-pr-shepherd-123",
@@ -23,8 +26,11 @@ describe("url-state", () => {
       status: "running",
       q: "sess",
       cursor: "abc",
-      limit: 20,
+      limit: 50,
       concurrencyId: "filaments-pr-shepherd-123",
+      repositoryId: "",
+      scheduleId: "",
+      sort: "latest",
     });
     expect(sessionListHref({})).toBe("/sessions");
     expect(sessionListHref({ status: "all", q: "", cursor: "" })).toBe("/sessions");

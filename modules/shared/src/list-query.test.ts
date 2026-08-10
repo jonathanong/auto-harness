@@ -9,11 +9,14 @@ describe("list-query", () => {
       q: "",
       concurrencyId: "",
       cursor: "",
-      limit: 20,
+      limit: 50,
+      repositoryId: "",
+      scheduleId: "",
+      sort: "latest",
     });
     expect(
       parseSessionListQuery(
-        new URLSearchParams("status=running&q=x&concurrencyId=pr-1&cursor=c1&limit=5"),
+        new URLSearchParams("status=running&q=x&concurrencyId=pr-1&cursor=c1&limit=5&sort=oldest"),
       ),
     ).toEqual({
       status: "running",
@@ -21,12 +24,15 @@ describe("list-query", () => {
       concurrencyId: "pr-1",
       cursor: "c1",
       limit: 5,
+      repositoryId: "",
+      scheduleId: "",
+      sort: "oldest",
     });
   });
 
   it("falls back to the default limit for non-numeric or non-positive input", () => {
-    expect(parseSessionListQuery(new URLSearchParams("limit=abc")).limit).toBe(20);
-    expect(parseSessionListQuery(new URLSearchParams("limit=-5")).limit).toBe(20);
+    expect(parseSessionListQuery(new URLSearchParams("limit=abc")).limit).toBe(50);
+    expect(parseSessionListQuery(new URLSearchParams("limit=-5")).limit).toBe(50);
   });
 
   it("caps the limit at 100", () => {
@@ -41,13 +47,22 @@ describe("list-query", () => {
   });
 
   it("omits limit at the default and includes it otherwise", () => {
-    expect(sessionListHref({ limit: 20 })).toBe("/sessions");
-    expect(sessionListHref({ limit: 50 })).toBe("/sessions?limit=50");
+    expect(sessionListHref({ limit: 50 })).toBe("/sessions");
+    expect(sessionListHref({ limit: 20 })).toBe("/sessions?limit=20");
   });
 
   it("builds API paths", () => {
     const path = buildSessionsApiPath(
-      { status: "queued", q: "", concurrencyId: "", cursor: "", limit: 10 },
+      {
+        status: "queued",
+        q: "",
+        concurrencyId: "",
+        cursor: "",
+        limit: 10,
+        repositoryId: "",
+        scheduleId: "",
+        sort: "latest",
+      },
       { hostId: "local-1" },
     );
     expect(path).toContain("limit=10");
@@ -55,16 +70,22 @@ describe("list-query", () => {
     expect(path).toContain("hostId=local-1");
   });
 
-  it("includes cursor and q when present", () => {
+  it("includes cursor and filters but never sends client-side q", () => {
     const path = buildSessionsApiPath({
       status: "all",
       q: "hello",
       concurrencyId: "pr-1",
       cursor: "c1",
       limit: 20,
+      repositoryId: "repo-1",
+      scheduleId: "schedule-1",
+      sort: "priority_desc",
     });
     expect(path).toContain("cursor=c1");
-    expect(path).toContain("q=hello");
+    expect(path).not.toContain("q=hello");
     expect(path).toContain("concurrencyId=pr-1");
+    expect(path).toContain("repositoryId=repo-1");
+    expect(path).toContain("scheduleId=schedule-1");
+    expect(path).toContain("sort=priority_desc");
   });
 });

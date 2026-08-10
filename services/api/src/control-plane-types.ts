@@ -64,6 +64,8 @@ export type ControlPlaneOptions = {
   reconnectGraceMs?: number;
   usageLimitRetryCeiling?: number;
   archivePrefix?: string;
+  /** HMAC secret used to sign session-list cursors across API workers. */
+  sessionCursorSecret?: string;
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;

@@ -7,13 +7,25 @@ import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 
 const STATUSES = ["all", "queued", "running", "completed", "failed", "cancelled", "timed_out"];
+const SORTS = [
+  ["latest", "Latest"],
+  ["oldest", "Oldest"],
+  ["priority_desc", "Priority (high → low)"],
+  ["priority_asc", "Priority (low → high)"],
+] as const;
 
 export type SessionFiltersProps = {
   /** List page these filters live on. Default "/sessions". */
   basePath?: string;
 };
 
-function buildHref(basePath: string, status: string, q: string, concurrencyId: string): string {
+function buildHref(
+  basePath: string,
+  status: string,
+  q: string,
+  concurrencyId: string,
+  sort: string,
+): string {
   const p = new URLSearchParams();
   if (status && status !== "all") {
     p.set("status", status);
@@ -24,11 +36,14 @@ function buildHref(basePath: string, status: string, q: string, concurrencyId: s
   if (concurrencyId) {
     p.set("concurrencyId", concurrencyId);
   }
+  if (sort && sort !== "latest") {
+    p.set("sort", sort);
+  }
   const s = p.toString();
   return s ? `${basePath}?${s}` : basePath;
 }
 
-/** URL-backed status/search filters — shared by control plane and host pane session lists. */
+/** URL-backed status/search/sort filters — shared by control plane and host pane session lists. */
 export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -36,6 +51,7 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const status = sp.get("status") ?? "all";
   const q = sp.get("q") ?? "";
   const concurrencyId = sp.get("concurrencyId") ?? "";
+  const sort = sp.get("sort") ?? "latest";
   const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
 
   useEffect(() => {
@@ -43,7 +59,7 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   }, [concurrencyId]);
 
   const push = useCallback(
-    (next: { status?: string; q?: string; concurrencyId?: string }) => {
+    (next: { status?: string; q?: string; concurrencyId?: string; sort?: string }) => {
       start(() => {
         router.push(
           buildHref(
@@ -51,11 +67,12 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
             next.status ?? status,
             next.q ?? q,
             next.concurrencyId ?? concurrencyId,
+            next.sort ?? sort,
           ),
         );
       });
     },
-    [router, basePath, status, q, concurrencyId],
+    [router, basePath, status, q, concurrencyId, sort],
   );
 
   return (
@@ -79,6 +96,26 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
           {STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="sort" tip="Sort the current session list">
+          Sort
+        </Label>
+        <select
+          id="sort"
+          data-pw="session-filter-sort"
+          className="flex h-9 rounded-md border border-border bg-background px-3 text-sm"
+          value={sort}
+          onChange={(e) => {
+            push({ sort: e.target.value });
+          }}
+        >
+          {SORTS.map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
             </option>
           ))}
         </select>
