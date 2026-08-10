@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const requiredAuthE2e = process.env.HARNESS_E2E_AUTH === "1";
+
 /**
  * Playwright E2E — see docs/e2e.md.
  * UIs are production builds (`pnpm build:web:e2e` then `next start`), not `next dev`. The
@@ -84,14 +86,18 @@ export default defineConfig({
       stdout: "pipe",
       stderr: "pipe",
     },
-    {
-      name: "host-pane",
-      command: "pnpm local:host-pane:start:e2e",
-      url: "http://127.0.0.1:7432",
-      reuseExistingServer: false,
-      timeout: 60_000,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+    ...(!requiredAuthE2e
+      ? [
+          {
+            name: "host-pane",
+            command: "pnpm local:host-pane:start:e2e",
+            url: "http://127.0.0.1:7432",
+            reuseExistingServer: false,
+            timeout: 60_000,
+            stdout: "pipe",
+            stderr: "pipe",
+          },
+        ]
+      : []),
   ],
 });
