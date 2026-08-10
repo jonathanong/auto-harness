@@ -87,12 +87,16 @@ pnpm --filter @auto-harness/cdk deploy
 | Data migrations             | Prefer additive DynamoDB attributes; document any one-time backfill in the PR                                     |
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
-> `concurrencyKey` attribute, drain it to **zero queued and running sessions**
-> before upgrading to `concurrencyId`. Do not automatically backfill the field:
-> legacy rows can contain more than one active session for the same key, so a
-> lock owner cannot be selected without changing execution semantics. After
-> the drain, terminal history may remain as-is and new sessions use
-> `concurrencyId`.
+> `concurrencyKey` attribute, perform this migration as a short maintenance
+> window. First pause all schedules (and prevent schedule-triggering workers
+> from running), then stop automatic and manual session creation. Wait until
+> the control-plane list/metrics show **zero queued and zero running sessions**;
+> terminal history may remain. Deploy the `concurrencyId` code and any required
+> table/index changes, run the health check and a smoke session, then re-enable
+> manual/automatic session creation and resume schedules. Do not automatically
+> backfill the field: legacy rows can contain more than one active session for
+> the same key, so a lock owner cannot be selected without changing execution
+> semantics. New sessions use `concurrencyId` after the upgrade.
 
 Prefer **control plane first**, then agents, so old agents fail closed on unknown messages rather than new agents talking to old APIs.
 

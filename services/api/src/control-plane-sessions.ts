@@ -8,7 +8,8 @@ import {
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { hashString, persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
+import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
+import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 export { resumeSession } from "./control-plane-session-resume.ts";
@@ -111,9 +112,11 @@ export function forceStatus(
     return null;
   }
   s.status = status;
-  persistSession(state, s);
-  if (s.concurrencyId && isTerminalSessionStatus(status) && state.storage) {
-    queueWrite(state, state.storage.releaseConcurrencyLock(s.concurrencyId, s.id));
+  const storage = state.storage;
+  if (s.concurrencyId && isTerminalSessionStatus(status) && storage) {
+    persistTerminalSessionThenReleaseConcurrencyLock(state, s, s.concurrencyId, storage);
+  } else {
+    persistSession(state, s);
   }
   return toPublic(state, s);
 }
@@ -145,8 +148,15 @@ export function supersedeSession(
   }
   session.worktreeId = null;
   session.hostId = null;
-  persistSession(state, session);
-  if (session.concurrencyId && state.storage) {
-    queueWrite(state, state.storage.releaseConcurrencyLock(session.concurrencyId, session.id));
+  const storage = state.storage;
+  if (session.concurrencyId && storage) {
+    persistTerminalSessionThenReleaseConcurrencyLock(
+      state,
+      session,
+      session.concurrencyId,
+      storage,
+    );
+  } else {
+    persistSession(state, session);
   }
 }

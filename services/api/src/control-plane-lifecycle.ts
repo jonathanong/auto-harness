@@ -4,6 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
+import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import {
   offlineHostAndRequeue,
   offlineHostAndRequeueDurable,
@@ -204,9 +205,16 @@ export function cancelSession(
   }
   session.worktreeId = null;
   session.hostId = null;
-  persistSession(state, session);
-  if (session.concurrencyId && state.storage) {
-    queueWrite(state, state.storage.releaseConcurrencyLock(session.concurrencyId, session.id));
+  const storage = state.storage;
+  if (session.concurrencyId && storage) {
+    persistTerminalSessionThenReleaseConcurrencyLock(
+      state,
+      session,
+      session.concurrencyId,
+      storage,
+    );
+  } else {
+    persistSession(state, session);
   }
   return { ok: true, session: toPublic(state, session) };
 }

@@ -7,7 +7,7 @@ import { supersedeSession } from "./control-plane-sessions.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("concurrency lock lifecycle", () => {
-  it("cancels queued work by releasing its worktree and lock", () => {
+  it("cancels queued work by releasing its worktree and lock", async () => {
     const released: string[] = [];
     const plane = new ControlPlane({
       idFactory: () => "sess-1",
@@ -41,6 +41,7 @@ describe("concurrency lock lifecycle", () => {
       session: { status: "cancelled", worktreeId: null, hostId: null },
     });
     expect(plane.getWorktree("wt-1")).toMatchObject({ status: "idle", currentSessionId: null });
+    await plane.settleStorage();
     expect(released).toEqual(["cancel-lock"]);
   });
 
@@ -148,5 +149,56 @@ describe("concurrency lock lifecycle", () => {
     plane.state.storage = { putSession: async () => {} } as never;
     supersedeSession(plane.state, "running", "replace running");
     expect(messages).toEqual([{ type: "session:cancel", sessionId: "running" }]);
+  });
+
+  it("persists a terminal status before releasing its concurrency lock", async () => {
+    let resolveTerminalPut: (() => void) | undefined;
+    const terminalPut = new Promise<void>((resolve) => {
+      resolveTerminalPut = resolve;
+    });
+    const sessions = new Map<string, import("./db/types.ts").SessionRecord>();
+    const locks = new Map<string, string>();
+    const plane = new ControlPlane({
+      idFactory: (() => {
+        let id = 0;
+        return () => `session-${++id}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    seedBaseCommand(plane);
+    plane.state.storage = {
+      createSession: async (session: import("./db/types.ts").SessionRecord) => {
+        const owner = session.concurrencyId ? locks.get(session.concurrencyId) : undefined;
+        if (owner) return { created: false, session: sessions.get(owner)! };
+        sessions.set(session.id, { ...session });
+        if (session.concurrencyId) locks.set(session.concurrencyId, session.id);
+        return { created: true, session };
+      },
+      putSession: async (session: import("./db/types.ts").SessionRecord) => {
+        if (session.status === "completed") await terminalPut;
+        sessions.set(session.id, { ...session });
+      },
+      releaseConcurrencyLock: async (concurrencyId: string, sessionId: string) => {
+        if (locks.get(concurrencyId) === sessionId) locks.delete(concurrencyId);
+      },
+    } as never;
+    const body = baseSessionBody({ concurrencyId: "terminal-lock" });
+
+    const first = await plane.createSessionDurable(body);
+    expect(first).toMatchObject({ ok: true, created: true });
+    if (!first.ok) return;
+    plane.forceStatus(first.session.id, "completed");
+
+    await expect(plane.createSessionDurable(body)).resolves.toMatchObject({
+      ok: true,
+      created: false,
+      session: { id: first.session.id, status: "queued" },
+    });
+    resolveTerminalPut!();
+    await plane.settleStorage();
+    await expect(plane.createSessionDurable(body)).resolves.toMatchObject({
+      ok: true,
+      created: true,
+    });
   });
 });
