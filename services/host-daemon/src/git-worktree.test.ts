@@ -4,6 +4,16 @@ import type { ProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
 import { scripted } from "./git-test-helpers.ts";
 
+function gitWithListedWorktrees(output: string, followUp: Parameters<typeof scripted>[0] = []) {
+  return createGitClient(
+    scripted([
+      { match: ["rev-parse", "--is-inside-work-tree"], exitCode: 0, stdout: "true\n" },
+      { match: ["worktree", "list", "--porcelain"], exitCode: 0, stdout: output },
+      ...followUp,
+    ]),
+  );
+}
+
 describe("createGitClient ensureWorktree", () => {
   it("maps null exit codes to 1", async () => {
     const runner: ProcessRunner = {
@@ -46,6 +56,36 @@ describe("createGitClient ensureWorktree", () => {
         branch: "main",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("requires an exact path match instead of a path prefix", async () => {
+    const git = gitWithListedWorktrees("worktree /repo/wt-old\nHEAD abc\n", [
+      { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "def\n" },
+      { match: ["worktree", "add", "--detach", "/repo/wt", "def"], exitCode: 0 },
+    ]);
+    await git.ensureWorktree({ repoPath: "/repo", worktreePath: "/repo/wt", branch: "main" });
+  });
+
+  it("matches paths containing spaces", async () => {
+    const git = gitWithListedWorktrees("worktree /repo/worktree with spaces\nHEAD abc\n", []);
+    await expect(
+      git.ensureWorktree({
+        repoPath: "/repo",
+        worktreePath: "/repo/worktree with spaces",
+        branch: "main",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("ignores malformed and unrelated porcelain records", async () => {
+    const git = gitWithListedWorktrees(
+      "not-worktree /repo/wt\nworktree\nworktree /repo/wt-old\nHEAD abc\n",
+      [
+        { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "def\n" },
+        { match: ["worktree", "add", "--detach", "/repo/wt", "def"], exitCode: 0 },
+      ],
+    );
+    await git.ensureWorktree({ repoPath: "/repo", worktreePath: "/repo/wt", branch: "main" });
   });
 
   it("ensureWorktree adds detached at branch tip", async () => {
