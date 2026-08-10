@@ -1,13 +1,44 @@
 /* eslint-disable max-lines */
 import type { HostWireMessage } from "@auto-harness/shared";
 
-import type { WorktreeRecord } from "./db/types.ts";
+import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
-import { buildProviderCatalog, resolveSessionTargetArgv } from "./control-plane-session-target.ts";
+import { buildProviderCatalog, resolveSessionTarget } from "./control-plane-session-target.ts";
+import { materializeResumeArgv } from "@auto-harness/shared";
+
+function assignmentArgv(
+  session: SessionRecord,
+  target: ReturnType<typeof resolveSessionTarget>,
+): { argv: string[]; resumeSpec: NonNullable<SessionRecord["resumeSpec"]> } | null {
+  const resumeSpec = session.resumeSpec ?? target?.resumeSpec;
+  if (!resumeSpec) return null;
+  if (session.resumedFromSessionId && resumeSpec.resumeArgvTemplate) {
+    if (!session.cliResumeRef) return null;
+    return {
+      argv: materializeResumeArgv(
+        resumeSpec.resumeArgvTemplate,
+        session.cliResumeRef,
+        session.prompt,
+      ),
+      resumeSpec,
+    };
+  }
+  if (session.resumedFromSessionId) {
+    return {
+      argv: resumeSpec.appendPrompt ? [...resumeSpec.argv, session.prompt] : [...resumeSpec.argv],
+      resumeSpec,
+    };
+  }
+  return target ? { argv: target.resolvedArgv, resumeSpec } : null;
+}
+
+function resumeRefCaptureForWire(session: SessionRecord) {
+  return session.resumeSpec?.resumeRefCapture;
+}
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -59,10 +90,12 @@ export function assignQueued(
       idle.sort(compareWorktreesForRoundRobin);
 
       for (const candidate of idle) {
-        const resolvedArgv = resolveSessionTargetArgv(state, catalog, session, candidate);
-        if (!resolvedArgv) {
+        const target = resolveSessionTarget(state, catalog, session, candidate);
+        const assignment = assignmentArgv(session, target);
+        if (!assignment) {
           continue;
         }
+        const resolvedArgv = assignment.argv;
         const won = tryClaimWorktree(state, candidate.id, session.id, nowIso);
         if (!won) {
           continue;
@@ -72,6 +105,7 @@ export function assignQueued(
         session.hostId = candidate.hostId;
         session.startedAt = nowIso;
         session.resolvedArgv = resolvedArgv;
+        session.resumeSpec ??= assignment.resumeSpec;
         delete session.ackReceivedAt;
         state.pendingAcks.set(session.id, {
           sessionId: session.id,
@@ -79,6 +113,7 @@ export function assignQueued(
           assignedAtMs: nowMs,
         });
 
+        const resumeRefCapture = resumeRefCaptureForWire(session);
         const msg: HostWireMessage = {
           type: "session:assign",
           sessionId: session.id,
@@ -90,6 +125,7 @@ export function assignQueued(
           assignedAt: nowIso,
           ...(session.ref !== undefined ? { ref: session.ref } : {}),
           ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+          ...(resumeRefCapture !== undefined ? { resumeRefCapture } : {}),
           ...(session.resumedFromSessionId
             ? {
                 resume: true,
@@ -169,10 +205,12 @@ export async function assignQueuedDurable(
         if (!connectionId) {
           continue;
         }
-        const resolvedArgv = resolveSessionTargetArgv(state, catalog, session, candidate);
-        if (!resolvedArgv) {
+        const target = resolveSessionTarget(state, catalog, session, candidate);
+        const assignment = assignmentArgv(session, target);
+        if (!assignment) {
           continue;
         }
+        const resolvedArgv = assignment.argv;
         const won = await state.storage.tryAssignSession({
           sessionId: session.id,
           worktreeId: candidate.id,
@@ -180,6 +218,7 @@ export async function assignQueuedDurable(
           connectionId,
           now: nowIso,
           resolvedArgv,
+          resumeSpec: session.resumeSpec ?? assignment.resumeSpec,
           queueShard: session.queueShard,
         });
         if (!won) {
@@ -192,6 +231,7 @@ export async function assignQueuedDurable(
           hostId: candidate.hostId,
           startedAt: nowIso,
           resolvedArgv,
+          resumeSpec: session.resumeSpec ?? assignment.resumeSpec,
           assignmentConnectionId: connectionId,
         };
         const nextWorktree = {
@@ -219,6 +259,9 @@ export async function assignQueuedDurable(
           assignedAt: nowIso,
           ...(session.ref !== undefined ? { ref: session.ref } : {}),
           ...(session.metadata !== undefined ? { metadata: session.metadata } : {}),
+          ...(nextSession.resumeSpec?.resumeRefCapture !== undefined
+            ? { resumeRefCapture: nextSession.resumeSpec.resumeRefCapture }
+            : {}),
           ...(session.resumedFromSessionId
             ? {
                 resume: true,

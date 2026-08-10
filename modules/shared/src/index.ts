@@ -15,6 +15,7 @@ export type {
   HostWireMessage,
   CreateSessionFields,
   SessionAssign,
+  SessionResumeSpec,
   SessionLogChunk,
   SessionStatusUpdate,
   SessionTerminalStatus,
@@ -99,7 +100,17 @@ export {
   type ParsedProviderAccountOverride,
 } from "./provider-account-parse.ts";
 
-export type { Command, Provider, ProviderAccount } from "./providers.ts";
+export type { Command, Provider, ProviderAccount, ResumeRefCapture } from "./providers.ts";
+export {
+  isValidCliResumeRef,
+  MAX_COMMAND_ARGV_ITEMS,
+  MAX_COMMAND_ARG_LENGTH,
+  MAX_RESUME_REF_CAPTURE_LENGTH,
+  materializeResumeArgv,
+  validateCommandArgv,
+  validateCommandResumeSpec,
+  type CommandResumeSpec,
+} from "./command-resume.ts";
 
 export {
   resolveProviderAccountCommandId,

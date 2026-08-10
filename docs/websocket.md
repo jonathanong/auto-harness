@@ -38,12 +38,12 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 
 ### Server → agent
 
-| Type                   | Payload                                                                                                                                                                   | Purpose                                                                                                                                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `session:assign`       | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it |
-| `session:acknowledged` | `sessionId`                                                                                                                                                               | The current host connection's `session:ack` committed durably. The daemon may start setup/CLI work only after this reply.                                                                                       |
-| `session:cancel`       | `sessionId`                                                                                                                                                               | Stop queued/running work                                                                                                                                                                                        |
-| `ping`                 | `{}`                                                                                                                                                                      | Keepalive                                                                                                                                                                                                       |
+| Type                   | Payload                                                                                                                                                                                        | Purpose                                                                                                                     |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `session:assign`       | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `resumeRefCapture?`, `metadata?` | Run or **resume** a session; the agent checks out `ref`, skips setup for resume, and spawns the control-plane-resolved argv |
+| `session:acknowledged` | `sessionId`                                                                                                                                                                                    | The current host connection's `session:ack` committed durably. The daemon may start setup/CLI work only after this reply.   |
+| `session:cancel`       | `sessionId`                                                                                                                                                                                    | Stop queued/running work                                                                                                    |
+| `ping`                 | `{}`                                                                                                                                                                                           | Keepalive                                                                                                                   |
 
 ```json
 {
@@ -59,7 +59,7 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 }
 ```
 
-**Resume assign** (pinned to same worktree/agent as a prior session):
+**Resume assign** (host-pinned; worktree may differ from the prior session):
 
 ```json
 {
@@ -67,29 +67,34 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
   "sessionId": "sess-r9s8t7",
   "repositoryId": "repo-abc",
   "prompt": "Continue: also fix the edge case",
-  "resolvedArgv": ["codex", "exec", "Continue: also fix the edge case"],
+  "resolvedArgv": [
+    "codex",
+    "resume",
+    "optional-tool-native-id",
+    "Continue: also fix the edge case"
+  ],
   "ref": "main",
   "timeout": 1800,
-  "worktreeId": "wt-1",
+  "worktreeId": "wt-2",
   "resume": true,
   "resumedFromSessionId": "sess-x1y2z3",
   "cliResumeRef": "optional-tool-native-id"
 }
 ```
 
-When `resume: true`, the agent must **not** treat this as a fresh clean setup (avoid destructive reset). See [host-daemon.md — Session resume](host-daemon.md#session-resume).
+When `resume: true`, the agent checks out `ref` and skips setup. `resolvedArgv` is either the exact native template expansion or the frozen normal command fallback. See [host-daemon.md — Session resume](host-daemon.md#session-resume).
 
 ### Agent → server
 
-| Type              | Payload                                                           | Purpose                                                                                                                                                                                                   |
-| ----------------- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host:register`   | `hostId`, `worktrees[]`, optional `runningSessions[]`             | Inventory + reclaim after reconnect                                                                                                                                                                       |
-| `session:ack`     | `sessionId`                                                       | Accepted assign                                                                                                                                                                                           |
-| `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`). On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [host-daemon.md](host-daemon.md#usage-limits-ai-vendor--cli-quotas)) |
-| `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                     | stdout / stderr / system chunk                                                                                                                                                                            |
-| `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                       | idle / busy / error                                                                                                                                                                                       |
-| `host:status`     | `hostId`, `draining?`, `status?`                                  | Drain / health (e.g. auto-update)                                                                                                                                                                         |
-| `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                                           |
+| Type              | Payload                                                                            | Purpose                                                                                                                                                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `host:register`   | `hostId`, `worktrees[]`, optional `runningSessions[]`                              | Inventory + reclaim after reconnect                                                                                                                                                                                                                                             |
+| `session:ack`     | `sessionId`                                                                        | Accepted assign                                                                                                                                                                                                                                                                 |
+| `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?`, `cliResumeRef?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`); terminal status persists a captured native resume ref when available. On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [host-daemon.md](host-daemon.md#usage-limits-ai-vendor--cli-quotas)) |
+| `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                                      | stdout / stderr / system chunk                                                                                                                                                                                                                                                  |
+| `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                                        | idle / busy / error                                                                                                                                                                                                                                                             |
+| `host:status`     | `hostId`, `draining?`, `status?`                                                   | Drain / health (e.g. auto-update)                                                                                                                                                                                                                                               |
+| `pong`            | `{}`                                                                               | Keepalive reply                                                                                                                                                                                                                                                                 |
 
 **Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
 

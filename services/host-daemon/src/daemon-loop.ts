@@ -229,6 +229,7 @@ export class DaemonLoop {
       exitCode: result.exitCode,
       ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),
       ...(result.errorMessage !== undefined ? { errorMessage: result.errorMessage } : {}),
+      ...(result.cliResumeRef !== undefined ? { cliResumeRef: result.cliResumeRef } : {}),
     });
   }
 

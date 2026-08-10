@@ -1,4 +1,5 @@
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
+import type { ResumeRefCapture } from "@auto-harness/shared";
 import { ControlPlaneBase } from "./control-plane-facade.ts";
 import * as commands from "./control-plane-commands.ts";
 import type { CommandInput } from "./control-plane-commands.ts";
@@ -86,6 +87,8 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
       argv: string[];
       appendPrompt: boolean;
       providerId: string | null;
+      resumeArgvTemplate: string[] | null;
+      resumeRefCapture: ResumeRefCapture | null;
     }>,
   ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
     return commands.updateCommand(this.state, id, patch);

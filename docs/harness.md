@@ -21,7 +21,7 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 | Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md)) |
 | Terminal statuses including `usage_limit`    | Visible in Slack / API; caller decides retries                                       |
 | Session id in Slack (and API)                | Resume, UI deep links                                                                |
-| Resume pins same agent + worktree            | Shepherd / multi-tick work                                                           |
+| Resume pins same host                        | Shepherd / multi-tick work                                                           |
 | Cancel, timeout, agent drain-on-update       | Ops                                                                                  |
 
 ### Repo harness owns (out of scope for Auto Harness)
@@ -46,10 +46,10 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ## Two harnesses
 
-| Layer            | Lives in                                             | Owns                                                                  |
-| ---------------- | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| **Repo harness** | Product repo (`.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX   |
-| **Auto Harness** | Shared control plane + VPS agents                    | Queue, worktrees, spawn CLI, logs, Slack session threads, resume pins |
+| Layer            | Lives in                                             | Owns                                                                         |
+| ---------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Repo harness** | Product repo (`.github/workflows`, `docs/prompts/…`) | When to run, who may trigger, prompt text, dedup, triage, GitHub UX          |
+| **Auto Harness** | Shared control plane + VPS agents                    | Queue, worktrees, spawn CLI, logs, Slack session threads, host-pinned resume |
 
 ```mermaid
 flowchart TB
@@ -210,7 +210,7 @@ Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `
 ## Pattern C — PR `/pr-shepherd`
 
 **Typical workflow:** `codex-pr-shepherd` with long runner session + resume.  
-**Hookup:** short gate job → `POST /sessions` (first tick) or `POST /sessions/:id/resume` (continue same worktree) → exit. Humans follow Slack + the PR on GitHub.
+**Hookup:** short gate job → `POST /sessions` (first tick) or `POST /sessions/:id/resume` (continue on the same host) → exit. Humans follow Slack + the PR on GitHub.
 
 ```mermaid
 sequenceDiagram
@@ -230,7 +230,7 @@ sequenceDiagram
   end
   Note over GHA: Fire and forget
   AH->>Slack: Session lifecycle
-  AH->>Agent: assign / resume pin same worktree
+  AH->>Agent: assign / resume on pinned host
   Agent->>PR: Push / comment / react to checks
   Dev->>Slack: Status
   Dev->>PR: Review PR updates
@@ -239,7 +239,7 @@ sequenceDiagram
 Resume is how the **repo harness** re-enters without losing the workspace: pass the prior **session id** (from Slack, job summary, or a comment your gate stored).
 
 ```bash
-# Continue shepherd on same agent + worktree
+# Continue shepherd on the same host
 curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions/${SESSION_ID}/resume" \
   -H "Authorization: Bearer ${HARNESS_TOKEN}" \
   -H "Content-Type: application/json" \
@@ -355,6 +355,6 @@ What **stays** in the product repo: event filters, triage, dedup, prompt files, 
 2. Run an agent with worktrees/labels matching `requiredLabels`.
 3. For each automation entrypoint: **prepare prompt → `POST /sessions` → exit**.
 4. Configure Slack; tell humans to watch **Slack + GitHub**, not the trigger workflow.
-5. Use **resume** when the same worktree context must continue.
+5. Use **resume** when the same CLI conversation and source ref should continue.
 
 API details: [api.md](api.md). Why CLI/subscriptions: [why.md](why.md).

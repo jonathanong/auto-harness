@@ -205,6 +205,7 @@ export async function tryAssignSession(
     connectionId: string;
     now: string;
     resolvedArgv: string[];
+    resumeSpec: import("@auto-harness/shared").SessionResumeSpec;
     queueShard: number;
   },
 ): Promise<boolean> {
@@ -235,7 +236,7 @@ export async function tryAssignSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv, assignmentConnectionId = :connectionId REMOVE ackReceivedAt, reconnectDeadlineAt",
+                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv, resumeSpec = if_not_exists(resumeSpec, :resumeSpec), assignmentConnectionId = :connectionId REMOVE ackReceivedAt, reconnectDeadlineAt",
               ConditionExpression: "#s = :queued",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
@@ -246,6 +247,7 @@ export async function tryAssignSession(
                 ":hid": opts.hostId,
                 ":now": opts.now,
                 ":argv": opts.resolvedArgv,
+                ":resumeSpec": opts.resumeSpec,
                 ":connectionId": opts.connectionId,
               },
             },
@@ -326,6 +328,7 @@ export async function releaseCancelledSessionWorktree(
     /** A late terminal report from a healthy socket frees the worktree for
      * another assignment; only disconnect cleanup offlines it. */
     online: boolean;
+    cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
   },
 ): Promise<boolean> {
@@ -350,13 +353,15 @@ export async function releaseCancelledSessionWorktree(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET worktreeId = :null, hostId = :null REMOVE assignmentConnectionId, reconnectDeadlineAt",
+                `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
+                "REMOVE assignmentConnectionId, reconnectDeadlineAt",
               ConditionExpression: "#s = :cancelled AND worktreeId = :worktreeId",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":cancelled": "cancelled",
                 ":null": null,
                 ":worktreeId": opts.worktreeId,
+                ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
               },
             },
           },
@@ -592,7 +597,7 @@ export async function finishSession(
     "#s = :status",
     "statusShard = :statusShard",
     "worktreeId = :null",
-    "hostId = :null",
+    ...(opts.status === "queued" ? ["hostId = :null"] : []),
   ];
   const removes = ["reconnectDeadlineAt", "assignmentConnectionId"];
   if (opts.completedAt !== undefined) {

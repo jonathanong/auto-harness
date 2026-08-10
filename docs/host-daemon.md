@@ -158,19 +158,18 @@ Orchestrates a single session after `session:assign`:
 1. Validate payload (`sessionId`, `repositoryId`, `command`, `timeout`, optional `worktreeId`, `prompt`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`)
 2. Send `session:ack`, then wait for `session:acknowledged` from the current registered connection. On disconnect or confirmation timeout, abort without claiming local resources, setup, CLI execution, status, or reconnect inventory.
 3. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
-4. **Setup:**
-   - Normal run: run setup script (may reset branch / install)
-   - **Resume** (`resume: true`): **skip destructive setup** (no `git reset --hard` / wipe). Optional light `resumeSetup` only if configured; default is leave the worktree as-is
-5. Spawn primary command via Executor (resume-aware argv when `resume: true`)
-6. Pipe output to Log Streamer
-7. On exit / timeout / cancel → `session:status`, release claim/lock, emit worktree status
-8. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
+4. Checkout the assigned `ref` (or repository default branch); resume assignments re-checkout the source `ref` in whichever eligible worktree was selected.
+5. **Setup:** normal runs execute the setup script; **resume** (`resume: true`) skips setup entirely.
+6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
+7. Pipe output to Log Streamer
+8. On exit / timeout / cancel → `session:status`, release claim/lock, emit worktree status
+9. If the CLI prints a resumable conversation/session id, capture and send it in status metadata as `cliResumeRef` for later resumes
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
 
 ### Session resume
 
-Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is **pinned** to the **same `hostId` + `worktreeId`** as the source. The agent then **tries to resume** in that workspace.
+Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is pinned to the source **hostId** only. The scheduler selects any eligible worktree on that host; the agent checks out the source `ref`, skips setup, and runs the assigned command.
 
 ```mermaid
 sequenceDiagram
@@ -180,42 +179,40 @@ sequenceDiagram
     participant CLI
 
     User->>API: POST /sessions/{id}/resume
-    API->>API: New session pinned to source agent+worktree
-    API->>Agent: session:assign { resume: true, worktreeId, … }
-    Agent->>Agent: Claim same worktree (no hard reset)
-    Agent->>CLI: Resume / continue (tool-specific)
+    API->>API: New session pinned to source host
+    API->>Agent: session:assign { resume: true, ref, … }
+    Agent->>Agent: Claim eligible worktree; checkout ref; skip setup
+    Agent->>CLI: Native resume or frozen command fallback
     CLI-->>Agent: output
     Agent->>API: session:log / session:status
 ```
 
 #### Placement (control plane)
 
-| Rule           | Behavior                                                                      |
-| -------------- | ----------------------------------------------------------------------------- |
-| Pin            | Always `pinnedHostId` + `pinnedWorktreeId` from source                        |
-| Wait           | If that worktree is busy or agent offline/draining → stay `queued` on the pin |
-| No rehome      | Never assign a resume session to a different agent or worktree                |
-| Same host disk | Resume only makes sense on the machine that still has the worktree files      |
+| Rule      | Behavior                                                                         |
+| --------- | -------------------------------------------------------------------------------- |
+| Pin       | `pinnedHostId` from source; no worktree pin                                      |
+| Selection | Any eligible idle worktree on that host                                          |
+| Wait      | Host offline/draining or no eligible worktree → stay queued until `pinExpiresAt` |
+| Checkout  | Re-checkout the source session `ref` before running                              |
 
 #### How the agent “tries to resume”
 
-Order of preference:
-
-1. **Native CLI resume** — if `cliResumeRef` is present (or the tool can resume by worktree path / last session), invoke the tool’s resume/continue mode (tool-specific flags; mapped in agent config per command family).
-2. **Workspace continue** — same worktree cwd, spawn the usual command with the **continuation prompt** so the model sees existing dirty tree / branch / files from the prior run.
-3. **Fail clearly** — if neither is possible (missing worktree path, tool requires a ref we don’t have and refuse unsafe invent): `status: failed`, `errorCode: "resume_failed"`, system log explaining why.
+1. **Native CLI resume** — if the Command has `resumeArgvTemplate` and `cliResumeRef` is present, the control plane expands the exact argv template using `{cliResumeRef}` and `{prompt}`.
+2. **Frozen command fallback** — otherwise, use the source session’s frozen normal command snapshot, with the continuation prompt appended according to its original `appendPrompt` setting. There is no post-spawn fallback.
+3. **Fail clearly** — a native template without a captured ref cannot be assigned; report `resume_failed` rather than inventing a ref.
 
 #### Must / must not
 
-| Must                                                   | Must not                                                                                                         |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Use the assigned `worktreeId` only                     | Run full “fresh session” setup that discards prior work (`reset --hard` to main, delete branch, etc.) by default |
-| Stream logs and honor timeout/cancel as usual          | Silently fall back to another worktree                                                                           |
-| Preserve git working tree state from the prior session | Assume every CLI has native resume — workspace continue is a valid try                                           |
+| Must                                                           | Must not                                                       |
+| -------------------------------------------------------------- | -------------------------------------------------------------- |
+| Re-checkout the assigned `ref`; use the selected worktree only | Run setup or a destructive reset as part of resume             |
+| Stream logs and honor timeout/cancel as usual                  | Silently fall back to another worktree                         |
+| Persist terminal `cliResumeRef` when captured                  | Assume every CLI has native resume or fall back after spawning |
 
 #### Capturing `cliResumeRef`
 
-When a CLI emits a session/conversation id, parse and return it on terminal `session:status` (or a dedicated field). Control plane stores it on the session row so the next resume can pass it back in `session:assign`.
+When a CLI emits a session/conversation id, capture a complete line from the configured `stdout`, `stderr`, or `either` stream using a literal `linePrefix`; persist the latest valid ref on terminal `session:status`. Ingress is bounded to 512 UTF-8 bytes and control-free. The control plane stores it so the next resume can pass it to the exact native template.
 
 ### Executor
 
@@ -227,7 +224,7 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                                                                                                                                                                                                                                                           |
 | `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from a Provider Account/Command catalog entry (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero resolution of its own — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`), not something the agent should ever need to look up. |
-| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — **never** interpolated into a shell string                                                                                                                                                                                                                                                  |
+| `prompt`          | For normal runs and frozen-command fallback, appended as the final `resolvedArgv` element when `appendPrompt` is true. A native resume template places `{prompt}` in its exact configured argv element (if present) — **never** interpolated into a shell string.                                                                                                                            |
 | Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                      |
 | Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts.                                                                                                                                                     |
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                                                                                 |

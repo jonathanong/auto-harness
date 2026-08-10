@@ -18,6 +18,9 @@ export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
       ? { resumedFromSessionId: message.resumedFromSessionId }
       : {}),
     ...(message.cliResumeRef !== undefined ? { cliResumeRef: message.cliResumeRef } : {}),
+    ...(message.resumeRefCapture !== undefined
+      ? { resumeRefCapture: message.resumeRefCapture }
+      : {}),
     ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
   };
 }

@@ -4,6 +4,7 @@ import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
 import { runSetupIfNeeded, type ClaimedWorktree } from "./session-run-setup.ts";
 import { finishSession, type SessionRunResult } from "./session-outcome.ts";
+import { ResumeRefCaptureReader } from "./resume-ref-capture.ts";
 import { detectUsageLimit } from "./usage-limit.ts";
 
 /**
@@ -90,8 +91,9 @@ async function runProcessAndFinish(
   timedOut: () => boolean,
   remainingMs: () => number,
 ): Promise<SessionRunResult> {
-  streamer.write("system", `Spawning: ${argv.join(" ")}`);
+  streamer.write("system", `Spawning: ${argv[0]} (${Math.max(0, argv.length - 1)} arguments)`);
   let combined = "";
+  const resumeRef = new ResumeRefCaptureReader(assign.resumeRefCapture);
   const result = await processRunner.run({
     argv,
     cwd: claimed.cwd,
@@ -101,9 +103,15 @@ async function runProcessAndFinish(
       // Usage-limit detection only needs recent output; retaining every byte of
       // a long-running command made daemon memory grow without a bound.
       combined = (combined + c.data).slice(-256 * 1024);
-      streamer.write(c.stream, c.data);
+      const safeContent = resumeRef.push(c.stream, c.data);
+      if (safeContent) streamer.write(c.stream, safeContent);
     },
   });
+  const cliResumeRef = resumeRef.finish();
+  for (const trailing of resumeRef.drainTrailing()) {
+    streamer.write(trailing.stream, trailing.content);
+  }
+  if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
 
   const finish = (outcome: Parameters<typeof finishSession>[7]) =>
     finishSession(
@@ -118,11 +126,19 @@ async function runProcessAndFinish(
     );
 
   if (result.timedOut || timedOut()) {
-    return await finish({ status: "timed_out", exitCode: result.exitCode });
+    return await finish({
+      status: "timed_out",
+      exitCode: result.exitCode,
+      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    });
   }
 
   if (result.cancelled || signal?.aborted) {
-    return await finish({ status: "cancelled", exitCode: result.exitCode });
+    return await finish({
+      status: "cancelled",
+      exitCode: result.exitCode,
+      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    });
   }
 
   if (detectUsageLimit(combined)) {
@@ -131,16 +147,22 @@ async function runProcessAndFinish(
       exitCode: result.exitCode,
       errorCode: "usage_limit",
       errorMessage: "Usage limit detected in CLI output",
+      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
     });
   }
 
   if (result.exitCode === 0) {
-    return await finish({ status: "completed", exitCode: 0 });
+    return await finish({
+      status: "completed",
+      exitCode: 0,
+      ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    });
   }
 
   return await finish({
     status: "failed",
     exitCode: result.exitCode,
     errorMessage: `process exited with code ${String(result.exitCode)}`,
+    ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
   });
 }

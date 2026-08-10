@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@auto-harness/shared";
+import type { SessionResumeSpec, SessionStatus } from "@auto-harness/shared";
 
 export type SessionRecord = {
   id: string;
@@ -11,6 +11,8 @@ export type SessionRecord = {
   targetLabel: string;
   /** Final argv, resolved once assigned to a worktree (cascade walk + prompt append). */
   resolvedArgv?: string[];
+  /** Frozen native-resume configuration from the first assignment. */
+  resumeSpec?: SessionResumeSpec;
   timeout: number;
   priority: number;
   requiredLabels: string[];

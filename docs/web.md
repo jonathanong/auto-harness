@@ -220,13 +220,13 @@ For `queued` or `running` sessions, a "Cancel Session" button is shown. It calls
 
 Action buttons on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`):
 
-| Button           | Behavior                                                                                                                                                                                            |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Resume**       | `POST /sessions/:id/resume` — new session **pinned to the same agent + worktree**; agent tries to continue in that workspace. Optional prompt for “continue with…”. Waits if that worktree is busy. |
-| **Re-run**       | `POST /sessions/:id/clone` — identical new session; **any** matching worktree (round-robin). Fresh setup.                                                                                           |
-| **Clone & Edit** | Opens the "New Session" form pre-filled with this session's fields; user edits before submit (not pinned unless they use Resume).                                                                   |
+| Button           | Behavior                                                                                                                                                                                                               |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Resume**       | `POST /sessions/:id/resume` — new session pinned to the same host; any eligible worktree checks out the source ref, skips setup, and runs native resume or the frozen command. Optional prompt, timeout, and priority. |
+| **Re-run**       | `POST /sessions/:id/clone` — identical new session; **any** matching worktree (round-robin). Fresh setup.                                                                                                              |
+| **Clone & Edit** | Opens the "New Session" form pre-filled with this session's fields; user edits before submit (not pinned unless they use Resume).                                                                                      |
 
-**Resume vs re-run:** resume keeps the disk/context on the original runner; re-run is a clean independent attempt. See [api.md — resume](api.md#post-sessionsidresume).
+**Resume vs re-run:** resume keeps host affinity and CLI state, but re-establishes the source ref in any eligible worktree; re-run is a clean independent attempt. See [api.md — resume](api.md#post-sessionsidresume).
 
 ---
 

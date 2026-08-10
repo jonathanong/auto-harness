@@ -95,6 +95,88 @@ describe("durable control-plane transitions", () => {
     expect((await ctx.storage.getWorktree("worktree-durable"))?.currentSessionId).toBe(session.id);
   });
 
+  it("persists the native resume snapshot through assignment and hydration", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const commandId = "cmd-resume-snapshot";
+    const sessionId = "session-resume-snapshot";
+    const resumeSpec = {
+      argv: ["codex", "exec"],
+      appendPrompt: true,
+      resumeArgvTemplate: ["codex", "resume", "{cliResumeRef}", "{prompt}"],
+      resumeRefCapture: { stream: "stdout" as const, linePrefix: "session id: " },
+    };
+    await ctx.storage.putCommand({
+      id: commandId,
+      name: "codex snapshot",
+      argv: resumeSpec.argv,
+      appendPrompt: resumeSpec.appendPrompt,
+      resumeArgvTemplate: resumeSpec.resumeArgvTemplate,
+      resumeRefCapture: resumeSpec.resumeRefCapture,
+      providerId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const created = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      idFactory: () => sessionId,
+      connectionIdFactory: () => "connection-resume-snapshot",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    const registered = await created.plane.registerHostDurable({
+      hostId: "host-resume-snapshot",
+      worktrees: [
+        {
+          id: "worktree-resume-snapshot",
+          name: "snapshot",
+          repositoryId: "repo-resume-snapshot",
+          path: "/tmp/worktree-resume-snapshot",
+          labels: [],
+        },
+      ],
+      commandProfiles: ["codex snapshot"],
+      replaceExisting: true,
+    });
+    expect(registered.ok).toBe(true);
+    await ctx.storage.putSession({
+      id: sessionId,
+      repositoryId: "repo-resume-snapshot",
+      prompt: "first prompt",
+      commandId,
+      targetLabel: "codex snapshot",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      retryCount: 0,
+    });
+    await created.plane.hydrateFromStorage();
+    expect(await created.plane.assignQueuedDurable()).toHaveLength(1);
+    expect((await ctx.storage.getSession(sessionId))?.resumeSpec).toEqual(resumeSpec);
+
+    expect(created.plane.deleteCommand(commandId).ok).toBe(true);
+    await created.plane.settleStorage();
+    expect(await ctx.storage.getCommand(commandId)).toBeNull();
+
+    const hydrated = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      shardCount: 1,
+    });
+    expect(hydrated.plane.getCommand(commandId)).toBeNull();
+    expect(hydrated.plane.getSession(sessionId)).toMatchObject({
+      status: "running",
+      resumeSpec,
+    });
+  });
+
   it("claims schedule fire once and durably requeues on disconnect", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
@@ -395,7 +477,8 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:status",
           sessionId: "session-cancelled-late-terminal",
-          status: "completed",
+          status: "cancelled",
+          cliResumeRef: "cancelled-native-ref",
         })
       ).ok,
     ).toBe(true);
@@ -406,6 +489,9 @@ describe("durable control-plane transitions", () => {
     const terminal = await ctx.storage.getSession("session-cancelled-late-terminal");
     expect(terminal?.status).toBe("cancelled");
     expect(terminal?.worktreeId).toBeNull();
+    expect(terminal?.hostId).toBe("host-cancelled-late-terminal");
+    expect(terminal?.cliResumeRef).toBe("cancelled-native-ref");
+    expect(plane.resumeSession("session-cancelled-late-terminal").ok).toBe(true);
     expect(
       (
         await plane.handleHostMessageDurable({

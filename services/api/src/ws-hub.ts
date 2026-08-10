@@ -3,6 +3,7 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
+  isValidCliResumeRef,
   isSessionStatus,
   type HostToServerMessage,
   type HostWireMessage,
@@ -259,7 +260,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         validExitCode &&
         optionalText(message.errorCode, 128) &&
         optionalText(message.errorMessage, 4_096) &&
-        optionalText(message.cliResumeRef, 512)
+        (message.cliResumeRef === undefined || isValidCliResumeRef(message.cliResumeRef))
         ? (message as HostToServerMessage)
         : null;
     }

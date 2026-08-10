@@ -6,6 +6,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+export { resumeSession } from "./control-plane-session-resume.ts";
 
 export {
   listSessions,
@@ -142,55 +143,4 @@ export function supersedeSession(
   session.worktreeId = null;
   session.hostId = null;
   persistSession(state, session);
-}
-
-/** Resume: pin agent only (D5); re-checkout via ref later on agent. */
-export function resumeSession(
-  state: ControlPlaneState,
-  sessionId: string,
-  opts: { pinExpiresAt?: string } = {},
-): { ok: true; session: PublicSession } | { ok: false; error: string } {
-  const source = state.sessions.get(sessionId);
-  if (!source) {
-    return { ok: false, error: "session not found" };
-  }
-  const pin = source.hostId || source.pinnedHostId;
-  if (!pin) {
-    return { ok: false, error: "source session has no agent to pin" };
-  }
-  const id = state.idFactory();
-  const createdAt = state.now();
-  const pinExpiresAt =
-    opts.pinExpiresAt === undefined
-      ? new Date(Date.parse(createdAt) + 3600_000).toISOString()
-      : opts.pinExpiresAt;
-  const resumed: SessionRecord = {
-    id,
-    repositoryId: source.repositoryId,
-    prompt: source.prompt,
-    ...(source.providerAccountId !== undefined
-      ? { providerAccountId: source.providerAccountId }
-      : {}),
-    ...(source.commandId !== undefined ? { commandId: source.commandId } : {}),
-    targetLabel: source.targetLabel,
-    timeout: source.timeout,
-    priority: source.priority,
-    requiredLabels: [...source.requiredLabels],
-    onConflict: source.onConflict,
-    status: "queued",
-    queueShard: Math.abs(hashString(id)) % state.shardCount,
-    createdAt,
-    retryCount: 0,
-    resumedFromSessionId: sessionId,
-    pinnedHostId: pin,
-    pinExpiresAt,
-    ...(source.ref !== undefined ? { ref: source.ref } : {}),
-    ...(source.cliResumeRef !== undefined ? { cliResumeRef: source.cliResumeRef } : {}),
-    ...(source.concurrencyKey !== undefined ? { concurrencyKey: source.concurrencyKey } : {}),
-    ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
-    type: "prompt",
-    source: "api",
-  };
-  persistSession(state, resumed);
-  return { ok: true, session: toPublic(state, resumed) };
 }

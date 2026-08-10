@@ -15,6 +15,7 @@ export type SessionRunResult = {
   exitCode: number | null;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
+  cliResumeRef?: string;
   logs: SessionLogChunk[];
 };
 
@@ -23,6 +24,7 @@ type SessionOutcome = {
   exitCode: number | null;
   errorCode?: SessionErrorCode;
   errorMessage?: string;
+  cliResumeRef?: string;
 };
 
 export async function failSession(
@@ -72,5 +74,6 @@ export async function finishSession(
     logs,
     ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
     ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
+    ...(outcome.cliResumeRef !== undefined ? { cliResumeRef: outcome.cliResumeRef } : {}),
   };
 }

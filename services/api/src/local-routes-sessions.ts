@@ -14,6 +14,19 @@ function canCancel(ctx: RouteCtx, session: { metadata?: Record<string, unknown> 
   return session.metadata?.createdBy === ctx.principal.id;
 }
 
+const RESUME_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
+
+function validResumeBody(body: Record<string, unknown>): boolean {
+  return (
+    Object.keys(body).every((key) => RESUME_BODY_FIELDS.has(key)) &&
+    (body.prompt === undefined || (typeof body.prompt === "string" && body.prompt.length > 0)) &&
+    (body.timeout === undefined ||
+      (typeof body.timeout === "number" && Number.isFinite(body.timeout) && body.timeout > 0)) &&
+    (body.priority === undefined ||
+      (typeof body.priority === "number" && Number.isFinite(body.priority)))
+  );
+}
+
 /** Session collection + sub-resource routes. Returns true if handled. */
 export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -99,13 +112,38 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "POST" && resumeMatch) {
     const id = resumeMatch[1]!;
     const existing = plane.getSession(id);
-    if (existing && !canAccess(ctx, existing.repositoryId)) {
+    if (!existing) {
       sendForbidden(res);
       return true;
     }
-    const result = plane.resumeSession(id);
-    if (!result.ok) {
+    if (!canAccess(ctx, existing.repositoryId)) {
+      sendForbidden(res);
+      return true;
+    }
+    let body: Record<string, unknown> = {};
+    try {
+      const parsed = await readJson(req);
+      if (parsed !== undefined && parsed !== null) {
+        if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("body");
+        body = parsed as Record<string, unknown>;
+      }
+    } catch {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+      return true;
+    }
+    if (!validResumeBody(body)) {
       send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid resume overrides" },
+      });
+      return true;
+    }
+    const result = plane.resumeSession(id, {
+      ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+      ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
+      ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
+    });
+    if (!result.ok) {
+      send(res, existing.type === "scheduled" ? 409 : 400, {
         error: { code: "RESUME_ERROR", message: result.error },
       });
       return true;

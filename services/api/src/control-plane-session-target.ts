@@ -3,6 +3,7 @@ import {
   resolveProviderAccountEnabled,
   type ProviderCatalog,
 } from "@auto-harness/shared";
+import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { CommandRecord } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
@@ -34,33 +35,62 @@ export function resolveSessionTargetArgv(
   session: SessionRecord,
   worktree: WorktreeRecord,
 ): string[] | null {
-  if (session.commandId !== undefined) {
-    return buildArgv(state.commands.get(session.commandId), session.prompt);
-  }
-  if (session.providerAccountId === undefined) {
-    return null;
-  }
-  const host = state.hostInventories.get(worktree.hostId);
-  const hostRepo = host?.repositories.find((r) => r.id === worktree.repositoryId);
-  const hostWorktree = hostRepo?.worktrees.find((w) => w.id === worktree.id);
-  if (!resolveProviderAccountEnabled(session.providerAccountId, hostWorktree, hostRepo, host)) {
-    return null;
-  }
-  const commandId = resolveProviderAccountCommandId(
-    session.providerAccountId,
-    hostWorktree,
-    hostRepo,
-    host,
-    catalog,
-  );
-  if (!commandId) {
-    return null;
-  }
-  return buildArgv(state.commands.get(commandId), session.prompt);
+  return resolveSessionTarget(state, catalog, session, worktree)?.resolvedArgv ?? null;
 }
 
-function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
-  if (!command || command.argv.length === 0) {
+type ResolvedSessionTarget = {
+  resolvedArgv: string[];
+  resumeSpec: SessionResumeSpec;
+};
+
+export function resolveSessionTarget(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+): ResolvedSessionTarget | null {
+  let commandId: string | undefined;
+  if (session.commandId !== undefined) {
+    commandId = session.commandId;
+  } else {
+    if (session.providerAccountId === undefined) return null;
+    const host = state.hostInventories.get(worktree.hostId);
+    const hostRepo = host?.repositories.find((r) => r.id === worktree.repositoryId);
+    const hostWorktree = hostRepo?.worktrees.find((w) => w.id === worktree.id);
+    if (!resolveProviderAccountEnabled(session.providerAccountId, hostWorktree, hostRepo, host)) {
+      return null;
+    }
+    commandId = resolveProviderAccountCommandId(
+      session.providerAccountId,
+      hostWorktree,
+      hostRepo,
+      host,
+      catalog,
+    );
+    if (!commandId) return null;
+  }
+  const command = state.commands.get(commandId);
+  if (!command) return null;
+  const resolvedArgv = buildArgv(command, session.prompt);
+  return resolvedArgv
+    ? {
+        resolvedArgv,
+        resumeSpec: {
+          argv: [...command.argv],
+          appendPrompt: command.appendPrompt,
+          ...(command.resumeArgvTemplate !== undefined
+            ? { resumeArgvTemplate: [...command.resumeArgvTemplate] }
+            : {}),
+          ...(command.resumeRefCapture !== undefined
+            ? { resumeRefCapture: { ...command.resumeRefCapture } }
+            : {}),
+        },
+      }
+    : null;
+}
+
+function buildArgv(command: CommandRecord, prompt: string): string[] | null {
+  if (command.argv.length === 0) {
     return null;
   }
   return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
