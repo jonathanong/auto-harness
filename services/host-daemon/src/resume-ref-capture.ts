@@ -25,7 +25,7 @@ export class ResumeRefCaptureReader {
     if (!this.policy || !acceptsStream(this.policy, stream)) return content;
     const order = ++this.order;
     this.pendingOrder[stream] = order;
-    const lines = `${this.pending[stream]}${content}`.split(/\r?\n/u);
+    const lines = `${this.pending[stream]}${content}`.split(/\r\n|[\r\n]/u);
     this.pending[stream] = lines.pop()!;
     const output = lines.map((line) =>
       this.captureLine(line, order) ? `${REDACTED_LINE}\n` : `${line}\n`,

@@ -435,7 +435,7 @@ Optional request body to override fields:
 
 #### `POST /sessions/:id/resume`
 
-Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same host** as the source session. The scheduler may use any eligible idle worktree on that host, checks out the source `ref`, skips setup, and then invokes native resume when configured.
+Resume work from a prior session. Pass the **session id** in the path; the control plane pins the new run to the **same host** as the source session. The scheduler may use any eligible idle worktree on that host, re-checks out the source `ref` when present (otherwise the repository default branch), skips setup, and then invokes native resume when configured.
 
 **Operator or admin.** The source must be terminal (`completed`, `failed`, `cancelled`, or `timed_out`) and must retain the host recorded by its prior assignment. Terminal cleanup releases and clears its worktree claim; the continuation may use any eligible idle worktree on that same host.
 
@@ -480,7 +480,7 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 1. New session is `queued` with `pinnedHostId` copied from the source; it is not pinned to a worktree.
 2. Scheduler assigns any eligible idle worktree on that online, non-draining host.
 3. If the host is offline, draining, or has no eligible worktree, the session stays queued until `pinExpiresAt`; expiry fails with `resume_failed`.
-4. `session:assign` includes `resume: true`, `resumedFromSessionId`, the source `ref`, and any stored `cliResumeRef`.
+4. `session:assign` includes `resume: true`, `resumedFromSessionId`, optional source `ref`, and any stored `cliResumeRef`.
 
 **Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally; if resume is impossible, session `failed` with `errorCode: "resume_failed"` (or similar).
 
@@ -494,12 +494,12 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 
 **Clone vs resume:**
 
-|                | Clone                               | Resume                                                                  |
-| -------------- | ----------------------------------- | ----------------------------------------------------------------------- |
-| New session id | ✓                                   | ✓                                                                       |
-| Placement      | Any matching worktree (round-robin) | Any eligible worktree on the pinned host                                |
-| Workspace      | Fresh setup script (typical reset)  | Re-checkout `ref`; skip setup; native resume or frozen command fallback |
-| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented                                          |
+|                | Clone                               | Resume                                                                                                          |
+| -------------- | ----------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| New session id | ✓                                   | ✓                                                                                                               |
+| Placement      | Any matching worktree (round-robin) | Any eligible worktree on the pinned host                                                                        |
+| Workspace      | Fresh setup script (typical reset)  | Re-checkout `ref` when present (otherwise default branch); skip setup; native resume or frozen command fallback |
+| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented                                                                                  |
 
 The supported product path is **`POST /sessions/:id/resume`**; callers do not need to supply pin fields.
 

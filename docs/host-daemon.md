@@ -158,7 +158,7 @@ Orchestrates a single session after `session:assign`:
 1. Validate payload (`sessionId`, `repositoryId`, `command`, `timeout`, optional `worktreeId`, `prompt`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`)
 2. Send `session:ack`, then wait for `session:acknowledged` from the current registered connection. On disconnect or confirmation timeout, abort without claiming local resources, setup, CLI execution, status, or reconnect inventory.
 3. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
-4. Checkout the assigned `ref` (or repository default branch); resume assignments re-checkout the source `ref` in whichever eligible worktree was selected.
+4. Checkout the assigned `ref` (or repository default branch); resume assignments re-check out the source `ref` only when one was supplied.
 5. **Setup:** normal runs execute the setup script; **resume** (`resume: true`) skips setup entirely.
 6. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 7. Pipe output to Log Streamer
@@ -169,7 +169,7 @@ Concurrent sessions: one runner instance per claimed worktree (and at most one m
 
 ### Session resume
 
-Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is pinned to the source **hostId** only. The scheduler selects any eligible worktree on that host; the agent checks out the source `ref`, skips setup, and runs the assigned command.
+Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The new session is pinned to the source **hostId** only. The scheduler selects any eligible worktree on that host; the agent checks out the source `ref` when present (otherwise the repository default branch), skips setup, and runs the assigned command.
 
 ```mermaid
 sequenceDiagram
@@ -199,16 +199,16 @@ sequenceDiagram
 #### How the agent “tries to resume”
 
 1. **Native CLI resume** — if the Command has `resumeArgvTemplate` and `cliResumeRef` is present, the control plane expands the exact argv template using `{cliResumeRef}` and `{prompt}`.
-2. **Frozen command fallback** — otherwise, use the source session’s frozen normal command snapshot, with the continuation prompt appended according to its original `appendPrompt` setting. There is no post-spawn fallback.
-3. **Fail clearly** — a native template without a captured ref cannot be assigned; report `resume_failed` rather than inventing a ref.
+2. **Frozen command fallback** — when the Command has no native template, use the source session’s frozen normal command snapshot, with the continuation prompt appended according to its original `appendPrompt` setting. There is no post-spawn fallback.
+3. **Fail clearly** — when a native template exists but has no captured ref, fail with `resume_failed` rather than silently substituting the frozen command or inventing a ref.
 
 #### Must / must not
 
-| Must                                                           | Must not                                                       |
-| -------------------------------------------------------------- | -------------------------------------------------------------- |
-| Re-checkout the assigned `ref`; use the selected worktree only | Run setup or a destructive reset as part of resume             |
-| Stream logs and honor timeout/cancel as usual                  | Silently fall back to another worktree                         |
-| Persist terminal `cliResumeRef` when captured                  | Assume every CLI has native resume or fall back after spawning |
+| Must                                                                        | Must not                                                       |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Re-checkout the assigned `ref` when present; use the selected worktree only | Run setup or a destructive reset as part of resume             |
+| Stream logs and honor timeout/cancel as usual                               | Silently fall back to another worktree                         |
+| Persist terminal `cliResumeRef` when captured                               | Assume every CLI has native resume or fall back after spawning |
 
 #### Capturing `cliResumeRef`
 

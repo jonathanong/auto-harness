@@ -53,6 +53,12 @@ export function resumeSession(
   }
   const overrideError = validateResumeOverrides(opts);
   if (overrideError) return { ok: false, error: overrideError };
+  if (
+    opts.pinExpiresAt !== undefined &&
+    (typeof opts.pinExpiresAt !== "string" || !Number.isFinite(Date.parse(opts.pinExpiresAt)))
+  ) {
+    return { ok: false, error: "pinExpiresAt must be a valid timestamp" };
+  }
   const id = state.idFactory();
   const createdAt = state.now();
   const pinExpiresAt =

@@ -91,6 +91,10 @@ describe("ControlPlane command CRUD", () => {
       "{cliResumeRef}",
       "{prompt}",
     ]);
+    expect(created.command.resumeRefCapture).toEqual({
+      stream: "stdout",
+      linePrefix: "session id: ",
+    });
     expect(
       plane.updateCommand(created.command.id, { resumeArgvTemplate: ["x", "{unknown}"] }).ok,
     ).toBe(false);

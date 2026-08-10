@@ -149,6 +149,8 @@ export function materializeResumeArgv(
   prompt: string,
 ): string[] {
   return template.map((arg) =>
-    arg.replace(/\{cliResumeRef\}/g, resumeRef).replace(/\{prompt\}/g, prompt),
+    arg.replace(/\{(cliResumeRef|prompt)\}/g, (_match, placeholder: string) =>
+      placeholder === "cliResumeRef" ? resumeRef : prompt,
+    ),
   );
 }

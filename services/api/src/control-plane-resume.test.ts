@@ -281,6 +281,19 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "priority must be a number",
       });
+      expect(
+        overrides.resumeSession(source.session.id, { pinExpiresAt: "not-a-timestamp" }),
+      ).toEqual({
+        ok: false,
+        error: "pinExpiresAt must be a valid timestamp",
+      });
+      const validExpiry = overrides.resumeSession(source.session.id, {
+        pinExpiresAt: "2026-01-01T01:00:00.000Z",
+      });
+      expect(validExpiry).toMatchObject({
+        ok: true,
+        session: { pinExpiresAt: "2026-01-01T01:00:00.000Z" },
+      });
     }
   });
 

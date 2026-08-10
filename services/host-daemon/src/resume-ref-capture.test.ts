@@ -11,6 +11,15 @@ describe("ResumeRefCaptureReader", () => {
     expect(reader.finish()).toBe("second");
   });
 
+  it("treats bare carriage returns as output boundaries", () => {
+    const reader = new ResumeRefCaptureReader({ stream: "stdout", linePrefix: "ref=" });
+    expect(reader.push("stdout", "progress 10%\rref=captured\rprogress 100%")).toBe(
+      "progress 10%\n[CLI resume reference redacted]\n",
+    );
+    expect(reader.finish()).toBe("captured");
+    expect(reader.drainTrailing()).toEqual([{ stream: "stdout", content: "progress 100%" }]);
+  });
+
   it("honors stream selection and accepts a trailing line", () => {
     const reader = new ResumeRefCaptureReader({ stream: "stderr", linePrefix: "ref=" });
     expect(reader.push("stdout", "ref=ignored\n")).toBe("ref=ignored\n");

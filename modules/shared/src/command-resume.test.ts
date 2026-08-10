@@ -27,6 +27,13 @@ describe("command native resume schema", () => {
         "abc",
         "continue",
       ]);
+      expect(
+        materializeResumeArgv(
+          result.value.resumeArgvTemplate!,
+          "opaque$&{prompt}",
+          "continue $1 {cliResumeRef}",
+        ),
+      ).toEqual(["codex", "resume", "opaque$&{prompt}", "continue $1 {cliResumeRef}"]);
     }
   });
 

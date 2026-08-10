@@ -91,6 +91,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
       ).json,
     ).toMatchObject({
       appendPrompt: false,
+      resumeArgvTemplate: ["echo", "resume", "{cliResumeRef}", "{prompt}"],
       resumeRefCapture: { stream: "stderr", linePrefix: "resume: " },
     });
     const invalidResumePatch = await invoke("PATCH", `/api/v1/commands/${cmdId}`, {

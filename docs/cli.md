@@ -60,7 +60,7 @@ Run one session from a JSON assign file (see [examples/local/session.assign.json
 pnpm local:daemon -- run-session --file ./session.assign.json
 ```
 
-Required assign fields: `sessionId`, `repositoryId`, `prompt`, `resolvedArgv` (the already-resolved argv — this is the same wire shape the control plane sends over `session:assign`, computed control-plane-side from a Provider Account/Command; the agent never resolves a target itself), `timeout` (seconds), `worktreeId`. Optional: `ref`, `resume`, `resumedFromSessionId`, `cliResumeRef`, `resumeRefCapture`, `metadata`. Resume re-checks out `ref` and skips setup.
+Required assign fields: `sessionId`, `repositoryId`, `prompt`, `resolvedArgv` (the already-resolved argv — this is the same wire shape the control plane sends over `session:assign`, computed control-plane-side from a Provider Account/Command; the agent never resolves a target itself), `timeout` (seconds), `worktreeId`. Optional: `ref`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`, `resumeRefCapture`, `metadata`. Resume re-checks out `ref` when supplied (otherwise the repository default branch) and skips setup.
 
 Terminal line is JSON: `{ "status", "exitCode", "errorCode" }`. Exit code `0` only when `status === "completed"`.
 

@@ -38,12 +38,12 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 
 ### Server → agent
 
-| Type                   | Payload                                                                                                                                                                                        | Purpose                                                                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `session:assign`       | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `resumeRefCapture?`, `metadata?` | Run or **resume** a session; the agent checks out `ref`, skips setup for resume, and spawns the control-plane-resolved argv |
-| `session:acknowledged` | `sessionId`                                                                                                                                                                                    | The current host connection's `session:ack` committed durably. The daemon may start setup/CLI work only after this reply.   |
-| `session:cancel`       | `sessionId`                                                                                                                                                                                    | Stop queued/running work                                                                                                    |
-| `ping`                 | `{}`                                                                                                                                                                                           | Keepalive                                                                                                                   |
+| Type                   | Payload                                                                                                                                                                                        | Purpose                                                                                                                                                             |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session:assign`       | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `resumeRefCapture?`, `metadata?` | Run or **resume** a session; the agent checks out `ref` when present (otherwise default branch), skips setup for resume, and spawns the control-plane-resolved argv |
+| `session:acknowledged` | `sessionId`                                                                                                                                                                                    | The current host connection's `session:ack` committed durably. The daemon may start setup/CLI work only after this reply.                                           |
+| `session:cancel`       | `sessionId`                                                                                                                                                                                    | Stop queued/running work                                                                                                                                            |
+| `ping`                 | `{}`                                                                                                                                                                                           | Keepalive                                                                                                                                                           |
 
 ```json
 {
@@ -82,7 +82,7 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 }
 ```
 
-When `resume: true`, the agent checks out `ref` and skips setup. `resolvedArgv` is either the exact native template expansion or the frozen normal command fallback. See [host-daemon.md — Session resume](host-daemon.md#session-resume).
+When `resume: true`, the agent checks out `ref` when present (otherwise the repository default branch) and skips setup. `resolvedArgv` is either the exact native template expansion or the frozen normal command fallback. See [host-daemon.md — Session resume](host-daemon.md#session-resume).
 
 ### Agent → server
 
