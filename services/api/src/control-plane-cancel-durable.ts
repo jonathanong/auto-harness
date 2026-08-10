@@ -5,6 +5,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
 
 /** Persist a queued cancellation and its lock release as one durable transition. */
 export async function cancelSessionDurable(
@@ -12,7 +13,7 @@ export async function cancelSessionDurable(
   id: string,
 ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
   if (!state.storage) return cancelSession(state, id);
-  const session = state.sessions.get(id);
+  const session = await getSessionDurable(state, id);
   if (!session) return { ok: false, error: "session not found" };
   if (isTerminalSessionStatus(session.status)) {
     return { ok: false, error: `session already terminal: ${session.status}` };

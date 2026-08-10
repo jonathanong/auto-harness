@@ -167,6 +167,11 @@ Handlers share:
 - `services/api/src/services/notification.ts` — Slack thread updates
 - `modules/shared` — types, constants, Zod (or equivalent) schemas
 
+Durable DynamoDB rows are authoritative across concurrent API workers and restarts. Process maps
+may cache a working set, but REST reads and scheduling decisions read through the relevant durable
+rows; startup hydration restores every durable catalog, session, worktree, connection, archive, and
+historical session-log record. This avoids periodic full-state rehydration during normal requests.
+
 ### Environment variables (Lambda)
 
 | Variable                         | Required  | Purpose                                        |

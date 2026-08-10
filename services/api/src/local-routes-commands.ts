@@ -30,7 +30,11 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/commands") {
-    send(res, 200, { items: plane.listCommands() });
+    try {
+      send(res, 200, { items: await plane.listCommandsDurable() });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/commands") {
@@ -62,12 +66,16 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
   if (match) {
     const id = match[1]!;
     if (method === "GET") {
-      const command = plane.getCommand(id);
-      if (!command) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "command not found" } });
-        return true;
+      try {
+        const command = await plane.getCommandDurable(id);
+        if (!command) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "command not found" } });
+          return true;
+        }
+        send(res, 200, command);
+      } catch {
+        sendInternalError(res);
       }
-      send(res, 200, command);
       return true;
     }
     if (method === "PUT" || method === "PATCH") {

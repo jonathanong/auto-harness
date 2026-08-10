@@ -5,6 +5,11 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import {
+  getScheduleDurable,
+  listSchedulesDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
@@ -53,7 +58,8 @@ export async function triggerScheduleDurable(
   if (!state.storage) {
     return triggerSchedule(state, id, nowIso);
   }
-  const schedule = state.schedules.get(id);
+  await refreshTargetCatalogDurable(state);
+  const schedule = await getScheduleDurable(state, id);
   if (!schedule) {
     return { ok: false, error: "schedule not found" };
   }
@@ -153,6 +159,8 @@ export async function evaluateCronDurable(
   if (!state.storage) {
     return evaluateCron(state, nowIso);
   }
+  await refreshTargetCatalogDurable(state);
+  await listSchedulesDurable(state);
   const created: PublicSession[] = [];
   const nowMs = Date.parse(nowIso);
   for (const schedule of state.schedules.values()) {
@@ -182,7 +190,8 @@ export async function tryClaimScheduleFireDurable(
   if (!state.storage) {
     return tryClaimScheduleFire(state, scheduleId, expectedNextRunAt, nowIso);
   }
-  const schedule = state.schedules.get(scheduleId);
+  await refreshTargetCatalogDurable(state);
+  const schedule = await getScheduleDurable(state, scheduleId);
   if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
     return null;
   }

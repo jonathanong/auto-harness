@@ -6,6 +6,7 @@ import {
   validateCommandResumeSpec,
   type ResumeRefCapture,
 } from "@auto-harness/shared";
+import { getCommandDurable } from "./control-plane-durable-read-catalog.ts";
 
 export type CommandInput = {
   id?: string;
@@ -70,6 +71,7 @@ export async function createCommandDurable(
   input: CommandInput,
 ): Promise<ReturnType<typeof createCommand>> {
   if (!state.storage) return createCommand(state, input);
+  if (input.id) await getCommandDurable(state, input.id);
   const result = prepareCreateCommand(state, input);
   if (!result.ok) return result;
   await state.storage.putCommand({ ...result.command });
@@ -157,6 +159,7 @@ export async function updateCommandDurable(
   patch: Parameters<typeof updateCommand>[2],
 ): Promise<ReturnType<typeof updateCommand>> {
   if (!state.storage) return updateCommand(state, id, patch);
+  await getCommandDurable(state, id);
   const result = prepareUpdateCommand(state, id, patch);
   if (!result.ok) return result;
   await state.storage.putCommand({ ...result.command });
@@ -183,20 +186,7 @@ export function deleteCommand(
   return { ok: true };
 }
 
-/** Delete durable state before dropping the cached command. */
-export async function deleteCommandDurable(
-  state: ControlPlaneState,
-  id: string,
-): Promise<ReturnType<typeof deleteCommand>> {
-  if (!state.storage) return deleteCommand(state, id);
-  const result = canDeleteCommand(state, id);
-  if (!result.ok) return result;
-  await state.storage.deleteCommand(id);
-  state.commands.delete(id);
-  return { ok: true };
-}
-
-function canDeleteCommand(
+export function canDeleteCommand(
   state: ControlPlaneState,
   id: string,
 ): { ok: true } | { ok: false; error: string } {

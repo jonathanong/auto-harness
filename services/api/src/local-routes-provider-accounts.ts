@@ -6,7 +6,11 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/provider-accounts") {
-    send(res, 200, { items: plane.listProviderAccounts() });
+    try {
+      send(res, 200, { items: await plane.listProviderAccountsDurable() });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/provider-accounts") {
@@ -59,12 +63,16 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
   if (match) {
     const id = match[1]!;
     if (method === "GET") {
-      const account = plane.getProviderAccount(id);
-      if (!account) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "provider account not found" } });
-        return true;
+      try {
+        const account = await plane.getProviderAccountDurable(id);
+        if (!account) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "provider account not found" } });
+          return true;
+        }
+        send(res, 200, account);
+      } catch {
+        sendInternalError(res);
       }
-      send(res, 200, account);
       return true;
     }
     if (method === "PUT" || method === "PATCH") {

@@ -6,6 +6,7 @@ import {
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 
 function makeDurableSchedulePlane() {
   const plane = new ControlPlane({
@@ -134,12 +135,12 @@ describe("schedule concurrency", () => {
         ref: "main",
       }),
     ).toMatchObject({ ok: true });
-    manual.plane.state.storage = {
+    setDurableReadStorage(manual.plane.state, {
       tryClaimScheduleAndCreateSession: async () => ({
         kind: "duplicate",
         session: manual.active,
       }),
-    } as never;
+    });
     await expect(
       triggerScheduleDurable(manual.plane.state, manual.schedule.id, "2026-01-01T00:00:30.000Z"),
     ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active-session" } });
@@ -149,13 +150,13 @@ describe("schedule concurrency", () => {
 
     for (const skipped of [true, false]) {
       const cron = makeDurableSchedulePlane();
-      cron.plane.state.storage = {
+      setDurableReadStorage(cron.plane.state, {
         tryClaimScheduleAndCreateSession: async () => ({
           kind: "duplicate",
           session: cron.active,
         }),
         skipScheduleForActiveConcurrency: async () => skipped,
-      } as never;
+      });
       await expect(
         tryClaimScheduleFireDurable(
           cron.plane.state,
@@ -170,9 +171,9 @@ describe("schedule concurrency", () => {
     }
 
     const lost = makeDurableSchedulePlane();
-    lost.plane.state.storage = {
+    setDurableReadStorage(lost.plane.state, {
       tryClaimScheduleAndCreateSession: async () => ({ kind: "lost" }),
-    } as never;
+    });
     await expect(triggerScheduleDurable(lost.plane.state, lost.schedule.id)).resolves.toEqual({
       ok: false,
       error: "schedule was updated or claimed concurrently",
@@ -192,6 +193,15 @@ describe("schedule concurrency", () => {
         fallback.plane.state,
         fallback.schedule.id,
         fallback.schedule.nextRunAt,
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).resolves.toMatchObject({ id: "scheduled-session" });
+
+    const facade = makeDurableSchedulePlane();
+    await expect(
+      facade.plane.tryClaimScheduleFireDurable(
+        facade.schedule.id,
+        facade.schedule.nextRunAt,
         "2026-01-01T00:00:00.000Z",
       ),
     ).resolves.toMatchObject({ id: "scheduled-session" });

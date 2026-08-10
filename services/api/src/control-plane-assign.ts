@@ -13,6 +13,11 @@ import {
 } from "./control-plane-session-target.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import {
+  listQueuedSessionsDurable,
+  listWorktreesForRepositoryDurable,
+  refreshSchedulerReadModel,
+} from "./control-plane-durable-read-runtime.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -164,6 +169,8 @@ export async function assignQueuedDurable(
   if (!state.storage) {
     return assignQueued(state);
   }
+  await refreshSchedulerReadModel(state);
+  await listQueuedSessionsDurable(state, "prompt");
   const assigned: Array<{ session: PublicSession; worktree: WorktreeRecord }> = [];
   const nowIso = state.now();
   const nowMs = Date.parse(nowIso);
@@ -174,6 +181,7 @@ export async function assignQueuedDurable(
       .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
+      await listWorktreesForRepositoryDurable(state, session.repositoryId);
       if (Date.parse(session.queueExpiresAt) <= nowMs) {
         const expired = await state.storage.expireQueuedSession({
           sessionId: session.id,

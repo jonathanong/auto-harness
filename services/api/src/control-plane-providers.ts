@@ -3,6 +3,12 @@ import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 import type { ProviderRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+import {
+  getProviderDurable,
+  listCommandsDurable,
+  listProviderAccountsDurable,
+  listProvidersDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 function findProviderByName(
   state: ControlPlaneState,
@@ -64,6 +70,7 @@ export async function createProviderDurable(
   input: Parameters<typeof createProvider>[1],
 ): Promise<ReturnType<typeof createProvider>> {
   if (!state.storage) return createProvider(state, input);
+  await listProvidersDurable(state);
   const result = prepareCreateProvider(state, input);
   if (!result.ok) return result;
   await state.storage.putProvider({ ...result.provider });
@@ -129,6 +136,7 @@ export async function updateProviderDurable(
   patch: Parameters<typeof updateProvider>[2],
 ): Promise<ReturnType<typeof updateProvider>> {
   if (!state.storage) return updateProvider(state, id, patch);
+  await listProvidersDurable(state);
   const result = prepareUpdateProvider(state, id, patch);
   if (!result.ok) return result;
   await state.storage.putProvider({ ...result.provider });
@@ -166,6 +174,11 @@ export async function deleteProviderDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteProvider>> {
   if (!state.storage) return deleteProvider(state, id);
+  await Promise.all([
+    getProviderDurable(state, id),
+    listProviderAccountsDurable(state),
+    listCommandsDurable(state),
+  ]);
   const result = canDeleteProvider(state, id);
   if (!result.ok) return result;
   await state.storage.deleteProvider(id);

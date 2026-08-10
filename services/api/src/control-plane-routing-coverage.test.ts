@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
 import { enforceAckDeadlinesDurable } from "./control-plane-assign.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
@@ -153,6 +154,7 @@ describe("routing edge coverage", () => {
     storage.putProviderAccount = async () => undefined;
     const now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ storage, now: () => now, shardCount: 1 });
+    addDurableReadDefaults(plane.state);
     plane.createProvider({ id: "provider", name: "vendor" });
     plane.createProviderAccount({
       id: "account",
@@ -296,6 +298,7 @@ describe("routing edge coverage", () => {
     const storage = Object.create(null) as DynamoPlaneStorage;
     storage.putArchive = async () => undefined;
     const plane = new ControlPlane({ storage, now: () => "2026-01-01T00:00:00.000Z" });
+    addDurableReadDefaults(plane.state);
     const session: SessionRecord = {
       id: "durable",
       repositoryId: "repo",
@@ -376,6 +379,7 @@ describe("routing edge coverage", () => {
   it("covers durable nonrunning suppression and stale or lost ack-deadline fences", async () => {
     const storage = Object.create(null) as DynamoPlaneStorage;
     const plane = new ControlPlane({ storage, now: () => "2026-01-01T00:00:00.000Z" });
+    addDurableReadDefaults(plane.state);
     const session: SessionRecord = {
       id: "edge",
       repositoryId: "repo",
@@ -500,6 +504,7 @@ describe("routing edge coverage", () => {
 
     const storage = Object.create(null) as DynamoPlaneStorage;
     const durable = new ControlPlane({ storage });
+    addDurableReadDefaults(durable.state);
     const running = { ...delegated, id: "ack", status: "running" as const };
     storage.getSession = async () => running;
     let acknowledged = false;
@@ -548,6 +553,7 @@ describe("routing edge coverage", () => {
       commandProfiles: [],
     });
     plane.state.storage = storage;
+    addDurableReadDefaults(plane.state);
     const session: SessionRecord = {
       id: "session",
       repositoryId: "repo",

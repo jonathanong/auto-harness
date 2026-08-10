@@ -15,7 +15,13 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
-    send(res, 200, { items: plane.listRepositories().filter((repo) => scoped(ctx, repo.id)) });
+    try {
+      send(res, 200, {
+        items: (await plane.listRepositoriesDurable()).filter((repo) => scoped(ctx, repo.id)),
+      });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
@@ -53,12 +59,16 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   if (repoMatch) {
     const id = repoMatch[1]!;
     if (method === "GET") {
-      const repo = plane.getRepository(id);
-      if (!repo || !scoped(ctx, repo.id)) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "repository not found" } });
-        return true;
+      try {
+        const repo = await plane.getRepositoryDurable(id);
+        if (!repo || !scoped(ctx, repo.id)) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "repository not found" } });
+          return true;
+        }
+        send(res, 200, repo);
+      } catch {
+        sendInternalError(res);
       }
-      send(res, 200, repo);
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
@@ -123,9 +133,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/schedules") {
-    send(res, 200, {
-      items: plane.listSchedules().filter((schedule) => scoped(ctx, schedule.repositoryId)),
-    });
+    try {
+      send(res, 200, {
+        items: (await plane.listSchedulesDurable()).filter((schedule) =>
+          scoped(ctx, schedule.repositoryId),
+        ),
+      });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/schedules") {
@@ -195,9 +211,14 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   }
   const schedTrigger = /^\/api\/v1\/schedules\/([^/]+)\/trigger$/.exec(url.pathname);
   if (method === "POST" && schedTrigger) {
-    const existing = plane.getSchedule(schedTrigger[1]!);
-    if (existing && !scoped(ctx, existing.repositoryId)) {
-      hidden(res);
+    try {
+      const existing = await plane.getScheduleDurable(schedTrigger[1]!);
+      if (existing && !scoped(ctx, existing.repositoryId)) {
+        hidden(res);
+        return true;
+      }
+    } catch {
+      sendInternalError(res);
       return true;
     }
     let result: Awaited<ReturnType<typeof plane.triggerScheduleDurable>>;
@@ -221,7 +242,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   const schedMatch = /^\/api\/v1\/schedules\/([^/]+)$/.exec(url.pathname);
   if (schedMatch) {
     const id = schedMatch[1]!;
-    const existing = plane.getSchedule(id);
+    let existing: Awaited<ReturnType<typeof plane.getScheduleDurable>>;
+    try {
+      existing = await plane.getScheduleDurable(id);
+    } catch {
+      sendInternalError(res);
+      return true;
+    }
     if (existing && !scoped(ctx, existing.repositoryId)) {
       hidden(res);
       return true;

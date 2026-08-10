@@ -9,6 +9,10 @@ import {
   prepareCreateProviderAccount,
   prepareUpdateProviderAccount,
 } from "./control-plane-provider-accounts-prepare.ts";
+import {
+  getProviderAccountDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 /** Persist an account before exposing it through the process cache. */
 export async function createProviderAccountDurable(
@@ -16,6 +20,7 @@ export async function createProviderAccountDurable(
   input: Parameters<typeof createProviderAccount>[1],
 ): Promise<ReturnType<typeof createProviderAccount>> {
   if (!state.storage) return createProviderAccount(state, input);
+  await refreshTargetCatalogDurable(state);
   const result = prepareCreateProviderAccount(state, input);
   if (!result.ok) return result;
   await state.storage.putProviderAccount({ ...result.account });
@@ -35,6 +40,7 @@ export async function updateProviderAccountDurable(
   { ok: true; account: ProviderAccountRecord } | { ok: false; error: string; conflict?: boolean }
 > {
   if (!state.storage) return updateProviderAccount(state, id, patch);
+  await refreshTargetCatalogDurable(state);
   const result = prepareUpdateProviderAccount(state, id, patch);
   if (!result.ok) return result;
   const updated = await state.storage.updateProviderAccount({
@@ -65,7 +71,9 @@ export async function deleteProviderAccountDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteProviderAccount>> {
   if (!state.storage) return deleteProviderAccount(state, id);
-  if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
+  if (!(await getProviderAccountDurable(state, id))) {
+    return { ok: false, error: "provider account not found" };
+  }
   await state.storage.deleteProviderAccount(id);
   state.providerAccounts.delete(id);
   return { ok: true };

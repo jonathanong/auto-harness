@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProviderAccountRecord } from "./db/plane-storage.ts";
 import { ControlPlane } from "./control-plane.ts";
+import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
 
 describe("durable management writes", () => {
   it("preserves the durable management API in memory-only control planes", async () => {
@@ -107,6 +108,7 @@ describe("durable management writes", () => {
       updatedAt: "t",
     });
     plane.state.providerAccounts.set("account", { ...authoritative });
+    addDurableReadDefaults(plane.state);
 
     await expect(
       plane.updateProviderAccountDurable("account", { label: "ignored" }),
@@ -140,6 +142,7 @@ describe("durable management writes", () => {
 
   it("returns pre-write validation failures without mutating a durable cache", async () => {
     const plane = new ControlPlane({ storage: {} as never });
+    addDurableReadDefaults(plane.state);
 
     expect(
       (await plane.createRepositoryDurable({ name: "", url: "https://example.test/r" })).ok,

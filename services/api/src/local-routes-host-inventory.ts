@@ -9,20 +9,24 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/host-inventories") {
-    send(res, 200, {
-      items: plane
-        .listHostInventories()
-        .filter((inventory) => mayAccessHost(ctx.principal, inventory.hostId))
-        .map((inventory) => ({
-          ...inventory,
-          repositories: inventory.repositories.filter(
-            (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+    try {
+      send(res, 200, {
+        items: (await plane.listHostInventoriesDurable())
+          .filter((inventory) => mayAccessHost(ctx.principal, inventory.hostId))
+          .map((inventory) => ({
+            ...inventory,
+            repositories: inventory.repositories.filter(
+              (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+            ),
+          }))
+          .filter(
+            (inventory) =>
+              inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
           ),
-        }))
-        .filter(
-          (inventory) => inventory.repositories.length > 0 || !ctx.principal?.allowedRepositoryIds,
-        ),
-    });
+      });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
 
@@ -38,21 +42,25 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "GET") {
-    const config = plane.getHostInventory(hostId);
-    if (!config) {
-      send(res, 404, {
-        error: { code: "NOT_FOUND", message: `no host inventory for host ${hostId}` },
-      });
-      return true;
+    try {
+      const config = await plane.getHostInventoryDurable(hostId);
+      if (!config) {
+        send(res, 404, {
+          error: { code: "NOT_FOUND", message: `no host inventory for host ${hostId}` },
+        });
+        return true;
+      }
+      const repositories = config.repositories.filter(
+        (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
+      );
+      if (repositories.length === 0 && ctx.principal?.allowedRepositoryIds) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+        return true;
+      }
+      send(res, 200, { ...config, repositories });
+    } catch {
+      sendInternalError(res);
     }
-    const repositories = config.repositories.filter(
-      (repository) => !ctx.principal || mayAccessRepository(ctx.principal, repository.id),
-    );
-    if (repositories.length === 0 && ctx.principal?.allowedRepositoryIds) {
-      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-      return true;
-    }
-    send(res, 200, { ...config, repositories });
     return true;
   }
 

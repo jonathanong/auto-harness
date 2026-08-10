@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
@@ -18,7 +19,7 @@ describe("durable resume concurrency", () => {
     const source = plane.state.sessions.get("resume-1")!;
     Object.assign(source, { status: "completed", hostId: "host-1", concurrencyId: "resume-key" });
     let durableCreates = 0;
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       createSession: async (session: SessionRecord) => {
         durableCreates += 1;
         if (durableCreates === 1) return { created: true, session };
@@ -27,7 +28,7 @@ describe("durable resume concurrency", () => {
           session: { ...session, id: "durable-active", status: "queued" },
         };
       },
-    } as never;
+    });
 
     await expect(plane.resumeSessionDurable(source.id)).resolves.toMatchObject({
       ok: true,
@@ -71,7 +72,7 @@ describe("durable resume concurrency", () => {
     Object.assign(source, { status: "completed", hostId: "host-1", concurrencyId: "key" });
 
     const collision = Object.assign(new Error("collision"), { name: "SessionIdCollisionError" });
-    plane.state.storage = { createSession: async () => Promise.reject(collision) } as never;
+    setDurableReadStorage(plane.state, { createSession: async () => Promise.reject(collision) });
     await expect(plane.createSessionDurable(baseSessionBody())).resolves.toMatchObject({
       ok: false,
       code: "CONFLICT",
@@ -84,14 +85,14 @@ describe("durable resume concurrency", () => {
     const exhausted = Object.assign(new Error("exhausted"), {
       name: "CreateSessionRetryExhaustedError",
     });
-    plane.state.storage = { createSession: async () => Promise.reject(exhausted) } as never;
+    setDurableReadStorage(plane.state, { createSession: async () => Promise.reject(exhausted) });
     await expect(plane.createSessionDurable(baseSessionBody())).resolves.toMatchObject({
       ok: false,
       code: "CONFLICT",
     });
 
     const unexpected = new Error("storage unavailable");
-    plane.state.storage = { createSession: async () => Promise.reject(unexpected) } as never;
+    setDurableReadStorage(plane.state, { createSession: async () => Promise.reject(unexpected) });
     await expect(plane.createSessionDurable(baseSessionBody())).rejects.toBe(unexpected);
     await expect(plane.resumeSessionDurable(source.id)).rejects.toBe(unexpected);
   });

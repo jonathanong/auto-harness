@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 
@@ -34,12 +35,12 @@ function row(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
 
 function run(session: SessionRecord) {
   const state = createControlPlaneState({ now: () => NOW, usageLimitRetryCeiling: 1 });
-  state.storage = {
+  setDurableReadStorage(state, {
     finishSession: async () => true,
     suppressProviderlessUsageLimit: async () => true,
     releaseCancelledSessionWorktree: async () => true,
     putArchive: async () => undefined,
-  } as never;
+  });
   state.sessions.set(session.id, session);
   return state;
 }

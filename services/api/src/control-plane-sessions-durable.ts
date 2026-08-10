@@ -5,6 +5,8 @@ import { buildSessionRecord, validateSessionCreate } from "./control-plane-sessi
 import { prepareResumedSession, type ResumeOptions } from "./control-plane-session-resume.ts";
 import { createSession, resumeSession } from "./control-plane-sessions.ts";
 import { isCreateSessionConflict } from "./db/plane-storage-sessions.ts";
+import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
+import { refreshTargetCatalogDurable } from "./control-plane-durable-read-catalog.ts";
 
 /** Durable REST create path: DynamoDB owns the concurrency-id compare-and-create. */
 export async function createSessionDurable(
@@ -15,6 +17,7 @@ export async function createSessionDurable(
   | { ok: false; error: string; code?: string }
 > {
   if (!state.storage) return createSession(state, body);
+  await refreshTargetCatalogDurable(state);
   const prepared = validateSessionCreate(state, body);
   if (!prepared.ok) return prepared;
   let result;
@@ -43,6 +46,7 @@ export async function resumeSessionDurable(
   if (!state.storage) {
     return resumeSession(state, sessionId, opts);
   }
+  await getSessionDurable(state, sessionId);
   const prepared = prepareResumedSession(state, sessionId, opts);
   if (!prepared.ok) return prepared;
   // Durable preparation deliberately skips process-local deduplication; the

@@ -19,16 +19,32 @@ function catalogStorage() {
 
   return {
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
+    getRepository: async (id: string) => {
+      const record = repositories.get(id);
+      return record ? { ...record } : null;
+    },
     listRepositories: async () => [...repositories.values()].map((record) => ({ ...record })),
     deleteRepository: async (id: string) => repositories.delete(id),
     putSchedule: async (record: import("./control-plane.ts").ScheduleRecord) =>
       schedules.set(record.id, { ...record }),
+    getSchedule: async (id: string) => {
+      const record = schedules.get(id);
+      return record ? { ...record } : null;
+    },
     listSchedules: async () => [...schedules.values()].map((record) => ({ ...record })),
     deleteSchedule: async (id: string) => schedules.delete(id),
     putCommand: async (record: CommandRecord) => commands.set(record.id, { ...record }),
+    getCommand: async (id: string) => {
+      const record = commands.get(id);
+      return record ? { ...record } : null;
+    },
     listCommands: async () => [...commands.values()].map((record) => ({ ...record })),
     deleteCommand: async (id: string) => commands.delete(id),
     putProvider: async (record: ProviderRecord) => providers.set(record.id, { ...record }),
+    getProvider: async (id: string) => {
+      const record = providers.get(id);
+      return record ? { ...record } : null;
+    },
     listProviders: async () => [...providers.values()].map((record) => ({ ...record })),
     deleteProvider: async (id: string) => providers.delete(id),
     putProviderAccount: async (record: ProviderAccountRecord) =>
@@ -60,6 +76,10 @@ function catalogStorage() {
     deleteProviderAccount: async (id: string) => providerAccounts.delete(id),
     putHostInventory: async (record: HostInventoryRecord) =>
       hostInventories.set(record.hostId, { ...record }),
+    getHostInventory: async (id: string) => {
+      const record = hostInventories.get(id);
+      return record ? { ...record } : null;
+    },
     listHostInventories: async () => [...hostInventories.values()].map((record) => ({ ...record })),
     deleteHostInventory: async (hostId: string) => hostInventories.delete(hostId),
     listAllSessions: async () => [],

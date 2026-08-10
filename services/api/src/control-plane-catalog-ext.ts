@@ -1,18 +1,21 @@
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 import type { ResumeRefCapture } from "@auto-harness/shared";
-import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { ControlPlaneReadFacade } from "./control-plane-facade-reads.ts";
 import * as commands from "./control-plane-commands.ts";
+import * as durableCommands from "./control-plane-commands-durable.ts";
 import type { CommandInput } from "./control-plane-commands.ts";
 import * as providerAccounts from "./control-plane-provider-accounts.ts";
 import * as durableProviderAccounts from "./control-plane-provider-accounts-durable.ts";
 import * as providers from "./control-plane-providers.ts";
 import { listSessionTargets, type SessionTarget } from "./control-plane-session-targets.ts";
+import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
+import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 
 /**
  * Provider/ProviderAccount/Command catalog delegators — split from
  * ControlPlaneBase/ControlPlane so neither breaks the max-lines budget.
  */
-export class ControlPlaneCatalog extends ControlPlaneBase {
+export class ControlPlaneCatalog extends ControlPlaneReadFacade {
   createProvider(input: {
     id?: string;
     name: string;
@@ -33,7 +36,16 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
     return providers.getProvider(this.state, id);
   }
 
+  getProviderDurable(id: string): Promise<ProviderRecord | null> {
+    return durableCatalog.getProviderDurable(this.state, id);
+  }
+
   listProviders(): ProviderRecord[] {
+    return providers.listProviders(this.state);
+  }
+
+  async listProvidersDurable(): Promise<ProviderRecord[]> {
+    await durableCatalog.listProvidersDurable(this.state);
     return providers.listProviders(this.state);
   }
 
@@ -81,7 +93,16 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
     return providerAccounts.getProviderAccount(this.state, id);
   }
 
+  getProviderAccountDurable(id: string): Promise<ProviderAccountRecord | null> {
+    return durableCatalog.getProviderAccountDurable(this.state, id);
+  }
+
   listProviderAccounts(): ProviderAccountRecord[] {
+    return providerAccounts.listProviderAccounts(this.state);
+  }
+
+  async listProviderAccountsDurable(): Promise<ProviderAccountRecord[]> {
+    await durableCatalog.listProviderAccountsDurable(this.state);
     return providerAccounts.listProviderAccounts(this.state);
   }
 
@@ -133,7 +154,16 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
     return commands.getCommand(this.state, id);
   }
 
+  getCommandDurable(id: string): Promise<CommandRecord | null> {
+    return durableCatalog.getCommandDurable(this.state, id);
+  }
+
   listCommands(): CommandRecord[] {
+    return commands.listCommands(this.state);
+  }
+
+  async listCommandsDurable(): Promise<CommandRecord[]> {
+    await durableCatalog.listCommandsDurable(this.state);
     return commands.listCommands(this.state);
   }
 
@@ -170,10 +200,16 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
   }
 
   async deleteCommandDurable(id: string): Promise<ReturnType<typeof commands.deleteCommand>> {
-    return commands.deleteCommandDurable(this.state, id);
+    return durableCommands.deleteCommandDurable(this.state, id);
   }
 
   listSessionTargets(): SessionTarget[] {
+    return listSessionTargets(this.state);
+  }
+
+  async listSessionTargetsDurable(): Promise<SessionTarget[]> {
+    await durableRuntime.refreshSchedulerReadModel(this.state);
+    await durableRuntime.listWorktreesDurable(this.state);
     return listSessionTargets(this.state);
   }
 }

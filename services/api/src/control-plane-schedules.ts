@@ -8,6 +8,10 @@ import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import {
+  getScheduleDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 export {
   evaluateCron,
@@ -82,6 +86,7 @@ export async function putScheduleDurable(
   input: ScheduleInput,
 ): Promise<ReturnType<typeof putSchedule>> {
   if (!state.storage) return putSchedule(state, input);
+  await refreshTargetCatalogDurable(state);
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   await state.storage.putSchedule({ ...result.schedule });
@@ -157,6 +162,8 @@ export async function updateScheduleDurable(
   patch: Parameters<typeof updateSchedule>[2],
 ): Promise<ReturnType<typeof updateSchedule>> {
   if (!state.storage) return updateSchedule(state, id, patch);
+  await getScheduleDurable(state, id);
+  await refreshTargetCatalogDurable(state);
   const result = prepareUpdateSchedule(state, id, patch);
   if (!result.ok) return result;
   await state.storage.putSchedule({ ...result.schedule });
@@ -180,7 +187,7 @@ export async function deleteScheduleDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteSchedule>> {
   if (!state.storage) return deleteSchedule(state, id);
-  if (!state.schedules.has(id)) return { ok: false, error: "schedule not found" };
+  if (!(await getScheduleDurable(state, id))) return { ok: false, error: "schedule not found" };
   await state.storage.deleteSchedule(id);
   state.schedules.delete(id);
   return { ok: true };

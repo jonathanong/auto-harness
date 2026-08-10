@@ -1,5 +1,6 @@
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
+import { handleSessionReadRoutes } from "./local-routes-session-reads.ts";
 
 function canAccess(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -78,56 +79,40 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     }
   }
 
-  if (method === "GET" && url.pathname === "/api/v1/sessions") {
-    const limitRaw = url.searchParams.get("limit");
-    const limit = limitRaw ? Number(limitRaw) : undefined;
-    const page = plane.listSessionsPage({
-      ...(limit !== undefined && Number.isFinite(limit) ? { limit } : {}),
-      ...(url.searchParams.get("cursor") ? { cursor: url.searchParams.get("cursor")! } : {}),
-      ...(url.searchParams.get("hostId") ? { hostId: url.searchParams.get("hostId")! } : {}),
-      ...(url.searchParams.get("status") ? { status: url.searchParams.get("status")! } : {}),
-      ...(url.searchParams.get("q") ? { q: url.searchParams.get("q")! } : {}),
-      ...(url.searchParams.get("concurrencyId")
-        ? { concurrencyId: url.searchParams.get("concurrencyId")! }
-        : {}),
-      ...(url.searchParams.get("scheduleId")
-        ? { scheduleId: url.searchParams.get("scheduleId")! }
-        : {}),
-    });
-    const items = page.items.filter((session) => canAccess(ctx, session.repositoryId));
-    send(res, 200, {
-      ...page,
-      items,
-    });
-    return true;
-  }
+  if (await handleSessionReadRoutes(ctx)) return true;
 
   const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
   if (method === "POST" && cancelMatch) {
-    const session = plane.getSession(cancelMatch[1]!);
-    if (session && (!canAccess(ctx, session.repositoryId) || !canCancel(ctx, session))) {
-      sendForbidden(res);
-      return true;
+    try {
+      const session = await plane.getSessionDurable(cancelMatch[1]!);
+      if (session && (!canAccess(ctx, session.repositoryId) || !canCancel(ctx, session))) {
+        sendForbidden(res);
+        return true;
+      }
+      const result = await plane.cancelSessionDurable(cancelMatch[1]!);
+      if (!result.ok) {
+        send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
+        return true;
+      }
+      send(res, 200, result.session);
+    } catch {
+      sendInternalError(res);
     }
-    const result = await plane.cancelSessionDurable(cancelMatch[1]!);
-    if (!result.ok) {
-      send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
-      return true;
-    }
-    send(res, 200, result.session);
     return true;
   }
 
   const resumeMatch = /^\/api\/v1\/sessions\/([^/]+)\/resume$/.exec(url.pathname);
   if (method === "POST" && resumeMatch) {
     const id = resumeMatch[1]!;
-    const existing = plane.getSession(id);
-    if (!existing) {
-      sendForbidden(res);
-      return true;
-    }
-    if (!canAccess(ctx, existing.repositoryId)) {
-      sendForbidden(res);
+    let existing: Awaited<ReturnType<typeof plane.getSessionDurable>>;
+    try {
+      existing = await plane.getSessionDurable(id);
+      if (!existing || !canAccess(ctx, existing.repositoryId)) {
+        sendForbidden(res);
+        return true;
+      }
+    } catch {
+      sendInternalError(res);
       return true;
     }
     let body: Record<string, unknown> = {};
@@ -147,30 +132,22 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       });
       return true;
     }
-    const result = await plane.resumeSessionDurable(id, {
-      ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
-      ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
-      ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
-    });
-    if (!result.ok) {
-      send(res, existing.type === "scheduled" ? 409 : 400, {
-        error: { code: "RESUME_ERROR", message: result.error },
+    try {
+      const result = await plane.resumeSessionDurable(id, {
+        ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+        ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
+        ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
       });
-      return true;
+      if (!result.ok) {
+        send(res, existing.type === "scheduled" ? 409 : 400, {
+          error: { code: "RESUME_ERROR", message: result.error },
+        });
+        return true;
+      }
+      send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
+    } catch {
+      sendInternalError(res);
     }
-    send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
-    return true;
-  }
-
-  const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
-  if (method === "GET" && logsMatch) {
-    const id = logsMatch[1]!;
-    const session = plane.getSession(id);
-    if (session && !canAccess(ctx, session.repositoryId)) {
-      sendForbidden(res);
-      return true;
-    }
-    send(res, 200, { items: plane.getLogs(id) });
     return true;
   }
 
@@ -184,20 +161,6 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     const archived = plane.archiveSessionLogs(id);
     send(res, 200, archived);
-    return true;
-  }
-
-  const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
-  if (method === "GET" && sessionMatch) {
-    const id = sessionMatch[1]!;
-    const session = plane.getSession(id);
-    if (!session || !canAccess(ctx, session.repositoryId)) {
-      send(res, 404, {
-        error: { code: "NOT_FOUND", message: "session not found" },
-      });
-      return true;
-    }
-    send(res, 200, session);
     return true;
   }
 
