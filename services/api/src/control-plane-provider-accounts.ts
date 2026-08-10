@@ -138,6 +138,44 @@ export function clearProviderAccountUsageLimit(
   return { ok: true, account: { ...account } };
 }
 
+/** Clear a cooldown against the authoritative row and surface a lost compare-and-swap. */
+export async function clearProviderAccountUsageLimitDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<
+  { ok: true; account: ProviderAccountRecord } | { ok: false; error: string; conflict?: boolean }
+> {
+  if (!state.storage) return clearProviderAccountUsageLimit(state, id);
+  const existing = await state.storage.getProviderAccount(id);
+  if (!existing) {
+    state.providerAccounts.delete(id);
+    return { ok: false, error: "provider account not found" };
+  }
+  const account = { ...existing, usageLimitedUntil: null, updatedAt: state.now() };
+  const cleared = await state.storage.clearProviderAccountUsageLimit({
+    id,
+    expectedUpdatedAt: existing.updatedAt,
+    ...(existing.usageLimitedUntil !== undefined
+      ? { expectedUsageLimitedUntil: existing.usageLimitedUntil }
+      : {}),
+    updatedAt: account.updatedAt,
+  });
+  if (!cleared) {
+    const authoritative = await state.storage.getProviderAccount(id);
+    if (authoritative) state.providerAccounts.set(id, authoritative);
+    else state.providerAccounts.delete(id);
+    return {
+      ok: false,
+      error: authoritative
+        ? "provider account changed concurrently; retry cooldown clear"
+        : "provider account not found",
+      ...(authoritative ? { conflict: true } : {}),
+    };
+  }
+  state.providerAccounts.set(id, account);
+  return { ok: true, account: { ...account } };
+}
+
 export function deleteProviderAccount(
   state: ControlPlaneState,
   id: string,

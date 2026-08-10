@@ -10,7 +10,7 @@ describe("scheduled assignment rollout", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "maintenance",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 30,
       nextRunAt: "t",

@@ -67,6 +67,10 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
     return providerAccounts.clearProviderAccountUsageLimit(this.state, id);
   }
 
+  async clearProviderAccountUsageLimitDurable(id: string) {
+    return providerAccounts.clearProviderAccountUsageLimitDurable(this.state, id);
+  }
+
   deleteProviderAccount(id: string): { ok: true } | { ok: false; error: string } {
     return providerAccounts.deleteProviderAccount(this.state, id);
   }

@@ -108,4 +108,99 @@ describe("ControlPlane provider account CRUD", () => {
     expect(storage.clearProviderAccountUsageLimit).toHaveBeenCalledTimes(2);
     expect(storage.deleteProviderAccount).toHaveBeenCalledWith("acct-1");
   });
+
+  it("surfaces a durable cooldown-clear conflict and refreshes the cache", async () => {
+    const stale = {
+      id: "acct-1",
+      providerId: "prov-1",
+      label: "account",
+      usageLimitCooldownSeconds: 3600,
+      usageLimitedUntil: "2026-01-01T01:00:00.000Z",
+      lastUsageLimitedAt: "2026-01-01T00:00:00.000Z",
+      lastAssignedAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const authoritative = {
+      ...stale,
+      usageLimitedUntil: "2026-01-01T02:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:01.000Z",
+    };
+    const storage = {
+      getProviderAccount: vi.fn().mockResolvedValueOnce(stale).mockResolvedValueOnce(authoritative),
+      clearProviderAccountUsageLimit: vi.fn(async () => false),
+    };
+    const plane = new ControlPlane({
+      storage: storage as never,
+      now: () => "2026-01-01T00:00:02.000Z",
+    });
+    plane.state.providerAccounts.set(stale.id, stale);
+
+    await expect(plane.clearProviderAccountUsageLimitDurable(stale.id)).resolves.toEqual({
+      ok: false,
+      conflict: true,
+      error: "provider account changed concurrently; retry cooldown clear",
+    });
+    expect(plane.getProviderAccount(stale.id)).toEqual(authoritative);
+  });
+
+  it("handles durable cooldown-clear memory, success, missing, and deletion paths", async () => {
+    const account = {
+      id: "acct-1",
+      providerId: "prov-1",
+      label: "account",
+      usageLimitCooldownSeconds: 3600,
+      usageLimitedUntil: "2026-01-01T01:00:00.000Z",
+      lastUsageLimitedAt: null,
+      lastAssignedAt: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+
+    const memory = new ControlPlane({ now: () => "2026-01-01T00:00:01.000Z" });
+    memory.state.providerAccounts.set(account.id, account);
+    await expect(memory.clearProviderAccountUsageLimitDurable(account.id)).resolves.toMatchObject({
+      ok: true,
+      account: { usageLimitedUntil: null },
+    });
+
+    const missingStorage = { getProviderAccount: vi.fn(async () => null) };
+    const missing = new ControlPlane({ storage: missingStorage as never });
+    missing.state.providerAccounts.set(account.id, account);
+    await expect(missing.clearProviderAccountUsageLimitDurable(account.id)).resolves.toEqual({
+      ok: false,
+      error: "provider account not found",
+    });
+    expect(missing.getProviderAccount(account.id)).toBeNull();
+
+    const legacy = { ...account } as typeof account & { usageLimitedUntil?: string | null };
+    delete legacy.usageLimitedUntil;
+    const successStorage = {
+      getProviderAccount: vi.fn(async () => legacy),
+      clearProviderAccountUsageLimit: vi.fn(async () => true),
+    };
+    const success = new ControlPlane({
+      storage: successStorage as never,
+      now: () => "2026-01-01T00:00:01.000Z",
+    });
+    await expect(success.clearProviderAccountUsageLimitDurable(account.id)).resolves.toMatchObject({
+      ok: true,
+      account: { usageLimitedUntil: null },
+    });
+    expect(successStorage.clearProviderAccountUsageLimit).toHaveBeenCalledWith(
+      expect.not.objectContaining({ expectedUsageLimitedUntil: expect.anything() }),
+    );
+
+    const deletedStorage = {
+      getProviderAccount: vi.fn().mockResolvedValueOnce(account).mockResolvedValueOnce(null),
+      clearProviderAccountUsageLimit: vi.fn(async () => false),
+    };
+    const deleted = new ControlPlane({ storage: deletedStorage as never });
+    deleted.state.providerAccounts.set(account.id, account);
+    await expect(deleted.clearProviderAccountUsageLimitDurable(account.id)).resolves.toEqual({
+      ok: false,
+      error: "provider account not found",
+    });
+    expect(deleted.getProviderAccount(account.id)).toBeNull();
+  });
 });

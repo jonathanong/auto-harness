@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
@@ -80,6 +80,14 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     );
     expect((await invoke("DELETE", `/api/v1/provider-accounts/${acctId}/usage-limit`)).status).toBe(
       200,
+    );
+    vi.spyOn(plane, "clearProviderAccountUsageLimitDurable").mockResolvedValueOnce({
+      ok: false,
+      conflict: true,
+      error: "provider account changed concurrently; retry cooldown clear",
+    });
+    expect((await invoke("DELETE", `/api/v1/provider-accounts/${acctId}/usage-limit`)).status).toBe(
+      409,
     );
     expect((await invoke("DELETE", "/api/v1/provider-accounts/missing/usage-limit")).status).toBe(
       404,

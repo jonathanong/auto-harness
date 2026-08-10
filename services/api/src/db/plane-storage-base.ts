@@ -253,8 +253,6 @@ export class DynamoPlaneStorageBase {
     errorMessage?: string;
     exitCode?: number | null;
     cliResumeRef?: string;
-    retryCount?: number;
-    retryAfter?: string;
     fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);

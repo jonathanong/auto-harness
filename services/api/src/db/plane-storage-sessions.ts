@@ -673,7 +673,7 @@ export async function acknowledgeSession(
   }
 }
 
-/** Atomically apply a terminal/retry transition and release its worktree. */
+/** Atomically apply a terminal transition and release its worktree. */
 export async function finishSession(
   ctx: PlaneStorageCtx,
   opts: {
@@ -687,8 +687,6 @@ export async function finishSession(
     errorMessage?: string;
     exitCode?: number | null;
     cliResumeRef?: string;
-    retryCount?: number;
-    retryAfter?: string;
     fence?: { hostId: string; connectionId: string };
   },
 ): Promise<boolean> {

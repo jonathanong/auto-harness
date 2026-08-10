@@ -615,16 +615,16 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field             | Type     | Required | Description                                                                        |
-| ----------------- | -------- | -------- | ---------------------------------------------------------------------------------- |
-| `repositoryId`    | string   | ✓        | Target repository                                                                  |
-| `name`            | string   | ✓        | Human-readable name for the schedule                                               |
-| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                 |
-| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                               |
-| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                              |
-| `cron`            | string   | ✓        | Cron expression (5-field)                                                          |
-| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                  |
-| `enabled`         | boolean  | ✗        | Default: `true`                                                                    |
+| Field             | Type     | Required | Description                                                                           |
+| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------- |
+| `repositoryId`    | string   | ✓        | Target repository                                                                     |
+| `name`            | string   | ✓        | Human-readable name for the schedule                                                  |
+| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                    |
+| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                  |
+| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                 |
+| `cron`            | string   | ✓        | Cron expression (5-field)                                                             |
+| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                     |
+| `enabled`         | boolean  | ✗        | Default: `true`                                                                       |
 | `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected. |
 
 **Response:** `201 Created`

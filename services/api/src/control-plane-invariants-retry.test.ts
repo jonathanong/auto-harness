@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
+import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
@@ -131,6 +132,10 @@ describe("ControlPlane retry and resume invariants", () => {
     const now = "2026-01-01T00:00:00.000Z";
     let n = 0;
     const plane = new ControlPlane({ idFactory: () => `s${++n}`, now: () => now, shardCount: 1 });
+    const assignments: Extract<HostWireMessage, { type: "session:assign" }>[] = [];
+    plane.setOnHostMessage((_hostId, message) => {
+      if (message.type === "session:assign") assignments.push(message);
+    });
     plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "primary" });
     plane.createProviderAccount({ id: "account", providerId: "provider", label: "a" });
     plane.createCommand({
@@ -205,6 +210,10 @@ describe("ControlPlane retry and resume invariants", () => {
     const resumed = plane.resumeSession(source.id);
     expect(resumed.ok).toBe(true);
     const native = plane.assignQueued()[0]!.session;
+    expect(assignments.at(-1)).toMatchObject({
+      resume: true,
+      resumedFromSessionId: source.id,
+    });
     const nativeWorktreeId = native.worktreeId!;
     const nativeAttemptId = native.attemptId!;
     expect(native.resolvedRoute).toMatchObject({
@@ -233,5 +242,7 @@ describe("ControlPlane retry and resume invariants", () => {
     expect(freshAssigned.resumeFallback).toBe(true);
     expect(freshAssigned.cliResumeRef).toBeUndefined();
     expect(freshAssigned.resolvedRoute).toMatchObject({ targetIndex: 0, commandId: "primary" });
+    expect(assignments.at(-1)).toMatchObject({ resumedFromSessionId: native.id });
+    expect(assignments.at(-1)).not.toHaveProperty("resume");
   });
 });

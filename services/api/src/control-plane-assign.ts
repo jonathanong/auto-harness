@@ -121,7 +121,7 @@ export function assignQueued(
           const msg: HostWireMessage = {
             type: "session:assign",
             sessionId: session.id,
-            sessionType: session.type === "scheduled" ? "scheduled" : "prompt",
+            sessionType: "prompt",
             repositoryId: session.repositoryId,
             prompt: session.prompt,
             resolvedArgv: route.resolvedArgv,
@@ -137,15 +137,7 @@ export function assignQueued(
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             commandId: route.commandId,
             targetIndex: route.targetIndex,
-            ...(session.resumedFromSessionId
-              ? {
-                  resume: true,
-                  resumedFromSessionId: session.resumedFromSessionId,
-                  ...(session.cliResumeRef !== undefined
-                    ? { cliResumeRef: session.cliResumeRef }
-                    : {}),
-                }
-              : {}),
+            ...resumeWireFields(session),
           };
           state.onHostMessage?.(candidate.hostId, msg);
           assigned.push({ session: toPublic(state, session), worktree: { ...candidate } });
@@ -320,7 +312,7 @@ export async function assignQueuedDurable(
           const msg: HostWireMessage = {
             type: "session:assign",
             sessionId: session.id,
-            sessionType: session.type === "scheduled" ? "scheduled" : "prompt",
+            sessionType: "prompt",
             repositoryId: session.repositoryId,
             prompt: session.prompt,
             resolvedArgv: route.resolvedArgv,
@@ -336,15 +328,7 @@ export async function assignQueuedDurable(
             ...(route.providerAccountId ? { providerAccountId: route.providerAccountId } : {}),
             commandId: route.commandId,
             targetIndex: route.targetIndex,
-            ...(session.resumedFromSessionId
-              ? {
-                  resume: true,
-                  resumedFromSessionId: session.resumedFromSessionId,
-                  ...(session.cliResumeRef !== undefined
-                    ? { cliResumeRef: session.cliResumeRef }
-                    : {}),
-                }
-              : {}),
+            ...resumeWireFields(session),
           };
           state.onHostMessage?.(candidate.hostId, msg);
           assigned.push({ session: toPublic(state, nextSession), worktree: { ...nextWorktree } });
@@ -373,6 +357,23 @@ function clearResumePin(session: import("./db/types.ts").SessionRecord): void {
   delete session.pinExpiresAt;
   delete session.cliResumeRef;
   session.resumeFallback = true;
+}
+
+function resumeWireFields(session: import("./db/types.ts").SessionRecord): {
+  resumedFromSessionId?: string;
+  resume?: true;
+  cliResumeRef?: string;
+} {
+  if (!session.resumedFromSessionId) return {};
+  return {
+    resumedFromSessionId: session.resumedFromSessionId,
+    ...(session.resumeFallback
+      ? {}
+      : {
+          resume: true as const,
+          cliResumeRef: session.cliResumeRef!,
+        }),
+  };
 }
 
 function persistExpired(

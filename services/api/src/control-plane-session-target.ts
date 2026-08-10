@@ -174,14 +174,14 @@ function resolveTarget(
         ? { commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }
         : null;
     }
-    const account = resolveEligibleAccount(
+    const account = resolveEligibleAccounts(
       state,
       catalog,
       command.providerId,
       worktree,
       nowMs,
       pinnedProviderAccountId,
-    );
+    )[0];
     const resolvedArgv = buildArgv(command, prompt);
     return account && resolvedArgv
       ? {
@@ -192,31 +192,39 @@ function resolveTarget(
         }
       : null;
   }
-  const account = resolveEligibleAccount(
+  const host = state.hostInventories.get(worktree.hostId);
+  const repo = host?.repositories.find((r) => r.id === worktree.repositoryId);
+  const hostWorktree = repo?.worktrees.find((w) => w.id === worktree.id);
+  for (const account of resolveEligibleAccounts(
     state,
     catalog,
     target.providerId,
     worktree,
     nowMs,
     pinnedProviderAccountId,
-  );
-  if (!account) return null;
-  const host = state.hostInventories.get(worktree.hostId);
-  const repo = host?.repositories.find((r) => r.id === worktree.repositoryId);
-  const hostWorktree = repo?.worktrees.find((w) => w.id === worktree.id);
-  const commandId = resolveProviderAccountCommandId(account.id, hostWorktree, repo, host, catalog);
-  const resolvedArgv = commandId ? buildArgv(state.commands.get(commandId), prompt) : null;
-  return resolvedArgv && commandId
-    ? {
+  )) {
+    const commandId = resolveProviderAccountCommandId(
+      account.id,
+      hostWorktree,
+      repo,
+      host,
+      catalog,
+    );
+    const command = commandId ? state.commands.get(commandId) : undefined;
+    const resolvedArgv = buildArgv(command, prompt);
+    if (resolvedArgv && commandId && command) {
+      return {
         providerAccountId: account.id,
         commandId,
         resolvedArgv,
-        resumeSpec: commandResumeSpec(state.commands.get(commandId)!),
-      }
-    : null;
+        resumeSpec: commandResumeSpec(command),
+      };
+    }
+  }
+  return null;
 }
 
-function resolveEligibleAccount(
+function resolveEligibleAccounts(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
   providerId: string,
@@ -237,7 +245,7 @@ function resolveEligibleAccount(
     .toSorted(
       (a, b) =>
         (a.lastAssignedAt ?? "").localeCompare(b.lastAssignedAt ?? "") || a.id.localeCompare(b.id),
-    )[0];
+    );
 }
 
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {

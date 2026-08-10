@@ -160,7 +160,6 @@ describe("durable control-plane transitions", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
-      retryCount: 0,
     });
     await created.plane.hydrateFromStorage();
     expect(await created.plane.assignQueuedDurable()).toHaveLength(1);

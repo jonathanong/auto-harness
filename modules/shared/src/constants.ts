@@ -45,7 +45,6 @@ export const SESSION_SOURCES = [
 ] as const satisfies readonly SessionSource[];
 
 /** Default max usage_limit auto-retries (docs/plan.md Invariant 6). */
-export const DEFAULT_USAGE_LIMIT_RETRY_CEILING = 2;
 
 /** A queued session has this long to find capacity before failing. */
 export const DEFAULT_QUEUE_TTL_SECONDS = 691_200;

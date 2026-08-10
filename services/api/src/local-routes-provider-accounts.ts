@@ -32,15 +32,13 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
   }
   const clearMatch = /^\/api\/v1\/provider-accounts\/([^/]+)\/usage-limit$/.exec(url.pathname);
   if (method === "DELETE" && clearMatch) {
-    const result = plane.clearProviderAccountUsageLimit(clearMatch[1]!);
+    const result = await plane.clearProviderAccountUsageLimitDurable(clearMatch[1]!);
     if (!result.ok) {
-      send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+      send(res, result.conflict ? 409 : 404, {
+        error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
+      });
       return true;
     }
-    // The durable assignment transaction checks the account cooldown. Flush
-    // the clear first, otherwise it can race the queued catalog write and see
-    // the old pause without another scheduling trigger.
-    await plane.settleStorage();
     await assignQueuedDurable(plane.state);
     send(res, 200, result.account);
     return true;
