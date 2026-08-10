@@ -21,6 +21,36 @@ function running(id = "s") {
 }
 
 describe("durable host-message fencing", () => {
+  it("confirms only an accepted in-memory ACK transition", () => {
+    const deliveries: Array<{ hostId: string; message: unknown }> = [];
+    const plane = new ControlPlane({
+      now: () => "now",
+      onHostMessage: (hostId, message) => deliveries.push({ hostId, message }),
+    });
+    plane.state.sessions.set("s", running());
+    plane.state.sessions.set("done", { ...running("done"), status: "completed" });
+
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "s" })).toEqual({ ok: true });
+    expect(deliveries).toEqual([
+      {
+        hostId: "h",
+        message: { type: "session:acknowledged", sessionId: "s" },
+      },
+    ]);
+
+    // Duplicate and rejected frames are idempotent or rejected, never a new
+    // execution permission for the daemon.
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "s" })).toEqual({ ok: true });
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "done" })).toEqual({
+      ok: true,
+    });
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "missing" })).toEqual({
+      ok: false,
+      error: "session not found",
+    });
+    expect(deliveries).toHaveLength(1);
+  });
+
   it("rejects stale sources and preserves unfenced compatibility paths", async () => {
     const plane = new ControlPlane({ now: () => "now" });
     plane.state.sessions.set("s", running());

@@ -34,7 +34,7 @@ describe("createPlaneWsBridge", () => {
     ).toBe(null);
   });
 
-  it("registers agent, delivers session:assign, then confirms its persisted ACK", async () => {
+  it("registers an agent, delivers session:assign, then confirms its in-memory ACK once", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({
       onHostMessage: bridge.onHostMessage,
@@ -74,6 +74,7 @@ describe("createPlaneWsBridge", () => {
     const received: unknown[] = [];
     await new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(`ws://127.0.0.1:${addr.port}/ws`);
+      let ackConfirmationTimer: ReturnType<typeof setTimeout> | undefined;
       ws.on("open", () => {
         ws.send(
           JSON.stringify({
@@ -100,11 +101,18 @@ describe("createPlaneWsBridge", () => {
           ws.send(JSON.stringify({ type: "session:ack", sessionId: "sess-1" }));
         }
         if (msg.type === "session:acknowledged") {
-          ws.close();
-          resolve();
+          // Keep the in-memory socket open long enough to catch a duplicate
+          // direct WS reply after the bridge callback's confirmation.
+          ackConfirmationTimer ??= setTimeout(() => {
+            ws.close();
+            resolve();
+          }, 50);
         }
       });
-      ws.on("error", reject);
+      ws.on("error", (error) => {
+        if (ackConfirmationTimer) clearTimeout(ackConfirmationTimer);
+        reject(error);
+      });
       setTimeout(() => {
         reject(new Error("timeout"));
       }, 3000);
@@ -112,6 +120,13 @@ describe("createPlaneWsBridge", () => {
 
     expect(received.some((m) => (m as { type: string }).type === "session:assign")).toBe(true);
     expect(received).toContainEqual({ type: "session:acknowledged", sessionId: "sess-1" });
+    expect(
+      received.filter(
+        (m) =>
+          (m as { type?: string; sessionId?: string }).type === "session:acknowledged" &&
+          (m as { sessionId?: string }).sessionId === "sess-1",
+      ),
+    ).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 50));
     hub.close();
     await new Promise((resolve) => setTimeout(resolve, 50));

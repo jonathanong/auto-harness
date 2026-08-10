@@ -128,11 +128,24 @@ export function handleHostMessage(
       if (!session) {
         return { ok: false, error: "session not found" };
       }
-      if (session.status !== "running") {
+      // Only the first valid ACK is a state transition. Retried or stale
+      // frames remain idempotently successful, but must not create a fresh
+      // peer confirmation for a different daemon assignment attempt.
+      if (session.status !== "running" || session.ackReceivedAt !== undefined) {
         return { ok: true };
       }
       session.ackReceivedAt = state.now();
       state.pendingAcks.delete(msg.sessionId);
+      if (session.hostId) {
+        // In-memory control planes use the same peer-confirmation contract as
+        // the durable WebSocket path. A completed send is not permission for
+        // the daemon to start the CLI; this callback represents the accepted
+        // in-memory state transition.
+        state.onHostMessage?.(session.hostId, {
+          type: "session:acknowledged",
+          sessionId: session.id,
+        });
+      }
       return { ok: true };
     }
     case "session:status": {
@@ -189,15 +202,11 @@ export async function handleHostMessageDurable(
       : { ok: false, error: result.error };
   }
   if (!state.storage) {
-    const localSession = msg.type === "session:ack" ? state.sessions.get(msg.sessionId) : undefined;
-    const canAcknowledge =
-      msg.type === "session:ack" &&
-      localSession?.status === "running" &&
-      localSession.ackReceivedAt === undefined;
-    const result = handleHostMessage(state, msg);
-    return msg.type === "session:ack" && result.ok && canAcknowledge
-      ? { ...result, sessionAcknowledged: msg.sessionId }
-      : result;
+    // The synchronous in-memory transition emits its own confirmation through
+    // `onHostMessage`. Keeping it out of this result prevents a local WS hub
+    // from delivering the same confirmation once through its bridge and once
+    // as a direct socket response.
+    return handleHostMessage(state, msg);
   }
   const storage = state.storage;
   let fence: { hostId: string; connectionId: string } | undefined;
