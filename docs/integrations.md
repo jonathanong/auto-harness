@@ -162,8 +162,12 @@ When `errorCode` is `usage_limit` (AI vendor quota / rate limit parsed by the ag
 
 ```
 ❌ Session failed — usage limit
-The AI CLI reported a plan or rate limit. Auto Harness does not retry.
-Fix quota/billing on the agent host, then re-run the session.
+The AI CLI reported a plan or rate limit. Auto Harness pauses the assigned
+Provider Account globally for its configured cooldown (5 hours by default),
+then tries the next eligible account or configured fallback. Providerless
+commands (`providerId: null`) are ungated and do not pause an account. A queued
+session expires after its absolute queue TTL (8 days by default) with
+`queue_expired`.
 ```
 
 The original message is updated with ❌ status. The thread includes the last few lines of stderr to aid quick debugging without opening the UI.

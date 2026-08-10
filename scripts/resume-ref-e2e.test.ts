@@ -99,7 +99,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const first = plane.createSession({
         repositoryId: "demo",
         prompt: "first",
-        commandId: "cmd-echo",
+        target: { commandId: "cmd-echo" },
         timeout: 60,
         ref: "feature/resume",
         requiredLabels: ["echo"],
@@ -116,7 +116,7 @@ describe("resume re-checks out ref after worktree reuse", () => {
       const intervening = plane.createSession({
         repositoryId: "demo",
         prompt: "intervening",
-        commandId: "cmd-echo",
+        target: { commandId: "cmd-echo" },
         timeout: 60,
         ref: "main",
         requiredLabels: ["echo"],

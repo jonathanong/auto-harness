@@ -12,13 +12,24 @@ type Schedule = {
   id: string;
   name: string;
   repositoryId: string;
-  targetLabel: string;
+  targetLabels: string[];
+  target: { providerId: string } | { commandId: string };
+  fallbacks: Array<{ providerId: string } | { commandId: string }>;
   cron: string;
   enabled: boolean;
+  timeout: number;
+  queueTtlSeconds: number;
   nextRunAt: string;
+  ref?: string;
 };
 
-export default async function SchedulesPage() {
+export default async function SchedulesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const rawSearchParams = await searchParams;
+  const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
   let items: Schedule[] = [];
   let targets: SessionTarget[] = [];
   let error: string | null = null;
@@ -33,6 +44,8 @@ export default async function SchedulesPage() {
     error = e instanceof Error ? e.message : String(e);
   }
 
+  const editing = editId ? items.find((schedule) => schedule.id === editId) : undefined;
+
   return (
     <div className="space-y-6" data-pw="page-schedules">
       <h2 className="text-2xl font-semibold tracking-tight" data-pw="schedules-heading">
@@ -44,7 +57,8 @@ export default async function SchedulesPage() {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>Repo</TableHead>
-            <TableHead>Profile</TableHead>
+            <TableHead>Route</TableHead>
+            <TableHead>Queue TTL</TableHead>
             <TableHead>Cron</TableHead>
             <TableHead>Next</TableHead>
             <TableHead />
@@ -52,7 +66,7 @@ export default async function SchedulesPage() {
         </TableHeader>
         <TableBody>
           {items.map((s) => (
-            <TableRow key={s.id}>
+            <TableRow key={s.id} data-pw={`schedule-row-${s.id}`}>
               <TableCell>{s.name}</TableCell>
               <TableCell className="font-mono text-xs">
                 <Link
@@ -62,17 +76,34 @@ export default async function SchedulesPage() {
                   {s.repositoryId}
                 </Link>
               </TableCell>
-              <TableCell>{s.targetLabel}</TableCell>
+              <TableCell>
+                <div data-pw={`schedule-route-${s.id}`}>
+                  {s.targetLabels?.join(" → ") ?? routeLabel(s.target) ?? "—"}
+                </div>
+                {s.fallbacks?.length ? (
+                  <div className="text-xs text-muted-foreground">
+                    {s.fallbacks.length} fallback{s.fallbacks.length === 1 ? "" : "s"}
+                  </div>
+                ) : null}
+              </TableCell>
+              <TableCell className="text-xs">{s.queueTtlSeconds ?? 691200}s</TableCell>
               <TableCell className="font-mono text-xs">{s.cron}</TableCell>
               <TableCell className="text-xs">{s.nextRunAt}</TableCell>
-              <TableCell>
+              <TableCell className="space-x-2 whitespace-nowrap">
                 <ScheduleTriggerButton id={s.id} />
+                <Link
+                  href={`/schedules?edit=${encodeURIComponent(s.id)}`}
+                  className="text-sm hover:underline"
+                  data-pw={`schedule-edit-${s.id}`}
+                >
+                  Edit
+                </Link>
               </TableCell>
             </TableRow>
           ))}
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="text-muted-foreground">
+              <TableCell colSpan={7} className="text-muted-foreground">
                 No schedules configured.
               </TableCell>
             </TableRow>
@@ -80,9 +111,18 @@ export default async function SchedulesPage() {
         </TableBody>
       </Table>
       <div>
-        <h3 className="mb-2 text-lg font-medium">Add schedule</h3>
-        <ScheduleCreateForm targets={targets} />
+        <h3 className="mb-2 text-lg font-medium">
+          {editing ? `Edit ${editing.name}` : "Add schedule"}
+        </h3>
+        <ScheduleCreateForm targets={targets} schedule={editing} />
       </div>
     </div>
   );
+}
+
+function routeLabel(target?: { providerId?: string; commandId?: string } | null): string | null {
+  if (!target) return null;
+  if (target.providerId) return `provider:${target.providerId}`;
+  if (target.commandId) return `command:${target.commandId}`;
+  return null;
 }

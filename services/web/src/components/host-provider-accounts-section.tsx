@@ -11,6 +11,7 @@ import {
 import { AttachProviderAccountToHostForm } from "./attach-provider-account-to-host-form.tsx";
 import { HostProviderAccountCommandForm } from "./host-provider-account-command-form.tsx";
 import { RemoveProviderAccountFromHostButton } from "./remove-provider-account-from-host-button.tsx";
+import { ProviderAccountCooldownForm } from "./provider-account-cooldown-form.tsx";
 
 export function HostProviderAccountsSection({
   hostId,
@@ -46,6 +47,7 @@ export function HostProviderAccountsSection({
               <TableHead>account</TableHead>
               <TableHead>effective command</TableHead>
               <TableHead>override</TableHead>
+              <TableHead>health</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -84,6 +86,21 @@ export function HostProviderAccountsSection({
                       currentCommandId={hostAccount.commandId}
                       providerCommands={providerCommands}
                     />
+                  </TableCell>
+                  <TableCell>
+                    {account ? (
+                      <ProviderAccountCooldownForm
+                        account={
+                          account as typeof account & {
+                            usageLimitCooldownSeconds?: number | null;
+                            usageLimitedUntil?: string | null;
+                            lastUsageLimitedAt?: string | null;
+                          }
+                        }
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
                     <RemoveProviderAccountFromHostButton

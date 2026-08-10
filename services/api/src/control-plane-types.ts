@@ -1,4 +1,4 @@
-import type { HostWireMessage, SessionStatus } from "@auto-harness/shared";
+import type { HostWireMessage, SessionStatus, TargetRef } from "@auto-harness/shared";
 
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -9,13 +9,13 @@ export type ScheduleRecord = {
   id: string;
   repositoryId: string;
   name: string;
-  /** Exactly one of providerAccountId/commandId is set. */
-  providerAccountId?: string;
-  commandId?: string;
-  targetLabel: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  targetLabels: string[];
   cron: string;
   enabled: boolean;
   timeout: number;
+  queueTtlSeconds: number;
   nextRunAt: string;
   lastRunAt: string | null;
   createdAt: string;
@@ -55,6 +55,8 @@ export type ControlPlaneOptions = {
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;
+  /** Factory for immutable scheduler assignment fences. */
+  attemptIdFactory?: () => string;
   connectionIdFactory?: () => string;
   scheduleIdFactory?: () => string;
   repositoryIdFactory?: () => string;
@@ -65,7 +67,6 @@ export type ControlPlaneOptions = {
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
   reconnectGraceMs?: number;
-  usageLimitRetryCeiling?: number;
   archivePrefix?: string;
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
@@ -77,5 +78,6 @@ export type PublicSession = SessionRecord & { url: string };
 export type PendingAck = {
   sessionId: string;
   worktreeId: string;
+  attemptId: string;
   assignedAtMs: number;
 };

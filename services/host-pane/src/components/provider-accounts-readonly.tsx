@@ -6,7 +6,15 @@ import {
   type ProviderAccount,
   type ProviderCatalog,
 } from "@auto-harness/shared";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import {
+  ProviderAccountHealth,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 
 /**
  * Read-only mirror of this host's attached provider accounts — debugging visibility only.
@@ -40,6 +48,7 @@ export function ProviderAccountsReadonly({
         <TableRow>
           <TableHead>account</TableHead>
           <TableHead>effective command</TableHead>
+          <TableHead>health</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -66,6 +75,14 @@ export function ProviderAccountsReadonly({
                 {effectiveCommandId
                   ? (commandsById[effectiveCommandId]?.name ?? effectiveCommandId)
                   : "— (no default command)"}
+              </TableCell>
+              <TableCell>
+                <ProviderAccountHealth
+                  pw={`provider-accounts-readonly-health-${hostAccount.providerAccountId}`}
+                  usageLimitedUntil={account?.usageLimitedUntil}
+                  usageLimitCooldownSeconds={account?.usageLimitCooldownSeconds}
+                  lastUsageLimitedAt={account?.lastUsageLimitedAt}
+                />
               </TableCell>
             </TableRow>
           );

@@ -1,4 +1,5 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { assignQueuedDurable } from "./control-plane-assign.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
 export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -14,6 +15,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       const result = plane.createProviderAccount({
         providerId: String(body.providerId ?? ""),
         label: String(body.label ?? ""),
+        ...(typeof body.usageLimitCooldownSeconds === "number"
+          ? { usageLimitCooldownSeconds: body.usageLimitCooldownSeconds }
+          : {}),
       });
       if (!result.ok) {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
@@ -25,6 +29,21 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
       return true;
     }
+  }
+  const clearMatch = /^\/api\/v1\/provider-accounts\/([^/]+)\/usage-limit$/.exec(url.pathname);
+  if (method === "DELETE" && clearMatch) {
+    const result = plane.clearProviderAccountUsageLimit(clearMatch[1]!);
+    if (!result.ok) {
+      send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+      return true;
+    }
+    // The durable assignment transaction checks the account cooldown. Flush
+    // the clear first, otherwise it can race the queued catalog write and see
+    // the old pause without another scheduling trigger.
+    await plane.settleStorage();
+    await assignQueuedDurable(plane.state);
+    send(res, 200, result.account);
+    return true;
   }
   const match = /^\/api\/v1\/provider-accounts\/([^/]+)$/.exec(url.pathname);
   if (match) {
@@ -44,6 +63,9 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
         const result = plane.updateProviderAccount(id, {
           ...(typeof body.providerId === "string" ? { providerId: body.providerId } : {}),
           ...(typeof body.label === "string" ? { label: body.label } : {}),
+          ...(typeof body.usageLimitCooldownSeconds === "number"
+            ? { usageLimitCooldownSeconds: body.usageLimitCooldownSeconds }
+            : {}),
         });
         if (!result.ok) {
           send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });

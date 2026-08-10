@@ -14,7 +14,8 @@ import type { LocalE2ePaths } from "./setup.mts";
 const CREATE_BODY = {
   repositoryId: "demo",
   prompt: "hello-from-e2e",
-  commandId: "cmd-e2e",
+  target: { commandId: "cmd-e2e" },
+  queueTtlSeconds: 691200,
   timeout: 30,
   ref: "feature/local-e2e",
   requiredLabels: ["echo"],

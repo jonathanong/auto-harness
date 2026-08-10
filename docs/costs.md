@@ -184,12 +184,12 @@ AI CLI tools (Codex, Claude Code) can be CPU and memory intensive. For running 2
 
 Under the intended model, the dominant costs are **outside** the Auto Harness AWS bill:
 
-| Line item                | What you pay                                    | Notes                                                                                                         |
-| ------------------------ | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU. |
-| **Plan usage limits**    | Soft/hard caps, rate limits                     | Hit → session `usage_limit` (see agent docs). Size concurrency (worktrees) to stay inside the plan.           |
-| **VPS / runner hosts**   | Fixed monthly instance cost                     | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost.                        |
-| **Auto Harness on AWS**  | ~$1–$25/mo for most teams                       | Queue, API, logs only.                                                                                        |
+| Line item                | What you pay                                    | Notes                                                                                                                                                                       |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU.                                                               |
+| **Plan usage limits**    | Soft/hard caps, rate limits                     | Hit → `usage_limit`; pause that Provider Account globally for its configurable cooldown (5h default), then use account/fallback routing. Providerless commands are ungated. |
+| **VPS / runner hosts**   | Fixed monthly instance cost                     | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost.                                                                                      |
+| **Auto Harness on AWS**  | ~$1–$25/mo for most teams                       | Queue, API, logs only.                                                                                                                                                      |
 
 ### Why we do _not_ lead with API unit economics
 
@@ -211,7 +211,7 @@ If you deliberately point a CLI at **API keys**, treat that as a separate budget
 1. **Cap concurrency** — worktree count ≤ what the plan and host can sustain without constant `usage_limit` failures.
 2. **Prefer scheduled off-peak** — if the plan is shared with humans, run heavy maintenance when seats are idle.
 3. **One profile per automation identity** — dedicated CLI profile for harness so human interactive use is not mixed with factory sessions.
-4. **Watch usage_limit rate** — repeated hits mean you need more seats, lower concurrency, or deferred retry policy—not more Lambda.
+4. **Watch usage_limit rate** — repeated hits mean you need more seats or lower concurrency; cooldown/fallback routing handles temporary account exhaustion, not more Lambda.
 
 ### AWS + VPS
 

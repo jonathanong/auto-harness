@@ -4,7 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
-import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
+import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
@@ -62,7 +62,7 @@ export async function triggerScheduleDurable(
   if (!target.ok) {
     return target;
   }
-  const session = createScheduledSession(state, schedule, target.label);
+  const session = createScheduledSession(state, schedule);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const won = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
@@ -184,7 +184,7 @@ export async function tryClaimScheduleFireDurable(
   if (!target.ok) {
     return null;
   }
-  const session = createScheduledSession(state, schedule, target.label);
+  const session = createScheduledSession(state, schedule);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const won = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
@@ -203,27 +203,26 @@ export async function tryClaimScheduleFireDurable(
 
 function createScheduledSession(
   state: ControlPlaneState,
-  schedule: import("./db/types.ts").ScheduleRecord,
-  targetLabel: string,
+  schedule: import("./control-plane-types.ts").ScheduleRecord,
 ): SessionRecord {
   const id = state.idFactory();
+  const createdAt = state.now();
   return {
     id,
     repositoryId: schedule.repositoryId,
     prompt: `scheduled:${schedule.name}`,
-    ...(schedule.providerAccountId !== undefined
-      ? { providerAccountId: schedule.providerAccountId }
-      : {}),
-    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
-    targetLabel,
+    target: schedule.target,
+    fallbacks: [...schedule.fallbacks],
+    targetLabels: [...schedule.targetLabels],
+    queueTtlSeconds: schedule.queueTtlSeconds,
+    queueExpiresAt: new Date(Date.parse(createdAt) + schedule.queueTtlSeconds * 1000).toISOString(),
     timeout: schedule.timeout,
     priority: 0,
     requiredLabels: [],
     onConflict: "queue",
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
-    createdAt: state.now(),
-    retryCount: 0,
+    createdAt,
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
@@ -232,17 +231,18 @@ function createScheduledSession(
 
 function resolveScheduledTarget(
   state: ControlPlaneState,
-  schedule: import("./db/types.ts").ScheduleRecord,
-): { ok: true; label: string } | { ok: false; error: string } {
-  return resolveSessionTargetLabel(state, schedule.providerAccountId, schedule.commandId);
+  schedule: import("./control-plane-types.ts").ScheduleRecord,
+): { ok: true; labels: string[] } | { ok: false; error: string } {
+  return resolveTargetLabels(state, schedule.target, schedule.fallbacks);
 }
 
-function scheduledSessionInput(schedule: import("./db/types.ts").ScheduleRecord): {
+function scheduledSessionInput(schedule: import("./control-plane-types.ts").ScheduleRecord): {
   repositoryId: string;
   prompt: string;
-  providerAccountId?: string;
-  commandId?: string;
+  target: import("@auto-harness/shared").TargetRef;
+  fallbacks: import("@auto-harness/shared").TargetRef[];
   timeout: number;
+  queueTtlSeconds: number;
   type: string;
   source: string;
   ref?: string;
@@ -250,11 +250,10 @@ function scheduledSessionInput(schedule: import("./db/types.ts").ScheduleRecord)
   return {
     repositoryId: schedule.repositoryId,
     prompt: `scheduled:${schedule.name}`,
-    ...(schedule.providerAccountId !== undefined
-      ? { providerAccountId: schedule.providerAccountId }
-      : {}),
-    ...(schedule.commandId !== undefined ? { commandId: schedule.commandId } : {}),
+    target: schedule.target,
+    fallbacks: schedule.fallbacks,
     timeout: schedule.timeout,
+    queueTtlSeconds: schedule.queueTtlSeconds,
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),

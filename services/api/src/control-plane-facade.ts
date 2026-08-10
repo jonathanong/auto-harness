@@ -199,10 +199,11 @@ export class ControlPlaneBase {
   putSchedule(input: {
     repositoryId: string;
     name: string;
-    providerAccountId?: string;
-    commandId?: string;
+    target: unknown;
+    fallbacks?: unknown;
     cron: string;
     timeout: number;
+    queueTtlSeconds?: number;
     nextRunAt: string;
     enabled?: boolean;
     ref?: string;

@@ -24,6 +24,7 @@ export const TERMINAL_SESSION_STATUSES = [
 
 export const SESSION_ERROR_CODES = [
   "usage_limit",
+  "queue_expired",
   "resume_failed",
   "unknown_command_profile",
   "setup_failed",
@@ -45,6 +46,12 @@ export const SESSION_SOURCES = [
 
 /** Default max usage_limit auto-retries (docs/plan.md Invariant 6). */
 export const DEFAULT_USAGE_LIMIT_RETRY_CEILING = 2;
+
+/** A queued session has this long to find capacity before failing. */
+export const DEFAULT_QUEUE_TTL_SECONDS = 691_200;
+
+/** A provider account is paused for this long after reporting a usage limit. */
+export const DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS = 18_000;
 
 /** Default queue shard count for status-createdAt GSI. */
 export const DEFAULT_QUEUE_SHARD_COUNT = 4;

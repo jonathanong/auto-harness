@@ -11,6 +11,7 @@ test.describe("control plane providers", () => {
 
   test("create provider with its default command, then manage accounts/settings", async ({
     page,
+    request,
   }) => {
     const name = `pw-prov-${test.info().parallelIndex}-${Date.now()}`;
     const commandName = `${name}-print`;
@@ -33,6 +34,7 @@ test.describe("control plane providers", () => {
 
     await expect(page.getByTestId("form-add-provider-account")).toBeVisible();
     await page.getByTestId("provider-account-label").fill(`${name}@example.com`);
+    await page.getByTestId("provider-account-cooldown-seconds").fill("1234");
     await page.getByTestId("provider-account-submit").click();
     await expect(page.getByText(`${name}@example.com`)).toBeVisible();
     const accountRow = page.locator('[data-pw^="provider-account-row-"]').first();
@@ -40,6 +42,17 @@ test.describe("control plane providers", () => {
     const accountId = (await accountRow.getAttribute("data-pw"))!.replace(
       "provider-account-row-",
       "",
+    );
+    await expect(page.getByTestId(`provider-account-cooldown-${accountId}`)).toContainText("1234s");
+    await page.getByTestId(`provider-account-cooldown-edit-${accountId}`).click();
+    await page.getByTestId(`provider-account-cooldown-input-${accountId}`).fill("4321");
+    await page
+      .getByTestId(`provider-account-cooldown-form-${accountId}`)
+      .getByRole("button", { name: "Save" })
+      .click();
+    await expect(page.getByTestId(`provider-account-cooldown-${accountId}`)).toContainText(
+      "4321s",
+      { timeout: 15_000 },
     );
 
     await page.getByTestId("tab-commands").click();
@@ -88,6 +101,12 @@ test.describe("control plane providers", () => {
     await expect(page.getByTestId("provider-default-command-select")).toHaveValue("", {
       timeout: 15_000,
     });
+    await expect
+      .poll(async () => {
+        const response = await request.get(`http://127.0.0.1:7430/api/v1/providers/${providerId}`);
+        return ((await response.json()) as { defaultCommandId: string | null }).defaultCommandId;
+      })
+      .toBeNull();
 
     await page.goto(`/commands/${commandId}`);
     await page.getByTestId("delete-command-open").click();

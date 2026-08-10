@@ -89,7 +89,7 @@ pnpm --filter @auto-harness/cdk deploy
 Prefer **control plane first**, then agents, so old agents fail closed on unknown messages rather than new agents talking to old APIs.
 
 > **One-time backfill required if deploying onto a pre-existing populated environment:** the
-> `agentId`→`hostId` and `commandProfile`→`providerAccountId`/`commandId` renames changed
+> `agentId`→`hostId` and host inventory `commandProfile`→Provider Account attachments/catalog Commands renames changed
 > persisted attribute names on the Sessions, Worktrees, Connections, and host-inventory tables
 > without a compatibility shim. Rows written before this rename still carry the old attribute
 > names and will hydrate with `hostId`/target fields `undefined`. There is no such environment

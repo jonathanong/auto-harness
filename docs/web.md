@@ -76,16 +76,16 @@ First-time users or empty views show contextual guidance instead of blank pages:
 
 The session list is the primary view for monitoring work. It displays all sessions with the following columns:
 
-| Column     | Description                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Status     | Badge: `queued` (yellow), `running` (blue, animated), `completed` (green), `failed` (red), `cancelled` (gray), `timed_out` (orange). If `errorCode === usage_limit`, show a distinct “Usage limit” subtitle on failed sessions |
-| Repository | Repository name                                                                                                                                                                                                                |
-| Prompt     | Truncated first line of the prompt (click to expand)                                                                                                                                                                           |
-| Target     | Resolved target label (`targetLabel`) — a Command's name, or `"<provider> — <account label>"` for a Provider Account                                                                                                           |
-| Source     | Origin badge: `api`, `ui`, `webhook`, `schedule`                                                                                                                                                                               |
-| Priority   | Numeric priority value                                                                                                                                                                                                         |
-| Created    | Relative time (e.g. "2 minutes ago") with full timestamp on hover                                                                                                                                                              |
-| Duration   | Elapsed time for running sessions (live), total time for completed                                                                                                                                                             |
+| Column     | Description                                                                                                                                                                                                                           |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status     | Badge: `queued` (yellow), `running` (blue, animated), `completed` (green), `failed` (red), `cancelled` (gray), `timed_out` (orange). Show distinct “Usage limit” and “Queue expired” subtitles for `usage_limit` and `queue_expired`. |
+| Repository | Repository name                                                                                                                                                                                                                       |
+| Prompt     | Truncated first line of the prompt (click to expand)                                                                                                                                                                                  |
+| Target     | Configured target/fallback chain and resolved route — Provider targets show the selected provider/account, Command targets show the command; providerless commands are marked pure CLI                                                |
+| Source     | Origin badge: `api`, `ui`, `webhook`, `schedule`                                                                                                                                                                                      |
+| Priority   | Numeric priority value                                                                                                                                                                                                                |
+| Created    | Relative time (e.g. "2 minutes ago") with full timestamp on hover                                                                                                                                                                     |
+| Duration   | Elapsed time for running sessions (live), total time for completed                                                                                                                                                                    |
 
 ### Default View
 
@@ -146,21 +146,22 @@ Clicking a session in the list opens the session detail view.
 
 The header displays session metadata:
 
-| Field      | Display                                                                                     |
-| ---------- | ------------------------------------------------------------------------------------------- |
-| Session ID | Monospaced, copyable                                                                        |
-| Status     | Animated badge with status color                                                            |
-| Repository | Link to repository                                                                          |
-| Target     | Monospaced `targetLabel`; once assigned, "Resolved argv" shows the exact spawned array      |
-| Agent      | Agent name (if assigned)                                                                    |
-| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                         |
-| Priority   | Numeric value                                                                               |
-| Source     | Origin badge                                                                                |
-| Created    | Full timestamp                                                                              |
-| Started    | Full timestamp (if started)                                                                 |
-| Duration   | Live elapsed time (running) or total time (completed)                                       |
-| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions. |
-| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                         |
+| Field      | Display                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Session ID | Monospaced, copyable                                                                                                                 |
+| Status     | Animated badge with status color                                                                                                     |
+| Repository | Link to repository                                                                                                                   |
+| Target     | Configured target/fallback chain; once assigned, show selected Provider Account, Command, Host, Worktree, and exact resolved argv    |
+| Queue      | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline |
+| Agent      | Agent name (if assigned)                                                                                                             |
+| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                                                                  |
+| Priority   | Numeric value                                                                                                                        |
+| Source     | Origin badge                                                                                                                         |
+| Created    | Full timestamp                                                                                                                       |
+| Started    | Full timestamp (if started)                                                                                                          |
+| Duration   | Live elapsed time (running) or total time (completed)                                                                                |
+| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions.                                          |
+| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                                                                  |
 
 ### Prompt
 
@@ -236,14 +237,16 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 
 ### Form Fields
 
-| Field      | Type               | Required | Description                                                                                                                          |
-| ---------- | ------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Repository | Dropdown           | ✓        | Select from available repositories                                                                                                   |
-| Prompt     | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                                       |
-| Target     | Dropdown           | ✓        | `<optgroup>`s: Provider accounts, then Commands — sourced from `GET /session-targets`; no free-text option, never arbitrary commands |
-| Timeout    | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                                                    |
-| Priority   | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                                         |
-| Labels     | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                                |
+| Field      | Type               | Required | Description                                                                                                            |
+| ---------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Repository | Dropdown           | ✓        | Select from available repositories                                                                                     |
+| Prompt     | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                         |
+| Target     | Dropdown           | ✓        | Primary Provider or Command target, sourced from `GET /session-targets`; no free-text option                           |
+| Fallbacks  | Ordered list       | ✗        | Add, remove, and reorder fallback Provider/Command targets; tried only when the preceding target has no eligible route |
+| Queue TTL  | Number input       | ✗        | Absolute queue lifetime in seconds; default 691200 (8 days), never reset by fallback attempts                          |
+| Timeout    | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                                      |
+| Priority   | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                           |
+| Labels     | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                  |
 
 ### Submission
 
@@ -280,13 +283,15 @@ Displays all configured schedules in a table:
 
 ### Create/Edit Schedule Form
 
-| Field      | Type       | Required | Description                                                                                                 |
-| ---------- | ---------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| Repository | Text input | ✓        | Target repository id                                                                                        |
-| Name       | Text input | ✓        | Human-readable schedule name                                                                                |
-| Target     | Dropdown   | ✓        | Same `SessionTargetSelect` as Create Session — Provider account or standalone Command, never a shell string |
-| Cron       | Text input | ✓        | Raw 5-field cron expression                                                                                 |
-| Enabled    | Toggle     | ✗        | Default: enabled                                                                                            |
+| Field      | Type         | Required | Description                                                                              |
+| ---------- | ------------ | -------- | ---------------------------------------------------------------------------------------- |
+| Repository | Text input   | ✓        | Target repository id                                                                     |
+| Name       | Text input   | ✓        | Human-readable schedule name                                                             |
+| Target     | Dropdown     | ✓        | Same `SessionTargetSelect` as Create Session — Provider or Command, never a shell string |
+| Fallbacks  | Ordered list | ✗        | Ordered fallback Provider/Command targets                                                |
+| Queue TTL  | Number input | ✗        | Per-fire absolute queue lifetime; default 8 days                                         |
+| Cron       | Text input   | ✓        | Raw 5-field cron expression                                                              |
+| Enabled    | Toggle       | ✗        | Default: enabled                                                                         |
 
 ---
 
@@ -313,7 +318,7 @@ Form with fields: name, git URL, default branch, setup script (optional).
 
 Tabs: **Sessions** (default) · **Worktrees** · **Provider accounts** · **Settings**.
 
-The Provider accounts tab shows, for each host the repository is attached to, a labeled `ProviderScopeTable` block: every host-attached Provider Account's effective **Enabled** state (tri-state: inherited-on/inherited-off/explicit, with a "reset to inherited" option), which scope that value came from (**Inherited from**), and the **Effective command** with an inline override picker scoped to that account's provider's own commands. A repository can be attached to several hosts, so this tab can render several blocks.
+The Provider accounts tab shows, for each host the repository is attached to, a labeled `ProviderScopeTable` block: every host-attached Provider Account's effective **Enabled** state (tri-state: inherited-on/inherited-off/explicit, with a "reset to inherited" option), which scope that value came from (**Inherited from**), and the **Effective command** with an inline override picker scoped to that account's provider's own commands. Cooldown state is global and read-only here. A repository can be attached to several hosts, so this tab can render several blocks.
 
 ---
 
@@ -333,7 +338,7 @@ Table of registered hosts: agent id, online/offline status, attached repository 
 
 Tabs: **Overview** (status, repository/worktree counts) · **Repositories & Worktrees** (attach/detach, add worktrees) · **Provider accounts**.
 
-The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one.
+The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one. An account's usage-limit cooldown is global across hosts; clearing it on the Provider page makes it eligible everywhere immediately.
 
 ---
 

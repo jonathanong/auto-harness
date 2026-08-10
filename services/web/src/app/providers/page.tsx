@@ -55,6 +55,16 @@ export default async function ProvidersPage() {
           {providers.map((p) => {
             const defaultCommand = p.defaultCommandId ? commandById.get(p.defaultCommandId) : null;
             const accountCount = accounts.filter((a) => a.providerId === p.id).length;
+            const pausedCount = accounts.filter(
+              (a) =>
+                a.providerId === p.id &&
+                Boolean(
+                  (a as ProviderAccount & { usageLimitedUntil?: string | null }).usageLimitedUntil,
+                ) &&
+                new Date(
+                  (a as ProviderAccount & { usageLimitedUntil?: string | null }).usageLimitedUntil!,
+                ).getTime() > Date.now(),
+            ).length;
             const commandCount = commands.filter((c) => c.providerId === p.id).length;
             return (
               <TableRow key={p.id} data-pw={`provider-row-${p.id}`}>
@@ -68,7 +78,12 @@ export default async function ProvidersPage() {
                   </Link>
                 </TableCell>
                 <TableCell className="font-mono text-xs">{defaultCommand?.name ?? "—"}</TableCell>
-                <TableCell>{accountCount}</TableCell>
+                <TableCell>
+                  {accountCount}
+                  {pausedCount ? (
+                    <span className="ml-2 text-xs text-amber-700">({pausedCount} paused)</span>
+                  ) : null}
+                </TableCell>
                 <TableCell>{commandCount}</TableCell>
               </TableRow>
             );

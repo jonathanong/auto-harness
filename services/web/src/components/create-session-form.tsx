@@ -5,8 +5,8 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
-import { decodeSessionTargetOptionValue, type SessionTarget } from "../session-target.ts";
-import { SessionTargetSelect } from "./session-target-select.tsx";
+import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
+import { SessionRoutingFields } from "./session-routing-fields.tsx";
 
 export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
   const router = useRouter();
@@ -21,11 +21,13 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
         e.preventDefault();
         setError(null);
         const fd = new FormData(e.currentTarget);
-        const target = decodeSessionTargetOptionValue(String(fd.get("target") ?? ""));
+        const { target, fallbacks } = decodeSessionRoutingFormData(fd);
         const body = {
           repositoryId: String(fd.get("repositoryId") ?? ""),
           prompt: String(fd.get("prompt") ?? ""),
-          ...target,
+          target,
+          fallbacks,
+          queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           timeout: Number(fd.get("timeout") ?? 600),
           ref: String(fd.get("ref") ?? "") || undefined,
         };
@@ -67,15 +69,7 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="target" tip="Provider account (cascade-resolved) or standalone command">
-          Target
-        </Label>
-        <SessionTargetSelect
-          targets={targets}
-          id="target"
-          name="target"
-          dataPw="create-session-target"
-        />
+        <SessionRoutingFields targets={targets} prefix="create-session" />
       </div>
       <div className="space-y-1">
         <Label htmlFor="prompt" tip="Prompt text passed to the resolved command">
@@ -104,6 +98,22 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
           <Input id="ref" name="ref" placeholder="main" data-pw="create-session-ref" />
         </div>
       </div>
+      <div className="space-y-1">
+        <Label
+          htmlFor="queueTtlSeconds"
+          tip="Absolute maximum time a queued session may wait; it is not reset by retries"
+        >
+          Queue TTL (s)
+        </Label>
+        <Input
+          id="queueTtlSeconds"
+          name="queueTtlSeconds"
+          type="number"
+          defaultValue={691200}
+          min={1}
+          data-pw="create-session-queue-ttl"
+        />
+      </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="create-session-error">
           {error}
@@ -112,7 +122,7 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
       <WithTooltip
         tip={
           targets.length === 0
-            ? "Add a provider account or command first"
+            ? "Add a provider or command first"
             : "Queue a session for assignment to an online agent worktree"
         }
       >

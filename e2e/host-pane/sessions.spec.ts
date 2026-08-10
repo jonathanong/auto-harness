@@ -59,7 +59,7 @@ test.describe("host pane sessions", () => {
           data: {
             repositoryId: repoId,
             prompt: `hello-${wtId}`,
-            commandId,
+            target: { commandId },
             timeout: 30,
             requiredLabels: ["echo"],
           },

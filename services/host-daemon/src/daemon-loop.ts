@@ -1,4 +1,4 @@
-/* eslint-disable max-lines */
+/* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import type { HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -9,7 +9,7 @@ import { configureConnectionEvents } from "./daemon-connection-events.ts";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
 import { sendDaemonLog } from "./daemon-log-sender.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
-import { sessionAssignFromWire } from "./session-assign.ts";
+import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
@@ -197,8 +197,29 @@ export class DaemonLoop {
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
     signal: AbortSignal,
   ): Promise<void> {
-    await this.outbound.send({ type: "session:ack", sessionId: msg.sessionId }, { signal });
+    // A scheduler never assigns the main checkout here, but keep the outbound
+    // acknowledgement fence well-typed if an invalid control-plane frame gets through.
+    if (msg.worktreeId === null) {
+      throw new Error(`assignment ${msg.sessionId} is missing a worktree`);
+    }
+    await this.outbound.send(
+      {
+        type: "session:ack",
+        sessionId: msg.sessionId,
+        worktreeId: msg.worktreeId,
+        attemptId: msg.attemptId,
+      },
+      { signal },
+    );
     if (!(await this.waitForAcknowledgement(msg.sessionId, signal))) return;
+    const route = resolvedRouteMetadata(msg);
+    if (route.targetIndex !== undefined || route.commandId || route.providerAccountId) {
+      this.onLog?.(
+        `resolved route for ${msg.sessionId}: target=${route.targetIndex ?? "?"}` +
+          `${route.commandId ? ` command=${route.commandId}` : ""}` +
+          `${route.providerAccountId ? ` providerAccount=${route.providerAccountId}` : ""}`,
+      );
+    }
 
     const assign = sessionAssignFromWire(msg);
 
@@ -225,6 +246,8 @@ export class DaemonLoop {
     await this.outbound.send({
       type: "session:status",
       sessionId: msg.sessionId,
+      worktreeId: msg.worktreeId,
+      attemptId: msg.attemptId,
       status: result.status,
       exitCode: result.exitCode,
       ...(result.errorCode !== undefined ? { errorCode: result.errorCode } : {}),

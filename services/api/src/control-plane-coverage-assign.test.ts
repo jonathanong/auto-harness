@@ -24,7 +24,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeE.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     const es = planeE.state.sessions.get("e1")!;
@@ -57,7 +57,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
       ref: "main",
     });
@@ -113,7 +113,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeG.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     const gMap = planeG.state.worktrees;

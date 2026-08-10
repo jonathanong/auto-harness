@@ -43,6 +43,7 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
     id?: string;
     providerId: string;
     label: string;
+    usageLimitCooldownSeconds?: number;
   }): { ok: true; account: ProviderAccountRecord } | { ok: false; error: string } {
     return providerAccounts.createProviderAccount(this.state, input);
   }
@@ -57,9 +58,13 @@ export class ControlPlaneCatalog extends ControlPlaneBase {
 
   updateProviderAccount(
     id: string,
-    patch: Partial<{ providerId: string; label: string }>,
+    patch: Partial<{ providerId: string; label: string; usageLimitCooldownSeconds: number }>,
   ): { ok: true; account: ProviderAccountRecord } | { ok: false; error: string } {
     return providerAccounts.updateProviderAccount(this.state, id, patch);
+  }
+
+  clearProviderAccountUsageLimit(id: string) {
+    return providerAccounts.clearProviderAccountUsageLimit(this.state, id);
   }
 
   deleteProviderAccount(id: string): { ok: true } | { ok: false; error: string } {

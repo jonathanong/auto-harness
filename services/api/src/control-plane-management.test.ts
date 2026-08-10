@@ -101,7 +101,7 @@ describe("ControlPlane operator management", () => {
       id: "sched-1",
       repositoryId: "repo-1",
       name: "nightly",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       cron: "0 0 * * *",
       timeout: 60,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -114,7 +114,7 @@ describe("ControlPlane operator management", () => {
     expect(plane.listSchedules()).toHaveLength(1);
     const updated = plane.updateSchedule("sched-1", {
       name: "nightly2",
-      commandId: "cmd-codex",
+      target: { commandId: "cmd-codex" },
       cron: "0 1 * * *",
       timeout: 90,
       nextRunAt: "2026-01-02T00:00:00.000Z",
@@ -131,7 +131,7 @@ describe("ControlPlane operator management", () => {
     const auto = putScheduleOrThrow(plane, {
       repositoryId: "r",
       name: "a",
-      commandId: "cmd-c",
+      target: { commandId: "cmd-c" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "t",
@@ -143,7 +143,7 @@ describe("ControlPlane operator management", () => {
     if (fired.ok) {
       expect(fired.session.type).toBe("scheduled");
       expect(fired.session.source).toBe("schedule");
-      expect(fired.session.targetLabel).toBe("codex-fix");
+      expect(fired.session.targetLabels).toEqual(["codex-fix"]);
       expect(fired.session.ref).toBe("develop");
       expect(fired.session.prompt).toBe("scheduled:nightly2");
     }
@@ -197,7 +197,12 @@ describe("ControlPlane operator management", () => {
     plane.createSession(baseSessionBody({ prompt: "running-cancel" }));
     plane.assignQueued();
     const running = plane.listSessions().find((s) => s.prompt === "running-cancel")!;
-    plane.handleHostMessage({ type: "session:ack", sessionId: running.id });
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: running.id,
+      worktreeId: running.worktreeId as string,
+      attemptId: running.attemptId as string,
+    });
     const cancelR = plane.cancelSession(running.id);
     expect(cancelR.ok).toBe(true);
     if (cancelR.ok) {

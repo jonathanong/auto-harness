@@ -9,7 +9,11 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     id: "s1",
     repositoryId: "repo-1",
     prompt: "hello",
-    targetLabel: "x",
+    target: { providerId: "prov-1" },
+    fallbacks: [],
+    targetLabels: ["x"],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2099-01-01T00:00:00.000Z",
     timeout: 30,
     priority: 0,
     requiredLabels: [],
@@ -66,7 +70,7 @@ describe("resolveSessionTargetArgv: provider-account cascade", () => {
     const argv = resolveSessionTargetArgv(
       state,
       catalog,
-      session({ providerAccountId: "acct-1" }),
+      session({ target: { providerId: "prov-1" } }),
       worktree(),
     );
     expect(argv).toBeNull();
@@ -108,7 +112,7 @@ describe("resolveSessionTargetArgv: provider-account cascade", () => {
     const argv = resolveSessionTargetArgv(
       state,
       catalog,
-      session({ providerAccountId: "acct-1", prompt: "do it" }),
+      session({ target: { providerId: "prov-1" }, prompt: "do it" }),
       worktree(),
     );
     expect(argv).toEqual(["claude", "-p", "do it"]);

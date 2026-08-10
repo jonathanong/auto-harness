@@ -41,6 +41,29 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.putProviderAccount(this.ctx, rec);
   }
 
+  updateProviderAccount(opts: {
+    id: string;
+    expectedUpdatedAt: string;
+    updatedAt: string;
+    patch: Partial<
+      Pick<
+        ProviderAccountRecord,
+        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
+      >
+    >;
+  }): Promise<boolean> {
+    return catalog.updateProviderAccount(this.ctx, opts);
+  }
+
+  clearProviderAccountUsageLimit(opts: {
+    id: string;
+    expectedUpdatedAt: string;
+    expectedUsageLimitedUntil?: string | null;
+    updatedAt: string;
+  }): Promise<boolean> {
+    return catalog.clearProviderAccountUsageLimit(this.ctx, opts);
+  }
+
   getProviderAccount(id: string): Promise<ProviderAccountRecord | null> {
     return catalog.getProviderAccount(this.ctx, id);
   }

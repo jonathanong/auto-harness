@@ -1,4 +1,12 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import {
+  ProviderAccountHealth,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 import type {
   Command,
   Provider,
@@ -58,6 +66,7 @@ export function ProviderScopeTable({
       <TableHeader>
         <TableRow>
           <TableHead>account</TableHead>
+          <TableHead>health</TableHead>
           <TableHead>enabled</TableHead>
           <TableHead>inherited from</TableHead>
           <TableHead>effective command</TableHead>
@@ -80,6 +89,14 @@ export function ProviderScopeTable({
               data-pw={`provider-scope-row-${r.providerAccountId}`}
             >
               <TableCell className="font-mono text-sm">{label}</TableCell>
+              <TableCell>
+                <ProviderAccountHealth
+                  pw={`provider-scope-health-${r.providerAccountId}`}
+                  usageLimitedUntil={account?.usageLimitedUntil}
+                  usageLimitCooldownSeconds={account?.usageLimitCooldownSeconds}
+                  lastUsageLimitedAt={account?.lastUsageLimitedAt}
+                />
+              </TableCell>
               <TableCell>
                 <ScopeProviderEnabledForm
                   hostId={hostId}

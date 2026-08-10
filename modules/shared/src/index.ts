@@ -14,6 +14,7 @@ export type {
   HostToServerMessage,
   HostWireMessage,
   CreateSessionFields,
+  TargetRef,
   SessionAssign,
   SessionResumeSpec,
   SessionLogChunk,
@@ -36,7 +37,8 @@ export {
   DEFAULT_ARCHIVE_PREFIX,
   DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
-  DEFAULT_USAGE_LIMIT_RETRY_CEILING,
+  DEFAULT_QUEUE_TTL_SECONDS,
+  DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
   LOCAL_HOST_ID,
   LOCAL_HOST_PANE_HTTP,
   LOCAL_API_HTTP,
@@ -51,6 +53,7 @@ export {
   SESSION_TYPES,
   TERMINAL_SESSION_STATUSES,
 } from "./constants.ts";
+export { validateTargetRouting } from "./validation.ts";
 
 export type { ValidationResult } from "./validation.ts";
 export {

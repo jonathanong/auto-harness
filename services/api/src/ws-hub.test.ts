@@ -22,6 +22,16 @@ describe("createPlaneWsBridge", () => {
     expect(parseHostMessage({ type: "session:status", sessionId: "s", status: "bogus" })).toBe(
       null,
     );
+    expect(parseHostMessage({ type: "session:ack", sessionId: "s" })).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:status",
+        sessionId: "s",
+        status: "completed",
+        worktreeId: "wt-1",
+        attemptId: "attempt-1",
+      }),
+    ).toMatchObject({ type: "session:status", attemptId: "attempt-1" });
     expect(
       parseHostMessage({
         type: "session:status",
@@ -108,7 +118,7 @@ describe("createPlaneWsBridge", () => {
           plane.createSession({
             repositoryId: "r1",
             prompt: "p",
-            commandId: "cmd-echo",
+            target: { commandId: "cmd-echo" },
             timeout: 10,
           });
           plane.assignQueued();

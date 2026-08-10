@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
-describe("putSchedule / updateSchedule targeting", () => {
+describe("schedule routing policy", () => {
   it("rejects non-branch schedule refs at create and update", () => {
     const plane = new ControlPlane();
     seedBaseCommand(plane);
@@ -11,7 +11,7 @@ describe("putSchedule / updateSchedule targeting", () => {
       plane.putSchedule({
         repositoryId: "repo-1",
         name: "tag-ref",
-        commandId: "cmd-base",
+        target: { commandId: "cmd-base" },
         cron: "* * * * *",
         timeout: 1,
         nextRunAt: "t",
@@ -21,7 +21,7 @@ describe("putSchedule / updateSchedule targeting", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "branch-ref",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "t",
@@ -34,176 +34,121 @@ describe("putSchedule / updateSchedule targeting", () => {
     expect(plane.getSchedule(schedule.id)?.ref).toBe("main");
   });
 
-  it("putSchedule rejects a commandId that doesn't exist", () => {
-    const plane = new ControlPlane();
-    const result = plane.putSchedule({
-      repositoryId: "repo-1",
-      name: "n",
-      commandId: "missing",
-      cron: "* * * * *",
-      timeout: 1,
-      nextRunAt: "t",
-    });
-    expect(result).toEqual({ ok: false, error: "commandId missing not found" });
-  });
-
-  it("updateSchedule rejects retargeting to a commandId that doesn't exist", () => {
+  it("validates the primary and every fallback target", () => {
     const plane = new ControlPlane();
     seedBaseCommand(plane);
-    const sched = putScheduleOrThrow(plane, {
+    const base = {
       repositoryId: "repo-1",
       name: "n",
-      commandId: "cmd-base",
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "t",
-    });
-    const result = plane.updateSchedule(sched.id, { commandId: "missing" });
-    expect(result).toEqual({ ok: false, error: "commandId missing not found" });
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(
+      plane.putSchedule({
+        ...base,
+        target: { commandId: "missing" },
+      }),
+    ).toEqual({ ok: false, error: "commandId missing not found" });
+    expect(
+      plane.putSchedule({
+        ...base,
+        target: { commandId: "cmd-base" },
+        fallbacks: [{ commandId: "missing" }],
+      }),
+    ).toEqual({ ok: false, error: "commandId missing not found" });
   });
 
-  it("updateSchedule switching commandId -> providerAccountId clears the stale commandId", () => {
+  it("rejects malformed routes, duplicates, and invalid queue TTL on create and update", () => {
     const plane = new ControlPlane();
     seedBaseCommand(plane);
-    plane.createProvider({ id: "prov-1", name: "claude", defaultCommandId: null });
-    plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "x@y.com" });
-    const sched = putScheduleOrThrow(plane, {
+    const base = {
       repositoryId: "repo-1",
       name: "n",
-      commandId: "cmd-base",
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "t",
-    });
-    const result = plane.updateSchedule(sched.id, { providerAccountId: "acct-1" });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.schedule.providerAccountId).toBe("acct-1");
-      expect(result.schedule.commandId).toBeUndefined();
-      expect(result.schedule.targetLabel).toBe("claude — x@y.com");
-    }
+      nextRunAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(plane.putSchedule({ ...base, target: { providerId: "p", commandId: "c" } }).ok).toBe(
+      false,
+    );
+    expect(
+      plane.putSchedule({
+        ...base,
+        target: { commandId: "cmd-base" },
+        fallbacks: [{ commandId: "cmd-base" }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      plane.putSchedule({ ...base, target: { commandId: "cmd-base" }, queueTtlSeconds: 0 }).ok,
+    ).toBe(false);
+    const saved = putScheduleOrThrow(plane, { ...base, target: { commandId: "cmd-base" } });
+    expect(plane.updateSchedule(saved.id, { fallbacks: "not-an-array" }).ok).toBe(false);
   });
 
-  it("updateSchedule switching providerAccountId -> commandId clears the stale providerAccountId", () => {
-    const plane = new ControlPlane();
+  it("copies ordered target policy and a fresh TTL to every fire", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const plane = new ControlPlane({ idFactory: () => "sess-1", now: () => now });
     seedBaseCommand(plane);
-    plane.createProvider({ id: "prov-1", name: "claude", defaultCommandId: null });
-    plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "x@y.com" });
-    const sched = putScheduleOrThrow(plane, {
+    plane.createCommand({
+      id: "cmd-base-2",
+      name: "echo-2",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "n",
-      providerAccountId: "acct-1",
+      target: { commandId: "cmd-base" },
+      fallbacks: [{ commandId: "cmd-base-2" }],
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "t",
+      queueTtlSeconds: 10,
+      nextRunAt: now,
     });
-    const result = plane.updateSchedule(sched.id, { commandId: "cmd-base" });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.schedule.commandId).toBe("cmd-base");
-      expect(result.schedule.providerAccountId).toBeUndefined();
-    }
-  });
-
-  it("triggerSchedule forwards a providerAccountId target onto the created session", () => {
-    const plane = new ControlPlane({ idFactory: () => "sess-trigger", now: () => "t" });
-    plane.createProvider({ id: "prov-1", name: "claude", defaultCommandId: null });
-    plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "x@y.com" });
-    const sched = putScheduleOrThrow(plane, {
-      repositoryId: "repo-1",
-      name: "n",
-      providerAccountId: "acct-1",
-      cron: "* * * * *",
-      timeout: 1,
-      nextRunAt: "t",
-    });
-    const fired = plane.triggerSchedule(sched.id, "2026-01-01T00:00:00.000Z");
+    const fired = plane.triggerSchedule(schedule.id, now);
     expect(fired.ok).toBe(true);
     if (fired.ok) {
-      expect(fired.session.providerAccountId).toBe("acct-1");
-      expect(fired.session.commandId).toBeUndefined();
+      expect(fired.session.target).toEqual({ commandId: "cmd-base" });
+      expect(fired.session.fallbacks).toEqual([{ commandId: "cmd-base-2" }]);
+      expect(fired.session.queueExpiresAt).toBe("2026-01-01T00:00:10.000Z");
     }
   });
 
-  it("evaluateCron/tryClaimScheduleFire forward a providerAccountId target onto the created session", () => {
-    const plane = new ControlPlane({
-      idFactory: () => "sess-cron",
-      now: () => "2026-01-01T01:00:00.000Z",
-      scheduleIdFactory: () => "sched-cron",
-    });
-    plane.createProvider({ id: "prov-1", name: "claude", defaultCommandId: null });
-    plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "x@y.com" });
-    putScheduleOrThrow(plane, {
-      repositoryId: "repo-1",
-      name: "n",
-      providerAccountId: "acct-1",
-      cron: "0 * * * *",
-      timeout: 1,
-      nextRunAt: "2026-01-01T00:00:00.000Z",
-    });
-    const created = plane.evaluateCron();
-    expect(created).toHaveLength(1);
-    expect(created[0]?.providerAccountId).toBe("acct-1");
-  });
-
-  it("updateSchedule leaves the target untouched when neither field is patched", () => {
+  it("updates an entire target chain", () => {
     const plane = new ControlPlane();
     seedBaseCommand(plane);
-    const sched = putScheduleOrThrow(plane, {
+    const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "n",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "t",
+      nextRunAt: "2026-01-01T00:00:00.000Z",
     });
-    const result = plane.updateSchedule(sched.id, { name: "renamed" });
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.schedule.commandId).toBe("cmd-base");
-      expect(result.schedule.name).toBe("renamed");
-    }
+    const result = plane.updateSchedule(schedule.id, { fallbacks: [{ commandId: "missing" }] });
+    expect(result).toEqual({ ok: false, error: "commandId missing not found" });
   });
 
-  it("keeps schedule cursors unchanged when a command or provider account is deleted", () => {
-    const plane = new ControlPlane({
-      scheduleIdFactory: (() => {
-        let n = 0;
-        return () => `stale-target-${++n}`;
-      })(),
-      now: () => "2026-01-01T00:00:00.000Z",
-    });
+  it("rejects a schedule fire when a stored target is no longer catalogued", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const plane = new ControlPlane({ now: () => now, scheduleIdFactory: () => "schedule-1" });
     seedBaseCommand(plane);
-    const commandSchedule = putScheduleOrThrow(plane, {
+    const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
-      name: "command",
-      commandId: "cmd-base",
+      name: "n",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "2026-01-01T00:00:00.000Z",
+      nextRunAt: now,
     });
-    plane.deleteCommand("cmd-base");
-    expect(plane.triggerSchedule(commandSchedule.id).ok).toBe(false);
-    expect(plane.getSchedule(commandSchedule.id)?.nextRunAt).toBe("2026-01-01T00:00:00.000Z");
+    plane.state.schedules.get(schedule.id)!.target = { commandId: "deleted" };
 
-    plane.createProvider({ id: "prov-stale", name: "claude", defaultCommandId: null });
-    plane.createProviderAccount({ id: "acct-stale", providerId: "prov-stale", label: "x@y.com" });
-    const accountSchedule = putScheduleOrThrow(plane, {
-      repositoryId: "repo-1",
-      name: "account",
-      providerAccountId: "acct-stale",
-      cron: "* * * * *",
-      timeout: 1,
-      nextRunAt: "2026-01-01T00:00:00.000Z",
+    expect(plane.triggerSchedule(schedule.id, now)).toEqual({
+      ok: false,
+      error: "commandId deleted not found",
     });
-    plane.deleteProviderAccount("acct-stale");
-    expect(
-      plane.tryClaimScheduleFire(
-        accountSchedule.id,
-        "2026-01-01T00:00:00.000Z",
-        "2026-01-01T00:00:00.000Z",
-      ),
-    ).toBeNull();
-    expect(plane.getSchedule(accountSchedule.id)?.nextRunAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(plane.tryClaimScheduleFire(schedule.id, now, now)).toBeNull();
   });
 });

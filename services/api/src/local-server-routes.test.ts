@@ -38,7 +38,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       timeout: 10,
       ref: "main",
       metadata: { a: 1 },
@@ -46,11 +46,14 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect(created.status).toBe(201);
 
     expect((await invoke("POST", "/api/v1/scheduler/assign")).status).toBe(200);
+    const assigned = plane.getSession("sess-1")!;
     expect(
       (
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "sess-1",
+          worktreeId: assigned.worktreeId as string,
+          attemptId: assigned.attemptId as string,
         })
       ).status,
     ).toBe(410);
@@ -71,6 +74,8 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:status",
           sessionId: "sess-1",
+          worktreeId: assigned.worktreeId as string,
+          attemptId: assigned.attemptId as string,
           status: "completed",
         })
       ).status,
@@ -134,7 +139,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p",
-          commandId: "cmd-echo",
+          target: { commandId: "cmd-echo" },
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",
@@ -146,7 +151,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p2",
-          commandId: "cmd-echo",
+          target: { commandId: "cmd-echo" },
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",
@@ -159,6 +164,8 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "missing",
+          worktreeId: "missing",
+          attemptId: "missing",
         })
       ).status,
     ).toBe(410);

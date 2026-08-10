@@ -259,17 +259,15 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 ### Assignment algorithm
 
 1. **Load session** (must be `queued`).
-2. **Host-pinned resume path** — if `pinnedHostId` is set (from [`POST /sessions/:id/resume`](api.md#post-sessionsidresume)):
-   - Candidate set is any eligible worktree on that host: `idle`, agent online, not draining, `repositoryId` and labels match
-   - If no candidate is ready → leave `queued` until `pinExpiresAt`; expiry fails with `resume_failed`
-   - On assign, `session:assign` includes `resume: true`, optional source `ref`, `resumedFromSessionId`, and `cliResumeRef?`
-3. **Normal path** — filter candidates — worktrees where:
+2. **Native resume preference** — if a source route and `cliResumeRef` are available, prefer that host/worktree while it is idle, online, not draining, and the account is eligible. If it is unavailable, clear the native ref and placement pins, preserve `resumedFromSessionId`, and continue as a fresh target/fallback assignment.
+3. **Target/fallback path** — for each target in order, filter candidates — worktrees where:
    - `repositoryId` matches session
    - `status === idle`
    - agent is **online** (active Connection for `hostId`)
    - not draining
    - `labels` is a superset of session `requiredLabels` (empty requirements → any labels)
-4. If no candidates → leave session `queued`; return.
+   - Provider-backed targets have an attached account outside `usageLimitedUntil`; providerless commands have no account gate
+4. If no candidates for this target, advance to the next fallback. If no target has candidates, leave session `queued` until its absolute `queueExpiresAt`; then fail `queue_expired`.
 5. **Round-robin** among candidates:
    - Sort by `lastAssignedAt` ascending (missing/null first)
    - Tie-break by `worktreeId` ascending
@@ -278,7 +276,7 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
    - Set worktree `status=busy`, `currentSessionId`, `lastAssignedAt=now`
    - `postToConnection` → `session:assign` payload
    - On agent `session:ack`: set session `status=running`, `worktreeId`, `startedAt`, `hostId`
-7. If `postToConnection` fails (stale connection): mark agent offline; for **pinned** sessions re-queue on same pin only; for normal sessions try next candidate or re-queue.
+7. If `postToConnection` fails (stale connection): mark agent offline; try the next eligible candidate/target or re-queue.
 
 ### Drain path (worktree free)
 
@@ -299,14 +297,14 @@ When a session ends or is cancelled:
 
 ### Multi-agent behavior summary
 
-| Situation                                 | Behavior                                                                                                                                |
-| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Several matching idle worktrees           | Round-robin by `lastAssignedAt`                                                                                                         |
-| **Resume** (`pinnedHostId`)               | Any eligible worktree on that host; re-checkout `ref` when present (otherwise default branch), skip setup, never rehome to another host |
-| Matching worktrees only on offline agents | Stay `queued`                                                                                                                           |
-| Agent is **draining** (auto-update)       | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining))                                               |
-| Agent disconnect mid-session              | See [Disconnect handling](#disconnect-handling)                                                                                         |
-| No agent has the repository registered    | Stay `queued` until some agent registers it                                                                                             |
+| Situation                                 | Behavior                                                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Several matching idle worktrees           | Round-robin by `lastAssignedAt`                                                                            |
+| **Resume native route**                   | Prefer source agent/worktree; if unavailable, clear ref/pins and route fresh through target/fallback order |
+| Matching worktrees only on offline agents | Stay `queued`                                                                                              |
+| Agent is **draining** (auto-update)       | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining))                  |
+| Agent disconnect mid-session              | See [Disconnect handling](#disconnect-handling)                                                            |
+| No agent has the repository registered    | Stay `queued` until some agent registers it                                                                |
 
 ---
 

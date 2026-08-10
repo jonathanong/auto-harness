@@ -19,8 +19,9 @@ curl -fsS -X PUT "http://127.0.0.1:7420/api/v1/hosts/local-1/inventory" \
   -H 'content-type: application/json' \
   -d @examples/local/host-inventory.config.json
 
-# A session/schedule targets a Provider Account or a standalone Command from the global
-# catalog, not the host config — create one before creating any session:
+# A session/schedule targets a Provider or Command from the global catalog, not the host
+# config. A Provider target uses its healthy attached account pool; a providerless Command
+# is a pure CLI target. Create a command before creating a session:
 curl -fsS -X POST "http://127.0.0.1:7420/api/v1/commands" \
   -H 'content-type: application/json' \
   -d '{"name":"echo-prompt","argv":["echo"],"appendPrompt":true,"providerId":null}'
@@ -84,12 +85,12 @@ pnpm local:api
 # optional: node services/api/src/cli.ts serve --port 7420
 ```
 
-| Method | Path                   | Notes                                                                                                                                                              |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`  | `/health`              | `{ ok: true }`                                                                                                                                                     |
-| `POST` | `/api/v1/sessions`     | body: `repositoryId`, `prompt`, exactly one of `providerAccountId`/`commandId`, `timeout` (+ optional `ref`, labels, …) → `201` with `id`, `status: queued`, `url` |
-| `GET`  | `/api/v1/sessions`     | list                                                                                                                                                               |
-| `GET`  | `/api/v1/sessions/:id` | get                                                                                                                                                                |
+| Method | Path                   | Notes                                                                                                                                                                            |
+| ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/health`              | `{ ok: true }`                                                                                                                                                                   |
+| `POST` | `/api/v1/sessions`     | body: `repositoryId`, `prompt`, `target`, optional ordered `fallbacks` and `queueTtlSeconds`, `timeout` (+ optional `ref`, labels, …) → `201` with `id`, `status: queued`, `url` |
+| `GET`  | `/api/v1/sessions`     | list                                                                                                                                                                             |
+| `GET`  | `/api/v1/sessions/:id` | get                                                                                                                                                                              |
 
 No auto-dispatch to the agent yet — bridge with a session assign file for `run-session`.
 
@@ -128,20 +129,24 @@ GET /api/v1/host-inventories
 }
 ```
 
-`commandProfiles` is still a required field on this document (legacy shape), but nothing resolves
-session/schedule commands from it anymore — it's always safe to send `{}`. What a session actually
-runs is **named, fixed argv** (D4), resolved from the global Provider/Provider Account/Command
-catalogs, not from this document:
+`commandProfiles` is still accepted on this document for host-config compatibility, but nothing
+resolves session/schedule commands from it anymore — it's always safe to send `{}`. What a session
+actually runs is **named, fixed argv** (D4), resolved from the global Provider/Provider Account/
+Command catalogs, not from this document:
 
 ```bash
 POST /api/v1/providers            # {name} — creates the provider AND its default command
 POST /api/v1/provider-accounts    # {providerId, label}
 POST /api/v1/commands             # {name, argv, appendPrompt, providerId} — providerId: null for standalone
-GET  /api/v1/session-targets      # unified picker: attached provider accounts + standalone commands
+GET  /api/v1/session-targets      # unified picker: Providers + Commands (including providerless)
 ```
 
-`POST /api/v1/sessions`/`schedules` then take exactly one of `providerAccountId` (cascade-resolved:
-worktree → repository → host → the provider's own default command) or `commandId` (standalone,
-ungated). An unknown id is rejected at create time; free-form command strings are never accepted.
+`POST /api/v1/sessions`/`schedules` take a `target` and ordered `fallbacks`: `{ providerId }`
+uses that provider's healthy attached account pool; `{ commandId }` uses that exact command,
+with its provider pool when provider-owned; and a command whose `providerId` is `null` is a
+providerless pure CLI that runs ungated. An unknown id is rejected at create time; free-form
+command strings are never accepted. Provider Account cooldowns default to 5 hours and queued
+sessions expire after 8 days unless `queueTtlSeconds` is set. A usage limit pauses the assigned
+account globally and immediately advances the route; ordinary failures remain terminal.
 
 Template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Or use the Hosts page in the local web UI.

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -93,12 +94,26 @@ describe("createLocalApp operator management REST", () => {
     });
 
     expect((await invoke("POST", "/api/v1/schedules", { name: "x" })).status).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-1",
+          name: "missing-target",
+          target: null,
+          cron: "* * * * *",
+          timeout: 1,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+        })
+      ).status,
+    ).toBe(400);
     const sched = await invoke("POST", "/api/v1/schedules", {
       repositoryId: "repo-1",
       name: "nightly",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
+      fallbacks: [{ commandId: "cmd-codex" }],
       cron: "0 0 * * *",
       timeout: 30,
+      queueTtlSeconds: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
       ref: "main",
       enabled: true,
@@ -117,9 +132,11 @@ describe("createLocalApp operator management REST", () => {
         await invoke("PATCH", "/api/v1/schedules/sched-1", {
           name: "nightly2",
           timeout: 45,
-          commandId: "cmd-codex",
+          target: { commandId: "cmd-codex" },
+          fallbacks: [],
           cron: "0 1 * * *",
           nextRunAt: "2026-01-02T00:00:00.000Z",
+          queueTtlSeconds: 20,
           enabled: true,
           ref: "develop",
           repositoryId: "repo-1",
@@ -128,10 +145,19 @@ describe("createLocalApp operator management REST", () => {
     ).toMatchObject({
       name: "nightly2",
       timeout: 45,
-      targetLabel: "codex-fix",
+      targetLabels: ["codex-fix"],
       ref: "develop",
+      queueTtlSeconds: 20,
     });
     expect((await invoke("PATCH", "/api/v1/schedules/nope", { name: "x" })).status).toBe(404);
+    expect(
+      (
+        await invoke("PATCH", "/api/v1/schedules/sched-1", {
+          target: { commandId: "missing" },
+        })
+      ).status,
+    ).toBe(400);
+    expect(await invokeBadJson(handler, "PATCH", "/api/v1/schedules/sched-1")).toBe(400);
 
     const triggered = await invoke("POST", "/api/v1/schedules/sched-1/trigger");
     expect(triggered.status).toBe(201);
@@ -139,14 +165,23 @@ describe("createLocalApp operator management REST", () => {
       type: "scheduled",
       source: "schedule",
       prompt: "scheduled:nightly2",
-      targetLabel: "codex-fix",
+      targetLabels: ["codex-fix"],
     });
+    expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: false })).status).toBe(
+      200,
+    );
+    expect((await invoke("POST", "/api/v1/schedules/sched-1/trigger")).status).toBe(400);
+    expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: true })).status).toBe(
+      200,
+    );
     expect((await invoke("POST", "/api/v1/schedules/missing/trigger")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/schedules/sched-1")).status).toBe(404);
+    expect((await invoke("POST", "/api/v1/schedules/sched-1")).status).toBe(404);
 
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "repo-1",
       prompt: "cancel-me",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       timeout: 10,
     });
     expect(created.status).toBe(201);
@@ -186,6 +221,5 @@ describe("createLocalApp operator management REST", () => {
     expect(await invokeBadJson(handler, "POST", "/api/v1/repositories")).toBe(400);
     expect(await invokeBadJson(handler, "PUT", "/api/v1/repositories/repo-1")).toBe(400);
     expect(await invokeBadJson(handler, "POST", "/api/v1/schedules")).toBe(400);
-    expect(await invokeBadJson(handler, "PATCH", "/api/v1/schedules/sched-1")).toBe(400);
   });
 });

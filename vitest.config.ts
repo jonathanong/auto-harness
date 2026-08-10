@@ -15,6 +15,8 @@ export default defineConfig({
         "**/types.ts",
         "**/*-types.ts",
         "**/session.ts",
+        "**/providers.ts",
+        "**/daemon-transport.ts",
         "**/cli.ts",
         // DynamoDB Local SDK wiring — covered by dynamo.test.ts integration, not line-perfect unit coverage
         "**/db/dynamo.ts",

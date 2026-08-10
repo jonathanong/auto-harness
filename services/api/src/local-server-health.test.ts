@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { createLocalApp } from "./local-server.ts";
@@ -7,7 +8,7 @@ describe("createLocalApp health and sessions", () => {
   it("handles health, create, get, list, and 404s", async () => {
     const store = new MemorySessionStore({
       idFactory: () => "sess-1",
-      now: () => "t0",
+      now: () => "2026-01-01T00:00:00.000Z",
       publicBaseUrl: "http://ui",
     });
     store.plane.createCommand({
@@ -61,13 +62,104 @@ describe("createLocalApp health and sessions", () => {
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
-      commandId: "cmd-1",
+      target: { commandId: "cmd-1" },
       timeout: 10,
     });
     expect(created.status).toBe(201);
     expect(await invoke("GET", "/api/v1/sessions/sess-1")).toMatchObject({
       status: 200,
     });
+    expect((await invoke("GET", "/api/v1/sessions?limit=not-a-number")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions?limit=5&hostId=host&q=prompt")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions/missing")).status).toBe(404);
+    expect((await invoke("GET", "/api/v1/sessions/missing/logs")).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(200);
+    expect((await invoke("POST", "/api/v1/sessions/missing/cancel")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/sessions/missing/resume")).status).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: 42,
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          timeout: 0,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          fallbacks: "bad",
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          queueTtlSeconds: 0,
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          requiredLabels: "bad",
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          metadata: "bad",
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "p",
+          target: { commandId: "cmd-1" },
+          ref: "",
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(400);
     expect(await invoke("GET", "/api/v1/sessions")).toMatchObject({
       status: 200,
     });
@@ -79,7 +171,7 @@ describe("createLocalApp health and sessions", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "",
           prompt: "p",
-          commandId: "cmd-x",
+          target: { commandId: "cmd-x" },
           timeout: 1,
         })
       ).status,
@@ -193,5 +285,30 @@ describe("createLocalApp health and sessions", () => {
     };
     await handler(req2 as never, res2 as never);
     expect(status2).toBe(404);
+
+    const { handler: defaultHandler } = createLocalApp();
+    let corsStatus = 0;
+    const corsReq = {
+      method: "OPTIONS",
+      url: "/api/v1/sessions",
+      headers: { origin: "http://localhost:7421" },
+      on(event: string, cb: (...args: unknown[]) => void) {
+        if (event === "end") cb();
+        return corsReq;
+      },
+    };
+    const corsRes = {
+      setHeader() {
+        /* cors */
+      },
+      writeHead(code: number) {
+        corsStatus = code;
+      },
+      end() {
+        /* preflight */
+      },
+    };
+    await defaultHandler(corsReq as never, corsRes as never);
+    expect(corsStatus).toBe(204);
   });
 });

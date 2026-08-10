@@ -93,7 +93,7 @@ async function main(): Promise<void> {
     const created = plane.createSession({
       repositoryId: "demo",
       prompt: "hello-p3",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       timeout: 60,
       ref: "feature/p3",
       requiredLabels: ["echo"],
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
     const bad = plane.createSession({
       repositoryId: "demo",
       prompt: "x",
-      commandId: "not-a-command",
+      target: { commandId: "not-a-command" },
       timeout: 30,
       requiredLabels: ["echo"],
     });
@@ -165,7 +165,7 @@ async function main(): Promise<void> {
     const failing = plane.createSession({
       repositoryId: "demo",
       prompt: "x",
-      commandId: "cmd-fail",
+      target: { commandId: "cmd-fail" },
       timeout: 30,
       requiredLabels: ["echo"],
     });

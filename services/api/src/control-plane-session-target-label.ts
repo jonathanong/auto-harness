@@ -1,36 +1,37 @@
+import type { TargetRef } from "@auto-harness/shared";
+
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
-/**
- * Existence check + human-readable label for a session's target, at create time.
- * Whether the target actually *resolves to a runnable command* on a given worktree
- * (the cascade walk) is worktree-dependent and checked later, at assignment
- * (see control-plane-session-target.ts).
- */
+/** Validate catalog targets at create/update time and produce display labels. */
 export function resolveSessionTargetLabel(
   state: ControlPlaneState,
-  providerAccountId: string | undefined,
-  commandId: string | undefined,
+  target: TargetRef,
 ): { ok: true; label: string } | { ok: false; error: string } {
-  if (commandId !== undefined) {
-    const command = state.commands.get(commandId);
-    if (!command) {
-      return { ok: false, error: `commandId ${commandId} not found` };
-    }
-    if (command.providerId !== null) {
-      return {
-        ok: false,
-        error: `commandId ${commandId} is owned by a provider; target its provider account instead`,
-      };
-    }
-    return { ok: true, label: command.name };
+  if ("providerId" in target) {
+    const provider = state.providers.get(target.providerId);
+    return provider
+      ? { ok: true, label: provider.name }
+      : { ok: false, error: `providerId ${target.providerId} not found` };
   }
-  const account = state.providerAccounts.get(providerAccountId!);
-  if (!account) {
-    return { ok: false, error: `providerAccountId ${providerAccountId} not found` };
+  const command = state.commands.get(target.commandId);
+  if (!command) return { ok: false, error: `commandId ${target.commandId} not found` };
+  const provider = command.providerId === null ? null : state.providers.get(command.providerId);
+  if (command.providerId !== null && !provider) {
+    return { ok: false, error: `provider ${command.providerId} not found` };
   }
-  const provider = state.providers.get(account.providerId);
-  if (!provider) {
-    return { ok: false, error: `provider ${account.providerId} not found` };
+  return { ok: true, label: provider ? `${provider.name} — ${command.name}` : command.name };
+}
+
+export function resolveTargetLabels(
+  state: ControlPlaneState,
+  target: TargetRef,
+  fallbacks: TargetRef[],
+): { ok: true; labels: string[] } | { ok: false; error: string } {
+  const labels: string[] = [];
+  for (const item of [target, ...fallbacks]) {
+    const result = resolveSessionTargetLabel(state, item);
+    if (!result.ok) return result;
+    labels.push(result.label);
   }
-  return { ok: true, label: `${provider.name} — ${account.label}` };
+  return { ok: true, labels };
 }
