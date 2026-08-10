@@ -309,7 +309,9 @@ For `type: scheduled` / `worktreeId: null`:
 - One FIFO async mutex **per `repositoryId`** on this agent; different repositories remain parallel.
 - Waiting consumes the session deadline. Cancellation or timeout removes the waiter without running setup, the command, or a terminal hook in the busy checkout.
 - The lock covers branch preparation, setup, the command, and the terminal hook, and is released in `finally` on every outcome.
-- The control plane also holds one scheduled lease per host/repository; the local mutex is defense in depth.
+- Until the capability-gated dispatcher is deployed, scheduled sessions remain
+  queued. That dispatcher will add its own per-host/repository lease; the local
+  mutex remains defense in depth for each capable daemon.
 
 ---
 
