@@ -219,5 +219,21 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect(await badJson("/api/v1/host/messages")).toBe(400);
     expect(await badJson("/api/v1/hosts/drain")).toBe(400);
     expect(await badJson("/api/v1/sessions/sess-1/resume")).toBe(400);
+
+    plane.createSessionDurable = async () => ({
+      ok: false,
+      error: "session id collision",
+      code: "CONFLICT",
+    });
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "collision",
+          target: { commandId: "cmd-echo" },
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(409);
   });
 });
