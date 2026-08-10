@@ -373,14 +373,16 @@ List sessions with optional filters.
 
 **Query parameters:**
 
-| Param          | Type   | Description                                                                            |
-| -------------- | ------ | -------------------------------------------------------------------------------------- |
-| `status`       | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
-| `repositoryId` | string | Filter by repository                                                                   |
-| `search`       | string | Full-text search across session prompts                                                |
-| `sort`         | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
-| `limit`        | number | Max results (default: 50, max: 100)                                                    |
-| `cursor`       | string | Pagination cursor from previous response                                               |
+| Param           | Type   | Description                                                                            |
+| --------------- | ------ | -------------------------------------------------------------------------------------- |
+| `status`        | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
+| `repositoryId`  | string | Filter by repository                                                                   |
+| `search`        | string | Full-text search across session prompts                                                |
+| `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
+| `limit`         | number | Max results (default: 50, max: 100)                                                    |
+| `cursor`        | string | Pagination cursor from previous response                                               |
+| `concurrencyId` | string | Exact concurrency identity (may span schedules and manual sessions)                    |
+| `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                         |
 
 **Response:** `200 OK`
 

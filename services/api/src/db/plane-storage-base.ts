@@ -139,6 +139,16 @@ export class DynamoPlaneStorageBase {
     return sessions.expireQueuedSession(this.ctx, opts);
   }
 
+  cancelQueuedSession(opts: {
+    sessionId: string;
+    queueShard: number;
+    completedAt: string;
+    errorMessage: string;
+    concurrencyId?: string;
+  }): Promise<boolean> {
+    return sessions.cancelQueuedSession(this.ctx, opts);
+  }
+
   releaseCancelledSessionWorktree(opts: {
     sessionId: string;
     worktreeId: string;

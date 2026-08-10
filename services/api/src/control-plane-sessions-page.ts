@@ -11,6 +11,7 @@ export type ListSessionsPageQuery = {
   status?: string;
   q?: string;
   concurrencyId?: string;
+  scheduleId?: string;
 };
 
 export type ListSessionsPageResult = {
@@ -50,6 +51,9 @@ export function listSessionsPage(
   }
   if (query.concurrencyId) {
     rows = rows.filter((s) => s.concurrencyId === query.concurrencyId);
+  }
+  if (query.scheduleId) {
+    rows = rows.filter((s) => s.scheduleId === query.scheduleId);
   }
   if (query.q) {
     const q = query.q.toLowerCase();

@@ -56,6 +56,8 @@ describe("listSessionsPage", () => {
     expect(
       plane.listSessionsPage({ concurrencyId: "nightly-pr-123", limit: 50 }).items,
     ).toHaveLength(1);
+    plane.state.sessions.get("s2")!.scheduleId = "schedule-a";
+    expect(plane.listSessionsPage({ scheduleId: "schedule-a", limit: 50 }).items).toHaveLength(1);
 
     const byStatus = plane.listSessionsPage({ status: "queued", limit: 50 });
     expect(byStatus.items.every((s) => s.status === "queued")).toBe(true);

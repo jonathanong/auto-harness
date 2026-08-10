@@ -48,16 +48,12 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
   } catch {
     targets = [];
   }
-  if (schedule.concurrencyId) {
-    try {
-      const query = new URLSearchParams({ concurrencyId: schedule.concurrencyId, limit: "100" });
-      const data = await apiGet<{ items: SessionHistory[] }>(
-        `/api/v1/sessions?${query.toString()}`,
-      );
-      history = data.items ?? [];
-    } catch {
-      history = [];
-    }
+  try {
+    const query = new URLSearchParams({ scheduleId: schedule.id, limit: "100" });
+    const data = await apiGet<{ items: SessionHistory[] }>(`/api/v1/sessions?${query.toString()}`);
+    history = data.items ?? [];
+  } catch {
+    history = [];
   }
 
   return (

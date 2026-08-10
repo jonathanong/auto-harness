@@ -84,7 +84,7 @@ export async function createSession(
       if (!lock) {
         continue;
       }
-      const current = await getSession(ctx, lock.sessionId);
+      const current = await getSession(ctx, lock.sessionId, true);
       if (current && (current.status === "queued" || current.status === "running")) {
         return { created: false, session: current };
       }
@@ -98,7 +98,11 @@ export async function getConcurrencyLock(
   concurrencyId: string,
 ): Promise<{ sessionId: string } | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.concurrencyLocks, Key: { concurrencyId } }),
+    new GetCommand({
+      TableName: ctx.tables.concurrencyLocks,
+      Key: { concurrencyId },
+      ConsistentRead: true,
+    }),
   );
   return res.Item && typeof res.Item.sessionId === "string"
     ? { sessionId: res.Item.sessionId }
@@ -125,8 +129,18 @@ export async function releaseConcurrencyLock(
   }
 }
 
-export async function getSession(ctx: PlaneStorageCtx, id: string): Promise<SessionRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.sessions, Key: { id } }));
+export async function getSession(
+  ctx: PlaneStorageCtx,
+  id: string,
+  consistentRead = false,
+): Promise<SessionRecord | null> {
+  const res = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.sessions,
+      Key: { id },
+      ...(consistentRead ? { ConsistentRead: true } : {}),
+    }),
+  );
   return res.Item ? itemToSession(res.Item) : null;
 }
 
@@ -458,6 +472,58 @@ export async function failExpiredResumeSession(
     if (isConditionalTransactionFailed(err)) {
       return false;
     }
+    throw err;
+  }
+}
+
+/** Atomically cancel queued work and release only the lock it owns. */
+export async function cancelQueuedSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    queueShard: number;
+    completedAt: string;
+    errorMessage: string;
+    concurrencyId?: string;
+  },
+): Promise<boolean> {
+  const items: Array<Record<string, unknown>> = [
+    {
+      Update: {
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null REMOVE reconnectDeadlineAt, assignmentConnectionId",
+        ConditionExpression: "#s = :queued",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":cancelled": "cancelled",
+          ":queued": "queued",
+          ":statusShard": statusShardAttr("cancelled", opts.queueShard),
+          ":completedAt": opts.completedAt,
+          ":errorMessage": opts.errorMessage,
+          ":null": null,
+        },
+      },
+    },
+    ...(opts.concurrencyId
+      ? [
+          {
+            Delete: {
+              TableName: ctx.tables.concurrencyLocks,
+              Key: { concurrencyId: opts.concurrencyId },
+              ConditionExpression: "sessionId = :sessionId",
+              ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+            },
+          },
+        ]
+      : []),
+  ];
+  try {
+    await ctx.doc.send(new TransactWriteCommand({ TransactItems: items }));
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

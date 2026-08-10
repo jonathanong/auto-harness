@@ -38,6 +38,8 @@ export type SessionRecord = {
   worktreeId?: string | null;
   hostId?: string | null;
   concurrencyId?: string;
+  /** Schedule provenance; distinct from the possibly shared concurrency identity. */
+  scheduleId?: string;
   metadata?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;

@@ -1,4 +1,8 @@
-import { isValidScheduledBranchRef, validateTargetRouting } from "@auto-harness/shared";
+import {
+  isActiveSessionStatus,
+  isValidScheduledBranchRef,
+  validateTargetRouting,
+} from "@auto-harness/shared";
 
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -73,11 +77,11 @@ export function listSchedules(state: ControlPlaneState): ScheduleRecord[] {
 }
 
 function withActiveSession(state: ControlPlaneState, schedule: ScheduleRecord): ScheduleRecord {
+  const concurrencyId = schedule.concurrencyId?.trim() || `schedule-${schedule.id}`;
   const active = [...state.sessions.values()].find(
-    (session) =>
-      session.concurrencyId === schedule.concurrencyId && isActiveSessionStatus(session.status),
+    (session) => session.concurrencyId === concurrencyId && isActiveSessionStatus(session.status),
   );
-  return { ...schedule, activeSessionId: active?.id ?? null };
+  return { ...schedule, concurrencyId, activeSessionId: active?.id ?? null };
 }
 
 export function updateSchedule(
@@ -123,4 +127,3 @@ export function deleteSchedule(
   if (state.storage) queueWrite(state, state.storage.deleteSchedule(id));
   return { ok: true };
 }
-import { isActiveSessionStatus } from "@auto-harness/shared";

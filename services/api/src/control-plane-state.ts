@@ -183,7 +183,10 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
     state.hostConnection.set(connection.hostId, connection.connectionId);
   }
   for (const sch of await state.storage.listSchedules()) {
-    state.schedules.set(sch.id, sch);
+    state.schedules.set(sch.id, {
+      ...sch,
+      concurrencyId: sch.concurrencyId?.trim() || `schedule-${sch.id}`,
+    });
   }
   for (const r of await state.storage.listRepositories()) {
     state.repositories.set(r.id, r);

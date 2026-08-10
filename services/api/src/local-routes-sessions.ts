@@ -64,6 +64,10 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
+      if (!canAccess(ctx, result.session.repositoryId)) {
+        sendForbidden(res);
+        return true;
+      }
       send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
       return true;
     } catch {
@@ -86,6 +90,9 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       ...(url.searchParams.get("concurrencyId")
         ? { concurrencyId: url.searchParams.get("concurrencyId")! }
         : {}),
+      ...(url.searchParams.get("scheduleId")
+        ? { scheduleId: url.searchParams.get("scheduleId")! }
+        : {}),
     });
     const items = page.items.filter((session) => canAccess(ctx, session.repositoryId));
     send(res, 200, {
@@ -102,7 +109,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       sendForbidden(res);
       return true;
     }
-    const result = plane.cancelSession(cancelMatch[1]!);
+    const result = await plane.cancelSessionDurable(cancelMatch[1]!);
     if (!result.ok) {
       send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
       return true;

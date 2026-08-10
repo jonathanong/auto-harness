@@ -26,7 +26,7 @@ export function triggerSchedule(
   if (!target.ok) {
     return target;
   }
-  const result = createSession(state, scheduledSessionInput(schedule));
+  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
@@ -133,7 +133,7 @@ export function tryClaimScheduleFire(
   if (!target.ok) {
     return null;
   }
-  const result = createSession(state, scheduledSessionInput(schedule));
+  const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
   if (!result.ok) {
     return null;
   }
@@ -246,6 +246,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
+    scheduleId: schedule.id,
   };
 }
 
@@ -267,6 +268,7 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
   source: string;
   ref?: string;
   concurrencyId?: string;
+  scheduleId?: string;
 } {
   return {
     repositoryId: schedule.repositoryId,
@@ -279,5 +281,6 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
+    scheduleId: schedule.id,
   };
 }

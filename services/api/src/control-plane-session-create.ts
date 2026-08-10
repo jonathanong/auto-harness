@@ -13,8 +13,15 @@ type ValidatedFields = Extract<
 export function validateSessionCreate(
   state: ControlPlaneState,
   body: unknown,
+  options: { allowScheduleId?: boolean } = {},
 ):
-  | { ok: true; fields: ValidatedFields; record: Record<string, unknown>; targetLabel: string }
+  | {
+      ok: true;
+      fields: ValidatedFields;
+      record: Record<string, unknown>;
+      targetLabel: string;
+      scheduleId?: string;
+    }
   | { ok: false; error: string; code?: string } {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "body must be an object" };
@@ -41,7 +48,15 @@ export function validateSessionCreate(
     validated.value.commandId,
   );
   if (!target.ok) return { ok: false, error: target.error, code: "VALIDATION_ERROR" };
-  return { ok: true, fields: validated.value, record, targetLabel: target.label };
+  return {
+    ok: true,
+    fields: validated.value,
+    record,
+    targetLabel: target.label,
+    ...(options.allowScheduleId && typeof record.scheduleId === "string"
+      ? { scheduleId: record.scheduleId }
+      : {}),
+  };
 }
 
 export function buildSessionRecord(
@@ -66,6 +81,7 @@ export function buildSessionRecord(
     retryCount: 0,
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
     ...(v.concurrencyId !== undefined ? { concurrencyId: v.concurrencyId } : {}),
+    ...(prepared.scheduleId !== undefined ? { scheduleId: prepared.scheduleId } : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),
     type: v.type,
     source: v.source,

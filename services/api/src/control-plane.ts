@@ -8,6 +8,7 @@ import type {
 import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as agents from "./control-plane-agents.ts";
+import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
@@ -105,6 +106,12 @@ export class ControlPlane extends ControlPlaneCatalog {
 
   cancelSession(id: string): { ok: true; session: PublicSession } | { ok: false; error: string } {
     return lifecycle.cancelSession(this.state, id);
+  }
+
+  async cancelSessionDurable(
+    id: string,
+  ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+    return cancelSessionDurable(this.state, id);
   }
 
   evaluateCron(nowIso: string = this.state.now()): PublicSession[] {

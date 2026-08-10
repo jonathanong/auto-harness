@@ -1,52 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { ControlPlane } from "./control-plane.ts";
-import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const ctx = createDynamoTestCtx("SessionConcurrency");
 
 describe("durable session concurrency", () => {
-  it("validates a resume source and omits an absent CLI resume reference", async () => {
-    const plane = new ControlPlane({
-      idFactory: (() => {
-        let id = 0;
-        return () => `resume-${++id}`;
-      })(),
-      now: () => "2026-01-01T00:00:00.000Z",
-    });
-    seedBaseCommand(plane);
-    plane.createSession(baseSessionBody());
-    const source = plane.state.sessions.get("resume-1")!;
-    Object.assign(source, { status: "completed", hostId: "host-1" });
-    plane.state.storage = {
-      createSession: async (session: SessionRecord) => ({ created: true, session }),
-    } as never;
-
-    await expect(plane.resumeSessionDurable(source.id)).resolves.toMatchObject({
-      ok: true,
-      created: true,
-      session: {
-        id: "resume-2",
-        pinnedHostId: "host-1",
-        pinExpiresAt: "2026-01-01T01:00:00.000Z",
-      },
-    });
-    expect(plane.getSession("resume-2")).not.toHaveProperty("cliResumeRef");
-
-    plane.state.sessions.set("active-source", {
-      ...source,
-      id: "active-source",
-      status: "queued",
-    });
-    await expect(plane.resumeSessionDurable("active-source")).resolves.toMatchObject({
-      ok: false,
-      error: "source session must be terminal before resume",
-    });
-  });
-
   it("validates, atomically deduplicates, and releases terminal concurrency ids", async () => {
     if (!ctx.available || !ctx.storage) return;
     await ctx.storage.putCommand({
@@ -99,12 +59,23 @@ describe("durable session concurrency", () => {
     if (!first.ok || !duplicate.ok) return;
     expect(duplicate.session.id).toBe(first.session.id);
 
-    plane.forceStatus(first.session.id, "completed");
-    await plane.settleStorage();
-    await expect(plane.createSessionDurable(body)).resolves.toMatchObject({
+    await expect(plane.cancelSessionDurable(first.session.id)).resolves.toMatchObject({
+      ok: true,
+      session: { status: "cancelled" },
+    });
+    const afterCancel = await plane.createSessionDurable(body);
+    expect(afterCancel).toMatchObject({
       ok: true,
       created: true,
     });
+    if (afterCancel.ok) {
+      plane.forceStatus(afterCancel.session.id, "completed");
+      await plane.settleStorage();
+      await expect(plane.createSessionDurable(body)).resolves.toMatchObject({
+        ok: true,
+        created: true,
+      });
+    }
     await expect(
       plane.createSessionDurable({ ...body, concurrencyId: undefined }),
     ).resolves.toMatchObject({ ok: true, created: true });

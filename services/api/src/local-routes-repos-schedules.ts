@@ -184,6 +184,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
       return true;
     }
+    if (!scoped(ctx, result.session.repositoryId)) {
+      hidden(res);
+      return true;
+    }
     send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
     return true;
   }

@@ -147,6 +147,7 @@ erDiagram
         number priority
         string[] requiredLabels
         string concurrencyId "nullable — global exact-match concurrency/idempotency identity"
+        string scheduleId "nullable — exact schedule provenance for scheduled sessions"
         string queueShard "assigned at create; spreads the queued-status GSI (see Access patterns)"
         object metadata "nullable — caller-supplied provenance (e.g. PR number, run id) for Slack/hook context"
         number exitCode "nullable"

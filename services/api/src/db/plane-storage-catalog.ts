@@ -237,7 +237,7 @@ export async function tryClaimScheduleAndCreateSession(
       if (opts.session.concurrencyId) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
-          const current = await getSession(ctx, lock.sessionId);
+          const current = await getSession(ctx, lock.sessionId, true);
           if (current && (current.status === "queued" || current.status === "running")) {
             return { kind: "duplicate", session: current };
           }

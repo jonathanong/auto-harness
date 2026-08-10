@@ -67,4 +67,60 @@ describe("concurrency lock lifecycle", () => {
     expect(messages).toEqual([{ type: "session:cancel", sessionId: "sess-1" }]);
     expect(released).toEqual([]);
   });
+
+  it("handles durable cancellation races and terminal/running states", async () => {
+    let id = 0;
+    let cancelWins = false;
+    const plane = new ControlPlane({ idFactory: () => `durable-${++id}`, now: () => "now" });
+    seedBaseCommand(plane);
+    plane.state.storage = {
+      putSession: async () => {},
+      putWorktree: async () => {},
+      cancelQueuedSession: async () => cancelWins,
+    } as never;
+
+    await expect(plane.cancelSessionDurable("missing")).resolves.toEqual({
+      ok: false,
+      error: "session not found",
+    });
+    plane.createSession(baseSessionBody());
+    plane.forceStatus("durable-1", "completed");
+    await expect(plane.cancelSessionDurable("durable-1")).resolves.toMatchObject({
+      ok: false,
+      error: "session already terminal: completed",
+    });
+
+    plane.createSession(baseSessionBody());
+    await expect(plane.cancelSessionDurable("durable-2")).resolves.toEqual({
+      ok: false,
+      error: "session changed before cancellation",
+    });
+    plane.seedWorktree({
+      id: "durable-wt",
+      name: "durable-wt",
+      hostId: "host-1",
+      repositoryId: "repo-1",
+      path: "/w",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: "durable-2",
+    });
+    Object.assign(plane.state.sessions.get("durable-2")!, { worktreeId: "durable-wt" });
+    cancelWins = true;
+    await expect(plane.cancelSessionDurable("durable-2")).resolves.toMatchObject({
+      ok: true,
+      session: { status: "cancelled" },
+    });
+
+    plane.createSession(baseSessionBody());
+    Object.assign(plane.state.sessions.get("durable-3")!, {
+      status: "running",
+      hostId: "host-1",
+    });
+    await expect(plane.cancelSessionDurable("durable-3")).resolves.toMatchObject({
+      ok: true,
+      session: { status: "cancelled" },
+    });
+  });
 });

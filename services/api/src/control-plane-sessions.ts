@@ -8,7 +8,7 @@ import {
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
+import { hashString, persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 export { resumeSession } from "./control-plane-session-resume.ts";
@@ -23,6 +23,7 @@ export {
 export function createSession(
   state: ControlPlaneState,
   body: unknown,
+  options: { allowScheduleId?: boolean } = {},
 ):
   | { ok: true; session: PublicSession; created: boolean }
   | { ok: false; error: string; code?: string } {
@@ -83,6 +84,9 @@ export function createSession(
     createdAt,
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
     ...(v.concurrencyId !== undefined ? { concurrencyId: v.concurrencyId } : {}),
+    ...(options.allowScheduleId && typeof record.scheduleId === "string"
+      ? { scheduleId: record.scheduleId }
+      : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),
     type: v.type,
     source: v.source,
