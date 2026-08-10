@@ -17,7 +17,7 @@ function running(id = "s") {
     timeout: 1,
     priority: 0,
     requiredLabels: [],
-    onConflict: "queue" as const,
+    concurrencyId: "session-lock",
     status: "running" as const,
     queueShard: 0,
     createdAt: "t",
@@ -116,12 +116,14 @@ describe("durable host-message fencing", () => {
     });
     let logFence = false;
     let statusFence = false;
+    let statusConcurrencyId: string | undefined;
     plane.state.storage = {
       getSession: async () => running(),
       getHostLock: async () => "c",
       putLogFenced: async () => false,
-      finishSession: async (opts: { fence?: unknown }) => {
+      finishSession: async (opts: { fence?: unknown; concurrencyId?: string }) => {
         statusFence = opts.fence !== undefined;
+        statusConcurrencyId = opts.concurrencyId;
         return true;
       },
       putArchive: async () => {},
@@ -157,6 +159,7 @@ describe("durable host-message fencing", () => {
     ).toEqual({ ok: true });
     expect(logFence).toBe(false);
     expect(statusFence).toBe(true);
+    expect(statusConcurrencyId).toBe("session-lock");
   });
 
   it("handles successful fenced logs plus terminal cancelled and local validation branches", async () => {
@@ -180,8 +183,13 @@ describe("durable host-message fencing", () => {
       getHostLock: async () => "c",
       putLogFenced: async () => (calls.push("log"), true),
       deleteLog: async () => {},
-      releaseCancelledSessionWorktree: async (opts: { fence?: unknown; online: boolean }) => {
+      releaseCancelledSessionWorktree: async (opts: {
+        fence?: unknown;
+        online: boolean;
+        concurrencyId?: string;
+      }) => {
         calls.push(opts.fence ? `cancel-fenced-${opts.online}` : `cancel-${opts.online}`);
+        calls.push(opts.concurrencyId ?? "no-concurrency");
         return true;
       },
     } as never;
@@ -207,7 +215,7 @@ describe("durable host-message fencing", () => {
         status: "cancelled",
       }),
     ).toEqual({ ok: true });
-    expect(calls).toEqual(["log", "cancel-true"]);
+    expect(calls).toEqual(["log", "cancel-true", "session-lock"]);
 
     const local = new ControlPlane();
     local.state.sessions.set("done", { ...running("done"), status: "completed" });

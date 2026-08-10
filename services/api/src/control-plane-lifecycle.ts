@@ -1,3 +1,5 @@
+import { isTerminalSessionStatus } from "@auto-harness/shared";
+
 import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -208,4 +210,3 @@ export function cancelSession(
   }
   return { ok: true, session: toPublic(state, session) };
 }
-import { isTerminalSessionStatus } from "@auto-harness/shared";
