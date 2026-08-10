@@ -16,9 +16,35 @@ import {
   itemToSession,
   isConditionalFailed,
   isConditionalTransactionFailed,
+  isConditionalTransactionFailureAt,
   sessionToItem,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
+
+const MAX_CREATE_SESSION_ATTEMPTS = 3;
+
+class SessionIdCollisionError extends Error {
+  constructor(sessionId: string) {
+    super(`session id collision: ${sessionId}`);
+    this.name = "SessionIdCollisionError";
+  }
+}
+
+class CreateSessionRetryExhaustedError extends Error {
+  constructor(concurrencyId: string) {
+    super(`could not resolve concurrency lock for ${concurrencyId}`);
+    this.name = "CreateSessionRetryExhaustedError";
+  }
+}
+
+export function isCreateSessionConflict(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return err.name === "SessionIdCollisionError" || err.name === "CreateSessionRetryExhaustedError";
+}
+
+function waitForCreateSessionRetry(attempt: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 2 ** attempt));
+}
 
 export async function putSession(ctx: PlaneStorageCtx, session: SessionRecord): Promise<void> {
   await ctx.doc.send(
@@ -43,17 +69,22 @@ export async function createSession(
   session: SessionRecord,
 ): Promise<CreateSessionResult> {
   if (!session.concurrencyId) {
-    await ctx.doc.send(
-      new PutCommand({
-        TableName: ctx.tables.sessions,
-        Item: sessionToItem(session),
-        ConditionExpression: "attribute_not_exists(id)",
-      }),
-    );
+    try {
+      await ctx.doc.send(
+        new PutCommand({
+          TableName: ctx.tables.sessions,
+          Item: sessionToItem(session),
+          ConditionExpression: "attribute_not_exists(id)",
+        }),
+      );
+    } catch (err) {
+      if (isConditionalFailed(err)) throw new SessionIdCollisionError(session.id);
+      throw err;
+    }
     return { created: true, session };
   }
 
-  for (;;) {
+  for (let attempt = 0; attempt < MAX_CREATE_SESSION_ATTEMPTS; attempt += 1) {
     try {
       await ctx.doc.send(
         new TransactWriteCommand({
@@ -80,8 +111,21 @@ export async function createSession(
       if (!isConditionalTransactionFailed(err)) {
         throw err;
       }
+      const lockConditionFailed = isConditionalTransactionFailureAt(err, 0);
+      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, 1);
+      // When both conditions lose, the active lock is authoritative: it may
+      // already own this same session ID and should still be returned as the
+      // duplicate. A session-only collision can never succeed on retry.
+      if (!lockConditionFailed && sessionIdConditionFailed) {
+        throw new SessionIdCollisionError(session.id);
+      }
       const lock = await getConcurrencyLock(ctx, session.concurrencyId);
       if (!lock) {
+        if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
+        if (attempt + 1 === MAX_CREATE_SESSION_ATTEMPTS) {
+          throw new CreateSessionRetryExhaustedError(session.concurrencyId);
+        }
+        await waitForCreateSessionRetry(attempt);
         continue;
       }
       const current = await getSession(ctx, lock.sessionId, true);
@@ -89,8 +133,14 @@ export async function createSession(
         return { created: false, session: current };
       }
       await releaseConcurrencyLock(ctx, session.concurrencyId, lock.sessionId);
+      if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
+      if (attempt + 1 === MAX_CREATE_SESSION_ATTEMPTS) {
+        throw new CreateSessionRetryExhaustedError(session.concurrencyId);
+      }
+      await waitForCreateSessionRetry(attempt);
     }
   }
+  throw new CreateSessionRetryExhaustedError(session.concurrencyId);
 }
 
 export async function getConcurrencyLock(
@@ -458,7 +508,8 @@ export async function failExpiredResumeSession(
                   Delete: {
                     TableName: ctx.tables.concurrencyLocks,
                     Key: { concurrencyId: opts.concurrencyId },
-                    ConditionExpression: "sessionId = :sessionId",
+                    ConditionExpression:
+                      "attribute_not_exists(concurrencyId) OR sessionId = :sessionId",
                     ExpressionAttributeValues: { ":sessionId": opts.sessionId },
                   },
                 },
@@ -512,7 +563,7 @@ export async function cancelQueuedSession(
             Delete: {
               TableName: ctx.tables.concurrencyLocks,
               Key: { concurrencyId: opts.concurrencyId },
-              ConditionExpression: "sessionId = :sessionId",
+              ConditionExpression: "attribute_not_exists(concurrencyId) OR sessionId = :sessionId",
               ExpressionAttributeValues: { ":sessionId": opts.sessionId },
             },
           },
@@ -644,7 +695,8 @@ export async function releaseCancelledSessionWorktree(
                   Delete: {
                     TableName: ctx.tables.concurrencyLocks,
                     Key: { concurrencyId: opts.concurrencyId },
-                    ConditionExpression: "sessionId = :sessionId",
+                    ConditionExpression:
+                      "attribute_not_exists(concurrencyId) OR sessionId = :sessionId",
                     ExpressionAttributeValues: { ":sessionId": opts.sessionId },
                   },
                 },
