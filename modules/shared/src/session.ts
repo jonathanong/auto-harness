@@ -18,6 +18,8 @@ export type SessionResumeSpec = CommandResumeSpec & {
 export type SessionAssign = {
   sessionId: string;
   sessionType?: SessionType;
+  /** Immutable execution-attempt fence supplied by the scheduler. */
+  attemptId: string;
   repositoryId: string;
   prompt: string;
   /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
@@ -31,6 +33,10 @@ export type SessionAssign = {
   cliResumeRef?: string;
   resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
   metadata?: Record<string, unknown>;
+  /** Non-secret resolved route metadata for observability. */
+  providerAccountId?: string;
+  commandId?: string;
+  targetIndex?: number;
 };
 
 export type SessionLogChunk = {
@@ -58,9 +64,11 @@ export type SessionStatusUpdate = {
 export type CreateSessionFields = {
   repositoryId: string;
   prompt: string;
-  /** Exactly one of providerAccountId/commandId is set. */
-  providerAccountId?: string;
-  commandId?: string;
+  /** Primary routing target, followed by fallbacks when it has no capacity. */
+  target: TargetRef;
+  fallbacks?: TargetRef[];
+  /** Absolute queue lifetime, measured from creation. */
+  queueTtlSeconds?: number;
   timeout: number;
   priority: number;
   requiredLabels: string[];
@@ -71,6 +79,11 @@ export type CreateSessionFields = {
   concurrencyKey?: string;
   metadata?: Record<string, unknown>;
 };
+
+/** A provider selects an eligible attached account; a command runs exactly that command. */
+export type TargetRef =
+  | { providerId: string; commandId?: never }
+  | { commandId: string; providerId?: never };
 
 /** Wire messages on the agent control channel (REST-backed local hub or API GW WS). */
 export type HostWireMessage =
@@ -90,7 +103,12 @@ export type HostWireMessage =
       cliResumeRef?: string;
       resumeRefCapture?: import("./providers.ts").ResumeRefCapture;
       metadata?: Record<string, unknown>;
+      providerAccountId?: string;
+      commandId?: string;
+      targetIndex?: number;
       assignedAt: string;
+      /** Immutable execution-attempt fence; echo in ACK and status messages. */
+      attemptId: string;
     }
   /** Sent only after the control plane durably commits `session:ack` for the
    * current host connection. A successful WebSocket write is not an ACK. */
@@ -115,10 +133,12 @@ export type HostToServerMessage =
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
     }
-  | { type: "session:ack"; sessionId: string }
+  | { type: "session:ack"; sessionId: string; worktreeId: string; attemptId: string }
   | {
       type: "session:status";
       sessionId: string;
+      worktreeId: string;
+      attemptId: string;
       status: SessionStatus;
       exitCode?: number | null;
       errorCode?: SessionErrorCode;

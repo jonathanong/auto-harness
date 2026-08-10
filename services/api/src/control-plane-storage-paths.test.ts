@@ -19,8 +19,10 @@ describe("ControlPlane storage write-through paths", () => {
       id: "sch1",
       repositoryId: "r1",
       name: "n",
-      commandId: "c",
-      targetLabel: "c",
+      target: { commandId: "c" },
+      fallbacks: [],
+      targetLabels: ["c"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 1,
@@ -58,7 +60,7 @@ describe("ControlPlane storage write-through paths", () => {
     plane.createSession({
       repositoryId: "r1",
       prompt: "p",
-      commandId: "c",
+      target: { commandId: "c" },
       timeout: 1,
     });
     plane.assignQueued();
@@ -99,7 +101,7 @@ describe("ControlPlane storage write-through paths", () => {
     const sch = putScheduleOrThrow(plane, {
       repositoryId: "r1",
       name: "job",
-      commandId: "c",
+      target: { commandId: "c" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -109,7 +111,7 @@ describe("ControlPlane storage write-through paths", () => {
     expect(
       plane.updateSchedule(sch.id, {
         name: "job2",
-        commandId: "c2",
+        target: { commandId: "c2" },
         cron: "0 * * * *",
         timeout: 2,
         nextRunAt: "2026-01-02T00:00:00.000Z",

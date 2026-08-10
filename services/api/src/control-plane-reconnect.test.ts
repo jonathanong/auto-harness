@@ -27,8 +27,14 @@ function runningPlane() {
   });
   if (!registration.ok) throw new Error("register");
   plane.createSession(baseSessionBody());
-  plane.assignQueued();
-  plane.handleHostMessage({ type: "session:ack", sessionId: "s" });
+  const [assigned] = plane.assignQueued();
+  if (!assigned) throw new Error("assign");
+  plane.handleHostMessage({
+    type: "session:ack",
+    sessionId: "s",
+    worktreeId: assigned.worktree.id,
+    attemptId: assigned.session.attemptId!,
+  });
   plane.disconnectHost(registration.connectionId);
   return plane;
 }

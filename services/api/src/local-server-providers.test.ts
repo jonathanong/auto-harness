@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
@@ -43,6 +43,7 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     const acct = await invoke("POST", "/api/v1/provider-accounts", {
       providerId: "prov-1",
       label: "x@y.com",
+      usageLimitCooldownSeconds: 3600,
     });
     expect(acct.status).toBe(201);
     expect(acct.json).toMatchObject({ providerId: "prov-1", label: "x@y.com" });
@@ -53,9 +54,42 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     expect((await invoke("GET", `/api/v1/provider-accounts/${acctId}`)).status).toBe(200);
     expect((await invoke("GET", "/api/v1/provider-accounts/missing")).status).toBe(404);
     expect(
-      (await invoke("PUT", `/api/v1/provider-accounts/${acctId}`, { label: "z@y.com" })).json,
+      (
+        await invoke("PUT", `/api/v1/provider-accounts/${acctId}`, {
+          providerId: "prov-1",
+          label: "z@y.com",
+          usageLimitCooldownSeconds: 7200,
+        })
+      ).json,
     ).toMatchObject({ label: "z@y.com" });
+    expect(
+      (await invoke("PATCH", `/api/v1/provider-accounts/${acctId}`, { providerId: "prov-1" }))
+        .status,
+    ).toBe(200);
+    expect(
+      (
+        await invoke("PATCH", `/api/v1/provider-accounts/${acctId}`, {
+          providerId: 42,
+          label: 42,
+          usageLimitCooldownSeconds: "not-a-number",
+        })
+      ).status,
+    ).toBe(200);
     expect((await invoke("PUT", "/api/v1/provider-accounts/missing", { label: "x" })).status).toBe(
+      404,
+    );
+    expect((await invoke("DELETE", `/api/v1/provider-accounts/${acctId}/usage-limit`)).status).toBe(
+      200,
+    );
+    vi.spyOn(plane, "clearProviderAccountUsageLimitDurable").mockResolvedValueOnce({
+      ok: false,
+      conflict: true,
+      error: "provider account changed concurrently; retry cooldown clear",
+    });
+    expect((await invoke("DELETE", `/api/v1/provider-accounts/${acctId}/usage-limit`)).status).toBe(
+      409,
+    );
+    expect((await invoke("DELETE", "/api/v1/provider-accounts/missing/usage-limit")).status).toBe(
       404,
     );
 

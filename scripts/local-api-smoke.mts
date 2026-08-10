@@ -17,7 +17,8 @@ try {
     body: JSON.stringify({
       repositoryId: "demo",
       prompt: "hi",
-      commandId: command.id,
+      target: { commandId: command.id },
+      queueTtlSeconds: 691200,
       timeout: 30,
       ref: "main",
     }),

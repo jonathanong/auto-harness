@@ -110,7 +110,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
       body: JSON.stringify({
         repositoryId: "demo",
         prompt: "unused",
-        commandId: commandResult.command.id,
+        target: { commandId: commandResult.command.id },
         timeout: 60,
         requiredLabels: ["echo"],
       }),

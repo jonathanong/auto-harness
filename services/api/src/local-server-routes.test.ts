@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -38,7 +39,7 @@ describe("createLocalApp agent and scheduler routes", () => {
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",
       prompt: "p",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       timeout: 10,
       ref: "main",
       metadata: { a: 1 },
@@ -46,11 +47,14 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect(created.status).toBe(201);
 
     expect((await invoke("POST", "/api/v1/scheduler/assign")).status).toBe(200);
+    const assigned = plane.getSession("sess-1")!;
     expect(
       (
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "sess-1",
+          worktreeId: assigned.worktreeId as string,
+          attemptId: assigned.attemptId as string,
         })
       ).status,
     ).toBe(410);
@@ -71,13 +75,22 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:status",
           sessionId: "sess-1",
+          worktreeId: assigned.worktreeId as string,
+          attemptId: assigned.attemptId as string,
           status: "completed",
         })
       ).status,
     ).toBe(410);
     // Stateful daemon frames are deliberately WebSocket-only; complete the
     // local fixture through the in-process control-plane seam instead.
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
+    expect(
+      plane.handleHostMessage({
+        type: "session:ack",
+        sessionId: "sess-1",
+        worktreeId: assigned.worktreeId as string,
+        attemptId: assigned.attemptId as string,
+      }).ok,
+    ).toBe(true);
     expect(
       plane.handleHostMessage({
         type: "session:log",
@@ -89,8 +102,13 @@ describe("createLocalApp agent and scheduler routes", () => {
       }).ok,
     ).toBe(true);
     expect(
-      plane.handleHostMessage({ type: "session:status", sessionId: "sess-1", status: "completed" })
-        .ok,
+      plane.handleHostMessage({
+        type: "session:status",
+        sessionId: "sess-1",
+        worktreeId: assigned.worktreeId as string,
+        attemptId: assigned.attemptId as string,
+        status: "completed",
+      }).ok,
     ).toBe(true);
     expect((await invoke("GET", "/api/v1/sessions/sess-1/logs")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/archive")).status).toBe(200);
@@ -134,7 +152,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p",
-          commandId: "cmd-echo",
+          target: { commandId: "cmd-echo" },
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",
@@ -146,7 +164,7 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "r1",
           prompt: "p2",
-          commandId: "cmd-echo",
+          target: { commandId: "cmd-echo" },
           timeout: 1,
           concurrencyKey: "k",
           onConflict: "reject",
@@ -159,6 +177,8 @@ describe("createLocalApp agent and scheduler routes", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: "missing",
+          worktreeId: "missing",
+          attemptId: "missing",
         })
       ).status,
     ).toBe(410);

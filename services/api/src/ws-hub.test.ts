@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { createServer } from "node:http";
 
 import { describe, expect, it } from "vitest";
@@ -22,6 +23,16 @@ describe("createPlaneWsBridge", () => {
     expect(parseHostMessage({ type: "session:status", sessionId: "s", status: "bogus" })).toBe(
       null,
     );
+    expect(parseHostMessage({ type: "session:ack", sessionId: "s" })).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:status",
+        sessionId: "s",
+        status: "completed",
+        worktreeId: "wt-1",
+        attemptId: "attempt-1",
+      }),
+    ).toMatchObject({ type: "session:status", attemptId: "attempt-1" });
     expect(
       parseHostMessage({
         type: "session:status",
@@ -108,13 +119,25 @@ describe("createPlaneWsBridge", () => {
           plane.createSession({
             repositoryId: "r1",
             prompt: "p",
-            commandId: "cmd-echo",
+            target: { commandId: "cmd-echo" },
             timeout: 10,
           });
           plane.assignQueued();
         }
         if (msg.type === "session:assign") {
-          ws.send(JSON.stringify({ type: "session:ack", sessionId: "sess-1" }));
+          const assignment = msg as unknown as {
+            sessionId: string;
+            worktreeId: string;
+            attemptId: string;
+          };
+          ws.send(
+            JSON.stringify({
+              type: "session:ack",
+              sessionId: assignment.sessionId,
+              worktreeId: assignment.worktreeId,
+              attemptId: assignment.attemptId,
+            }),
+          );
         }
         if (msg.type === "session:acknowledged") {
           // Keep the in-memory socket open long enough to catch a duplicate

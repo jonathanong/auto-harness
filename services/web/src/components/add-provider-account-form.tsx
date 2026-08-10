@@ -26,11 +26,12 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
         const form = e.currentTarget;
         const fd = new FormData(form);
         const label = String(fd.get("label") ?? "").trim();
+        const usageLimitCooldownSeconds = Number(fd.get("usageLimitCooldownSeconds") ?? 18000);
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/provider-accounts`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ providerId, label }),
+            body: JSON.stringify({ providerId, label, usageLimitCooldownSeconds }),
           });
           if (!res.ok) {
             setError(await errorMessage(res));
@@ -51,6 +52,22 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
           required
           placeholder="jonathanrichardong@gmail.com"
           data-pw="provider-account-label"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label
+          htmlFor="usageLimitCooldownSeconds"
+          tip="Global pause applied after this account reports usage_limit"
+        >
+          cooldown (s)
+        </Label>
+        <Input
+          id="usageLimitCooldownSeconds"
+          name="usageLimitCooldownSeconds"
+          type="number"
+          min={1}
+          defaultValue={18000}
+          data-pw="provider-account-cooldown-seconds"
         />
       </div>
       {error ? (

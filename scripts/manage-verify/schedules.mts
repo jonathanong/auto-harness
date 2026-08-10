@@ -26,7 +26,7 @@ export async function manageSchedules(scratch: string): Promise<void> {
     body: JSON.stringify({
       repositoryId: "demo",
       name: "nightly",
-      commandId: command.command.id,
+      target: { commandId: command.command.id },
       cron: "0 0 * * *",
       timeout: 30,
       nextRunAt: "2026-01-01T00:00:00.000Z",

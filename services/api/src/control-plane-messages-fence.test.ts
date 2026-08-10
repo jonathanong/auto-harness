@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -7,6 +8,11 @@ function running(id = "s") {
     id,
     repositoryId: "r",
     prompt: "p",
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: [],
+    queueTtlSeconds: 60,
+    queueExpiresAt: "2099-01-01T00:00:00.000Z",
     targetLabel: "t",
     timeout: 1,
     priority: 0,
@@ -17,6 +23,7 @@ function running(id = "s") {
     createdAt: "t",
     hostId: "h",
     worktreeId: "w",
+    attemptId: "a",
   };
 }
 
@@ -30,7 +37,8 @@ describe("durable host-message fencing", () => {
     plane.state.sessions.set("s", running());
     plane.state.sessions.set("done", { ...running("done"), status: "completed" });
 
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "s" })).toEqual({ ok: true });
+    const frame = { type: "session:ack" as const, sessionId: "s", worktreeId: "w", attemptId: "a" };
+    expect(plane.handleHostMessage(frame)).toEqual({ ok: true });
     expect(deliveries).toEqual([
       {
         hostId: "h",
@@ -40,11 +48,11 @@ describe("durable host-message fencing", () => {
 
     // Duplicate and rejected frames are idempotent or rejected, never a new
     // execution permission for the daemon.
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "s" })).toEqual({ ok: true });
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "done" })).toEqual({
+    expect(plane.handleHostMessage(frame)).toEqual({ ok: true });
+    expect(plane.handleHostMessage({ ...frame, sessionId: "done" })).toEqual({
       ok: true,
     });
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "missing" })).toEqual({
+    expect(plane.handleHostMessage({ ...frame, sessionId: "missing" })).toEqual({
       ok: false,
       error: "session not found",
     });
@@ -62,9 +70,19 @@ describe("durable host-message fencing", () => {
       finishSession: async () => false,
     } as never;
     expect(
-      await plane.handleHostMessageDurable({ type: "session:ack", sessionId: "s" }, "stale"),
+      await plane.handleHostMessageDurable(
+        { type: "session:ack", sessionId: "s", worktreeId: "w", attemptId: "a" },
+        "stale",
+      ),
     ).toEqual({ ok: false, error: "stale host connection" });
-    expect(await plane.handleHostMessageDurable({ type: "session:ack", sessionId: "s" })).toEqual({
+    expect(
+      await plane.handleHostMessageDurable({
+        type: "session:ack",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
+      }),
+    ).toEqual({
       ok: true,
       sessionAcknowledged: "s",
     });
@@ -75,6 +93,8 @@ describe("durable host-message fencing", () => {
       await plane.handleHostMessageDurable({
         type: "session:status",
         sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
         status: "running",
       }),
     ).toEqual({ ok: true });
@@ -97,6 +117,7 @@ describe("durable host-message fencing", () => {
     let logFence = false;
     let statusFence = false;
     plane.state.storage = {
+      getSession: async () => running(),
       getHostLock: async () => "c",
       putLogFenced: async () => false,
       finishSession: async (opts: { fence?: unknown }) => {
@@ -124,7 +145,13 @@ describe("durable host-message fencing", () => {
     };
     expect(
       await plane.handleHostMessageDurable(
-        { type: "session:status", sessionId: "s", status: "completed" },
+        {
+          type: "session:status",
+          sessionId: "s",
+          worktreeId: "w",
+          attemptId: "a",
+          status: "completed",
+        },
         "c",
       ),
     ).toEqual({ ok: true });
@@ -149,6 +176,7 @@ describe("durable host-message fencing", () => {
     });
     const calls: string[] = [];
     plane.state.storage = {
+      getSession: async () => cancelled,
       getHostLock: async () => "c",
       putLogFenced: async () => (calls.push("log"), true),
       deleteLog: async () => {},
@@ -174,6 +202,8 @@ describe("durable host-message fencing", () => {
       await plane.handleHostMessageDurable({
         type: "session:status",
         sessionId: "s",
+        worktreeId: "w",
+        attemptId: "a",
         status: "cancelled",
       }),
     ).toEqual({ ok: true });
@@ -181,7 +211,14 @@ describe("durable host-message fencing", () => {
 
     const local = new ControlPlane();
     local.state.sessions.set("done", { ...running("done"), status: "completed" });
-    expect(local.handleHostMessage({ type: "session:ack", sessionId: "done" })).toEqual({
+    expect(
+      local.handleHostMessage({
+        type: "session:ack",
+        sessionId: "done",
+        worktreeId: "w",
+        attemptId: "a",
+      }),
+    ).toEqual({
       ok: true,
     });
     expect(

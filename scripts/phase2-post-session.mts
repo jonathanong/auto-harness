@@ -1,5 +1,5 @@
 /**
- * Real HTTP POST /sessions with ref + commandId → 201 + url.
+ * Real HTTP POST /sessions with ref + target → 201 + url.
  */
 import { createLocalApp } from "../services/api/src/local-server.ts";
 import { ControlPlane } from "../services/api/src/control-plane.ts";
@@ -36,7 +36,8 @@ async function main(): Promise<void> {
     body: JSON.stringify({
       repositoryId: "demo",
       prompt: "phase2 post",
-      commandId: command.command.id,
+      target: { commandId: command.command.id },
+      queueTtlSeconds: 691200,
       timeout: 60,
       ref: "main",
       concurrencyKey: "ck-1",

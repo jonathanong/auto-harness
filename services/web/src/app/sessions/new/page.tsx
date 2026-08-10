@@ -20,7 +20,8 @@ export default async function NewSessionPage() {
         New session
       </h2>
       <p className="text-sm text-muted-foreground">
-        Provider accounts and standalone commands only (D4) — free-form shell is rejected.
+        Choose a provider pool or named command, with optional ordered fallbacks. Free-form shell is
+        rejected.
       </p>
       {error ? <p className="text-sm text-red-700">Could not load targets: {error}</p> : null}
       <CreateSessionForm targets={targets} />

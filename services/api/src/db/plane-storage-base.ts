@@ -95,8 +95,11 @@ export class DynamoPlaneStorageBase {
     hostId: string;
     connectionId: string;
     now: string;
+    attemptId: string;
     resolvedArgv: string[];
-    resumeSpec: SessionResumeSpec;
+    resumeSpec?: SessionResumeSpec;
+    resolvedRoute: SessionRecord["resolvedRoute"];
+    providerAccountId?: string;
     queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -110,6 +113,23 @@ export class DynamoPlaneStorageBase {
     return sessions.failExpiredResumeSession(this.ctx, opts);
   }
 
+  clearResumePin(opts: {
+    sessionId: string;
+    pinnedHostId: string;
+    pinExpiresAt?: string;
+  }): Promise<boolean> {
+    return sessions.clearResumePin(this.ctx, opts);
+  }
+
+  expireQueuedSession(opts: {
+    sessionId: string;
+    queueShard: number;
+    queueExpiresAt: string;
+    completedAt: string;
+  }): Promise<boolean> {
+    return sessions.expireQueuedSession(this.ctx, opts);
+  }
+
   releaseCancelledSessionWorktree(opts: {
     sessionId: string;
     worktreeId: string;
@@ -119,6 +139,7 @@ export class DynamoPlaneStorageBase {
     online: boolean;
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
+    attemptId: string;
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -126,6 +147,7 @@ export class DynamoPlaneStorageBase {
   tryRequeueSession(opts: {
     sessionId: string;
     worktreeId: string;
+    attemptId: string;
     queueShard: number;
     reason?: string;
     forceOffline?: boolean;
@@ -135,6 +157,7 @@ export class DynamoPlaneStorageBase {
     nextConnectionId?: string;
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
+    requireUnacknowledged?: boolean;
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -171,17 +194,58 @@ export class DynamoPlaneStorageBase {
     return reconnectRollback.restoreReconnectPending(this.ctx, opts);
   }
 
+  requeueUsageLimitedSession(opts: {
+    sessionId: string;
+    worktreeId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+  }): Promise<boolean> {
+    return sessions.requeueUsageLimitedSession(this.ctx, opts);
+  }
+
+  suppressProviderlessUsageLimit(opts: {
+    sessionId: string;
+    worktreeId: string;
+    attemptId: string;
+    queueShard: number;
+    targetIndex: number;
+    errorMessage?: string;
+  }): Promise<boolean> {
+    return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
+  }
+
   acknowledgeSession(
     sessionId: string,
     acknowledgedAt: string,
     fence?: { hostId: string; connectionId: string },
+  ): Promise<boolean>;
+  acknowledgeSession(opts: {
+    sessionId: string;
+    worktreeId: string;
+    attemptId: string;
+    acknowledgedAt: string;
+  }): Promise<boolean>;
+  acknowledgeSession(
+    arg:
+      | string
+      | { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+    acknowledgedAtOrFence?: string | { hostId: string; connectionId: string },
+    fence?: { hostId: string; connectionId: string },
   ): Promise<boolean> {
-    return sessions.acknowledgeSession(this.ctx, sessionId, acknowledgedAt, fence);
+    if (typeof arg === "string") {
+      return sessions.acknowledgeSession(this.ctx, arg, acknowledgedAtOrFence as string, fence);
+    }
+    return sessions.acknowledgeSession(this.ctx, arg);
   }
 
   finishSession(opts: {
     sessionId: string;
     worktreeId?: string | null;
+    attemptId: string;
     status: string;
     queueShard: number;
     completedAt?: string;
@@ -189,8 +253,6 @@ export class DynamoPlaneStorageBase {
     errorMessage?: string;
     exitCode?: number | null;
     cliResumeRef?: string;
-    retryCount?: number;
-    retryAfter?: string;
     fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);

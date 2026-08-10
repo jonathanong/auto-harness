@@ -73,6 +73,7 @@ export async function reconcileHostRunningSessions(
         await state.storage.tryRequeueSession({
           sessionId: session.id,
           worktreeId: worktree.id,
+          attemptId: session.attemptId!,
           queueShard: session.queueShard,
           reason: "daemon did not report session after reconnect; requeued",
           forceOffline: false,
@@ -142,6 +143,7 @@ export async function reclaimReconnectDeadlines(
       await state.storage.tryRequeueSession({
         sessionId: session.id,
         worktreeId: worktree.id,
+        attemptId: session.attemptId!,
         queueShard: session.queueShard,
         reason: "daemon reconnect deadline exceeded; requeued",
         forceOffline: true,

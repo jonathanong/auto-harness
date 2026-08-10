@@ -16,6 +16,13 @@ export type ProviderAccount = {
   providerId: string;
   /** e.g. "jonathanrichardong@gmail.com" */
   label: string;
+  /** Global pause duration applied when this account reports a vendor usage limit. */
+  usageLimitCooldownSeconds: number;
+  /** The account cannot receive new work before this time. */
+  usageLimitedUntil: string | null;
+  lastUsageLimitedAt: string | null;
+  /** Used to distribute new work fairly between healthy accounts. */
+  lastAssignedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };

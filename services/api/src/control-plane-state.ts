@@ -5,7 +5,6 @@ import {
   DEFAULT_ARCHIVE_PREFIX,
   DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
-  DEFAULT_USAGE_LIMIT_RETRY_CEILING,
   newId,
   normalizeHostCapabilities,
   type HostWireMessage,
@@ -60,6 +59,7 @@ export type ControlPlaneState = {
   publicBaseUrl: string;
   now: () => string;
   idFactory: () => string;
+  attemptIdFactory: () => string;
   connectionIdFactory: () => string;
   scheduleIdFactory: () => string;
   repositoryIdFactory: () => string;
@@ -70,7 +70,6 @@ export type ControlPlaneState = {
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
   reconnectGraceMs: number;
-  usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
@@ -99,6 +98,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
     now: options.now ?? (() => new Date().toISOString()),
     idFactory: options.idFactory ?? (() => `sess-${randomBytes(4).toString("hex")}`),
+    attemptIdFactory:
+      options.attemptIdFactory ?? (() => `attempt-${randomBytes(12).toString("hex")}`),
     connectionIdFactory:
       options.connectionIdFactory ?? (() => `conn-${randomBytes(4).toString("hex")}`),
     scheduleIdFactory: options.scheduleIdFactory
@@ -116,9 +117,6 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       ? options.heartbeatStaleMs
       : DEFAULT_HEARTBEAT_STALE_MS,
     reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
-    usageLimitRetryCeiling: options.usageLimitRetryCeiling
-      ? options.usageLimitRetryCeiling
-      : DEFAULT_USAGE_LIMIT_RETRY_CEILING,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,

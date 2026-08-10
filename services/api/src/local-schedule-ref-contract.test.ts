@@ -14,7 +14,7 @@ describe("schedule ref REST contract", () => {
     const base = {
       repositoryId: "repo",
       name: "nightly",
-      commandId: "command",
+      target: { commandId: "command" },
       cron: "0 0 * * *",
       timeout: 30,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -35,7 +35,7 @@ describe("schedule ref REST contract", () => {
     const prompt = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "repo",
       prompt: "prompt ref remains flexible",
-      commandId: "command",
+      target: { commandId: "command" },
       timeout: 30,
       ref: "0123456789abcdef",
     });
@@ -45,7 +45,7 @@ describe("schedule ref REST contract", () => {
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "repo",
           prompt: "bad type",
-          commandId: "command",
+          target: { commandId: "command" },
           timeout: 30,
           type: "other",
         })

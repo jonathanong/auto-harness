@@ -101,7 +101,7 @@ describe("ControlPlane claim invariants", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "hourly",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "0 * * * *",
       timeout: 60,
       nextRunAt: "2026-01-01T00:00:00.000Z",

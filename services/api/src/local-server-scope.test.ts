@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -25,7 +26,7 @@ describe("scoped control-plane REST resources", () => {
       id: "schedule-a",
       repositoryId: "repo-a",
       name: "nightly",
-      commandId: "cmd-a",
+      target: { commandId: "cmd-a" },
       cron: "* * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -34,7 +35,7 @@ describe("scoped control-plane REST resources", () => {
       id: "schedule-b",
       repositoryId: "repo-b",
       name: "nightly",
-      commandId: "cmd-a",
+      target: { commandId: "cmd-a" },
       cron: "* * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -59,8 +60,18 @@ describe("scoped control-plane REST resources", () => {
       status: "idle",
       online: true,
     });
-    plane.createSession({ repositoryId: "repo-a", prompt: "a", commandId: "cmd-a", timeout: 10 });
-    plane.createSession({ repositoryId: "repo-b", prompt: "b", commandId: "cmd-a", timeout: 10 });
+    plane.createSession({
+      repositoryId: "repo-a",
+      prompt: "a",
+      target: { commandId: "cmd-a" },
+      timeout: 10,
+    });
+    plane.createSession({
+      repositoryId: "repo-b",
+      prompt: "b",
+      target: { commandId: "cmd-a" },
+      timeout: 10,
+    });
     const sessionB = plane.listSessions().find((session) => session.repositoryId === "repo-b")!;
 
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
@@ -99,7 +110,7 @@ describe("scoped control-plane REST resources", () => {
         await invoke("POST", "/api/v1/schedules", {
           repositoryId: "repo-a",
           name: "explicit",
-          commandId: "cmd-a",
+          target: { commandId: "cmd-a" },
           cron: "* * * * *",
           timeout: 10,
           nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -111,10 +122,57 @@ describe("scoped control-plane REST resources", () => {
     ).toBe(201);
     expect(
       (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-b",
+          name: "hidden",
+          target: { commandId: "cmd-a" },
+          cron: "* * * * *",
+          timeout: 10,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-a",
+          name: "invalid-target",
+          target: { commandId: "missing" },
+          cron: "* * * * *",
+          timeout: 10,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-b",
+          name: "hidden",
+          target: { commandId: "cmd-a" },
+          cron: "* * * * *",
+          timeout: 10,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-a",
+          name: "invalid-target",
+          target: { commandId: "missing" },
+          cron: "* * * * *",
+          timeout: 10,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
         await invoke("PATCH", "/api/v1/schedules/schedule-c", {
           name: "explicit-2",
-          providerAccountId: "missing-account",
-          commandId: "cmd-a",
+          target: { commandId: "cmd-a" },
           cron: "0 * * * *",
           timeout: 20,
           nextRunAt: "2026-01-02T00:00:00.000Z",
@@ -160,6 +218,8 @@ describe("scoped control-plane REST resources", () => {
         await invoke("POST", "/api/v1/host/messages", {
           type: "session:ack",
           sessionId: sessionB.id,
+          worktreeId: "wt-b",
+          attemptId: "attempt-b",
         })
       ).status,
     ).toBe(404);
@@ -179,7 +239,7 @@ describe("scoped control-plane REST resources", () => {
     const owned = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "repo-a",
       prompt: "owned",
-      commandId: "cmd-a",
+      target: { commandId: "cmd-a" },
       timeout: 10,
     });
     expect(owned.status).toBe(201);

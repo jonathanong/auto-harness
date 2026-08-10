@@ -29,6 +29,8 @@ test.describe("control plane sessions", () => {
       const repoId = `pw-sess-repo-${test.info().parallelIndex}-${Date.now()}`;
       const id = `pw-sess-${test.info().parallelIndex}-${Date.now()}`;
       const commandName = `echo-prompt-${test.info().parallelIndex}-${Date.now()}`;
+      const fallbackCommandName = `echo-fallback-${test.info().parallelIndex}-${Date.now()}`;
+      const secondFallbackCommandName = `echo-fallback-two-${test.info().parallelIndex}-${Date.now()}`;
 
       await putHostRepo(request, {
         id: repoId,
@@ -36,9 +38,23 @@ test.describe("control plane sessions", () => {
         defaultBranch: "main",
         worktrees: [{ id: "wt-1", name: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
       });
-      await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const commandResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
         data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },
       });
+      const commandId = ((await commandResponse.json()) as { id: string }).id;
+      const fallbackResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+        data: { name: fallbackCommandName, argv: ["echo"], appendPrompt: true, providerId: null },
+      });
+      const fallbackCommandId = ((await fallbackResponse.json()) as { id: string }).id;
+      const secondFallbackResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+        data: {
+          name: secondFallbackCommandName,
+          argv: ["echo"],
+          appendPrompt: true,
+          providerId: null,
+        },
+      });
+      const secondFallbackCommandId = ((await secondFallbackResponse.json()) as { id: string }).id;
 
       try {
         await page.goto("/sessions/new");
@@ -46,10 +62,42 @@ test.describe("control plane sessions", () => {
           timeout: 15_000,
         });
         await page.getByTestId("create-session-repository-id").fill(repoId);
-        await page.getByTestId("create-session-target").selectOption({ label: commandName });
+        await page.getByTestId("create-session-target").selectOption(`command:${commandId}`);
+        await page.getByTestId("create-session-fallback-add").click();
+        await page
+          .getByTestId("create-session-fallback-select-0")
+          .selectOption(`command:${fallbackCommandId}`);
+        const firstFallbackValue = await page
+          .getByTestId("create-session-fallback-select-0")
+          .inputValue();
+        await page.getByTestId("create-session-fallback-add").click();
+        await page
+          .getByTestId("create-session-fallback-select-1")
+          .selectOption(`command:${secondFallbackCommandId}`);
+        const secondFallbackValue = await page
+          .getByTestId("create-session-fallback-select-1")
+          .inputValue();
+        await page.getByTestId("create-session-fallback-up-1").click();
+        await page.getByTestId("create-session-fallback-down-0").click();
+        await page.getByTestId("create-session-fallback-up-1").click();
+        await expect(page.getByTestId("create-session-fallback-select-0")).toHaveValue(
+          secondFallbackValue,
+        );
+        await expect(page.getByTestId("create-session-fallback-select-1")).toHaveValue(
+          firstFallbackValue,
+        );
+        await page.getByTestId("create-session-fallback-remove-1").click();
+        await expect(page.getByTestId("create-session-fallback-select-1")).toHaveCount(0);
         await page.getByTestId("create-session-prompt").fill(`hello-${id}`);
         await page.getByTestId("create-session-timeout").fill("30");
+        const createRequest = page.waitForRequest(
+          (req) => req.url().endsWith("/api/v1/sessions") && req.method() === "POST",
+        );
         await page.getByTestId("create-session-submit").click();
+        expect((await createRequest).postDataJSON()).toMatchObject({
+          target: expect.objectContaining({ commandId: expect.any(String) }),
+          fallbacks: [expect.objectContaining({ commandId: expect.any(String) })],
+        });
 
         // Lands on the new session's own detail page, not just the list.
         await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });

@@ -1,47 +1,108 @@
+import {
+  resolveProviderAccountCommandId,
+  resolveProviderAccountEnabled,
+  type ProviderCatalog,
+} from "@auto-harness/shared";
+
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
+/** Every catalog provider/command is selectable. Availability is a hint only. */
 export type SessionTarget =
-  | { kind: "provider-account"; id: string; label: string; providerId: string }
-  | { kind: "command"; id: string; label: string };
+  | { kind: "provider"; id: string; label: string; available: boolean }
+  | { kind: "command"; id: string; label: string; providerId: string | null; available: boolean };
 
-function isAttachedToAnyHost(state: ControlPlaneState, providerAccountId: string): boolean {
-  for (const host of state.hostInventories.values()) {
-    // Real-storage records written before this field existed can lack it at runtime
-    // despite the type saying it's required — don't crash the picker on stale data.
-    if (host.providerAccounts?.some((pa) => pa.providerAccountId === providerAccountId)) {
-      return true;
-    }
-  }
-  return false;
+export function listSessionTargets(state: ControlPlaneState): SessionTarget[] {
+  const now = Date.parse(state.now());
+  const catalog: ProviderCatalog = {
+    providers: Object.fromEntries(state.providers),
+    providerAccounts: Object.fromEntries(state.providerAccounts),
+  };
+  const healthyFor = (providerId: string): boolean =>
+    [...state.worktrees.values()].some((worktree) =>
+      [...state.providerAccounts.values()]
+        .filter((account) => account.providerId === providerId)
+        .some((account) => accountCanRunOnWorktree(state, catalog, account.id, worktree, now)),
+    );
+  const providerCommandAvailable = (providerId: string, commandId: string): boolean =>
+    (state.commands.get(commandId)?.argv.length ?? 0) > 0 &&
+    [...state.worktrees.values()].some((worktree) =>
+      [...state.providerAccounts.values()]
+        .filter((account) => account.providerId === providerId)
+        .some((account) => accountEnabledOnWorktree(state, account.id, worktree, now)),
+    );
+  const standaloneAvailable = [...state.worktrees.values()].some((worktree) =>
+    isAvailableWorktree(state, worktree),
+  );
+  const providers: SessionTarget[] = [...state.providers.values()].map((provider) => ({
+    kind: "provider",
+    id: provider.id,
+    label: provider.name,
+    available: healthyFor(provider.id),
+  }));
+  const commands: SessionTarget[] = [...state.commands.values()].map((command) => ({
+    kind: "command",
+    id: command.id,
+    label: command.name,
+    providerId: command.providerId,
+    available:
+      command.providerId === null
+        ? standaloneAvailable
+        : providerCommandAvailable(command.providerId, command.id),
+  }));
+  return [...providers, ...commands].toSorted((a, b) => a.label.localeCompare(b.label));
 }
 
-/**
- * Unified picker source: attached provider accounts plus standalone commands
- * (providerId: null — provider-owned commands are reached via their provider
- * account's cascade, not selected directly). A provider account not attached
- * to any host would never resolve to a runnable command at assign time
- * (resolveSessionTargetArgv), so it's excluded here rather than offered as a
- * choice that can only ever queue forever.
- */
-export function listSessionTargets(state: ControlPlaneState): SessionTarget[] {
-  const targets: SessionTarget[] = [];
-  for (const account of state.providerAccounts.values()) {
-    const provider = state.providers.get(account.providerId);
-    if (!provider || !isAttachedToAnyHost(state, account.id)) {
-      continue;
-    }
-    targets.push({
-      kind: "provider-account",
-      id: account.id,
-      label: `${provider.name} — ${account.label}`,
-      providerId: provider.id,
-    });
+function isAvailableWorktree(
+  state: ControlPlaneState,
+  worktree: { hostId: string; status: string; online: boolean },
+): boolean {
+  return (
+    worktree.status === "idle" &&
+    worktree.online &&
+    !state.drainingHosts.has(worktree.hostId) &&
+    !state.disconnectedHosts.has(worktree.hostId)
+  );
+}
+
+function accountCanRunOnWorktree(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  providerAccountId: string,
+  worktree: { id: string; hostId: string; repositoryId: string; status: string; online: boolean },
+  now: number,
+): boolean {
+  if (!accountEnabledOnWorktree(state, providerAccountId, worktree, now)) return false;
+  const host = state.hostInventories.get(worktree.hostId);
+  const repository = host?.repositories.find((item) => item.id === worktree.repositoryId);
+  const hostWorktree = repository?.worktrees.find((item) => item.id === worktree.id);
+  if (!resolveProviderAccountEnabled(providerAccountId, hostWorktree, repository, host))
+    return false;
+  const commandId = resolveProviderAccountCommandId(
+    providerAccountId,
+    hostWorktree,
+    repository,
+    host,
+    catalog,
+  );
+  return commandId !== undefined && (state.commands.get(commandId)?.argv.length ?? 0) > 0;
+}
+
+function accountEnabledOnWorktree(
+  state: ControlPlaneState,
+  providerAccountId: string,
+  worktree: { id: string; hostId: string; repositoryId: string; status: string; online: boolean },
+  now: number,
+): boolean {
+  if (!isAvailableWorktree(state, worktree)) return false;
+  const account = state.providerAccounts.get(providerAccountId);
+  if (
+    !account ||
+    (account.usageLimitedUntil !== null && Date.parse(account.usageLimitedUntil) > now)
+  ) {
+    return false;
   }
-  for (const command of state.commands.values()) {
-    if (command.providerId !== null) {
-      continue;
-    }
-    targets.push({ kind: "command", id: command.id, label: command.name });
-  }
-  return targets.toSorted((a, b) => a.label.localeCompare(b.label));
+  const host = state.hostInventories.get(worktree.hostId);
+  const repository = host?.repositories.find((item) => item.id === worktree.repositoryId);
+  const hostWorktree = repository?.worktrees.find((item) => item.id === worktree.id);
+  return resolveProviderAccountEnabled(providerAccountId, hostWorktree, repository, host);
 }

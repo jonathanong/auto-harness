@@ -1,9 +1,5 @@
 /* eslint-disable max-lines */
-import {
-  formatLogSortKey,
-  type HostToServerMessage,
-  type SessionStatus,
-} from "@auto-harness/shared";
+import { formatLogSortKey, type HostToServerMessage } from "@auto-harness/shared";
 
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -16,6 +12,7 @@ import {
 } from "./control-plane-agents.ts";
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
@@ -132,7 +129,12 @@ export function handleHostMessage(
       // Only the first valid ACK is a state transition. Retried or stale
       // frames remain idempotently successful, but must not create a fresh
       // peer confirmation for a different daemon assignment attempt.
-      if (session.status !== "running" || session.ackReceivedAt !== undefined) {
+      if (
+        session.status !== "running" ||
+        session.worktreeId !== msg.worktreeId ||
+        session.attemptId !== msg.attemptId ||
+        session.ackReceivedAt !== undefined
+      ) {
         return { ok: true };
       }
       session.ackReceivedAt = state.now();
@@ -261,15 +263,31 @@ export async function handleHostMessageDurable(
     return { ok: true };
   }
   if (msg.type === "session:ack") {
-    const session = state.sessions.get(msg.sessionId);
+    // Any API node can receive this frame. The process map is only a cache;
+    // fetch the authoritative row before testing an execution fence.
+    const session = await state.storage.getSession(msg.sessionId);
     if (!session) {
       return { ok: false, error: "session not found" };
     }
-    const accepted = await storage.acknowledgeSession(msg.sessionId, state.now(), fence);
+    state.sessions.set(msg.sessionId, session);
+    if (
+      session.status !== "running" ||
+      session.worktreeId !== msg.worktreeId ||
+      session.attemptId !== msg.attemptId
+    ) {
+      return { ok: true };
+    }
+    const acknowledgedAt = state.now();
+    const accepted = await state.storage.acknowledgeSession({
+      sessionId: msg.sessionId,
+      worktreeId: msg.worktreeId,
+      attemptId: msg.attemptId,
+      acknowledgedAt,
+    });
     if (accepted) {
       state.sessions.set(msg.sessionId, {
         ...session,
-        ackReceivedAt: session.ackReceivedAt ?? state.now(),
+        ackReceivedAt: session.ackReceivedAt ?? acknowledgedAt,
       });
       state.pendingAcks.delete(msg.sessionId);
       return { ok: true, sessionAcknowledged: msg.sessionId };
@@ -287,9 +305,17 @@ async function applySessionStatusDurable(
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
   fence?: { hostId: string; connectionId: string },
 ): Promise<{ ok: boolean; error?: string }> {
-  const session = state.sessions.get(msg.sessionId);
+  const storage = state.storage;
+  if (!storage) return handleHostMessage(state, msg);
+  // Do not trust a potentially missing or stale per-process session cache:
+  // this node may not be the scheduler that emitted the assignment.
+  const session = await storage.getSession(msg.sessionId);
   if (!session) {
     return { ok: false, error: "session not found" };
+  }
+  state.sessions.set(session.id, session);
+  if (session.worktreeId !== msg.worktreeId || session.attemptId !== msg.attemptId) {
+    return { ok: true };
   }
   const terminal =
     msg.status === "completed" ||
@@ -301,12 +327,13 @@ async function applySessionStatusDurable(
   }
   if (session.status === "cancelled" && session.worktreeId) {
     const worktreeId = session.worktreeId;
-    const released = await state.storage.releaseCancelledSessionWorktree({
+    const released = await storage.releaseCancelledSessionWorktree({
       sessionId: session.id,
       worktreeId,
       online: true,
       ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(fence ? { fence } : {}),
+      attemptId: msg.attemptId,
     });
     if (released) {
       const wt = state.worktrees.get(worktreeId);
@@ -330,28 +357,86 @@ async function applySessionStatusDurable(
   if (session.status !== "running") {
     return { ok: true };
   }
-  const retries = session.retryCount ?? 0;
-  const shouldRetry =
-    msg.status === "failed" &&
-    msg.errorCode === "usage_limit" &&
-    retries < state.usageLimitRetryCeiling;
-  const retryCount = shouldRetry ? retries + 1 : undefined;
-  const retryAfter = shouldRetry
-    ? new Date(Date.parse(state.now()) + 1000 * 2 ** retries).toISOString()
-    : undefined;
-  const nextStatus = shouldRetry ? "queued" : msg.status;
-  const committed = await state.storage.finishSession({
+  const isUsageLimit = msg.status === "failed" && msg.errorCode === "usage_limit";
+  const accountId = session.resolvedRoute?.providerAccountId;
+  if (isUsageLimit && accountId && session.worktreeId) {
+    const now = state.now();
+    const account = await storage.getProviderAccount(accountId);
+    if (!account) return { ok: true };
+    const usageLimitedUntil = new Date(
+      Date.parse(now) + account.usageLimitCooldownSeconds * 1000,
+    ).toISOString();
+    const committed = await storage.requeueUsageLimitedSession({
+      sessionId: session.id,
+      worktreeId: session.worktreeId,
+      attemptId: msg.attemptId,
+      providerAccountId: accountId,
+      queueShard: session.queueShard,
+      now,
+      usageLimitedUntil,
+      ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+    });
+    if (!committed) return { ok: true };
+    const wt = state.worktrees.get(session.worktreeId);
+    if (wt) state.worktrees.set(wt.id, { ...wt, status: "idle", currentSessionId: null });
+    state.providerAccounts.set(accountId, {
+      ...account,
+      usageLimitedUntil,
+      lastUsageLimitedAt: now,
+      updatedAt: now,
+    });
+    state.sessions.set(session.id, {
+      ...session,
+      status: "queued",
+      worktreeId: null,
+      hostId: null,
+      errorCode: "usage_limit",
+      errorMessage: msg.errorMessage ?? "provider usage limit; requeued",
+    });
+    state.pendingAcks.delete(session.id);
+    await assignQueuedDurable(state);
+    return { ok: true };
+  }
+  const shouldSuppressTarget = isUsageLimit && !accountId;
+  if (shouldSuppressTarget && session.worktreeId) {
+    const committed = await storage.suppressProviderlessUsageLimit({
+      sessionId: session.id,
+      worktreeId: session.worktreeId,
+      attemptId: msg.attemptId,
+      queueShard: session.queueShard,
+      targetIndex: session.resolvedRoute?.targetIndex ?? 0,
+      ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+    });
+    if (!committed) return { ok: true };
+    const worktree = state.worktrees.get(session.worktreeId);
+    if (worktree)
+      state.worktrees.set(worktree.id, { ...worktree, status: "idle", currentSessionId: null });
+    state.sessions.set(session.id, {
+      ...session,
+      status: "queued",
+      worktreeId: null,
+      hostId: null,
+      suppressedTargetIndexes: [
+        ...(session.suppressedTargetIndexes ?? []),
+        session.resolvedRoute?.targetIndex ?? 0,
+      ],
+    });
+    state.pendingAcks.delete(session.id);
+    await assignQueuedDurable(state);
+    return { ok: true };
+  }
+  const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
+  const committed = await storage.finishSession({
     sessionId: msg.sessionId,
     worktreeId: session.worktreeId,
+    attemptId: msg.attemptId,
     status: nextStatus,
     queueShard: session.queueShard,
-    ...(shouldRetry ? {} : { completedAt: state.now() }),
+    ...(shouldSuppressTarget ? {} : { completedAt: state.now() }),
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-    ...(retryCount !== undefined ? { retryCount } : {}),
-    ...(retryAfter !== undefined ? { retryAfter } : {}),
     ...(fence ? { fence } : {}),
   });
   if (!committed) {
@@ -371,39 +456,43 @@ async function applySessionStatusDurable(
   const nextSession = {
     ...session,
     status: nextStatus,
-    ...(shouldRetry ? {} : { completedAt: state.now() }),
+    ...(shouldSuppressTarget ? {} : { completedAt: state.now() }),
     worktreeId: null,
-    ...(shouldRetry ? { hostId: null } : {}),
+    hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
     ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-    ...(retryCount !== undefined ? { retryCount } : {}),
-    ...(retryAfter !== undefined ? { retryAfter } : {}),
+    ...(shouldSuppressTarget
+      ? {
+          suppressedTargetIndexes: [
+            ...(session.suppressedTargetIndexes ?? []),
+            session.resolvedRoute?.targetIndex ?? 0,
+          ],
+        }
+      : {}),
   };
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
-  if (!shouldRetry) {
+  if (!shouldSuppressTarget) {
     await archiveSessionLogs(state, msg.sessionId);
     maybeDeliverWebhook(state, nextSession);
   }
+  if (shouldSuppressTarget) await assignQueuedDurable(state);
   return { ok: true };
 }
 
 function applySessionStatus(
   state: ControlPlaneState,
-  msg: {
-    sessionId: string;
-    status: SessionStatus;
-    exitCode?: number | null;
-    errorCode?: string;
-    errorMessage?: string;
-    cliResumeRef?: string;
-  },
+  msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): { ok: boolean; error?: string } {
   const session = state.sessions.get(msg.sessionId);
   if (!session) {
     return { ok: false, error: "session not found" };
+  }
+
+  if (session.worktreeId !== msg.worktreeId || session.attemptId !== msg.attemptId) {
+    return { ok: true };
   }
 
   const terminal =
@@ -446,25 +535,37 @@ function applySessionStatus(
       releaseWorktree(state, session.worktreeId);
     }
 
-    let retries = 0;
-    if (session.retryCount !== undefined) {
-      retries = session.retryCount;
-    }
-    if (
-      msg.status === "failed" &&
-      msg.errorCode === "usage_limit" &&
-      retries < state.usageLimitRetryCeiling
-    ) {
-      const retryCount = retries + 1;
-      session.retryCount = retryCount;
-      const backoffMs = 1000 * 2 ** (retryCount - 1);
-      session.retryAfter = new Date(Date.parse(state.now()) + backoffMs).toISOString();
+    if (msg.status === "failed" && msg.errorCode === "usage_limit") {
+      const accountId = session.resolvedRoute?.providerAccountId;
+      if (accountId) {
+        const account = state.providerAccounts.get(accountId);
+        if (account) {
+          const now = state.now();
+          account.usageLimitedUntil = new Date(
+            Date.parse(now) + account.usageLimitCooldownSeconds * 1000,
+          ).toISOString();
+          account.lastUsageLimitedAt = now;
+          account.updatedAt = now;
+          state.providerAccounts.set(accountId, account);
+        }
+      } else {
+        session.suppressedTargetIndexes = [
+          ...(session.suppressedTargetIndexes ?? []),
+          session.resolvedRoute?.targetIndex ?? 0,
+        ];
+      }
       session.status = "queued";
       session.worktreeId = null;
       session.hostId = null;
       delete session.completedAt;
+      void assignQueued(state);
     } else {
       session.worktreeId = null;
+      // A continuation reference is single-use: a resumed command must report
+      // a fresh one if it wants to support another native continuation.
+      if (session.resumedFromSessionId && msg.cliResumeRef === undefined) {
+        delete session.cliResumeRef;
+      }
       void archiveSessionLogs(state, session.id);
       void maybeDeliverWebhook(state, session);
     }

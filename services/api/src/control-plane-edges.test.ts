@@ -4,11 +4,11 @@ import { ControlPlane } from "./control-plane.ts";
 import { BASE_COMMAND_ID, baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane API edges", () => {
-  it("POST fields include ref, targetLabel, concurrencyKey, metadata, url", () => {
+  it("POST fields include ref, target labels, concurrencyKey, metadata, url", () => {
     const plane = new ControlPlane({
       publicBaseUrl: "http://ui",
       idFactory: () => "sess-x",
-      now: () => "t",
+      now: () => "2026-01-01T00:00:00.000Z",
     });
     seedBaseCommand(plane);
     const r = plane.createSession(
@@ -23,7 +23,7 @@ describe("ControlPlane API edges", () => {
     if (r.ok) {
       expect(r.session.url).toBe("http://ui/sessions/sess-x");
       expect(r.session.ref).toBe("main");
-      expect(r.session.targetLabel).toBe("echo-prompt");
+      expect(r.session.targetLabels).toEqual(["echo-prompt"]);
       expect(r.session.concurrencyKey).toBe("ck");
       expect(r.session.metadata).toEqual({ pr: 1 });
     }
@@ -51,7 +51,7 @@ describe("ControlPlane API edges", () => {
     plane.putSchedule({
       repositoryId: "repo-1",
       name: "job",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -94,11 +94,18 @@ describe("ControlPlane API edges", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
       status: "completed",
     });
     const resumed = plane.resumeSession("sess-1", {
@@ -107,10 +114,9 @@ describe("ControlPlane API edges", () => {
     expect(resumed.ok).toBe(true);
     if (resumed.ok) {
       plane.assignQueued();
-      expect(plane.getSession(resumed.session.id)?.status).toBe("failed");
+      expect(plane.getSession(resumed.session.id)?.status).toBe("running");
     }
     expect(plane.archiveSessionLogs("empty-sess")?.body).toBe("[]");
     expect(plane.getAckDeadlineMs()).toBeGreaterThan(0);
-    expect(plane.getUsageLimitRetryCeiling()).toBeGreaterThan(0);
   });
 });

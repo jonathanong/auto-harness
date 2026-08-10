@@ -9,6 +9,7 @@ describe("sessionAssignFromWire", () => {
         type: "session:assign",
         sessionId: "s",
         sessionType: "scheduled",
+        attemptId: "attempt-1",
         repositoryId: "r",
         prompt: "p",
         resolvedArgv: ["echo", "p"],
@@ -20,14 +21,21 @@ describe("sessionAssignFromWire", () => {
         resumedFromSessionId: "old",
         cliResumeRef: "ref",
         metadata: { pr: 1 },
+        targetIndex: 1,
+        commandId: "cmd-1",
+        providerAccountId: "acct-1",
         assignedAt: "now",
       }),
     ).toMatchObject({
       sessionType: "scheduled",
+      attemptId: "attempt-1",
       ref: "main",
       setupScript: "true",
       resume: true,
       cliResumeRef: "ref",
+      targetIndex: 1,
+      commandId: "cmd-1",
+      providerAccountId: "acct-1",
     });
   });
 
@@ -36,6 +44,7 @@ describe("sessionAssignFromWire", () => {
       sessionAssignFromWire({
         type: "session:assign",
         sessionId: "s",
+        attemptId: "attempt-1",
         repositoryId: "r",
         prompt: "p",
         resolvedArgv: [],
@@ -45,6 +54,7 @@ describe("sessionAssignFromWire", () => {
       }),
     ).toEqual({
       sessionId: "s",
+      attemptId: "attempt-1",
       repositoryId: "r",
       prompt: "p",
       resolvedArgv: [],

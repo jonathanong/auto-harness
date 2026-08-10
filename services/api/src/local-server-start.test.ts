@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { startLocalServer } from "./local-server.ts";
 import { MemorySessionStore } from "./memory-store.ts";
+import { ControlPlane } from "./control-plane.ts";
 
 describe("startLocalServer", () => {
   it("listens and closes", async () => {
@@ -23,7 +24,7 @@ describe("startLocalServer", () => {
       body: JSON.stringify({
         repositoryId: "r",
         prompt: "p",
-        commandId: "cmd-c",
+        target: { commandId: "cmd-c" },
         timeout: 1,
       }),
     });
@@ -65,5 +66,21 @@ describe("startLocalServer", () => {
       // DynamoDB Local not running — optional path
       expect(true).toBe(true);
     }
+  });
+
+  it("rejects insecure binds and exercises disabled websocket setup", async () => {
+    await expect(startLocalServer({ host: "0.0.0.0", useDynamo: false })).rejects.toThrow(
+      "non-loopback API bind requires",
+    );
+
+    await expect(
+      startLocalServer({
+        host: "0.0.0.0",
+        authMode: "required",
+        useDynamo: false,
+        enableWs: false,
+        plane: new ControlPlane(),
+      }),
+    ).rejects.toBeTruthy();
   });
 });

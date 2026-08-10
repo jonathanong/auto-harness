@@ -204,11 +204,41 @@ export async function tryAssignSession(
     hostId: string;
     connectionId: string;
     now: string;
+    attemptId: string;
     resolvedArgv: string[];
-    resumeSpec: import("@auto-harness/shared").SessionResumeSpec;
+    resumeSpec?: import("@auto-harness/shared").SessionResumeSpec;
+    resolvedRoute: SessionRecord["resolvedRoute"];
+    providerAccountId?: string;
     queueShard: number;
   },
 ): Promise<boolean> {
+  const sessionSets = [
+    "#s = :running",
+    "statusShard = :statusShard",
+    "worktreeId = :wid",
+    "hostId = :hid",
+    "startedAt = :now",
+    "attemptId = :attemptId",
+    "resolvedArgv = :argv",
+    "resolvedRoute = :route",
+    "assignmentConnectionId = :connectionId",
+  ];
+  const sessionValues: Record<string, unknown> = {
+    ":running": "running",
+    ":statusShard": statusShardAttr("running", opts.queueShard),
+    ":queued": "queued",
+    ":wid": opts.worktreeId,
+    ":hid": opts.hostId,
+    ":now": opts.now,
+    ":attemptId": opts.attemptId,
+    ":argv": opts.resolvedArgv,
+    ":connectionId": opts.connectionId,
+    ":route": opts.resolvedRoute,
+  };
+  if (opts.resumeSpec !== undefined) {
+    sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
+    sessionValues[":resumeSpec"] = opts.resumeSpec;
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -235,21 +265,10 @@ export async function tryAssignSession(
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression:
-                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv, resumeSpec = if_not_exists(resumeSpec, :resumeSpec), assignmentConnectionId = :connectionId REMOVE ackReceivedAt, reconnectDeadlineAt",
-              ConditionExpression: "#s = :queued",
+              UpdateExpression: `SET ${sessionSets.join(", ")} REMOVE ackReceivedAt, reconnectDeadlineAt`,
+              ConditionExpression: "#s = :queued AND queueExpiresAt > :now",
               ExpressionAttributeNames: { "#s": "status" },
-              ExpressionAttributeValues: {
-                ":running": "running",
-                ":statusShard": statusShardAttr("running", opts.queueShard),
-                ":queued": "queued",
-                ":wid": opts.worktreeId,
-                ":hid": opts.hostId,
-                ":now": opts.now,
-                ":argv": opts.resolvedArgv,
-                ":resumeSpec": opts.resumeSpec,
-                ":connectionId": opts.connectionId,
-              },
+              ExpressionAttributeValues: sessionValues,
             },
           },
           {
@@ -265,6 +284,20 @@ export async function tryAssignSession(
               ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
             },
           },
+          ...(opts.providerAccountId
+            ? [
+                {
+                  Update: {
+                    TableName: ctx.tables.providerAccounts,
+                    Key: { id: opts.providerAccountId },
+                    UpdateExpression: "SET lastAssignedAt = :now, updatedAt = :now",
+                    ConditionExpression:
+                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR usageLimitedUntil <= :now)",
+                    ExpressionAttributeValues: { ":now": opts.now },
+                  },
+                },
+              ]
+            : []),
         ],
       }),
     );
@@ -315,6 +348,41 @@ export async function failExpiredResumeSession(
 }
 
 /**
+ * Persist the transition from a native-resume attempt to a fresh queued run.
+ * The observed host is conditional so an older scheduler cannot erase a pin
+ * installed by a newer resume request.
+ */
+export async function clearResumePin(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; pinnedHostId: string; pinExpiresAt?: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET resumeFallback = :true REMOVE pinnedHostId, pinnedProviderAccountId, pinnedTargetIndex, pinnedCommandId, pinExpiresAt, cliResumeRef",
+        ConditionExpression:
+          "#s = :queued AND pinnedHostId = :pinnedHostId" +
+          (opts.pinExpiresAt === undefined ? "" : " AND pinExpiresAt = :pinExpiresAt"),
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":true": true,
+          ":queued": "queued",
+          ":pinnedHostId": opts.pinnedHostId,
+          ...(opts.pinExpiresAt === undefined ? {} : { ":pinExpiresAt": opts.pinExpiresAt }),
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) return false;
+    throw err;
+  }
+}
+
+/**
  * A running session cancelled by an operator deliberately keeps its worktree
  * busy until the agent reports a terminal status. Release that exact claim
  * without changing the cancelled status, and detach the terminal session so a
@@ -330,6 +398,7 @@ export async function releaseCancelledSessionWorktree(
     online: boolean;
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
+    attemptId: string;
   },
 ): Promise<boolean> {
   try {
@@ -355,13 +424,15 @@ export async function releaseCancelledSessionWorktree(
               UpdateExpression:
                 `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
                 "REMOVE assignmentConnectionId, reconnectDeadlineAt",
-              ConditionExpression: "#s = :cancelled AND worktreeId = :worktreeId",
+              ConditionExpression:
+                "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":cancelled": "cancelled",
                 ":null": null,
                 ":worktreeId": opts.worktreeId,
                 ...(opts.cliResumeRef ? { ":cliResumeRef": opts.cliResumeRef } : {}),
+                ":attemptId": opts.attemptId,
               },
             },
           },
@@ -404,6 +475,7 @@ export async function tryRequeueSession(
   opts: {
     sessionId: string;
     worktreeId: string;
+    attemptId: string;
     queueShard: number;
     reason?: string;
     forceOffline?: boolean;
@@ -413,6 +485,7 @@ export async function tryRequeueSession(
     nextConnectionId?: string;
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
+    requireUnacknowledged?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -474,7 +547,8 @@ export async function tryRequeueSession(
               UpdateExpression:
                 "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
               ConditionExpression:
-                "#s = :running" +
+                "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId" +
+                (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
                 (opts.expectedHostId ? " AND hostId = :hostId" : "") +
                 (opts.expectedReconnectDeadlineAt
                   ? " AND reconnectDeadlineAt = :reconnectDeadlineAt"
@@ -485,8 +559,8 @@ export async function tryRequeueSession(
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":queued": "queued",
-                ":statusShard": statusShardAttr("queued", opts.queueShard),
                 ":running": "running",
+                ":statusShard": statusShardAttr("queued", opts.queueShard),
                 ":null": null,
                 ":reason": opts.reason ?? "agent disconnected; requeued",
                 ...(opts.expectedHostId ? { ":hostId": opts.expectedHostId } : {}),
@@ -496,6 +570,8 @@ export async function tryRequeueSession(
                 ...(opts.expectedConnectionId
                   ? { ":connectionId": opts.expectedConnectionId }
                   : {}),
+                ":worktreeId": opts.worktreeId,
+                ":attemptId": opts.attemptId,
               },
             },
           },
@@ -517,9 +593,24 @@ export async function acknowledgeSession(
   sessionId: string,
   acknowledgedAt: string,
   fence?: { hostId: string; connectionId: string },
+): Promise<boolean>;
+export async function acknowledgeSession(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+): Promise<boolean>;
+export async function acknowledgeSession(
+  ctx: PlaneStorageCtx,
+  arg:
+    | string
+    | { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+  acknowledgedAt?: string,
+  fence?: { hostId: string; connectionId: string },
 ): Promise<boolean> {
+  const legacy = typeof arg === "string";
+  const sessionId = legacy ? arg : arg.sessionId;
+  const attempt = legacy ? null : arg;
   try {
-    if (fence) {
+    if (legacy && fence) {
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
@@ -551,9 +642,18 @@ export async function acknowledgeSession(
         TableName: ctx.tables.sessions,
         Key: { id: sessionId },
         UpdateExpression: "SET ackReceivedAt = :at",
-        ConditionExpression: "#s = :running AND attribute_not_exists(ackReceivedAt)",
+        ConditionExpression:
+          "#s = :running" +
+          (attempt !== null ? " AND worktreeId = :worktreeId AND attemptId = :attemptId" : "") +
+          " AND attribute_not_exists(ackReceivedAt)",
         ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":at": acknowledgedAt, ":running": "running" },
+        ExpressionAttributeValues: {
+          ":at": attempt?.acknowledgedAt ?? acknowledgedAt!,
+          ":running": "running",
+          ...(attempt !== null
+            ? { ":worktreeId": attempt.worktreeId, ":attemptId": attempt.attemptId }
+            : {}),
+        },
       }),
     );
     return true;
@@ -562,18 +662,24 @@ export async function acknowledgeSession(
       // A duplicate ack is a successful no-op, while a late ack for a terminal
       // session is also harmless to the caller.
       const current = await getSession(ctx, sessionId);
-      return current?.ackReceivedAt !== undefined || current?.status !== "running";
+      return legacy
+        ? current?.ackReceivedAt !== undefined || current?.status !== "running"
+        : current?.status === "running" &&
+            current.worktreeId === attempt!.worktreeId &&
+            current.attemptId === attempt!.attemptId &&
+            current.ackReceivedAt !== undefined;
     }
     throw err;
   }
 }
 
-/** Atomically apply a terminal/retry transition and release its worktree. */
+/** Atomically apply a terminal transition and release its worktree. */
 export async function finishSession(
   ctx: PlaneStorageCtx,
   opts: {
     sessionId: string;
     worktreeId?: string | null;
+    attemptId: string;
     status: string;
     queueShard: number;
     completedAt?: string;
@@ -581,8 +687,6 @@ export async function finishSession(
     errorMessage?: string;
     exitCode?: number | null;
     cliResumeRef?: string;
-    retryCount?: number;
-    retryAfter?: string;
     fence?: { hostId: string; connectionId: string };
   },
 ): Promise<boolean> {
@@ -620,14 +724,6 @@ export async function finishSession(
     sets.push("cliResumeRef = :cliResumeRef");
     values[":cliResumeRef"] = opts.cliResumeRef;
   }
-  if (opts.retryCount !== undefined) {
-    sets.push("retryCount = :retryCount");
-    values[":retryCount"] = opts.retryCount;
-  }
-  if (opts.retryAfter !== undefined) {
-    sets.push("retryAfter = :retryAfter");
-    values[":retryAfter"] = opts.retryAfter;
-  }
   const transactItems: Array<Record<string, unknown>> = [
     ...(opts.fence
       ? [
@@ -646,12 +742,15 @@ export async function finishSession(
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
         UpdateExpression: `SET ${sets.join(", ")} REMOVE ${removes.join(", ")}`,
-        ConditionExpression: "#s = :running",
+        ConditionExpression:
+          "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
       },
     },
   ];
+  values[":worktreeId"] = opts.worktreeId ?? null;
+  values[":attemptId"] = opts.attemptId;
   if (opts.worktreeId) {
     transactItems.push({
       Update: {
@@ -672,6 +771,166 @@ export async function finishSession(
       const current = await getSession(ctx, opts.sessionId);
       return current?.status === opts.status;
     }
+    throw err;
+  }
+}
+
+/** Conditionally expire a queued session without requiring a worktree lease. */
+export async function expireQueuedSession(
+  ctx: PlaneStorageCtx,
+  opts: { sessionId: string; queueShard: number; queueExpiresAt: string; completedAt: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :failed, statusShard = :statusShard, completedAt = :completedAt, errorCode = :code, errorMessage = :message",
+        ConditionExpression: "#s = :queued AND queueExpiresAt = :expiresAt",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":queued": "queued",
+          ":failed": "failed",
+          ":statusShard": statusShardAttr("failed", opts.queueShard),
+          ":completedAt": opts.completedAt,
+          ":expiresAt": opts.queueExpiresAt,
+          ":code": "queue_expired",
+          ":message": "queue TTL expired before capacity became available",
+        },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) return false;
+    throw err;
+  }
+}
+
+/** Atomically pause the assigned global account, free the worktree, and requeue the session. */
+export async function requeueUsageLimitedSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.providerAccounts,
+              Key: { id: opts.providerAccountId },
+              UpdateExpression:
+                "SET usageLimitedUntil = :until, lastUsageLimitedAt = :now, updatedAt = :now",
+              ConditionExpression: "attribute_exists(id)",
+              ExpressionAttributeValues: { ":until": opts.usageLimitedUntil, ":now": opts.now },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.worktrees,
+              Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+              ConditionExpression: "currentSessionId = :sid",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message REMOVE startedAt, ackReceivedAt",
+              ConditionExpression:
+                "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":queued": "queued",
+                ":running": "running",
+                ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ":null": null,
+                ":code": "usage_limit",
+                ":message": opts.errorMessage ?? "provider usage limit; requeued",
+                ":worktreeId": opts.worktreeId,
+                ":attemptId": opts.attemptId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
+/** Requeue a providerless command and remember that this target is exhausted for this session. */
+export async function suppressProviderlessUsageLimit(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    attemptId: string;
+    queueShard: number;
+    targetIndex: number;
+    errorMessage?: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.worktrees,
+              Key: { id: opts.worktreeId },
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null",
+              ConditionExpression: "currentSessionId = :sid",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+            },
+          },
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message, suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index) REMOVE startedAt, ackReceivedAt",
+              ConditionExpression:
+                "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":queued": "queued",
+                ":running": "running",
+                ":statusShard": statusShardAttr("queued", opts.queueShard),
+                ":null": null,
+                ":code": "usage_limit",
+                ":message": opts.errorMessage ?? "providerless usage limit; trying fallback",
+                ":empty": [],
+                ":index": [opts.targetIndex],
+                ":worktreeId": opts.worktreeId,
+                ":attemptId": opts.attemptId,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

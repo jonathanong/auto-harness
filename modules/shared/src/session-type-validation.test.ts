@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { isSessionSource, isSessionType, validateCreateSessionInput } from "./validation.ts";
 
-const base = { repositoryId: "repo", prompt: "work", commandId: "command", timeout: 30 };
+const base = {
+  repositoryId: "repo",
+  prompt: "work",
+  target: { commandId: "command" },
+  timeout: 30,
+};
 
 describe("session type validation", () => {
   it("recognizes only supported type/source values", () => {

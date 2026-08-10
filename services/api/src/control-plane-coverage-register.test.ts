@@ -97,7 +97,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: "cmd-echo",
+      target: { commandId: "cmd-echo" },
       timeout: 1,
     });
     // Force first candidate (wt-2 by RR) to become non-idle via direct map mutation after sort:
@@ -154,16 +154,24 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     planeR.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: "cmd-c",
+      target: { commandId: "cmd-c" },
       timeout: 1,
       ref: "main",
     });
     planeR.assignQueued();
     const sid = planeR.listSessions()[0]!.id;
-    planeR.handleHostMessage({ type: "session:ack", sessionId: sid });
+    const source = planeR.getSession(sid)!;
+    planeR.handleHostMessage({
+      type: "session:ack",
+      sessionId: sid,
+      worktreeId: source.worktreeId!,
+      attemptId: source.attemptId!,
+    });
     planeR.handleHostMessage({
       type: "session:status",
       sessionId: sid,
+      worktreeId: source.worktreeId!,
+      attemptId: source.attemptId!,
       status: "completed",
       cliResumeRef: "cli-99",
     });

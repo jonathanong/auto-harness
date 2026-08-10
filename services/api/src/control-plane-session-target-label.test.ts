@@ -15,7 +15,7 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, undefined, "cmd-1")).toEqual({
+    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
       ok: true,
       label: "echo hello",
     });
@@ -23,13 +23,13 @@ describe("resolveSessionTargetLabel", () => {
 
   it("rejects a commandId that doesn't exist", () => {
     const state = createControlPlaneState();
-    expect(resolveSessionTargetLabel(state, undefined, "missing")).toEqual({
+    expect(resolveSessionTargetLabel(state, { commandId: "missing" })).toEqual({
       ok: false,
       error: "commandId missing not found",
     });
   });
 
-  it("rejects a provider-owned commandId as a direct target — must go through its provider account", () => {
+  it("labels a provider-owned command as an exact command target", () => {
     const state = createControlPlaneState();
     state.commands.set("cmd-1", {
       id: "cmd-1",
@@ -40,13 +40,20 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, undefined, "cmd-1")).toEqual({
-      ok: false,
-      error: "commandId cmd-1 is owned by a provider; target its provider account instead",
+    state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: "cmd-1",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
+      ok: true,
+      label: "claude — claude-print",
     });
   });
 
-  it("labels a provider account as 'provider name — account label'", () => {
+  it("labels a provider target", () => {
     const state = createControlPlaneState();
     state.providers.set("prov-1", {
       id: "prov-1",
@@ -55,37 +62,32 @@ describe("resolveSessionTargetLabel", () => {
       createdAt: "t",
       updatedAt: "t",
     });
-    state.providerAccounts.set("acct-1", {
-      id: "acct-1",
-      providerId: "prov-1",
-      label: "x@y.com",
-      createdAt: "t",
-      updatedAt: "t",
-    });
-    expect(resolveSessionTargetLabel(state, "acct-1", undefined)).toEqual({
+    expect(resolveSessionTargetLabel(state, { providerId: "prov-1" })).toEqual({
       ok: true,
-      label: "claude — x@y.com",
+      label: "claude",
     });
   });
 
-  it("rejects a providerAccountId that doesn't exist", () => {
+  it("rejects a providerId that doesn't exist", () => {
     const state = createControlPlaneState();
-    expect(resolveSessionTargetLabel(state, "missing", undefined)).toEqual({
+    expect(resolveSessionTargetLabel(state, { providerId: "missing" })).toEqual({
       ok: false,
-      error: "providerAccountId missing not found",
+      error: "providerId missing not found",
     });
   });
 
-  it("rejects a providerAccountId whose provider is missing (defensive)", () => {
+  it("rejects a provider-owned command whose provider is missing (defensive)", () => {
     const state = createControlPlaneState();
-    state.providerAccounts.set("acct-1", {
-      id: "acct-1",
+    state.commands.set("cmd-1", {
+      id: "cmd-1",
       providerId: "gone",
-      label: "x@y.com",
+      name: "cmd",
+      argv: ["cmd"],
+      appendPrompt: true,
       createdAt: "t",
       updatedAt: "t",
     });
-    expect(resolveSessionTargetLabel(state, "acct-1", undefined)).toEqual({
+    expect(resolveSessionTargetLabel(state, { commandId: "cmd-1" })).toEqual({
       ok: false,
       error: "provider gone not found",
     });

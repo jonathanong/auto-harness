@@ -24,7 +24,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeE.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     const es = planeE.state.sessions.get("e1")!;
@@ -57,15 +57,23 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
       ref: "main",
     });
     planeF.assignQueued();
-    planeF.handleHostMessage({ type: "session:ack", sessionId: "f1" });
+    const first = planeF.getSession("f1")!;
+    planeF.handleHostMessage({
+      type: "session:ack",
+      sessionId: "f1",
+      worktreeId: first.worktreeId!,
+      attemptId: first.attemptId!,
+    });
     planeF.handleHostMessage({
       type: "session:status",
       sessionId: "f1",
+      worktreeId: first.worktreeId!,
+      attemptId: first.attemptId!,
       status: "completed",
     });
     // force agent pin without cliResumeRef
@@ -89,6 +97,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeF.state.pendingAcks.set("pending-early", {
       sessionId: "x",
       worktreeId: "wf2",
+      attemptId: "attempt-early",
       assignedAtMs: assignMs,
     });
     expect(planeF.enforceAckDeadlines(assignMs)).toEqual([]);
@@ -113,7 +122,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
     planeG.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     const gMap = planeG.state.worktrees;

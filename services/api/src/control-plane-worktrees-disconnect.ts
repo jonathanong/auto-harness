@@ -50,9 +50,10 @@ export async function offlineHostAndRequeueDurableImpl(
         worktreeId: wt.id,
         online: false,
         fence: { hostId, connectionId },
+        attemptId: session.attemptId!,
       });
       if (released) {
-        state.sessions.set(sessionId, { ...session, hostId: null, worktreeId: null });
+        state.sessions.set(sessionId, { ...session, worktreeId: null });
         state.worktrees.set(wt.id, {
           ...wt,
           status: "idle",
@@ -98,6 +99,7 @@ export async function offlineHostAndRequeueDurableImpl(
           (await state.storage.tryRequeueSession({
             sessionId,
             worktreeId: wt.id,
+            attemptId: latestSession.attemptId!,
             queueShard: latestSession.queueShard,
             reason,
             forceOffline: true,
@@ -149,6 +151,7 @@ export async function offlineHostAndRequeueDurableImpl(
     const won = await state.storage.tryRequeueSession({
       sessionId,
       worktreeId: wt.id,
+      attemptId: session.attemptId!,
       queueShard: session.queueShard,
       reason,
       forceOffline: true,

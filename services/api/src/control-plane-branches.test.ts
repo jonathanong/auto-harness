@@ -9,7 +9,7 @@ import {
 } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane remaining branches", () => {
-  it("covers remaining branches: disabled cron, future fire, retryAfter, register replace, disconnect", () => {
+  it("covers remaining branches: disabled cron, future fire, limit suppression, register replace, disconnect", () => {
     let n = 0;
     const plane = new ControlPlane({
       idFactory: () => `sess-${++n}`,
@@ -28,7 +28,7 @@ describe("ControlPlane remaining branches", () => {
     putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "off",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -38,7 +38,7 @@ describe("ControlPlane remaining branches", () => {
     const future = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "later",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "0 * * * *",
       timeout: 10,
       nextRunAt: "2099-01-01T00:00:00.000Z",
@@ -73,7 +73,7 @@ describe("ControlPlane remaining branches", () => {
     plane.disconnectHost(connId);
     plane.disconnectHost("missing-conn");
 
-    // session with retryAfter in future skipped
+    // A providerless limit is session-local and leaves its target suppressed.
     plane.seedWorktree({
       id: "wt-1",
       name: "wt-1",
@@ -87,31 +87,43 @@ describe("ControlPlane remaining branches", () => {
     const created = plane.createSession(baseSessionBody());
     expect(created.ok).toBe(true);
     if (created.ok) {
-      // simulate usage_limit requeue with future retryAfter
       const s = plane.getSession(created.session.id)!;
       // force running path with assign then usage limit
-      plane.assignQueued();
-      plane.handleHostMessage({ type: "session:ack", sessionId: created.session.id });
+      const assigned = plane.assignQueued().find((a) => a.session.id === created.session.id)!;
+      plane.handleHostMessage({
+        type: "session:ack",
+        sessionId: created.session.id,
+        worktreeId: assigned.worktree.id,
+        attemptId: assigned.session.attemptId!,
+      });
       plane.handleHostMessage({
         type: "session:status",
         sessionId: created.session.id,
+        worktreeId: assigned.worktree.id,
+        attemptId: assigned.session.attemptId!,
         status: "failed",
         errorCode: "usage_limit",
         errorMessage: "quota",
         exitCode: 1,
       });
       expect(plane.getSession(created.session.id)?.status).toBe("queued");
-      // retryAfter is future relative to fixed now → assign skips
+      // The suppressed target leaves the session queued without assignment.
       expect(plane.assignQueued()).toHaveLength(0);
       void s;
     }
 
     // ack deadline: already acked pending cleanup
-    plane.createSession(baseSessionBody({ prompt: "ack-clean" }));
-    plane.assignQueued();
-    const running = plane.listSessions().find((s) => s.status === "running");
+    const ackClean = plane.createSession(baseSessionBody({ prompt: "ack-clean" }));
+    const running = ackClean.ok
+      ? plane.assignQueued().find((a) => a.session.id === ackClean.session.id)
+      : undefined;
     if (running) {
-      plane.handleHostMessage({ type: "session:ack", sessionId: running.id });
+      plane.handleHostMessage({
+        type: "session:ack",
+        sessionId: running.session.id,
+        worktreeId: running.worktree.id,
+        attemptId: running.session.attemptId!,
+      });
       // still in pending until ack deletes — enforce should no-op requeue
       expect(plane.enforceAckDeadlines(Date.now() + 999999)).toEqual([]);
     }
@@ -136,7 +148,10 @@ describe("ControlPlane remaining branches", () => {
     }
 
     // resume without agent
-    const noAgent = new ControlPlane({ idFactory: () => "s-na", now: () => "t" });
+    const noAgent = new ControlPlane({
+      idFactory: () => "s-na",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     seedBaseCommand(noAgent);
     noAgent.createSession(baseSessionBody());
     expect(noAgent.resumeSession("s-na").ok).toBe(false);

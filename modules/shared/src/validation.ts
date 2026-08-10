@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import {
   ON_CONFLICT_OPTIONS,
   SESSION_ERROR_CODES,
@@ -5,6 +6,7 @@ import {
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
   SESSION_TYPES,
+  DEFAULT_QUEUE_TTL_SECONDS,
 } from "./constants.ts";
 import type {
   OnConflict,
@@ -14,6 +16,7 @@ import type {
   SessionType,
 } from "./types.ts";
 import { isValidScheduledBranchRef } from "./scheduled-branch-ref.ts";
+import type { TargetRef } from "./session.ts";
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -51,8 +54,9 @@ export function isSessionSource(value: unknown): value is SessionSource {
 export function validateCreateSessionInput(input: {
   repositoryId: unknown;
   prompt: unknown;
-  providerAccountId?: unknown;
-  commandId?: unknown;
+  target?: unknown;
+  fallbacks?: unknown;
+  queueTtlSeconds?: unknown;
   timeout: unknown;
   priority?: unknown;
   requiredLabels?: unknown;
@@ -65,8 +69,9 @@ export function validateCreateSessionInput(input: {
 }): ValidationResult<{
   repositoryId: string;
   prompt: string;
-  providerAccountId: string | undefined;
-  commandId: string | undefined;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  queueTtlSeconds: number;
   timeout: number;
   priority: number;
   requiredLabels: string[];
@@ -83,22 +88,8 @@ export function validateCreateSessionInput(input: {
   if (!isNonEmptyString(input.prompt)) {
     return { ok: false, error: "prompt is required" };
   }
-  if ((input.providerAccountId !== undefined) === (input.commandId !== undefined)) {
-    return { ok: false, error: "exactly one of providerAccountId or commandId is required" };
-  }
-  let providerAccountId: string | undefined;
-  let commandId: string | undefined;
-  if (input.providerAccountId !== undefined) {
-    if (!isNonEmptyString(input.providerAccountId)) {
-      return { ok: false, error: "providerAccountId must be a non-empty string" };
-    }
-    providerAccountId = input.providerAccountId;
-  } else {
-    if (!isNonEmptyString(input.commandId)) {
-      return { ok: false, error: "commandId must be a non-empty string" };
-    }
-    commandId = input.commandId;
-  }
+  const routing = validateTargetRouting(input);
+  if (!routing.ok) return routing;
   if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {
     return { ok: false, error: "timeout must be a positive number of seconds" };
   }
@@ -177,8 +168,9 @@ export function validateCreateSessionInput(input: {
     value: {
       repositoryId: input.repositoryId,
       prompt: input.prompt,
-      providerAccountId,
-      commandId,
+      target: routing.value.target,
+      fallbacks: routing.value.fallbacks,
+      queueTtlSeconds: routing.value.queueTtlSeconds,
       timeout: input.timeout,
       priority,
       requiredLabels,
@@ -190,6 +182,67 @@ export function validateCreateSessionInput(input: {
       source: input.source ?? "api",
     },
   };
+}
+
+/** Strict routing policy validation shared by sessions and schedules. */
+export function validateTargetRouting(input: {
+  target?: unknown;
+  fallbacks?: unknown;
+  queueTtlSeconds?: unknown;
+}): ValidationResult<{ target: TargetRef; fallbacks: TargetRef[]; queueTtlSeconds: number }> {
+  const target = parseTarget(input.target, "target");
+  if (!target.ok) return target;
+  const fallbacks: TargetRef[] = [];
+  if (input.fallbacks !== undefined) {
+    if (!Array.isArray(input.fallbacks)) return { ok: false, error: "fallbacks must be an array" };
+    const seen = new Set([targetKey(target.value)]);
+    for (let i = 0; i < input.fallbacks.length; i++) {
+      const fallback = parseTarget(input.fallbacks[i], `fallbacks[${i}]`);
+      if (!fallback.ok) return fallback;
+      const key = targetKey(fallback.value);
+      if (seen.has(key)) {
+        return { ok: false, error: "target and fallbacks must not contain duplicates" };
+      }
+      seen.add(key);
+      fallbacks.push(fallback.value);
+    }
+  }
+  const queueTtlSeconds = input.queueTtlSeconds ?? DEFAULT_QUEUE_TTL_SECONDS;
+  if (
+    typeof queueTtlSeconds !== "number" ||
+    !Number.isInteger(queueTtlSeconds) ||
+    queueTtlSeconds <= 0
+  ) {
+    return { ok: false, error: "queueTtlSeconds must be a positive integer" };
+  }
+  return { ok: true, value: { target: target.value, fallbacks, queueTtlSeconds } };
+}
+
+function parseTarget(value: unknown, name: string): ValidationResult<TargetRef> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {
+      ok: false,
+      error: `${name} must be an object with exactly one of providerId or commandId`,
+    };
+  }
+  const target = value as Record<string, unknown>;
+  const hasProvider = target.providerId !== undefined;
+  const hasCommand = target.commandId !== undefined;
+  if (hasProvider === hasCommand) {
+    return { ok: false, error: `${name} must contain exactly one of providerId or commandId` };
+  }
+  if (hasProvider) {
+    return isNonEmptyString(target.providerId)
+      ? { ok: true, value: { providerId: target.providerId } }
+      : { ok: false, error: `${name}.providerId must be a non-empty string` };
+  }
+  return isNonEmptyString(target.commandId)
+    ? { ok: true, value: { commandId: target.commandId } }
+    : { ok: false, error: `${name}.commandId must be a non-empty string` };
+}
+
+function targetKey(target: TargetRef): string {
+  return "providerId" in target ? `provider:${target.providerId}` : `command:${target.commandId}`;
 }
 
 /**

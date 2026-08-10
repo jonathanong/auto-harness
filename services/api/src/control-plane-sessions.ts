@@ -4,7 +4,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
-import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
+import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 export { resumeSession } from "./control-plane-session-resume.ts";
 
@@ -26,8 +26,9 @@ export function createSession(
   const validated = validateCreateSessionInput({
     repositoryId: record.repositoryId,
     prompt: record.prompt,
-    providerAccountId: record.providerAccountId,
-    commandId: record.commandId,
+    target: record.target,
+    fallbacks: record.fallbacks,
+    queueTtlSeconds: record.queueTtlSeconds,
     timeout: record.timeout,
     priority: record.priority,
     requiredLabels: record.requiredLabels,
@@ -43,9 +44,9 @@ export function createSession(
   }
 
   const v = validated.value;
-  const target = resolveSessionTargetLabel(state, v.providerAccountId, v.commandId);
-  if (!target.ok) {
-    return { ok: false, error: target.error, code: "VALIDATION_ERROR" };
+  const targets = resolveTargetLabels(state, v.target, v.fallbacks);
+  if (!targets.ok) {
+    return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   }
   // Invariant 9: concurrencyKey resolved at create time for queue|replace|reject.
   if (v.concurrencyKey) {
@@ -76,9 +77,11 @@ export function createSession(
     id,
     repositoryId: v.repositoryId,
     prompt: v.prompt,
-    ...(v.providerAccountId !== undefined ? { providerAccountId: v.providerAccountId } : {}),
-    ...(v.commandId !== undefined ? { commandId: v.commandId } : {}),
-    targetLabel: target.label,
+    target: v.target,
+    fallbacks: v.fallbacks,
+    targetLabels: targets.labels,
+    queueTtlSeconds: v.queueTtlSeconds,
+    queueExpiresAt: new Date(Date.parse(createdAt) + v.queueTtlSeconds * 1000).toISOString(),
     timeout: v.timeout,
     priority: v.priority,
     requiredLabels: v.requiredLabels,
@@ -86,7 +89,6 @@ export function createSession(
     status: "queued",
     queueShard,
     createdAt,
-    retryCount: 0,
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
     ...(v.concurrencyKey !== undefined ? { concurrencyKey: v.concurrencyKey } : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),

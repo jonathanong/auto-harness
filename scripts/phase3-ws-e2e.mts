@@ -115,7 +115,8 @@ async function main(): Promise<void> {
       body: JSON.stringify({
         repositoryId: "demo",
         prompt: "hello-ws",
-        commandId: command.id,
+        target: { commandId: command.id },
+        queueTtlSeconds: 691200,
         timeout: 60,
         ref: "feature/ws",
         requiredLabels: ["echo"],

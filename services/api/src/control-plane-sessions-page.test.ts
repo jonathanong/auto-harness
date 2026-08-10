@@ -19,7 +19,7 @@ describe("listSessionsPage", () => {
         plane.createSession({
           repositoryId: "r1",
           prompt: `p-${i}`,
-          commandId: "cmd-echo",
+          target: { commandId: "cmd-echo" },
           timeout: 10,
         }).ok,
       ).toBe(true);

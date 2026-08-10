@@ -1,13 +1,24 @@
+/* eslint-disable max-lines */
 import {
+  materializeResumeArgv,
   resolveProviderAccountCommandId,
   resolveProviderAccountEnabled,
   type ProviderCatalog,
+  type SessionResumeSpec,
+  type TargetRef,
 } from "@auto-harness/shared";
-import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { CommandRecord } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+
+type ResolvedSessionRoute = {
+  targetIndex: number;
+  providerAccountId?: string;
+  commandId: string;
+  resolvedArgv: string[];
+  resumeSpec?: SessionResumeSpec;
+};
 
 export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog {
   return {
@@ -16,82 +27,246 @@ export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog 
   };
 }
 
-/**
- * Resolve the final argv for a session against one candidate worktree, or `null` if
- * this worktree is not a valid assignment target. Standalone commands
- * (`session.commandId`) are ungated and resolve the same everywhere. Provider-account
- * sessions walk the worktree -> repository -> host -> provider-default cascade
- * (`@auto-harness/shared`'s provider-cascade.ts) and are gated by enablement — a
- * disabled or unresolvable account means this worktree isn't a valid target, and the
- * caller should try the next candidate rather than assign here.
- *
- * This is the single place both the scheduler (which candidate worktrees are even
- * eligible) and the assign message (what argv to send) resolve from, so scheduling
- * and spawning can never disagree.
- */
+/** Resolve one worktree against the ordered route policy. */
+export function resolveSessionTargetRoute(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+  nowMs: number,
+): ResolvedSessionRoute | null {
+  const targets = [session.target, ...session.fallbacks];
+  for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+    if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
+    const target = targets[targetIndex]!;
+    const route = resolveTarget(
+      state,
+      catalog,
+      target,
+      session.prompt,
+      worktree,
+      nowMs,
+      session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+    );
+    if (route && matchesNativeResumePin(session, { ...route, targetIndex })) {
+      return { ...route, targetIndex };
+    }
+  }
+  return null;
+}
+
+/** Resolve one explicit policy entry. Scheduler uses this to exhaust each target before fallbacks. */
+export function resolveSessionTargetRouteAt(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  targetIndex: number,
+): ResolvedSessionRoute | null {
+  if (session.suppressedTargetIndexes?.includes(targetIndex)) return null;
+  const target = [session.target, ...session.fallbacks][targetIndex];
+  if (!target) return null;
+  const route = resolveTarget(
+    state,
+    catalog,
+    target,
+    session.prompt,
+    worktree,
+    nowMs,
+    session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+  );
+  const resolved = route
+    ? { ...route, targetIndex }
+    : resolveNativeResumeRoute(state, catalog, session, worktree, nowMs, targetIndex);
+  return resolved && matchesNativeResumePin(session, resolved) ? resolved : null;
+}
+
+/** A pinned continuation can use its frozen command snapshot after catalog edits. */
+function resolveNativeResumeRoute(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  targetIndex: number,
+): ResolvedSessionRoute | null {
+  const spec = session.resumeSpec;
+  if (
+    !session.resumedFromSessionId ||
+    !spec ||
+    (!session.cliResumeRef && !session.resumeFallback) ||
+    session.pinnedTargetIndex !== targetIndex ||
+    session.pinnedCommandId === undefined
+  ) {
+    return null;
+  }
+  const host = state.hostInventories.get(worktree.hostId);
+  const repository = host?.repositories.find((item) => item.id === worktree.repositoryId);
+  const hostWorktree = repository?.worktrees.find((item) => item.id === worktree.id);
+  const accountId = session.pinnedProviderAccountId ?? undefined;
+  if (accountId) {
+    const account = state.providerAccounts.get(accountId);
+    if (
+      !account ||
+      (account.usageLimitedUntil && Date.parse(account.usageLimitedUntil) > nowMs) ||
+      !resolveProviderAccountEnabled(accountId, hostWorktree, repository, host)
+    ) {
+      return null;
+    }
+  }
+  if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
+  return {
+    targetIndex,
+    commandId: session.pinnedCommandId,
+    ...(accountId ? { providerAccountId: accountId } : {}),
+    resolvedArgv: spec.resumeArgvTemplate
+      ? materializeResumeArgv(spec.resumeArgvTemplate, session.cliResumeRef!, session.prompt)
+      : spec.appendPrompt
+        ? [...spec.argv, session.prompt]
+        : [...spec.argv],
+    resumeSpec: copyResumeSpec(spec),
+  };
+}
+
+/** A CLI resume is valid only on precisely the route that produced its ref. */
+function matchesNativeResumePin(session: SessionRecord, route: ResolvedSessionRoute): boolean {
+  if (!session.pinnedHostId) return true;
+  if (session.pinnedTargetIndex !== undefined && session.pinnedTargetIndex !== route.targetIndex) {
+    return false;
+  }
+  if (session.pinnedCommandId !== undefined && session.pinnedCommandId !== route.commandId) {
+    return false;
+  }
+  return (
+    !session.pinnedProviderAccountId || session.pinnedProviderAccountId === route.providerAccountId
+  );
+}
+
+/** Kept as a narrow compatibility helper for daemon-facing execution code. */
 export function resolveSessionTargetArgv(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
   session: SessionRecord,
   worktree: WorktreeRecord,
 ): string[] | null {
-  return resolveSessionTarget(state, catalog, session, worktree)?.resolvedArgv ?? null;
+  return (
+    resolveSessionTargetRoute(state, catalog, session, worktree, Date.parse(state.now()))
+      ?.resolvedArgv ?? null
+  );
 }
 
-type ResolvedSessionTarget = {
-  resolvedArgv: string[];
-  resumeSpec: SessionResumeSpec;
-};
-
-export function resolveSessionTarget(
+function resolveTarget(
   state: ControlPlaneState,
   catalog: ProviderCatalog,
-  session: SessionRecord,
+  target: TargetRef,
+  prompt: string,
   worktree: WorktreeRecord,
-): ResolvedSessionTarget | null {
-  let commandId: string | undefined;
-  if (session.commandId !== undefined) {
-    commandId = session.commandId;
-  } else {
-    if (session.providerAccountId === undefined) return null;
-    const host = state.hostInventories.get(worktree.hostId);
-    const hostRepo = host?.repositories.find((r) => r.id === worktree.repositoryId);
-    const hostWorktree = hostRepo?.worktrees.find((w) => w.id === worktree.id);
-    if (!resolveProviderAccountEnabled(session.providerAccountId, hostWorktree, hostRepo, host)) {
-      return null;
+  nowMs: number,
+  pinnedProviderAccountId: string | null | undefined,
+): Omit<ResolvedSessionRoute, "targetIndex"> | null {
+  if ("commandId" in target) {
+    const command = state.commands.get(target.commandId);
+    if (!command) return null;
+    if (command.providerId === null) {
+      const resolvedArgv = buildArgv(command, prompt);
+      return resolvedArgv
+        ? { commandId: command.id, resolvedArgv, resumeSpec: commandResumeSpec(command) }
+        : null;
     }
-    commandId = resolveProviderAccountCommandId(
-      session.providerAccountId,
+    const account = resolveEligibleAccounts(
+      state,
+      catalog,
+      command.providerId,
+      worktree,
+      nowMs,
+      pinnedProviderAccountId,
+    )[0];
+    const resolvedArgv = buildArgv(command, prompt);
+    return account && resolvedArgv
+      ? {
+          providerAccountId: account.id,
+          commandId: command.id,
+          resolvedArgv,
+          resumeSpec: commandResumeSpec(command),
+        }
+      : null;
+  }
+  const host = state.hostInventories.get(worktree.hostId);
+  const repo = host?.repositories.find((r) => r.id === worktree.repositoryId);
+  const hostWorktree = repo?.worktrees.find((w) => w.id === worktree.id);
+  for (const account of resolveEligibleAccounts(
+    state,
+    catalog,
+    target.providerId,
+    worktree,
+    nowMs,
+    pinnedProviderAccountId,
+  )) {
+    const commandId = resolveProviderAccountCommandId(
+      account.id,
       hostWorktree,
-      hostRepo,
+      repo,
       host,
       catalog,
     );
-    if (!commandId) return null;
-  }
-  const command = state.commands.get(commandId);
-  if (!command) return null;
-  const resolvedArgv = buildArgv(command, session.prompt);
-  return resolvedArgv
-    ? {
+    const command = commandId ? state.commands.get(commandId) : undefined;
+    const resolvedArgv = buildArgv(command, prompt);
+    if (resolvedArgv && commandId && command) {
+      return {
+        providerAccountId: account.id,
+        commandId,
         resolvedArgv,
-        resumeSpec: {
-          argv: [...command.argv],
-          appendPrompt: command.appendPrompt,
-          ...(command.resumeArgvTemplate !== undefined
-            ? { resumeArgvTemplate: [...command.resumeArgvTemplate] }
-            : {}),
-          ...(command.resumeRefCapture !== undefined
-            ? { resumeRefCapture: { ...command.resumeRefCapture } }
-            : {}),
-        },
-      }
-    : null;
+        resumeSpec: commandResumeSpec(command),
+      };
+    }
+  }
+  return null;
 }
 
-function buildArgv(command: CommandRecord, prompt: string): string[] | null {
-  if (command.argv.length === 0) {
-    return null;
-  }
+function resolveEligibleAccounts(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  providerId: string,
+  worktree: WorktreeRecord,
+  nowMs: number,
+  pinnedProviderAccountId: string | null | undefined,
+) {
+  const host = state.hostInventories.get(worktree.hostId);
+  const repo = host?.repositories.find((r) => r.id === worktree.repositoryId);
+  const hostWorktree = repo?.worktrees.find((w) => w.id === worktree.id);
+  return [...state.providerAccounts.values()]
+    .filter((account) => account.providerId === providerId)
+    .filter((account) => !pinnedProviderAccountId || account.id === pinnedProviderAccountId)
+    .filter(
+      (account) => !account.usageLimitedUntil || Date.parse(account.usageLimitedUntil) <= nowMs,
+    )
+    .filter((account) => resolveProviderAccountEnabled(account.id, hostWorktree, repo, host))
+    .toSorted(
+      (a, b) =>
+        (a.lastAssignedAt ?? "").localeCompare(b.lastAssignedAt ?? "") || a.id.localeCompare(b.id),
+    );
+}
+
+function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
+  if (!command || command.argv.length === 0) return null;
   return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
+}
+
+function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
+  return {
+    argv: [...command.argv],
+    appendPrompt: command.appendPrompt,
+    ...(command.resumeArgvTemplate ? { resumeArgvTemplate: [...command.resumeArgvTemplate] } : {}),
+    ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
+  };
+}
+
+function copyResumeSpec(spec: SessionResumeSpec): SessionResumeSpec {
+  return {
+    argv: [...spec.argv],
+    appendPrompt: spec.appendPrompt,
+    ...(spec.resumeArgvTemplate ? { resumeArgvTemplate: [...spec.resumeArgvTemplate] } : {}),
+    ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
+  };
 }

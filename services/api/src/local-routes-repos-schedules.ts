@@ -116,12 +116,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
   if (method === "POST" && url.pathname === "/api/v1/schedules") {
     try {
       const body = (await readJson(req)) as Record<string, unknown>;
-      const hasAccount = typeof body.providerAccountId === "string";
-      const hasCommand = typeof body.commandId === "string";
       if (
         typeof body.repositoryId !== "string" ||
         typeof body.name !== "string" ||
-        hasAccount === hasCommand ||
+        typeof body.target !== "object" ||
+        body.target === null ||
         typeof body.cron !== "string" ||
         typeof body.timeout !== "number" ||
         typeof body.nextRunAt !== "string"
@@ -129,8 +128,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message:
-              "repositoryId, name, cron, timeout, nextRunAt are required, plus exactly one of providerAccountId or commandId",
+            message: "repositoryId, name, target, cron, timeout, and nextRunAt are required",
           },
         });
         return true;
@@ -148,10 +146,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       const result = plane.putSchedule({
         repositoryId: body.repositoryId,
         name: body.name,
-        ...(hasAccount ? { providerAccountId: body.providerAccountId as string } : {}),
-        ...(hasCommand ? { commandId: body.commandId as string } : {}),
+        target: body.target,
+        ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
         cron: body.cron,
         timeout: body.timeout,
+        ...(typeof body.queueTtlSeconds === "number"
+          ? { queueTtlSeconds: body.queueTtlSeconds }
+          : {}),
         nextRunAt: body.nextRunAt,
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
@@ -203,6 +204,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
+      if (!existing) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "schedule not found" } });
+        return true;
+      }
       try {
         const body = (await readJson(req)) as Record<string, unknown>;
         if (body.ref !== undefined && typeof body.ref !== "string") {
@@ -220,22 +225,20 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         }
         const result = plane.updateSchedule(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
-          ...(typeof body.providerAccountId === "string"
-            ? { providerAccountId: body.providerAccountId }
-            : {}),
-          ...(typeof body.commandId === "string" ? { commandId: body.commandId } : {}),
+          ...(body.target !== undefined ? { target: body.target } : {}),
+          ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
           ...(typeof body.cron === "string" ? { cron: body.cron } : {}),
           ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
+          ...(typeof body.queueTtlSeconds === "number"
+            ? { queueTtlSeconds: body.queueTtlSeconds }
+            : {}),
           ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
           ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
           ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
         });
         if (!result.ok) {
-          const notFound = result.error === "schedule not found";
-          send(res, notFound ? 404 : 400, {
-            error: { code: notFound ? "NOT_FOUND" : "VALIDATION_ERROR", message: result.error },
-          });
+          send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
           return true;
         }
         send(res, 200, result.schedule);

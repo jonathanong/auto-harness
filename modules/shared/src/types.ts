@@ -18,6 +18,7 @@ export type LogStream = "stdout" | "stderr" | "system";
 /** Machine-readable failure reasons. */
 export type SessionErrorCode =
   | "usage_limit"
+  | "queue_expired"
   | "resume_failed"
   | "unknown_command_profile"
   | "setup_failed";

@@ -19,7 +19,7 @@ describe("MemorySessionStore", () => {
     const created = store.create({
       repositoryId: "repo-1",
       prompt: "fix",
-      commandId: "cmd-codex",
+      target: { commandId: "cmd-codex" },
       timeout: 60,
       ref: "main",
     });
@@ -47,7 +47,7 @@ describe("MemorySessionStore", () => {
     const created = store.create({
       repositoryId: "r",
       prompt: "p",
-      commandId: "cmd-c",
+      target: { commandId: "cmd-c" },
       timeout: 1,
     });
     expect(created.ok).toBe(true);
@@ -58,13 +58,16 @@ describe("MemorySessionStore", () => {
   });
 
   it("accepts an injected plane", () => {
-    const plane = new ControlPlane({ idFactory: () => "sess-inj", now: () => "t" });
+    const plane = new ControlPlane({
+      idFactory: () => "sess-inj",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     plane.createCommand({ id: "cmd-c", name: "c", argv: ["echo"], providerId: null });
     const store = new MemorySessionStore({ plane });
     const created = store.create({
       repositoryId: "r",
       prompt: "p",
-      commandId: "cmd-c",
+      target: { commandId: "cmd-c" },
       timeout: 1,
     });
     expect(created.ok).toBe(true);

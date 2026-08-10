@@ -29,7 +29,7 @@ export function baseSessionBody(over: Record<string, unknown> = {}) {
   return {
     repositoryId: "repo-1",
     prompt: "do work",
-    commandId: BASE_COMMAND_ID,
+    target: { commandId: BASE_COMMAND_ID },
     timeout: 30,
     ...over,
   };

@@ -40,7 +40,7 @@ describe("DynamoDB Local control plane hydrate", () => {
     const created = plane.createSession({
       repositoryId: "r1",
       prompt: "from plane",
-      commandId: "cmd-c",
+      target: { commandId: "cmd-c" },
       timeout: 5,
     });
     expect(created.ok).toBe(true);

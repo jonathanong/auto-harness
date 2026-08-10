@@ -112,7 +112,7 @@ CLAUDE_BIN="$(command -v claude || true)"
 
 ### Providers, Provider Accounts, and Commands (D4)
 
-Sessions target either a **Provider Account** (cascade-resolved to a Command at assign time — worktree → repository → host → the provider's own default) or a standalone **Command** (`providerId: null`, runs ungated on any worktree). Either way the resolved `argv` is always a **named, fixed array** — never a free-form shell string. There is no host-inventory `commandProfiles` map to author by hand anymore; catalog entries are created once via REST, then attached to the host.
+Sessions target a **Provider** (which selects a healthy attached account from its pool) or a **Command** (which selects that exact command; provider-owned commands use their provider's account pool). A Command with `providerId: null` is a providerless pure CLI and runs ungated on any worktree. Either way the resolved `argv` is always a **named, fixed array** — never a free-form shell string. There is no host-inventory `commandProfiles` map to author by hand anymore; catalog entries are created once via REST, then accounts are attached to the host.
 
 | Catalog entry                                          | Purpose                                                      |
 | ------------------------------------------------------ | ------------------------------------------------------------ |
@@ -146,7 +146,7 @@ fi
 
 Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p"]`) — see §5.2 for the exact commands.
 
-Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it's a list of `{providerAccountId}`, not fixed argv):
+Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it is a list of `{providerAccountId}` attachments, not fixed argv):
 
 ```bash
 cat > "$WORK/config/host-inventory.config.json" <<EOF
@@ -235,7 +235,7 @@ curl -sS http://127.0.0.1:7420/api/v1/hosts
 
 curl -sS http://127.0.0.1:7420/api/v1/session-targets
 # items list the unified picker source: attached provider accounts + standalone commands
-# (e.g. "echo-prompt", "grok — e2e") — this is what the web create-session/schedule forms fetch
+# (e.g. Provider "grok", Command "echo-prompt") — this is what the web create-session/schedule forms fetch
 
 curl -sS http://127.0.0.1:7420/api/v1/sessions
 # {"items":[]} after a clean clear
@@ -257,7 +257,8 @@ CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -d "{
     \"repositoryId\": \"demo\",
     \"prompt\": \"hello-from-e2e\",
-    \"commandId\": \"$ECHO_COMMAND_ID\",
+    \"target\": { \"commandId\": \"$ECHO_COMMAND_ID\" },
+    \"queueTtlSeconds\": 691200,
     \"timeout\": 60,
     \"ref\": \"main\",
     \"requiredLabels\": [\"echo\"]
@@ -279,17 +280,17 @@ done
 
 **Pass:**
 
-| Check     | Expect                                                                                          |
-| --------- | ----------------------------------------------------------------------------------------------- |
-| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `commandId`, `targetLabel: "echo-prompt"` |
-| Assign    | one item for `$SID` / `wt-1` / your `hostId`                                                    |
-| Terminal  | `status: "completed"`, `exitCode: 0`                                                            |
-| Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout             |
-| Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`                       |
+| Check     | Expect                                                                                                                        |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `target: { commandId }`, `queueExpiresAt`, `targetLabel: "echo-prompt"` |
+| Assign    | one item for `$SID` / `wt-1` / your `hostId`                                                                                  |
+| Terminal  | `status: "completed"`, `exitCode: 0`                                                                                          |
+| Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout                                           |
+| Agent log | lines like `Claimed worktree`, `Checked out ref main`, `Spawning: echo …`                                                     |
 
 ### 5.2 Real CLI (preferred pre-deploy) — Grok example
 
-Only if `grok` (or another provider) is installed and its Provider Account was created in §3. Targets the Provider Account (`providerAccountId`), not a fixed command — the cascade resolves it to the provider's default Command (`grok-print`) at assign time.
+Only if `grok` (or another provider) is installed and its Provider Account was created in §3. Targets the Provider (`providerId`), not an account — scheduling selects a healthy attached account from that provider's pool and resolves the provider-default Command (`grok-print`) at assign time.
 
 ```bash
 CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
@@ -297,7 +298,9 @@ CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -d "{
     \"repositoryId\": \"demo\",
     \"prompt\": \"List the files in the current directory in one short sentence. Do not edit or create any files.\",
-    \"providerAccountId\": \"$GROK_ACCOUNT_ID\",
+    \"target\": { \"providerId\": \"$PID\" },
+    \"fallbacks\": [{ \"commandId\": \"$ECHO_COMMAND_ID\" }],
+    \"queueTtlSeconds\": 691200,
     \"timeout\": 180,
     \"ref\": \"main\",
     \"requiredLabels\": [\"grok\"]
@@ -341,9 +344,9 @@ Verified live (throwaway git repo, prompt `"Reply with exactly: hello world. Do 
 
 Create their Providers/Commands the same way as Grok in §3 (`argv: ["$CLAUDE_BIN", "-p"]` / `argv: ["$CODEX_BIN", "exec"]`), attach an account to the host, then repeat the §5.2 flow with that account's id and prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`.
 
-### 5.3 Negative: unknown Provider Account / Command
+### 5.3 Negative: unknown Provider / Command
 
-Unlike the old free-form-shell risk, the API now only accepts a `providerAccountId` or `commandId` referencing an **existing catalog entry** — there's no string to inject. What's worth proving instead is that create-time validation actually rejects a bogus id, rather than silently queuing something that can never resolve:
+Unlike the old free-form-shell risk, the API now only accepts a `{ providerId }` or `{ commandId }` target referencing an **existing catalog entry** — there's no string to inject. What's worth proving instead is that create-time validation actually rejects a bogus id, rather than silently queuing something that can never resolve:
 
 ```bash
 curl -sS -o /tmp/bad-target.json -w "%{http_code}" -X POST http://127.0.0.1:7420/api/v1/sessions \
@@ -351,14 +354,14 @@ curl -sS -o /tmp/bad-target.json -w "%{http_code}" -X POST http://127.0.0.1:7420
   -d '{
     "repositoryId": "demo",
     "prompt": "x",
-    "commandId": "does-not-exist",
+    "target": { "commandId": "does-not-exist" },
     "timeout": 10
   }'
 cat /tmp/bad-target.json
-# expect 400 — commandId not found (resolveSessionTargetLabel rejects at create time, D4)
+# expect 400 — commandId not found (target validation rejects at create time, D4)
 ```
 
-Also confirm the mutual-exclusivity rule (`validateCreateSessionInput`): a body with **both** `providerAccountId` and `commandId`, or **neither**, is rejected 400 the same way.
+Also confirm malformed target objects, unknown fallback ids, and duplicate target/fallback references are rejected 400.
 
 ---
 
@@ -366,15 +369,15 @@ Also confirm the mutual-exclusivity rule (`validateCreateSessionInput`): a body 
 
 With `pnpm local:web` and API up:
 
-| URL                                | Check                                                                                                            |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| http://127.0.0.1:7421/             | Create form; target **dropdown** (`GET /session-targets`) lists attached provider accounts + standalone commands |
-| http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                                                                        |
-| http://127.0.0.1:7421/hosts        | Shows host online + its Provider accounts tab                                                                    |
-| http://127.0.0.1:7421/repositories | List/add works against API                                                                                       |
-| http://127.0.0.1:7421/schedules    | List/add/trigger works                                                                                           |
-| http://127.0.0.1:7421/providers    | List/add works; add-provider creates its default command too                                                     |
-| http://127.0.0.1:7421/commands     | List/add/edit/delete works                                                                                       |
+| URL                                | Check                                                                                                                          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| http://127.0.0.1:7421/             | Create form; target **dropdown** (`GET /session-targets`) lists Providers + Commands, including providerless pure CLI commands |
+| http://127.0.0.1:7421/sessions     | Lists sessions; completed session visible                                                                                      |
+| http://127.0.0.1:7421/hosts        | Shows host online + its Provider accounts tab                                                                                  |
+| http://127.0.0.1:7421/repositories | List/add works against API                                                                                                     |
+| http://127.0.0.1:7421/schedules    | List/add/trigger works                                                                                                         |
+| http://127.0.0.1:7421/providers    | List/add works; add-provider creates its default command too                                                                   |
+| http://127.0.0.1:7421/commands     | List/add/edit/delete works                                                                                                     |
 
 Automated: `pnpm local:manage-verify`.
 
@@ -391,7 +394,9 @@ Copy into the PR or agent final report:
 [ ] API :7420 health ok; agent online; expected Provider Accounts attached
 [ ] Echo session: create → assign → completed; logs present
 [ ] Real CLI session (if available): create → assign → completed; spawn argv matches the resolved Command
-[ ] Unknown providerAccountId/commandId rejected at session create (400)
+[ ] Unknown target/fallback providerId/commandId rejected at session create (400)
+[ ] Account usage limit pauses that account globally; fallback assignment or queue wait works; queued expiry reports `queue_expired`
+[ ] Native resume uses the source route when available, otherwise becomes a fresh target/fallback run
 [ ] Web UI lists sessions/hosts; target dropdown is not free text
 [ ] No secrets in prompts or session JSON
 ```

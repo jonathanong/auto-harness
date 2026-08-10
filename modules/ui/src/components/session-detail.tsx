@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { StatusBadge } from "./status-badge.tsx";
+import { SessionRouteSummary } from "./session-route-summary.tsx";
+import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 
 export type SessionSummary = {
   id: string;
@@ -12,6 +14,23 @@ export type SessionSummary = {
   hostId?: string | null;
   worktreeId?: string | null;
   targetLabel?: string | null;
+  targetLabels?: string[] | null;
+  target?: { providerId?: string; commandId?: string } | null;
+  fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
+  queueTtlSeconds?: number | null;
+  queueExpiresAt?: string | null;
+  resolvedProviderAccountId?: string | null;
+  resolvedCommandId?: string | null;
+  resolvedHostId?: string | null;
+  resolvedRoute?: {
+    targetIndex?: number;
+    providerAccountId?: string | null;
+    commandId?: string | null;
+    hostId?: string | null;
+    worktreeId?: string | null;
+  } | null;
+  resumedFromSessionId?: string | null;
+  resumeFallback?: boolean | null;
   resolvedArgv?: string[] | null;
   prompt?: string | null;
   source?: string | null;
@@ -71,10 +90,7 @@ export function SessionDetail({
                 <StatusBadge status={s.status} />
               </dd>
             </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Target</dt>
-              <dd className="font-mono text-sm">{s.targetLabel ?? "—"}</dd>
-            </div>
+            <SessionRouteSummary session={s} />
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
               <dd className="font-mono text-sm">
@@ -161,26 +177,13 @@ export function SessionDetail({
             <dt className="text-xs uppercase text-muted-foreground">Prompt</dt>
             <dd className="whitespace-pre-wrap break-words text-sm">{s.prompt ?? "—"}</dd>
           </div>
-          {s.resolvedArgv && s.resolvedArgv.length > 0 ? (
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Resolved argv</dt>
-              <dd
-                className="whitespace-pre-wrap break-words font-mono text-sm"
-                data-pw="session-detail-resolved-argv"
-              >
-                {s.resolvedArgv.join(" ")}
-              </dd>
-            </div>
-          ) : null}
-          {s.errorMessage ? (
-            <p
-              className="rounded-md border border-destructive/40 bg-red-50 p-3 text-sm text-red-900"
-              data-pw="session-detail-error"
-            >
-              {s.errorCode ? <span className="font-semibold">{s.errorCode}: </span> : null}
-              {s.errorMessage}
-            </p>
-          ) : null}
+          <SessionExecutionSummary
+            resolvedArgv={s.resolvedArgv}
+            errorCode={s.errorCode}
+            errorMessage={s.errorMessage}
+            resumeFallback={s.resumeFallback}
+            resumedFromSessionId={s.resumedFromSessionId}
+          />
         </CardContent>
       </Card>
 

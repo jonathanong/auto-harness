@@ -42,7 +42,7 @@ export async function manageSessionsAgents(scratch: string): Promise<void> {
     body: JSON.stringify({
       repositoryId: "r1",
       prompt: "cancel-me",
-      commandId: command.command.id,
+      target: { commandId: command.command.id },
       timeout: 10,
     }),
   });

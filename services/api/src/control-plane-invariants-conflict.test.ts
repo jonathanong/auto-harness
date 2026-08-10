@@ -75,7 +75,13 @@ describe("ControlPlane concurrency and late status", () => {
     }
     const assigned1 = plane.assignQueued();
     expect(assigned1.map((a) => a.session.id)).toContain(first.session.id);
-    plane.handleHostMessage({ type: "session:ack", sessionId: first.session.id });
+    const running = assigned1.find((item) => item.session.id === first.session.id)!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: first.session.id,
+      worktreeId: running.worktreeId!,
+      attemptId: running.attemptId!,
+    });
     expect(plane.getSession(first.session.id)?.status).toBe("running");
 
     const second = plane.createSession(
@@ -97,6 +103,8 @@ describe("ControlPlane concurrency and late status", () => {
     plane.handleHostMessage({
       type: "session:status",
       sessionId: first.session.id,
+      worktreeId: running.worktreeId!,
+      attemptId: running.attemptId!,
       status: "completed",
     });
     expect(plane.getSession(first.session.id)?.status).toBe("cancelled");
@@ -123,17 +131,31 @@ describe("ControlPlane concurrency and late status", () => {
       return;
     }
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     plane.disconnectHost(reg.connectionId);
     expect(plane.getSession("sess-1")?.status).toBe("running");
 
-    // duplicate ack remains harmless while the reconnect lease is pending
-    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
+    // late ack ignored
+    expect(
+      plane.handleHostMessage({
+        type: "session:ack",
+        sessionId: "sess-1",
+        worktreeId: assigned.worktreeId!,
+        attemptId: assigned.attemptId!,
+      }).ok,
+    ).toBe(true);
 
     plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
       status: "completed",
     });
     expect(plane.getSession("sess-1")?.status).toBe("completed");

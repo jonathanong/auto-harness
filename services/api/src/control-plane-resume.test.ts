@@ -4,6 +4,33 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 
+function acknowledge(plane: ControlPlane, sessionId: string): void {
+  const session = plane.getSession(sessionId)!;
+  plane.handleHostMessage({
+    type: "session:ack",
+    sessionId,
+    worktreeId: session.worktreeId!,
+    attemptId: session.attemptId!,
+  });
+}
+
+function finish(
+  plane: ControlPlane,
+  sessionId: string,
+  status: "completed" | "cancelled" = "completed",
+  cliResumeRef?: string,
+): void {
+  const session = plane.getSession(sessionId)!;
+  plane.handleHostMessage({
+    type: "session:status",
+    sessionId,
+    worktreeId: session.worktreeId!,
+    attemptId: session.attemptId!,
+    status,
+    ...(cliResumeRef ? { cliResumeRef } : {}),
+  });
+}
+
 describe("control-plane native resume", () => {
   it("snapshots the command resume spec and materializes native argv", () => {
     const messages: unknown[] = [];
@@ -28,7 +55,12 @@ describe("control-plane native resume", () => {
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
       commandProfiles: [],
     });
-    plane.createSession({ repositoryId: "repo", prompt: "first", commandId: "cmd", timeout: 30 });
+    plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
     plane.assignQueued();
     const assignments = () =>
       messages.filter((message) => (message as { type?: string }).type === "session:assign");
@@ -36,13 +68,8 @@ describe("control-plane native resume", () => {
       resolvedArgv: ["codex", "exec", "first"],
       resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
     });
-    plane.handleHostMessage({ type: "session:ack", sessionId: "s1" });
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: "s1",
-      status: "completed",
-      cliResumeRef: "cli-1",
-    });
+    acknowledge(plane, "s1");
+    finish(plane, "s1", "completed", "cli-1");
     plane.updateCommand("cmd", {
       argv: ["changed"],
       resumeArgvTemplate: ["changed", "{cliResumeRef}"],
@@ -69,7 +96,7 @@ describe("control-plane native resume", () => {
     source.type = "prompt";
     source.hostId = null;
     source.pinnedHostId = null;
-    expect(plane.resumeSession("s1").ok).toBe(false);
+    expect(plane.resumeSession("s1").ok).toBe(true);
   });
 
   it("uses the frozen normal command with a continuation override when native resume is absent", () => {
@@ -85,14 +112,14 @@ describe("control-plane native resume", () => {
     const created = plane.createSession({
       repositoryId: "repo",
       prompt: "original",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(created.ok).toBe(true);
     const sourceId = created.ok ? created.session.id : "";
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: sourceId });
-    plane.handleHostMessage({ type: "session:status", sessionId: sourceId, status: "completed" });
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId);
     plane.updateCommand("cmd", { argv: ["changed"] });
     expect(plane.deleteCommand("cmd").ok).toBe(true);
 
@@ -104,8 +131,8 @@ describe("control-plane native resume", () => {
       resolvedArgv: ["tool", "run", "continue here"],
     });
     const resumedId = resumed.ok ? resumed.session.id : "";
-    plane.handleHostMessage({ type: "session:ack", sessionId: resumedId });
-    plane.handleHostMessage({ type: "session:status", sessionId: resumedId, status: "completed" });
+    acknowledge(plane, resumedId);
+    finish(plane, resumedId);
     const source = plane.state.sessions.get(sourceId)!;
     source.resumeSpec = { argv: ["tool", "plain"], appendPrompt: false };
     expect(plane.resumeSession(sourceId, { prompt: "not appended" }).ok).toBe(true);
@@ -129,14 +156,14 @@ describe("control-plane native resume", () => {
     const created = plane.createSession({
       repositoryId: "repo",
       prompt: "original",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     const sourceId = created.ok ? created.session.id : "";
     expect(plane.resumeSession(sourceId)).toMatchObject({ ok: false });
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: sourceId });
-    plane.handleHostMessage({ type: "session:status", sessionId: sourceId, status: "completed" });
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId);
     expect(plane.resumeSession(sourceId)).toEqual({
       ok: false,
       error: "source session has no captured CLI resume reference",
@@ -159,19 +186,14 @@ describe("control-plane native resume", () => {
     const created = plane.createSession({
       repositoryId: "repo",
       prompt: "original",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     const sourceId = created.ok ? created.session.id : "";
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: sourceId });
+    acknowledge(plane, sourceId);
     plane.cancelSession(sourceId);
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: sourceId,
-      status: "cancelled",
-      cliResumeRef: "native-ref",
-    });
+    finish(plane, sourceId, "cancelled", "native-ref");
     expect(plane.getSession(sourceId)).toMatchObject({
       hostId: "host",
       worktreeId: null,
@@ -189,7 +211,7 @@ describe("control-plane native resume", () => {
     const queued = nonTerminal.createSession({
       repositoryId: "repo",
       prompt: "queued",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(queued.ok).toBe(true);
@@ -209,7 +231,7 @@ describe("control-plane native resume", () => {
       scheduled.putSchedule({
         repositoryId: "repo",
         name: "nightly",
-        commandId: "cmd",
+        target: { commandId: "cmd" },
         cron: "0 * * * *",
         timeout: 30,
         nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -229,7 +251,7 @@ describe("control-plane native resume", () => {
     const unpinned = noAgent.createSession({
       repositoryId: "repo",
       prompt: "unpinned",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(unpinned.ok).toBe(true);
@@ -251,18 +273,14 @@ describe("control-plane native resume", () => {
     const source = overrides.createSession({
       repositoryId: "repo",
       prompt: "source",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(source.ok).toBe(true);
     if (source.ok) {
       overrides.assignQueued();
-      overrides.handleHostMessage({ type: "session:ack", sessionId: source.session.id });
-      overrides.handleHostMessage({
-        type: "session:status",
-        sessionId: source.session.id,
-        status: "completed",
-      });
+      acknowledge(overrides, source.session.id);
+      finish(overrides, source.session.id);
       expect(overrides.resumeSession(source.session.id, { prompt: "" })).toEqual({
         ok: false,
         error: "prompt must be a non-empty string",
@@ -310,18 +328,14 @@ describe("control-plane native resume", () => {
     const source = plane.createSession({
       repositoryId: "repo",
       prompt: "first",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(source.ok).toBe(true);
     if (!source.ok) throw new Error("unreachable");
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: source.session.id });
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: source.session.id,
-      status: "completed",
-    });
+    acknowledge(plane, source.session.id);
+    finish(plane, source.session.id);
     const resumed = plane.resumeSession(source.session.id);
     expect(resumed.ok).toBe(true);
     plane.assignQueued();
@@ -342,7 +356,7 @@ describe("control-plane native resume", () => {
     const created = plane.createSession({
       repositoryId: "repo",
       prompt: "orphan",
-      commandId: "cmd",
+      target: { commandId: "cmd" },
       timeout: 30,
     });
     expect(created.ok).toBe(true);

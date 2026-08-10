@@ -103,7 +103,7 @@ What `local:e2e` does (real shipped modules):
 
 1. Creates a temporary git repo with branch `feature/local-e2e`
 2. Creates a session via the **local API create path** (`createLocalApp` / `POST /api/v1/sessions` handler)
-3. Asserts an **unknown `commandId`** is rejected at create time (no shell fallback) — see `resolveSessionTargetLabel`
+3. Asserts an **unknown target `commandId`** is rejected at create time (no shell fallback) — see target validation
 4. Runs `SessionRunner` against a real `echo` standalone Command, with `ref: feature/local-e2e`
 5. Asserts worktree `HEAD` matches that feature commit, terminal hook env was set, and log `seq` is monotonic
 
@@ -169,7 +169,8 @@ curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   -d "{
     \"repositoryId\": \"demo\",
     \"prompt\": \"hello from API\",
-    \"commandId\": \"$CMD_ID\",
+    \"target\": { \"commandId\": \"$CMD_ID\" },
+    \"queueTtlSeconds\": 691200,
     \"timeout\": 60,
     \"ref\": \"main\",
     \"requiredLabels\": [\"echo\"]

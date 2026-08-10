@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
@@ -25,8 +26,13 @@ describe("ControlPlane lifecycle", () => {
     });
     plane.heartbeat("a1", "2026-01-01T00:00:00.000Z");
     plane.createSession(baseSessionBody({ timeout: 3600 }));
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
 
     const t0 = Date.parse("2026-01-01T00:00:00.000Z");
     const reclaimed = plane.reclaimStaleHosts(t0 + 2_000);
@@ -59,8 +65,13 @@ describe("ControlPlane lifecycle", () => {
     });
     expect(reg.ok).toBe(true);
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     expect(plane.getWorktree("wt-1")?.status).toBe("busy");
 
     if (!reg.ok) {
@@ -97,7 +108,13 @@ describe("ControlPlane lifecycle", () => {
     }
     plane.createSession(baseSessionBody());
     plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.getSession("sess-1")!;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     plane.disconnectHost(registration.connectionId);
     const deadline = Date.parse(plane.getSession("sess-1")!.reconnectDeadlineAt!);
     expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);
@@ -125,8 +142,13 @@ describe("ControlPlane lifecycle", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     plane.handleHostMessage({
       type: "session:log",
       sessionId: "sess-1",
@@ -138,6 +160,8 @@ describe("ControlPlane lifecycle", () => {
     plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
       status: "completed",
     });
     expect(plane.getArchive("sess-1")?.body).toContain("hi");
@@ -181,8 +205,13 @@ describe("ControlPlane lifecycle", () => {
       online: true,
     });
     plane.createSession(baseSessionBody());
-    plane.assignQueued();
-    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    const assigned = plane.assignQueued()[0]!.session;
+    plane.handleHostMessage({
+      type: "session:ack",
+      sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
+    });
     const drain = plane.drainHost("a1");
     expect(drain.runningSessionIds).toEqual(["sess-1"]);
     expect(plane.isDraining("a1")).toBe(true);
@@ -193,6 +222,8 @@ describe("ControlPlane lifecycle", () => {
     plane.handleHostMessage({
       type: "session:status",
       sessionId: "sess-1",
+      worktreeId: assigned.worktreeId!,
+      attemptId: assigned.attemptId!,
       status: "completed",
     });
     expect(plane.getWorktree("wt-1")?.status).toBe("idle");

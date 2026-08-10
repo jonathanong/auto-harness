@@ -15,7 +15,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeJ.putSchedule({
       repositoryId: "repo-1",
       name: "n",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -27,9 +27,8 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       planeJ.tryClaimScheduleFire("sj", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:01.000Z"),
     ).toBeNull();
 
-    // constructor overrides + retryCount defined path on usage_limit
+    // Providerless usage limits suppress this target for the queued session.
     const planeK = new ControlPlane({
-      usageLimitRetryCeiling: 3,
       archivePrefix: "x/",
       webhookUrl: "https://hook.test",
       idFactory: () => "k1",
@@ -50,25 +49,56 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeK.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
-    planeK.assignQueued();
-    planeK.handleHostMessage({ type: "session:ack", sessionId: "k1" });
-    planeK.state.sessions.get("k1")!.retryCount = 0;
+    const kAssignment = planeK.assignQueued().find((a) => a.session.id === "k1")!;
+    planeK.handleHostMessage({
+      type: "session:ack",
+      sessionId: "k1",
+      worktreeId: kAssignment.worktree.id,
+      attemptId: kAssignment.session.attemptId!,
+    });
     planeK.handleHostMessage({
       type: "session:status",
       sessionId: "k1",
+      worktreeId: kAssignment.worktree.id,
+      attemptId: kAssignment.session.attemptId!,
       status: "failed",
       errorCode: "usage_limit",
     });
-    expect(planeK.getSession("k1")?.retryCount).toBe(1);
+    expect(planeK.getSession("k1")?.suppressedTargetIndexes).toEqual([0]);
     // resume with explicit pinExpiresAt
-    planeK.state.sessions.get("k1")!.retryCount = 0;
-    planeK.forceStatus("k1", "completed");
+    planeK.handleHostMessage({
+      type: "session:status",
+      sessionId: "k1",
+      worktreeId: kAssignment.worktree.id,
+      attemptId: kAssignment.session.attemptId!,
+      status: "completed",
+    });
     // set agent after complete for resume
-    const kSess = planeK.state.sessions.get("k1") as { hostId?: string | null };
+    const kSess = planeK.state.sessions.get("k1") as {
+      hostId?: string | null;
+      status: "queued" | "running";
+      worktreeId?: string | null;
+    };
+    // The usage-limit branch requeues the source, so create a fresh running
+    // assignment before exercising the terminal/resume path.
+    kSess.status = "running";
+    kSess.worktreeId = kAssignment.worktree.id;
     kSess.hostId = "ak";
+    planeK.state.worktrees.set(kAssignment.worktree.id, {
+      ...kAssignment.worktree,
+      status: "busy",
+      currentSessionId: "k1",
+    });
+    planeK.handleHostMessage({
+      type: "session:status",
+      sessionId: "k1",
+      worktreeId: kAssignment.worktree.id,
+      attemptId: kAssignment.session.attemptId!,
+      status: "completed",
+    });
     expect(planeK.resumeSession("k1", { pinExpiresAt: "2099-01-01T00:00:00.000Z" }).ok).toBe(true);
 
     // default constructor factories
@@ -77,14 +107,14 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     const created = bare.createSession({
       repositoryId: "r",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     expect(created.ok).toBe(true);
     bare.putSchedule({
       repositoryId: "r",
       name: "n",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2099-01-01T00:00:00.000Z",
@@ -126,12 +156,15 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     expect(planeOrphan.getWorktree("wg")?.online).toBe(false);
 
     // supersedeSession defensive path via private call
-    const planeS = new ControlPlane({ idFactory: () => "s1", now: () => "t" });
+    const planeS = new ControlPlane({
+      idFactory: () => "s1",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     seedBaseCommand(planeS);
     planeS.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     planeS.forceStatus("s1", "completed");
@@ -145,7 +178,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
         let qi = 0;
         return () => `q${++qi}`;
       })(),
-      now: () => "t",
+      now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,
     });
     seedBaseCommand(planeQ);
@@ -162,7 +195,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     planeQ.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
       concurrencyKey: "kq",
       onConflict: "queue",

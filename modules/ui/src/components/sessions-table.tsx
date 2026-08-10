@@ -9,6 +9,20 @@ export type SessionRow = {
   repositoryId?: string | null;
   prompt?: string | null;
   targetLabel?: string | null;
+  targetLabels?: string[] | null;
+  target?: { providerId?: string; commandId?: string } | null;
+  fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
+  queueExpiresAt?: string | null;
+  resolvedProviderAccountId?: string | null;
+  resolvedCommandId?: string | null;
+  resolvedHostId?: string | null;
+  resolvedRoute?: {
+    targetIndex?: number;
+    providerAccountId?: string | null;
+    commandId?: string | null;
+    hostId?: string | null;
+    worktreeId?: string | null;
+  } | null;
   source?: string | null;
   hostId?: string | null;
   createdAt?: string | null;
@@ -30,7 +44,7 @@ export function SessionsTable({
   emptyMessage = "No sessions match filters.",
   hrefBase,
 }: SessionsTableProps) {
-  const cols = showHost ? 6 : 5;
+  const cols = showHost ? 7 : 6;
   return (
     <Table data-pw="sessions-table">
       <TableHeader>
@@ -38,7 +52,8 @@ export function SessionsTable({
           <TableHead>ID</TableHead>
           <TableHead>Status</TableHead>
           {showHost ? <TableHead>Host</TableHead> : null}
-          <TableHead>Target</TableHead>
+          <TableHead>Route</TableHead>
+          <TableHead>Queue expiry</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
         </TableRow>
@@ -65,7 +80,40 @@ export function SessionsTable({
             {showHost ? (
               <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>
             ) : null}
-            <TableCell>{s.targetLabel ?? "—"}</TableCell>
+            <TableCell>
+              <div>{s.targetLabel ?? s.targetLabels?.[0] ?? routeLabel(s.target) ?? "—"}</div>
+              {Math.max(s.fallbacks?.length ?? 0, Math.max((s.targetLabels?.length ?? 1) - 1, 0)) >
+              0 ? (
+                <div className="text-xs text-muted-foreground">
+                  +
+                  {Math.max(
+                    s.fallbacks?.length ?? 0,
+                    Math.max((s.targetLabels?.length ?? 1) - 1, 0),
+                  )}{" "}
+                  fallback
+                  {Math.max(
+                    s.fallbacks?.length ?? 0,
+                    Math.max((s.targetLabels?.length ?? 1) - 1, 0),
+                  ) === 1
+                    ? ""
+                    : "s"}
+                </div>
+              ) : null}
+              {s.resolvedProviderAccountId ||
+              s.resolvedCommandId ||
+              s.resolvedHostId ||
+              s.resolvedRoute ? (
+                <div className="text-xs text-muted-foreground">
+                  {s.resolvedRoute?.targetIndex != null
+                    ? `target ${s.resolvedRoute.targetIndex + 1}: `
+                    : null}
+                  {s.resolvedProviderAccountId ?? s.resolvedRoute?.providerAccountId ?? "CLI"} /{" "}
+                  {s.resolvedCommandId ?? s.resolvedRoute?.commandId ?? "—"} /{" "}
+                  {s.resolvedHostId ?? s.resolvedRoute?.hostId ?? "—"}
+                </div>
+              ) : null}
+            </TableCell>
+            <TableCell className="whitespace-nowrap text-xs">{s.queueExpiresAt ?? "—"}</TableCell>
             <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
           </TableRow>
@@ -80,4 +128,11 @@ export function SessionsTable({
       </TableBody>
     </Table>
   );
+}
+
+function routeLabel(target?: { providerId?: string; commandId?: string } | null): string | null {
+  if (!target) return null;
+  if (target.providerId) return `provider:${target.providerId}`;
+  if (target.commandId) return `command:${target.commandId}`;
+  return null;
 }

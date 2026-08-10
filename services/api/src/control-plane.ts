@@ -28,14 +28,15 @@ export type {
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
 export class ControlPlane extends ControlPlaneCatalog {
-  updateSchedule(
+  override updateSchedule(
     id: string,
     patch: Partial<{
       name: string;
-      providerAccountId: string;
-      commandId: string;
+      target: import("@auto-harness/shared").TargetRef;
+      fallbacks: import("@auto-harness/shared").TargetRef[];
       cron: string;
       timeout: number;
+      queueTtlSeconds: number;
       nextRunAt: string;
       enabled: boolean;
       ref: string;
@@ -141,10 +142,6 @@ export class ControlPlane extends ControlPlaneCatalog {
 
   getAckDeadlineMs(): number {
     return this.state.ackDeadlineMs;
-  }
-
-  getUsageLimitRetryCeiling(): number {
-    return this.state.usageLimitRetryCeiling;
   }
 
   archiveSessionLogs(sessionId: string): ArchiveObject | null {

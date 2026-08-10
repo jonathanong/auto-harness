@@ -6,7 +6,6 @@ import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.t
 describe("ControlPlane coverage: concurrency keys list and resume metadata", () => {
   it("concurrency keys list and resume metadata", () => {
     const planeH = new ControlPlane({
-      usageLimitRetryCeiling: 1,
       archivePrefix: "arch/",
       webhookUrl: null,
       idFactory: (() => {
@@ -41,7 +40,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeH.createSession({
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
       concurrencyKey: "done-key",
       onConflict: "reject",
@@ -51,7 +50,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       planeH.createSession({
         repositoryId: "repo-1",
         prompt: "p2",
-        commandId: BASE_COMMAND_ID,
+        target: { commandId: BASE_COMMAND_ID },
         timeout: 1,
         concurrencyKey: "done-key",
         onConflict: "reject",
@@ -62,7 +61,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeH.createSession({
       repositoryId: "repo-1",
       prompt: "later",
-      commandId: BASE_COMMAND_ID,
+      target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
     expect(planeH.listSessions().length).toBeGreaterThan(1);
@@ -79,14 +78,23 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeI.state.sessions.set("src", {
       id: "src",
       hostId: null,
-      pinnedHostId: "pin-agent",
+      pinnedHostId: "older-pin-agent",
+      resolvedRoute: {
+        targetIndex: 0,
+        commandId: BASE_COMMAND_ID,
+        hostId: "pin-agent",
+        worktreeId: "old-worktree",
+      },
       concurrencyKey: "ck",
       metadata: { m: 1 },
       status: "completed",
       repositoryId: "repo-1",
       prompt: "p",
-      commandId: BASE_COMMAND_ID,
-      targetLabel: "c",
+      target: { commandId: BASE_COMMAND_ID },
+      fallbacks: [],
+      targetLabels: ["c"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2099-01-01T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],

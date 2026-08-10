@@ -17,6 +17,7 @@ import { DeleteProviderButton } from "../../../components/delete-provider-button
 import { EditProviderForm } from "../../../components/edit-provider-form.tsx";
 import { ProviderDefaultCommandForm } from "../../../components/provider-default-command-form.tsx";
 import { RemoveProviderAccountButton } from "../../../components/remove-provider-account-button.tsx";
+import { ProviderAccountCooldownForm } from "../../../components/provider-account-cooldown-form.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -97,6 +98,7 @@ export default async function ProviderDetailPage({
                     <TableRow>
                       <TableHead>label</TableHead>
                       <TableHead>attached hosts</TableHead>
+                      <TableHead>health / cooldown</TableHead>
                       <TableHead />
                     </TableRow>
                   </TableHeader>
@@ -105,6 +107,9 @@ export default async function ProviderDetailPage({
                       <TableRow key={a.id} data-pw={`provider-account-row-${a.id}`}>
                         <TableCell className="font-mono text-sm">{a.label}</TableCell>
                         <TableCell>{attachedHostCount(a.id)}</TableCell>
+                        <TableCell>
+                          <ProviderAccountCooldownForm account={a} />
+                        </TableCell>
                         <TableCell>
                           <RemoveProviderAccountButton
                             accountId={a.id}
@@ -115,7 +120,7 @@ export default async function ProviderDetailPage({
                     ))}
                     {accounts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-muted-foreground">
+                        <TableCell colSpan={4} className="text-muted-foreground">
                           No accounts of this provider yet.
                         </TableCell>
                       </TableRow>

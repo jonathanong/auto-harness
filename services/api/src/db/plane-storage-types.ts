@@ -1,5 +1,11 @@
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { Command, HostCapability, Provider, ProviderAccount } from "@auto-harness/shared";
+import type {
+  Command,
+  HostCapability,
+  Provider,
+  ProviderAccount,
+  TargetRef,
+} from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
@@ -44,13 +50,13 @@ export type ScheduleRecord = {
   id: string;
   repositoryId: string;
   name: string;
-  /** Exactly one of providerAccountId/commandId is set. */
-  providerAccountId?: string;
-  commandId?: string;
-  targetLabel: string;
+  target: TargetRef;
+  fallbacks: TargetRef[];
+  targetLabels: string[];
   cron: string;
   enabled: boolean;
   timeout: number;
+  queueTtlSeconds: number;
   nextRunAt: string;
   lastRunAt: string | null;
   createdAt: string;

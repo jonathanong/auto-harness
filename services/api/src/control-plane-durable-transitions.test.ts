@@ -60,8 +60,11 @@ describe("durable control-plane transitions", () => {
       id: "session-durable",
       repositoryId: "repo-durable",
       prompt: "durable assignment",
-      commandId: "cmd-durable",
-      targetLabel: "echo",
+      target: { commandId: "cmd-durable" },
+      fallbacks: [],
+      targetLabels: ["echo"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 30,
       priority: 0,
       requiredLabels: [],
@@ -69,7 +72,6 @@ describe("durable control-plane transitions", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
-      retryCount: 0,
     };
     await ctx.storage.putSession(session);
     const second = await createControlPlane({
@@ -146,8 +148,11 @@ describe("durable control-plane transitions", () => {
       id: sessionId,
       repositoryId: "repo-resume-snapshot",
       prompt: "first prompt",
-      commandId,
-      targetLabel: "codex snapshot",
+      target: { commandId },
+      fallbacks: [],
+      targetLabels: ["codex snapshot"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 30,
       priority: 0,
       requiredLabels: [],
@@ -155,7 +160,6 @@ describe("durable control-plane transitions", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
-      retryCount: 0,
     });
     await created.plane.hydrateFromStorage();
     expect(await created.plane.assignQueuedDurable()).toHaveLength(1);
@@ -195,8 +199,10 @@ describe("durable control-plane transitions", () => {
       id: "schedule-durable",
       repositoryId: "repo-schedule",
       name: "nightly",
-      commandId: "cmd-schedule",
-      targetLabel: "echo schedule",
+      target: { commandId: "cmd-schedule" },
+      fallbacks: [],
+      targetLabels: ["echo schedule"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 30,
@@ -238,8 +244,10 @@ describe("durable control-plane transitions", () => {
       id: "schedule-evaluate",
       repositoryId: "repo-schedule",
       name: "evaluate",
-      commandId: "cmd-schedule",
-      targetLabel: "echo schedule",
+      target: { commandId: "cmd-schedule" },
+      fallbacks: [],
+      targetLabels: ["echo schedule"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 30,
@@ -300,8 +308,10 @@ describe("durable control-plane transitions", () => {
       id: "schedule-manual-durable",
       repositoryId: "repo-manual-durable",
       name: "manual",
-      commandId: "cmd-manual-durable",
-      targetLabel: "manual durable",
+      target: { commandId: "cmd-manual-durable" },
+      fallbacks: [],
+      targetLabels: ["manual durable"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 30,
@@ -418,8 +428,11 @@ describe("durable control-plane transitions", () => {
       id: "session-lease-guard",
       repositoryId: "repo-lease-guard",
       prompt: "lease guard",
-      commandId: "cmd-lease-guard",
-      targetLabel: "lease guard",
+      target: { commandId: "cmd-lease-guard" },
+      fallbacks: [],
+      targetLabels: ["lease guard"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -428,7 +441,11 @@ describe("durable control-plane transitions", () => {
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    const scheduler = new ControlPlane({ storage: ctx.storage, shardCount: 1 });
+    const scheduler = new ControlPlane({
+      storage: ctx.storage,
+      shardCount: 1,
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     await scheduler.hydrateFromStorage();
     expect(
       await ctx.storage.releaseHostConnection("host-lease-guard", "connection-lease-guard"),
@@ -459,7 +476,11 @@ describe("durable control-plane transitions", () => {
       id: "session-cancelled-late-terminal",
       repositoryId: "repo-cancelled-late-terminal",
       prompt: "cancelled",
-      targetLabel: "cancelled",
+      target: { commandId: "cmd-idempotent" },
+      fallbacks: [],
+      targetLabels: ["cancelled"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -470,6 +491,7 @@ describe("durable control-plane transitions", () => {
       completedAt: "2026-01-01T00:00:01.000Z",
       worktreeId: "worktree-cancelled-late-terminal",
       hostId: "host-cancelled-late-terminal",
+      attemptId: "attempt-cancelled-late-terminal",
     });
     const plane = new ControlPlane({ storage: ctx.storage });
     await plane.hydrateFromStorage();
@@ -479,6 +501,8 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:status",
           sessionId: "session-cancelled-late-terminal",
+          worktreeId: "worktree-cancelled-late-terminal",
+          attemptId: "attempt-cancelled-late-terminal",
           status: "cancelled",
           cliResumeRef: "cancelled-native-ref",
         })
@@ -499,6 +523,8 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:status",
           sessionId: "session-cancelled-late-terminal",
+          worktreeId: "worktree-cancelled-late-terminal",
+          attemptId: "attempt-cancelled-late-terminal",
           status: "completed",
         })
       ).ok,
@@ -532,7 +558,11 @@ describe("durable control-plane transitions", () => {
         id: sessionId,
         repositoryId: "repo-reconnect-rollback",
         prompt: suffix,
-        targetLabel: "reconnect rollback",
+        target: { commandId: "cmd-reconnect-rollback" },
+        fallbacks: [],
+        targetLabels: ["reconnect rollback"],
+        queueTtlSeconds: 691200,
+        queueExpiresAt: "2026-01-09T00:00:00.000Z",
         timeout: 1,
         priority: 0,
         requiredLabels: [],
@@ -542,6 +572,7 @@ describe("durable control-plane transitions", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         hostId,
         worktreeId,
+        attemptId: `attempt-reconnect-${suffix}`,
         ackReceivedAt: "2026-01-01T00:00:01.000Z",
         reconnectDeadlineAt: deadline,
         assignmentConnectionId: oldConnection,
@@ -555,6 +586,7 @@ describe("durable control-plane transitions", () => {
         await ctx.storage!.tryRequeueSession({
           sessionId: "session-reconnect-second",
           worktreeId: "worktree-reconnect-second",
+          attemptId: "attempt-reconnect-second",
           queueShard: 0,
           reason: "grace sweep won",
           forceOffline: true,
@@ -644,8 +676,11 @@ describe("durable control-plane transitions", () => {
       id: "session-idempotent",
       repositoryId: "repo-idempotent",
       prompt: "idempotent",
-      commandId: "cmd-idempotent",
-      targetLabel: "idempotent",
+      target: { commandId: "cmd-idempotent" },
+      fallbacks: [],
+      targetLabels: ["idempotent"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -693,18 +728,23 @@ describe("durable control-plane transitions", () => {
         })
       ).ok,
     ).toBe(true);
-    expect(await planeCreated.plane.assignQueuedDurable()).toHaveLength(1);
+    const idempotentAssigned = await planeCreated.plane.assignQueuedDurable();
+    expect(idempotentAssigned).toHaveLength(1);
     expect(
       await planeCreated.plane.enforceAckDeadlinesDurable(
         Date.parse("2026-01-01T00:00:01.000Z") + 10_000,
       ),
     ).toEqual(["session-idempotent"]);
-    expect(await planeCreated.plane.assignQueuedDurable()).toHaveLength(1);
+    const reassigned = await planeCreated.plane.assignQueuedDurable();
+    expect(reassigned).toHaveLength(1);
+    const reassignedAttempt = reassigned[0]!.session;
     expect(
       (
         await planeCreated.plane.handleHostMessageDurable({
           type: "session:ack",
           sessionId: "session-idempotent",
+          worktreeId: reassignedAttempt.worktreeId!,
+          attemptId: reassignedAttempt.attemptId!,
         })
       ).ok,
     ).toBe(true);
@@ -713,12 +753,16 @@ describe("durable control-plane transitions", () => {
         await planeCreated.plane.handleHostMessageDurable({
           type: "session:ack",
           sessionId: "session-idempotent",
+          worktreeId: reassignedAttempt.worktreeId!,
+          attemptId: reassignedAttempt.attemptId!,
         })
       ).ok,
     ).toBe(true);
     const terminal = {
       type: "session:status" as const,
       sessionId: "session-idempotent",
+      worktreeId: reassignedAttempt.worktreeId!,
+      attemptId: reassignedAttempt.attemptId!,
       status: "completed" as const,
     };
     expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
@@ -740,8 +784,11 @@ describe("durable control-plane transitions", () => {
       id: "session-stale",
       repositoryId: "repo-idempotent",
       prompt: "stale",
-      commandId: "cmd-idempotent",
-      targetLabel: "idempotent",
+      target: { commandId: "cmd-idempotent" },
+      fallbacks: [],
+      targetLabels: ["idempotent"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -823,7 +870,11 @@ describe("durable control-plane transitions", () => {
       id: "session-failing-log",
       repositoryId: "repo-failing-log",
       prompt: "log",
-      targetLabel: "log",
+      target: { commandId: "cmd-idempotent" },
+      fallbacks: [],
+      targetLabels: ["log"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -881,7 +932,7 @@ describe("durable control-plane transitions", () => {
     const created = plane.createSession({
       repositoryId: "local-durable-repo",
       prompt: "local",
-      commandId: "local-durable-command",
+      target: { commandId: "local-durable-command" },
       timeout: 1,
     });
     expect(created.ok).toBe(true);
@@ -892,7 +943,7 @@ describe("durable control-plane transitions", () => {
     await plane.putSchedule({
       repositoryId: "local-durable-repo",
       name: "local",
-      commandId: "local-durable-command",
+      target: { commandId: "local-durable-command" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -966,8 +1017,11 @@ describe("durable control-plane transitions", () => {
       id: "session-review-expired-pin",
       repositoryId: "repo-review-durable",
       prompt: "expired",
-      commandId: "cmd-review-durable",
-      targetLabel: "review durable",
+      target: { commandId: "cmd-review-durable" },
+      fallbacks: [],
+      targetLabels: ["review durable"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 1,
       requiredLabels: [],
@@ -982,8 +1036,11 @@ describe("durable control-plane transitions", () => {
       id: "session-review-drain",
       repositoryId: "repo-review-durable",
       prompt: "must not assign after drain",
-      commandId: "cmd-review-durable",
-      targetLabel: "review durable",
+      target: { commandId: "cmd-review-durable" },
+      fallbacks: [],
+      targetLabels: ["review durable"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -1004,8 +1061,11 @@ describe("durable control-plane transitions", () => {
       id: "session-review-refreshed-pin",
       repositoryId: "repo-review-durable",
       prompt: "refreshed",
-      commandId: "cmd-review-durable",
-      targetLabel: "review durable",
+      target: { commandId: "cmd-review-durable" },
+      fallbacks: [],
+      targetLabels: ["review durable"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -1041,8 +1101,9 @@ describe("durable control-plane transitions", () => {
     const assigned = await staleScheduler.assignQueuedDurable();
     expect(assigned.some((item) => item.session.id === "session-review-drain")).toBe(false);
     const expired = await ctx.storage.getSession("session-review-expired-pin");
-    expect(expired?.status).toBe("failed");
-    expect(expired?.errorCode).toBe("resume_failed");
+    expect(expired?.status).toBe("queued");
+    expect(expired?.resumeFallback).toBe(true);
+    expect(expired?.pinnedHostId).toBeUndefined();
     expect((await ctx.storage.getSession("session-review-refreshed-pin"))?.status).toBe("queued");
     expect((await ctx.storage.getSession("session-review-refreshed-pin"))?.pinExpiresAt).toBe(
       "2099-01-01T00:00:00.000Z",
@@ -1054,8 +1115,10 @@ describe("durable control-plane transitions", () => {
       id: "schedule-review-missing-target",
       repositoryId: "repo-review-target",
       name: "missing target",
-      commandId: "cmd-review-durable",
-      targetLabel: "review durable",
+      target: { commandId: "cmd-review-durable" },
+      fallbacks: [],
+      targetLabels: ["review durable"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 1,
@@ -1098,8 +1161,10 @@ describe("durable control-plane transitions", () => {
       id: "schedule-review-missing-account",
       repositoryId: "repo-review-account",
       name: "missing account",
-      providerAccountId: "account-review-missing",
-      targetLabel: "review provider — review account",
+      target: { providerId: "provider-review-missing" },
+      fallbacks: [],
+      targetLabels: ["review provider"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 1,
@@ -1116,17 +1181,16 @@ describe("durable control-plane transitions", () => {
     await providerSchedulePlane.hydrateFromStorage();
     await ctx.storage.deleteProviderAccount("account-review-missing");
     providerSchedulePlane.state.providerAccounts.delete("account-review-missing");
-    expect(
-      await providerSchedulePlane.tryClaimScheduleFireDurable(
-        "schedule-review-missing-account",
-        "2026-01-01T00:00:00.000Z",
-        "2026-01-01T00:00:00.000Z",
-      ),
-    ).toBeNull();
-    expect((await ctx.storage.getSchedule("schedule-review-missing-account"))?.nextRunAt).toBe(
+    const queuedWithoutCapacity = await providerSchedulePlane.tryClaimScheduleFireDurable(
+      "schedule-review-missing-account",
+      "2026-01-01T00:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
     );
-    expect(await ctx.storage.getSession("session-review-missing-account")).toBeNull();
+    expect(queuedWithoutCapacity?.status).toBe("queued");
+    expect((await ctx.storage.getSchedule("schedule-review-missing-account"))?.nextRunAt).toBe(
+      "2026-01-01T00:01:00.000Z",
+    );
+    expect((await ctx.storage.getSession("session-review-missing-account"))?.status).toBe("queued");
   });
 
   it("covers durable guard branches and optional transition fields", async () => {
@@ -1299,8 +1363,11 @@ describe("durable control-plane transitions", () => {
       id: "coverage-options-session",
       repositoryId: "coverage-repo",
       prompt: "coverage",
-      commandId: "coverage-command",
-      targetLabel: "coverage",
+      target: { commandId: "coverage-command" },
+      fallbacks: [],
+      targetLabels: ["coverage"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -1318,13 +1385,16 @@ describe("durable control-plane transitions", () => {
     plane.state.onHostMessage = () => undefined;
     const coverageAssigned = await plane.assignQueuedDurable();
     expect(coverageAssigned.some((item) => item.session.id === optionsSession.id)).toBe(true);
+    const coverageAttempt = coverageAssigned.find(
+      (item) => item.session.id === optionsSession.id,
+    )!.session;
     expect(await plane.enforceAckDeadlinesDurable(Date.parse("2026-01-01T00:00:00.000Z"))).toEqual(
       [],
     );
     const expired = {
       ...optionsSession,
       id: "coverage-expired",
-      retryAfter: "2027-01-01T00:00:00.000Z",
+      queueExpiresAt: "2000-01-01T00:00:00.000Z",
     };
     const acknowledged = {
       ...optionsSession,
@@ -1342,7 +1412,7 @@ describe("durable control-plane transitions", () => {
     const missingCommand = {
       ...optionsSession,
       id: "coverage-missing-command",
-      commandId: "missing",
+      target: { commandId: "missing" },
     };
     plane.state.sessions.set(expired.id, expired);
     plane.state.sessions.set(acknowledged.id, acknowledged);
@@ -1353,6 +1423,8 @@ describe("durable control-plane transitions", () => {
     const retryStatus = {
       type: "session:status" as const,
       sessionId: optionsSession.id,
+      worktreeId: coverageAttempt.worktreeId!,
+      attemptId: coverageAttempt.attemptId!,
       status: "failed" as const,
       errorCode: "usage_limit",
       errorMessage: "quota",
@@ -1364,7 +1436,14 @@ describe("durable control-plane transitions", () => {
       true,
     );
     expect(
-      (await plane.handleHostMessageDurable({ type: "session:ack", sessionId: "missing" })).ok,
+      (
+        await plane.handleHostMessageDurable({
+          type: "session:ack",
+          sessionId: "missing",
+          worktreeId: "missing-worktree",
+          attemptId: "missing-attempt",
+        })
+      ).ok,
     ).toBe(false);
     expect(
       (
@@ -1383,6 +1462,8 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:status",
           sessionId: "missing-status",
+          worktreeId: "missing-worktree",
+          attemptId: "missing-attempt",
           status: "completed",
         })
       ).ok,
@@ -1403,6 +1484,8 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:status",
           sessionId: noWorktree.id,
+          worktreeId: "missing-worktree",
+          attemptId: "missing-attempt",
           status: "completed",
         })
       ).ok,
@@ -1417,6 +1500,8 @@ describe("durable control-plane transitions", () => {
         await failedFinishPlane.handleHostMessageDurable({
           type: "session:status",
           sessionId: noWorktree.id,
+          worktreeId: "missing-worktree",
+          attemptId: "missing-attempt",
           status: "completed",
         })
       ).ok,
@@ -1426,8 +1511,10 @@ describe("durable control-plane transitions", () => {
       id: "coverage-disabled",
       repositoryId: "coverage-repo",
       name: "disabled",
-      commandId: "coverage-command",
-      targetLabel: "coverage",
+      target: { commandId: "coverage-command" },
+      fallbacks: [],
+      targetLabels: ["coverage"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: false,
       timeout: 1,
@@ -1510,7 +1597,11 @@ describe("durable control-plane transitions", () => {
       id: "coverage-requeue-lost",
       repositoryId: "coverage-repo",
       prompt: "requeue",
-      targetLabel: "coverage",
+      target: { commandId: "coverage-command" },
+      fallbacks: [],
+      targetLabels: ["coverage"],
+      queueTtlSeconds: 691200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 1,
       priority: 0,
       requiredLabels: [],
@@ -1600,8 +1691,10 @@ describe("durable control-plane transitions", () => {
       id: "coverage-optional-schedule",
       repositoryId: "coverage-repo",
       name: "optional",
-      targetLabel: "coverage",
-      providerAccountId: "coverage-account",
+      target: { providerId: "coverage-provider" },
+      fallbacks: [],
+      targetLabels: ["coverage"],
+      queueTtlSeconds: 691200,
       cron: "* * * * *",
       enabled: true,
       timeout: 1,
@@ -1704,7 +1797,11 @@ describe("durable control-plane transitions", () => {
         id: sessionId,
         repositoryId: item.repositoryId,
         prompt: "reconnect",
-        targetLabel: "reconnect",
+        target: { commandId: "cmd-reconnect-read-failure" },
+        fallbacks: [],
+        targetLabels: ["reconnect"],
+        queueTtlSeconds: 691200,
+        queueExpiresAt: "2026-01-09T00:00:00.000Z",
         timeout: 1,
         priority: 0,
         requiredLabels: [],
@@ -1714,6 +1811,7 @@ describe("durable control-plane transitions", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         hostId,
         worktreeId: item.id,
+        attemptId: `attempt-reconcile-${item.id.endsWith("one") ? "one" : "two"}`,
         ackReceivedAt: "2026-01-01T00:00:01.000Z",
         reconnectDeadlineAt: "2026-01-01T00:01:15.000Z",
         assignmentConnectionId: oldConnectionId,
@@ -1813,7 +1911,11 @@ describe("durable control-plane transitions", () => {
         id: sessionId,
         repositoryId: item.repositoryId,
         prompt: "omitted",
-        targetLabel: "omitted",
+        target: { commandId: "cmd-omitted-requeue" },
+        fallbacks: [],
+        targetLabels: ["omitted"],
+        queueTtlSeconds: 691200,
+        queueExpiresAt: "2026-01-09T00:00:00.000Z",
         timeout: 1,
         priority: 0,
         requiredLabels: [],
@@ -1823,6 +1925,7 @@ describe("durable control-plane transitions", () => {
         createdAt: "2026-01-01T00:00:00.000Z",
         hostId,
         worktreeId: item.id,
+        attemptId: `attempt-omitted-requeue-${suffix}`,
         ackReceivedAt: "2026-01-01T00:00:01.000Z",
         assignmentConnectionId: oldConnectionId,
       });

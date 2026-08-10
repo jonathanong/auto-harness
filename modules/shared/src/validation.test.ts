@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -54,7 +55,7 @@ describe("validateCreateSessionInput", () => {
   const base = {
     repositoryId: "repo-1",
     prompt: "fix it",
-    commandId: "cmd-1",
+    target: { commandId: "cmd-1" },
     timeout: 1800,
   };
 
@@ -65,6 +66,7 @@ describe("validateCreateSessionInput", () => {
       expect(result.value.priority).toBe(0);
       expect(result.value.requiredLabels).toEqual([]);
       expect(result.value.onConflict).toBe("queue");
+      expect(result.value.queueTtlSeconds).toBe(691200);
       expect(result.value.ref).toBeUndefined();
     }
   });
@@ -96,42 +98,75 @@ describe("validateCreateSessionInput", () => {
     expect(result).toEqual({ ok: false, error: "prompt is required" });
   });
 
-  it("rejects when neither providerAccountId nor commandId is set", () => {
-    const { commandId: _commandId, ...withoutTarget } = base;
+  it("requires one tagged target", () => {
+    const { target: _target, ...withoutTarget } = base;
     const result = validateCreateSessionInput(withoutTarget);
     expect(result).toEqual({
       ok: false,
-      error: "exactly one of providerAccountId or commandId is required",
+      error: "target must be an object with exactly one of providerId or commandId",
     });
   });
 
-  it("rejects when both providerAccountId and commandId are set", () => {
-    const result = validateCreateSessionInput({ ...base, providerAccountId: "acct-1" });
+  it("rejects a target with both provider and command", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      target: { providerId: "p", commandId: "c" },
+    });
     expect(result).toEqual({
       ok: false,
-      error: "exactly one of providerAccountId or commandId is required",
+      error: "target must contain exactly one of providerId or commandId",
     });
   });
 
   it("rejects an empty commandId", () => {
-    const result = validateCreateSessionInput({ ...base, commandId: "" });
-    expect(result).toEqual({ ok: false, error: "commandId must be a non-empty string" });
+    const result = validateCreateSessionInput({ ...base, target: { commandId: "" } });
+    expect(result).toEqual({ ok: false, error: "target.commandId must be a non-empty string" });
   });
 
-  it("rejects an empty providerAccountId", () => {
-    const { commandId: _commandId, ...withoutCommand } = base;
-    const result = validateCreateSessionInput({ ...withoutCommand, providerAccountId: "" });
-    expect(result).toEqual({ ok: false, error: "providerAccountId must be a non-empty string" });
+  it("rejects an empty providerId", () => {
+    const result = validateCreateSessionInput({ ...base, target: { providerId: "" } });
+    expect(result).toEqual({ ok: false, error: "target.providerId must be a non-empty string" });
   });
 
-  it("accepts a providerAccountId target", () => {
-    const { commandId: _commandId, ...withoutCommand } = base;
-    const result = validateCreateSessionInput({ ...withoutCommand, providerAccountId: "acct-1" });
+  it("accepts provider targets and ordered fallbacks", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      target: { providerId: "prov-1" },
+      fallbacks: [{ commandId: "cmd-1" }],
+    });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.providerAccountId).toBe("acct-1");
-      expect(result.value.commandId).toBeUndefined();
+      expect(result.value.target).toEqual({ providerId: "prov-1" });
+      expect(result.value.fallbacks).toEqual([{ commandId: "cmd-1" }]);
     }
+  });
+
+  it("allows equal provider and command IDs but rejects duplicates of the same target kind", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        target: { providerId: "same" },
+        fallbacks: [{ commandId: "same" }],
+      }).ok,
+    ).toBe(true);
+    expect(validateCreateSessionInput({ ...base, fallbacks: [{ commandId: "cmd-1" }] })).toEqual({
+      ok: false,
+      error: "target and fallbacks must not contain duplicates",
+    });
+  });
+
+  it("rejects an invalid fallback before checking duplicate target keys", () => {
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        fallbacks: [{ commandId: "" }],
+      }),
+    ).toEqual({ ok: false, error: "fallbacks[0].commandId must be a non-empty string" });
+  });
+
+  it("validates queue TTL overrides", () => {
+    expect(validateCreateSessionInput({ ...base, queueTtlSeconds: 3 }).ok).toBe(true);
+    expect(validateCreateSessionInput({ ...base, queueTtlSeconds: 0 }).ok).toBe(false);
   });
 
   it("rejects invalid timeout", () => {
