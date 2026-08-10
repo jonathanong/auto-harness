@@ -1,9 +1,4 @@
-import type {
-  SessionErrorCode,
-  SessionSource,
-  SessionStatus,
-  SessionType,
-} from "./types.ts";
+import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
 
 export const SESSION_STATUSES = [
   "queued",

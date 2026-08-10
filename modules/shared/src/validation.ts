@@ -8,12 +8,7 @@ import {
   SESSION_TYPES,
   DEFAULT_QUEUE_TTL_SECONDS,
 } from "./constants.ts";
-import type {
-  SessionErrorCode,
-  SessionSource,
-  SessionStatus,
-  SessionType,
-} from "./types.ts";
+import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
 import { isValidScheduledBranchRef } from "./scheduled-branch-ref.ts";
 import type { TargetRef } from "./session.ts";
 

@@ -63,7 +63,7 @@ export function buildSessionRecord(
   state: ControlPlaneState,
   prepared: Extract<ReturnType<typeof validateSessionCreate>, { ok: true }>,
 ): SessionRecord {
-  const { fields: v, record } = prepared;
+  const { fields: v } = prepared;
   const id = state.idFactory();
   return {
     id,

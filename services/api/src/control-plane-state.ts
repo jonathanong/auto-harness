@@ -195,9 +195,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
     const inventory = { ...h, capabilities: normalizeHostCapabilities(h.capabilities) };
     state.hostInventories.set(inventory.hostId, inventory);
   }
-  for (const p of await state.storage.listProviders()) {
-    state.providers.set(p.id, p);
-  }
+  for (const p of await state.storage.listProviders()) state.providers.set(p.id, p);
   for (const pa of await state.storage.listProviderAccounts()) {
     state.providerAccounts.set(pa.id, pa);
   }
