@@ -197,8 +197,7 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       prompt: "p",
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
-      concurrencyKey: "kq",
-      onConflict: "queue",
+      concurrencyId: "kq",
     });
     planeQ.state.sessions.get("q1")!.worktreeId = "wq";
     supersedeSession(planeQ.state, "q1", "replace queued with wt");

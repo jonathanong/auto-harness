@@ -38,6 +38,14 @@ export class DynamoPlaneStorageBase {
     return sessions.putSession(this.ctx, session);
   }
 
+  createSession(session: SessionRecord): Promise<sessions.CreateSessionResult> {
+    return sessions.createSession(this.ctx, session);
+  }
+
+  releaseConcurrencyLock(concurrencyId: string, sessionId: string): Promise<void> {
+    return sessions.releaseConcurrencyLock(this.ctx, concurrencyId, sessionId);
+  }
+
   getSession(id: string): Promise<SessionRecord | null> {
     return sessions.getSession(this.ctx, id);
   }
@@ -109,6 +117,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     queueShard: number;
     pinExpiresAt: string;
+    concurrencyId?: string;
   }): Promise<boolean> {
     return sessions.failExpiredResumeSession(this.ctx, opts);
   }
@@ -140,6 +149,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
     attemptId: string;
+    concurrencyId?: string;
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -254,6 +264,7 @@ export class DynamoPlaneStorageBase {
     exitCode?: number | null;
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
+    concurrencyId?: string;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }
@@ -397,8 +408,18 @@ export class DynamoPlaneStorageBase {
     newNextRunAt: string;
     lastRunAt: string;
     session: import("./types.ts").SessionRecord;
-  }): Promise<boolean> {
+  }): Promise<catalog.ScheduleCreateResult> {
     return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);
+  }
+
+  skipScheduleForActiveConcurrency(opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    concurrencyId: string;
+    sessionId: string;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForActiveConcurrency(this.ctx, opts);
   }
 
   putArchive(obj: ArchiveObject): Promise<void> {

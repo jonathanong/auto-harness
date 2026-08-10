@@ -7,14 +7,18 @@ describe("list-query", () => {
     expect(parseSessionListQuery(new URLSearchParams())).toEqual({
       status: "all",
       q: "",
+      concurrencyId: "",
       cursor: "",
       limit: 20,
     });
     expect(
-      parseSessionListQuery(new URLSearchParams("status=running&q=x&cursor=c1&limit=5")),
+      parseSessionListQuery(
+        new URLSearchParams("status=running&q=x&concurrencyId=pr-1&cursor=c1&limit=5"),
+      ),
     ).toEqual({
       status: "running",
       q: "x",
+      concurrencyId: "pr-1",
       cursor: "c1",
       limit: 5,
     });
@@ -31,8 +35,8 @@ describe("list-query", () => {
 
   it("builds session list hrefs", () => {
     expect(sessionListHref({})).toBe("/sessions");
-    expect(sessionListHref({ status: "failed", q: "a", cursor: "c" })).toBe(
-      "/sessions?status=failed&q=a&cursor=c",
+    expect(sessionListHref({ status: "failed", q: "a", concurrencyId: "pr-1", cursor: "c" })).toBe(
+      "/sessions?status=failed&q=a&concurrencyId=pr-1&cursor=c",
     );
   });
 
@@ -43,7 +47,7 @@ describe("list-query", () => {
 
   it("builds API paths", () => {
     const path = buildSessionsApiPath(
-      { status: "queued", q: "", cursor: "", limit: 10 },
+      { status: "queued", q: "", concurrencyId: "", cursor: "", limit: 10 },
       { hostId: "local-1" },
     );
     expect(path).toContain("limit=10");
@@ -52,8 +56,15 @@ describe("list-query", () => {
   });
 
   it("includes cursor and q when present", () => {
-    const path = buildSessionsApiPath({ status: "all", q: "hello", cursor: "c1", limit: 20 });
+    const path = buildSessionsApiPath({
+      status: "all",
+      q: "hello",
+      concurrencyId: "pr-1",
+      cursor: "c1",
+      limit: 20,
+    });
     expect(path).toContain("cursor=c1");
     expect(path).toContain("q=hello");
+    expect(path).toContain("concurrencyId=pr-1");
   });
 });

@@ -34,6 +34,7 @@ export type SessionSummary = {
   resolvedArgv?: string[] | null;
   prompt?: string | null;
   source?: string | null;
+  concurrencyId?: string | null;
   ref?: string | null;
   timeout?: number | null;
   createdAt?: string | null;
@@ -151,6 +152,12 @@ export function SessionDetail({
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Source</dt>
               <dd className="text-sm">{s.source ?? "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase text-muted-foreground">Concurrency ID</dt>
+              <dd className="font-mono text-sm" data-pw="session-detail-concurrency-id">
+                {s.concurrencyId ?? "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Timeout</dt>

@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import {
+  DeleteCommand,
   GetCommand,
   PutCommand,
   QueryCommand,
@@ -26,6 +27,102 @@ export async function putSession(ctx: PlaneStorageCtx, session: SessionRecord): 
       Item: sessionToItem(session),
     }),
   );
+}
+
+export type CreateSessionResult =
+  | { created: true; session: SessionRecord }
+  | { created: false; session: SessionRecord };
+
+/**
+ * Create a session exactly once for a concurrency id.  The lock and session
+ * rows are committed together, so separate control-plane processes cannot
+ * both enqueue the same active task.
+ */
+export async function createSession(
+  ctx: PlaneStorageCtx,
+  session: SessionRecord,
+): Promise<CreateSessionResult> {
+  if (!session.concurrencyId) {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.sessions,
+        Item: sessionToItem(session),
+        ConditionExpression: "attribute_not_exists(id)",
+      }),
+    );
+    return { created: true, session };
+  }
+
+  for (;;) {
+    try {
+      await ctx.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              Put: {
+                TableName: ctx.tables.concurrencyLocks,
+                Item: { concurrencyId: session.concurrencyId, sessionId: session.id },
+                ConditionExpression: "attribute_not_exists(concurrencyId)",
+              },
+            },
+            {
+              Put: {
+                TableName: ctx.tables.sessions,
+                Item: sessionToItem(session),
+                ConditionExpression: "attribute_not_exists(id)",
+              },
+            },
+          ],
+        }),
+      );
+      return { created: true, session };
+    } catch (err) {
+      if (!isConditionalTransactionFailed(err)) {
+        throw err;
+      }
+      const lock = await getConcurrencyLock(ctx, session.concurrencyId);
+      if (!lock) {
+        continue;
+      }
+      const current = await getSession(ctx, lock.sessionId);
+      if (current && (current.status === "queued" || current.status === "running")) {
+        return { created: false, session: current };
+      }
+      await releaseConcurrencyLock(ctx, session.concurrencyId, lock.sessionId);
+    }
+  }
+}
+
+export async function getConcurrencyLock(
+  ctx: PlaneStorageCtx,
+  concurrencyId: string,
+): Promise<{ sessionId: string } | null> {
+  const res = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.concurrencyLocks, Key: { concurrencyId } }),
+  );
+  return res.Item && typeof res.Item.sessionId === "string"
+    ? { sessionId: res.Item.sessionId }
+    : null;
+}
+
+/** Delete only the lock owned by this session; stale owners cannot unlock newer work. */
+export async function releaseConcurrencyLock(
+  ctx: PlaneStorageCtx,
+  concurrencyId: string,
+  sessionId: string,
+): Promise<void> {
+  try {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.concurrencyLocks,
+        Key: { concurrencyId },
+        ConditionExpression: "sessionId = :sessionId",
+        ExpressionAttributeValues: { ":sessionId": sessionId },
+      }),
+    );
+  } catch (err) {
+    if (!isConditionalFailed(err)) throw err;
+  }
 }
 
 export async function getSession(ctx: PlaneStorageCtx, id: string): Promise<SessionRecord | null> {
@@ -317,30 +414,48 @@ export async function tryAssignSession(
  */
 export async function failExpiredResumeSession(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; queueShard: number; pinExpiresAt: string },
+  opts: { sessionId: string; queueShard: number; pinExpiresAt: string; concurrencyId?: string },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.sessions,
-        Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET #s = :failed, statusShard = :statusShard, errorCode = :errorCode, errorMessage = :errorMessage",
-        ConditionExpression: "#s = :queued AND pinExpiresAt = :pinExpiresAt",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: {
-          ":failed": "failed",
-          ":statusShard": statusShardAttr("failed", opts.queueShard),
-          ":errorCode": "resume_failed",
-          ":errorMessage": "pin expired",
-          ":queued": "queued",
-          ":pinExpiresAt": opts.pinExpiresAt,
-        },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :failed, statusShard = :statusShard, errorCode = :errorCode, errorMessage = :errorMessage",
+              ConditionExpression: "#s = :queued AND pinExpiresAt = :pinExpiresAt",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":failed": "failed",
+                ":statusShard": statusShardAttr("failed", opts.queueShard),
+                ":errorCode": "resume_failed",
+                ":errorMessage": "pin expired",
+                ":queued": "queued",
+                ":pinExpiresAt": opts.pinExpiresAt,
+              },
+            },
+          },
+          ...(opts.concurrencyId
+            ? [
+                {
+                  Delete: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Key: { concurrencyId: opts.concurrencyId },
+                    ConditionExpression: "sessionId = :sessionId",
+                    ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+                  },
+                },
+              ]
+            : []),
+        ],
       }),
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) {
+    if (isConditionalTransactionFailed(err)) {
       return false;
     }
     throw err;
@@ -399,6 +514,7 @@ export async function releaseCancelledSessionWorktree(
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
     attemptId: string;
+    concurrencyId?: string;
   },
 ): Promise<boolean> {
   try {
@@ -456,6 +572,18 @@ export async function releaseCancelledSessionWorktree(
               },
             },
           },
+          ...(opts.concurrencyId
+            ? [
+                {
+                  Delete: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Key: { concurrencyId: opts.concurrencyId },
+                    ConditionExpression: "sessionId = :sessionId",
+                    ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+                  },
+                },
+              ]
+            : []),
         ],
       }),
     );
@@ -688,6 +816,7 @@ export async function finishSession(
     exitCode?: number | null;
     cliResumeRef?: string;
     fence?: { hostId: string; connectionId: string };
+    concurrencyId?: string;
   },
 ): Promise<boolean> {
   const values: Record<string, unknown> = {
@@ -760,6 +889,16 @@ export async function finishSession(
         ConditionExpression: "currentSessionId = :sid",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: { ":idle": "idle", ":null": null, ":sid": opts.sessionId },
+      },
+    });
+  }
+  if (opts.concurrencyId && opts.status !== "queued") {
+    transactItems.push({
+      Delete: {
+        TableName: ctx.tables.concurrencyLocks,
+        Key: { concurrencyId: opts.concurrencyId },
+        ConditionExpression: "sessionId = :sessionId",
+        ExpressionAttributeValues: { ":sessionId": opts.sessionId },
       },
     });
   }

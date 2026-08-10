@@ -21,6 +21,7 @@ describe("listSessionsPage", () => {
           prompt: `p-${i}`,
           target: { commandId: "cmd-echo" },
           timeout: 10,
+          ...(i === 0 ? { concurrencyId: "nightly-pr-123" } : {}),
         }).ok,
       ).toBe(true);
     }
@@ -51,6 +52,10 @@ describe("listSessionsPage", () => {
 
     const byQ = plane.listSessionsPage({ q: "p-0", limit: 50 });
     expect(byQ.items.some((s) => s.prompt === "p-0")).toBe(true);
+    expect(plane.listSessionsPage({ q: "nightly-pr", limit: 50 }).items).toHaveLength(1);
+    expect(
+      plane.listSessionsPage({ concurrencyId: "nightly-pr-123", limit: 50 }).items,
+    ).toHaveLength(1);
 
     const byStatus = plane.listSessionsPage({ status: "queued", limit: 50 });
     expect(byStatus.items.every((s) => s.status === "queued")).toBe(true);

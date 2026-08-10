@@ -329,6 +329,11 @@ curl -sS "http://127.0.0.1:7420/api/v1/sessions/$SID/logs"
 | Stdout     | Session logs include CLI output (e.g. mentions `README.md` / repo files)                         |
 | Worktree   | `$WORK/worktrees/wt-1` is a git worktree on `main` (or the requested `ref`)                      |
 
+For a duplicate-create check, submit the same payload with an exact `concurrencyId` twice while
+the first session is queued/running. The first response must be `201` with `created: true`; the
+second must be `200` with `created: false` and the same `id`. After a terminal status, the identity
+may be submitted again as an explicit retry.
+
 **Fail hard if:**
 
 - Assign returns a **different** `sessionId` than the one you just created → queue pollution; re-run §2 clear.

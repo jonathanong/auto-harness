@@ -72,11 +72,11 @@ export type CreateSessionFields = {
   timeout: number;
   priority: number;
   requiredLabels: string[];
-  onConflict: "queue" | "replace" | "reject";
   ref?: string;
   type?: SessionType;
   source?: SessionSource;
-  concurrencyKey?: string;
+  /** Suppresses duplicate queued/running work globally while this session is active. */
+  concurrencyId?: string;
   metadata?: Record<string, unknown>;
 };
 

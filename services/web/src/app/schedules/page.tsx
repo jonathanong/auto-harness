@@ -21,6 +21,9 @@ type Schedule = {
   queueTtlSeconds: number;
   nextRunAt: string;
   ref?: string;
+  lastRunAt: string | null;
+  concurrencyId?: string | null;
+  activeSessionId?: string | null;
 };
 
 export default async function SchedulesPage({
@@ -60,14 +63,22 @@ export default async function SchedulesPage({
             <TableHead>Route</TableHead>
             <TableHead>Queue TTL</TableHead>
             <TableHead>Cron</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Concurrency ID</TableHead>
+            <TableHead>Active</TableHead>
             <TableHead>Next</TableHead>
+            <TableHead>Last run</TableHead>
             <TableHead />
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((s) => (
             <TableRow key={s.id} data-pw={`schedule-row-${s.id}`}>
-              <TableCell>{s.name}</TableCell>
+              <TableCell>
+                <Link href={`/schedules/${encodeURIComponent(s.id)}`} className="hover:underline">
+                  {s.name}
+                </Link>
+              </TableCell>
               <TableCell className="font-mono text-xs">
                 <Link
                   href={`/repositories/${encodeURIComponent(s.repositoryId)}`}
@@ -88,8 +99,25 @@ export default async function SchedulesPage({
               </TableCell>
               <TableCell className="text-xs">{s.queueTtlSeconds ?? 691200}s</TableCell>
               <TableCell className="font-mono text-xs">{s.cron}</TableCell>
+              <TableCell>{s.enabled ? "Enabled" : "Disabled"}</TableCell>
+              <TableCell className="max-w-xs truncate font-mono text-xs">
+                {s.concurrencyId ?? "—"}
+              </TableCell>
+              <TableCell>
+                {s.activeSessionId ? (
+                  <Link
+                    href={`/sessions/${encodeURIComponent(s.activeSessionId)}`}
+                    className="font-mono text-xs hover:underline"
+                  >
+                    {s.activeSessionId}
+                  </Link>
+                ) : (
+                  "—"
+                )}
+              </TableCell>
               <TableCell className="text-xs">{s.nextRunAt}</TableCell>
-              <TableCell className="space-x-2 whitespace-nowrap">
+              <TableCell className="text-xs">{s.lastRunAt ?? "—"}</TableCell>
+              <TableCell>
                 <ScheduleTriggerButton id={s.id} />
                 <Link
                   href={`/schedules?edit=${encodeURIComponent(s.id)}`}
@@ -103,7 +131,7 @@ export default async function SchedulesPage({
           ))}
           {items.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-muted-foreground">
+              <TableCell colSpan={10} className="text-muted-foreground">
                 No schedules configured.
               </TableCell>
             </TableRow>

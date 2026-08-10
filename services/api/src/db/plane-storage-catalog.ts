@@ -21,6 +21,11 @@ import {
 } from "./plane-storage-types.ts";
 import type { SessionRecord } from "./types.ts";
 import { sessionToItem } from "./plane-storage-types.ts";
+import {
+  getConcurrencyLock,
+  getSession,
+  releaseConcurrencyLock,
+} from "./plane-storage-sessions.ts";
 
 export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void> {
   await ctx.doc.send(
@@ -172,6 +177,11 @@ export async function tryClaimSchedule(
  * This is deliberately separate from `tryClaimSchedule`: advancing the cron
  * cursor without the corresponding session creates a silent missed run.
  */
+export type ScheduleCreateResult =
+  | { kind: "created" }
+  | { kind: "duplicate"; session: SessionRecord }
+  | { kind: "lost" };
+
 export async function tryClaimScheduleAndCreateSession(
   ctx: PlaneStorageCtx,
   opts: {
@@ -181,7 +191,7 @@ export async function tryClaimScheduleAndCreateSession(
     lastRunAt: string;
     session: SessionRecord;
   },
-): Promise<boolean> {
+): Promise<ScheduleCreateResult> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -207,14 +217,81 @@ export async function tryClaimScheduleAndCreateSession(
               ConditionExpression: "attribute_not_exists(id)",
             },
           },
+          ...(opts.session.concurrencyId
+            ? [
+                {
+                  Put: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Item: { concurrencyId: opts.session.concurrencyId, sessionId: opts.session.id },
+                    ConditionExpression: "attribute_not_exists(concurrencyId)",
+                  },
+                },
+              ]
+            : []),
+        ],
+      }),
+    );
+    return { kind: "created" };
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) {
+      if (opts.session.concurrencyId) {
+        const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
+        if (lock) {
+          const current = await getSession(ctx, lock.sessionId);
+          if (current && (current.status === "queued" || current.status === "running")) {
+            return { kind: "duplicate", session: current };
+          }
+          await releaseConcurrencyLock(ctx, opts.session.concurrencyId, lock.sessionId);
+        }
+      }
+      return { kind: "lost" };
+    }
+    throw err;
+  }
+}
+
+/** Advance a due cron cursor after suppressing an already-active concurrent session. */
+export async function skipScheduleForActiveConcurrency(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    concurrencyId: string;
+    sessionId: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt",
+              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.concurrencyLocks,
+              Key: { concurrencyId: opts.concurrencyId },
+              ConditionExpression: "sessionId = :sessionId",
+              ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+            },
+          },
         ],
       }),
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) {
-      return false;
-    }
+    if (isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

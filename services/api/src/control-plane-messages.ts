@@ -1,5 +1,9 @@
 /* eslint-disable max-lines */
-import { formatLogSortKey, type HostToServerMessage } from "@auto-harness/shared";
+import {
+  formatLogSortKey,
+  isTerminalSessionStatus,
+  type HostToServerMessage,
+} from "@auto-harness/shared";
 
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -317,11 +321,7 @@ async function applySessionStatusDurable(
   if (session.worktreeId !== msg.worktreeId || session.attemptId !== msg.attemptId) {
     return { ok: true };
   }
-  const terminal =
-    msg.status === "completed" ||
-    msg.status === "failed" ||
-    msg.status === "cancelled" ||
-    msg.status === "timed_out";
+  const terminal = isTerminalSessionStatus(msg.status);
   if (!terminal) {
     return { ok: true };
   }
@@ -334,6 +334,7 @@ async function applySessionStatusDurable(
       ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(fence ? { fence } : {}),
       attemptId: msg.attemptId,
+      ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
     });
     if (released) {
       const wt = state.worktrees.get(worktreeId);
@@ -438,6 +439,7 @@ async function applySessionStatusDurable(
     ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(fence ? { fence } : {}),
+    ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
   });
   if (!committed) {
     return { ok: true };
@@ -495,11 +497,7 @@ function applySessionStatus(
     return { ok: true };
   }
 
-  const terminal =
-    msg.status === "completed" ||
-    msg.status === "failed" ||
-    msg.status === "cancelled" ||
-    msg.status === "timed_out";
+  const terminal = isTerminalSessionStatus(msg.status);
 
   if (session.status !== "running") {
     if (terminal && session.worktreeId) {

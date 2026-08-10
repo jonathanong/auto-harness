@@ -4,7 +4,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane concurrency and late status", () => {
-  it("Invariant 9: concurrencyKey + reject fails create", () => {
+  it("deduplicates an active concurrencyId and permits a terminal re-enqueue", () => {
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;
@@ -12,105 +12,39 @@ describe("ControlPlane concurrency and late status", () => {
       })(),
     });
     seedBaseCommand(plane);
-    const first = plane.createSession(
-      baseSessionBody({ concurrencyKey: "k1", onConflict: "reject" }),
-    );
+    const first = plane.createSession(baseSessionBody({ concurrencyId: "k1" }));
     expect(first.ok).toBe(true);
-    const second = plane.createSession(
-      baseSessionBody({ concurrencyKey: "k1", onConflict: "reject" }),
-    );
-    expect(second.ok).toBe(false);
-    if (!second.ok) {
-      expect(second.code).toBe("CONFLICT");
+    const second = plane.createSession(baseSessionBody({ concurrencyId: "k1" }));
+    expect(second).toMatchObject({ ok: true, created: false });
+    if (first.ok && second.ok) {
+      expect(second.session.id).toBe(first.session.id);
     }
+    if (!first.ok) return;
+    plane.forceStatus(first.session.id, "completed");
+    expect(plane.createSession(baseSessionBody({ concurrencyId: "k1" }))).toMatchObject({
+      ok: true,
+      created: true,
+    });
   });
 
-  it("Invariant 9: concurrencyKey + replace supersedes active session", () => {
-    const cancels: string[] = [];
-    const plane = new ControlPlane({
-      idFactory: (() => {
-        let n = 0;
-        return () => `sess-${++n}`;
-      })(),
-      now: () => "2026-01-01T00:00:00.000Z",
-      shardCount: 1,
-      onHostMessage: (_a, msg) => {
-        if (msg.type === "session:cancel") {
-          cancels.push(msg.sessionId);
-        }
-      },
-    });
+  it("deduplicates resume while the concurrency id is active", () => {
+    let id = 0;
+    const plane = new ControlPlane({ idFactory: () => `resume-${++id}` });
     seedBaseCommand(plane);
-    plane.seedWorktree({
-      id: "wt-1",
-      name: "wt-1",
-      hostId: "a1",
-      repositoryId: "repo-1",
-      path: "/w",
-      labels: [],
-      status: "idle",
-      online: true,
+    const created = plane.createSession(baseSessionBody({ concurrencyId: "resume-lock" }));
+    if (!created.ok) return;
+    plane.state.sessions.get(created.session.id)!.hostId = "host-1";
+    plane.forceStatus(created.session.id, "completed");
+    expect(plane.resumeSession(created.session.id)).toMatchObject({
+      ok: true,
+      created: true,
+      session: { id: "resume-2", concurrencyId: "resume-lock" },
     });
-
-    // replace a queued session (no worktree claimed yet)
-    expect(
-      plane.createSession(baseSessionBody({ concurrencyKey: "k-q", onConflict: "queue" })).ok,
-    ).toBe(true);
-    expect(
-      plane.createSession(
-        baseSessionBody({ concurrencyKey: "k-q", onConflict: "replace", prompt: "repl-q" }),
-      ).ok,
-    ).toBe(true);
-    expect(plane.getSession("sess-1")?.status).toBe("cancelled");
-    expect(plane.getSession("sess-2")?.status).toBe("queued");
-    plane.forceStatus("sess-2", "cancelled");
-
-    // replace a running session: keep worktree busy until late terminal
-    const first = plane.createSession(
-      baseSessionBody({ concurrencyKey: "k-rep", onConflict: "replace" }),
-    );
-    expect(first.ok).toBe(true);
-    if (!first.ok) {
-      return;
-    }
-    const assigned1 = plane.assignQueued();
-    expect(assigned1.map((a) => a.session.id)).toContain(first.session.id);
-    const running = assigned1.find((item) => item.session.id === first.session.id)!.session;
-    plane.handleHostMessage({
-      type: "session:ack",
-      sessionId: first.session.id,
-      worktreeId: running.worktreeId!,
-      attemptId: running.attemptId!,
+    expect(plane.resumeSession(created.session.id)).toMatchObject({
+      ok: true,
+      created: false,
+      session: { id: "resume-2" },
     });
-    expect(plane.getSession(first.session.id)?.status).toBe("running");
-
-    const second = plane.createSession(
-      baseSessionBody({
-        concurrencyKey: "k-rep",
-        onConflict: "replace",
-        prompt: "replacement",
-      }),
-    );
-    expect(second.ok).toBe(true);
-    expect(plane.getSession(first.session.id)?.status).toBe("cancelled");
-    // worktree still busy — old CLI may still be on the path
-    expect(plane.getWorktree("wt-1")?.status).toBe("busy");
-    expect(cancels).toContain(first.session.id);
-    // cannot reassign while superseded run still holds the worktree
-    expect(plane.assignQueued()).toHaveLength(0);
-
-    // late completed must NOT flip cancelled → completed; releases worktree
-    plane.handleHostMessage({
-      type: "session:status",
-      sessionId: first.session.id,
-      worktreeId: running.worktreeId!,
-      attemptId: running.attemptId!,
-      status: "completed",
-    });
-    expect(plane.getSession(first.session.id)?.status).toBe("cancelled");
-    expect(plane.getWorktree("wt-1")?.status).toBe("idle");
-    const assigned2 = plane.assignQueued();
-    expect(assigned2.some((a) => a.session.prompt === "replacement")).toBe(true);
   });
 
   it("late session:status after disconnect completes acknowledged work", () => {

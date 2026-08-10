@@ -114,12 +114,13 @@ Example: searching "date parser" finds all sessions whose prompt contains those 
 
 Filters are displayed as dropdowns/chips below the search bar. Multiple filters can be combined.
 
-| Filter         | Options                                                                                  | Behavior                                             |
-| -------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Status**     | `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out`, or `all` (default) | Show only sessions matching the selected status      |
-| **Repository** | Dropdown of all repositories                                                             | Show only sessions targeting the selected repository |
-| **Source**     | `api`, `ui`, `webhook`, `schedule`, or `all`                                             | Filter by session origin                             |
-| **Agent**      | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
+| Filter             | Options                                                                                  | Behavior                                             |
+| ------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| **Status**         | `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out`, or `all` (default) | Show only sessions matching the selected status      |
+| **Repository**     | Dropdown of all repositories                                                             | Show only sessions targeting the selected repository |
+| **Source**         | `api`, `ui`, `webhook`, `schedule`, or `all`                                             | Filter by session origin                             |
+| **Concurrency ID** | Exact active-run identity (when present); duplicate creates link to the existing session | Inspect dedupe/concurrency behavior                  |
+| **Agent**          | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
 
 Filters and search persist in the URL query string (e.g. `?search=date+parser&status=failed&repo=repo-abc`) so filtered views can be shared or bookmarked.
 
@@ -237,16 +238,17 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 
 ### Form Fields
 
-| Field      | Type               | Required | Description                                                                                                            |
-| ---------- | ------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------- |
-| Repository | Dropdown           | ✓        | Select from available repositories                                                                                     |
-| Prompt     | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                         |
-| Target     | Dropdown           | ✓        | Primary Provider or Command target, sourced from `GET /session-targets`; no free-text option                           |
-| Fallbacks  | Ordered list       | ✗        | Add, remove, and reorder fallback Provider/Command targets; tried only when the preceding target has no eligible route |
-| Queue TTL  | Number input       | ✗        | Absolute queue lifetime in seconds; default 691200 (8 days), never reset by fallback attempts                          |
-| Timeout    | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                                      |
-| Priority   | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                           |
-| Labels     | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                  |
+| Field          | Type               | Required | Description                                                                                                                      |
+| -------------- | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Repository     | Dropdown           | ✓        | Select from available repositories                                                                                               |
+| Prompt         | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                                   |
+| Target         | Dropdown           | ✓        | Primary Provider or Command target, sourced from `GET /session-targets`; no free-text option                                     |
+| Fallbacks      | Ordered list       | ✗        | Add, remove, and reorder fallback Provider/Command targets; tried only when the preceding target has no eligible route           |
+| Queue TTL      | Number input       | ✗        | Absolute queue lifetime in seconds; default 691200 (8 days), never reset by fallback attempts                                    |
+| Timeout        | Dropdown + number  | ✓        | Preset options (5 min, 15 min, 30 min, 1 hour) with custom input. Required field.                                                |
+| Priority       | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                                     |
+| Labels         | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                            |
+| Concurrency ID | Text input         | ✗        | Optional global exact-match identity for deduplication and concurrency. A duplicate active request returns the existing session. |
 
 ### Submission
 
@@ -254,7 +256,7 @@ On submit:
 
 1. The form validates all required fields
 2. Sends `POST /sessions` with the form data
-3. On success, redirects to the new session's detail view
+3. On success, redirects to the new session's detail view; a duplicate response (`created: false`) redirects to the existing session
 4. The session appears in the list and begins streaming logs once an agent picks it up
 
 ---
@@ -265,21 +267,23 @@ On submit:
 
 Displays all configured schedules in a table:
 
-| Column     | Description                                                                  |
-| ---------- | ---------------------------------------------------------------------------- |
-| Name       | Schedule name                                                                |
-| Repository | Target repository                                                            |
-| Target     | Resolved `targetLabel`                                                       |
-| Cron       | Human-readable schedule (e.g. "Every day at 6:00 AM") with raw cron on hover |
-| Enabled    | Toggle switch                                                                |
-| Last Run   | Relative time + status badge (success/failed)                                |
-| Next Run   | Absolute time for next scheduled execution                                   |
+| Column         | Description                                                                                                                |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Name           | Schedule name                                                                                                              |
+| Repository     | Target repository                                                                                                          |
+| Target         | Resolved `targetLabel`                                                                                                     |
+| Cron           | Human-readable schedule (e.g. "Every day at 6:00 AM") with raw cron on hover                                               |
+| Enabled        | Toggle switch                                                                                                              |
+| Last Run       | Relative time + status badge (success/failed)                                                                              |
+| Next Run       | Absolute time for next scheduled execution                                                                                 |
+| Concurrency ID | Exact identity used to prevent overlapping automatic/manual runs; defaults to `schedule-${scheduleId}` for automatic fires |
 
 ### Schedule Detail
 
 - Edit schedule fields (name, target, cron, enabled)
 - Run history — list of past sessions created by this schedule, with status and links to session detail
 - "Run Now" button — manually triggers via `POST /schedules/:id/trigger`, then redirects to the created session
+- A duplicate "Run Now" returns the existing active session (`200`, `created: false`) rather than queuing another run
 
 ### Create/Edit Schedule Form
 

@@ -4,7 +4,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { BASE_COMMAND_ID, baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane API edges", () => {
-  it("POST fields include ref, target labels, concurrencyKey, metadata, url", () => {
+  it("POST fields include ref, target labels, concurrencyId, metadata, url", () => {
     const plane = new ControlPlane({
       publicBaseUrl: "http://ui",
       idFactory: () => "sess-x",
@@ -14,9 +14,8 @@ describe("ControlPlane API edges", () => {
     const r = plane.createSession(
       baseSessionBody({
         ref: "main",
-        concurrencyKey: "ck",
+        concurrencyId: "ck",
         metadata: { pr: 1 },
-        onConflict: "queue",
       }),
     );
     expect(r.ok).toBe(true);
@@ -24,7 +23,7 @@ describe("ControlPlane API edges", () => {
       expect(r.session.url).toBe("http://ui/sessions/sess-x");
       expect(r.session.ref).toBe("main");
       expect(r.session.targetLabels).toEqual(["echo-prompt"]);
-      expect(r.session.concurrencyKey).toBe("ck");
+      expect(r.session.concurrencyId).toBe("ck");
       expect(r.session.metadata).toEqual({ pr: 1 });
     }
   });

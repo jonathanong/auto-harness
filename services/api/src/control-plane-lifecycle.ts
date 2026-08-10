@@ -182,12 +182,7 @@ export function cancelSession(
   if (!session) {
     return { ok: false, error: "session not found" };
   }
-  if (
-    session.status === "completed" ||
-    session.status === "failed" ||
-    session.status === "cancelled" ||
-    session.status === "timed_out"
-  ) {
+  if (isTerminalSessionStatus(session.status)) {
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
   state.pendingAcks.delete(id);
@@ -208,5 +203,9 @@ export function cancelSession(
   session.worktreeId = null;
   session.hostId = null;
   persistSession(state, session);
+  if (session.concurrencyId && state.storage) {
+    queueWrite(state, state.storage.releaseConcurrencyLock(session.concurrencyId, session.id));
+  }
   return { ok: true, session: toPublic(state, session) };
 }
+import { isTerminalSessionStatus } from "@auto-harness/shared";

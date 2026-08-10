@@ -1,4 +1,9 @@
-import { validateCreateSessionInput, type SessionStatus } from "@auto-harness/shared";
+import {
+  isActiveSessionStatus,
+  isTerminalSessionStatus,
+  type SessionStatus,
+  validateCreateSessionInput,
+} from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -18,7 +23,9 @@ export {
 export function createSession(
   state: ControlPlaneState,
   body: unknown,
-): { ok: true; session: PublicSession } | { ok: false; error: string; code?: string } {
+):
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: string } {
   if (typeof body !== "object" || body === null) {
     return { ok: false, error: "body must be an object" };
   }
@@ -32,9 +39,8 @@ export function createSession(
     timeout: record.timeout,
     priority: record.priority,
     requiredLabels: record.requiredLabels,
-    onConflict: record.onConflict,
     ref: record.ref,
-    concurrencyKey: record.concurrencyKey,
+    concurrencyId: record.concurrencyId,
     metadata: record.metadata,
     type: record.type,
     source: record.source,
@@ -48,25 +54,12 @@ export function createSession(
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   }
-  // Invariant 9: concurrencyKey resolved at create time for queue|replace|reject.
-  if (v.concurrencyKey) {
+  if (v.concurrencyId) {
     const active = [...state.sessions.values()].filter(
-      (s) =>
-        s.concurrencyKey === v.concurrencyKey && (s.status === "queued" || s.status === "running"),
+      (s) => s.concurrencyId === v.concurrencyId && isActiveSessionStatus(s.status),
     );
     if (active.length > 0) {
-      if (v.onConflict === "reject") {
-        return {
-          ok: false,
-          error: `concurrencyKey ${v.concurrencyKey} is already active on session ${active[0]!.id}`,
-          code: "CONFLICT",
-        };
-      }
-      if (v.onConflict === "replace") {
-        for (const prev of active) {
-          supersedeSession(state, prev.id, "replaced by newer session with same concurrencyKey");
-        }
-      }
+      return { ok: true, session: toPublic(state, active[0]!), created: false };
     }
   }
 
@@ -85,18 +78,17 @@ export function createSession(
     timeout: v.timeout,
     priority: v.priority,
     requiredLabels: v.requiredLabels,
-    onConflict: v.onConflict,
     status: "queued",
     queueShard,
     createdAt,
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
-    ...(v.concurrencyKey !== undefined ? { concurrencyKey: v.concurrencyKey } : {}),
+    ...(v.concurrencyId !== undefined ? { concurrencyId: v.concurrencyId } : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),
     type: v.type,
     source: v.source,
   };
   persistSession(state, session);
-  return { ok: true, session: toPublic(state, session) };
+  return { ok: true, session: toPublic(state, session), created: true };
 }
 
 export function getSession(state: ControlPlaneState, id: string): PublicSession | null {
@@ -116,10 +108,13 @@ export function forceStatus(
   }
   s.status = status;
   persistSession(state, s);
+  if (s.concurrencyId && isTerminalSessionStatus(status) && state.storage) {
+    queueWrite(state, state.storage.releaseConcurrencyLock(s.concurrencyId, s.id));
+  }
   return toPublic(state, s);
 }
 
-/** Cancel/supersede queued or running session (onConflict:replace). */
+/** Cancel a queued or running session. */
 export function supersedeSession(
   state: ControlPlaneState,
   sessionId: string,
@@ -147,4 +142,7 @@ export function supersedeSession(
   session.worktreeId = null;
   session.hostId = null;
   persistSession(state, session);
+  if (session.concurrencyId && state.storage) {
+    queueWrite(state, state.storage.releaseConcurrencyLock(session.concurrencyId, session.id));
+  }
 }

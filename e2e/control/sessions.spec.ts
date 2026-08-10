@@ -18,6 +18,7 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("form-create-session")).toBeVisible();
     await expect(page.getByTestId("create-session-repository-id")).toBeVisible();
     await expect(page.getByTestId("create-session-prompt")).toBeVisible();
+    await expect(page.getByTestId("create-session-concurrency-id")).toBeVisible();
     await expect(page.getByTestId("create-session-submit")).toBeVisible();
   });
 
@@ -93,6 +94,7 @@ test.describe("control plane sessions", () => {
         const createRequest = page.waitForRequest(
           (req) => req.url().endsWith("/api/v1/sessions") && req.method() === "POST",
         );
+        await page.getByTestId("create-session-concurrency-id").fill(`pw-concurrency-${id}`);
         await page.getByTestId("create-session-submit").click();
         expect((await createRequest).postDataJSON()).toMatchObject({
           target: expect.objectContaining({ commandId: expect.any(String) }),
@@ -103,6 +105,9 @@ test.describe("control plane sessions", () => {
         await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
         await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+        await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
+          `pw-concurrency-${id}`,
+        );
 
         // Queued sessions can be cancelled; cancelling unlocks resume.
         await page.getByTestId("session-cancel").click();
@@ -114,6 +119,13 @@ test.describe("control plane sessions", () => {
         await removeHostRepo(request, repoId);
       }
     });
+  });
+
+  test("filters sessions by exact concurrency ID", async ({ page }) => {
+    await page.goto("/sessions");
+    await page.getByTestId("session-filter-concurrency-id").fill("pw-concurrency-example");
+    await page.getByTestId("session-filter-concurrency-id").press("Enter");
+    await expect(page).toHaveURL(/concurrencyId=pw-concurrency-example/);
   });
 
   test("unknown session id shows a not-found state", async ({ page }) => {

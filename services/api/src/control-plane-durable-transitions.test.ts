@@ -338,7 +338,9 @@ describe("durable control-plane transitions", () => {
       first.plane.triggerScheduleDurable("schedule-manual-durable"),
       second.plane.triggerScheduleDurable("schedule-manual-durable"),
     ]);
-    expect(Number(a.ok) + Number(b.ok)).toBe(1);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(Number(a.ok && a.created) + Number(b.ok && b.created)).toBe(1);
     expect(
       (await ctx.storage.listAllSessions()).filter((s) => s.repositoryId === "repo-manual-durable"),
     ).toHaveLength(1);

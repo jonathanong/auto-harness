@@ -6,13 +6,11 @@ import {
   type SessionListQuery,
 } from "@auto-harness/shared";
 
-type SessionListState = SessionListQuery;
-
-export function parseSessionListState(sp: URLSearchParams): SessionListState {
+export function parseSessionListState(sp: URLSearchParams): SessionListQuery {
   return parseSessionListQuery(sp);
 }
 
-export function sessionListHref(state: Partial<SessionListState>): string {
+export function sessionListHref(state: Partial<SessionListQuery>): string {
   return sharedSessionListHref(state, "/sessions");
 }
 

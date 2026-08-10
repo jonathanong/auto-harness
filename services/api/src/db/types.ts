@@ -31,14 +31,13 @@ export type SessionRecord = {
   timeout: number;
   priority: number;
   requiredLabels: string[];
-  onConflict: "queue" | "replace" | "reject";
   status: SessionStatus;
   queueShard: number;
   createdAt: string;
   ref?: string;
   worktreeId?: string | null;
   hostId?: string | null;
-  concurrencyKey?: string;
+  concurrencyId?: string;
   metadata?: Record<string, unknown>;
   errorCode?: string;
   errorMessage?: string;

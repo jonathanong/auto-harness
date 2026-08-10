@@ -1,7 +1,6 @@
 export type {
   AccountType,
   LogStream,
-  OnConflict,
   SessionErrorCode,
   SessionSource,
   SessionStatus,
@@ -32,6 +31,7 @@ export {
 } from "./host-capabilities.ts";
 
 export {
+  ACTIVE_SESSION_STATUSES,
   DEFAULT_ACK_DEADLINE_MS,
   DEFAULT_HOST_KEEPALIVE_MS,
   DEFAULT_ARCHIVE_PREFIX,
@@ -45,7 +45,6 @@ export {
   LOCAL_API_WS,
   LOCAL_DDB_HTTP,
   LOCAL_WEB_HTTP,
-  ON_CONFLICT_OPTIONS,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
   SESSION_SOURCES,
@@ -58,11 +57,11 @@ export { validateTargetRouting } from "./validation.ts";
 export type { ValidationResult } from "./validation.ts";
 export {
   formatLogSortKey,
-  isOnConflict,
   isSessionSource,
   isSessionErrorCode,
   isSessionStatus,
   isSessionType,
+  isActiveSessionStatus,
   isTerminalSessionStatus,
   validateCreateSessionInput,
 } from "./validation.ts";

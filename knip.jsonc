@@ -11,6 +11,7 @@
         "scripts/ensure-dynamodb.mts",
         "scripts/phase3-ws-e2e.mts",
         "scripts/manage-verify.mts",
+        "scripts/validate-bind.mts",
         "vitest.config.ts",
         "playwright.config.ts",
       ],

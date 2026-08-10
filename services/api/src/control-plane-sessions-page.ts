@@ -10,6 +10,7 @@ export type ListSessionsPageQuery = {
   hostId?: string;
   status?: string;
   q?: string;
+  concurrencyId?: string;
 };
 
 export type ListSessionsPageResult = {
@@ -47,13 +48,17 @@ export function listSessionsPage(
   if (query.status && query.status !== "all") {
     rows = rows.filter((s) => s.status === query.status);
   }
+  if (query.concurrencyId) {
+    rows = rows.filter((s) => s.concurrencyId === query.concurrencyId);
+  }
   if (query.q) {
     const q = query.q.toLowerCase();
     rows = rows.filter(
       (s) =>
         s.id.toLowerCase().includes(q) ||
         s.prompt.toLowerCase().includes(q) ||
-        s.targetLabels.join(" ").toLowerCase().includes(q),
+        s.targetLabels.join(" ").toLowerCase().includes(q) ||
+        s.concurrencyId?.toLowerCase().includes(q),
     );
   }
   if (query.cursor) {

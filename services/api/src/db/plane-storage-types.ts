@@ -61,6 +61,7 @@ export type ScheduleRecord = {
   lastRunAt: string | null;
   createdAt: string;
   ref?: string;
+  concurrencyId?: string;
 };
 
 export type LogRecord = {

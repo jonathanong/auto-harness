@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import "@auto-harness/ui/globals.css";
+import { Toast } from "@auto-harness/ui";
 
 import { ControlShell } from "../components/control-shell.tsx";
 
@@ -12,7 +14,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <ControlShell>{children}</ControlShell>
+        <ControlShell>
+          {children}
+          <Suspense>
+            <Toast />
+          </Suspense>
+        </ControlShell>
       </body>
     </html>
   );

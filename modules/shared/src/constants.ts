@@ -1,5 +1,4 @@
 import type {
-  OnConflict,
   SessionErrorCode,
   SessionSource,
   SessionStatus,
@@ -22,6 +21,11 @@ export const TERMINAL_SESSION_STATUSES = [
   "timed_out",
 ] as const satisfies readonly SessionStatus[];
 
+export const ACTIVE_SESSION_STATUSES = [
+  "queued",
+  "running",
+] as const satisfies readonly SessionStatus[];
+
 export const SESSION_ERROR_CODES = [
   "usage_limit",
   "queue_expired",
@@ -30,12 +34,6 @@ export const SESSION_ERROR_CODES = [
   "setup_failed",
 ] as const satisfies readonly SessionErrorCode[];
 
-export const ON_CONFLICT_OPTIONS = [
-  "queue",
-  "replace",
-  "reject",
-] as const satisfies readonly OnConflict[];
-
 export const SESSION_TYPES = ["prompt", "scheduled"] as const satisfies readonly SessionType[];
 export const SESSION_SOURCES = [
   "api",
@@ -43,7 +41,6 @@ export const SESSION_SOURCES = [
   "webhook",
   "schedule",
 ] as const satisfies readonly SessionSource[];
-
 /** Default max usage_limit auto-retries (docs/plan.md Invariant 6). */
 
 /** A queued session has this long to find capacity before failing. */

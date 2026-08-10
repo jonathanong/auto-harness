@@ -146,8 +146,7 @@ erDiagram
         number timeout "seconds, required"
         number priority
         string[] requiredLabels
-        string concurrencyKey "nullable — sessions sharing a key are subject to onConflict"
-        string onConflict "queue | replace | reject — default queue"
+        string concurrencyId "nullable — global exact-match concurrency/idempotency identity"
         string queueShard "assigned at create; spreads the queued-status GSI (see Access patterns)"
         object metadata "nullable — caller-supplied provenance (e.g. PR number, run id) for Slack/hook context"
         number exitCode "nullable"
@@ -224,8 +223,8 @@ erDiagram
 ```
 
 **Changed from an earlier draft of this document:** `command` → `commandProfile` (D4);
-`pinnedWorktreeId` removed, `pinExpiresAt` added (D5); `ref`, `concurrencyKey`, `onConflict`,
-`queueShard`, `metadata`, `queueExpiresAt`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
+`pinnedWorktreeId` removed, `pinExpiresAt` added (D5); `ref`, `concurrencyKey`/`concurrencyId`, `onConflict`,
+`queueShard`, `metadata`, `queueExpiresAt`, `retryAfter`, `retryCount`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
 bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHookScript` added.
 
 ### Access patterns
@@ -275,9 +274,11 @@ resume_failed`) rather than waiting indefinitely.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
    the control plane or the agent.
-9. **`concurrencyKey` collisions resolve deterministically before entering the queue.** Given
-   `onConflict: queue | replace | reject`, the behavior is decided at `POST /sessions` time, not
-   left to the scheduler to improvise later.
+9. **`concurrencyId` is globally exact and atomic.** A durable lock table permits only one active
+   session for an identity across API workers. Duplicate manual creates return the existing
+   session (`200`, `created: false`); new creates return `201`, `created: true`. Terminal
+   completion releases the lock for an explicit retry. Automatic overlap skips the duplicate,
+   advances `nextRunAt`, and leaves `lastRunAt` unchanged.
 10. **The control plane can do everything; the host pane is debug-only.** Hosts connect to the
     control plane over WebSocket only — there is no reachable address for a host from the control
     plane's side. Every action a user needs on a host (attach/edit repositories, add/remove/edit
@@ -373,7 +374,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
   - CloudWatch Events rule (1-minute) for cron evaluation.
 - `services/api` REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD.
-  - Sessions: create (**`ref`, `commandProfile`, `concurrencyKey`, `onConflict`, `metadata`
+  - Sessions: create (**`ref`, `commandProfile`, `concurrencyId`, `metadata`
     accepted; response includes `url`**), list (`search` **omitted from v1** — see Access
     patterns), get, cancel, clone, resume (**agent-only pin**, D5).
   - Repositories: CRUD (include `terminalHookScript`).
@@ -412,7 +413,7 @@ tree is on `main`), and `pnpm local:api-smoke`.
 
 **Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
-session create with `ref`/`commandProfile`/`concurrencyKey`/`onConflict`/`metadata`/`url`.
+session create with `ref`/`commandProfile`/`concurrencyId`/`metadata`/`url`.
 CDK table defs in `services/cdk` (no live AWS deploy required in-repo). Local store is
 DynamoDB Local via `pnpm local:dynamodb` (official image).
 
@@ -434,8 +435,8 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 - Live log streaming over WS, batched to DynamoDB via `BatchWriteItem`.
 - Session status lifecycle: `queued → running → completed | failed | cancelled | timed_out`.
 - Session timeout enforcement (agent-side kill + report).
-- Queue management with priority; **`concurrencyKey`/`onConflict` resolution** (Invariant 9) in
-  the scheduler at session-create time.
+- Queue management with priority; **durable `concurrencyId` lock resolution** (Invariant 9) at
+  session-create time.
 - Worktree label matching; multi-agent round-robin by `lastAssignedAt`.
 - **Session resume** — pin to `pinnedHostId` only; agent re-checks-out via `ref` +
   `cliResumeRef`/native CLI resume rather than relying on undisturbed worktree state; pin honors
@@ -464,20 +465,20 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
   manual clearing makes it eligible again, while the fixed queue TTL bounds waiting (Invariant 6, D8).
 - A resumed session reaches the correct `ref`/branch state even when its original worktree was
   reassigned and reset in between (D5, Invariant 7).
-- Two sessions sharing a `concurrencyKey` with `onConflict: reject` — the second is rejected at
-  create time, not queued (Invariant 9).
+- Two concurrent creates sharing a `concurrencyId` — exactly one session is created and the
+  duplicate receives the existing session (`200`, `created: false`; Invariant 9).
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
 **Status (code-complete, local WS):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
 `auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
-deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), concurrency
-reject/replace (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
+deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable
+concurrency dedupe (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
 
 **Migration marker: a plan-only repo workflow (e.g. `codex-plan`, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and account cooldown/fallback routing
 above are live in a real deployment.** No workflow that needs `ref`, resume, or
-`concurrencyKey` may move before this phase is fully done.
+`concurrencyId` may move before this phase is fully done.
 
 ### Phase 4 — Web UI
 
@@ -490,7 +491,7 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
   DynamoDB scan-backed search endpoint. If full-text search becomes a real requirement, it needs
   an explicit external index (e.g. OpenSearch), scoped and estimated as its own piece of work, not
   bundled into Phase 4.
-- Create-session form includes **ref** and **concurrency/label** fields, and a **command profile**
+- Create-session form includes **ref**, **concurrencyId**, and **labels** fields, and a **command**
   dropdown populated from agent-reported profiles (not free text).
 
 **Acceptance criteria**
@@ -540,7 +541,7 @@ with this table.
 
 | File                      | Section                                        | Change                                                                                                                                                                                                                                                      |
 | ------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api.md`                  | `POST /sessions` request                       | Add `ref`, `concurrencyKey`, `onConflict`, `metadata`. Change `command` → `commandProfile` (string, must match an agent-reported profile name).                                                                                                             |
+| `api.md`                  | `POST /sessions` request                       | Add `ref`, optional global exact `concurrencyId`, and `metadata`. Change `command` → `commandProfile` (string, must match an agent-reported profile name).                                                                                                  |
 | `api.md`                  | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link).                                                                                                                                                                                                                                   |
 | `api.md`                  | `POST /sessions/:id/resume`                    | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5).                                                                                                                                 |
 | `api.md`                  | `GET /sessions` query params                   | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns).                                                                                                                                                                      |
@@ -549,7 +550,7 @@ with this table.
 | `host-daemon.md`          | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
 | `host-daemon.md`          | Usage limits                                   | Document global Provider Account cooldowns, ordered fallback routing, providerless Commands, and absolute queue TTL; ordinary failures remain terminal.                                                                                                     |
 | `host-daemon.md`          | New section                                    | Terminal hook (D3): config shape, invocation contract, env vars, failure handling.                                                                                                                                                                          |
-| `aws.md`                  | Scheduler                                      | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), `concurrencyKey`/`onConflict` resolution (Invariant 9).                                                                                                                   |
+| `aws.md`                  | Scheduler                                      | Add conditional worktree claim (Invariant 1), ack-deadline requeue (Invariant 2), and atomic durable `concurrencyId` lock resolution (Invariant 9).                                                                                                         |
 | `aws.md`                  | Cron Evaluator                                 | Conditional `nextRunAt` claim (Invariant 4); heartbeat-based stale sweep (Phase 3) replacing the coarse `timeout + grace` version.                                                                                                                          |
 | `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
 | `websocket.md` / `aws.md` | Keepalive                                      | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead.                                                                                                                             |

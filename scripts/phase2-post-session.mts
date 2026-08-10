@@ -40,8 +40,7 @@ async function main(): Promise<void> {
       queueTtlSeconds: 691200,
       timeout: 60,
       ref: "main",
-      concurrencyKey: "ck-1",
-      onConflict: "queue",
+      concurrencyId: "phase2-session",
       metadata: { phase: 2 },
     }),
   });

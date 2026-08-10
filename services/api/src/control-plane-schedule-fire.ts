@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import type { PublicSession } from "./control-plane-types.ts";
+import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
@@ -14,7 +14,7 @@ export function triggerSchedule(
   state: ControlPlaneState,
   id: string,
   nowIso: string = state.now(),
-): { ok: true; session: PublicSession } | { ok: false; error: string } {
+): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
   const schedule = state.schedules.get(id);
   if (!schedule) {
     return { ok: false, error: "schedule not found" };
@@ -30,12 +30,14 @@ export function triggerSchedule(
   if (!result.ok) {
     return { ok: false, error: result.error };
   }
-  schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
-  schedule.lastRunAt = nowIso;
-  if (state.storage) {
-    queueWrite(state, state.storage.putSchedule({ ...schedule }));
+  if (result.created) {
+    schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+    schedule.lastRunAt = nowIso;
+    if (state.storage) {
+      queueWrite(state, state.storage.putSchedule({ ...schedule }));
+    }
   }
-  return { ok: true, session: result.session };
+  return { ok: true, session: result.session, created: result.created };
 }
 
 /**
@@ -47,7 +49,7 @@ export async function triggerScheduleDurable(
   state: ControlPlaneState,
   id: string,
   nowIso: string = state.now(),
-): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+): Promise<{ ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }> {
   if (!state.storage) {
     return triggerSchedule(state, id, nowIso);
   }
@@ -64,19 +66,23 @@ export async function triggerScheduleDurable(
   }
   const session = createScheduledSession(state, schedule);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
-  const won = await state.storage.tryClaimScheduleAndCreateSession({
+  const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
     expectedNextRunAt: schedule.nextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
     session,
   });
-  if (!won) {
+  if (outcome.kind === "duplicate") {
+    state.sessions.set(outcome.session.id, { ...outcome.session });
+    return { ok: true, session: toPublic(state, outcome.session), created: false };
+  }
+  if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
   }
   state.schedules.set(id, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
-  return { ok: true, session: toPublic(state, session) };
+  return { ok: true, session: toPublic(state, session), created: true };
 }
 
 /**
@@ -132,6 +138,9 @@ export function tryClaimScheduleFire(
     return null;
   }
   schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  if (!result.created) {
+    return null;
+  }
   schedule.lastRunAt = nowIso;
   return result.session;
 }
@@ -186,14 +195,28 @@ export async function tryClaimScheduleFireDurable(
   }
   const session = createScheduledSession(state, schedule);
   const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
-  const won = await state.storage.tryClaimScheduleAndCreateSession({
+  const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
     expectedNextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
     session,
   });
-  if (!won) {
+  if (outcome.kind === "duplicate") {
+    const skipped = await state.storage.skipScheduleForActiveConcurrency({
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      concurrencyId: session.concurrencyId!,
+      sessionId: outcome.session.id,
+    });
+    if (skipped) {
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      state.sessions.set(outcome.session.id, { ...outcome.session });
+    }
+    return null;
+  }
+  if (outcome.kind !== "created") {
     return null;
   }
   state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
@@ -201,10 +224,7 @@ export async function tryClaimScheduleFireDurable(
   return toPublic(state, session);
 }
 
-function createScheduledSession(
-  state: ControlPlaneState,
-  schedule: import("./control-plane-types.ts").ScheduleRecord,
-): SessionRecord {
+function createScheduledSession(state: ControlPlaneState, schedule: ScheduleRecord): SessionRecord {
   const id = state.idFactory();
   const createdAt = state.now();
   return {
@@ -219,24 +239,24 @@ function createScheduledSession(
     timeout: schedule.timeout,
     priority: 0,
     requiredLabels: [],
-    onConflict: "queue",
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt,
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+    concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
   };
 }
 
 function resolveScheduledTarget(
   state: ControlPlaneState,
-  schedule: import("./control-plane-types.ts").ScheduleRecord,
+  schedule: ScheduleRecord,
 ): { ok: true; labels: string[] } | { ok: false; error: string } {
   return resolveTargetLabels(state, schedule.target, schedule.fallbacks);
 }
 
-function scheduledSessionInput(schedule: import("./control-plane-types.ts").ScheduleRecord): {
+function scheduledSessionInput(schedule: ScheduleRecord): {
   repositoryId: string;
   prompt: string;
   target: import("@auto-harness/shared").TargetRef;
@@ -246,6 +266,7 @@ function scheduledSessionInput(schedule: import("./control-plane-types.ts").Sche
   type: string;
   source: string;
   ref?: string;
+  concurrencyId?: string;
 } {
   return {
     repositoryId: schedule.repositoryId,
@@ -257,5 +278,6 @@ function scheduledSessionInput(schedule: import("./control-plane-types.ts").Sche
     type: "scheduled",
     source: "schedule",
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
+    concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
   };
 }

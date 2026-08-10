@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTIVE_SESSION_STATUSES,
   DEFAULT_ACK_DEADLINE_MS,
   DEFAULT_HOST_KEEPALIVE_MS,
   DEFAULT_ARCHIVE_PREFIX,
@@ -10,7 +11,6 @@ import {
   DEFAULT_USAGE_LIMIT_COOLDOWN_SECONDS,
   LOCAL_HOST_ID,
   LOCAL_API_HTTP,
-  ON_CONFLICT_OPTIONS,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
@@ -29,8 +29,8 @@ describe("constants", () => {
     expect(DEFAULT_ARCHIVE_PREFIX).toContain("session");
     expect(SESSION_STATUSES).toContain("queued");
     expect(TERMINAL_SESSION_STATUSES).not.toContain("queued");
+    expect(ACTIVE_SESSION_STATUSES).toEqual(["queued", "running"]);
     expect(SESSION_ERROR_CODES).toContain("usage_limit");
-    expect(ON_CONFLICT_OPTIONS).toEqual(["queue", "replace", "reject"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");
   });

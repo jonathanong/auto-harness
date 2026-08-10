@@ -14,13 +14,17 @@ describe("url-state", () => {
       q: "",
       cursor: "",
       limit: 20,
+      concurrencyId: "",
     });
-    const sp = new URLSearchParams("status=running&q=sess&cursor=abc");
+    const sp = new URLSearchParams(
+      "status=running&q=sess&cursor=abc&concurrencyId=filaments-pr-shepherd-123",
+    );
     expect(parseSessionListState(sp)).toEqual({
       status: "running",
       q: "sess",
       cursor: "abc",
       limit: 20,
+      concurrencyId: "filaments-pr-shepherd-123",
     });
     expect(sessionListHref({})).toBe("/sessions");
     expect(sessionListHref({ status: "all", q: "", cursor: "" })).toBe("/sessions");
@@ -28,6 +32,10 @@ describe("url-state", () => {
     expect(sessionListHref({ q: "x" })).toBe("/sessions?q=x");
     expect(sessionListHref({ status: "failed", q: "x" })).toBe("/sessions?status=failed&q=x");
     expect(sessionListHref({ cursor: "c1" })).toBe("/sessions?cursor=c1");
+    expect(sessionListHref({ concurrencyId: "pr/123" })).toBe("/sessions?concurrencyId=pr%2F123");
+    expect(sessionListHref({ status: "queued", concurrencyId: "pr-123" })).toBe(
+      "/sessions?status=queued&concurrencyId=pr-123",
+    );
   });
 
   it("parses and serializes host list filters", () => {

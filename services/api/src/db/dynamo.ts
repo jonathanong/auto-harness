@@ -13,6 +13,7 @@ export type DynamoTableNames = {
   schedules: string;
   repositories: string;
   hostLocks: string;
+  concurrencyLocks: string;
   archives: string;
   hostInventories: string;
   providers: string;
@@ -31,6 +32,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     schedules: `${p}-Schedules`,
     repositories: `${p}-Repositories`,
     hostLocks: `${p}-HostLocks`,
+    concurrencyLocks: `${p}-ConcurrencyLocks`,
     archives: `${p}-Archives`,
     hostInventories: `${p}-HostInventories`,
     providers: `${p}-Providers`,

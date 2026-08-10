@@ -41,6 +41,7 @@ export class ControlPlane extends ControlPlaneCatalog {
       enabled: boolean;
       ref: string;
       repositoryId: string;
+      concurrencyId: string;
     }>,
   ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
     return schedules.updateSchedule(this.state, id, patch);
@@ -53,14 +54,16 @@ export class ControlPlane extends ControlPlaneCatalog {
   triggerSchedule(
     id: string,
     nowIso: string = this.state.now(),
-  ): { ok: true; session: PublicSession } | { ok: false; error: string } {
+  ): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
     return schedules.triggerSchedule(this.state, id, nowIso);
   }
 
   async triggerScheduleDurable(
     id: string,
     nowIso: string = this.state.now(),
-  ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
+  ): Promise<
+    { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }
+  > {
     return schedules.triggerScheduleDurable(this.state, id, nowIso);
   }
 

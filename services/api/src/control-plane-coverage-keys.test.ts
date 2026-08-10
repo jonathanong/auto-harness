@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
-describe("ControlPlane coverage: concurrency keys list and resume metadata", () => {
-  it("concurrency keys list and resume metadata", () => {
+describe("ControlPlane coverage: concurrency ids list and resume metadata", () => {
+  it("concurrency ids list and resume metadata", () => {
     const planeH = new ControlPlane({
       archivePrefix: "arch/",
       webhookUrl: null,
@@ -36,14 +36,13 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     expect(planeH.getWorktree("wh")?.status).toBe("busy");
 
-    // concurrencyKey reject only when active; completed doesn't conflict
+    // concurrencyId only deduplicates active sessions; completed re-enqueues.
     planeH.createSession({
       repositoryId: "repo-1",
       prompt: "p",
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
-      concurrencyKey: "done-key",
-      onConflict: "reject",
+      concurrencyId: "done-key",
     });
     planeH.forceStatus("h1", "completed");
     expect(
@@ -52,8 +51,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
         prompt: "p2",
         target: { commandId: BASE_COMMAND_ID },
         timeout: 1,
-        concurrencyKey: "done-key",
-        onConflict: "reject",
+        concurrencyId: "done-key",
       }).ok,
     ).toBe(true);
 
@@ -66,7 +64,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     });
     expect(planeH.listSessions().length).toBeGreaterThan(1);
 
-    // resume with concurrencyKey + metadata + pinnedHostId only
+    // resume with concurrencyId + metadata + pinnedHostId only
     const planeI = new ControlPlane({
       idFactory: (() => {
         let i = 0;
@@ -78,14 +76,14 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     planeI.state.sessions.set("src", {
       id: "src",
       hostId: null,
-      pinnedHostId: "older-pin-agent",
+      pinnedHostId: "pin-agent",
       resolvedRoute: {
         targetIndex: 0,
         commandId: BASE_COMMAND_ID,
         hostId: "pin-agent",
         worktreeId: "old-worktree",
       },
-      concurrencyKey: "ck",
+      concurrencyId: "ck",
       metadata: { m: 1 },
       status: "completed",
       repositoryId: "repo-1",
@@ -98,7 +96,6 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
       timeout: 1,
       priority: 0,
       requiredLabels: [],
-      onConflict: "queue",
       queueShard: 0,
       createdAt: "t",
     });
@@ -106,7 +103,7 @@ describe("ControlPlane coverage: concurrency keys list and resume metadata", () 
     expect(r.ok).toBe(true);
     if (r.ok) {
       expect(r.session.pinnedHostId).toBe("pin-agent");
-      expect(r.session.concurrencyKey).toBe("ck");
+      expect(r.session.concurrencyId).toBe("ck");
     }
     expect(planeI.getArchive("nope")).toBeNull();
   });

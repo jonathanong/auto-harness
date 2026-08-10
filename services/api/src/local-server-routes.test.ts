@@ -154,8 +154,7 @@ describe("createLocalApp agent and scheduler routes", () => {
           prompt: "p",
           target: { commandId: "cmd-echo" },
           timeout: 1,
-          concurrencyKey: "k",
-          onConflict: "reject",
+          concurrencyId: "k",
         })
       ).status,
     ).toBe(201);
@@ -166,11 +165,10 @@ describe("createLocalApp agent and scheduler routes", () => {
           prompt: "p2",
           target: { commandId: "cmd-echo" },
           timeout: 1,
-          concurrencyKey: "k",
-          onConflict: "reject",
+          concurrencyId: "k",
         })
       ).status,
-    ).toBe(409);
+    ).toBe(200);
 
     expect(
       (
