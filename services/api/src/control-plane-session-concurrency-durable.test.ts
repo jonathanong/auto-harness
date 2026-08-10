@@ -40,7 +40,7 @@ describe("durable session concurrency", () => {
       plane.createSessionDurable({
         repositoryId: "repo-1",
         prompt: "missing command",
-        commandId: "missing",
+        target: { commandId: "missing" },
         timeout: 30,
       }),
     ).resolves.toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
@@ -48,7 +48,7 @@ describe("durable session concurrency", () => {
     const body = {
       repositoryId: "repo-1",
       prompt: "shepherd PR",
-      commandId: "cmd-concurrency",
+      target: { commandId: "cmd-concurrency" },
       timeout: 30,
       concurrencyId: "filaments-pr-shepherd-123",
     };
@@ -83,7 +83,7 @@ describe("durable session concurrency", () => {
       plane.createSessionDurable({
         repositoryId: "repo-1",
         prompt: "provider task",
-        providerAccountId: "account-1",
+        target: { providerId: "provider-1" },
         timeout: 20,
         priority: 4,
         requiredLabels: ["gpu"],
@@ -96,7 +96,7 @@ describe("durable session concurrency", () => {
       ok: true,
       created: true,
       session: {
-        providerAccountId: "account-1",
+        target: { providerId: "provider-1" },
         priority: 4,
         requiredLabels: ["gpu"],
         ref: "main",
@@ -122,8 +122,11 @@ describe("durable session concurrency", () => {
       id: "resume-source",
       repositoryId: "repo-resume",
       prompt: "resume me",
-      commandId: "cmd-resume-concurrency",
-      targetLabel: "resume concurrency",
+      target: { commandId: "cmd-resume-concurrency" },
+      fallbacks: [],
+      targetLabels: ["resume concurrency"],
+      queueTtlSeconds: 691_200,
+      queueExpiresAt: "2026-01-09T00:00:00.000Z",
       timeout: 30,
       priority: 0,
       requiredLabels: [],

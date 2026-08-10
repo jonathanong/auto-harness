@@ -30,7 +30,7 @@ describe("durable session create races", () => {
     const body = {
       repositoryId: "repo-concurrent",
       prompt: "one durable session",
-      commandId: "cmd-concurrent-create",
+      target: { commandId: "cmd-concurrent-create" },
       timeout: 30,
       concurrencyId: "concurrent-create-key",
     };
@@ -76,7 +76,7 @@ describe("durable session create races", () => {
     const body = {
       repositoryId: "repo-fixed-id",
       prompt: "fixed session id",
-      commandId: "cmd-fixed-id",
+      target: { commandId: "cmd-fixed-id" },
       timeout: 30,
     };
     await expect(plane.createSessionDurable(body)).resolves.toMatchObject({

@@ -2,7 +2,7 @@ import { validateCreateSessionInput } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString } from "./control-plane-state.ts";
-import { resolveSessionTargetLabel } from "./control-plane-session-target-label.ts";
+import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 type ValidatedFields = Extract<
@@ -19,7 +19,7 @@ export function validateSessionCreate(
       ok: true;
       fields: ValidatedFields;
       record: Record<string, unknown>;
-      targetLabel: string;
+      targetLabels: string[];
       scheduleId?: string;
     }
   | { ok: false; error: string; code?: string } {
@@ -30,8 +30,9 @@ export function validateSessionCreate(
   const validated = validateCreateSessionInput({
     repositoryId: record.repositoryId,
     prompt: record.prompt,
-    providerAccountId: record.providerAccountId,
-    commandId: record.commandId,
+    target: record.target,
+    fallbacks: record.fallbacks,
+    queueTtlSeconds: record.queueTtlSeconds,
     timeout: record.timeout,
     priority: record.priority,
     requiredLabels: record.requiredLabels,
@@ -42,17 +43,13 @@ export function validateSessionCreate(
     source: record.source,
   });
   if (!validated.ok) return validated;
-  const target = resolveSessionTargetLabel(
-    state,
-    validated.value.providerAccountId,
-    validated.value.commandId,
-  );
-  if (!target.ok) return { ok: false, error: target.error, code: "VALIDATION_ERROR" };
+  const targets = resolveTargetLabels(state, validated.value.target, validated.value.fallbacks);
+  if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   return {
     ok: true,
     fields: validated.value,
     record,
-    targetLabel: target.label,
+    targetLabels: targets.labels,
     ...(options.allowScheduleId && typeof record.scheduleId === "string"
       ? { scheduleId: record.scheduleId }
       : {}),
@@ -65,20 +62,22 @@ export function buildSessionRecord(
 ): SessionRecord {
   const { fields: v } = prepared;
   const id = state.idFactory();
+  const createdAt = state.now();
   return {
     id,
     repositoryId: v.repositoryId,
     prompt: v.prompt,
-    ...(v.providerAccountId !== undefined ? { providerAccountId: v.providerAccountId } : {}),
-    ...(v.commandId !== undefined ? { commandId: v.commandId } : {}),
-    targetLabel: prepared.targetLabel,
+    target: v.target,
+    fallbacks: v.fallbacks,
+    targetLabels: prepared.targetLabels,
+    queueTtlSeconds: v.queueTtlSeconds,
+    queueExpiresAt: new Date(Date.parse(createdAt) + v.queueTtlSeconds * 1000).toISOString(),
     timeout: v.timeout,
     priority: v.priority,
     requiredLabels: v.requiredLabels,
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
-    createdAt: state.now(),
-    retryCount: 0,
+    createdAt,
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
     ...(v.concurrencyId !== undefined ? { concurrencyId: v.concurrencyId } : {}),
     ...(prepared.scheduleId !== undefined ? { scheduleId: prepared.scheduleId } : {}),

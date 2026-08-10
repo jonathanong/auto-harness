@@ -210,28 +210,5 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     expect(planeQ.getSession("q1")?.status).toBe("cancelled");
     expect(planeQ.getWorktree("wq")?.status).toBe("idle");
     expect(released).toEqual(["kq"]);
-
-    const messages: unknown[] = [];
-    const planeR = new ControlPlane({
-      idFactory: () => "running",
-      now: () => "t",
-      onHostMessage: (_hostId, message) => messages.push(message),
-    });
-    seedBaseCommand(planeR);
-    planeR.createSession({
-      repositoryId: "repo-1",
-      prompt: "p",
-      commandId: BASE_COMMAND_ID,
-      timeout: 1,
-      concurrencyId: "kr",
-    });
-    Object.assign(planeR.state.sessions.get("running")!, {
-      status: "running",
-      hostId: "agent-r",
-      worktreeId: "worktree-r",
-    });
-    planeR.state.storage = { putSession: async () => {} } as never;
-    supersedeSession(planeR.state, "running", "replace running");
-    expect(messages).toEqual([{ type: "session:cancel", sessionId: "running" }]);
   });
 });

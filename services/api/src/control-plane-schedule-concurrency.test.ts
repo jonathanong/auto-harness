@@ -17,7 +17,7 @@ function makeDurableSchedulePlane() {
   const schedule = putScheduleOrThrow(plane, {
     repositoryId: "repo-1",
     name: "nightly",
-    commandId: "cmd-base",
+    target: { commandId: "cmd-base" },
     cron: "* * * * *",
     timeout: 1,
     nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -26,8 +26,11 @@ function makeDurableSchedulePlane() {
     id: "active-session",
     repositoryId: "repo-1",
     prompt: "scheduled:nightly",
-    commandId: "cmd-base",
-    targetLabel: "local",
+    target: { commandId: "cmd-base" },
+    fallbacks: [],
+    targetLabels: ["base"],
+    queueTtlSeconds: 691_200,
+    queueExpiresAt: "2026-01-08T00:00:00.000Z",
     timeout: 1,
     priority: 0,
     requiredLabels: [],
@@ -51,7 +54,7 @@ describe("schedule concurrency", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "nightly",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -72,7 +75,7 @@ describe("schedule concurrency", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "nightly",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -95,7 +98,7 @@ describe("schedule concurrency", () => {
     const schedule = putScheduleOrThrow(plane, {
       repositoryId: "repo-1",
       name: "manual",
-      commandId: "cmd-base",
+      target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 1,
       nextRunAt: "2030-01-01T00:00:00.000Z",
@@ -127,7 +130,7 @@ describe("schedule concurrency", () => {
     });
     expect(
       manual.plane.updateSchedule(manual.schedule.id, {
-        providerAccountId: "account-1",
+        target: { providerId: "provider-1" },
         ref: "main",
       }),
     ).toMatchObject({ ok: true });

@@ -3,12 +3,16 @@ import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
+import { supersedeSession } from "./control-plane-sessions.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("concurrency lock lifecycle", () => {
   it("cancels queued work by releasing its worktree and lock", () => {
     const released: string[] = [];
-    const plane = new ControlPlane({ idFactory: () => "sess-1", now: () => "now" });
+    const plane = new ControlPlane({
+      idFactory: () => "sess-1",
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     seedBaseCommand(plane);
     plane.seedWorktree({
       id: "wt-1",
@@ -45,7 +49,7 @@ describe("concurrency lock lifecycle", () => {
     const released: string[] = [];
     const plane = new ControlPlane({
       idFactory: () => "sess-1",
-      now: () => "now",
+      now: () => "2026-01-01T00:00:00.000Z",
       onHostMessage: (_hostId, message) => messages.push(message),
     });
     seedBaseCommand(plane);
@@ -71,7 +75,10 @@ describe("concurrency lock lifecycle", () => {
   it("handles durable cancellation races and terminal/running states", async () => {
     let id = 0;
     let cancelWins = false;
-    const plane = new ControlPlane({ idFactory: () => `durable-${++id}`, now: () => "now" });
+    const plane = new ControlPlane({
+      idFactory: () => `durable-${++id}`,
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
     seedBaseCommand(plane);
     plane.state.storage = {
       putSession: async () => {},
@@ -122,5 +129,24 @@ describe("concurrency lock lifecycle", () => {
       ok: true,
       session: { status: "cancelled" },
     });
+  });
+
+  it("keeps a running superseded session locked until the daemon stops", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({
+      idFactory: () => "running",
+      now: () => "2026-01-01T00:00:00.000Z",
+      onHostMessage: (_hostId, message) => messages.push(message),
+    });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody({ concurrencyId: "kr" }));
+    Object.assign(plane.state.sessions.get("running")!, {
+      status: "running",
+      hostId: "host-r",
+      worktreeId: "worktree-r",
+    });
+    plane.state.storage = { putSession: async () => {} } as never;
+    supersedeSession(plane.state, "running", "replace running");
+    expect(messages).toEqual([{ type: "session:cancel", sessionId: "running" }]);
   });
 });

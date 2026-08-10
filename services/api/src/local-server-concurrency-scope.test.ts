@@ -13,7 +13,7 @@ describe("concurrency response scope", () => {
       id: "schedule-a",
       repositoryId: "repo-a",
       name: "nightly",
-      commandId: "cmd-a",
+      target: { commandId: "cmd-a" },
       cron: "* * * * *",
       timeout: 10,
       nextRunAt: "2026-01-01T00:00:00.000Z",
@@ -22,7 +22,7 @@ describe("concurrency response scope", () => {
     plane.createSession({
       repositoryId: "repo-b",
       prompt: "secret duplicate",
-      commandId: "cmd-a",
+      target: { commandId: "cmd-a" },
       timeout: 10,
       concurrencyId: "shared-cross-repo",
     });
@@ -45,7 +45,7 @@ describe("concurrency response scope", () => {
         await invoke("/api/v1/sessions", {
           repositoryId: "repo-a",
           prompt: "allowed request",
-          commandId: "cmd-a",
+          target: { commandId: "cmd-a" },
           timeout: 10,
           concurrencyId: "shared-cross-repo",
         })

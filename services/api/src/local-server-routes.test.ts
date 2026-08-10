@@ -123,6 +123,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       timeout: 20,
       priority: 4,
     });
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", {})).status).toBe(201);
     expect(
       (await invoke("POST", "/api/v1/sessions/sess-1/resume", { commandId: "override" })).status,
     ).toBe(400);
@@ -137,8 +138,12 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(400);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", [])).status).toBe(400);
     expect(
-      (await invoke("GET", "/api/v1/sessions?limit=5&cursor=&hostId=a1&status=completed&q=p"))
-        .status,
+      (
+        await invoke(
+          "GET",
+          "/api/v1/sessions?limit=5&cursor=bogus&hostId=a1&status=completed&q=p&concurrencyId=k&scheduleId=nightly",
+        )
+      ).status,
     ).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/ack-deadlines")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
