@@ -1,4 +1,6 @@
 /* eslint-disable max-lines */
+import { normalizeHostCapabilities, type HostCapability } from "@auto-harness/shared";
+
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
@@ -116,6 +118,7 @@ export function listHosts(state: ControlPlaneState): Array<{
   online: boolean;
   lastHeartbeatAt: string | null;
   commandProfiles: string[];
+  capabilities: HostCapability[];
   worktreeIds: string[];
 }> {
   const byHost = new Map<
@@ -125,6 +128,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: boolean;
       lastHeartbeatAt: string | null;
       commandProfiles: string[];
+      capabilities: HostCapability[];
       worktreeIds: string[];
     }
   >();
@@ -134,6 +138,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: false,
       lastHeartbeatAt: null,
       commandProfiles: [] as string[],
+      capabilities: [],
       worktreeIds: [] as string[],
     };
     cur.worktreeIds.push(wt.id);
@@ -145,11 +150,13 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: true,
       lastHeartbeatAt: conn.lastHeartbeatAt,
       commandProfiles: conn.commandProfiles,
+      capabilities: normalizeHostCapabilities(conn.capabilities),
       worktreeIds: [] as string[],
     };
     cur.online = true;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.commandProfiles = [...conn.commandProfiles];
+    cur.capabilities = normalizeHostCapabilities(conn.capabilities);
     byHost.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
@@ -160,6 +167,7 @@ export function listHosts(state: ControlPlaneState): Array<{
         online: false,
         lastHeartbeatAt: null,
         commandProfiles: Object.keys(host.commandProfiles),
+        capabilities: normalizeHostCapabilities(host.capabilities),
         worktreeIds: host.repositories.flatMap((r) => r.worktrees.map((w) => w.id)),
       });
     }
@@ -183,6 +191,7 @@ export function registerHost(
       labels: string[];
     }>;
     commandProfiles: string[];
+    capabilities?: HostCapability[];
     runningSessions?: string[];
     replaceExisting?: boolean;
   },
@@ -230,6 +239,7 @@ export function registerHost(
     connectedAt: at,
     lastHeartbeatAt: at,
     commandProfiles: [...opts.commandProfiles],
+    capabilities: normalizeHostCapabilities(opts.capabilities),
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
@@ -286,6 +296,7 @@ export async function registerHostDurable(
       labels: string[];
     }>;
     commandProfiles: string[];
+    capabilities?: HostCapability[];
     runningSessions?: string[];
     replaceExisting?: boolean;
   },
@@ -316,6 +327,7 @@ export async function registerHostDurable(
     connectedAt: at,
     lastHeartbeatAt: at,
     commandProfiles: [...opts.commandProfiles],
+    capabilities: normalizeHostCapabilities(opts.capabilities),
   };
   const won = await state.storage.tryRegisterHost({
     hostId: opts.hostId,

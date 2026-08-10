@@ -35,6 +35,8 @@ export function createSession(
     ref: record.ref,
     concurrencyKey: record.concurrencyKey,
     metadata: record.metadata,
+    type: record.type,
+    source: record.source,
   });
   if (!validated.ok) {
     return validated;
@@ -88,8 +90,8 @@ export function createSession(
     ...(v.ref !== undefined ? { ref: v.ref } : {}),
     ...(v.concurrencyKey !== undefined ? { concurrencyKey: v.concurrencyKey } : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),
-    ...(typeof record.type === "string" ? { type: record.type } : { type: "prompt" }),
-    ...(typeof record.source === "string" ? { source: record.source } : { source: "api" }),
+    type: v.type,
+    source: v.source,
   };
   persistSession(state, session);
   return { ok: true, session: toPublic(state, session) };

@@ -1,5 +1,6 @@
 import { apiBase } from "./api-client.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
+import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
 
 /**
  * Fetch inventory fresh right before a read-modify-write mutation. Callers should not
@@ -25,6 +26,9 @@ export async function getInventory(hostId: string): Promise<HostInventory> {
       cfg.commandProfiles && typeof cfg.commandProfiles === "object"
         ? (cfg.commandProfiles as HostInventory["commandProfiles"])
         : emptyHostInventory().commandProfiles,
+    capabilities: Array.isArray(cfg.capabilities)
+      ? normalizeHostCapabilities(cfg.capabilities.filter(isHostCapability))
+      : [],
     ...(cfg.logLevel === "debug" ||
     cfg.logLevel === "info" ||
     cfg.logLevel === "warn" ||
@@ -45,6 +49,7 @@ export async function putInventory(
       repositories: inv.repositories,
       providerAccounts: inv.providerAccounts,
       commandProfiles: inv.commandProfiles,
+      ...(inv.capabilities !== undefined ? { capabilities: inv.capabilities } : {}),
       ...(inv.logLevel !== undefined ? { logLevel: inv.logLevel } : {}),
     }),
   });

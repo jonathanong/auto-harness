@@ -6,6 +6,7 @@ import type {
   SessionType,
 } from "./types.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
+import type { HostCapability } from "./host-capabilities.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
@@ -16,6 +17,7 @@ export type SessionResumeSpec = CommandResumeSpec & {
 /** Payload used when assigning work to an agent (control plane → agent). */
 export type SessionAssign = {
   sessionId: string;
+  sessionType?: SessionType;
   repositoryId: string;
   prompt: string;
   /** Final argv, already resolved control-plane-side (cascade walk + prompt append per Command.appendPrompt). */
@@ -75,6 +77,7 @@ export type HostWireMessage =
   | {
       type: "session:assign";
       sessionId: string;
+      sessionType?: SessionType;
       repositoryId: string;
       prompt: string;
       resolvedArgv: string[];
@@ -107,6 +110,8 @@ export type HostToServerMessage =
         labels: string[];
       }>;
       commandProfiles: string[];
+      /** Optional for compatibility with daemons released before capabilities. */
+      capabilities?: HostCapability[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
     }

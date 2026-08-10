@@ -147,6 +147,10 @@ sequenceDiagram
     Agent->>Sched: logs + status
 ```
 
+Dispatch is capability-gated: only agents advertising
+`scheduled-main-checkout` are eligible. This permits the daemon support to roll
+out before the scheduler begins emitting null-worktree assignments.
+
 Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-worktree](host-daemon.md#non-worktree-sessions-scheduled).
 
 ---

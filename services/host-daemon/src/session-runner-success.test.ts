@@ -86,6 +86,7 @@ describe("SessionRunner success paths", () => {
       checkoutRef: async ({ ref }) => {
         checkouts.push(ref);
       },
+      prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
     };
     const worktrees = new WorktreeManager(config, git);
@@ -166,6 +167,7 @@ describe("SessionRunner success paths", () => {
       ensureRepo: async () => undefined,
       ensureWorktree: async () => undefined,
       checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
     };
     const worktrees = new WorktreeManager(config, git);

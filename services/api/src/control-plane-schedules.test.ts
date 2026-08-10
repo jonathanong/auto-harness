@@ -4,6 +4,36 @@ import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("putSchedule / updateSchedule targeting", () => {
+  it("rejects non-branch schedule refs at create and update", () => {
+    const plane = new ControlPlane();
+    seedBaseCommand(plane);
+    expect(
+      plane.putSchedule({
+        repositoryId: "repo-1",
+        name: "tag-ref",
+        commandId: "cmd-base",
+        cron: "* * * * *",
+        timeout: 1,
+        nextRunAt: "t",
+        ref: "refs/tags/v1",
+      }),
+    ).toEqual({ ok: false, error: "ref must be a valid scheduled branch name" });
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "branch-ref",
+      commandId: "cmd-base",
+      cron: "* * * * *",
+      timeout: 1,
+      nextRunAt: "t",
+      ref: "main",
+    });
+    expect(plane.updateSchedule(schedule.id, { ref: "0123456789abcdef" })).toEqual({
+      ok: false,
+      error: "ref must be a valid scheduled branch name",
+    });
+    expect(plane.getSchedule(schedule.id)?.ref).toBe("main");
+  });
+
   it("putSchedule rejects a commandId that doesn't exist", () => {
     const plane = new ControlPlane();
     const result = plane.putSchedule({

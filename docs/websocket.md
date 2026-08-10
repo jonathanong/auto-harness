@@ -88,7 +88,7 @@ When `resume: true`, the agent checks out `ref` when present (otherwise the repo
 
 | Type              | Payload                                                                            | Purpose                                                                                                                                                                                                                                                                         |
 | ----------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `host:register`   | `hostId`, `worktrees[]`, optional `runningSessions[]`                              | Inventory + reclaim after reconnect                                                                                                                                                                                                                                             |
+| `host:register`   | `hostId`, `worktrees[]`, optional `capabilities[]`, optional `runningSessions[]`   | Inventory, rollout capabilities, and reclaim after reconnect                                                                                                                                                                                                                    |
 | `session:ack`     | `sessionId`                                                                        | Accepted assign                                                                                                                                                                                                                                                                 |
 | `session:status`  | `sessionId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?`, `cliResumeRef?` | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`); terminal status persists a captured native resume ref when available. On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [host-daemon.md](host-daemon.md#usage-limits-ai-vendor--cli-quotas)) |
 | `session:log`     | `sessionId`, `stream`, `content`, `timestamp`                                      | stdout / stderr / system chunk                                                                                                                                                                                                                                                  |
@@ -125,6 +125,12 @@ timeout and does not include it in reconnect `runningSessions`.
   "labels": ["codex", "claude"]
 }
 ```
+
+`capabilities` is a bounded list of recognized daemon features. A daemon that
+can safely execute scheduled sessions in the repository main checkout sends
+`["scheduled-main-checkout"]`. Missing capabilities mean an older daemon and
+normalize to `[]`; the scheduler must not send that daemon a null-worktree
+assignment.
 
 ---
 

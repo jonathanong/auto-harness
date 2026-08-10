@@ -27,6 +27,7 @@ describe("daemon registration", () => {
       expect.objectContaining({
         type: "host:register",
         hostId: "h",
+        capabilities: ["scheduled-main-checkout"],
         commandProfiles: ["a", "z"],
         runningSessions: ["a", "z"],
         worktrees: [expect.objectContaining({ id: "w", repositoryId: "r" })],

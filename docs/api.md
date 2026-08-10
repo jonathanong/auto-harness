@@ -4,7 +4,7 @@ HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/ap
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
-**Phase 2+ fields on `POST /sessions`:** `ref`, exactly one of `providerAccountId`/`commandId` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url` and `targetLabel`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), exactly one of `providerAccountId`/`commandId` (not free-form `command`), `concurrencyKey`, `onConflict`, `metadata`; response includes UI `url` and `targetLabel`. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
@@ -583,7 +583,7 @@ Get worktree details.
 
 ### Schedules
 
-Schedules run recurring maintenance tasks on the main repository checkout (not worktrees). Useful for dependency updates, linting, formatting, and other automated maintenance.
+Schedules run recurring maintenance tasks on the main repository checkout (not worktrees). Useful for dependency updates, linting, formatting, and other automated maintenance. A schedule `ref`, when set, is a **branch name** (not a tag or SHA) and must exist on an eligible host when the job runs.
 
 #### `POST /schedules`
 
@@ -601,14 +601,15 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field                           | Type    | Required    | Description                                                    |
-| ------------------------------- | ------- | ----------- | -------------------------------------------------------------- |
-| `repositoryId`                  | string  | ✓           | Target repository                                              |
-| `name`                          | string  | ✓           | Human-readable name for the schedule                           |
-| `providerAccountId`/`commandId` | string  | exactly one | Same target model as sessions — never a free-form shell string |
-| `cron`                          | string  | ✓           | Cron expression (5-field)                                      |
-| `timeout`                       | number  | ✗           | Max duration in seconds. Default: `3600` (1 hour)              |
-| `enabled`                       | boolean | ✗           | Default: `true`                                                |
+| Field                           | Type    | Required    | Description                                                                           |
+| ------------------------------- | ------- | ----------- | ------------------------------------------------------------------------------------- |
+| `repositoryId`                  | string  | ✓           | Target repository                                                                     |
+| `name`                          | string  | ✓           | Human-readable name for the schedule                                                  |
+| `providerAccountId`/`commandId` | string  | exactly one | Same target model as sessions — never a free-form shell string                        |
+| `cron`                          | string  | ✓           | Cron expression (5-field)                                                             |
+| `timeout`                       | number  | ✗           | Max duration in seconds. Default: `3600` (1 hour)                                     |
+| `enabled`                       | boolean | ✗           | Default: `true`                                                                       |
+| `ref`                           | string  | ✗           | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected. |
 
 **Response:** `201 Created`
 
@@ -637,7 +638,7 @@ Get schedule details including last run status.
 
 #### `PUT /schedules/:id`
 
-Update a schedule. **Operator or admin.**
+Update a schedule. **Operator or admin.** If changing `ref`, it must be a branch name; tags and SHAs are rejected.
 
 #### `DELETE /schedules/:id`
 

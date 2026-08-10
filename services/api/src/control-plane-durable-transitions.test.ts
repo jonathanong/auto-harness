@@ -177,7 +177,7 @@ describe("durable control-plane transitions", () => {
     });
   });
 
-  it("claims schedule fire once and durably requeues on disconnect", async () => {
+  it("claims schedule fire once and keeps it out of worktree assignment", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
       return;
@@ -263,20 +263,22 @@ describe("durable control-plane transitions", () => {
         },
       ],
       commandProfiles: ["echo schedule"],
+      capabilities: ["scheduled-main-checkout"],
       replaceExisting: true,
     });
     expect(reg.ok).toBe(true);
     await winner.hydrateFromStorage();
     const assigned = await winner.assignQueuedDurable();
-    expect(assigned).toHaveLength(1);
-    const sid = assigned[0]!.session.id;
-    expect(
-      (await winner.handleHostMessageDurable({ type: "session:ack", sessionId: sid })).ok,
-    ).toBe(true);
+    expect(assigned).toEqual([]);
+    const scheduled = (await ctx.storage.listAllSessions()).find(
+      (session) => session.type === "scheduled" && session.repositoryId === "repo-schedule",
+    );
+    expect(scheduled?.status).toBe("queued");
+    expect((await ctx.storage.getWorktree("worktree-schedule"))?.status).toBe("idle");
     expect((await winner.disconnectHostDurable(reg.ok ? reg.connectionId : "missing")).length).toBe(
       0,
     );
-    expect((await ctx.storage.getSession(sid))?.status).toBe("running");
+    expect((await ctx.storage.getSession(scheduled!.id))?.status).toBe("queued");
     expect((await ctx.storage.getWorktree("worktree-schedule"))?.online).toBe(false);
   });
 

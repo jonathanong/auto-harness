@@ -1,3 +1,5 @@
+import type { HostToServerMessage } from "@auto-harness/shared";
+
 import type { DaemonConfig } from "./config.ts";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
@@ -10,7 +12,7 @@ export async function registerDaemon(
   // Registration is the reconnect barrier.  It deliberately bypasses the
   // producer-side FIFO so WsTransport can synchronously replace its pending
   // snapshot before it releases any buffered session traffic.
-  await transport.send({
+  const registration: Extract<HostToServerMessage, { type: "host:register" }> = {
     type: "host:register",
     hostId: config.hostId,
     worktrees: config.repositories.flatMap((repository) =>
@@ -23,8 +25,10 @@ export async function registerDaemon(
       })),
     ),
     commandProfiles: Object.keys(config.commandProfiles).toSorted(),
+    capabilities: ["scheduled-main-checkout"],
     runningSessions: [...runningSessions].toSorted(),
-  });
+  };
+  await transport.send(registration);
 }
 
 export async function applyDaemonInventory(

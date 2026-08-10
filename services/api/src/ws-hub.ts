@@ -3,6 +3,8 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
+  HOST_CAPABILITIES,
+  isHostCapability,
   isValidCliResumeRef,
   isSessionStatus,
   type HostToServerMessage,
@@ -237,6 +239,11 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         !Array.isArray(message.commandProfiles) ||
         message.commandProfiles.length > 1_000 ||
         !message.commandProfiles.every((profile) => boundedText(profile)) ||
+        (message.capabilities !== undefined &&
+          (!Array.isArray(message.capabilities) ||
+            message.capabilities.length > HOST_CAPABILITIES.length ||
+            !message.capabilities.every(isHostCapability) ||
+            new Set(message.capabilities).size !== message.capabilities.length)) ||
         (message.runningSessions !== undefined &&
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||

@@ -21,11 +21,13 @@ describe("durable host registration", () => {
       hostId: "h",
       worktrees: inventory,
       commandProfiles: ["p"],
+      capabilities: ["scheduled-main-checkout"],
       replaceExisting: true,
     });
     expect(result).toEqual({ ok: true, connectionId: "c" });
     expect(calls).toEqual(["lease", "worktree:c"]);
     expect(plane.getWorktree("w")?.connectionId).toBe("c");
+    expect(plane.state.connections.get("c")?.capabilities).toEqual(["scheduled-main-checkout"]);
   });
 
   it("releases a just-acquired lease if fenced inventory loses", async () => {

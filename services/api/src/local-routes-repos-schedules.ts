@@ -135,6 +135,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
+      if (body.ref !== undefined && typeof body.ref !== "string") {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "ref must be a valid scheduled branch name" },
+        });
+        return true;
+      }
       if (!scoped(ctx, body.repositoryId)) {
         hidden(res);
         return true;
@@ -199,6 +205,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     if (method === "PUT" || method === "PATCH") {
       try {
         const body = (await readJson(req)) as Record<string, unknown>;
+        if (body.ref !== undefined && typeof body.ref !== "string") {
+          send(res, 400, {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "ref must be a valid scheduled branch name",
+            },
+          });
+          return true;
+        }
         if (typeof body.repositoryId === "string" && !scoped(ctx, body.repositoryId)) {
           hidden(res);
           return true;
@@ -217,7 +232,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
         });
         if (!result.ok) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const notFound = result.error === "schedule not found";
+          send(res, notFound ? 404 : 400, {
+            error: { code: notFound ? "NOT_FOUND" : "VALIDATION_ERROR", message: result.error },
+          });
           return true;
         }
         send(res, 200, result.schedule);

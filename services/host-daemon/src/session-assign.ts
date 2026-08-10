@@ -6,6 +6,7 @@ type AssignMessage = Extract<HostWireMessage, { type: "session:assign" }>;
 export function sessionAssignFromWire(message: AssignMessage): SessionAssign {
   return {
     sessionId: message.sessionId,
+    ...(message.sessionType !== undefined ? { sessionType: message.sessionType } : {}),
     repositoryId: message.repositoryId,
     prompt: message.prompt,
     resolvedArgv: message.resolvedArgv,

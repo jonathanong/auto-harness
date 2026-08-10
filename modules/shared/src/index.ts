@@ -22,6 +22,15 @@ export type {
 } from "./session.ts";
 
 export {
+  HOST_CAPABILITIES,
+  hasHostCapability,
+  isHostCapability,
+  normalizeHostCapabilities,
+  type HostCapability,
+  type HostCapabilities,
+} from "./host-capabilities.ts";
+
+export {
   DEFAULT_ACK_DEADLINE_MS,
   DEFAULT_HOST_KEEPALIVE_MS,
   DEFAULT_ARCHIVE_PREFIX,
@@ -37,7 +46,9 @@ export {
   ON_CONFLICT_OPTIONS,
   PACKAGE_SCOPE,
   SESSION_ERROR_CODES,
+  SESSION_SOURCES,
   SESSION_STATUSES,
+  SESSION_TYPES,
   TERMINAL_SESSION_STATUSES,
 } from "./constants.ts";
 
@@ -45,8 +56,10 @@ export type { ValidationResult } from "./validation.ts";
 export {
   formatLogSortKey,
   isOnConflict,
+  isSessionSource,
   isSessionErrorCode,
   isSessionStatus,
+  isSessionType,
   isTerminalSessionStatus,
   validateCreateSessionInput,
 } from "./validation.ts";
@@ -92,6 +105,10 @@ export {
 
 export { newId } from "./id.ts";
 export { isValidSlugName, SLUG_NAME_HINT, SLUG_PATTERN } from "./slug.ts";
+export {
+  isValidScheduledBranchRef,
+  MAX_SCHEDULED_BRANCH_REF_BYTES,
+} from "./scheduled-branch-ref.ts";
 
 export {
   parseProviderAccountOverrides,

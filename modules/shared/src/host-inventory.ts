@@ -1,4 +1,5 @@
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
+import type { HostCapability } from "./host-capabilities.ts";
 
 /**
  * Per-scope override of a provider account's enablement/command, on a
@@ -44,6 +45,8 @@ export type HostInventory = {
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
+  /** Optional features this host daemon explicitly supports. */
+  capabilities?: HostCapability[];
   logLevel?: "debug" | "info" | "warn" | "error";
 };
 
@@ -77,6 +80,7 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
       ? existing.providerAccounts.map((a) => ({ ...a }))
       : [],
     commandProfiles: seedProfiles(existing),
+    capabilities: [...(existing?.capabilities ?? [])],
     ...(existing?.logLevel !== undefined ? { logLevel: existing.logLevel } : {}),
   };
 }
@@ -222,5 +226,6 @@ export function emptyHostInventory(): HostInventory {
     repositories: [],
     providerAccounts: [],
     commandProfiles: { ...DEFAULT_ECHO_PROFILE },
+    capabilities: [],
   };
 }

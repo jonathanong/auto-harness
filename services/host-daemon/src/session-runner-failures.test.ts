@@ -8,15 +8,30 @@ import { baseAssign, setup } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("SessionRunner process and profile failures", () => {
-  it("fails when worktreeId is null", async () => {
+  it("runs a scheduled session when worktreeId is null", async () => {
     const { sessionRunner } = setup({
       async run() {
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
+    const result = await sessionRunner.run(
+      baseAssign({ worktreeId: null, sessionType: "scheduled" }),
+    );
+    expect(result.status).toBe("completed");
+  });
+
+  it("rejects a normal session that has no worktree", async () => {
+    const { sessionRunner } = setup({
+      async run() {
+        throw new Error("must not spawn");
+      },
+    });
     const result = await sessionRunner.run(baseAssign({ worktreeId: null }));
-    expect(result.status).toBe("failed");
-    expect(result.errorCode).toBe("setup_failed");
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "main checkout sessions must be scheduled",
+    });
   });
 
   it("fails non-zero process exit", async () => {
@@ -52,6 +67,7 @@ describe("SessionRunner process and profile failures", () => {
       ensureRepo: async () => undefined,
       ensureWorktree: async () => undefined,
       checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
     };
     const worktrees = new WorktreeManager(config, git);

@@ -1,5 +1,8 @@
 import {
+  HOST_CAPABILITIES,
+  isHostCapability,
   isValidSlugName,
+  normalizeHostCapabilities,
   parseProviderAccountOverrides,
   parseProviderAccounts,
   SLUG_NAME_HINT,
@@ -106,6 +109,19 @@ export function parseHostBody(
 
   const providerAccounts = parseProviderAccounts(body.providerAccounts);
 
+  if (
+    body.capabilities !== undefined &&
+    (!Array.isArray(body.capabilities) ||
+      body.capabilities.length > HOST_CAPABILITIES.length ||
+      !body.capabilities.every(isHostCapability) ||
+      new Set(body.capabilities).size !== body.capabilities.length)
+  ) {
+    throw new Error("capabilities must be a supported capability array");
+  }
+  const capabilities = normalizeHostCapabilities(
+    body.capabilities as import("@auto-harness/shared").HostCapability[] | undefined,
+  );
+
   if (!isRecord(body.commandProfiles)) {
     throw new Error("commandProfiles must be an object");
   }
@@ -142,6 +158,7 @@ export function parseHostBody(
     repositories,
     providerAccounts,
     commandProfiles,
+    capabilities,
     ...(logLevel !== undefined ? { logLevel } : {}),
   };
 }

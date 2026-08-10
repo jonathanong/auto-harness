@@ -4,6 +4,7 @@ export type GitClient = {
   ensureRepo(path: string): Promise<void>;
   ensureWorktree(opts: { repoPath: string; worktreePath: string; branch: string }): Promise<void>;
   checkoutRef(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
+  prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
 
@@ -89,6 +90,52 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       }
       if (co.exitCode !== 0) {
         throw new Error(`Failed to checkout ref ${ref}: ${co.stderr}`);
+      }
+    },
+
+    async prepareMainCheckout({ cwd, ref, signal }) {
+      // Main checkouts may contain a branch that maintenance commands commit
+      // and push. Never detach or reset this checkout, and let dirty-tree
+      // conflicts fail rather than overwrite operator work.
+      const format = await runGit(runner, cwd, ["check-ref-format", "--branch", ref], signal);
+      if (format.exitCode !== 0) {
+        throw new Error(`Invalid main checkout branch ref: ${ref}`);
+      }
+      const status = await runGit(runner, cwd, ["status", "--porcelain"], signal);
+      if (status.exitCode !== 0) {
+        throw new Error(`Failed to inspect main checkout before switching to branch ${ref}`);
+      }
+      if (status.stdout.length > 0) {
+        throw new Error(`Main checkout has uncommitted changes; refusing to switch branch ${ref}`);
+      }
+      const localBranch = await runGit(
+        runner,
+        cwd,
+        ["show-ref", "--verify", "--quiet", `refs/heads/${ref}`],
+        signal,
+      );
+      let switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
+      if (switched.exitCode !== 0) {
+        if (localBranch.exitCode === 0) {
+          throw new Error(`Failed to switch main checkout to branch ${ref}: ${switched.stderr}`);
+        }
+        const fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
+        if (fetched.exitCode !== 0) {
+          throw new Error(`Failed to fetch branch ${ref}: ${fetched.stderr}`);
+        }
+        switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
+      }
+      if (switched.exitCode !== 0) {
+        throw new Error(`Failed to switch main checkout to branch ${ref}: ${switched.stderr}`);
+      }
+      const current = await runGit(
+        runner,
+        cwd,
+        ["symbolic-ref", "--quiet", "--short", "HEAD"],
+        signal,
+      );
+      if (current.exitCode !== 0 || current.stdout.trim() !== ref) {
+        throw new Error(`Main checkout is not on branch ${ref}`);
       }
     },
 

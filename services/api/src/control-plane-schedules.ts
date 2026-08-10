@@ -1,3 +1,5 @@
+import { isValidScheduledBranchRef } from "@auto-harness/shared";
+
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
@@ -27,6 +29,9 @@ export function putSchedule(
     id?: string;
   },
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+  if (input.ref !== undefined && !isValidScheduledBranchRef(input.ref)) {
+    return { ok: false, error: "ref must be a valid scheduled branch name" };
+  }
   const target = resolveSessionTargetLabel(state, input.providerAccountId, input.commandId);
   if (!target.ok) {
     return target;
@@ -83,6 +88,9 @@ export function updateSchedule(
   const existing = state.schedules.get(id);
   if (!existing) {
     return { ok: false, error: "schedule not found" };
+  }
+  if (patch.ref !== undefined && !isValidScheduledBranchRef(patch.ref)) {
+    return { ok: false, error: "ref must be a valid scheduled branch name" };
   }
   // Retargeting (either field patched) resets the *other* field — the two are
   // mutually exclusive, so switching to a commandId clears any providerAccountId
