@@ -64,6 +64,7 @@ export type ControlPlaneOptions = {
   shardCount?: number;
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
+  reconnectGraceMs?: number;
   usageLimitRetryCeiling?: number;
   archivePrefix?: string;
   /** Opt-in outbound webhook URL (Phase 5). */

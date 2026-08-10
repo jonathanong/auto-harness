@@ -56,10 +56,23 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         }
       } else if (ctx.principal?.boundHostId) {
         const session = plane.getSession(body.sessionId);
-        if (!session || !mayAccessHost(ctx.principal, session.hostId)) {
+        if (!session || !mayAccessHost(ctx.principal, session.hostId ?? undefined)) {
           send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
           return true;
         }
+      }
+      // ACK/status/log transitions require the WebSocket connection epoch.
+      // The legacy HTTP relay has no durable per-connection fence, so keeping
+      // it writable would let a superseded host mutate a replacement lease.
+      if (
+        body.type === "session:ack" ||
+        body.type === "session:status" ||
+        body.type === "session:log"
+      ) {
+        send(res, 410, {
+          error: { code: "HOST_MESSAGE_WEBSOCKET_REQUIRED", message: "use the host WebSocket" },
+        });
+        return true;
       }
       const result = await plane.handleHostMessageDurable(body);
       if (!result.ok) {

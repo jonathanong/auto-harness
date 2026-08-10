@@ -80,6 +80,9 @@ export type HostWireMessage =
       metadata?: Record<string, unknown>;
       assignedAt: string;
     }
+  /** Sent only after the control plane durably commits `session:ack` for the
+   * current host connection. A successful WebSocket write is not an ACK. */
+  | { type: "session:acknowledged"; sessionId: string }
   | { type: "session:cancel"; sessionId: string }
   | { type: "host:drain" };
 
@@ -95,6 +98,8 @@ export type HostToServerMessage =
         labels: string[];
       }>;
       commandProfiles: string[];
+      /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
+      runningSessions?: string[];
     }
   | { type: "session:ack"; sessionId: string }
   | {

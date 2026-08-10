@@ -83,21 +83,25 @@ export async function reclaimStaleHostsDurable(
     if (nowMs - Date.parse(meta.lastHeartbeatAt) < state.heartbeatStaleMs) {
       continue;
     }
-    if (meta.connectionId) {
-      const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
-      if (!released) {
-        continue;
-      }
-      state.connections.delete(meta.connectionId);
-    }
+    if (!meta.connectionId) continue;
     const freed = await offlineHostAndRequeueDurable(
       state,
       hostId,
+      meta.connectionId,
       "agent heartbeat stale; requeued",
     );
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) reclaimed.push(sid);
     }
+    const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
+    if (!released) {
+      state.connections.delete(meta.connectionId);
+      if (state.hostConnection.get(hostId) === meta.connectionId) {
+        state.hostConnection.delete(hostId);
+      }
+      continue;
+    }
+    state.connections.delete(meta.connectionId);
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);
   }

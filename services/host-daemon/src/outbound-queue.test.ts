@@ -11,18 +11,12 @@ const keepalive = (at: string): HostToServerMessage => ({
 });
 
 describe("OutboundQueue", () => {
-  it("rejects the failed caller but recovers FIFO delivery for the next caller", async () => {
-    const sent: string[] = [];
+  it("delegates delivery and reports the transport failure", async () => {
     const reports: string[] = [];
-    let fail = true;
     const queue = new OutboundQueue(
       {
-        async send(message) {
-          if (fail) {
-            fail = false;
-            throw new Error("offline");
-          }
-          sent.push(message.type);
+        async send() {
+          throw new Error("offline");
         },
         onMessage() {},
         close() {},
@@ -31,25 +25,32 @@ describe("OutboundQueue", () => {
     );
 
     await expect(queue.send(keepalive("first"))).rejects.toThrow("offline");
-    await expect(queue.send(keepalive("second"))).resolves.toBeUndefined();
     await queue.flush();
-    expect(sent).toEqual(["host:keepalive"]);
-    expect(reports[0]).toContain("offline");
+    expect(reports).toEqual(["outbound host:keepalive failed: offline"]);
   });
 
-  it("reports non-Error failures while preserving the rejecting delivery", async () => {
-    const reports: string[] = [];
+  it("waits only for the single transport-owned FIFO deliveries already started", async () => {
+    const sent: HostToServerMessage[] = [];
+    let release: (() => void) | undefined;
     const queue = new OutboundQueue(
       {
-        async send() {
-          throw "raw";
+        send(message) {
+          sent.push(message);
+          return new Promise<void>((resolve) => {
+            release = resolve;
+          });
         },
         onMessage() {},
         close() {},
       },
-      (line) => reports.push(line),
+      () => {},
     );
-    await expect(queue.send(keepalive("raw"))).rejects.toBe("raw");
-    expect(reports).toEqual(["outbound host:keepalive failed: raw"]);
+
+    const delivery = queue.send(keepalive("first"));
+    const flushed = queue.flush();
+    expect(sent).toEqual([keepalive("first")]);
+    expect(release).toBeDefined();
+    release?.();
+    await expect(Promise.all([delivery, flushed])).resolves.toEqual([undefined, undefined]);
   });
 });

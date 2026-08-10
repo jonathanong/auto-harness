@@ -1,6 +1,6 @@
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
-import type { DaemonTransport } from "./daemon-transport.ts";
+import type { DaemonTransport } from "./daemon-transport-types.ts";
 
 /**
  * In-process transport binding an agent to a ControlPlane-like message handler.

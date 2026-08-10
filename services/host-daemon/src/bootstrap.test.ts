@@ -73,6 +73,17 @@ describe("fetchHostInventory", () => {
         logLevel: "info",
       }),
     );
+    expect(
+      inventoryFingerprint({
+        ...empty,
+        commandProfiles: { z: { argv: ["z"] }, a: { argv: ["a"] } },
+      }),
+    ).toBe(
+      inventoryFingerprint({
+        ...empty,
+        commandProfiles: { a: { argv: ["a"] }, z: { argv: ["z"] } },
+      }),
+    );
   });
 
   it("handles empty error bodies", async () => {

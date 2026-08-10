@@ -33,6 +33,10 @@ export type SessionRecord = {
   startedAt?: string;
   completedAt?: string;
   ackReceivedAt?: string;
+  /** Exact host lease that claimed this running assignment. */
+  assignmentConnectionId?: string;
+  /** Deadline after an acknowledged daemon disconnects before this work is requeued. */
+  reconnectDeadlineAt?: string;
   exitCode?: number | null;
   cliResumeRef?: string;
   resumedFromSessionId?: string;
@@ -50,6 +54,8 @@ export type WorktreeRecord = {
   status: "idle" | "busy" | "error";
   online: boolean;
   currentSessionId?: string | null;
+  /** Exact host lease that last published this worktree inventory/claim. */
+  connectionId?: string;
   lastAssignedAt?: string | null;
 };
 

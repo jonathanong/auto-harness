@@ -1,28 +1,39 @@
+/* eslint-disable max-lines */
 import type { HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
-import type { DaemonTransport } from "./daemon-transport.ts";
+import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SpawnProcessRunner } from "./executor.ts";
 import { createGitClient } from "./git.ts";
+import { configureConnectionEvents } from "./daemon-connection-events.ts";
+import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
+import { sendDaemonLog } from "./daemon-log-sender.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
 import { sessionAssignFromWire } from "./session-assign.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
-export type { DaemonTransport } from "./daemon-transport.ts";
+export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
   transport: DaemonTransport;
   processRunner?: ProcessRunner;
-  /** When true, refuse new assigns (drain / auto-update). */
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
+  reconnectAbortMs?: number;
+  /** Maximum wait for peer confirmation that `session:ack` committed. */
+  ackConfirmationMs?: number;
+  timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 };
 type InflightSession = {
   controller: AbortController;
   work: Promise<void>;
+  /** Set only by a server `session:acknowledged` wire message. */
+  acknowledged: boolean;
+  resolveAcknowledgement?: () => void;
 };
+const MAX_INFLIGHT_SESSIONS = 64;
 export class DaemonLoop {
   private readonly runner: SessionRunner;
   private readonly worktrees: WorktreeManager;
@@ -35,12 +46,19 @@ export class DaemonLoop {
   private readonly config: DaemonConfig;
   private readonly transport: DaemonTransport;
   private readonly outbound: OutboundQueue;
+  private readonly reconnectAbortMs: number;
+  private readonly ackConfirmationMs: number;
+  private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
     this.config = options.config;
     this.transport = options.transport;
     this.isDrainingExternal = options.isDraining ?? undefined;
     this.onLog = options.onLog ?? undefined;
     this.now = options.now ?? (() => new Date().toISOString());
+    this.reconnectAbortMs = options.reconnectAbortMs ?? 75_000;
+    this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
+    this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
     const git = createGitClient(processRunner);
@@ -59,35 +77,35 @@ export class DaemonLoop {
         this.onLog?.(`server message failed: ${err instanceof Error ? err.message : String(err)}`);
       });
     });
+    this.connectionEvents = configureConnectionEvents({
+      transport: this.transport,
+      register: () => this.register(),
+      onError: (error) => this.onLog?.(`re-register failed: ${String(error)}`),
+      abortUnacknowledged: () => {
+        for (const session of this.inflight.values()) {
+          if (!session.acknowledged) session.controller.abort();
+        }
+      },
+      abortInflight: () => {
+        for (const session of this.inflight.values()) session.controller.abort();
+      },
+      abortAfterMs: this.reconnectAbortMs,
+      timers: this.timers,
+    });
     await this.register();
   }
   async applyInventory(next: DaemonConfig): Promise<void> {
-    this.config.repositories = next.repositories;
-    this.config.commandProfiles = next.commandProfiles;
-    if (next.logLevel) {
-      this.config.logLevel = next.logLevel;
-    }
-    await this.worktrees.ensureAll();
-    await this.register();
+    await applyDaemonInventory(this.config, next, this.worktrees, () => this.register());
   }
-
   async register(): Promise<void> {
-    await this.outbound.send({
-      type: "host:register",
-      hostId: this.config.hostId,
-      worktrees: this.config.repositories.flatMap((r) =>
-        r.worktrees.map((w) => ({
-          id: w.id,
-          name: w.name,
-          repositoryId: r.id,
-          path: w.path,
-          labels: w.labels,
-        })),
+    await registerDaemon(
+      this.config,
+      this.transport,
+      [...this.inflight].flatMap(([sessionId, session]) =>
+        session.acknowledged ? [sessionId] : [],
       ),
-      commandProfiles: Object.keys(this.config.commandProfiles),
-    });
+    );
   }
-
   async keepalive(): Promise<void> {
     await this.outbound.send({
       type: "host:keepalive",
@@ -95,8 +113,6 @@ export class DaemonLoop {
       at: this.now(),
     });
   }
-
-  /** Phase 5 drain: finish inflight, accept no new assigns. Does not kill CLIs. */
   beginDrain(): void {
     this.draining = true;
   }
@@ -104,7 +120,6 @@ export class DaemonLoop {
   isDraining(): boolean {
     return this.draining || this.isDrainingExternal?.() === true;
   }
-
   inflightCount(): number {
     return this.inflight.size;
   }
@@ -114,6 +129,7 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    this.connectionEvents?.stop();
     this.transport.close();
   }
 
@@ -130,6 +146,17 @@ export class DaemonLoop {
       }
       return;
     }
+    if (msg.type === "session:acknowledged") {
+      const current = this.inflight.get(msg.sessionId);
+      // Duplicate and late confirmations are harmless. The peer's durable
+      // confirmation—not the outgoing write callback—permits execution.
+      if (!current || current.acknowledged || current.controller.signal.aborted) return;
+      current.acknowledged = true;
+      const resolve = current.resolveAcknowledgement;
+      current.resolveAcknowledgement = undefined;
+      resolve?.();
+      return;
+    }
     if (msg.type !== "session:assign") {
       return;
     }
@@ -143,13 +170,26 @@ export class DaemonLoop {
       return;
     }
 
+    if (this.inflight.size >= MAX_INFLIGHT_SESSIONS) {
+      this.onLog?.(`session capacity reached: refused assign ${msg.sessionId}`);
+      return;
+    }
+
     const controller = new AbortController();
+    // Install the slot before the first await so an immediate peer reply is
+    // tied to this exact assignment.
+    const entry: InflightSession = {
+      controller,
+      work: Promise.resolve(),
+      acknowledged: false,
+    };
+    this.inflight.set(msg.sessionId, entry);
     const work = this.runAssign(msg, controller.signal);
-    this.inflight.set(msg.sessionId, { controller, work });
+    entry.work = work;
     try {
       await work;
     } finally {
-      this.inflight.delete(msg.sessionId);
+      if (this.inflight.get(msg.sessionId) === entry) this.inflight.delete(msg.sessionId);
     }
   }
 
@@ -157,7 +197,8 @@ export class DaemonLoop {
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
     signal: AbortSignal,
   ): Promise<void> {
-    await this.outbound.send({ type: "session:ack", sessionId: msg.sessionId });
+    await this.outbound.send({ type: "session:ack", sessionId: msg.sessionId }, { signal });
+    if (!(await this.waitForAcknowledgement(msg.sessionId, signal))) return;
 
     const assign = sessionAssignFromWire(msg);
 
@@ -192,19 +233,39 @@ export class DaemonLoop {
   }
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
-    this.onLog?.(`[${chunk.stream}#${chunk.seq}] ${chunk.content}`);
-    await this.outbound
-      .send({
-        type: "session:log",
-        sessionId: chunk.sessionId,
-        stream: chunk.stream,
-        content: chunk.content,
-        timestamp: chunk.timestamp,
-        seq: chunk.seq,
-      })
-      .catch((err: unknown) => {
-        this.onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);
-      });
+    await sendDaemonLog(this.outbound, this.onLog, chunk);
+  }
+
+  private async waitForAcknowledgement(sessionId: string, signal: AbortSignal): Promise<boolean> {
+    const inflight = this.inflight.get(sessionId);
+    if (!inflight || inflight.controller.signal !== signal || signal.aborted) return false;
+    if (inflight.acknowledged) return true;
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const finish = (acknowledged: boolean) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", aborted);
+        if (timeout) this.timers.clearTimeout(timeout);
+        if (inflight.resolveAcknowledgement === confirmed) {
+          inflight.resolveAcknowledgement = undefined;
+        }
+        resolve(acknowledged);
+      };
+      const confirmed = () => finish(true);
+      const aborted = () => finish(false);
+      inflight.resolveAcknowledgement = confirmed;
+      signal.addEventListener("abort", aborted, { once: true });
+      timeout = this.timers.setTimeout(() => {
+        this.onLog?.(`acknowledgement confirmation timed out for ${sessionId}`);
+        inflight.controller.abort();
+        finish(false);
+      }, this.ackConfirmationMs);
+      // A loopback peer can reply synchronously between the earlier state
+      // check and installing this resolver.
+      if (inflight.acknowledged) confirmed();
+    });
   }
 }
 

@@ -63,6 +63,7 @@ export function createPlaneWsBridge(): {
           return;
         }
         let boundHostId: string | null = null;
+        let boundConnectionId: string | null = null;
         let windowStartedAt = Date.now();
         let messageCount = 0;
         let accepting = true;
@@ -70,6 +71,15 @@ export function createPlaneWsBridge(): {
 
         const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
           if (!accepting) return;
+          if (
+            boundHostId &&
+            boundConnectionId &&
+            plane.state.hostConnection.get(boundHostId) !== boundConnectionId
+          ) {
+            accepting = false;
+            socket.close(1008, "stale host connection");
+            return;
+          }
           if (!isAllowedMessage(plane, msg, boundHostId, principal, auth?.mode === "required")) {
             accepting = false;
             socket.close(1008, "message not authorized");
@@ -78,7 +88,11 @@ export function createPlaneWsBridge(): {
           const registration =
             msg.type === "host:register" ? { hostId: msg.hostId, closed: false } : null;
           if (registration) pendingRegistration = registration;
-          const result = await plane.handleHostMessageDurable(msg);
+          const result = await plane.handleHostMessageDurable(
+            msg,
+            boundConnectionId ?? undefined,
+            msg.type === "host:register",
+          );
           if (!result.ok) {
             if (registration && pendingRegistration === registration) pendingRegistration = null;
             if (socket.readyState === socket.OPEN) {
@@ -98,8 +112,24 @@ export function createPlaneWsBridge(): {
             }
             // Do not overwrite a live socket until the control plane accepted the claim.
             boundHostId = msg.hostId;
+            boundConnectionId = result.connectionId ?? null;
             hostSockets.set(msg.hostId, socket);
-            socket.send(JSON.stringify({ type: "host:registered", hostId: msg.hostId }));
+            socket.send(
+              JSON.stringify({
+                type: "host:registered",
+                hostId: msg.hostId,
+                connectionId: boundConnectionId,
+              }),
+            );
+          } else if (
+            msg.type === "session:ack" &&
+            result.sessionAcknowledged === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            // The client must not equate a successful WebSocket write with a
+            // server acknowledgement. This reply is emitted only after the
+            // fenced, durable acknowledgement transaction has committed.
+            socket.send(JSON.stringify({ type: "session:acknowledged", sessionId: msg.sessionId }));
           }
         };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire
@@ -135,8 +165,7 @@ export function createPlaneWsBridge(): {
           if (pendingRegistration) pendingRegistration.closed = true;
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
-            const connectionId = plane.state.hostConnection.get(boundHostId);
-            if (connectionId) void plane.disconnectHostDurable(connectionId);
+            if (boundConnectionId) void plane.disconnectHostDurable(boundConnectionId);
           }
         });
       };
@@ -206,7 +235,11 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         }) ||
         !Array.isArray(message.commandProfiles) ||
         message.commandProfiles.length > 1_000 ||
-        !message.commandProfiles.every((profile) => boundedText(profile))
+        !message.commandProfiles.every((profile) => boundedText(profile)) ||
+        (message.runningSessions !== undefined &&
+          (!Array.isArray(message.runningSessions) ||
+            message.runningSessions.length > 1_000 ||
+            !message.runningSessions.every((sessionId) => boundedText(sessionId))))
       ) {
         return null;
       }
@@ -271,7 +304,10 @@ function isAllowedMessage(
   )
     return false;
   if (msg.type === "host:register")
-    return !hostId && (!principal?.boundHostId || principal.boundHostId === msg.hostId);
+    return (
+      (!hostId || hostId === msg.hostId) &&
+      (!principal?.boundHostId || principal.boundHostId === msg.hostId)
+    );
   if (!hostId) return false;
   if (msg.type === "host:keepalive") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);

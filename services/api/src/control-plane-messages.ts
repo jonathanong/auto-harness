@@ -119,6 +119,7 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         commandProfiles: msg.commandProfiles,
+        ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
     }
@@ -127,11 +128,24 @@ export function handleHostMessage(
       if (!session) {
         return { ok: false, error: "session not found" };
       }
-      if (session.status !== "running") {
+      // Only the first valid ACK is a state transition. Retried or stale
+      // frames remain idempotently successful, but must not create a fresh
+      // peer confirmation for a different daemon assignment attempt.
+      if (session.status !== "running" || session.ackReceivedAt !== undefined) {
         return { ok: true };
       }
       session.ackReceivedAt = state.now();
       state.pendingAcks.delete(msg.sessionId);
+      if (session.hostId) {
+        // In-memory control planes use the same peer-confirmation contract as
+        // the durable WebSocket path. A completed send is not permission for
+        // the daemon to start the CLI; this callback represents the accepted
+        // in-memory state transition.
+        state.onHostMessage?.(session.hostId, {
+          type: "session:acknowledged",
+          sessionId: session.id,
+        });
+      }
       return { ok: true };
     }
     case "session:status": {
@@ -166,19 +180,46 @@ export function handleHostMessage(
 export async function handleHostMessageDurable(
   state: ControlPlaneState,
   msg: HostToServerMessage,
-): Promise<{ ok: boolean; error?: string; connectionId?: string }> {
+  sourceConnectionId?: string,
+  replaceExisting = false,
+): Promise<{
+  ok: boolean;
+  error?: string;
+  connectionId?: string;
+  /** Present only after the durable ack transaction committed. */
+  sessionAcknowledged?: string;
+}> {
   if (msg.type === "host:register") {
     const result = await registerHostDurable(state, {
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       commandProfiles: msg.commandProfiles,
+      ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+      replaceExisting,
     });
     return result.ok
       ? { ok: true, connectionId: result.connectionId }
       : { ok: false, error: result.error };
   }
   if (!state.storage) {
+    // The synchronous in-memory transition emits its own confirmation through
+    // `onHostMessage`. Keeping it out of this result prevents a local WS hub
+    // from delivering the same confirmation once through its bridge and once
+    // as a direct socket response.
     return handleHostMessage(state, msg);
+  }
+  const storage = state.storage;
+  let fence: { hostId: string; connectionId: string } | undefined;
+  if (sourceConnectionId) {
+    const hostId =
+      msg.type === "host:keepalive"
+        ? msg.hostId
+        : (state.sessions.get(msg.sessionId)?.hostId ??
+          (await storage.getSession(msg.sessionId))?.hostId);
+    if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
+      return { ok: false, error: "stale host connection" };
+    }
+    fence = { hostId, connectionId: sourceConnectionId };
   }
   if (msg.type === "host:keepalive") {
     return (await heartbeatDurable(state, msg.hostId, msg.at))
@@ -189,13 +230,32 @@ export async function handleHostMessageDurable(
     if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
-    await appendLogDurable(state, {
+    const log = {
       sessionId: msg.sessionId,
       stream: msg.stream,
       content: msg.content,
       timestamp: msg.timestamp,
       seq: msg.seq,
-    });
+    };
+    if (fence) {
+      if (
+        !(await storage.putLogFenced(
+          { ...log, timestampSeq: formatLogSortKey(log.timestamp, log.seq) },
+          fence,
+        ))
+      ) {
+        return { ok: false, error: "stale host connection" };
+      }
+      const { retained, evicted } = retainLogs(state, {
+        ...log,
+        timestampSeq: formatLogSortKey(log.timestamp, log.seq),
+      });
+      for (const removed of evicted)
+        await storage.deleteLog(removed.sessionId, removed.timestampSeq);
+      state.logs.set(log.sessionId, retained);
+    } else {
+      await appendLogDurable(state, log);
+    }
     return { ok: true };
   }
   if (msg.type === "session:ack") {
@@ -203,18 +263,19 @@ export async function handleHostMessageDurable(
     if (!session) {
       return { ok: false, error: "session not found" };
     }
-    const accepted = await state.storage.acknowledgeSession(msg.sessionId, state.now());
+    const accepted = await storage.acknowledgeSession(msg.sessionId, state.now(), fence);
     if (accepted) {
       state.sessions.set(msg.sessionId, {
         ...session,
         ackReceivedAt: session.ackReceivedAt ?? state.now(),
       });
       state.pendingAcks.delete(msg.sessionId);
+      return { ok: true, sessionAcknowledged: msg.sessionId };
     }
     return { ok: true };
   }
   if (msg.type === "session:status") {
-    return applySessionStatusDurable(state, msg);
+    return applySessionStatusDurable(state, msg, fence);
   }
   return { ok: false, error: "unsupported host message" };
 }
@@ -222,6 +283,7 @@ export async function handleHostMessageDurable(
 async function applySessionStatusDurable(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  fence?: { hostId: string; connectionId: string },
 ): Promise<{ ok: boolean; error?: string }> {
   const session = state.sessions.get(msg.sessionId);
   if (!session) {
@@ -240,11 +302,18 @@ async function applySessionStatusDurable(
     const released = await state.storage.releaseCancelledSessionWorktree({
       sessionId: session.id,
       worktreeId,
+      online: true,
+      ...(fence ? { fence } : {}),
     });
     if (released) {
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
-        state.worktrees.set(worktreeId, { ...wt, status: "idle", currentSessionId: null });
+        state.worktrees.set(worktreeId, {
+          ...wt,
+          status: "idle",
+          currentSessionId: null,
+          online: true,
+        });
       }
       state.sessions.set(session.id, { ...session, worktreeId: null, hostId: null });
       state.pendingAcks.delete(session.id);
@@ -276,6 +345,7 @@ async function applySessionStatusDurable(
     ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
     ...(retryCount !== undefined ? { retryCount } : {}),
     ...(retryAfter !== undefined ? { retryAfter } : {}),
+    ...(fence ? { fence } : {}),
   });
   if (!committed) {
     return { ok: true };

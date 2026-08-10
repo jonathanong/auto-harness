@@ -21,6 +21,7 @@ import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
 import * as worktrees from "./control-plane-worktrees.ts";
+import * as reconnect from "./control-plane-reconnect.ts";
 
 /**
  * Shared ControlPlane implementation (methods split across facade + subclass
@@ -136,6 +137,7 @@ export class ControlPlaneBase {
   async assignQueuedDurable(): Promise<
     Array<{ session: PublicSession; worktree: WorktreeRecord }>
   > {
+    await reconnect.reclaimReconnectDeadlines(this.state, Date.now());
     return assign.assignQueuedDurable(this.state);
   }
 
@@ -153,8 +155,10 @@ export class ControlPlaneBase {
 
   async handleHostMessageDurable(
     msg: HostToServerMessage,
-  ): Promise<{ ok: boolean; error?: string }> {
-    return messages.handleHostMessageDurable(this.state, msg);
+    sourceConnectionId?: string,
+    replaceExisting = false,
+  ): Promise<Awaited<ReturnType<typeof messages.handleHostMessageDurable>>> {
+    return messages.handleHostMessageDurable(this.state, msg, sourceConnectionId, replaceExisting);
   }
 
   async registerHostDurable(
@@ -165,6 +169,10 @@ export class ControlPlaneBase {
 
   async disconnectHostDurable(connectionId: string): Promise<string[]> {
     return agents.disconnectHostDurable(this.state, connectionId);
+  }
+
+  async reclaimReconnectDeadlines(nowMs: number = Date.now()): Promise<string[]> {
+    return reconnect.reclaimReconnectDeadlines(this.state, nowMs);
   }
 
   async drainHostDurable(hostId: string): Promise<{ ok: boolean; runningSessionIds: string[] }> {

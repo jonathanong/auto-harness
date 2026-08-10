@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
 
-import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { DaemonLoop } from "./daemon-loop.ts";
+import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop errors", () => {
   it("rejects an empty resolvedArgv without shell spawn success", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];
-      const transport = createLoopbackTransport({
+      const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },
@@ -41,7 +41,7 @@ describe("DaemonLoop errors", () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];
-      const transport = createLoopbackTransport({
+      const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },
@@ -86,7 +86,7 @@ describe("DaemonLoop errors", () => {
       const status = serverMsgs.find((m) => m.type === "session:status");
       expect(status?.type === "session:status" && status.status).toBe("failed");
       // non-Error throw path from process runner
-      const transport2 = createLoopbackTransport({
+      const transport2 = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },

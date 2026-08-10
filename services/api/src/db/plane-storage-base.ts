@@ -15,6 +15,8 @@ import {
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
+import * as reconnect from "./plane-storage-reconnect.ts";
+import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
@@ -43,6 +45,12 @@ export class DynamoPlaneStorageBase {
     return sessions.listAllSessions(this.ctx);
   }
 
+  async listSessionsByHost(hostId: string): Promise<SessionRecord[]> {
+    return (await sessions.listAllSessions(this.ctx)).filter(
+      (session) => session.hostId === hostId,
+    );
+  }
+
   listSessionsByStatus(status: SessionStatus, shard: number): Promise<SessionRecord[]> {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
   }
@@ -51,12 +59,25 @@ export class DynamoPlaneStorageBase {
     return sessions.putWorktree(this.ctx, wt);
   }
 
+  putWorktreeFenced(
+    wt: WorktreeRecord,
+    fence: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return sessions.putWorktreeFenced(this.ctx, wt, fence);
+  }
+
   getWorktree(id: string): Promise<WorktreeRecord | null> {
     return sessions.getWorktree(this.ctx, id);
   }
 
   listAllWorktrees(): Promise<WorktreeRecord[]> {
     return sessions.listAllWorktrees(this.ctx);
+  }
+
+  async listWorktreesByHost(hostId: string): Promise<WorktreeRecord[]> {
+    return (await sessions.listAllWorktrees(this.ctx)).filter(
+      (worktree) => worktree.hostId === hostId,
+    );
   }
 
   listWorktreesForRepo(repositoryId: string): Promise<WorktreeRecord[]> {
@@ -90,6 +111,11 @@ export class DynamoPlaneStorageBase {
   releaseCancelledSessionWorktree(opts: {
     sessionId: string;
     worktreeId: string;
+    /** Terminal reports from a live daemon preserve reachability; disconnect
+     * cleanup deliberately sets this false. Make the distinction explicit at
+     * every callsite instead of deriving it from the terminal session. */
+    online: boolean;
+    fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -100,12 +126,54 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     reason?: string;
     forceOffline?: boolean;
+    expectedHostId?: string;
+    expectedReconnectDeadlineAt?: string;
+    expectedConnectionId?: string;
+    nextConnectionId?: string;
+    requireNoHostLock?: string;
+    fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
 
-  acknowledgeSession(sessionId: string, acknowledgedAt: string): Promise<boolean> {
-    return sessions.acknowledgeSession(this.ctx, sessionId, acknowledgedAt);
+  markReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    worktreeId: string;
+    deadlineAt: string;
+    connectionId: string;
+  }): Promise<boolean> {
+    return reconnect.markReconnectPending(this.ctx, opts);
+  }
+
+  confirmReconnect(opts: {
+    sessionId: string;
+    hostId: string;
+    worktreeId: string;
+    deadlineAt?: string;
+    connectionId: string;
+  }): Promise<boolean> {
+    return reconnect.confirmReconnect(this.ctx, opts);
+  }
+
+  restoreReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    worktreeId: string;
+    connectionId: string;
+    previousDeadlineAt?: string;
+    previousAssignmentConnectionId?: string;
+    previousWorktreeConnectionId?: string;
+  }): Promise<boolean> {
+    return reconnectRollback.restoreReconnectPending(this.ctx, opts);
+  }
+
+  acknowledgeSession(
+    sessionId: string,
+    acknowledgedAt: string,
+    fence?: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return sessions.acknowledgeSession(this.ctx, sessionId, acknowledgedAt, fence);
   }
 
   finishSession(opts: {
@@ -120,6 +188,7 @@ export class DynamoPlaneStorageBase {
     cliResumeRef?: string;
     retryCount?: number;
     retryAfter?: string;
+    fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }
@@ -130,6 +199,15 @@ export class DynamoPlaneStorageBase {
 
   setWorktreeOnline(worktreeId: string, online: boolean): Promise<void> {
     return sessions.setWorktreeOnline(this.ctx, worktreeId, online);
+  }
+
+  setWorktreeOnlineFenced(
+    worktreeId: string,
+    connectionId: string,
+    online: boolean,
+    fence?: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return sessions.setWorktreeOnlineFenced(this.ctx, worktreeId, connectionId, online, fence);
   }
 
   tryAcquireHostLock(opts: {
@@ -187,6 +265,10 @@ export class DynamoPlaneStorageBase {
 
   putLog(rec: LogRecord): Promise<void> {
     return catalog.putLog(this.ctx, rec);
+  }
+
+  putLogFenced(rec: LogRecord, fence: { hostId: string; connectionId: string }): Promise<boolean> {
+    return catalog.putLogFenced(this.ctx, rec, fence);
   }
 
   deleteLog(sessionId: string, timestampSeq: string): Promise<void> {

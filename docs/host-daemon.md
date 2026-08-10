@@ -121,12 +121,14 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 - Opens WebSocket with `Authorization: Bearer <apiKey>` (the key is kept out of URL/query logs)
 - Sends `host:register` immediately after open
 - Routes inbound messages by `type` to Session Runner
-- Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
-- On reconnect: re-register full inventory + any **in-progress** sessions still running locally
-- Responds to server `ping` with `pong`
-- Handles `post` failures only as disconnect (server detects stale connections separately)
+- Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**. TCP open is not ready: the daemon waits for `host:registered` before assignments or queued control frames flow.
+- On reconnect: re-register full inventory + bounded IDs of acknowledged **in-progress** sessions. This fresh registration snapshot bypasses the source outbound FIFO, so it becomes the WebSocket registration barrier before buffered logs or control frames. The control plane fences mutations with the returned connection ID, keeps acknowledged work reserved for 75 seconds, and emits a system-log loss marker after an outage drops logs.
+- A `session:ack` write is not enough to start a CLI. The daemon waits for the matching `session:acknowledged` reply, emitted only after the server's fenced durable ACK transaction commits. Missing confirmation times out or aborts on disconnect; that unconfirmed assignment never enters reconnect inventory.
+- The source outbound FIFO is bounded to 1,000 frames / 4 MiB (including its active write): normal logs drop under pressure, one recovery marker per affected session is retained, and repeated keepalives coalesce. Control transitions backpressure in FIFO order instead of adding unbounded queue entries.
+- Sends periodic `host:keepalive` frames after registration.
+- Handles send failures as disconnects (the server fences stale connections separately).
 
-Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
+Outbound message types: `host:register`, `host:keepalive`, `session:ack`, `session:log`, `session:status`.
 
 ### Config Loader
 
@@ -145,7 +147,7 @@ Outbound message types: `host:register`, `session:ack`, `session:log`, `session:
 | `snapshot()`    | Array for `host:register` and status CLI                                               |
 | `markError(id)` | On unexpected git failures; report status `error`                                      |
 
-**Concurrency:** number of configured worktrees. Each worktree runs **at most one** session at a time.
+**Concurrency:** the lower of configured worktree capacity and 64 concurrent sessions. Each worktree runs **at most one** session at a time; assignments beyond the daemon safety cap receive no ACK or execution, so the control-plane assignment deadline requeues them.
 
 Worktree records in DynamoDB are written by the control plane from register/status messages; the agent is source of truth for **local** busy/idle.
 
@@ -154,8 +156,8 @@ Worktree records in DynamoDB are written by the control plane from register/stat
 Orchestrates a single session after `session:assign`:
 
 1. Validate payload (`sessionId`, `repositoryId`, `command`, `timeout`, optional `worktreeId`, `prompt`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`)
-2. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
-3. Send `session:ack`
+2. Send `session:ack`, then wait for `session:acknowledged` from the current registered connection. On disconnect or confirmation timeout, abort without claiming local resources, setup, CLI execution, status, or reconnect inventory.
+3. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
 4. **Setup:**
    - Normal run: run setup script (may reset branch / install)
    - **Resume** (`resume: true`): **skip destructive setup** (no `git reset --hard` / wipe). Optional light `resumeSetup` only if configured; default is leave the worktree as-is

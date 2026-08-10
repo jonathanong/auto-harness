@@ -87,7 +87,7 @@ describe("createLocalApp agent and scheduler routes", () => {
           sessionId: "sess-1",
         })
       ).status,
-    ).toBe(200);
+    ).toBe(410);
     expect(
       (
         await invoke("POST", "/api/v1/host/messages", {
@@ -99,7 +99,7 @@ describe("createLocalApp agent and scheduler routes", () => {
           seq: 1,
         })
       ).status,
-    ).toBe(200);
+    ).toBe(410);
     expect(
       (
         await invoke("POST", "/api/v1/host/messages", {
@@ -108,7 +108,24 @@ describe("createLocalApp agent and scheduler routes", () => {
           status: "completed",
         })
       ).status,
-    ).toBe(200);
+    ).toBe(410);
+    // Stateful daemon frames are deliberately WebSocket-only; complete the
+    // local fixture through the in-process control-plane seam instead.
+    expect(plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
+    expect(
+      plane.handleHostMessage({
+        type: "session:log",
+        sessionId: "sess-1",
+        stream: "stdout",
+        content: "x",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        seq: 1,
+      }).ok,
+    ).toBe(true);
+    expect(
+      plane.handleHostMessage({ type: "session:status", sessionId: "sess-1", status: "completed" })
+        .ok,
+    ).toBe(true);
     expect((await invoke("GET", "/api/v1/sessions/sess-1/logs")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/archive")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/resume")).status).toBe(201);
@@ -155,7 +172,7 @@ describe("createLocalApp agent and scheduler routes", () => {
           sessionId: "missing",
         })
       ).status,
-    ).toBe(400);
+    ).toBe(410);
     expect((await invoke("POST", "/api/v1/sessions/nope/resume")).status).toBe(400);
 
     // invalid JSON on agent messages / drain
