@@ -1,16 +1,8 @@
-import type { HostInventoryRecord, RepositoryRecord } from "./db/plane-storage.ts";
-import type {
-  ArchiveObject,
-  PublicSession,
-  ScheduleRecord,
-  WebhookDelivery,
-} from "./control-plane-types.ts";
-import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
-import * as agentHosts from "./control-plane-agent-hosts.ts";
+import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
+import { ControlPlaneManagement } from "./control-plane-management-ext.ts";
 import * as agents from "./control-plane-agents.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
-import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
 
@@ -29,35 +21,12 @@ export type {
  * Prefer {@link createControlPlane} so state is backed by DynamoDB Local / AWS.
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
-export class ControlPlane extends ControlPlaneCatalog {
+export class ControlPlane extends ControlPlaneManagement {
   async assignScheduledQueuedDurable(): Promise<
     Array<{ session: PublicSession; hostId: string; worktreeId: null }>
   > {
     await this.reclaimReconnectDeadlines(Date.now());
     return scheduledAssign.assignScheduledQueuedDurable(this.state);
-  }
-
-  override updateSchedule(
-    id: string,
-    patch: Partial<{
-      name: string;
-      target: import("@auto-harness/shared").TargetRef;
-      fallbacks: import("@auto-harness/shared").TargetRef[];
-      cron: string;
-      timeout: number;
-      queueTtlSeconds: number;
-      nextRunAt?: string;
-      enabled: boolean;
-      ref: string;
-      repositoryId: string;
-      concurrencyId: string;
-    }>,
-  ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
-    return schedules.updateSchedule(this.state, id, patch);
-  }
-
-  deleteSchedule(id: string): { ok: true } | { ok: false; error: string } {
-    return schedules.deleteSchedule(this.state, id);
   }
 
   triggerSchedule(
@@ -76,42 +45,6 @@ export class ControlPlane extends ControlPlaneCatalog {
     const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
     if (result.ok) await this.assignScheduledQueuedDurable();
     return result;
-  }
-
-  createRepository(input: {
-    id?: string;
-    name: string;
-    url: string;
-    defaultBranch?: string;
-    setupScript?: string;
-    terminalHookScript?: string;
-  }): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
-    return repos.createRepository(this.state, input);
-  }
-
-  getRepository(id: string): RepositoryRecord | null {
-    return repos.getRepository(this.state, id);
-  }
-
-  listRepositories(): RepositoryRecord[] {
-    return repos.listRepositories(this.state);
-  }
-
-  updateRepository(
-    id: string,
-    patch: Partial<{
-      name: string;
-      url: string;
-      defaultBranch: string;
-      setupScript: string;
-      terminalHookScript: string;
-    }>,
-  ): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
-    return repos.updateRepository(this.state, id, patch);
-  }
-
-  deleteRepository(id: string): { ok: true } | { ok: false; error: string } {
-    return repos.deleteRepository(this.state, id);
   }
 
   cancelSession(id: string): { ok: true; session: PublicSession } | { ok: false; error: string } {
@@ -188,24 +121,5 @@ export class ControlPlane extends ControlPlaneCatalog {
 
   isDraining(hostId: string): boolean {
     return agents.isDraining(this.state, hostId);
-  }
-
-  putHostInventory(
-    hostId: string,
-    body: unknown,
-  ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
-    return agentHosts.putHostInventory(this.state, hostId, body);
-  }
-
-  getHostInventory(hostId: string): HostInventoryRecord | null {
-    return agentHosts.getHostInventory(this.state, hostId);
-  }
-
-  listHostInventories(): HostInventoryRecord[] {
-    return agentHosts.listHostInventories(this.state);
-  }
-
-  deleteHostInventory(hostId: string): { ok: true } | { ok: false; error: string } {
-    return agentHosts.deleteHostInventory(this.state, hostId);
   }
 }

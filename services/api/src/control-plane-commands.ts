@@ -22,6 +22,19 @@ export function createCommand(
   state: ControlPlaneState,
   input: CommandInput,
 ): { ok: true; command: CommandRecord } | { ok: false; error: string } {
+  const result = prepareCreateCommand(state, input);
+  if (!result.ok) return result;
+  state.commands.set(result.command.id, result.command);
+  if (state.storage) {
+    queueWrite(state, state.storage.putCommand({ ...result.command }));
+  }
+  return { ok: true, command: { ...result.command } };
+}
+
+function prepareCreateCommand(
+  state: ControlPlaneState,
+  input: CommandInput,
+): { ok: true; command: CommandRecord } | { ok: false; error: string } {
   if (!input.name) {
     return { ok: false, error: "name is required" };
   }
@@ -48,11 +61,20 @@ export function createCommand(
     createdAt: at,
     updatedAt: at,
   };
-  state.commands.set(id, rec);
-  if (state.storage) {
-    queueWrite(state, state.storage.putCommand({ ...rec }));
-  }
-  return { ok: true, command: { ...rec } };
+  return { ok: true, command: rec };
+}
+
+/** Persist a command before exposing it through the process cache. */
+export async function createCommandDurable(
+  state: ControlPlaneState,
+  input: CommandInput,
+): Promise<ReturnType<typeof createCommand>> {
+  if (!state.storage) return createCommand(state, input);
+  const result = prepareCreateCommand(state, input);
+  if (!result.ok) return result;
+  await state.storage.putCommand({ ...result.command });
+  state.commands.set(result.command.id, result.command);
+  return { ok: true, command: { ...result.command } };
 }
 
 export function getCommand(state: ControlPlaneState, id: string): CommandRecord | null {
@@ -67,6 +89,27 @@ export function listCommands(state: ControlPlaneState): CommandRecord[] {
 }
 
 export function updateCommand(
+  state: ControlPlaneState,
+  id: string,
+  patch: Partial<{
+    name: string;
+    argv: string[];
+    appendPrompt: boolean;
+    providerId: string | null;
+    resumeArgvTemplate: string[] | null;
+    resumeRefCapture: ResumeRefCapture | null;
+  }>,
+): { ok: true; command: CommandRecord } | { ok: false; error: string } {
+  const result = prepareUpdateCommand(state, id, patch);
+  if (!result.ok) return result;
+  state.commands.set(id, result.command);
+  if (state.storage) {
+    queueWrite(state, state.storage.putCommand({ ...result.command }));
+  }
+  return { ok: true, command: { ...result.command } };
+}
+
+function prepareUpdateCommand(
   state: ControlPlaneState,
   id: string,
   patch: Partial<{
@@ -104,11 +147,21 @@ export function updateCommand(
   };
   if (patch.resumeArgvTemplate === null) delete next.resumeArgvTemplate;
   if (patch.resumeRefCapture === null) delete next.resumeRefCapture;
-  state.commands.set(id, next);
-  if (state.storage) {
-    queueWrite(state, state.storage.putCommand({ ...next }));
-  }
-  return { ok: true, command: { ...next } };
+  return { ok: true, command: next };
+}
+
+/** Persist a command update before replacing the cache entry. */
+export async function updateCommandDurable(
+  state: ControlPlaneState,
+  id: string,
+  patch: Parameters<typeof updateCommand>[2],
+): Promise<ReturnType<typeof updateCommand>> {
+  if (!state.storage) return updateCommand(state, id, patch);
+  const result = prepareUpdateCommand(state, id, patch);
+  if (!result.ok) return result;
+  await state.storage.putCommand({ ...result.command });
+  state.commands.set(id, result.command);
+  return { ok: true, command: { ...result.command } };
 }
 
 export function deleteCommand(
@@ -126,6 +179,34 @@ export function deleteCommand(
   state.commands.delete(id);
   if (state.storage) {
     queueWrite(state, state.storage.deleteCommand(id));
+  }
+  return { ok: true };
+}
+
+/** Delete durable state before dropping the cached command. */
+export async function deleteCommandDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<ReturnType<typeof deleteCommand>> {
+  if (!state.storage) return deleteCommand(state, id);
+  const result = canDeleteCommand(state, id);
+  if (!result.ok) return result;
+  await state.storage.deleteCommand(id);
+  state.commands.delete(id);
+  return { ok: true };
+}
+
+function canDeleteCommand(
+  state: ControlPlaneState,
+  id: string,
+): { ok: true } | { ok: false; error: string } {
+  if (!state.commands.has(id)) {
+    return { ok: false, error: "command not found" };
+  }
+  for (const p of state.providers.values()) {
+    if (p.defaultCommandId === id) {
+      return { ok: false, error: "command is a provider's default command" };
+    }
   }
   return { ok: true };
 }
