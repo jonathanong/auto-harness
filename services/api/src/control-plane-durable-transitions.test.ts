@@ -950,7 +950,7 @@ describe("durable control-plane transitions", () => {
       timeout: 1,
       nextRunAt: "2026-01-01T00:00:00.000Z",
     });
-    expect(await plane.evaluateCronDurable("2026-01-01T00:00:00.000Z")).toHaveLength(1);
+    expect(await plane.evaluateCronDurable("2026-01-01T00:01:00.000Z")).toHaveLength(1);
     expect((await plane.triggerScheduleDurable("local-durable-schedule")).ok).toBe(true);
     expect(
       (

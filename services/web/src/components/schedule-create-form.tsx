@@ -21,7 +21,6 @@ type ScheduleFormValue = {
   cron: string;
   timeout: number;
   queueTtlSeconds: number;
-  nextRunAt: string;
   ref?: string;
 };
 
@@ -54,7 +53,6 @@ export function ScheduleCreateForm({
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           cron: String(fd.get("cron") ?? ""),
           timeout: Number(fd.get("timeout") ?? 600),
-          nextRunAt: String(fd.get("nextRunAt") ?? new Date().toISOString()),
           ref: String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
         };
@@ -154,14 +152,6 @@ export function ScheduleCreateForm({
           name="concurrencyId"
           placeholder="auto-generated for this schedule"
           data-pw="schedule-concurrency-id"
-        />
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="nextRunAt">nextRunAt (ISO)</Label>
-        <Input
-          id="nextRunAt"
-          name="nextRunAt"
-          defaultValue={schedule?.nextRunAt ?? new Date().toISOString()}
         />
       </div>
       {error ? (

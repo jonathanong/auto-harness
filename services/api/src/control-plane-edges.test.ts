@@ -56,10 +56,10 @@ describe("ControlPlane API edges", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
       ref: "main",
     });
-    const created = plane.evaluateCron();
+    const created = plane.evaluateCron("2026-01-01T02:00:00.000Z");
     expect(created).toHaveLength(1);
     expect(created[0]?.source).toBe("schedule");
-    expect(plane.evaluateCron()).toHaveLength(0);
+    expect(plane.evaluateCron("2026-01-01T02:00:00.000Z")).toHaveLength(0);
   });
 
   it("covers agent message errors and pin expiry", () => {

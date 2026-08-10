@@ -1,6 +1,8 @@
 import {
   isActiveSessionStatus,
   isValidScheduledBranchRef,
+  isValidUtcTimestamp,
+  nextCronOccurrence,
   validateTargetRouting,
 } from "@auto-harness/shared";
 
@@ -26,7 +28,8 @@ type ScheduleInput = {
   cron: string;
   timeout: number;
   queueTtlSeconds?: number;
-  nextRunAt: string;
+  /** Legacy client input. The server validates it but always derives the cursor. */
+  nextRunAt?: string;
   enabled?: boolean;
   ref?: string;
   concurrencyId?: string;
@@ -37,8 +40,19 @@ export function putSchedule(
   state: ControlPlaneState,
   input: ScheduleInput,
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+  const now = state.now();
+  if (!isValidUtcTimestamp(now)) {
+    return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };
+  }
   if (input.ref !== undefined && !isValidScheduledBranchRef(input.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
+  }
+  if (input.nextRunAt !== undefined && !isValidUtcTimestamp(input.nextRunAt)) {
+    return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
+  }
+  const nextRunAt = nextCronOccurrence(input.cron, now);
+  if (!nextRunAt) {
+    return { ok: false, error: "cron must be a valid five-field UTC expression" };
   }
   const routing = validateTargetRouting(input);
   if (!routing.ok) return routing;
@@ -56,9 +70,9 @@ export function putSchedule(
     enabled: input.enabled ?? true,
     timeout: input.timeout,
     queueTtlSeconds: routing.value.queueTtlSeconds,
-    nextRunAt: input.nextRunAt,
+    nextRunAt,
     lastRunAt: null,
-    createdAt: state.now(),
+    createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId: input.concurrencyId?.trim() || `schedule-${id}`,
   };
@@ -91,6 +105,17 @@ export function updateSchedule(
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const existing = state.schedules.get(id);
   if (!existing) return { ok: false, error: "schedule not found" };
+  const now = state.now();
+  if (!isValidUtcTimestamp(now)) {
+    return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };
+  }
+  if (patch.nextRunAt !== undefined && !isValidUtcTimestamp(patch.nextRunAt)) {
+    return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
+  }
+  const nextRunAt = nextCronOccurrence(patch.cron ?? existing.cron, now);
+  if (!nextRunAt) {
+    return { ok: false, error: "cron must be a valid five-field UTC expression" };
+  }
   if (patch.ref !== undefined && !isValidScheduledBranchRef(patch.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
   }
@@ -109,6 +134,7 @@ export function updateSchedule(
     fallbacks: routing.value.fallbacks,
     targetLabels: labels.labels,
     queueTtlSeconds: routing.value.queueTtlSeconds,
+    nextRunAt,
     ...(patch.concurrencyId !== undefined
       ? { concurrencyId: patch.concurrencyId.trim() || `schedule-${id}` }
       : {}),

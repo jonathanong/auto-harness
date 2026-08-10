@@ -107,8 +107,8 @@ describe("ControlPlane claim invariants", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
     });
     const expected = schedule.nextRunAt;
-    const s1 = plane.tryClaimScheduleFire(schedule.id, expected, "2026-01-01T00:00:01.000Z");
-    const s2 = plane.tryClaimScheduleFire(schedule.id, expected, "2026-01-01T00:00:01.000Z");
+    const s1 = plane.tryClaimScheduleFire(schedule.id, expected, "2026-01-01T01:00:00.000Z");
+    const s2 = plane.tryClaimScheduleFire(schedule.id, expected, "2026-01-01T01:00:00.000Z");
     expect(s1).not.toBeNull();
     expect(s2).toBeNull();
     expect(plane.listSessions()).toHaveLength(1);
