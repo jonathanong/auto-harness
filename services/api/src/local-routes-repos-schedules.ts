@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- repository and schedule scope gates share one route module. */
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
@@ -19,9 +19,17 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/repositories") {
+    let body: Record<string, unknown>;
     try {
-      const body = (await readJson(req)) as Record<string, unknown>;
-      const result = plane.createRepository({
+      body = (await readJson(req)) as Record<string, unknown>;
+    } catch {
+      send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+      });
+      return true;
+    }
+    try {
+      const result = await plane.createRepositoryDurable({
         name: String(body.name ?? ""),
         url: String(body.url ?? ""),
         ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
@@ -31,17 +39,13 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           : {}),
       });
       if (!result.ok) {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: result.error },
-        });
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
       send(res, 201, result.repository);
       return true;
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      sendInternalError(res);
       return true;
     }
   }
@@ -62,9 +66,17 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
-        const result = plane.updateRepository(id, {
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return true;
+      }
+      try {
+        const result = await plane.updateRepositoryDurable(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(typeof body.url === "string" ? { url: body.url } : {}),
           ...(typeof body.defaultBranch === "string" ? { defaultBranch: body.defaultBranch } : {}),
@@ -80,9 +92,7 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 200, result.repository);
         return true;
       } catch {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-        });
+        sendInternalError(res);
         return true;
       }
     }
@@ -91,13 +101,18 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
-      const result = plane.deleteRepository(id);
-      if (!result.ok) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+      try {
+        const result = await plane.deleteRepositoryDurable(id);
+        if (!result.ok) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          return true;
+        }
+        send(res, 204, null);
+        return true;
+      } catch {
+        sendInternalError(res);
         return true;
       }
-      send(res, 204, null);
-      return true;
     }
   }
   return false;
@@ -114,8 +129,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/schedules") {
+    let body: Record<string, unknown>;
     try {
-      const body = (await readJson(req)) as Record<string, unknown>;
+      body = (await readJson(req)) as Record<string, unknown>;
       if (
         typeof body.repositoryId !== "string" ||
         typeof body.name !== "string" ||
@@ -143,7 +159,14 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         hidden(res);
         return true;
       }
-      const result = plane.putSchedule({
+    } catch {
+      send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+      });
+      return true;
+    }
+    try {
+      const result = await plane.putScheduleDurable({
         repositoryId: body.repositoryId,
         name: body.name,
         target: body.target,
@@ -166,9 +189,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 201, result.schedule);
       return true;
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      sendInternalError(res);
       return true;
     }
   }
@@ -179,7 +200,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       hidden(res);
       return true;
     }
-    const result = await plane.triggerScheduleDurable(schedTrigger[1]!, new Date().toISOString());
+    let result: Awaited<ReturnType<typeof plane.triggerScheduleDurable>>;
+    try {
+      result = await plane.triggerScheduleDurable(schedTrigger[1]!, new Date().toISOString());
+    } catch {
+      sendInternalError(res);
+      return true;
+    }
     if (!result.ok) {
       send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
       return true;
@@ -213,8 +240,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 404, { error: { code: "NOT_FOUND", message: "schedule not found" } });
         return true;
       }
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
+        body = (await readJson(req)) as Record<string, unknown>;
         if (body.ref !== undefined && typeof body.ref !== "string") {
           send(res, 400, {
             error: {
@@ -228,7 +256,14 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           hidden(res);
           return true;
         }
-        const result = plane.updateSchedule(id, {
+      } catch {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+        });
+        return true;
+      }
+      try {
+        const result = await plane.updateScheduleDurable(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(body.target !== undefined ? { target: body.target } : {}),
           ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
@@ -250,20 +285,23 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 200, result.schedule);
         return true;
       } catch {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-        });
+        sendInternalError(res);
         return true;
       }
     }
     if (method === "DELETE") {
-      const result = plane.deleteSchedule(id);
-      if (!result.ok) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+      try {
+        const result = await plane.deleteScheduleDurable(id);
+        if (!result.ok) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          return true;
+        }
+        send(res, 204, null);
+        return true;
+      } catch {
+        sendInternalError(res);
         return true;
       }
-      send(res, 204, null);
-      return true;
     }
   }
   return false;

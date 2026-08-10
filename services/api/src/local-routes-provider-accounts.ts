@@ -1,4 +1,4 @@
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
@@ -10,9 +10,15 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/provider-accounts") {
+    let body: Record<string, unknown>;
     try {
-      const body = (await readJson(req)) as Record<string, unknown>;
-      const result = plane.createProviderAccount({
+      body = (await readJson(req)) as Record<string, unknown>;
+    } catch {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+      return true;
+    }
+    try {
+      const result = await plane.createProviderAccountDurable({
         providerId: String(body.providerId ?? ""),
         label: String(body.label ?? ""),
         ...(typeof body.usageLimitCooldownSeconds === "number"
@@ -26,13 +32,19 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       send(res, 201, result.account);
       return true;
     } catch {
-      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+      sendInternalError(res);
       return true;
     }
   }
   const clearMatch = /^\/api\/v1\/provider-accounts\/([^/]+)\/usage-limit$/.exec(url.pathname);
   if (method === "DELETE" && clearMatch) {
-    const result = await plane.clearProviderAccountUsageLimitDurable(clearMatch[1]!);
+    let result: Awaited<ReturnType<typeof plane.clearProviderAccountUsageLimitDurable>>;
+    try {
+      result = await plane.clearProviderAccountUsageLimitDurable(clearMatch[1]!);
+    } catch {
+      sendInternalError(res);
+      return true;
+    }
     if (!result.ok) {
       send(res, result.conflict ? 409 : 404, {
         error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
@@ -56,9 +68,15 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
-        const result = plane.updateProviderAccount(id, {
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        return true;
+      }
+      try {
+        const result = await plane.updateProviderAccountDurable(id, {
           ...(typeof body.providerId === "string" ? { providerId: body.providerId } : {}),
           ...(typeof body.label === "string" ? { label: body.label } : {}),
           ...(typeof body.usageLimitCooldownSeconds === "number"
@@ -66,24 +84,32 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
             : {}),
         });
         if (!result.ok) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const status = result.conflict ? 409 : 404;
+          send(res, status, {
+            error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
+          });
           return true;
         }
         send(res, 200, result.account);
         return true;
       } catch {
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        sendInternalError(res);
         return true;
       }
     }
     if (method === "DELETE") {
-      const result = plane.deleteProviderAccount(id);
-      if (!result.ok) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+      try {
+        const result = await plane.deleteProviderAccountDurable(id);
+        if (!result.ok) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          return true;
+        }
+        send(res, 204, null);
+        return true;
+      } catch {
+        sendInternalError(res);
         return true;
       }
-      send(res, 204, null);
-      return true;
     }
   }
   return false;

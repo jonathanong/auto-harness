@@ -1,4 +1,4 @@
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import type { ResumeRefCapture } from "@auto-harness/shared";
 
 function commandPatchFromBody(body: Record<string, unknown>): {
@@ -34,9 +34,15 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/commands") {
+    let body: Record<string, unknown>;
     try {
-      const body = (await readJson(req)) as Record<string, unknown>;
-      const result = plane.createCommand({
+      body = (await readJson(req)) as Record<string, unknown>;
+    } catch {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+      return true;
+    }
+    try {
+      const result = await plane.createCommandDurable({
         name: String(body.name ?? ""),
         argv: Array.isArray(body.argv) ? (body.argv as string[]) : [],
         ...commandPatchFromBody(body),
@@ -48,7 +54,7 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 201, result.command);
       return true;
     } catch {
-      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+      sendInternalError(res);
       return true;
     }
   }
@@ -65,9 +71,15 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (method === "PUT" || method === "PATCH") {
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
-        const result = plane.updateCommand(id, commandPatchFromBody(body));
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        return true;
+      }
+      try {
+        const result = await plane.updateCommandDurable(id, commandPatchFromBody(body));
         if (!result.ok) {
           const status = plane.getCommand(id) ? 400 : 404;
           send(res, status, {
@@ -81,20 +93,25 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 200, result.command);
         return true;
       } catch {
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        sendInternalError(res);
         return true;
       }
     }
     if (method === "DELETE") {
-      const result = plane.deleteCommand(id);
-      if (!result.ok) {
-        const status = plane.getCommand(id) ? 409 : 404;
-        const code = status === 409 ? "CONFLICT" : "NOT_FOUND";
-        send(res, status, { error: { code, message: result.error } });
+      try {
+        const result = await plane.deleteCommandDurable(id);
+        if (!result.ok) {
+          const status = plane.getCommand(id) ? 409 : 404;
+          const code = status === 409 ? "CONFLICT" : "NOT_FOUND";
+          send(res, status, { error: { code, message: result.error } });
+          return true;
+        }
+        send(res, 204, null);
+        return true;
+      } catch {
+        sendInternalError(res);
         return true;
       }
-      send(res, 204, null);
-      return true;
     }
   }
   return false;
