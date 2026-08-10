@@ -12,6 +12,7 @@ import {
 import {
   isConditionalFailed,
   isConditionalTransactionFailed,
+  isConditionalTransactionFailureAt,
   type HostInventoryRecord,
   type ArchiveObject,
   type LogRecord,
@@ -234,7 +235,10 @@ export async function tryClaimScheduleAndCreateSession(
     return { kind: "created" };
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
-      if (opts.session.concurrencyId) {
+      // The schedule cursor is item 0, the session insert is item 1, and
+      // the concurrency lock (when present) is item 2. Only a failed lock
+      // condition means an active session can be a legitimate duplicate.
+      if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, 2)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
           const current = await getSession(ctx, lock.sessionId, true);

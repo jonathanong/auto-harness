@@ -241,7 +241,7 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 | Field          | Type               | Required | Description                                                                                                                      |
 | -------------- | ------------------ | -------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Repository     | Dropdown           | ✓        | Select from available repositories                                                                                               |
-| Prompt         | Textarea           | ✓        | Multi-line prompt for the AI agent. Supports markdown preview.                                                                   |
+| Prompt         | Textarea           | ✓        | Multi-line prompt sent to the Session. Supports markdown preview.                                                                |
 | Target         | Dropdown           | ✓        | Primary Provider or Command target, sourced from `GET /session-targets`; no free-text option                                     |
 | Fallbacks      | Ordered list       | ✗        | Add, remove, and reorder fallback Provider/Command targets; tried only when the preceding target has no eligible route           |
 | Queue TTL      | Number input       | ✗        | Absolute queue lifetime in seconds; default 691200 (8 days), never reset by fallback attempts                                    |

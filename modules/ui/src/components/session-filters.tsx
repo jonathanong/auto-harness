@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
@@ -36,6 +36,11 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const status = sp.get("status") ?? "all";
   const q = sp.get("q") ?? "";
   const concurrencyId = sp.get("concurrencyId") ?? "";
+  const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
+
+  useEffect(() => {
+    setConcurrencyDraft(concurrencyId);
+  }, [concurrencyId]);
 
   const push = useCallback(
     (next: { status?: string; q?: string; concurrencyId?: string }) => {
@@ -106,16 +111,19 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
         <Input
           id="concurrencyId"
           data-pw="session-filter-concurrency-id"
-          defaultValue={concurrencyId}
+          value={concurrencyDraft}
           placeholder="exact concurrency ID…"
+          onChange={(e) => {
+            setConcurrencyDraft(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              push({ concurrencyId: (e.target as HTMLInputElement).value });
+              push({ concurrencyId: concurrencyDraft });
             }
           }}
-          onBlur={(e) => {
-            if (e.target.value !== concurrencyId) {
-              push({ concurrencyId: e.target.value });
+          onBlur={() => {
+            if (concurrencyDraft !== concurrencyId) {
+              push({ concurrencyId: concurrencyDraft });
             }
           }}
         />

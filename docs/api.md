@@ -350,6 +350,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "priority": 10,
   "requiredLabels": ["codex"],
   "concurrencyId": "filaments-pr-shepherd-123",
+  "url": "http://127.0.0.1:7421/sessions/sess-x1y2z3",
   "created": true,
   "source": "ui",
   "type": "prompt",
@@ -377,7 +378,6 @@ List sessions with optional filters.
 | --------------- | ------ | -------------------------------------------------------------------------------------- |
 | `status`        | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
 | `repositoryId`  | string | Filter by repository                                                                   |
-| `search`        | string | Full-text search across session prompts                                                |
 | `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
 | `limit`         | number | Max results (default: 50, max: 100)                                                    |
 | `cursor`        | string | Pagination cursor from previous response                                               |

@@ -78,7 +78,9 @@ export function prepareResumedSession(
   ) {
     return { ok: false, error: "pinExpiresAt must be a valid timestamp" };
   }
-  if (source.concurrencyId) {
+  // With durable storage, the lock transaction is authoritative. A process
+  // cache can be stale, so it must not decide which active resume is returned.
+  if (source.concurrencyId && !state.storage) {
     const active = [...state.sessions.values()].find(
       (session) =>
         session.concurrencyId === source.concurrencyId && isActiveSessionStatus(session.status),

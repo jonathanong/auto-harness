@@ -6,7 +6,7 @@ import {
 } from "../../../components/schedule-edit-form.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
 
-import { apiGet } from "../../../lib/api.ts";
+import { ApiError, apiGet } from "../../../lib/api.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +25,12 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
   let history: SessionHistory[] = [];
   try {
     schedule = await apiGet<EditableSchedule>(`/api/v1/schedules/${encodeURIComponent(id)}`);
-  } catch {
-    schedule = undefined;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      schedule = undefined;
+    } else {
+      throw error;
+    }
   }
 
   if (!schedule) {

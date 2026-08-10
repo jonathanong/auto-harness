@@ -86,6 +86,14 @@ pnpm --filter @auto-harness/cdk deploy
 | Breaking API changes        | Drain agents ([deploy-host-daemon.md](deploy-host-daemon.md)) → deploy control plane → roll agents → re-run E2E   |
 | Data migrations             | Prefer additive DynamoDB attributes; document any one-time backfill in the PR                                     |
 
+> **Concurrency identity rename:** if an existing deployment used the legacy
+> `concurrencyKey` attribute, drain it to **zero queued and running sessions**
+> before upgrading to `concurrencyId`. Do not automatically backfill the field:
+> legacy rows can contain more than one active session for the same key, so a
+> lock owner cannot be selected without changing execution semantics. After
+> the drain, terminal history may remain as-is and new sessions use
+> `concurrencyId`.
+
 Prefer **control plane first**, then agents, so old agents fail closed on unknown messages rather than new agents talking to old APIs.
 
 > **One-time backfill required if deploying onto a pre-existing populated environment:** the

@@ -175,6 +175,7 @@ erDiagram
         string cron "5-field cron expression"
         boolean enabled
         number timeout "seconds"
+        string concurrencyId "nullable — explicit global lock identity; defaults to schedule-${id}"
         string lastRunAt "nullable"
         string nextRunAt "conditional-claim key — see Invariant 4"
         string createdAt

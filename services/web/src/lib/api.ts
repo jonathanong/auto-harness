@@ -1,13 +1,23 @@
 import { headers } from "next/headers";
 import { apiBase } from "@auto-harness/shared";
 
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(path: string, status: number) {
+    super(`GET ${path} → ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const forwarded = await incomingAuthHeaders();
   const res = await fetch(`${apiBase()}${path}`, {
     cache: "no-store",
     ...(forwarded ? { headers: forwarded } : {}),
   });
-  if (!res.ok) throw new Error(`GET ${path} → ${res.status}`);
+  if (!res.ok) throw new ApiError(path, res.status);
   return (await res.json()) as T;
 }
 
