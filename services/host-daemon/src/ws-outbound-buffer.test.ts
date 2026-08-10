@@ -128,6 +128,72 @@ describe("WsOutboundBuffer", () => {
     await expect(delayed).resolves.toBeUndefined();
   });
 
+  it("coalesces queued keepalives but never mutates an in-flight heartbeat", async () => {
+    const buffer = new WsOutboundBuffer();
+    const queuedFirst = buffer.enqueue({ type: "host:keepalive", hostId: "h", at: "first" });
+    const queuedLatest = buffer.enqueue({ type: "host:keepalive", hostId: "h", at: "latest" });
+    expect(buffer.length).toBe(1);
+    const queued = buffer.take();
+    expect(queued?.message).toEqual({ type: "host:keepalive", hostId: "h", at: "latest" });
+    if (!queued) throw new Error("expected queued keepalive");
+    buffer.complete(queued);
+    queued.resolve();
+    await expect(Promise.all([queuedFirst, queuedLatest])).resolves.toEqual([undefined, undefined]);
+
+    const inflightFirst = buffer.enqueue({ type: "host:keepalive", hostId: "h", at: "old" });
+    const inflight = buffer.take();
+    if (!inflight) throw new Error("expected in-flight keepalive");
+    const newer = buffer.enqueue({ type: "host:keepalive", hostId: "h", at: "new" });
+    expect(inflight.message).toEqual({ type: "host:keepalive", hostId: "h", at: "old" });
+    const next = buffer.take();
+    expect(next?.message).toEqual({ type: "host:keepalive", hostId: "h", at: "new" });
+    if (!next) throw new Error("expected newer keepalive");
+    buffer.complete(inflight);
+    inflight.resolve();
+    buffer.complete(next);
+    next.resolve();
+    await expect(Promise.all([inflightFirst, newer])).resolves.toEqual([undefined, undefined]);
+  });
+
+  it("wakes an aborted retained admission before capacity changes", async () => {
+    const buffer = new WsOutboundBuffer();
+    const controls = Array.from({ length: 1_000 }, (_, index) =>
+      buffer.enqueue({ type: "session:ack", sessionId: `s${index}` }),
+    );
+    for (const delivery of controls) void delivery.catch(() => {});
+    const waiting = buffer.enqueue({
+      type: "session:status",
+      sessionId: "waiting",
+      status: "failed",
+    });
+    const controller = new AbortController();
+    const cancelled = buffer.enqueue(
+      { type: "session:ack", sessionId: "cancelled" },
+      { signal: controller.signal },
+    );
+    controller.abort();
+    await expect(cancelled).rejects.toThrow("cancelled");
+
+    const first = buffer.take();
+    if (!first) throw new Error("expected first control");
+    buffer.complete(first);
+    first.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    for (let index = 1; index < 1_000; index++) {
+      const item = buffer.take();
+      if (!item) throw new Error("expected queued control");
+      buffer.complete(item);
+      item.resolve();
+    }
+    const admitted = buffer.take();
+    expect(admitted?.message).toMatchObject({ sessionId: "waiting" });
+    if (!admitted) throw new Error("expected waiting retained frame");
+    buffer.complete(admitted);
+    admitted.resolve();
+    await expect(waiting).resolves.toBeUndefined();
+  });
+
   it("drops oversized logs and supports abort, put-back, and terminal rejection", async () => {
     const dropped: number[] = [];
     const buffer = new WsOutboundBuffer((message) => dropped.push(message.seq));

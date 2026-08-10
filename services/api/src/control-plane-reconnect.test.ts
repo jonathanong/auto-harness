@@ -85,6 +85,13 @@ describe("reconnect reconciliation", () => {
     expect(plane.getWorktree("w")?.online).toBe(true);
   });
 
+  it("rejects a reported session whose in-memory worktree disappeared", async () => {
+    const plane = runningPlane();
+    plane.state.worktrees.delete("w");
+
+    await expect(reconcileHostRunningSessions(plane.state, "h", ["s"])).resolves.toBe(false);
+  });
+
   it("requeues omitted work and expires an unreconciled reconnect", async () => {
     const plane = runningPlane();
     const deadline = Date.parse(plane.getSession("s")!.reconnectDeadlineAt!);
@@ -93,6 +100,9 @@ describe("reconnect reconciliation", () => {
     expect(plane.getSession("s")?.status).toBe("queued");
 
     const second = runningPlane();
+    // A stale local deadline tracker must be removed when the durable/local
+    // reconciliation puts the session back into the queue.
+    second.state.pendingAcks.set("s", { sessionId: "s", worktreeId: "w", assignedAtMs: 0 });
     second.registerHost({
       hostId: "h",
       worktrees: [{ id: "w", name: "w", repositoryId: "repo-1", path: "/w", labels: [] }],
@@ -102,6 +112,10 @@ describe("reconnect reconciliation", () => {
     });
     await Promise.resolve();
     expect(second.getSession("s")?.status).toBe("queued");
+    expect(second.getSession("s")?.reconnectDeadlineAt).toBeUndefined();
+    expect(second.getSession("s")?.ackReceivedAt).toBeUndefined();
+    expect(second.getSession("s")?.startedAt).toBeUndefined();
+    expect(second.state.pendingAcks.has("s")).toBe(false);
   });
 
   it("uses durable fence-aware reconcile and no-lock deadline reclaim paths", async () => {
@@ -151,6 +165,27 @@ describe("reconnect reconciliation", () => {
     expect(calls).toEqual(["confirm"]);
     await reclaimReconnectDeadlines(plane.state, Date.now());
     expect(calls).toContain("reclaim");
+  });
+
+  it("requeues a durable omitted session without an assignment fence", async () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "c");
+    const omitted = durableRunning("omitted-no-fence", "wo");
+    const worktree = durableWorktree("wo", omitted.id);
+    let requeueOptions: Record<string, unknown> | undefined;
+    plane.state.storage = {
+      listWorktreesByHost: async () => [worktree],
+      getSession: async () => omitted,
+      getWorktree: async () => worktree,
+      tryRequeueSession: async (options: Record<string, unknown>) => {
+        requeueOptions = options;
+        return true;
+      },
+    } as never;
+
+    expect(await reconcileHostRunningSessions(plane.state, "h", [])).toEqual([omitted.id]);
+    expect(requeueOptions).toMatchObject({ expectedHostId: "h", nextConnectionId: "c" });
+    expect(requeueOptions).not.toHaveProperty("expectedConnectionId");
   });
 
   it("covers durable reconciliation skips, failed claims, and both deadline fence forms", async () => {

@@ -71,7 +71,7 @@ describe("restoreConfirmedSessions", () => {
     expect(restoreReconnectPending).not.toHaveBeenCalled();
   });
 
-  it("restores successful durable rows in reverse order and leaves rejected rows cached", async () => {
+  it("restores successful durable rows in reverse order and leaves rejected rows uncached", async () => {
     const plane = new ControlPlane();
     const plain = confirmation("plain");
     const fenced = confirmation("fenced", { withPriorFence: true });

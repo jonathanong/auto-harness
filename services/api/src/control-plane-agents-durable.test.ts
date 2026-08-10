@@ -103,13 +103,15 @@ describe("durable host registration", () => {
       getHostLock: async () => "c",
       listWorktreesByHost: async () => [],
       releaseHostConnection: async () => (calls.push("release"), false),
+      deleteConnection: async () => (calls.push("delete"), undefined),
     } as never;
     expect(await heartbeatDurable(plane.state, "h")).toBe(true);
     expect(await disconnectHostDurable(plane.state, "c")).toEqual([]);
-    expect(plane.state.connections.has("c")).toBe(true);
+    expect(plane.state.connections.has("c")).toBe(false);
     plane.state.storage.heartbeatConnection = async () => false;
     expect(await heartbeatDurable(plane.state, "h", "later")).toBe(false);
     expect(calls).toContain("beat:now");
+    expect(calls).toContain("delete");
   });
 
   it("rejects invalid reported runs, losing leases, and skips a durably busy inventory row", async () => {

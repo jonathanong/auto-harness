@@ -10,15 +10,24 @@ export function configureConnectionEvents(options: {
   timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 }): { stop: () => void } {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let stopped = false;
   const clear = (): void => {
     if (timer) options.timers.clearTimeout(timer);
     timer = undefined;
   };
+  const stop = (): void => {
+    stopped = true;
+    clear();
+  };
   options.transport.onConnected?.(() => {
+    if (stopped) return;
     void options.register().catch(options.onError);
   });
-  options.transport.onRegistered?.(clear);
+  options.transport.onRegistered?.(() => {
+    if (!stopped) clear();
+  });
   options.transport.onDisconnected?.(() => {
+    if (stopped) return;
     options.abortUnacknowledged();
     if (timer) return;
     timer = options.timers.setTimeout(() => {
@@ -26,5 +35,5 @@ export function configureConnectionEvents(options: {
       options.abortInflight();
     }, options.abortAfterMs);
   });
-  return { stop: clear };
+  return { stop };
 }

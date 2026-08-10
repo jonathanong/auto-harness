@@ -88,10 +88,10 @@ sequenceDiagram
     API->>DDB: Idle online worktrees matching labels
     Note over API: Round-robin → least-recently-assigned
     API->>Agent: session:assign
-    Agent->>Agent: Claim worktree
     Agent->>API: session:ack
     API->>DDB: status=running
     API-->>Agent: session:acknowledged
+    Agent->>Agent: Claim worktree
     Agent->>Agent: Setup script
     Agent->>Tool: Spawn (argv, no shell inject)
     loop Logs

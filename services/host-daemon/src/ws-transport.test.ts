@@ -85,9 +85,14 @@ describe("createWsTransport", () => {
     });
     await transport.ready;
     let assignSeen = false;
+    let resolveAssign!: () => void;
+    const assignReceived = new Promise<void>((resolve) => {
+      resolveAssign = resolve;
+    });
     transport.onMessage((m) => {
       if (m.type === "session:assign") {
         assignSeen = true;
+        resolveAssign();
       }
     });
     await transport.send({
@@ -96,7 +101,7 @@ describe("createWsTransport", () => {
       worktrees: [],
       commandProfiles: ["c"],
     });
-    await new Promise((r) => setTimeout(r, 100));
+    await assignReceived;
     expect(got.some((m) => (m as { type: string }).type === "host:register")).toBe(true);
     expect(assignSeen).toBe(true);
     transport.close();
@@ -125,12 +130,19 @@ describe("createWsTransport", () => {
     await listen(server);
     const transport = createWsTransport({ url: `ws://127.0.0.1:${port(server)}/ws`, hostId: "a1" });
     const seen: string[] = [];
+    let resolveAfter!: () => void;
+    const afterReceived = new Promise<void>((resolve) => {
+      resolveAfter = resolve;
+    });
     transport.onMessage((message) => {
-      if (message.type === "session:assign") seen.push(message.sessionId);
+      if (message.type === "session:assign") {
+        seen.push(message.sessionId);
+        if (message.sessionId === "after") resolveAfter();
+      }
     });
     await transport.ready;
     await transport.send(register());
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await afterReceived;
     expect(seen).toEqual(["after"]);
     transport.close();
     await close(wss, server);

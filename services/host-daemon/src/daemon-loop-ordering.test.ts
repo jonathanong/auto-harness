@@ -84,7 +84,7 @@ describe("DaemonLoop outbound delivery", () => {
       const logs: string[] = [];
       const transport = createLoopbackTransport({
         sendToServer: (message) => {
-          if (message.type === "session:ack") throw "offline";
+          if (message.type === "session:ack") throw new Error("offline");
         },
       });
       const loop = new DaemonLoop({ config, transport, onLog: (line) => logs.push(line) });

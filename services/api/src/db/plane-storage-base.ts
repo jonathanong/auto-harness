@@ -129,6 +129,7 @@ export class DynamoPlaneStorageBase {
     expectedHostId?: string;
     expectedReconnectDeadlineAt?: string;
     expectedConnectionId?: string;
+    nextConnectionId?: string;
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {

@@ -90,12 +90,18 @@ export async function reclaimStaleHostsDurable(
       meta.connectionId,
       "agent heartbeat stale; requeued",
     );
-    const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
-    if (!released) continue;
-    state.connections.delete(meta.connectionId);
     for (const sid of freed) {
       if (!reclaimed.includes(sid)) reclaimed.push(sid);
     }
+    const released = await state.storage.releaseHostConnection(hostId, meta.connectionId);
+    if (!released) {
+      state.connections.delete(meta.connectionId);
+      if (state.hostConnection.get(hostId) === meta.connectionId) {
+        state.hostConnection.delete(hostId);
+      }
+      continue;
+    }
+    state.connections.delete(meta.connectionId);
     state.hostConnection.delete(hostId);
     state.disconnectedHosts.delete(hostId);
   }

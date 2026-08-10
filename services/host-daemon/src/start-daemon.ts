@@ -14,6 +14,8 @@ type StartDaemonOptions = {
   error?: (line: string) => void;
   /** Poll interval for host inventory updates (ms). Default 15s; 0 disables. */
   inventoryPollMs?: number;
+  /** Maximum time to wait for the server's registration barrier (ms). */
+  registrationTimeoutMs?: number;
   /** For tests: don't block forever. */
   runUntil?: Promise<void>;
   fetchFn?: typeof fetch;
@@ -61,7 +63,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     onLog: log,
   });
   await loop.start();
-  await transport.registered;
+  try {
+    await waitForRegistration(transport.registered, options.registrationTimeoutMs ?? 30_000, wsUrl);
+  } catch (reason) {
+    loop.stop();
+    throw reason;
+  }
   log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
   log(
@@ -121,4 +128,24 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   }
 
   return { stop, loop };
+}
+
+async function waitForRegistration(
+  registered: Promise<void>,
+  timeoutMs: number,
+  targetUrl: string,
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      registered,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`timed out waiting for WebSocket registration at ${targetUrl}`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

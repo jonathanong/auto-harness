@@ -120,6 +120,33 @@ describe("reconnecting WebSocket transport", () => {
     transport.close();
   });
 
+  it("pumps a retained frame admitted after the prior full buffer drains", async () => {
+    const sockets: FakeSocket[] = [];
+    const transport = transportFor(sockets);
+    const socket = sockets[0]!;
+    socket.open();
+    await transport.send(register());
+    socket.server(registered());
+    await transport.registered;
+
+    socket.delayNext = true;
+    const admitted = Array.from({ length: 1_000 }, (_, index) =>
+      transport.send({ type: "session:ack", sessionId: `s${index}` }),
+    );
+    const parked = transport.send({
+      type: "session:status",
+      sessionId: "parked",
+      status: "failed",
+    });
+    await settle();
+    socket.finishWrite();
+    await settleMany();
+
+    expect(socket.sent.at(-1)).toMatchObject({ type: "session:status", sessionId: "parked" });
+    await expect(Promise.all([...admitted, parked])).resolves.toHaveLength(1_001);
+    transport.close();
+  });
+
   it.each(["callback", "throw"] as const)(
     "recovers %s write failures without losing status",
     async (kind) => {
@@ -161,6 +188,14 @@ describe("reconnecting WebSocket transport", () => {
     vi.advanceTimersByTime(60_000);
     expect(disconnected).toBe(0);
     expect(sockets).toHaveLength(1);
+  });
+
+  it("rejects registration readiness when the transport is terminally closed", async () => {
+    const sockets: FakeSocket[] = [];
+    const transport = transportFor(sockets);
+    const registeredPromise = transport.registered;
+    transport.close();
+    await expect(registeredPromise).rejects.toThrow("WebSocket transport closed");
   });
 
   it("does not replay an aborted acknowledgement across a registration barrier", async () => {

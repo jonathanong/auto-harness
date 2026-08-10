@@ -9,6 +9,21 @@ import { createLoopbackTransport } from "./loopback-transport.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop reconnect", () => {
+  it("uses the 75-second reconnect grace by default", () => {
+    const loop = new DaemonLoop({
+      config: {
+        hostId: "h",
+        logLevel: "info",
+        repositories: [],
+        providerAccounts: [],
+        commandProfiles: {},
+      },
+      transport: createLoopbackTransport({ sendToServer() {} }),
+    });
+    expect((loop as unknown as { reconnectAbortMs: number }).reconnectAbortMs).toBe(75_000);
+    loop.stop();
+  });
+
   it("drops an assignment disconnected before its acknowledgement and does not report it", async () => {
     const { config, cleanup } = await makeRepo();
     try {

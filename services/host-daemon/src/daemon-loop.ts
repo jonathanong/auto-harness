@@ -56,7 +56,7 @@ export class DaemonLoop {
     this.isDrainingExternal = options.isDraining ?? undefined;
     this.onLog = options.onLog ?? undefined;
     this.now = options.now ?? (() => new Date().toISOString());
-    this.reconnectAbortMs = options.reconnectAbortMs ?? 60_000;
+    this.reconnectAbortMs = options.reconnectAbortMs ?? 75_000;
     this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));

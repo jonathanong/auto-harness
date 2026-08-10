@@ -43,11 +43,17 @@ describe("connection events", () => {
     expect(calls).not.toContain("all");
     disconnected?.();
     events.stop();
+    connected?.();
+    await Promise.resolve();
     await vi.advanceTimersByTimeAsync(5);
     expect(calls).not.toContain("all");
+    connected?.();
+    registered?.();
+    await Promise.resolve();
+    expect(calls.filter((call) => call === "register")).toHaveLength(1);
     disconnected?.();
     await vi.advanceTimersByTimeAsync(5);
-    expect(calls).toContain("all");
+    expect(calls).not.toContain("all");
   });
 
   it("reports failed re-registration", async () => {

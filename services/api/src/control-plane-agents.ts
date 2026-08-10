@@ -6,6 +6,55 @@ import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
 
+/** Undo a registration after its lease committed but its reconciliation did
+ * not. Every write and cache mutation remains fenced by the candidate
+ * connection, so an intervening replacement keeps its own inventory. */
+async function rollbackDurableRegistration(
+  state: ControlPlaneState,
+  hostId: string,
+  connectionId: string,
+  at: string,
+  worktrees: readonly import("./db/types.ts").WorktreeRecord[],
+): Promise<void> {
+  const storage = state.storage!;
+  try {
+    const ownedWorktrees = new Map(worktrees.map((worktree) => [worktree.id, worktree]));
+    // Reconciliation can release an omitted running session while this
+    // registration still owns the lease. Those rows are stamped with this
+    // connection in the same transaction, so include them in rollback too.
+    for (const worktree of await storage.listWorktreesByHost(hostId)) {
+      if (worktree.connectionId === connectionId) {
+        ownedWorktrees.set(worktree.id, worktree);
+      }
+    }
+    for (const worktree of ownedWorktrees.values()) {
+      if (
+        await storage.setWorktreeOnlineFenced(worktree.id, connectionId, false, {
+          hostId,
+          connectionId,
+        })
+      ) {
+        state.worktrees.set(worktree.id, { ...worktree, online: false });
+      }
+    }
+  } finally {
+    const released = await storage.releaseHostConnection(hostId, connectionId);
+    const durableOwner = await storage.getHostLock(hostId);
+    const ownsLocalHost = state.hostConnection.get(hostId) === connectionId;
+
+    // Delete only this failed connection. In-process replacements remain
+    // mapped to the host; a durable-only replacement makes our old cache
+    // safely offline without declaring that replacement disconnected.
+    state.connections.delete(connectionId);
+    if (ownsLocalHost) {
+      state.hostConnection.delete(hostId);
+      if (released && durableOwner === null) {
+        state.disconnectedHosts.set(hostId, { lastHeartbeatAt: at });
+      }
+    }
+  }
+}
+
 function validateRunningSessions(
   state: ControlPlaneState,
   hostId: string,
@@ -332,39 +381,22 @@ export async function registerHostDurable(
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
   }
-  const reconciled = await reconcileHostRunningSessions(
-    state,
-    opts.hostId,
-    opts.runningSessions ?? [],
-  );
+  let reconciled: string[] | false;
+  try {
+    reconciled = await reconcileHostRunningSessions(state, opts.hostId, opts.runningSessions ?? []);
+  } catch (err) {
+    // Reconciliation reads and its rollback writes are durable operations too.
+    // Do not strand the just-acquired lease if any of those operations fail.
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, nextWorktrees);
+    throw err;
+  }
   if (reconciled === false) {
     // The lease is ours, but a concurrently-expired session was requeued
     // before it could be confirmed.  Do not publish this half-registration:
     // first restore reconciliation/inventory state while the exact lease is
     // still held, then release it. A replacement must never be offlined by a
     // stale cleanup that ran after dropping its authority.
-    for (const next of nextWorktrees) {
-      if (
-        await state.storage.setWorktreeOnlineFenced(next.id, connectionId, false, {
-          hostId: opts.hostId,
-          connectionId,
-        })
-      ) {
-        state.worktrees.set(next.id, { ...next, online: false });
-      }
-    }
-    const released = await state.storage.releaseHostConnection(opts.hostId, connectionId);
-    const durableOwner = await state.storage.getHostLock(opts.hostId);
-    const ownsLocalHost = state.hostConnection.get(opts.hostId) === connectionId;
-    if (released && durableOwner === null && ownsLocalHost) {
-      state.connections.delete(connectionId);
-      state.hostConnection.delete(opts.hostId);
-      state.disconnectedHosts.set(opts.hostId, { lastHeartbeatAt: at });
-    } else if (!ownsLocalHost) {
-      // B is already active in this process. Removing only A's connection row
-      // preserves B's online worktrees and scheduler eligibility.
-      state.connections.delete(connectionId);
-    }
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, nextWorktrees);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
   return { ok: true, connectionId };
@@ -405,6 +437,11 @@ export async function disconnectHostDurable(
     return [];
   }
   if ((await state.storage.getHostLock(conn.hostId)) !== connectionId) {
+    await state.storage.deleteConnection(connectionId);
+    state.connections.delete(connectionId);
+    if (state.hostConnection.get(conn.hostId) === connectionId) {
+      state.hostConnection.delete(conn.hostId);
+    }
     return [];
   }
   const requeued = await offlineHostAndRequeueDurable(
@@ -414,11 +451,15 @@ export async function disconnectHostDurable(
     "agent disconnected; requeued",
   );
   const released = await state.storage.releaseHostConnection(conn.hostId, connectionId);
-  if (!released) return [];
+  // releaseHostConnection's transaction cannot delete the connection row if
+  // a replacement won its lock condition. The old connection id is globally
+  // unique, so deleting that orphan cannot affect the replacement lease.
+  await state.storage.deleteConnection(connectionId);
   state.connections.delete(connectionId);
   if (state.hostConnection.get(conn.hostId) === connectionId) {
     state.hostConnection.delete(conn.hostId);
   }
+  if (!released) return requeued;
   state.disconnectedHosts.set(conn.hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
   return requeued;
 }

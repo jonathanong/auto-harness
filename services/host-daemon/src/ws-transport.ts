@@ -18,6 +18,11 @@ type Options = {
 };
 
 type InflightWrite = { item: WsBufferItem; target: WebSocket; epoch: number; settled: boolean };
+type LossMarker = {
+  message: Extract<HostToServerMessage, { type: "session:log" }>;
+  count: number;
+  started: boolean;
+};
 
 /** Epoch-fenced reconnecting transport. One socket carries exactly one host
  * inventory generation; a refresh restarts the socket, so a registration
@@ -34,12 +39,13 @@ export function createWsTransport(options: Options): DaemonTransport & {
     : undefined;
   const timers = options.timers ?? globalThis;
   const factory = options.socketFactory ?? ((target, opts) => new WebSocket(target, opts));
-  const droppedLogs = new Map<string, number>();
-  const lossMarkers = new Set<string>();
-  const buffer = new WsOutboundBuffer((log) => {
-    droppedLogs.set(log.sessionId, (droppedLogs.get(log.sessionId) ?? 0) + 1);
-    enqueueLossMarker(log.sessionId);
-  });
+  const lossMarkers = new Map<string, LossMarker>();
+  const buffer = new WsOutboundBuffer(
+    (log) => {
+      recordDroppedLog(log);
+    },
+    () => pump(),
+  );
   let socket: WebSocket | null = null;
   let epoch = 0;
   let registered = false;
@@ -61,36 +67,38 @@ export function createWsTransport(options: Options): DaemonTransport & {
   });
   void ready.catch(() => {});
   let registeredResolve: (() => void) | undefined;
-  const registeredReady = new Promise<void>((resolve) => {
+  let registeredReject: ((error: Error) => void) | undefined;
+  const registeredReady = new Promise<void>((resolve, reject) => {
     registeredResolve = resolve;
+    registeredReject = reject;
   });
+  void registeredReady.catch(() => {});
 
-  const enqueueLossMarker = (sessionId: string): void => {
-    if (lossMarkers.has(sessionId)) return;
-    const count = droppedLogs.get(sessionId) ?? 0;
-    if (count === 0) return;
-    lossMarkers.add(sessionId);
+  const recordDroppedLog = (log: Extract<HostToServerMessage, { type: "session:log" }>): void => {
+    const existing = lossMarkers.get(log.sessionId);
+    if (existing && !existing.started) {
+      existing.count++;
+      existing.message.content = `${existing.count} log chunk(s) dropped while disconnected`;
+      return;
+    }
+    const marker: LossMarker = {
+      message: {
+        type: "session:log",
+        sessionId: log.sessionId,
+        stream: "system",
+        content: "1 log chunk(s) dropped while disconnected",
+        timestamp: new Date().toISOString(),
+        seq: Number.MAX_SAFE_INTEGER,
+      },
+      count: 1,
+      started: false,
+    };
+    lossMarkers.set(log.sessionId, marker);
     void buffer
-      .enqueue(
-        {
-          type: "session:log",
-          sessionId,
-          stream: "system",
-          content: `${count} log chunk(s) dropped while disconnected`,
-          timestamp: new Date().toISOString(),
-          seq: Number.MAX_SAFE_INTEGER,
-        },
-        { nonDroppable: true },
-      )
-      .then(() => {
-        const remaining = (droppedLogs.get(sessionId) ?? 0) - count;
-        if (remaining > 0) droppedLogs.set(sessionId, remaining);
-        else droppedLogs.delete(sessionId);
-      })
+      .enqueue(marker.message, { nonDroppable: true, onStart: () => (marker.started = true) })
       .catch(() => {})
       .finally(() => {
-        lossMarkers.delete(sessionId);
-        if (!closed) enqueueLossMarker(sessionId);
+        if (lossMarkers.get(log.sessionId) === marker) lossMarkers.delete(log.sessionId);
       });
   };
 
@@ -119,11 +127,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
         buffer.complete(entry.item);
         entry.item.dispose();
         // Its attempted write never reached the peer. Count it exactly once.
-        droppedLogs.set(
-          entry.item.message.sessionId,
-          (droppedLogs.get(entry.item.message.sessionId) ?? 0) + 1,
-        );
-        enqueueLossMarker(entry.item.message.sessionId);
+        recordDroppedLog(entry.item.message);
         entry.item.reject(error ?? new Error("stale socket write"));
       } else if (closed) {
         buffer.complete(entry.item);
@@ -239,7 +243,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
           registeredResolve?.();
           registeredResolve = undefined;
           registeredHandler?.();
-          for (const sessionId of droppedLogs.keys()) enqueueLossMarker(sessionId);
           pump();
         } else if (message.type === "error") {
           target.close(1008, "registration rejected");
@@ -292,15 +295,17 @@ export function createWsTransport(options: Options): DaemonTransport & {
     },
     close() {
       closed = true;
+      const closeError = new Error("WebSocket transport closed");
       if (retry) timers.clearTimeout(retry);
       if (socket) {
         const target = socket;
         disconnected(target, epoch, false);
         target.close();
       }
-      if (inflight) settleInflight(inflight, new Error("WebSocket transport closed"));
-      buffer.rejectAll(new Error("WebSocket transport closed"));
-      readyReject?.(new Error("WebSocket transport closed"));
+      if (inflight) settleInflight(inflight, closeError);
+      buffer.rejectAll(closeError);
+      readyReject?.(closeError);
+      registeredReject?.(closeError);
     },
   };
 }

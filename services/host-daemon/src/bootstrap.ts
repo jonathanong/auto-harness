@@ -40,7 +40,9 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 export function inventoryFingerprint(config: DaemonConfig): string {
   return JSON.stringify({
     repositories: config.repositories,
-    commandProfiles: config.commandProfiles,
+    commandProfiles: Object.fromEntries(
+      Object.entries(config.commandProfiles).toSorted(([a], [b]) => a.localeCompare(b)),
+    ),
   });
 }
 

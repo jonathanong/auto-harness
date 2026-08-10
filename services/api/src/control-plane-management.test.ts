@@ -112,7 +112,6 @@ describe("ControlPlane operator management", () => {
     expect(plane.getSchedule("sched-1")?.name).toBe("nightly");
     expect(plane.getSchedule("missing")).toBeNull();
     expect(plane.listSchedules()).toHaveLength(1);
-
     const updated = plane.updateSchedule("sched-1", {
       name: "nightly2",
       commandId: "cmd-codex",
@@ -129,7 +128,6 @@ describe("ControlPlane operator management", () => {
       expect(updated.schedule.ref).toBe("develop");
     }
     expect(plane.updateSchedule("nope", { name: "x" }).ok).toBe(false);
-
     const auto = putScheduleOrThrow(plane, {
       repositoryId: "r",
       name: "a",
@@ -186,7 +184,6 @@ describe("ControlPlane operator management", () => {
       status: "idle",
       online: true,
     });
-
     plane.createSession(baseSessionBody({ prompt: "queued-cancel" }));
     const queued = plane.listSessions().find((s) => s.prompt === "queued-cancel")!;
     const cancelQ = plane.cancelSession(queued.id);
@@ -197,7 +194,6 @@ describe("ControlPlane operator management", () => {
     }
     expect(plane.cancelSession(queued.id).ok).toBe(false);
     expect(plane.cancelSession("missing").ok).toBe(false);
-
     plane.createSession(baseSessionBody({ prompt: "running-cancel" }));
     plane.assignQueued();
     const running = plane.listSessions().find((s) => s.prompt === "running-cancel")!;

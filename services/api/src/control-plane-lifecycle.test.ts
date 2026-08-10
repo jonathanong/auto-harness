@@ -92,7 +92,9 @@ describe("ControlPlane lifecycle", () => {
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
       commandProfiles: ["echo-prompt"],
     });
-    if (!registration.ok) return;
+    if (!registration.ok) {
+      throw new Error(`registerHost failed: ${registration.error}`);
+    }
     plane.createSession(baseSessionBody());
     plane.assignQueued();
     plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });

@@ -405,6 +405,7 @@ export async function tryRequeueSession(
     expectedHostId?: string;
     expectedReconnectDeadlineAt?: string;
     expectedConnectionId?: string;
+    nextConnectionId?: string;
     requireNoHostLock?: string;
     fence?: { hostId: string; connectionId: string };
   },
@@ -440,7 +441,9 @@ export async function tryRequeueSession(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
-              UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :online",
+              UpdateExpression:
+                "SET #s = :idle, currentSessionId = :null, #o = :online" +
+                (opts.nextConnectionId ? ", connectionId = :nextConnectionId" : ""),
               ConditionExpression:
                 "currentSessionId = :sid" +
                 (opts.expectedConnectionId
@@ -455,6 +458,7 @@ export async function tryRequeueSession(
                 ...(opts.expectedConnectionId
                   ? { ":connectionId": opts.expectedConnectionId }
                   : {}),
+                ...(opts.nextConnectionId ? { ":nextConnectionId": opts.nextConnectionId } : {}),
               },
             },
           },
@@ -549,7 +553,7 @@ export async function acknowledgeSession(
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) {
+    if (isConditionalTransactionFailed(err)) {
       // A duplicate ack is a successful no-op, while a late ack for a terminal
       // session is also harmless to the caller.
       const current = await getSession(ctx, sessionId);

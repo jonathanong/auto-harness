@@ -6,6 +6,7 @@ type WsBufferOptions = {
    * pressure just like a protocol transition. */
   nonDroppable?: boolean;
   signal?: AbortSignal;
+  onStart?: () => void;
 };
 
 type CapacitySignal = { promise: Promise<void>; resolve: () => void };
@@ -22,10 +23,12 @@ export type WsBufferItem = {
   message: HostToServerMessage;
   bytes: number;
   nonDroppable: boolean;
+  delivery: Promise<void>;
   resolve: () => void;
   reject: (error: Error) => void;
   dispose: () => void;
   cancelled: () => boolean;
+  onStart: (() => void) | undefined;
 };
 
 const MAX_ITEMS = 1_000;
@@ -44,15 +47,19 @@ export class WsOutboundBuffer {
    * callback in the buffer before capacity exists. */
   private nextAdmissionTicket = 0;
   private admissionTurn = 0;
+  private readonly cancelledTickets = new Set<number>();
   private capacity = capacitySignal();
   private closed = false;
   private bytes = 0;
   private readonly onDrop: (message: Extract<HostToServerMessage, { type: "session:log" }>) => void;
+  private readonly onAdmit: () => void;
 
   constructor(
     onDrop: (message: Extract<HostToServerMessage, { type: "session:log" }>) => void = () => {},
+    onAdmit: () => void = () => {},
   ) {
     this.onDrop = onDrop;
+    this.onAdmit = onAdmit;
   }
 
   enqueue(message: HostToServerMessage, options: WsBufferOptions = {}): Promise<void> {
@@ -63,6 +70,8 @@ export class WsOutboundBuffer {
       if (!nonDroppable) this.drop(message);
       return Promise.reject(new Error("outbound frame exceeds buffer limit"));
     }
+    const coalesced = this.coalesceQueuedKeepalive(message, bytes);
+    if (coalesced) return coalesced;
     // A waiting retained frame defines the next FIFO position. Logs produced
     // after it are intentionally droppable instead of overtaking it.
     if (!nonDroppable && (this.hasWaitingAdmission() || !this.makeRoom(bytes))) {
@@ -81,21 +90,22 @@ export class WsOutboundBuffer {
     const ticket = this.nextAdmissionTicket++;
     while (true) {
       if (this.closed) throw new Error("WebSocket transport closed");
-      if (ticket !== this.admissionTurn) {
-        await this.capacity.promise;
-        continue;
-      }
       if (options.signal?.aborted) {
-        this.admissionTurn++;
+        this.cancelledTickets.add(ticket);
+        if (ticket === this.admissionTurn) this.advanceAdmissionTurn();
         this.notifyCapacity();
         throw new Error("outbound frame cancelled");
       }
-      this.evictLogsUntilFits(bytes);
-      if (!this.fits(bytes)) {
-        await this.capacity.promise;
+      if (ticket !== this.admissionTurn) {
+        await this.waitForCapacity(options.signal);
         continue;
       }
-      this.admissionTurn++;
+      this.evictLogsUntilFits(bytes);
+      if (!this.fits(bytes)) {
+        await this.waitForCapacity(options.signal);
+        continue;
+      }
+      this.advanceAdmissionTurn();
       const delivery = this.enqueueAdmitted(message, bytes, true, options);
       this.notifyCapacity();
       return delivery;
@@ -112,7 +122,8 @@ export class WsOutboundBuffer {
     // lane is itself saturated we intentionally retain it: silently rejecting
     // an ack/status would strand server state. Producers observe backpressure
     // through the unresolved delivery promise until the socket recovers.
-    return new Promise<void>((resolve, reject) => {
+    let item: WsBufferItem;
+    const delivery = new Promise<void>((resolve, reject) => {
       let settled = false;
       const abort = () => {
         const index = this.items.indexOf(item);
@@ -135,14 +146,16 @@ export class WsOutboundBuffer {
         options.signal?.removeEventListener("abort", abort);
         reject(error);
       };
-      const item: WsBufferItem = {
+      item = {
         message,
         bytes,
         nonDroppable,
+        delivery: undefined as never,
         resolve: finishResolve,
         reject: finishReject,
         dispose: () => options.signal?.removeEventListener("abort", abort),
         cancelled: () => options.signal?.aborted === true,
+        onStart: options.onStart,
       };
       if (options.signal?.aborted) {
         finishReject(new Error("outbound frame cancelled"));
@@ -152,11 +165,16 @@ export class WsOutboundBuffer {
       this.admit(item);
       this.notifyCapacity();
     });
+    item.delivery = delivery;
+    return delivery;
   }
 
   take(): WsBufferItem | undefined {
     const item = this.items.shift();
-    if (item) this.inflight.add(item);
+    if (item) {
+      this.inflight.add(item);
+      item.onStart?.();
+    }
     return item;
   }
 
@@ -213,6 +231,7 @@ export class WsOutboundBuffer {
   private admit(item: WsBufferItem): void {
     this.items.push(item);
     this.bytes += item.bytes;
+    this.onAdmit();
   }
 
   private notifyCapacity(): void {
@@ -223,6 +242,43 @@ export class WsOutboundBuffer {
 
   private hasWaitingAdmission(): boolean {
     return this.nextAdmissionTicket !== this.admissionTurn;
+  }
+
+  private coalesceQueuedKeepalive(
+    message: HostToServerMessage,
+    bytes: number,
+  ): Promise<void> | undefined {
+    if (message.type !== "host:keepalive") return undefined;
+    // An in-flight frame may already be serialized by ws. Keep the newer
+    // timestamp as a distinct queued frame instead of mutating that write.
+    const existing = this.items.find((item) => item.message.type === "host:keepalive");
+    if (!existing || this.bytes - existing.bytes + bytes > MAX_BYTES) return undefined;
+    this.bytes = this.bytes - existing.bytes + bytes;
+    existing.bytes = bytes;
+    existing.message = message;
+    this.notifyCapacity();
+    return existing.delivery;
+  }
+
+  private waitForCapacity(signal: AbortSignal | undefined): Promise<void> {
+    const capacity = this.capacity.promise;
+    if (!signal) return capacity;
+    return new Promise<void>((resolve) => {
+      let settled = false;
+      const wake = () => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", wake);
+        resolve();
+      };
+      signal.addEventListener("abort", wake, { once: true });
+      void capacity.then(wake);
+    });
+  }
+
+  private advanceAdmissionTurn(): void {
+    this.admissionTurn++;
+    while (this.cancelledTickets.delete(this.admissionTurn)) this.admissionTurn++;
   }
 
   private drop(message: Extract<HostToServerMessage, { type: "session:log" }>): void {

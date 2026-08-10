@@ -78,15 +78,15 @@ describe("durable disconnect worktree reconciliation", () => {
     } as never;
     const requeued = await offlineHostAndRequeueDurable(plane.state, "h", "c", "bye");
     expect(requeued).toEqual(["queue"]);
-    expect(calls).toEqual(
-      expect.arrayContaining([
+    expect([...calls].toSorted()).toEqual(
+      [
         "offline:w-idle",
         "offline:w-missing",
         "cancel-offline",
         "ack:ack",
         "queue:queue",
         "queue:lose",
-      ]),
+      ].toSorted(),
     );
     expect(plane.state.sessions.get("queue")?.status).toBe("queued");
     expect(plane.state.worktrees.get("w-cancel")?.status).toBe("idle");
@@ -94,8 +94,51 @@ describe("durable disconnect worktree reconciliation", () => {
 
   it("offlines a locally busy worktree even when it has no session reference", () => {
     const plane = new ControlPlane();
-    plane.state.worktrees.set("empty", { ...worktree("empty", null), status: "busy" });
+    const row = { ...worktree("empty", null), status: "busy" as const };
+    plane.state.worktrees.set(row.id, row);
     expect(offlineHostAndRequeue(plane.state, "h", "bye")).toEqual([]);
-    expect(plane.state.worktrees.get("empty")?.online).toBe(false);
+    expect(plane.state.worktrees.size).toBe(1);
+    expect(plane.state.worktrees.get(row.id)?.online).toBe(false);
+    expect(plane.state.worktrees.get(row.id)?.status).toBe("busy");
+  });
+
+  it("conditionally requeues an acknowledged row if setting its reconnect deadline loses", async () => {
+    const plane = new ControlPlane();
+    const row = worktree("ack-loss", "ack-loss");
+    const running = session("ack-loss", "running", true);
+    const calls: Array<Record<string, unknown>> = [];
+    plane.state.pendingAcks.set("ack-loss", {
+      sessionId: "ack-loss",
+      worktreeId: row.id,
+      assignedAtMs: 0,
+    });
+    plane.state.storage = {
+      listWorktreesByHost: async () => [row],
+      getSession: async () => running,
+      getWorktree: async () => row,
+      markReconnectPending: async () => false,
+      tryRequeueSession: async (opts: Record<string, unknown>) => (calls.push(opts), true),
+    } as never;
+
+    expect(await offlineHostAndRequeueDurable(plane.state, "h", "c", "bye")).toEqual(["ack-loss"]);
+    expect(calls).toEqual([
+      expect.objectContaining({
+        expectedConnectionId: "c",
+        fence: { hostId: "h", connectionId: "c" },
+        forceOffline: true,
+      }),
+    ]);
+    expect(plane.state.sessions.get("ack-loss")).toMatchObject({
+      status: "queued",
+      hostId: null,
+      worktreeId: null,
+    });
+    expect(plane.state.sessions.get("ack-loss")?.ackReceivedAt).toBeUndefined();
+    expect(plane.state.pendingAcks.has("ack-loss")).toBe(false);
+    expect(plane.state.worktrees.get(row.id)).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+      online: false,
+    });
   });
 });

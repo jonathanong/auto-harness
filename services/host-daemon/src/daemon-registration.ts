@@ -22,7 +22,7 @@ export async function registerDaemon(
         labels: worktree.labels,
       })),
     ),
-    commandProfiles: Object.keys(config.commandProfiles),
+    commandProfiles: Object.keys(config.commandProfiles).toSorted(),
     runningSessions: [...runningSessions].toSorted(),
   });
 }
