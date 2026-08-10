@@ -55,15 +55,14 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     },
   });
 
-  await transport.ready;
-  log(`connected ${wsUrl}`);
-
   const loop = new DaemonLoop({
     config: options.config,
     transport,
     onLog: log,
   });
   await loop.start();
+  await transport.registered;
+  log(`connected and registered ${wsUrl}`);
   const repoCount = options.config.repositories.length;
   log(
     `agent ${options.config.hostId} registered` +

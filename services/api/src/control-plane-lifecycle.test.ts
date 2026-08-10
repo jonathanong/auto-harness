@@ -30,9 +30,10 @@ describe("ControlPlane lifecycle", () => {
 
     const t0 = Date.parse("2026-01-01T00:00:00.000Z");
     const reclaimed = plane.reclaimStaleHosts(t0 + 2_000);
-    expect(reclaimed).toEqual(["sess-1"]);
-    expect(plane.getSession("sess-1")?.status).toBe("queued");
-    expect(plane.getWorktree("wt-1")?.status).toBe("idle");
+    expect(reclaimed).toEqual([]);
+    expect(plane.getSession("sess-1")?.status).toBe("running");
+    expect(plane.getSession("sess-1")?.reconnectDeadlineAt).toBeDefined();
+    expect(plane.getWorktree("wt-1")?.status).toBe("busy");
     expect(plane.getWorktree("wt-1")?.online).toBe(false);
     // idle worktree of dead agent also offline — no zombie assign
     expect(plane.getWorktree("wt-idle")?.online).toBe(false);
@@ -67,13 +68,40 @@ describe("ControlPlane lifecycle", () => {
     }
     expect(plane.disconnectHost("missing-conn")).toEqual([]);
     const freed = plane.disconnectHost(reg.connectionId);
-    expect(freed).toEqual(["sess-1"]);
-    expect(plane.getSession("sess-1")?.status).toBe("queued");
-    expect(plane.getWorktree("wt-1")?.status).toBe("idle");
+    expect(freed).toEqual([]);
+    expect(plane.getSession("sess-1")?.status).toBe("running");
+    expect(plane.getSession("sess-1")?.reconnectDeadlineAt).toBeDefined();
+    expect(plane.getWorktree("wt-1")?.status).toBe("busy");
     expect(plane.getWorktree("wt-1")?.online).toBe(false);
     expect(plane.getWorktree("wt-2")?.online).toBe(false);
     // cannot assign to disconnected zombie
     expect(plane.assignQueued()).toHaveLength(0);
+  });
+
+  it("requeues acknowledged work only after its reconnect deadline", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      reconnectGraceMs: 75_000,
+      idFactory: () => "sess-1",
+      connectionIdFactory: () => "conn-1",
+      shardCount: 1,
+    });
+    seedBaseCommand(plane);
+    const registration = plane.registerHost({
+      hostId: "a1",
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "repo-1", path: "/w", labels: [] }],
+      commandProfiles: ["echo-prompt"],
+    });
+    if (!registration.ok) return;
+    plane.createSession(baseSessionBody());
+    plane.assignQueued();
+    plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
+    plane.disconnectHost(registration.connectionId);
+    const deadline = Date.parse(plane.getSession("sess-1")!.reconnectDeadlineAt!);
+    expect(await plane.reclaimReconnectDeadlines(deadline - 1)).toEqual([]);
+    expect(plane.getSession("sess-1")?.status).toBe("running");
+    expect(await plane.reclaimReconnectDeadlines(deadline)).toEqual(["sess-1"]);
+    expect(plane.getSession("sess-1")?.status).toBe("queued");
   });
 
   it("archives logs and delivers optional webhook on terminal", () => {

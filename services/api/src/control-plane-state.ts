@@ -68,6 +68,7 @@ export type ControlPlaneState = {
   shardCount: number;
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
+  reconnectGraceMs: number;
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
@@ -113,6 +114,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     heartbeatStaleMs: options.heartbeatStaleMs
       ? options.heartbeatStaleMs
       : DEFAULT_HEARTBEAT_STALE_MS,
+    reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
     usageLimitRetryCeiling: options.usageLimitRetryCeiling
       ? options.usageLimitRetryCeiling
       : DEFAULT_USAGE_LIMIT_RETRY_CEILING,

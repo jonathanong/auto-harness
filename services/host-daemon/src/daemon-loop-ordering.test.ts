@@ -117,9 +117,12 @@ describe("DaemonLoop outbound delivery", () => {
       const controller = new AbortController();
       (
         loop as unknown as {
-          inflight: Map<string, { controller: AbortController; work: Promise<void> }>;
+          inflight: Map<
+            string,
+            { controller: AbortController; work: Promise<void>; acknowledged: boolean }
+          >;
         }
-      ).inflight.set("running", { controller, work: Promise.resolve() });
+      ).inflight.set("running", { controller, work: Promise.resolve(), acknowledged: true });
       transport.deliver({ type: "session:cancel", sessionId: "running" });
       expect(controller.signal.aborted).toBe(true);
       loop.stop();

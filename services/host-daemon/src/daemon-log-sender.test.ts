@@ -1,0 +1,44 @@
+import { describe, expect, it } from "vitest";
+
+import { sendDaemonLog } from "./daemon-log-sender.ts";
+
+const chunk = {
+  sessionId: "s",
+  stream: "stdout" as const,
+  content: "hello",
+  timestamp: "t",
+  seq: 2,
+};
+
+describe("sendDaemonLog", () => {
+  it("forwards logs and mirrors a readable local line", async () => {
+    const lines: string[] = [];
+    const sent: unknown[] = [];
+    await sendDaemonLog(
+      { send: async (message: unknown) => void sent.push(message) } as never,
+      (line) => lines.push(line),
+      chunk,
+    );
+    expect(lines).toEqual(["[stdout#2] hello"]);
+    expect(sent).toEqual([expect.objectContaining({ type: "session:log", sessionId: "s" })]);
+  });
+
+  it("does not require a local logger", async () => {
+    await expect(
+      sendDaemonLog({ send: async () => {} } as never, undefined, chunk),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each([new Error("offline"), "raw"])(
+    "reports failed delivery %p without throwing",
+    async (failure) => {
+      const lines: string[] = [];
+      await sendDaemonLog(
+        { send: async () => Promise.reject(failure) } as never,
+        (line) => lines.push(line),
+        chunk,
+      );
+      expect(lines.at(-1)).toContain(failure instanceof Error ? "offline" : "raw");
+    },
+  );
+});

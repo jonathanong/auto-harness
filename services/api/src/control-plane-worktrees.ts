@@ -64,24 +64,29 @@ export function offlineHostAndRequeue(
 ): string[] {
   const requeued: string[] = [];
   for (const wt of state.worktrees.values()) {
-    if (wt.hostId !== hostId) {
-      continue;
-    }
+    if (wt.hostId !== hostId) continue;
     wt.online = false;
     if (wt.status === "busy") {
       const sid = wt.currentSessionId;
-      releaseWorktree(state, wt.id);
-      wt.online = false;
       if (sid) {
         const session = state.sessions.get(sid);
-        if (session?.status === "running") {
+        if (session?.status === "running" && !session.ackReceivedAt) {
+          releaseWorktree(state, wt.id);
+          wt.online = false;
           session.status = "queued";
           session.worktreeId = null;
           session.hostId = null;
           session.errorMessage = reason;
           state.pendingAcks.delete(sid);
           requeued.push(sid);
+        } else if (session?.status === "running") {
+          session.reconnectDeadlineAt = new Date(
+            Date.parse(state.now()) + state.reconnectGraceMs,
+          ).toISOString();
+          persistWorktree(state, { ...wt, online: false });
         }
+      } else {
+        persistWorktree(state, { ...wt, online: false });
       }
     }
   }
@@ -94,31 +99,73 @@ export function offlineHostAndRequeue(
 export async function offlineHostAndRequeueDurable(
   state: ControlPlaneState,
   hostId: string,
+  connectionId: string,
   reason: string,
 ): Promise<string[]> {
   if (!state.storage) {
     return offlineHostAndRequeue(state, hostId, reason);
   }
   const requeued: string[] = [];
-  for (const wt of state.worktrees.values()) {
-    if (wt.hostId !== hostId) {
-      continue;
-    }
+  const durableWorktrees = await state.storage.listWorktreesByHost(hostId);
+  for (const wt of durableWorktrees) {
+    if (wt.connectionId && wt.connectionId !== connectionId) continue;
     if (wt.status !== "busy" || !wt.currentSessionId) {
       const next = { ...wt, online: false };
-      await state.storage.setWorktreeOnline(wt.id, false);
-      state.worktrees.set(wt.id, next);
+      if (await state.storage.setWorktreeOnlineFenced(wt.id, connectionId, false)) {
+        state.worktrees.set(wt.id, next);
+      }
       continue;
     }
     const sessionId = wt.currentSessionId;
     // A process can hold a stale worktree cache after another instance creates
     // a session. Read the durable row before calculating the GSI shard instead
     // of fabricating shard zero and corrupting the status index.
-    const session = state.sessions.get(sessionId) ?? (await state.storage.getSession(sessionId));
+    const session = await state.storage.getSession(sessionId);
     if (!session) {
       const next = { ...wt, online: false };
-      await state.storage.setWorktreeOnline(wt.id, false);
-      state.worktrees.set(wt.id, next);
+      if (await state.storage.setWorktreeOnlineFenced(wt.id, connectionId, false)) {
+        state.worktrees.set(wt.id, next);
+      }
+      continue;
+    }
+    if (session.status === "cancelled") {
+      const released = await state.storage.releaseCancelledSessionWorktree({
+        sessionId,
+        worktreeId: wt.id,
+        fence: { hostId, connectionId },
+      });
+      if (released) {
+        state.sessions.set(sessionId, { ...session, hostId: null, worktreeId: null });
+        state.worktrees.set(wt.id, {
+          ...wt,
+          status: "idle",
+          currentSessionId: null,
+          online: false,
+        });
+      }
+      continue;
+    }
+    if (session.status !== "running") {
+      continue;
+    }
+    if (session.ackReceivedAt) {
+      const nextSession = {
+        ...session,
+        reconnectDeadlineAt: new Date(
+          Date.parse(state.now()) + state.reconnectGraceMs,
+        ).toISOString(),
+      };
+      const marked = await state.storage.markReconnectPending({
+        sessionId,
+        hostId,
+        worktreeId: wt.id,
+        deadlineAt: nextSession.reconnectDeadlineAt,
+        connectionId,
+      });
+      if (marked) {
+        state.sessions.set(sessionId, nextSession);
+        state.worktrees.set(wt.id, { ...wt, online: false });
+      }
       continue;
     }
     const won = await state.storage.tryRequeueSession({
@@ -127,6 +174,8 @@ export async function offlineHostAndRequeueDurable(
       queueShard: session.queueShard,
       reason,
       forceOffline: true,
+      expectedConnectionId: connectionId,
+      fence: { hostId, connectionId },
     });
     if (won) {
       state.sessions.set(sessionId, {

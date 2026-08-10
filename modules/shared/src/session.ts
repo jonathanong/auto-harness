@@ -95,6 +95,8 @@ export type HostToServerMessage =
         labels: string[];
       }>;
       commandProfiles: string[];
+      /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
+      runningSessions?: string[];
     }
   | { type: "session:ack"; sessionId: string }
   | {

@@ -14,6 +14,7 @@ describe("createWsTransport", () => {
     wss.on("connection", (_sock, request) => {
       authorization = request.headers.authorization;
       requestUrl = request.url;
+      _sock.send(JSON.stringify({ type: "host:registered", hostId: "a1" }));
     });
     let transport: ReturnType<typeof createWsTransport> | undefined;
     try {
@@ -52,6 +53,7 @@ describe("createWsTransport", () => {
     wss.on("connection", (sock) => {
       sock.on("message", (raw) => {
         got.push(JSON.parse(String(raw)));
+        sock.send(JSON.stringify({ type: "host:registered", hostId: "a1" }));
         sock.send(
           JSON.stringify({
             type: "session:assign",
@@ -109,4 +111,89 @@ describe("createWsTransport", () => {
       });
     });
   });
+
+  it("ignores assignments until the registration barrier opens", async () => {
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    wss.on("connection", (sock) => {
+      sock.send(JSON.stringify(assign("before")));
+      sock.on("message", () => {
+        sock.send(JSON.stringify({ type: "host:registered", hostId: "a1" }));
+        sock.send(JSON.stringify(assign("after")));
+      });
+    });
+    await listen(server);
+    const transport = createWsTransport({ url: `ws://127.0.0.1:${port(server)}/ws`, hostId: "a1" });
+    const seen: string[] = [];
+    transport.onMessage((message) => {
+      if (message.type === "session:assign") seen.push(message.sessionId);
+    });
+    await transport.ready;
+    await transport.send(register());
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(seen).toEqual(["after"]);
+    transport.close();
+    await close(wss, server);
+  });
+
+  it("retries a refused registration and only resolves registered after acceptance", async () => {
+    const server = createServer();
+    const wss = new WebSocketServer({ server, path: "/ws" });
+    let registrations = 0;
+    wss.on("connection", (sock) => {
+      sock.on("message", () => {
+        registrations++;
+        sock.send(
+          JSON.stringify(
+            registrations === 1 ? { type: "error" } : { type: "host:registered", hostId: "a1" },
+          ),
+        );
+      });
+    });
+    await listen(server);
+    const transport = createWsTransport({ url: `ws://127.0.0.1:${port(server)}/ws`, hostId: "a1" });
+    await transport.ready;
+    await transport.send(register());
+    await transport.registered;
+    expect(registrations).toBe(2);
+    transport.close();
+    await close(wss, server);
+  });
 });
+
+function assign(sessionId: string) {
+  return {
+    type: "session:assign",
+    sessionId,
+    repositoryId: "r",
+    prompt: "p",
+    resolvedArgv: ["c"],
+    timeout: 1,
+    worktreeId: "w",
+    assignedAt: "t",
+  };
+}
+
+function register() {
+  return { type: "host:register" as const, hostId: "a1", worktrees: [], commandProfiles: [] };
+}
+
+async function listen(server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", resolve);
+    server.on("error", reject);
+  });
+}
+
+function port(server: ReturnType<typeof createServer>): number {
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  return address.port;
+}
+
+async function close(wss: WebSocketServer, server: ReturnType<typeof createServer>): Promise<void> {
+  await new Promise<void>((resolve) => wss.close(() => resolve()));
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+}

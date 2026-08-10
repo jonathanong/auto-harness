@@ -192,12 +192,14 @@ export async function assignQueuedDurable(
           hostId: candidate.hostId,
           startedAt: nowIso,
           resolvedArgv,
+          assignmentConnectionId: connectionId,
         };
         const nextWorktree = {
           ...candidate,
           status: "busy" as const,
           currentSessionId: session.id,
           lastAssignedAt: nowIso,
+          connectionId,
         };
         state.sessions.set(session.id, nextSession);
         state.worktrees.set(candidate.id, nextWorktree);

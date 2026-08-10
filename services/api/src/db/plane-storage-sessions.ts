@@ -76,6 +76,47 @@ export async function putWorktree(ctx: PlaneStorageCtx, wt: WorktreeRecord): Pro
   );
 }
 
+/** Registration inventory is written only while its exact host lease is
+ * current. This prevents an old API process from publishing stale inventory
+ * after a replacement connection has won the host lock. */
+export async function putWorktreeFenced(
+  ctx: PlaneStorageCtx,
+  wt: WorktreeRecord,
+  fence: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: fence.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.worktrees,
+              Item: { ...wt },
+              // A registration inventory snapshot must never overwrite an
+              // assigned worktree. Reconciliation owns that transition.
+              ConditionExpression: "attribute_not_exists(id) OR #s <> :busy",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: { ":busy": "busy" },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalTransactionFailed(err)) return false;
+    throw err;
+  }
+}
+
 export async function getWorktree(
   ctx: PlaneStorageCtx,
   id: string,
@@ -175,7 +216,8 @@ export async function tryAssignSession(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
-              UpdateExpression: "SET #s = :busy, currentSessionId = :sid, lastAssignedAt = :now",
+              UpdateExpression:
+                "SET #s = :busy, currentSessionId = :sid, lastAssignedAt = :now, connectionId = :connectionId",
               ConditionExpression: "#s = :idle AND #o = :true",
               ExpressionAttributeNames: { "#s": "status", "#o": "online" },
               ExpressionAttributeValues: {
@@ -184,6 +226,7 @@ export async function tryAssignSession(
                 ":true": true,
                 ":sid": opts.sessionId,
                 ":now": opts.now,
+                ":connectionId": opts.connectionId,
               },
             },
           },
@@ -192,7 +235,7 @@ export async function tryAssignSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv REMOVE ackReceivedAt",
+                "SET #s = :running, statusShard = :statusShard, worktreeId = :wid, hostId = :hid, startedAt = :now, resolvedArgv = :argv, assignmentConnectionId = :connectionId REMOVE ackReceivedAt, reconnectDeadlineAt",
               ConditionExpression: "#s = :queued",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
@@ -203,6 +246,7 @@ export async function tryAssignSession(
                 ":hid": opts.hostId,
                 ":now": opts.now,
                 ":argv": opts.resolvedArgv,
+                ":connectionId": opts.connectionId,
               },
             },
           },
@@ -276,17 +320,30 @@ export async function failExpiredResumeSession(
  */
 export async function releaseCancelledSessionWorktree(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; worktreeId: string },
+  opts: { sessionId: string; worktreeId: string; fence?: { hostId: string; connectionId: string } },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...(opts.fence
+            ? [
+                {
+                  ConditionCheck: {
+                    TableName: ctx.tables.hostLocks,
+                    Key: { hostId: opts.fence.hostId },
+                    ConditionExpression: "connectionId = :connectionId",
+                    ExpressionAttributeValues: { ":connectionId": opts.fence.connectionId },
+                  },
+                },
+              ]
+            : []),
           {
             Update: {
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
-              UpdateExpression: "SET worktreeId = :null, hostId = :null",
+              UpdateExpression:
+                "SET worktreeId = :null, hostId = :null REMOVE assignmentConnectionId, reconnectDeadlineAt",
               ConditionExpression: "#s = :cancelled AND worktreeId = :worktreeId",
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
@@ -300,13 +357,19 @@ export async function releaseCancelledSessionWorktree(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
-              UpdateExpression: "SET #s = :idle, currentSessionId = :null",
-              ConditionExpression: "currentSessionId = :sid",
-              ExpressionAttributeNames: { "#s": "status" },
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :offline",
+              ConditionExpression:
+                "currentSessionId = :sid" +
+                (opts.fence
+                  ? " AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)"
+                  : ""),
+              ExpressionAttributeNames: { "#s": "status", "#o": "online" },
               ExpressionAttributeValues: {
                 ":idle": "idle",
                 ":null": null,
                 ":sid": opts.sessionId,
+                ":offline": false,
+                ...(opts.fence ? { ":connectionId": opts.fence.connectionId } : {}),
               },
             },
           },
@@ -332,24 +395,59 @@ export async function tryRequeueSession(
     queueShard: number;
     reason?: string;
     forceOffline?: boolean;
+    expectedHostId?: string;
+    expectedReconnectDeadlineAt?: string;
+    expectedConnectionId?: string;
+    requireNoHostLock?: string;
+    fence?: { hostId: string; connectionId: string };
   },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...(opts.fence
+            ? [
+                {
+                  ConditionCheck: {
+                    TableName: ctx.tables.hostLocks,
+                    Key: { hostId: opts.fence.hostId },
+                    ConditionExpression: "connectionId = :connectionId",
+                    ExpressionAttributeValues: { ":connectionId": opts.fence.connectionId },
+                  },
+                },
+              ]
+            : []),
+          ...(opts.requireNoHostLock
+            ? [
+                {
+                  ConditionCheck: {
+                    TableName: ctx.tables.hostLocks,
+                    Key: { hostId: opts.requireNoHostLock },
+                    ConditionExpression: "attribute_not_exists(hostId)",
+                  },
+                },
+              ]
+            : []),
           {
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
               UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :online",
-              ConditionExpression: "currentSessionId = :sid",
+              ConditionExpression:
+                "currentSessionId = :sid" +
+                (opts.expectedConnectionId
+                  ? " AND (attribute_not_exists(connectionId) OR connectionId = :connectionId)"
+                  : ""),
               ExpressionAttributeNames: { "#s": "status", "#o": "online" },
               ExpressionAttributeValues: {
                 ":idle": "idle",
                 ":null": null,
                 ":online": opts.forceOffline !== true,
                 ":sid": opts.sessionId,
+                ...(opts.expectedConnectionId
+                  ? { ":connectionId": opts.expectedConnectionId }
+                  : {}),
               },
             },
           },
@@ -358,8 +456,16 @@ export async function tryRequeueSession(
               TableName: ctx.tables.sessions,
               Key: { id: opts.sessionId },
               UpdateExpression:
-                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt",
-              ConditionExpression: "#s = :running",
+                "SET #s = :queued, statusShard = :statusShard, worktreeId = :null, hostId = :null, errorMessage = :reason REMOVE startedAt, ackReceivedAt, reconnectDeadlineAt, assignmentConnectionId",
+              ConditionExpression:
+                "#s = :running" +
+                (opts.expectedHostId ? " AND hostId = :hostId" : "") +
+                (opts.expectedReconnectDeadlineAt
+                  ? " AND reconnectDeadlineAt = :reconnectDeadlineAt"
+                  : "") +
+                (opts.expectedConnectionId
+                  ? " AND (attribute_not_exists(assignmentConnectionId) OR assignmentConnectionId = :connectionId)"
+                  : ""),
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":queued": "queued",
@@ -367,6 +473,13 @@ export async function tryRequeueSession(
                 ":running": "running",
                 ":null": null,
                 ":reason": opts.reason ?? "agent disconnected; requeued",
+                ...(opts.expectedHostId ? { ":hostId": opts.expectedHostId } : {}),
+                ...(opts.expectedReconnectDeadlineAt
+                  ? { ":reconnectDeadlineAt": opts.expectedReconnectDeadlineAt }
+                  : {}),
+                ...(opts.expectedConnectionId
+                  ? { ":connectionId": opts.expectedConnectionId }
+                  : {}),
               },
             },
           },
@@ -387,8 +500,36 @@ export async function acknowledgeSession(
   ctx: PlaneStorageCtx,
   sessionId: string,
   acknowledgedAt: string,
+  fence?: { hostId: string; connectionId: string },
 ): Promise<boolean> {
   try {
+    if (fence) {
+      await ctx.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              ConditionCheck: {
+                TableName: ctx.tables.hostLocks,
+                Key: { hostId: fence.hostId },
+                ConditionExpression: "connectionId = :connectionId",
+                ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+              },
+            },
+            {
+              Update: {
+                TableName: ctx.tables.sessions,
+                Key: { id: sessionId },
+                UpdateExpression: "SET ackReceivedAt = :at",
+                ConditionExpression: "#s = :running AND attribute_not_exists(ackReceivedAt)",
+                ExpressionAttributeNames: { "#s": "status" },
+                ExpressionAttributeValues: { ":at": acknowledgedAt, ":running": "running" },
+              },
+            },
+          ],
+        }),
+      );
+      return true;
+    }
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.sessions,
@@ -426,6 +567,7 @@ export async function finishSession(
     cliResumeRef?: string;
     retryCount?: number;
     retryAfter?: string;
+    fence?: { hostId: string; connectionId: string };
   },
 ): Promise<boolean> {
   const values: Record<string, unknown> = {
@@ -441,6 +583,7 @@ export async function finishSession(
     "worktreeId = :null",
     "hostId = :null",
   ];
+  const removes = ["reconnectDeadlineAt", "assignmentConnectionId"];
   if (opts.completedAt !== undefined) {
     sets.push("completedAt = :completedAt");
     values[":completedAt"] = opts.completedAt;
@@ -470,11 +613,23 @@ export async function finishSession(
     values[":retryAfter"] = opts.retryAfter;
   }
   const transactItems: Array<Record<string, unknown>> = [
+    ...(opts.fence
+      ? [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.fence.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": opts.fence.connectionId },
+            },
+          },
+        ]
+      : []),
     {
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression: `SET ${sets.join(", ")}`,
+        UpdateExpression: `SET ${sets.join(", ")} REMOVE ${removes.join(", ")}`,
         ConditionExpression: "#s = :running",
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: values,
@@ -544,4 +699,28 @@ export async function setWorktreeOnline(
       ExpressionAttributeValues: { ":o": online },
     }),
   );
+}
+
+export async function setWorktreeOnlineFenced(
+  ctx: PlaneStorageCtx,
+  worktreeId: string,
+  connectionId: string,
+  online: boolean,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.worktrees,
+        Key: { id: worktreeId },
+        UpdateExpression: "SET #o = :online",
+        ConditionExpression: "attribute_not_exists(connectionId) OR connectionId = :connectionId",
+        ExpressionAttributeNames: { "#o": "online" },
+        ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) return false;
+    throw err;
+  }
 }

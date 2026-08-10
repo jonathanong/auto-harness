@@ -105,7 +105,7 @@ describe("ControlPlane concurrency and late status", () => {
     expect(assigned2.some((a) => a.session.prompt === "replacement")).toBe(true);
   });
 
-  it("late session:status after disconnect stays queued", () => {
+  it("late session:status after disconnect completes acknowledged work", () => {
     const plane = new ControlPlane({
       now: () => "2026-01-01T00:00:00.000Z",
       idFactory: () => "sess-1",
@@ -126,9 +126,9 @@ describe("ControlPlane concurrency and late status", () => {
     plane.assignQueued();
     plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" });
     plane.disconnectHost(reg.connectionId);
-    expect(plane.getSession("sess-1")?.status).toBe("queued");
+    expect(plane.getSession("sess-1")?.status).toBe("running");
 
-    // late ack ignored
+    // duplicate ack remains harmless while the reconnect lease is pending
     expect(plane.handleHostMessage({ type: "session:ack", sessionId: "sess-1" }).ok).toBe(true);
 
     plane.handleHostMessage({
@@ -136,6 +136,6 @@ describe("ControlPlane concurrency and late status", () => {
       sessionId: "sess-1",
       status: "completed",
     });
-    expect(plane.getSession("sess-1")?.status).toBe("queued");
+    expect(plane.getSession("sess-1")?.status).toBe("completed");
   });
 });

@@ -192,9 +192,9 @@ describe("durable control-plane transitions", () => {
       (await winner.handleHostMessageDurable({ type: "session:ack", sessionId: sid })).ok,
     ).toBe(true);
     expect((await winner.disconnectHostDurable(reg.ok ? reg.connectionId : "missing")).length).toBe(
-      1,
+      0,
     );
-    expect((await ctx.storage.getSession(sid))?.status).toBe("queued");
+    expect((await ctx.storage.getSession(sid))?.status).toBe("running");
     expect((await ctx.storage.getWorktree("worktree-schedule"))?.online).toBe(false);
   });
 
@@ -587,7 +587,7 @@ describe("durable control-plane transitions", () => {
       return;
     }
     const failing = Object.create(ctx.storage) as DynamoPlaneStorage;
-    failing.putWorktree = async () => {
+    failing.putWorktreeFenced = async () => {
       throw new Error("worktree write failed");
     };
     const planeCreated = new ControlPlane({
@@ -1343,10 +1343,17 @@ describe("durable control-plane transitions", () => {
       status: "idle",
       online: true,
       currentSessionId: null,
+      connectionId: "coverage-idle-connection",
     });
-    expect(await offlineHostAndRequeueDurable(idle.state, "coverage-idle-host", "offline")).toEqual(
-      [],
-    );
+    await ctx.storage.putWorktree(idle.state.worktrees.get("coverage-idle-worktree")!);
+    expect(
+      await offlineHostAndRequeueDurable(
+        idle.state,
+        "coverage-idle-host",
+        "coverage-idle-connection",
+        "offline",
+      ),
+    ).toEqual([]);
     expect(idle.state.worktrees.get("coverage-idle-worktree")?.online).toBe(false);
 
     const missingSessionStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
@@ -1363,11 +1370,16 @@ describe("durable control-plane transitions", () => {
       status: "busy",
       online: true,
       currentSessionId: "coverage-missing-session",
+      connectionId: "coverage-missing-session-connection",
     });
+    await ctx.storage.putWorktree(
+      missingSession.state.worktrees.get("coverage-missing-session-worktree")!,
+    );
     expect(
       await offlineHostAndRequeueDurable(
         missingSession.state,
         "coverage-missing-session-host",
+        "coverage-missing-session-connection",
         "offline",
       ),
     ).toEqual([]);
