@@ -182,6 +182,14 @@ describe("scoped control-plane REST resources", () => {
         })
       ).status,
     ).toBe(200);
+    expect((await invoke("POST", "/api/v1/schedules/schedule-c/trigger")).status).toBe(201);
+    expect((await invokeHandler(handler, "DELETE", "/api/v1/schedules/schedule-a")).status).toBe(
+      401,
+    );
+    expect((await invoke("DELETE", "/api/v1/schedules/schedule-a")).status).toBe(403);
+    expect(
+      (await invoke("DELETE", "/api/v1/schedules/schedule-a", undefined, adminKey)).status,
+    ).toBe(204);
     expect((await invoke("GET", "/api/v1/worktrees")).json).toMatchObject({
       items: [expect.objectContaining({ id: "wt-a" })],
     });
