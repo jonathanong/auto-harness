@@ -27,7 +27,12 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
+        Item: {
+          hostId: opts.hostId,
+          connectionId: opts.connectionId,
+          draining: false,
+          mainCheckoutLeases: {},
+        },
       }),
     );
     return true;
@@ -36,7 +41,12 @@ export async function tryAcquireHostLock(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.hostLocks,
-        Item: { hostId: opts.hostId, connectionId: opts.connectionId, draining: false },
+        Item: {
+          hostId: opts.hostId,
+          connectionId: opts.connectionId,
+          draining: false,
+          mainCheckoutLeases: {},
+        },
         ConditionExpression: "attribute_not_exists(hostId)",
       }),
     );
@@ -77,8 +87,14 @@ export async function tryRegisterHost(
           ":connectionId": opts.connection.connectionId,
           ":existing": existingConnectionId,
           ":false": false,
+          ":empty": {},
         }
-      : { ":connectionId": opts.connection.connectionId, ":false": false };
+      : {
+          ":connectionId": opts.connection.connectionId,
+          ":false": false,
+          ":true": true,
+          ":empty": {},
+        };
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
@@ -86,15 +102,25 @@ export async function tryRegisterHost(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              UpdateExpression: "SET connectionId = :connectionId, draining = :false",
+              UpdateExpression:
+                "SET connectionId = :connectionId, draining = :false, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty)",
               ...(opts.replaceExisting
                 ? existingConnectionId
                   ? {
                       ConditionExpression:
                         "attribute_not_exists(connectionId) OR connectionId = :existing",
                     }
-                  : {}
-                : { ConditionExpression: "attribute_not_exists(connectionId)" }),
+                  : {
+                      // `getHostLock` deliberately hides a disconnected row.
+                      // A force registration may replace that row, but must not
+                      // overwrite an unseen live owner from another process.
+                      ConditionExpression:
+                        "attribute_not_exists(connectionId) OR disconnected = :true",
+                    }
+                : {
+                    ConditionExpression:
+                      "attribute_not_exists(connectionId) OR disconnected = :true",
+                  }),
               ExpressionAttributeValues: lockValues,
             },
           },
@@ -143,11 +169,12 @@ export async function releaseHostConnection(
             },
           },
           {
-            Delete: {
+            Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
+              UpdateExpression: "SET disconnected = :true REMOVE draining",
               ConditionExpression: "connectionId = :connectionId",
-              ExpressionAttributeValues: { ":connectionId": opts.connectionId },
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":true": true },
             },
           },
         ],
@@ -254,6 +281,7 @@ export async function getHostLock(ctx: PlaneStorageCtx, hostId: string): Promise
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.hostLocks, Key: { hostId } }),
   );
+  if (res.Item?.disconnected === true) return null;
   return (res.Item?.connectionId as string | undefined) ?? null;
 }
 

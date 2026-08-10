@@ -53,6 +53,7 @@ export class Scheduler {
       queued.sort(compareSessionsForQueue);
 
       for (const session of queued) {
+        if (session.type === "scheduled") continue;
         if (session.hostId && session.worktreeId) {
           continue;
         }

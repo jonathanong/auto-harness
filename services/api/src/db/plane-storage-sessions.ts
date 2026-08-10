@@ -11,6 +11,7 @@ import {
 import type { SessionStatus } from "@auto-harness/shared";
 
 import { statusShardAttr } from "./dynamo.ts";
+import { getHostLock } from "./plane-storage-locks.ts";
 import type { SessionRecord, WorktreeRecord } from "./types.ts";
 import {
   itemToSession,
@@ -441,7 +442,7 @@ export async function tryAssignSession(
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
               ConditionExpression:
-                "connectionId = :connectionId AND (attribute_not_exists(draining) OR draining = :false)",
+                "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
               ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
             },
           },
@@ -453,8 +454,8 @@ export async function tryAssignSession(
                     Key: { id: opts.providerAccountId },
                     UpdateExpression: "SET lastAssignedAt = :now, updatedAt = :now",
                     ConditionExpression:
-                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR usageLimitedUntil <= :now)",
-                    ExpressionAttributeValues: { ":now": opts.now },
+                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
+                    ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
                   },
                 },
               ]
@@ -842,40 +843,62 @@ export async function acknowledgeSession(
 ): Promise<boolean>;
 export async function acknowledgeSession(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+  opts: {
+    sessionId: string;
+    worktreeId: string | null;
+    attemptId: string;
+    acknowledgedAt: string;
+    fence?: { hostId: string; connectionId: string };
+  },
 ): Promise<boolean>;
 export async function acknowledgeSession(
   ctx: PlaneStorageCtx,
   arg:
     | string
-    | { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+    | {
+        sessionId: string;
+        worktreeId: string | null;
+        attemptId: string;
+        acknowledgedAt: string;
+        fence?: { hostId: string; connectionId: string };
+      },
   acknowledgedAt?: string,
   fence?: { hostId: string; connectionId: string },
 ): Promise<boolean> {
   const legacy = typeof arg === "string";
   const sessionId = legacy ? arg : arg.sessionId;
   const attempt = legacy ? null : arg;
+  const activeFence = legacy ? fence : arg.fence;
   try {
-    if (legacy && fence) {
+    if (activeFence) {
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
             {
               ConditionCheck: {
                 TableName: ctx.tables.hostLocks,
-                Key: { hostId: fence.hostId },
+                Key: { hostId: activeFence.hostId },
                 ConditionExpression: "connectionId = :connectionId",
-                ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+                ExpressionAttributeValues: { ":connectionId": activeFence.connectionId },
               },
             },
             {
               Update: {
                 TableName: ctx.tables.sessions,
                 Key: { id: sessionId },
-                UpdateExpression: "SET ackReceivedAt = :at",
-                ConditionExpression: "#s = :running AND attribute_not_exists(ackReceivedAt)",
+                UpdateExpression: "SET ackReceivedAt = :at REMOVE assignmentSentAt",
+                ConditionExpression:
+                  "#s = :running" +
+                  (attempt ? " AND worktreeId = :worktreeId AND attemptId = :attemptId" : "") +
+                  " AND attribute_not_exists(ackReceivedAt)",
                 ExpressionAttributeNames: { "#s": "status" },
-                ExpressionAttributeValues: { ":at": acknowledgedAt, ":running": "running" },
+                ExpressionAttributeValues: {
+                  ":at": attempt?.acknowledgedAt ?? acknowledgedAt,
+                  ":running": "running",
+                  ...(attempt
+                    ? { ":worktreeId": attempt.worktreeId, ":attemptId": attempt.attemptId }
+                    : {}),
+                },
               },
             },
           ],
@@ -887,7 +910,7 @@ export async function acknowledgeSession(
       new UpdateCommand({
         TableName: ctx.tables.sessions,
         Key: { id: sessionId },
-        UpdateExpression: "SET ackReceivedAt = :at",
+        UpdateExpression: "SET ackReceivedAt = :at REMOVE assignmentSentAt",
         ConditionExpression:
           "#s = :running" +
           (attempt !== null ? " AND worktreeId = :worktreeId AND attemptId = :attemptId" : "") +
@@ -908,11 +931,32 @@ export async function acknowledgeSession(
       // A duplicate ack is a successful no-op, while a late ack for a terminal
       // session is also harmless to the caller.
       const current = await getSession(ctx, sessionId);
+      const fenceStillOwnsHost =
+        !activeFence || (await getHostLock(ctx, activeFence.hostId)) === activeFence.connectionId;
+      if (legacy && activeFence) {
+        return (
+          current?.ackReceivedAt !== undefined &&
+          current.status === "running" &&
+          fenceStillOwnsHost &&
+          current.hostId === activeFence.hostId &&
+          (current.assignmentConnectionId === undefined ||
+            current.assignmentConnectionId === activeFence.connectionId)
+        );
+      }
+      const attemptMatches =
+        !attempt ||
+        (current?.worktreeId === attempt.worktreeId && current.attemptId === attempt.attemptId);
+      const fenceMatches =
+        !activeFence ||
+        (current?.hostId === activeFence.hostId &&
+          (current.assignmentConnectionId === undefined ||
+            current.assignmentConnectionId === activeFence.connectionId));
       return legacy
         ? current?.ackReceivedAt !== undefined || current?.status !== "running"
         : current?.status === "running" &&
-            current.worktreeId === attempt!.worktreeId &&
-            current.attemptId === attempt!.attemptId &&
+            attemptMatches &&
+            fenceStillOwnsHost &&
+            fenceMatches &&
             current.ackReceivedAt !== undefined;
     }
     throw err;

@@ -6,7 +6,9 @@ export function queueReconnectSession(session: SessionRecord, reason: string): S
     ackReceivedAt: _,
     reconnectDeadlineAt: __,
     assignmentConnectionId: ___,
+    assignmentSentAt: ______,
     startedAt: ____,
+    mainCheckoutLease: _____,
     ...next
   } = session;
   return {

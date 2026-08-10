@@ -11,6 +11,8 @@ import {
   buildProviderCatalog,
   resolveSessionTargetRouteAt,
 } from "./control-plane-session-target.ts";
+import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
+import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
@@ -454,11 +456,19 @@ export function enforceAckDeadlines(
       state.pendingAcks.delete(sessionId);
       continue;
     }
-    releaseWorktree(state, pending.worktreeId);
-    session.status = "queued";
-    session.worktreeId = null;
-    session.hostId = null;
-    delete session.startedAt;
+    if (pending.worktreeId) releaseWorktree(state, pending.worktreeId);
+    else releaseScheduledLeaseLocal(state, session);
+    if (!pending.worktreeId)
+      state.sessions.set(
+        sessionId,
+        queueReconnectSession(session, "agent did not acknowledge assignment; requeued"),
+      );
+    else {
+      session.status = "queued";
+      session.worktreeId = null;
+      session.hostId = null;
+      delete session.startedAt;
+    }
     state.pendingAcks.delete(sessionId);
     requeued.push(sessionId);
   }
@@ -472,6 +482,28 @@ export async function enforceAckDeadlinesDurable(
 ): Promise<string[]> {
   if (!state.storage) {
     return enforceAckDeadlines(state, nowMs);
+  }
+  const durableSessions =
+    typeof state.storage.listAllSessions === "function"
+      ? await state.storage.listAllSessions()
+      : [];
+  for (const session of durableSessions) {
+    if (
+      session.type === "scheduled" &&
+      session.status === "running" &&
+      !session.ackReceivedAt &&
+      session.assignmentSentAt &&
+      session.attemptId &&
+      !state.pendingAcks.has(session.id)
+    ) {
+      state.sessions.set(session.id, session);
+      state.pendingAcks.set(session.id, {
+        sessionId: session.id,
+        worktreeId: null,
+        attemptId: session.attemptId,
+        assignedAtMs: Date.parse(session.assignmentSentAt),
+      });
+    }
   }
   const requeued: string[] = [];
   for (const [sessionId, pending] of state.pendingAcks) {
@@ -488,33 +520,51 @@ export async function enforceAckDeadlinesDurable(
       state.pendingAcks.delete(sessionId);
       continue;
     }
-    const won = await state.storage.tryRequeueSession({
-      sessionId,
-      worktreeId: pending.worktreeId,
-      attemptId: pending.attemptId,
-      queueShard: session.queueShard,
-      reason: "agent did not acknowledge assignment; requeued",
-      requireUnacknowledged: true,
-    });
+    const won = pending.worktreeId
+      ? await state.storage.tryRequeueSession({
+          sessionId,
+          worktreeId: pending.worktreeId,
+          attemptId: pending.attemptId,
+          queueShard: session.queueShard,
+          reason: "agent did not acknowledge assignment; requeued",
+          requireUnacknowledged: true,
+        })
+      : session.hostId && session.assignmentConnectionId
+        ? await state.storage.releaseMainCheckoutSession({
+            sessionId,
+            hostId: session.hostId,
+            repositoryId: session.repositoryId,
+            connectionId: session.assignmentConnectionId,
+            attemptId: pending.attemptId,
+            status: "queued",
+            queueShard: session.queueShard,
+            reason: "agent did not acknowledge assignment; requeued",
+          })
+        : false;
     if (!won) {
       state.pendingAcks.delete(sessionId);
       continue;
     }
-    const wt = state.worktrees.get(pending.worktreeId);
-    if (wt) {
+    const wt = pending.worktreeId ? state.worktrees.get(pending.worktreeId) : undefined;
+    if (wt && pending.worktreeId) {
       state.worktrees.set(pending.worktreeId, {
         ...wt,
         status: "idle",
         currentSessionId: null,
       });
     }
-    state.sessions.set(sessionId, {
-      ...session,
-      status: "queued",
-      worktreeId: null,
-      hostId: null,
-      errorMessage: "agent did not acknowledge assignment; requeued",
-    });
+    const reason = "agent did not acknowledge assignment; requeued";
+    const queued = pending.worktreeId
+      ? {
+          ...session,
+          status: "queued" as const,
+          worktreeId: null,
+          hostId: null,
+          errorMessage: reason,
+        }
+      : queueReconnectSession(session, reason);
+    state.sessions.set(sessionId, queued);
+    if (!pending.worktreeId) releaseScheduledLeaseLocal(state, session);
     state.pendingAcks.delete(sessionId);
     requeued.push(sessionId);
   }

@@ -29,6 +29,9 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 | `session:cancel` | `sessionId`                                                                                                                                                                            | Stop queued/running work                                                                                                                                                                                                                                                                        |
 | `ping`           | `{}`                                                                                                                                                                                   | Keepalive                                                                                                                                                                                                                                                                                       |
 
+Scheduled main-checkout assignments use `sessionType: "scheduled"` and
+`worktreeId: null`; hosts must not route them through worktree handling.
+
 ```json
 {
   "type": "session:assign",

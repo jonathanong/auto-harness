@@ -197,10 +197,14 @@ export class DaemonLoop {
     msg: Extract<HostWireMessage, { type: "session:assign" }>,
     signal: AbortSignal,
   ): Promise<void> {
-    // A scheduler never assigns the main checkout here, but keep the outbound
-    // acknowledgement fence well-typed if an invalid control-plane frame gets through.
-    if (msg.worktreeId === null) {
-      throw new Error(`assignment ${msg.sessionId} is missing a worktree`);
+    // Scheduled assignments deliberately use the repository's main checkout;
+    // ordinary assignments must name an inventoried worktree.
+    if ((msg.worktreeId === null) !== (msg.sessionType === "scheduled")) {
+      throw new Error(
+        msg.worktreeId === null
+          ? `assignment ${msg.sessionId} is missing a worktree`
+          : `scheduled assignment ${msg.sessionId} must use the main checkout`,
+      );
     }
     await this.outbound.send(
       {

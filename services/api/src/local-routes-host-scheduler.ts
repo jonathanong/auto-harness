@@ -14,6 +14,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
           (host) =>
             mayAccessHost(ctx.principal, host.hostId) &&
             (!ctx.principal?.allowedRepositoryIds ||
+              host.repositoryIds.some((id) => mayAccessRepository(ctx.principal, id)) ||
               host.worktreeIds.some((id) =>
                 mayAccessRepository(ctx.principal, plane.getWorktree(id)?.repositoryId),
               )),
@@ -93,12 +94,20 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
 
   if (method === "POST" && url.pathname === "/api/v1/scheduler/assign") {
     const assigned = await plane.assignQueuedDurable();
+    const scheduled = await plane.assignScheduledQueuedDurable();
     send(res, 200, {
-      items: assigned.map((a) => ({
-        sessionId: a.session.id,
-        worktreeId: a.worktree.id,
-        hostId: a.worktree.hostId,
-      })),
+      items: [
+        ...assigned.map((a) => ({
+          sessionId: a.session.id,
+          worktreeId: a.worktree.id,
+          hostId: a.worktree.hostId,
+        })),
+        ...scheduled.map((a) => ({
+          sessionId: a.session.id,
+          worktreeId: null,
+          hostId: a.hostId,
+        })),
+      ],
     });
     return true;
   }

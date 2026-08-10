@@ -6,6 +6,52 @@ import { DaemonLoop } from "./daemon-loop.ts";
 import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop errors", () => {
+  it("rejects a non-scheduled assignment without a worktree", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const serverMsgs: HostToServerMessage[] = [];
+      const logs: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          serverMsgs.push(message);
+        },
+      });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => logs.push(line) });
+      await loop.start();
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "sess-missing-worktree",
+        repositoryId: "demo",
+        prompt: "must not run",
+        resolvedArgv: ["false"],
+        timeout: 10,
+        worktreeId: null,
+        assignedAt: new Date().toISOString(),
+      });
+      await expect(loop.waitForIdle()).rejects.toThrow("missing a worktree");
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "sess-scheduled-worktree",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "must use main checkout",
+        resolvedArgv: ["false"],
+        timeout: 10,
+        worktreeId: "wt-1",
+        assignedAt: new Date().toISOString(),
+      });
+      await expect(loop.waitForIdle()).rejects.toThrow("must use the main checkout");
+
+      expect(serverMsgs.some((message) => message.type === "session:ack")).toBe(false);
+      expect(serverMsgs.some((message) => message.type === "session:status")).toBe(false);
+      expect(logs.some((line) => line.includes("missing a worktree"))).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("rejects an empty resolvedArgv without shell spawn success", async () => {
     const { config, cleanup } = await makeRepo();
     try {

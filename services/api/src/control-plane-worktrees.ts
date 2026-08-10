@@ -2,6 +2,8 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
+import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
+import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 
 export function seedWorktree(state: ControlPlaneState, record: WorktreeRecord): void {
   persistWorktree(state, { ...record });
@@ -89,6 +91,20 @@ export function offlineHostAndRequeue(
       } else {
         persistWorktree(state, { ...wt, online: false });
       }
+    }
+  }
+  for (const session of state.sessions.values()) {
+    if (session.hostId !== hostId || !session.mainCheckoutLease || session.status !== "running")
+      continue;
+    if (!session.ackReceivedAt) {
+      releaseScheduledLeaseLocal(state, session);
+      state.sessions.set(session.id, queueReconnectSession(session, reason));
+      state.pendingAcks.delete(session.id);
+      requeued.push(session.id);
+    } else {
+      session.reconnectDeadlineAt = new Date(
+        Date.parse(state.now()) + state.reconnectGraceMs,
+      ).toISOString();
     }
   }
   return requeued;

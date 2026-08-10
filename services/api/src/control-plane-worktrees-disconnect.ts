@@ -1,8 +1,6 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { disconnectScheduledMainCheckouts } from "./control-plane-worktrees-disconnect-scheduled.ts";
 
-/** Durable host-disconnect recovery. Each session/worktree pair is released
- * atomically; a late duplicate disconnect simply observes the already-
- * requeued state and becomes a no-op. */
 export async function offlineHostAndRequeueDurableImpl(
   state: ControlPlaneState,
   hostId: string,
@@ -28,9 +26,6 @@ export async function offlineHostAndRequeueDurableImpl(
       continue;
     }
     const sessionId = wt.currentSessionId;
-    // A process can hold a stale worktree cache after another instance creates
-    // a session. Read the durable row before calculating the GSI shard instead
-    // of fabricating shard zero and corrupting the status index.
     const session = await state.storage.getSession(sessionId);
     if (!session) {
       const next = { ...wt, online: false };
@@ -84,10 +79,6 @@ export async function offlineHostAndRequeueDurableImpl(
         state.sessions.set(sessionId, nextSession);
         state.worktrees.set(wt.id, { ...wt, online: false });
       } else {
-        // The conditional mark can lose to a terminal update, replacement, or
-        // a previous disconnect callback. Only requeue if the authoritative
-        // row is still the exact undelined running claim; otherwise refresh
-        // this process's stale cache and leave the winner untouched.
         const latestSession = await state.storage.getSession(sessionId);
         const latestWorktree = await state.storage.getWorktree(wt.id);
         const canRequeue =
@@ -132,9 +123,6 @@ export async function offlineHostAndRequeueDurableImpl(
           });
           requeued.push(sessionId);
         } else {
-          // A failed conditional requeue means another writer won after our
-          // first read, so refresh once more instead of retaining that stale
-          // running/busy pair in this process.
           const currentSession = canRequeue
             ? await state.storage.getSession(sessionId)
             : latestSession;
@@ -176,13 +164,12 @@ export async function offlineHostAndRequeueDurableImpl(
       });
       requeued.push(sessionId);
     } else {
-      // A terminal update may have won the race. Refreshing the local row
-      // prevents this process from retrying the same stale ownership forever.
       const latest = await state.storage.getWorktree(wt.id);
       if (latest) state.worktrees.set(wt.id, latest);
       const latestSession = await state.storage.getSession(sessionId);
       if (latestSession) state.sessions.set(sessionId, latestSession);
     }
   }
+  await disconnectScheduledMainCheckouts(state, hostId, connectionId, reason, requeued);
   return requeued;
 }

@@ -321,6 +321,63 @@ describe("reconnect reconciliation", () => {
     expect(plane.state.hostConnection.has("h")).toBe(false);
   });
 
+  it("rolls back mixed scheduled and worktree confirmations after a later report fails", async () => {
+    const plane = new ControlPlane({
+      now: () => "2026-01-01T00:00:00.000Z",
+      reconnectGraceMs: 10,
+    });
+    plane.state.hostConnection.set("h", "new");
+    const scheduled = {
+      ...durableRunning("scheduled", "unused", "old"),
+      repositoryId: "scheduled-repo",
+      worktreeId: null,
+      mainCheckoutLease: true,
+    };
+    delete scheduled.reconnectDeadlineAt;
+    const prompt = durableRunning("prompt", "w", "old");
+    const worktree = { ...durableWorktree("w", "prompt"), connectionId: "old" };
+    plane.state.sessions.set(scheduled.id, scheduled);
+    plane.state.sessions.set(prompt.id, prompt);
+    plane.state.worktrees.set(worktree.id, worktree);
+    plane.state.mainCheckoutLeases.set("h\0scheduled-repo", {
+      sessionId: scheduled.id,
+      connectionId: "old",
+    });
+    const calls: string[] = [];
+    plane.state.storage = {
+      getSession: async (id: string) =>
+        id === scheduled.id ? scheduled : id === prompt.id ? prompt : null,
+      getWorktree: async (id: string) => (id === worktree.id ? worktree : null),
+      confirmMainCheckoutReconnect: async () => (calls.push("confirm:scheduled"), true),
+      confirmReconnect: async () => (calls.push("confirm:prompt"), true),
+      restoreReconnectPending: async () => (calls.push("restore:prompt"), true),
+      restoreMainCheckoutReconnect: async (opts: { previousDeadlineAt?: string }) => {
+        calls.push(`restore:scheduled:${opts.previousDeadlineAt}`);
+        return true;
+      },
+    } as never;
+
+    expect(
+      await reconcileHostRunningSessions(plane.state, "h", ["scheduled", "prompt", "missing"]),
+    ).toBe(false);
+    expect(calls).toEqual([
+      "confirm:scheduled",
+      "confirm:prompt",
+      "restore:prompt",
+      "restore:scheduled:2026-01-01T00:00:00.010Z",
+    ]);
+    expect(plane.state.sessions.get("scheduled")).toMatchObject({
+      assignmentConnectionId: "old",
+      reconnectDeadlineAt: "2026-01-01T00:00:00.010Z",
+    });
+    expect(plane.state.sessions.get("prompt")).toEqual(prompt);
+    expect(plane.state.worktrees.get("w")).toEqual(worktree);
+    expect(plane.state.mainCheckoutLeases.get("h\0scheduled-repo")).toEqual({
+      sessionId: "scheduled",
+      connectionId: "old",
+    });
+  });
+
   it("does not offline replacement B when A loses reconciliation cleanup", async () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "A" });
     const running = durableRunning("lost", "w");

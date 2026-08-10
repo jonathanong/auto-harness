@@ -42,6 +42,8 @@ export type ConnectionRecord = {
   connectedAt: string;
   lastHeartbeatAt: string;
   commandProfiles: string[];
+  /** Repository IDs advertised by this daemon, including zero-worktree repos. */
+  repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
 };

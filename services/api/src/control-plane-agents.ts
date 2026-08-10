@@ -1,5 +1,9 @@
 /* eslint-disable max-lines */
-import { normalizeHostCapabilities, type HostCapability } from "@auto-harness/shared";
+import {
+  normalizeHostCapabilities,
+  type HostCapability,
+  type HostRepositoryRegistration,
+} from "@auto-harness/shared";
 
 import type { ConnectionRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -7,6 +11,11 @@ import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { validateRegisterWorktreeNames } from "./control-plane-worktree-names.ts";
 import { offlineHostAndRequeue, offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 import { reconcileHostRunningSessions } from "./control-plane-reconnect.ts";
+import { protectScheduledRunsForFailedRegistration } from "./control-plane-registration-rollback-scheduled.ts";
+import {
+  buildRegisteredInventory,
+  resolveRegisteredRepositories,
+} from "./control-plane-agent-registration.ts";
 
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
@@ -19,6 +28,10 @@ async function rollbackDurableRegistration(
   worktrees: readonly import("./db/types.ts").WorktreeRecord[],
 ): Promise<void> {
   const storage = state.storage!;
+  // Do not drop the candidate host lock until every inherited main-checkout
+  // run is either reconnect-deadlined or requeued. If this protection cannot
+  // be proven, retaining the candidate lease is safer than stranding work.
+  await protectScheduledRunsForFailedRegistration(state, hostId);
   try {
     const ownedWorktrees = new Map(worktrees.map((worktree) => [worktree.id, worktree]));
     // Reconciliation can release an omitted running session while this
@@ -42,17 +55,16 @@ async function rollbackDurableRegistration(
   } finally {
     const released = await storage.releaseHostConnection(hostId, connectionId);
     const durableOwner = await storage.getHostLock(hostId);
-    const ownsLocalHost = state.hostConnection.get(hostId) === connectionId;
+    const localConnectionId = state.hostConnection.get(hostId);
 
     // Delete only this failed connection. In-process replacements remain
     // mapped to the host; a durable-only replacement makes our old cache
     // safely offline without declaring that replacement disconnected.
     state.connections.delete(connectionId);
-    if (ownsLocalHost) {
+    if (released && durableOwner === null) {
+      if (localConnectionId) state.connections.delete(localConnectionId);
       state.hostConnection.delete(hostId);
-      if (released && durableOwner === null) {
-        state.disconnectedHosts.set(hostId, { lastHeartbeatAt: at });
-      }
+      state.disconnectedHosts.set(hostId, { lastHeartbeatAt: at });
     }
   }
 }
@@ -67,6 +79,20 @@ function validateRunningSessions(
     if (seen.has(sessionId)) return `duplicate running session ${sessionId}`;
     seen.add(sessionId);
     const session = state.sessions.get(sessionId);
+    if (session?.mainCheckoutLease) {
+      const lease = state.mainCheckoutLeases.get(`${hostId}\0${session.repositoryId}`);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.worktreeId !== null ||
+        !session.assignmentConnectionId ||
+        lease?.sessionId !== sessionId ||
+        lease.connectionId !== session.assignmentConnectionId
+      )
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      continue;
+    }
     const worktree = session?.worktreeId ? state.worktrees.get(session.worktreeId) : undefined;
     if (
       !session ||
@@ -94,6 +120,20 @@ async function validateRunningSessionsDurable(
     if (seen.has(sessionId)) return `duplicate running session ${sessionId}`;
     seen.add(sessionId);
     const session = await state.storage!.getSession(sessionId);
+    if (session?.mainCheckoutLease) {
+      const lease = await state.storage!.getMainCheckoutLease(hostId, session.repositoryId);
+      if (
+        session.status !== "running" ||
+        !session.ackReceivedAt ||
+        session.hostId !== hostId ||
+        session.worktreeId !== null ||
+        !session.assignmentConnectionId ||
+        lease?.sessionId !== sessionId ||
+        lease.connectionId !== session.assignmentConnectionId
+      )
+        return `running session ${sessionId} is not owned by host ${hostId}`;
+      continue;
+    }
     const worktree = session?.worktreeId
       ? await state.storage!.getWorktree(session.worktreeId)
       : null;
@@ -120,6 +160,8 @@ export function listHosts(state: ControlPlaneState): Array<{
   commandProfiles: string[];
   capabilities: HostCapability[];
   worktreeIds: string[];
+  repositories: Array<{ id: string; path: string }>;
+  repositoryIds: string[];
 }> {
   const byHost = new Map<
     string,
@@ -130,6 +172,8 @@ export function listHosts(state: ControlPlaneState): Array<{
       commandProfiles: string[];
       capabilities: HostCapability[];
       worktreeIds: string[];
+      repositories: Array<{ id: string; path: string }>;
+      repositoryIds: string[];
     }
   >();
   for (const wt of state.worktrees.values()) {
@@ -140,8 +184,14 @@ export function listHosts(state: ControlPlaneState): Array<{
       commandProfiles: [] as string[],
       capabilities: [],
       worktreeIds: [] as string[],
+      repositories: [],
+      repositoryIds: [],
     };
     cur.worktreeIds.push(wt.id);
+    if (!cur.repositoryIds.includes(wt.repositoryId)) cur.repositoryIds.push(wt.repositoryId);
+    if (!cur.repositories.some((repository) => repository.id === wt.repositoryId)) {
+      cur.repositories.push({ id: wt.repositoryId, path: wt.path });
+    }
     byHost.set(wt.hostId, cur);
   }
   for (const conn of state.connections.values()) {
@@ -152,6 +202,8 @@ export function listHosts(state: ControlPlaneState): Array<{
       commandProfiles: conn.commandProfiles,
       capabilities: normalizeHostCapabilities(conn.capabilities),
       worktreeIds: [] as string[],
+      repositories: [],
+      repositoryIds: [...(conn.repositoryIds ?? [])],
     };
     cur.online = true;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
@@ -161,7 +213,8 @@ export function listHosts(state: ControlPlaneState): Array<{
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
   for (const host of state.hostInventories.values()) {
-    if (!byHost.has(host.hostId)) {
+    const current = byHost.get(host.hostId);
+    if (!current) {
       byHost.set(host.hostId, {
         hostId: host.hostId,
         online: false,
@@ -169,10 +222,20 @@ export function listHosts(state: ControlPlaneState): Array<{
         commandProfiles: Object.keys(host.commandProfiles),
         capabilities: normalizeHostCapabilities(host.capabilities),
         worktreeIds: host.repositories.flatMap((r) => r.worktrees.map((w) => w.id)),
+        repositories: host.repositories.map(({ id, path }) => ({ id, path })),
+        repositoryIds: host.repositories.map(({ id }) => id),
       });
+    } else {
+      current.repositories = host.repositories.map(({ id, path }) => ({ id, path }));
+      current.repositoryIds = host.repositories.map(({ id }) => id);
     }
   }
-  return [...byHost.values()].toSorted((a, b) => a.hostId.localeCompare(b.hostId));
+  return [...byHost.values()]
+    .map((host) => ({
+      ...host,
+      repositoryIds: [...new Set([...host.repositoryIds, ...host.repositories.map((r) => r.id)])],
+    }))
+    .toSorted((a, b) => a.hostId.localeCompare(b.hostId));
 }
 
 /**
@@ -191,6 +254,7 @@ export function registerHost(
       labels: string[];
     }>;
     commandProfiles: string[];
+    repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
     replaceExisting?: boolean;
@@ -217,6 +281,12 @@ export function registerHost(
 
   const connectionId = state.connectionIdFactory();
   const at = state.now();
+  const previousInventory = state.hostInventories.get(opts.hostId);
+  const registeredRepositories = resolveRegisteredRepositories(
+    opts.repositories,
+    opts.worktrees,
+    previousInventory,
+  );
   if (state.storage) {
     const replaceLock = opts.replaceExisting === true || existing !== undefined;
     queueWrite(
@@ -239,6 +309,7 @@ export function registerHost(
     connectedAt: at,
     lastHeartbeatAt: at,
     commandProfiles: [...opts.commandProfiles],
+    repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
   };
   state.connections.set(connectionId, conn);
@@ -249,6 +320,17 @@ export function registerHost(
   state.disconnectedHosts.delete(opts.hostId);
   // Re-register clears drain so a restarted agent can take work again.
   state.drainingHosts.delete(opts.hostId);
+  const registrationInventory = buildRegisteredInventory(
+    opts.hostId,
+    registeredRepositories,
+    opts.worktrees,
+    previousInventory?.commandProfiles ?? {},
+    conn.capabilities,
+    at,
+    previousInventory,
+  );
+  state.hostInventories.set(opts.hostId, registrationInventory);
+  if (state.storage) queueWrite(state, state.storage.putHostInventory(registrationInventory));
 
   for (const wt of opts.worktrees) {
     const prev = state.worktrees.get(wt.id);
@@ -296,6 +378,7 @@ export async function registerHostDurable(
       labels: string[];
     }>;
     commandProfiles: string[];
+    repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
     replaceExisting?: boolean;
@@ -320,6 +403,12 @@ export async function registerHostDurable(
   }
   const connectionId = state.connectionIdFactory();
   const at = state.now();
+  const previousInventory = state.hostInventories.get(opts.hostId);
+  const registeredRepositories = resolveRegisteredRepositories(
+    opts.repositories,
+    opts.worktrees,
+    previousInventory,
+  );
   const conn: ConnectionRecord = {
     connectionId,
     type: "host",
@@ -327,6 +416,7 @@ export async function registerHostDurable(
     connectedAt: at,
     lastHeartbeatAt: at,
     commandProfiles: [...opts.commandProfiles],
+    repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
   };
   const won = await state.storage.tryRegisterHost({
@@ -369,18 +459,20 @@ export async function registerHostDurable(
     if (registeredIds.has(existingWorktree.id) || existingWorktree.status === "busy") continue;
     nextWorktrees.push({ ...existingWorktree, online: true, connectionId });
   }
+  const publishedWorktrees = [] as Array<import("./db/types.ts").WorktreeRecord>;
   try {
     for (const next of nextWorktrees) {
       if (!(await state.storage.putWorktreeFenced(next, { hostId: opts.hostId, connectionId }))) {
-        await state.storage.releaseHostConnection(opts.hostId, connectionId);
+        await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
         return { ok: false, error: "host connection changed while publishing inventory" };
       }
+      publishedWorktrees.push(next);
     }
   } catch (err) {
     // The lease+connection transaction has already committed, but no local
     // process has adopted it until inventory persistence succeeds. Release
     // exactly this lease so a transient write failure cannot strand a host.
-    await state.storage.releaseHostConnection(opts.hostId, connectionId);
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;
   }
   if (existing) {
@@ -399,7 +491,7 @@ export async function registerHostDurable(
   } catch (err) {
     // Reconciliation reads and its rollback writes are durable operations too.
     // Do not strand the just-acquired lease if any of those operations fail.
-    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, nextWorktrees);
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;
   }
   if (reconciled === false) {
@@ -408,9 +500,25 @@ export async function registerHostDurable(
     // first restore reconciliation/inventory state while the exact lease is
     // still held, then release it. A replacement must never be offlined by a
     // stale cleanup that ran after dropping its authority.
-    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, nextWorktrees);
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
+  const registrationInventory = buildRegisteredInventory(
+    opts.hostId,
+    registeredRepositories,
+    opts.worktrees,
+    previousInventory?.commandProfiles ?? {},
+    conn.capabilities,
+    at,
+    previousInventory,
+  );
+  try {
+    await state.storage.putHostInventory(registrationInventory);
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+    throw err;
+  }
+  state.hostInventories.set(opts.hostId, registrationInventory);
   return { ok: true, connectionId };
 }
 

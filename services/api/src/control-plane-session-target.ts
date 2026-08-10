@@ -248,6 +248,50 @@ function resolveEligibleAccounts(
     );
 }
 
+/** Resolve a scheduled run against a host's main checkout, never a worktree. */
+export function resolveScheduledSessionTarget(
+  state: ControlPlaneState,
+  catalog: ProviderCatalog,
+  session: SessionRecord,
+  hostId: string,
+): ResolvedSessionRoute | null {
+  const host = state.hostInventories.get(hostId);
+  const repository = host?.repositories.find((entry) => entry.id === session.repositoryId);
+  if (!host || !repository) return null;
+  // A scheduled run is deliberately resolved against the repository itself,
+  // rather than an arbitrary worktree. The synthetic id cannot match a
+  // worktree override, so provider account selection still honors account,
+  // repository, and host configuration while ignoring worktree-only policy.
+  const mainCheckout: WorktreeRecord = {
+    id: `main-checkout:${hostId}:${session.repositoryId}`,
+    name: "main checkout",
+    hostId,
+    repositoryId: session.repositoryId,
+    path: repository.path,
+    labels: [],
+    status: "idle",
+    online: true,
+  };
+  const targets = [session.target, ...session.fallbacks];
+  const nowMs = Date.parse(state.now());
+  for (let targetIndex = 0; targetIndex < targets.length; targetIndex++) {
+    if (session.suppressedTargetIndexes?.includes(targetIndex)) continue;
+    const route = resolveTarget(
+      state,
+      catalog,
+      targets[targetIndex]!,
+      session.prompt,
+      mainCheckout,
+      nowMs,
+      session.pinnedHostId ? session.pinnedProviderAccountId : undefined,
+    );
+    if (route && matchesNativeResumePin(session, { ...route, targetIndex })) {
+      return { ...route, targetIndex };
+    }
+  }
+  return null;
+}
+
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
   return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
