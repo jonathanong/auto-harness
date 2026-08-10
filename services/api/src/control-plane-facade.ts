@@ -1,4 +1,5 @@
 import type {
+  HostRepositoryRegistration,
   HostCapability,
   HostToServerMessage,
   HostWireMessage,
@@ -114,6 +115,7 @@ export class ControlPlaneBase {
       path: string;
       labels: string[];
     }>;
+    repositories?: HostRepositoryRegistration[];
     commandProfiles: string[];
     capabilities?: HostCapability[];
     replaceExisting?: boolean;

@@ -21,6 +21,7 @@ import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
+import * as mainCheckout from "./plane-storage-main-checkout.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -111,6 +112,89 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
   }): Promise<boolean> {
     return sessions.tryAssignSession(this.ctx, opts);
+  }
+
+  ensureMainCheckoutLeaseMap(hostId: string, connectionId: string): Promise<boolean> {
+    return mainCheckout.ensureMainCheckoutLeaseMap(this.ctx, hostId, connectionId);
+  }
+
+  getMainCheckoutCursor(hostId: string): Promise<string | null> {
+    return mainCheckout.getMainCheckoutCursor(this.ctx, hostId);
+  }
+
+  getMainCheckoutLease(
+    hostId: string,
+    repositoryId: string,
+  ): Promise<{ sessionId: string; connectionId: string } | null> {
+    return mainCheckout.getMainCheckoutLease(this.ctx, hostId, repositoryId);
+  }
+
+  tryAssignMainCheckoutSession(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    connectionId: string;
+    now: string;
+    resolvedArgv: string[];
+    resumeSpec?: SessionResumeSpec;
+    resolvedRoute: SessionRecord["resolvedRoute"];
+    providerAccountId?: string;
+    queueShard: number;
+    attemptId: string;
+  }): Promise<boolean> {
+    return mainCheckout.tryAssignMainCheckoutSession(this.ctx, opts);
+  }
+
+  releaseMainCheckoutSession(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    connectionId: string;
+    status: string;
+    queueShard: number;
+    reason?: string;
+    completedAt?: string;
+    exitCode?: number | null;
+    errorCode?: string;
+    cliResumeRef?: string;
+    retryCount?: number;
+    retryAfter?: string;
+    expectedStatus?: "running" | "cancelled";
+    attemptId?: string;
+  }): Promise<boolean> {
+    return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
+  }
+
+  markMainCheckoutReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    connectionId: string;
+    deadlineAt: string;
+  }): Promise<boolean> {
+    return mainCheckout.markMainCheckoutReconnectPending(this.ctx, opts);
+  }
+
+  confirmMainCheckoutReconnect(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    oldConnectionId: string;
+    connectionId: string;
+    deadlineAt?: string;
+  }): Promise<boolean> {
+    return mainCheckout.confirmMainCheckoutReconnect(this.ctx, opts);
+  }
+
+  restoreMainCheckoutReconnect(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    connectionId: string;
+    previousConnectionId: string;
+    previousDeadlineAt?: string;
+  }): Promise<boolean> {
+    return mainCheckout.restoreMainCheckoutReconnect(this.ctx, opts);
   }
 
   failExpiredResumeSession(opts: {
@@ -245,14 +329,21 @@ export class DynamoPlaneStorageBase {
   ): Promise<boolean>;
   acknowledgeSession(opts: {
     sessionId: string;
-    worktreeId: string;
+    worktreeId: string | null;
     attemptId: string;
     acknowledgedAt: string;
+    fence?: { hostId: string; connectionId: string };
   }): Promise<boolean>;
   acknowledgeSession(
     arg:
       | string
-      | { sessionId: string; worktreeId: string; attemptId: string; acknowledgedAt: string },
+      | {
+          sessionId: string;
+          worktreeId: string | null;
+          attemptId: string;
+          acknowledgedAt: string;
+          fence?: { hostId: string; connectionId: string };
+        },
     acknowledgedAtOrFence?: string | { hostId: string; connectionId: string },
     fence?: { hostId: string; connectionId: string },
   ): Promise<boolean> {

@@ -28,6 +28,7 @@ describe("daemon registration", () => {
         type: "host:register",
         hostId: "h",
         capabilities: ["scheduled-main-checkout"],
+        repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
         commandProfiles: ["a", "z"],
         runningSessions: ["a", "z"],
         worktrees: [expect.objectContaining({ id: "w", repositoryId: "r" })],

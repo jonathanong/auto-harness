@@ -84,6 +84,12 @@ export {
 } from "./host-inventory.ts";
 
 export {
+  isHostRepositoryRegistration,
+  validateHostRepositoryRegistrations,
+  type HostRepositoryRegistration,
+} from "./host-registration.ts";
+
+export {
   buildSessionsApiPath,
   parseSessionListQuery,
   sessionListHref,

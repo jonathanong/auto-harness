@@ -2,6 +2,14 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import {
+  confirmScheduledReconnect,
+  reclaimScheduledReconnect,
+  requeueOmittedScheduled,
+  restoreScheduledReconnects,
+  type ScheduledReconnectConfirmation,
+} from "./control-plane-reconnect-scheduled.ts";
+import { confirmReportedSession } from "./control-plane-reconnect-confirm.ts";
+import {
   restoreConfirmedSessions,
   type ReconnectConfirmation,
 } from "./control-plane-reconnect-rollback.ts";
@@ -15,14 +23,10 @@ export async function reconcileHostRunningSessions(
   const connectionId = state.hostConnection.get(hostId);
   const requeued: string[] = [];
   const confirmed: ReconnectConfirmation[] = [];
+  const scheduledConfirmed: ScheduledReconnectConfirmation[] = [];
   if (state.storage && !connectionId) return requeued;
 
   try {
-    // Treat every daemon-reported session as a claim that must be confirmed
-    // against the durable state *after* this registration acquired its lease.
-    // A grace sweep can win between pre-registration validation and this point;
-    // accepting the registration in that case would open a new socket barrier
-    // for a process whose work was already safely requeued.
     for (const sessionId of running) {
       const session = state.storage
         ? await state.storage.getSession(sessionId)
@@ -32,6 +36,17 @@ export async function reconcileHostRunningSessions(
           ? await state.storage.getWorktree(session.worktreeId)
           : state.worktrees.get(session.worktreeId)
         : undefined;
+      if (session?.mainCheckoutLease) {
+        if (!(await confirmScheduledReconnect(state, session, hostId, connectionId))) {
+          await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+          await restoreScheduledReconnects(state, hostId, connectionId, scheduledConfirmed);
+          return false;
+        }
+        scheduledConfirmed.push({ session });
+        const { reconnectDeadlineAt: _, ...next } = session;
+        state.sessions.set(session.id, { ...next, assignmentConnectionId: connectionId });
+        continue;
+      }
       if (
         !session ||
         session.status !== "running" ||
@@ -43,10 +58,12 @@ export async function reconcileHostRunningSessions(
         worktree.currentSessionId !== session.id
       ) {
         await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+        await restoreScheduledReconnects(state, hostId, connectionId, scheduledConfirmed);
         return false;
       }
       if (!(await confirmReportedSession(state, session, worktree, hostId, connectionId))) {
         await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+        await restoreScheduledReconnects(state, hostId, connectionId, scheduledConfirmed);
         return false;
       }
       confirmed.push({ session, worktree });
@@ -99,11 +116,11 @@ export async function reconcileHostRunningSessions(
         requeued.push(session.id);
       }
     }
+    await requeueOmittedScheduled(state, hostId, running, requeued);
     return requeued;
   } catch (err) {
-    // A later durable read or write can fail after earlier reports were
-    // confirmed. Restore those reports before registration drops its lease.
     await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+    await restoreScheduledReconnects(state, hostId, connectionId, scheduledConfirmed);
     throw err;
   }
 }
@@ -121,9 +138,10 @@ export async function reclaimReconnectDeadlines(
       session.status !== "running" ||
       !session.reconnectDeadlineAt ||
       Date.parse(session.reconnectDeadlineAt) > nowMs ||
-      !session.worktreeId
+      (!session.worktreeId && !session.mainCheckoutLease)
     )
       continue;
+    if (await reclaimScheduledReconnect(state, session, requeued)) continue;
     const worktree = state.storage
       ? await state.storage.getWorktree(session.worktreeId)
       : state.worktrees.get(session.worktreeId);
@@ -171,34 +189,4 @@ export async function reclaimReconnectDeadlines(
     }
   }
   return requeued;
-}
-
-async function confirmReportedSession(
-  state: ControlPlaneState,
-  session: import("./db/types.ts").SessionRecord,
-  worktree: import("./db/types.ts").WorktreeRecord,
-  hostId: string,
-  connectionId: string | undefined,
-): Promise<boolean> {
-  if (state.storage && !connectionId) return false;
-  const deadlineAt = session.reconnectDeadlineAt;
-  const confirmed =
-    !state.storage ||
-    (await state.storage.confirmReconnect({
-      sessionId: session.id,
-      hostId,
-      worktreeId: worktree.id,
-      ...(deadlineAt ? { deadlineAt } : {}),
-      connectionId: connectionId!,
-    }));
-  if (confirmed) {
-    const { reconnectDeadlineAt: _, ...next } = session;
-    state.sessions.set(session.id, next);
-    state.worktrees.set(worktree.id, {
-      ...worktree,
-      online: true,
-      ...(connectionId ? { connectionId } : {}),
-    });
-  }
-  return confirmed;
 }

@@ -47,6 +47,12 @@ export async function createControlPlane(
     ...(options.heartbeatStaleMs !== undefined
       ? { heartbeatStaleMs: options.heartbeatStaleMs }
       : {}),
+    ...(options.reconnectGraceMs !== undefined
+      ? { reconnectGraceMs: options.reconnectGraceMs }
+      : {}),
+    ...(options.usageLimitRetryCeiling !== undefined
+      ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }
+      : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
     ...(options.webhookUrl !== undefined ? { webhookUrl: options.webhookUrl } : {}),
     ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),

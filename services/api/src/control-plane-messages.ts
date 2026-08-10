@@ -17,6 +17,7 @@ import {
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
+import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
@@ -120,6 +121,7 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         commandProfiles: msg.commandProfiles,
+        ...(msg.repositories ? { repositories: msg.repositories } : {}),
         ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       });
@@ -201,6 +203,7 @@ export async function handleHostMessageDurable(
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       commandProfiles: msg.commandProfiles,
+      ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       replaceExisting,
@@ -276,6 +279,7 @@ export async function handleHostMessageDurable(
     state.sessions.set(msg.sessionId, session);
     if (
       session.status !== "running" ||
+      session.ackReceivedAt !== undefined ||
       session.worktreeId !== msg.worktreeId ||
       session.attemptId !== msg.attemptId
     ) {
@@ -287,10 +291,12 @@ export async function handleHostMessageDurable(
       worktreeId: msg.worktreeId,
       attemptId: msg.attemptId,
       acknowledgedAt,
+      ...(fence ? { fence } : {}),
     });
     if (accepted) {
+      const { assignmentSentAt: _, ...acknowledged } = session;
       state.sessions.set(msg.sessionId, {
-        ...session,
+        ...acknowledged,
         ackReceivedAt: session.ackReceivedAt ?? acknowledgedAt,
       });
       state.pendingAcks.delete(msg.sessionId);
@@ -313,7 +319,10 @@ async function applySessionStatusDurable(
   if (!storage) return handleHostMessage(state, msg);
   // Do not trust a potentially missing or stale per-process session cache:
   // this node may not be the scheduler that emitted the assignment.
-  const session = await storage.getSession(msg.sessionId);
+  const session =
+    typeof storage.getSession === "function"
+      ? await storage.getSession(msg.sessionId)
+      : state.sessions.get(msg.sessionId);
   if (!session) {
     return { ok: false, error: "session not found" };
   }
@@ -355,7 +364,103 @@ async function applySessionStatusDurable(
     }
     return { ok: true };
   }
+  if (
+    session.status === "cancelled" &&
+    session.mainCheckoutLease &&
+    session.hostId &&
+    session.assignmentConnectionId
+  ) {
+    const released = await storage.releaseMainCheckoutSession({
+      sessionId: session.id,
+      hostId: session.hostId,
+      repositoryId: session.repositoryId,
+      connectionId: session.assignmentConnectionId,
+      attemptId: msg.attemptId,
+      status: "cancelled",
+      expectedStatus: "cancelled",
+      queueShard: session.queueShard,
+      completedAt: session.completedAt ?? state.now(),
+      ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+      ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
+      ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+    });
+    if (released) {
+      releaseScheduledLeaseLocal(state, session);
+      const { mainCheckoutLease: _, ...next } = {
+        ...session,
+        worktreeId: null,
+        ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+        ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+        ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+        ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      };
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      state.sessions.set(session.id, next);
+      state.pendingAcks.delete(session.id);
+    }
+    return { ok: true };
+  }
   if (session.status !== "running") {
+    return { ok: true };
+  }
+  if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
+    const retries = session.retryCount ?? 0;
+    const shouldRetry =
+      msg.status === "failed" &&
+      msg.errorCode === "usage_limit" &&
+      retries < state.usageLimitRetryCeiling;
+    const committed = await storage.releaseMainCheckoutSession({
+      sessionId: session.id,
+      hostId: session.hostId,
+      repositoryId: session.repositoryId,
+      connectionId: session.assignmentConnectionId,
+      attemptId: msg.attemptId,
+      status: shouldRetry ? "queued" : msg.status,
+      queueShard: session.queueShard,
+      ...(shouldRetry
+        ? {
+            retryCount: retries + 1,
+            retryAfter: new Date(Date.parse(state.now()) + 1000 * 2 ** retries).toISOString(),
+          }
+        : { completedAt: state.now() }),
+      ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+      ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
+    });
+    if (!committed) return { ok: true };
+    releaseScheduledLeaseLocal(state, session);
+    const { mainCheckoutLease: _, ...next } = {
+      ...session,
+      status: shouldRetry ? ("queued" as const) : msg.status,
+      worktreeId: null,
+      ...(shouldRetry
+        ? {
+            hostId: null,
+            retryCount: retries + 1,
+            retryAfter: new Date(Date.parse(state.now()) + 1000 * 2 ** retries).toISOString(),
+          }
+        : { completedAt: state.now() }),
+      ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
+      ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+      ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+    };
+    delete next.assignmentConnectionId;
+    delete next.assignmentSentAt;
+    delete next.ackReceivedAt;
+    delete next.reconnectDeadlineAt;
+    if (shouldRetry) delete next.startedAt;
+    state.sessions.set(session.id, next);
+    state.pendingAcks.delete(session.id);
+    if (!shouldRetry) {
+      await archiveSessionLogs(state, session.id);
+      maybeDeliverWebhook(state, next);
+    }
     return { ok: true };
   }
   const isUsageLimit = msg.status === "failed" && msg.errorCode === "usage_limit";
@@ -500,6 +605,15 @@ function applySessionStatus(
   const terminal = isTerminalSessionStatus(msg.status);
 
   if (session.status !== "running") {
+    if (terminal && session.mainCheckoutLease) {
+      releaseScheduledLeaseLocal(state, session);
+      delete session.mainCheckoutLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
+      session.worktreeId = null;
+    }
     if (terminal && session.worktreeId) {
       const wt = state.worktrees.get(session.worktreeId);
       if (wt?.currentSessionId === session.id) {
@@ -529,11 +643,38 @@ function applySessionStatus(
   if (terminal) {
     session.completedAt = state.now();
     state.pendingAcks.delete(msg.sessionId);
-    if (session.worktreeId) {
+    if (session.mainCheckoutLease) {
+      if (releaseScheduledLeaseLocal(state, session)) {
+        delete session.mainCheckoutLease;
+        delete session.assignmentConnectionId;
+        delete session.assignmentSentAt;
+        delete session.ackReceivedAt;
+        delete session.reconnectDeadlineAt;
+      }
+    } else if (session.worktreeId) {
       releaseWorktree(state, session.worktreeId);
     }
 
-    if (msg.status === "failed" && msg.errorCode === "usage_limit") {
+    const scheduledRetry =
+      session.type === "scheduled" &&
+      msg.status === "failed" &&
+      msg.errorCode === "usage_limit" &&
+      (session.retryCount ?? 0) < state.usageLimitRetryCeiling;
+    if (scheduledRetry) {
+      const retryCount = (session.retryCount ?? 0) + 1;
+      session.retryCount = retryCount;
+      session.retryAfter = new Date(
+        Date.parse(state.now()) + 1000 * 2 ** (retryCount - 1),
+      ).toISOString();
+      session.status = "queued";
+      session.worktreeId = null;
+      session.hostId = null;
+      delete session.completedAt;
+    } else if (
+      session.type !== "scheduled" &&
+      msg.status === "failed" &&
+      msg.errorCode === "usage_limit"
+    ) {
       const accountId = session.resolvedRoute?.providerAccountId;
       if (accountId) {
         const account = state.providerAccounts.get(accountId);

@@ -311,9 +311,9 @@ For `type: scheduled` / `worktreeId: null`:
 - One FIFO async mutex **per `repositoryId`** on this agent; different repositories remain parallel.
 - Waiting consumes the session deadline. Cancellation or timeout removes the waiter without running setup, the command, or a terminal hook in the busy checkout.
 - The lock covers branch preparation, setup, the command, and the terminal hook, and is released in `finally` on every outcome.
-- Until the capability-gated dispatcher is deployed, scheduled sessions remain
-  queued. That dispatcher will add its own per-host/repository lease; the local
-  mutex remains defense in depth for each capable daemon.
+- The capability-gated dispatcher issues these assignments only to a live host
+  that advertises `scheduled-main-checkout` and registers the repository. Its
+  durable per-host/repository lease complements this local mutex.
 
 ---
 
@@ -411,6 +411,25 @@ stateDiagram-v2
 ```
 
 `worktreeId: null` → scheduled/main checkout path.
+
+The capability-gated scheduled form is explicit on the wire:
+
+```json
+{
+  "type": "session:assign",
+  "sessionId": "sess-maintenance",
+  "sessionType": "scheduled",
+  "repositoryId": "repo-abc",
+  "prompt": "Run daily maintenance",
+  "resolvedArgv": ["pnpm", "lint:fix"],
+  "timeout": 1800,
+  "worktreeId": null
+}
+```
+
+The durable `(host, repository)` lease is acquired before this frame is sent
+and is retained through the reconnect grace period. The daemon additionally
+serializes main-checkout execution with its per-repository mutex.
 
 ### Queue behavior (what the agent sees)
 

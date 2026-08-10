@@ -292,9 +292,10 @@ When a session ends or is cancelled:
 ### Scheduled sessions (`type: scheduled`)
 
 - Created by cron or `POST /schedules/:id/trigger`
-- Assigned with `worktreeId: null` to an **online agent that hosts that repository**
-- If multiple agents host the same repo path inventory, pick round-robin among those agents (by agent-level `lastAssignedAt` or last scheduled assign time)
-- Agent enforces **serial main-checkout lock** per repository (see [host-daemon.md](host-daemon.md))
+- Assigned with `worktreeId: null` only to an **online, non-draining agent** whose live registration advertises both the repository and `scheduled-main-checkout`
+- `HostLocks.mainCheckoutLeases[repositoryId]` is the durable exclusive lease, fenced to both `sessionId` and `connectionId`; it is acquired with the queued → running transition and released only by that exact terminal/retry/requeue transition
+- Host selection is deterministic round-robin using the durable `lastScheduledAssignedAt` cursor; no worktree row is read or mutated
+- An unacknowledged assignment releases immediately. An acknowledged disconnect keeps the lease for the 75-second reconnect grace, transfers it only when that exact session is reported by the replacement connection, and otherwise requeues/releases it.
 
 Each session may carry an optional global exact-match `concurrencyId`. The scheduler acquires it
 in the durable SessionConcurrencyLocks table before enqueueing; a duplicate manual create returns

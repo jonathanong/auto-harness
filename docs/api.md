@@ -608,6 +608,10 @@ Get worktree details.
 
 Schedules run recurring maintenance tasks on the main repository checkout (not worktrees). Useful for dependency updates, linting, formatting, and other automated maintenance. A schedule `ref`, when set, is a **branch name** (not a tag or SHA) and must exist on an eligible host when the job runs.
 
+Scheduled sessions are capability-gated (`scheduled-main-checkout`), always carry
+`worktreeId: null`, and use one durable main-checkout lease per `(host, repository)`.
+They never contend with or change a worktree assignment.
+
 #### `POST /schedules`
 
 Create a scheduled task. **Operator or admin.**

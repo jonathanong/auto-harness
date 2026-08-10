@@ -127,17 +127,19 @@ export type HostToServerMessage =
         path: string;
         labels: string[];
       }>;
+      /** Explicit repository paths keep zero-worktree repositories dispatchable. */
+      repositories?: import("./host-registration.ts").HostRepositoryRegistration[];
       commandProfiles: string[];
       /** Optional for compatibility with daemons released before capabilities. */
       capabilities?: HostCapability[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
     }
-  | { type: "session:ack"; sessionId: string; worktreeId: string; attemptId: string }
+  | { type: "session:ack"; sessionId: string; worktreeId: string | null; attemptId: string }
   | {
       type: "session:status";
       sessionId: string;
-      worktreeId: string;
+      worktreeId: string | null;
       attemptId: string;
       status: SessionStatus;
       exitCode?: number | null;

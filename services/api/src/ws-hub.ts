@@ -255,7 +255,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
     }
     if (message.type === "session:ack") {
       return boundedText(message.sessionId) &&
-        boundedText(message.worktreeId) &&
+        (message.worktreeId === null || boundedText(message.worktreeId)) &&
         boundedText(message.attemptId)
         ? (message as HostToServerMessage)
         : null;
@@ -267,7 +267,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         exitCode === null ||
         (typeof exitCode === "number" && Number.isSafeInteger(exitCode));
       return boundedText(message.sessionId) &&
-        boundedText(message.worktreeId) &&
+        (message.worktreeId === null || boundedText(message.worktreeId)) &&
         boundedText(message.attemptId) &&
         isSessionStatus(message.status) &&
         validExitCode &&

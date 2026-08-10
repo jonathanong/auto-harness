@@ -19,6 +19,7 @@ import type {
   RepositoryRecord,
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
 import type {
   ArchiveObject,
   ConnectionRecord,
@@ -49,6 +50,9 @@ export type ControlPlaneState = {
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
+  /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
+   * encoded with NUL, which repository IDs cannot contain on supported APIs. */
+  mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
   /** Agents in drain: no new assigns; worktrees stay offline after release (Phase 5). */
   drainingHosts: Set<string>;
   /**
@@ -70,6 +74,7 @@ export type ControlPlaneState = {
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
   reconnectGraceMs: number;
+  usageLimitRetryCeiling: number;
   archivePrefix: string;
   webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
@@ -93,6 +98,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),
+    mainCheckoutLeases: new Map(),
     drainingHosts: new Set(),
     disconnectedHosts: new Map(),
     publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
@@ -117,6 +123,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       ? options.heartbeatStaleMs
       : DEFAULT_HEARTBEAT_STALE_MS,
     reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
+    usageLimitRetryCeiling: options.usageLimitRetryCeiling ?? 3,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,
@@ -159,7 +166,6 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   if (!state.storage) {
     return;
   }
-  state.sessions.clear();
   state.worktrees.clear();
   state.connections.clear();
   state.hostConnection.clear();
@@ -171,9 +177,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   state.providerAccounts.clear();
   state.commands.clear();
   state.archives.clear();
-  for (const s of await state.storage.listAllSessions()) {
-    state.sessions.set(s.id, s);
-  }
+  hydrateScheduledState(state, await state.storage.listAllSessions());
   for (const w of await state.storage.listAllWorktrees()) {
     state.worktrees.set(w.id, w);
   }

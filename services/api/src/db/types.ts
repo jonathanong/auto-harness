@@ -16,7 +16,7 @@ export type SessionRecord = {
     providerAccountId?: string;
     commandId: string;
     hostId: string;
-    worktreeId: string;
+    worktreeId: string | null;
     /** Immutable token for the assignment that resolved this route. */
     attemptId: string;
   };
@@ -51,6 +51,8 @@ export type SessionRecord = {
   ackReceivedAt?: string;
   /** Exact host lease that claimed this running assignment. */
   assignmentConnectionId?: string;
+  /** Durable assignment timestamp used to reclaim an unacknowledged scheduled run after restart. */
+  assignmentSentAt?: string;
   /** Deadline after an acknowledged daemon disconnects before this work is requeued. */
   reconnectDeadlineAt?: string;
   exitCode?: number | null;
@@ -63,6 +65,8 @@ export type SessionRecord = {
   pinnedCommandId?: string;
   pinExpiresAt?: string;
   resumeFallback?: boolean;
+  /** The repository main checkout is held by this scheduled session. */
+  mainCheckoutLease?: boolean;
 };
 
 export type WorktreeRecord = {

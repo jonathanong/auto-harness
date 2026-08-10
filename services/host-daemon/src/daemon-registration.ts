@@ -24,6 +24,9 @@ export async function registerDaemon(
         labels: worktree.labels,
       })),
     ),
+    repositories: config.repositories
+      .map(({ id, path, defaultBranch }) => ({ id, path, defaultBranch }))
+      .toSorted((a, b) => a.id.localeCompare(b.id)),
     commandProfiles: Object.keys(config.commandProfiles).toSorted(),
     capabilities: ["scheduled-main-checkout"],
     runningSessions: [...runningSessions].toSorted(),

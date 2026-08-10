@@ -70,6 +70,7 @@ export type ControlPlaneOptions = {
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
   reconnectGraceMs?: number;
+  usageLimitRetryCeiling?: number;
   archivePrefix?: string;
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
@@ -80,7 +81,8 @@ export type PublicSession = SessionRecord & { url: string };
 
 export type PendingAck = {
   sessionId: string;
-  worktreeId: string;
+  /** Prompt sessions hold a worktree; scheduled sessions hold the host main-checkout lease. */
+  worktreeId: string | null;
   attemptId: string;
   assignedAtMs: number;
 };

@@ -12,6 +12,7 @@ import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
+import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
 
 export type {
   ArchiveObject,
@@ -29,6 +30,13 @@ export type {
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
 export class ControlPlane extends ControlPlaneCatalog {
+  async assignScheduledQueuedDurable(): Promise<
+    Array<{ session: PublicSession; hostId: string; worktreeId: null }>
+  > {
+    await this.reclaimReconnectDeadlines(Date.now());
+    return scheduledAssign.assignScheduledQueuedDurable(this.state);
+  }
+
   override updateSchedule(
     id: string,
     patch: Partial<{
@@ -65,7 +73,9 @@ export class ControlPlane extends ControlPlaneCatalog {
   ): Promise<
     { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }
   > {
-    return schedules.triggerScheduleDurable(this.state, id, nowIso);
+    const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
+    if (result.ok) await this.assignScheduledQueuedDurable();
+    return result;
   }
 
   createRepository(input: {
@@ -119,7 +129,9 @@ export class ControlPlane extends ControlPlaneCatalog {
   }
 
   async evaluateCronDurable(nowIso: string = this.state.now()): Promise<PublicSession[]> {
-    return schedules.evaluateCronDurable(this.state, nowIso);
+    const sessions = await schedules.evaluateCronDurable(this.state, nowIso);
+    if (sessions.length) await this.assignScheduledQueuedDurable();
+    return sessions;
   }
 
   tryClaimScheduleFire(
@@ -142,7 +154,7 @@ export class ControlPlane extends ControlPlaneCatalog {
     return lifecycle.reclaimStaleHosts(this.state, nowMs);
   }
 
-  async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
+  override async reclaimStaleHostsDurable(nowMs: number = Date.now()): Promise<string[]> {
     return lifecycle.reclaimStaleHostsDurable(this.state, nowMs);
   }
 

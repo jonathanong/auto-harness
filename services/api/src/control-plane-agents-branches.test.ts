@@ -161,6 +161,7 @@ describe("agent registration branch boundaries", () => {
       putWorktreeFenced: async (row: { id: string; connectionId: string }) => (
         writes.push(`${row.id}:${row.connectionId}`), true
       ),
+      putHostInventory: async () => {},
     } as never;
     expect(
       await plane.registerHostDurable({
