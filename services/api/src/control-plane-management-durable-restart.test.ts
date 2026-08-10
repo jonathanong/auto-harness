@@ -9,6 +9,11 @@ import type {
 } from "./db/plane-storage.ts";
 import { ControlPlane } from "./control-plane.ts";
 
+function get<T extends object>(records: Map<string, T>, id: string): T | null {
+  const record = records.get(id);
+  return record ? { ...record } : null;
+}
+
 function catalogStorage() {
   const repositories = new Map<string, RepositoryRecord>();
   const schedules = new Map<string, import("./control-plane.ts").ScheduleRecord>();
@@ -20,29 +25,30 @@ function catalogStorage() {
 
   return {
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
+    getRepository: async (id: string) => get(repositories, id),
     listRepositories: async () => [...repositories.values()].map((record) => ({ ...record })),
     deleteRepository: async (id: string) => repositories.delete(id),
     putSchedule: async (record: import("./control-plane.ts").ScheduleRecord) =>
       schedules.set(record.id, { ...record }),
+    getSchedule: async (id: string) => get(schedules, id),
     updateScheduleManagement: async (
       record: import("./control-plane.ts").ScheduleRecord,
       expectedNextRunAt: string,
     ) => {
       const current = schedules.get(record.id);
       if (!current || current.nextRunAt !== expectedNextRunAt) return null;
-      const updated = {
-        ...record,
-        lastRunAt: current.lastRunAt,
-      };
+      const updated = { ...record, lastRunAt: current.lastRunAt };
       schedules.set(record.id, updated);
       return { ...updated };
     },
     listSchedules: async () => [...schedules.values()].map((record) => ({ ...record })),
     deleteSchedule: async (id: string) => schedules.delete(id),
     putCommand: async (record: CommandRecord) => commands.set(record.id, { ...record }),
+    getCommand: async (id: string) => get(commands, id),
     listCommands: async () => [...commands.values()].map((record) => ({ ...record })),
     deleteCommand: async (id: string) => commands.delete(id),
     putProvider: async (record: ProviderRecord) => providers.set(record.id, { ...record }),
+    getProvider: async (id: string) => get(providers, id),
     listProviders: async () => [...providers.values()].map((record) => ({ ...record })),
     deleteProvider: async (id: string) => providers.delete(id),
     putProviderAccount: async (record: ProviderAccountRecord) =>
@@ -74,6 +80,7 @@ function catalogStorage() {
     deleteProviderAccount: async (id: string) => providerAccounts.delete(id),
     putHostInventory: async (record: HostInventoryRecord) =>
       hostInventories.set(record.hostId, { ...record }),
+    getHostInventory: async (id: string) => get(hostInventories, id),
     listHostInventories: async () => [...hostInventories.values()].map((record) => ({ ...record })),
     deleteHostInventory: async (hostId: string) => hostInventories.delete(hostId),
     putWorktree: async (record: import("./db/types.ts").WorktreeRecord) =>
@@ -98,7 +105,6 @@ describe("durable management restart visibility", () => {
       providerIdFactory: () => "provider",
       providerAccountIdFactory: () => "account",
     });
-
     expect(
       (await plane.createRepositoryDurable({ name: "repository", url: "https://example.test/r" }))
         .ok,
@@ -140,7 +146,6 @@ describe("durable management restart visibility", () => {
         })
       ).ok,
     ).toBe(true);
-
     const afterCreate = new ControlPlane({ storage });
     await afterCreate.hydrateFromStorage();
     expect(

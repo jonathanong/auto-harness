@@ -47,8 +47,8 @@ export class DynamoPlaneStorageBase {
     return sessions.releaseConcurrencyLock(this.ctx, concurrencyId, sessionId);
   }
 
-  getSession(id: string): Promise<SessionRecord | null> {
-    return sessions.getSession(this.ctx, id);
+  getSession(id: string, consistentRead = false): Promise<SessionRecord | null> {
+    return sessions.getSession(this.ctx, id, consistentRead);
   }
 
   listAllSessions(): Promise<SessionRecord[]> {

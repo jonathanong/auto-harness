@@ -7,10 +7,9 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/hosts") {
-    send(res, 200, {
-      items: plane
-        .listHosts()
-        .filter(
+    try {
+      send(res, 200, {
+        items: (await plane.listHostsDurable()).filter(
           (host) =>
             mayAccessHost(ctx.principal, host.hostId) &&
             (!ctx.principal?.allowedRepositoryIds ||
@@ -19,25 +18,34 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
                 mayAccessRepository(ctx.principal, plane.getWorktree(id)?.repositoryId),
               )),
         ),
-    });
+      });
+    } catch {
+      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    }
     return true;
   }
 
   if (method === "GET" && url.pathname === "/api/v1/command-profiles") {
-    send(res, 200, { items: plane.listCommandProfiles() });
+    try {
+      send(res, 200, { items: await plane.listCommandProfilesDurable() });
+    } catch {
+      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    }
     return true;
   }
 
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
-    send(res, 200, {
-      items: plane
-        .listWorktrees()
-        .filter(
+    try {
+      send(res, 200, {
+        items: (await plane.listWorktreesDurable()).filter(
           (worktree) =>
             mayAccessHost(ctx.principal, worktree.hostId) &&
             (!ctx.principal || mayAccessRepository(ctx.principal, worktree.repositoryId)),
         ),
-    });
+      });
+    } catch {
+      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    }
     return true;
   }
 

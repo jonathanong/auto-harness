@@ -6,7 +6,6 @@ import {
   DEFAULT_HEARTBEAT_STALE_MS,
   DEFAULT_QUEUE_SHARD_COUNT,
   newId,
-  normalizeHostCapabilities,
   type HostWireMessage,
 } from "@auto-harness/shared";
 
@@ -19,7 +18,7 @@ import type {
   RepositoryRecord,
 } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
-import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
+import { hydrateFromStorage } from "./control-plane-hydrate.ts";
 import type {
   ArchiveObject,
   ConnectionRecord,
@@ -162,54 +161,7 @@ export function hashString(s: string): number {
   return h;
 }
 
-export async function hydrateFromStorage(state: ControlPlaneState): Promise<void> {
-  if (!state.storage) {
-    return;
-  }
-  state.worktrees.clear();
-  state.connections.clear();
-  state.hostConnection.clear();
-  state.logs.clear();
-  state.schedules.clear();
-  state.repositories.clear();
-  state.hostInventories.clear();
-  state.providers.clear();
-  state.providerAccounts.clear();
-  state.commands.clear();
-  state.archives.clear();
-  hydrateScheduledState(state, await state.storage.listAllSessions());
-  for (const w of await state.storage.listAllWorktrees()) {
-    state.worktrees.set(w.id, w);
-  }
-  for (const c of await state.storage.listConnections()) {
-    const connection = { ...c, capabilities: normalizeHostCapabilities(c.capabilities) };
-    state.connections.set(connection.connectionId, connection);
-    state.hostConnection.set(connection.hostId, connection.connectionId);
-  }
-  for (const sch of await state.storage.listSchedules()) {
-    state.schedules.set(sch.id, {
-      ...sch,
-      concurrencyId: sch.concurrencyId?.trim() || `schedule-${sch.id}`,
-    });
-  }
-  for (const r of await state.storage.listRepositories()) {
-    state.repositories.set(r.id, r);
-  }
-  for (const h of await state.storage.listHostInventories()) {
-    const inventory = { ...h, capabilities: normalizeHostCapabilities(h.capabilities) };
-    state.hostInventories.set(inventory.hostId, inventory);
-  }
-  for (const p of await state.storage.listProviders()) state.providers.set(p.id, p);
-  for (const pa of await state.storage.listProviderAccounts()) {
-    state.providerAccounts.set(pa.id, pa);
-  }
-  for (const c of await state.storage.listCommands()) {
-    state.commands.set(c.id, c);
-  }
-  for (const a of await state.storage.listArchives()) {
-    state.archives.set(a.key, a);
-  }
-}
+export { hydrateFromStorage };
 export async function settleStorage(state: ControlPlaneState): Promise<void> {
   const pending = state.pendingPersists;
   state.pendingPersists = [];

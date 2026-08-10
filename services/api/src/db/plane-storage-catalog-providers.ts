@@ -61,6 +61,7 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
     const res = await ctx.doc.send(
       new ScanCommand({
         TableName: ctx.tables.providers,
+        ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -104,6 +105,7 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
     const res = await ctx.doc.send(
       new ScanCommand({
         TableName: ctx.tables.commands,
+        ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );

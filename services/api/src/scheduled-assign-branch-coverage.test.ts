@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildRegisteredInventory } from "./control-plane-agent-registration.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -106,11 +107,13 @@ describe("scheduled assignment branch coverage", () => {
     addHost(state, "host", "connection");
     state.sessions.set("run", queued("run"));
     const calls: string[] = [];
-    state.storage = {
+    setDurableReadStorage(state, {
       getMainCheckoutCursor: async () => null,
       ensureMainCheckoutLeaseMap: async () => (calls.push("map"), false),
       tryAssignMainCheckoutSession: async () => (calls.push("claim"), true),
-    } as never;
+    });
+    await expect(state.storage!.listSessionsByStatus("queued", 0)).resolves.toHaveLength(1);
+    await expect(state.storage!.listConnections()).resolves.toHaveLength(1);
     await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
     expect(calls).toEqual(["map"]);
     state.storage.ensureMainCheckoutLeaseMap = async () => (calls.push("map-ok"), true);

@@ -13,7 +13,11 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/providers") {
-    send(res, 200, { items: plane.listProviders() });
+    try {
+      send(res, 200, { items: await plane.listProvidersDurable() });
+    } catch {
+      sendInternalError(res);
+    }
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/providers") {
@@ -46,12 +50,16 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
   if (match) {
     const id = match[1]!;
     if (method === "GET") {
-      const provider = plane.getProvider(id);
-      if (!provider) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "provider not found" } });
-        return true;
+      try {
+        const provider = await plane.getProviderDurable(id);
+        if (!provider) {
+          send(res, 404, { error: { code: "NOT_FOUND", message: "provider not found" } });
+          return true;
+        }
+        send(res, 200, provider);
+      } catch {
+        sendInternalError(res);
       }
-      send(res, 200, provider);
       return true;
     }
     if (method === "PUT" || method === "PATCH") {

@@ -4,6 +4,7 @@ import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import { updateScheduleDurable } from "./control-plane-schedules-durable.ts";
+import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 
 /**
  * Durable repository, schedule, and host-inventory management delegates.
@@ -54,7 +55,16 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return repos.getRepository(this.state, id);
   }
 
+  getRepositoryDurable(id: string): Promise<RepositoryRecord | null> {
+    return durableCatalog.getRepositoryDurable(this.state, id);
+  }
+
   listRepositories(): RepositoryRecord[] {
+    return repos.listRepositories(this.state);
+  }
+
+  async listRepositoriesDurable(): Promise<RepositoryRecord[]> {
+    await durableCatalog.listRepositoriesDurable(this.state);
     return repos.listRepositories(this.state);
   }
 
@@ -98,7 +108,16 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return agentHosts.getHostInventory(this.state, hostId);
   }
 
+  getHostInventoryDurable(hostId: string): Promise<HostInventoryRecord | null> {
+    return durableCatalog.getHostInventoryDurable(this.state, hostId);
+  }
+
   listHostInventories(): HostInventoryRecord[] {
+    return agentHosts.listHostInventories(this.state);
+  }
+
+  async listHostInventoriesDurable(): Promise<HostInventoryRecord[]> {
+    await durableCatalog.listHostInventoriesDurable(this.state);
     return agentHosts.listHostInventories(this.state);
   }
 

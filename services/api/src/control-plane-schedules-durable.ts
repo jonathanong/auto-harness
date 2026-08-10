@@ -1,5 +1,9 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { prepareUpdateSchedule, updateSchedule } from "./control-plane-schedules.ts";
+import {
+  getScheduleDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 /** Persist a schedule update before replacing the cache entry. */
 export async function updateScheduleDurable(
@@ -8,6 +12,8 @@ export async function updateScheduleDurable(
   patch: Parameters<typeof updateSchedule>[2],
 ): Promise<ReturnType<typeof updateSchedule>> {
   if (!state.storage) return updateSchedule(state, id, patch);
+  await getScheduleDurable(state, id);
+  await refreshTargetCatalogDurable(state);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const existing = state.schedules.get(id);
     if (!existing) return { ok: false, error: "schedule not found" };
