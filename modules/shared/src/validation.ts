@@ -1,10 +1,19 @@
 import {
   ON_CONFLICT_OPTIONS,
   SESSION_ERROR_CODES,
+  SESSION_SOURCES,
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
+  SESSION_TYPES,
 } from "./constants.ts";
-import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.ts";
+import type {
+  OnConflict,
+  SessionErrorCode,
+  SessionSource,
+  SessionStatus,
+  SessionType,
+} from "./types.ts";
+import { isValidScheduledBranchRef } from "./scheduled-branch-ref.ts";
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -30,6 +39,14 @@ export function isOnConflict(value: unknown): value is OnConflict {
   return typeof value === "string" && (ON_CONFLICT_OPTIONS as readonly string[]).includes(value);
 }
 
+export function isSessionType(value: unknown): value is SessionType {
+  return typeof value === "string" && (SESSION_TYPES as readonly string[]).includes(value);
+}
+
+export function isSessionSource(value: unknown): value is SessionSource {
+  return typeof value === "string" && (SESSION_SOURCES as readonly string[]).includes(value);
+}
+
 /** Validate fields required to create a session (control-plane create path). */
 export function validateCreateSessionInput(input: {
   repositoryId: unknown;
@@ -43,6 +60,8 @@ export function validateCreateSessionInput(input: {
   ref?: unknown;
   concurrencyKey?: unknown;
   metadata?: unknown;
+  type?: unknown;
+  source?: unknown;
 }): ValidationResult<{
   repositoryId: string;
   prompt: string;
@@ -55,6 +74,8 @@ export function validateCreateSessionInput(input: {
   ref: string | undefined;
   concurrencyKey: string | undefined;
   metadata: Record<string, unknown> | undefined;
+  type: SessionType;
+  source: SessionSource;
 }> {
   if (!isNonEmptyString(input.repositoryId)) {
     return { ok: false, error: "repositoryId is required" };
@@ -140,6 +161,17 @@ export function validateCreateSessionInput(input: {
     metadata = input.metadata as Record<string, unknown>;
   }
 
+  if (input.type !== undefined && !isSessionType(input.type)) {
+    return { ok: false, error: "type must be prompt or scheduled" };
+  }
+  if (input.source !== undefined && !isSessionSource(input.source)) {
+    return { ok: false, error: "source must be api, ui, webhook, or schedule" };
+  }
+  const type = input.type ?? "prompt";
+  if (type === "scheduled" && ref !== undefined && !isValidScheduledBranchRef(ref)) {
+    return { ok: false, error: "scheduled ref must be a valid branch name" };
+  }
+
   return {
     ok: true,
     value: {
@@ -154,6 +186,8 @@ export function validateCreateSessionInput(input: {
       ref,
       concurrencyKey,
       metadata,
+      type,
+      source: input.source ?? "api",
     },
   };
 }

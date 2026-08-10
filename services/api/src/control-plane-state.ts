@@ -7,6 +7,7 @@ import {
   DEFAULT_QUEUE_SHARD_COUNT,
   DEFAULT_USAGE_LIMIT_RETRY_CEILING,
   newId,
+  normalizeHostCapabilities,
   type HostWireMessage,
 } from "@auto-harness/shared";
 
@@ -179,8 +180,9 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
     state.worktrees.set(w.id, w);
   }
   for (const c of await state.storage.listConnections()) {
-    state.connections.set(c.connectionId, c);
-    state.hostConnection.set(c.hostId, c.connectionId);
+    const connection = { ...c, capabilities: normalizeHostCapabilities(c.capabilities) };
+    state.connections.set(connection.connectionId, connection);
+    state.hostConnection.set(connection.hostId, connection.connectionId);
   }
   for (const sch of await state.storage.listSchedules()) {
     state.schedules.set(sch.id, sch);
@@ -189,7 +191,8 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
     state.repositories.set(r.id, r);
   }
   for (const h of await state.storage.listHostInventories()) {
-    state.hostInventories.set(h.hostId, h);
+    const inventory = { ...h, capabilities: normalizeHostCapabilities(h.capabilities) };
+    state.hostInventories.set(inventory.hostId, inventory);
   }
   for (const p of await state.storage.listProviders()) {
     state.providers.set(p.id, p);

@@ -1,4 +1,9 @@
-import type { HostToServerMessage, HostWireMessage, SessionStatus } from "@auto-harness/shared";
+import type {
+  HostCapability,
+  HostToServerMessage,
+  HostWireMessage,
+  SessionStatus,
+} from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type {
@@ -103,6 +108,7 @@ export class ControlPlaneBase {
       labels: string[];
     }>;
     commandProfiles: string[];
+    capabilities?: HostCapability[];
     replaceExisting?: boolean;
   }): { ok: true; connectionId: string } | { ok: false; error: string } {
     return agents.registerHost(this.state, opts);

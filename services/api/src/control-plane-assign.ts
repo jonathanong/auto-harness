@@ -54,7 +54,7 @@ export function assignQueued(
 
   for (let shard = 0; shard < state.shardCount; shard++) {
     const queued = [...state.sessions.values()]
-      .filter((s) => s.status === "queued" && s.queueShard === shard)
+      .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
       .filter((s) => {
         if (s.retryAfter && Date.parse(s.retryAfter) > nowMs) {
           return false;
@@ -117,6 +117,7 @@ export function assignQueued(
         const msg: HostWireMessage = {
           type: "session:assign",
           sessionId: session.id,
+          sessionType: session.type === "scheduled" ? "scheduled" : "prompt",
           repositoryId: session.repositoryId,
           prompt: session.prompt,
           resolvedArgv,
@@ -164,7 +165,7 @@ export async function assignQueuedDurable(
 
   for (let shard = 0; shard < state.shardCount; shard++) {
     const queued = [...state.sessions.values()]
-      .filter((s) => s.status === "queued" && s.queueShard === shard)
+      .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
       .filter((s) => !s.retryAfter || Date.parse(s.retryAfter) <= nowMs)
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
@@ -251,6 +252,7 @@ export async function assignQueuedDurable(
         const msg: HostWireMessage = {
           type: "session:assign",
           sessionId: session.id,
+          sessionType: session.type === "scheduled" ? "scheduled" : "prompt",
           repositoryId: session.repositoryId,
           prompt: session.prompt,
           resolvedArgv,

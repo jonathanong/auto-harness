@@ -447,7 +447,8 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
   not just `startedAt`, so a crashed agent's worktree is reclaimed promptly rather than after up to
   the full session timeout).
 - Non-worktree (`scheduled`) session execution on main repo checkout; main-checkout lock, serial
-  per repository.
+  per repository. A scheduled `ref` is a branch name only (never a tag/SHA) and must exist on an
+  eligible host; generic prompt-session `ref` remains branch/tag/SHA (D6).
 - **Testing:** E2E test — create session (with `ref`) → agent picks up → runs → completes, using
   DynamoDB Local + mock WS; dedicated tests for Invariants 2, 6, 7, 9; a resume test that resumes
   onto a **different** worktree path after the original was reused by an intervening session,

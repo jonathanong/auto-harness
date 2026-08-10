@@ -39,6 +39,7 @@ export function setup(runner: ProcessRunner) {
     ensureRepo: async () => undefined,
     ensureWorktree: async () => undefined,
     checkoutRef: async () => undefined,
+    prepareMainCheckout: async () => undefined,
     revParse: async () => "deadbeef",
   };
   const worktrees = new WorktreeManager(config, git);

@@ -28,6 +28,7 @@ describe("getInventory / putInventory", () => {
         JSON.stringify({
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           commandProfiles: { p: { argv: ["true"], appendPrompt: false } },
+          capabilities: ["scheduled-main-checkout", "not-real"],
           logLevel: "debug",
         }),
         { status: 200 },
@@ -36,6 +37,7 @@ describe("getInventory / putInventory", () => {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
       expect(inv.logLevel).toBe("debug");
+      expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
     }
@@ -71,6 +73,7 @@ describe("getInventory / putInventory", () => {
         repositories: [],
         providerAccounts: [],
         commandProfiles: {},
+        capabilities: ["scheduled-main-checkout"],
         logLevel: "warn",
       });
       expect(ok).toEqual({ ok: true });
@@ -78,6 +81,7 @@ describe("getInventory / putInventory", () => {
         repositories: [],
         providerAccounts: [],
         commandProfiles: {},
+        capabilities: ["scheduled-main-checkout"],
         logLevel: "warn",
       });
     } finally {

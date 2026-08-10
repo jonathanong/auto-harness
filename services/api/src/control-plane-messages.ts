@@ -119,6 +119,7 @@ export function handleHostMessage(
         hostId: msg.hostId,
         worktrees: msg.worktrees,
         commandProfiles: msg.commandProfiles,
+        ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
@@ -194,6 +195,7 @@ export async function handleHostMessageDurable(
       hostId: msg.hostId,
       worktrees: msg.worktrees,
       commandProfiles: msg.commandProfiles,
+      ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       replaceExisting,
     });

@@ -1,4 +1,10 @@
-import type { OnConflict, SessionErrorCode, SessionStatus } from "./types.ts";
+import type {
+  OnConflict,
+  SessionErrorCode,
+  SessionSource,
+  SessionStatus,
+  SessionType,
+} from "./types.ts";
 
 export const SESSION_STATUSES = [
   "queued",
@@ -28,6 +34,14 @@ export const ON_CONFLICT_OPTIONS = [
   "replace",
   "reject",
 ] as const satisfies readonly OnConflict[];
+
+export const SESSION_TYPES = ["prompt", "scheduled"] as const satisfies readonly SessionType[];
+export const SESSION_SOURCES = [
+  "api",
+  "ui",
+  "webhook",
+  "schedule",
+] as const satisfies readonly SessionSource[];
 
 /** Default max usage_limit auto-retries (docs/plan.md Invariant 6). */
 export const DEFAULT_USAGE_LIMIT_RETRY_CEILING = 2;

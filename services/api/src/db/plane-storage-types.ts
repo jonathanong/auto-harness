@@ -1,5 +1,5 @@
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
+import type { Command, HostCapability, Provider, ProviderAccount } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
 import { statusShardAttr } from "./dynamo.ts";
@@ -36,6 +36,8 @@ export type ConnectionRecord = {
   connectedAt: string;
   lastHeartbeatAt: string;
   commandProfiles: string[];
+  /** Empty/absent means an older daemon supports no optional capabilities. */
+  capabilities?: HostCapability[];
 };
 
 export type ScheduleRecord = {
@@ -106,6 +108,8 @@ export type HostInventoryRecord = {
   }>;
   providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
+  /** Empty/absent means an older daemon supports no optional capabilities. */
+  capabilities?: HostCapability[];
   logLevel?: "debug" | "info" | "warn" | "error";
   updatedAt: string;
 };

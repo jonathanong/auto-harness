@@ -105,7 +105,7 @@ sequenceDiagram
     WTM->>WTM: git worktree add if needed - prune stale
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
-    Conn->>AWS: host:register { hostId, worktrees[] }
+    Conn->>AWS: host:register { hostId, worktrees[], capabilities[] }
     AWS-->>Conn: host:registered / session:assign (optional)
     Note over Main: Event loop: messages, sessions, heartbeats
 ```
@@ -306,9 +306,12 @@ Control plane persists logs and fans out to UI subscribers ([aws.md](aws.md)).
 
 For `type: scheduled` / `worktreeId: null`:
 
-- One async mutex **per `repositoryId`** on this agent
-- If lock busy, agent should **nack or defer** only if protocol allows; preferred design: control plane assigns only one scheduled session per repo per agent at a time, and agent still serializes locally as defense in depth
-- Lock released in `finally` after status report
+- One FIFO async mutex **per `repositoryId`** on this agent; different repositories remain parallel.
+- Waiting consumes the session deadline. Cancellation or timeout removes the waiter without running setup, the command, or a terminal hook in the busy checkout.
+- The lock covers branch preparation, setup, the command, and the terminal hook, and is released in `finally` on every outcome.
+- Until the capability-gated dispatcher is deployed, scheduled sessions remain
+  queued. That dispatcher will add its own per-host/repository lease; the local
+  mutex remains defense in depth for each capable daemon.
 
 ---
 
@@ -436,6 +439,17 @@ pnpm lint:fix && git add -A && git commit -m 'chore: lint' && git push
 pnpm audit fix && git add -A && git commit -m 'chore: security' && git push
 ```
 
+Before a scheduled run, the daemon requires the main checkout to be clean,
+including untracked files, and switches to `ref` or the configured default
+branch without detaching or resetting. Scheduled refs are branch names; tags
+and commit SHAs are rejected. A configured setup script is trusted operator
+code and runs inside this locked main checkout, so destructive setup belongs
+only in an explicitly chosen maintenance policy.
+
+Capable daemons advertise `scheduled-main-checkout` during registration. The
+control-plane dispatcher is deployed only after this capability, and excludes
+older daemons that omit it.
+
 ---
 
 ## Auto-update (graceful restart)
@@ -538,6 +552,7 @@ On re-register, include:
 {
   "type": "host:register",
   "hostId": "vps-prod-1",
+  "capabilities": ["scheduled-main-checkout"],
   "worktrees": [
     {
       "id": "wt-1",

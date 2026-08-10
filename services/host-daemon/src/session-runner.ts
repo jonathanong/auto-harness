@@ -52,20 +52,32 @@ export class SessionRunner {
       ? AbortSignal.any([options.signal, timeout.signal])
       : timeout.signal;
 
-    if (!assign.worktreeId) {
+    if (!assign.worktreeId && assign.sessionType !== "scheduled") {
       clearTimeout(timeoutTimer);
       return failSession(
         streamer,
         logs,
         "setup_failed",
-        "scheduled/main-checkout sessions are not implemented in Phase 1 local runner",
+        "main checkout sessions must be scheduled",
         null,
       );
     }
 
     let claimed;
+    let mainClaimed = false;
     try {
-      claimed = this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId);
+      if (assign.worktreeId) {
+        claimed = this.deps.worktrees.claim(assign.repositoryId, assign.worktreeId);
+      } else {
+        claimed = this.deps.worktrees.mainClaim(assign.repositoryId);
+        if (!(await this.deps.worktrees.acquireMain(assign.repositoryId, signal))) {
+          clearTimeout(timeoutTimer);
+          const status = expired ? "timed_out" : "cancelled";
+          streamer.write("system", `Session ${status}`);
+          return { status, exitCode: null, logs };
+        }
+        mainClaimed = true;
+      }
     } catch (err) {
       clearTimeout(timeoutTimer);
       return failSession(
@@ -78,7 +90,12 @@ export class SessionRunner {
     }
 
     try {
-      streamer.write("system", `Claimed worktree ${claimed.worktree.id}`);
+      streamer.write(
+        "system",
+        assign.worktreeId
+          ? `Claimed worktree ${claimed.worktree.id}`
+          : `Claimed main checkout ${claimed.repository.id}`,
+      );
 
       if (signal.aborted) {
         return await finishSession(
@@ -94,7 +111,11 @@ export class SessionRunner {
       }
 
       try {
-        await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
+        if (mainClaimed) {
+          await this.deps.worktrees.prepareMainCheckout(claimed, assign.ref, signal);
+        } else {
+          await this.deps.worktrees.prepareCheckout(claimed, assign.ref, signal);
+        }
         streamer.write(
           "system",
           `Checked out ref ${assign.ref ?? claimed.repository.defaultBranch}`,
@@ -157,7 +178,11 @@ export class SessionRunner {
       );
     } finally {
       clearTimeout(timeoutTimer);
-      this.deps.worktrees.release(assign.worktreeId);
+      if (mainClaimed) {
+        this.deps.worktrees.releaseMain(assign.repositoryId);
+      } else if (assign.worktreeId) {
+        this.deps.worktrees.release(assign.worktreeId);
+      }
     }
   }
 }

@@ -8,6 +8,7 @@ describe("sessionAssignFromWire", () => {
       sessionAssignFromWire({
         type: "session:assign",
         sessionId: "s",
+        sessionType: "scheduled",
         repositoryId: "r",
         prompt: "p",
         resolvedArgv: ["echo", "p"],
@@ -21,7 +22,13 @@ describe("sessionAssignFromWire", () => {
         metadata: { pr: 1 },
         assignedAt: "now",
       }),
-    ).toMatchObject({ ref: "main", setupScript: "true", resume: true, cliResumeRef: "ref" });
+    ).toMatchObject({
+      sessionType: "scheduled",
+      ref: "main",
+      setupScript: "true",
+      resume: true,
+      cliResumeRef: "ref",
+    });
   });
 
   it("does not manufacture absent optional fields", () => {

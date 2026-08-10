@@ -51,7 +51,12 @@ describe("ControlPlane claim invariants", () => {
     const a2 = plane.assignQueued();
     expect(a2).toHaveLength(0);
     expect(plane.getWorktree("wt-1")?.status).toBe("busy");
-    expect(messages.filter((m) => m.type === "session:assign")).toHaveLength(1);
+    const assignments = messages.filter(
+      (message): message is Extract<HostWireMessage, { type: "session:assign" }> =>
+        message.type === "session:assign",
+    );
+    expect(assignments).toHaveLength(1);
+    expect(assignments[0]?.sessionType).toBe("prompt");
   });
 
   it("Invariant 3: concurrent agent register leaves one connection", () => {

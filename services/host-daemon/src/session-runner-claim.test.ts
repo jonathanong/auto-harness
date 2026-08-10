@@ -61,6 +61,7 @@ describe("SessionRunner claim and checkout failures", () => {
       checkoutRef: async () => {
         throw new Error("bad ref");
       },
+      prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
     };
     const worktrees = new WorktreeManager(config, git);
@@ -82,6 +83,7 @@ describe("SessionRunner claim and checkout failures", () => {
       checkoutRef: async () => {
         throw "co-nope";
       },
+      prepareMainCheckout: async () => undefined,
       revParse: async () => "x",
     });
     const runner2 = new SessionRunner({

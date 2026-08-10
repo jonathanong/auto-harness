@@ -12,10 +12,7 @@ describe("createGitClient checkout and revParse", () => {
           exitCode: 0,
           stdout: "abc123\n",
         },
-        {
-          match: ["switch", "--detach", "abc123"],
-          exitCode: 0,
-        },
+        { match: ["switch", "--detach", "abc123"], exitCode: 0 },
       ]),
     );
     await git.checkoutRef({ cwd: "/repo/wt", ref: "main" });
@@ -26,11 +23,7 @@ describe("createGitClient checkout and revParse", () => {
       scripted([
         { match: ["rev-parse", "--verify", "main"], exitCode: 1, stderr: "no" },
         { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-        {
-          match: ["rev-parse", "--verify", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
+        { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "abc\n" },
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "old git" },
         { match: ["checkout", "--detach", "abc"], exitCode: 0 },
       ]),
@@ -54,11 +47,7 @@ describe("createGitClient checkout and revParse", () => {
     await expect(
       createGitClient(
         scripted([
-          {
-            match: ["rev-parse", "--verify", "main"],
-            exitCode: 0,
-            stdout: "abc\n",
-          },
+          { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "abc\n" },
           { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
           { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
         ]),
