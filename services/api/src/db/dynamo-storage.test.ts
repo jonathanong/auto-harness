@@ -176,5 +176,20 @@ describe("DynamoDB Local storage", () => {
     expect((await s.getArchive("session-logs/sess-1.json"))?.body).toBe("[]");
     expect(await s.getArchive("missing")).toBeNull();
     expect((await s.listArchives()).length).toBeGreaterThan(0);
+
+    await s.putAuthAccount({
+      id: "user:alice",
+      username: "alice",
+      kind: "user",
+      role: "operator",
+      passwordHash: "before",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(await s.updateAuthAccountPassword("user:alice", "before", "after", "t2")).toBe(true);
+    expect((await s.getAuthAccount("user:alice"))?.passwordHash).toBe("after");
+    expect((await s.getAuthAccount("user:alice"))?.updatedAt).toBe("t2");
+    expect(await s.updateAuthAccountPassword("user:alice", "before", "later", "t3")).toBe(false);
+    expect(await s.updateAuthAccountPassword("missing-user", "before", "after", "t2")).toBe(false);
   });
 });

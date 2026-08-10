@@ -87,7 +87,7 @@ The server checks `HARNESS_ADMINS` env var first, then DynamoDB user records. On
 
 Clear the session cookie.
 
-**Response:** `200 OK` + `Set-Cookie: auto_harness_session=; Max-Age=0`
+**Response:** `204 No Content` + `Set-Cookie: auto_harness_session=; Max-Age=0`
 
 #### `GET /auth/me`
 
@@ -97,13 +97,14 @@ Get the current authenticated user's info.
 
 ```json
 {
+  "id": "user:jong",
   "username": "jong",
   "role": "operator",
-  "type": "user"
+  "kind": "user"
 }
 ```
 
-The `type` field is `admin` (env var), `user` (DynamoDB), or `service-account`.
+The `kind` field is `admin` (env var), `user` (DynamoDB), or `service-account`.
 
 #### `PUT /auth/password`
 

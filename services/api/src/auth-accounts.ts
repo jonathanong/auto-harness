@@ -11,6 +11,13 @@ export type AuthStorage = {
   listAuthAccounts(): Promise<AuthAccountRecord[]>;
   getAuthAccountByUsername?(username: string): Promise<AuthAccountRecord | null>;
   putAuthAccount(record: AuthAccountRecord): Promise<void>;
+  /** Atomically replace a user password hash only when its current hash still matches. */
+  updateAuthAccountPassword?(
+    id: string,
+    expectedPasswordHash: string,
+    passwordHash: string,
+    updatedAt: string,
+  ): Promise<boolean>;
   deleteAuthAccount(id: string): Promise<void>;
 };
 

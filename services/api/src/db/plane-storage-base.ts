@@ -584,6 +584,21 @@ export class DynamoPlaneStorageBase {
     return auth.putAuthAccount(this.ctx, rec);
   }
 
+  updateAuthAccountPassword(
+    id: string,
+    expectedPasswordHash: string,
+    passwordHash: string,
+    updatedAt: string,
+  ): Promise<boolean> {
+    return auth.updateAuthAccountPassword(
+      this.ctx,
+      id,
+      expectedPasswordHash,
+      passwordHash,
+      updatedAt,
+    );
+  }
+
   getAuthAccount(id: string): Promise<AuthAccountRecord | null> {
     return auth.getAuthAccount(this.ctx, id);
   }

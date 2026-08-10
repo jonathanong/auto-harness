@@ -208,6 +208,100 @@ describe("control-plane authentication security", () => {
     expect(await auth.authenticate(request({ cookie }))).toBeNull();
   });
 
+  it("changes only user passwords after checking the current password and durable write", async () => {
+    const updates: Array<{
+      id: string;
+      expectedPasswordHash: string;
+      passwordHash: string;
+      updatedAt: string;
+    }> = [];
+    const storage = {
+      listAuthAccounts: async () => [],
+      putAuthAccount: async () => undefined,
+      updateAuthAccountPassword: async (
+        id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        updatedAt: string,
+      ) => {
+        updates.push({ id, expectedPasswordHash, passwordHash, updatedAt });
+        return true;
+      },
+      deleteAuthAccount: async () => undefined,
+    };
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    });
+    const user = await auth.createUser({ username: "alice", password: "before", role: "operator" });
+    expect(await auth.changePassword(user, "wrong", "after", storage)).toBe(
+      "invalid-current-password",
+    );
+    expect(updates).toEqual([]);
+    expect(await auth.changePassword(user, "before", "", storage)).toBe("invalid-new-password");
+    expect(await auth.changePassword(user, "before", "after", storage)).toBe("changed");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ id: "user:alice", updatedAt: expect.any(String) });
+    expect(updates[0]?.expectedPasswordHash).not.toBe("before");
+    expect(updates[0]?.passwordHash).not.toBe("after");
+    expect(await auth.authenticatePassword("alice", "before")).toBeNull();
+    expect(await auth.authenticatePassword("alice", "after")).toMatchObject(user);
+    expect(await auth.changePassword(admin, "root", "after", storage)).toBe("unsupported-account");
+    expect(await auth.changePassword({ ...user, id: "user:gone" }, "after", "later", storage)).toBe(
+      "missing-account",
+    );
+    storage.updateAuthAccountPassword = async () => false;
+    expect(await auth.changePassword(user, "after", "later", storage)).toBe("missing-account");
+    expect(await auth.authenticatePassword("alice", "after")).toMatchObject(user);
+    expect(
+      await auth.changePassword(user, "after", "later", {
+        listAuthAccounts: async () => [],
+        putAuthAccount: async () => undefined,
+        deleteAuthAccount: async () => undefined,
+      }),
+    ).toBe("storage-unavailable");
+  });
+
+  it("uses a compare-and-swap password write so only one concurrent change succeeds", async () => {
+    let persistedHash: string | undefined;
+    const storage = {
+      listAuthAccounts: async () => [],
+      putAuthAccount: async () => undefined,
+      updateAuthAccountPassword: async (
+        _id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        _updatedAt: string,
+      ) => {
+        if (persistedHash === undefined) persistedHash = expectedPasswordHash;
+        if (persistedHash !== expectedPasswordHash) return false;
+        persistedHash = passwordHash;
+        return true;
+      },
+      deleteAuthAccount: async () => undefined,
+    };
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    });
+    const user = await auth.createUser({ username: "alice", password: "before", role: "operator" });
+
+    const results = await Promise.all([
+      auth.changePassword(user, "before", "after-one", storage),
+      auth.changePassword(user, "before", "after-two", storage),
+    ]);
+
+    expect(results.filter((result) => result === "changed")).toHaveLength(1);
+    expect(results.filter((result) => result === "missing-account")).toHaveLength(1);
+    expect(await auth.authenticatePassword("alice", "before")).toBeNull();
+    expect(
+      Boolean(await auth.authenticatePassword("alice", "after-one")) !==
+        Boolean(await auth.authenticatePassword("alice", "after-two")),
+    ).toBe(true);
+  });
+
   it("checks roles, repository scopes, and host bindings centrally", () => {
     const readOnly: Principal = { ...admin, role: "read-only", kind: "user" };
     const operator: Principal = { ...admin, role: "operator", kind: "service-account" };

@@ -50,6 +50,8 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const authRoute = url.pathname.startsWith("/api/v1/auth/");
     const sessionRoute =
       url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout";
+    const selfServiceAuthRoute =
+      url.pathname === "/api/v1/auth/me" || url.pathname === "/api/v1/auth/password";
     if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
 
     if (auth.mode === "required") {
@@ -58,13 +60,16 @@ export function createLocalApp(options: LocalServerOptions = {}): {
         send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
         return;
       }
-      if (!authorize(principal, method, url.pathname)) {
+      if (!selfServiceAuthRoute && !authorize(principal, method, url.pathname)) {
         send(res, 403, {
           error: { code: "FORBIDDEN", message: "insufficient role for this operation" },
         });
         return;
       }
       ctx.principal = principal;
+    } else if (selfServiceAuthRoute) {
+      const principal = await auth.authenticate(req);
+      if (principal) ctx.principal = principal;
     }
     if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
 
