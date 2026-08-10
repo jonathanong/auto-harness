@@ -27,6 +27,7 @@ describe("isValidScheduledBranchRef", () => {
       "feature\u007fbroken",
       "feature@{1}",
       "-branch",
+      "a".repeat(256),
     ]) {
       expect(isValidScheduledBranchRef(value)).toBe(false);
     }

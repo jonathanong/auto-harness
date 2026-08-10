@@ -113,6 +113,7 @@ describe("schedule routing policy", () => {
       expect(fired.session.target).toEqual({ commandId: "cmd-base" });
       expect(fired.session.fallbacks).toEqual([{ commandId: "cmd-base-2" }]);
       expect(fired.session.queueExpiresAt).toBe("2026-01-01T00:00:10.000Z");
+      expect(fired.session.scheduleId).toBe(schedule.id);
     }
   });
 

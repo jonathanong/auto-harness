@@ -54,7 +54,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
               },
             }
           : body;
-      const result = plane.createSession(input);
+      const result = await plane.createSessionDurable(input);
       if (!result.ok) {
         send(res, result.code === "CONFLICT" ? 409 : 400, {
           error: {
@@ -64,7 +64,11 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
-      send(res, 201, result.session);
+      if (!canAccess(ctx, result.session.repositoryId)) {
+        sendForbidden(res);
+        return true;
+      }
+      send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
       return true;
     } catch {
       send(res, 400, {
@@ -83,6 +87,12 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       ...(url.searchParams.get("hostId") ? { hostId: url.searchParams.get("hostId")! } : {}),
       ...(url.searchParams.get("status") ? { status: url.searchParams.get("status")! } : {}),
       ...(url.searchParams.get("q") ? { q: url.searchParams.get("q")! } : {}),
+      ...(url.searchParams.get("concurrencyId")
+        ? { concurrencyId: url.searchParams.get("concurrencyId")! }
+        : {}),
+      ...(url.searchParams.get("scheduleId")
+        ? { scheduleId: url.searchParams.get("scheduleId")! }
+        : {}),
     });
     const items = page.items.filter((session) => canAccess(ctx, session.repositoryId));
     send(res, 200, {
@@ -99,7 +109,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       sendForbidden(res);
       return true;
     }
-    const result = plane.cancelSession(cancelMatch[1]!);
+    const result = await plane.cancelSessionDurable(cancelMatch[1]!);
     if (!result.ok) {
       send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
       return true;
@@ -137,7 +147,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       });
       return true;
     }
-    const result = plane.resumeSession(id, {
+    const result = await plane.resumeSessionDurable(id, {
       ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
       ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
       ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
@@ -148,7 +158,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       });
       return true;
     }
-    send(res, 201, result.session);
+    send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
     return true;
   }
 

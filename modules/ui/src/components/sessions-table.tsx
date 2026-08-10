@@ -24,6 +24,7 @@ export type SessionRow = {
     worktreeId?: string | null;
   } | null;
   source?: string | null;
+  concurrencyId?: string | null;
   hostId?: string | null;
   createdAt?: string | null;
 };
@@ -56,6 +57,7 @@ export function SessionsTable({
           <TableHead>Queue expiry</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
+          <TableHead>Concurrency ID</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -116,6 +118,9 @@ export function SessionsTable({
             <TableCell className="whitespace-nowrap text-xs">{s.queueExpiresAt ?? "—"}</TableCell>
             <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
+            <TableCell className="max-w-xs truncate font-mono text-xs">
+              {s.concurrencyId ?? "—"}
+            </TableCell>
           </TableRow>
         ))}
         {items.length === 0 ? (

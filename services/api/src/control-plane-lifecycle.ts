@@ -1,7 +1,10 @@
+import { isTerminalSessionStatus } from "@auto-harness/shared";
+
 import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
+import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import {
   offlineHostAndRequeue,
   offlineHostAndRequeueDurable,
@@ -182,12 +185,7 @@ export function cancelSession(
   if (!session) {
     return { ok: false, error: "session not found" };
   }
-  if (
-    session.status === "completed" ||
-    session.status === "failed" ||
-    session.status === "cancelled" ||
-    session.status === "timed_out"
-  ) {
+  if (isTerminalSessionStatus(session.status)) {
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
   state.pendingAcks.delete(id);
@@ -207,6 +205,16 @@ export function cancelSession(
   }
   session.worktreeId = null;
   session.hostId = null;
-  persistSession(state, session);
+  const storage = state.storage;
+  if (session.concurrencyId && storage) {
+    persistTerminalSessionThenReleaseConcurrencyLock(
+      state,
+      session,
+      session.concurrencyId,
+      storage,
+    );
+  } else {
+    persistSession(state, session);
+  }
   return { ok: true, session: toPublic(state, session) };
 }

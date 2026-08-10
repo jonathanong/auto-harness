@@ -3,6 +3,7 @@
 export type SessionListQuery = {
   status: string;
   q: string;
+  concurrencyId: string;
   cursor: string;
   limit: number;
 };
@@ -16,6 +17,7 @@ export function parseSessionListQuery(
   return {
     status: sp.get("status") ?? "all",
     q: sp.get("q") ?? "",
+    concurrencyId: sp.get("concurrencyId") ?? "",
     cursor: sp.get("cursor") ?? "",
     limit: Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 100) : 20,
   };
@@ -28,6 +30,9 @@ export function sessionListHref(state: Partial<SessionListQuery>, basePath = "/s
   }
   if (state.q) {
     p.set("q", state.q);
+  }
+  if (state.concurrencyId) {
+    p.set("concurrencyId", state.concurrencyId);
   }
   if (state.cursor) {
     p.set("cursor", state.cursor);
@@ -50,6 +55,9 @@ export function buildSessionsApiPath(query: SessionListQuery, extra?: { hostId?:
   }
   if (query.q) {
     p.set("q", query.q);
+  }
+  if (query.concurrencyId) {
+    p.set("concurrencyId", query.concurrencyId);
   }
   if (extra?.hostId) {
     p.set("hostId", extra.hostId);

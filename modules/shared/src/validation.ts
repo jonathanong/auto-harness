@@ -1,6 +1,6 @@
 /* eslint-disable max-lines */
 import {
-  ON_CONFLICT_OPTIONS,
+  ACTIVE_SESSION_STATUSES,
   SESSION_ERROR_CODES,
   SESSION_SOURCES,
   SESSION_STATUSES,
@@ -8,13 +8,7 @@ import {
   SESSION_TYPES,
   DEFAULT_QUEUE_TTL_SECONDS,
 } from "./constants.ts";
-import type {
-  OnConflict,
-  SessionErrorCode,
-  SessionSource,
-  SessionStatus,
-  SessionType,
-} from "./types.ts";
+import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
 import { isValidScheduledBranchRef } from "./scheduled-branch-ref.ts";
 import type { TargetRef } from "./session.ts";
 
@@ -34,12 +28,14 @@ export function isTerminalSessionStatus(value: unknown): value is SessionStatus 
   );
 }
 
-export function isSessionErrorCode(value: unknown): value is SessionErrorCode {
-  return typeof value === "string" && (SESSION_ERROR_CODES as readonly string[]).includes(value);
+export function isActiveSessionStatus(value: unknown): value is SessionStatus {
+  return (
+    typeof value === "string" && (ACTIVE_SESSION_STATUSES as readonly string[]).includes(value)
+  );
 }
 
-export function isOnConflict(value: unknown): value is OnConflict {
-  return typeof value === "string" && (ON_CONFLICT_OPTIONS as readonly string[]).includes(value);
+export function isSessionErrorCode(value: unknown): value is SessionErrorCode {
+  return typeof value === "string" && (SESSION_ERROR_CODES as readonly string[]).includes(value);
 }
 
 export function isSessionType(value: unknown): value is SessionType {
@@ -60,9 +56,8 @@ export function validateCreateSessionInput(input: {
   timeout: unknown;
   priority?: unknown;
   requiredLabels?: unknown;
-  onConflict?: unknown;
   ref?: unknown;
-  concurrencyKey?: unknown;
+  concurrencyId?: unknown;
   metadata?: unknown;
   type?: unknown;
   source?: unknown;
@@ -75,9 +70,8 @@ export function validateCreateSessionInput(input: {
   timeout: number;
   priority: number;
   requiredLabels: string[];
-  onConflict: OnConflict;
   ref: string | undefined;
-  concurrencyKey: string | undefined;
+  concurrencyId: string | undefined;
   metadata: Record<string, unknown> | undefined;
   type: SessionType;
   source: SessionSource;
@@ -113,17 +107,6 @@ export function validateCreateSessionInput(input: {
     requiredLabels = input.requiredLabels;
   }
 
-  let onConflict: OnConflict = "queue";
-  if (input.onConflict !== undefined) {
-    if (!isOnConflict(input.onConflict)) {
-      return {
-        ok: false,
-        error: "onConflict must be queue, replace, or reject",
-      };
-    }
-    onConflict = input.onConflict;
-  }
-
   let ref: string | undefined;
   if (input.ref !== undefined) {
     if (!isNonEmptyString(input.ref)) {
@@ -132,12 +115,12 @@ export function validateCreateSessionInput(input: {
     ref = input.ref;
   }
 
-  let concurrencyKey: string | undefined;
-  if (input.concurrencyKey !== undefined) {
-    if (!isNonEmptyString(input.concurrencyKey)) {
-      return { ok: false, error: "concurrencyKey must be a non-empty string when set" };
+  let concurrencyId: string | undefined;
+  if (input.concurrencyId !== undefined) {
+    if (!isNonEmptyString(input.concurrencyId)) {
+      return { ok: false, error: "concurrencyId must be a non-empty string when set" };
     }
-    concurrencyKey = input.concurrencyKey;
+    concurrencyId = input.concurrencyId;
   }
 
   let metadata: Record<string, unknown> | undefined;
@@ -174,9 +157,8 @@ export function validateCreateSessionInput(input: {
       timeout: input.timeout,
       priority,
       requiredLabels,
-      onConflict,
       ref,
-      concurrencyKey,
+      concurrencyId,
       metadata,
       type,
       source: input.source ?? "api",

@@ -210,7 +210,7 @@ Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `
 ## Pattern C — PR `/pr-shepherd`
 
 **Typical workflow:** `codex-pr-shepherd` with long runner session + resume.  
-**Hookup:** short gate job → `POST /sessions` (first tick) or `POST /sessions/:id/resume` (continue same worktree) → exit. Humans follow Slack + the PR on GitHub.
+**Hookup:** short gate job → `POST /sessions` with `concurrencyId: filaments-pr-shepherd-<pr>` (first tick) or `POST /sessions/:id/resume` (continue on the same host) → exit. Repeated webhook/manual delivery receives the existing active session and does not queue a duplicate. Humans follow Slack + the PR on GitHub.
 
 ```mermaid
 sequenceDiagram
@@ -224,7 +224,7 @@ sequenceDiagram
   Dev->>PR: Comment /pr-shepherd
   GHA->>GHA: Gate + resolve PR head
   alt First dispatch
-    GHA->>AH: POST /sessions (shepherd prompt, labels codex)
+    GHA->>AH: POST /sessions (shepherd prompt, concurrencyId filaments-pr-shepherd-<pr>)
   else Continue same work
     GHA->>AH: POST /sessions/{id}/resume
   end
@@ -243,8 +243,12 @@ Resume is how the **repo harness** re-enters without losing the workspace: pass 
 curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions/${SESSION_ID}/resume" \
   -H "Authorization: Bearer ${HARNESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"prompt":"Continue pr-shepherd from current PR state."}'
+  -d '{"prompt":"Continue pr-shepherd from current PR state.","concurrencyId":"filaments-pr-shepherd-<pr>"}'
 ```
+
+The create response is `201`/`created: true` for the first active run and `200`/`created: false`
+with the existing session for a duplicate delivery. Once the run is terminal, the identity is
+released and the next explicit delivery can retry it.
 
 ---
 

@@ -123,6 +123,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       timeout: 20,
       priority: 4,
     });
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", {})).status).toBe(201);
     expect(
       (await invoke("POST", "/api/v1/sessions/sess-1/resume", { commandId: "override" })).status,
     ).toBe(400);
@@ -137,8 +138,12 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(400);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", [])).status).toBe(400);
     expect(
-      (await invoke("GET", "/api/v1/sessions?limit=5&cursor=&hostId=a1&status=completed&q=p"))
-        .status,
+      (
+        await invoke(
+          "GET",
+          "/api/v1/sessions?limit=5&cursor=bogus&hostId=a1&status=completed&q=p&concurrencyId=k&scheduleId=nightly",
+        )
+      ).status,
     ).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/ack-deadlines")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/scheduler/reclaim-stale")).status).toBe(200);
@@ -147,30 +152,27 @@ describe("createLocalApp agent and scheduler routes", () => {
     plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
     expect((await invoke("POST", "/api/v1/hosts/drain", { hostId: "a1" })).status).toBe(409);
     expect((await invoke("POST", "/api/v1/hosts/drain", {})).status).toBe(400);
-    expect(
-      (
-        await invoke("POST", "/api/v1/sessions", {
-          repositoryId: "r1",
-          prompt: "p",
-          target: { commandId: "cmd-echo" },
-          timeout: 1,
-          concurrencyKey: "k",
-          onConflict: "reject",
-        })
-      ).status,
-    ).toBe(201);
-    expect(
-      (
-        await invoke("POST", "/api/v1/sessions", {
-          repositoryId: "r1",
-          prompt: "p2",
-          target: { commandId: "cmd-echo" },
-          timeout: 1,
-          concurrencyKey: "k",
-          onConflict: "reject",
-        })
-      ).status,
-    ).toBe(409);
+    const concurrencyFirst = await invoke("POST", "/api/v1/sessions", {
+      repositoryId: "r1",
+      prompt: "p",
+      target: { commandId: "cmd-echo" },
+      timeout: 1,
+      concurrencyId: "k",
+    });
+    expect(concurrencyFirst.status).toBe(201);
+    const concurrencyDuplicate = await invoke("POST", "/api/v1/sessions", {
+      repositoryId: "r1",
+      prompt: "p2",
+      target: { commandId: "cmd-echo" },
+      timeout: 1,
+      concurrencyId: "k",
+    });
+    expect(concurrencyDuplicate.status).toBe(200);
+    expect(concurrencyDuplicate.json).toMatchObject({
+      id: concurrencyFirst.json.id,
+      created: false,
+      concurrencyId: "k",
+    });
 
     expect(
       (
@@ -217,5 +219,21 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect(await badJson("/api/v1/host/messages")).toBe(400);
     expect(await badJson("/api/v1/hosts/drain")).toBe(400);
     expect(await badJson("/api/v1/sessions/sess-1/resume")).toBe(400);
+
+    plane.createSessionDurable = async () => ({
+      ok: false,
+      error: "session id collision",
+      code: "CONFLICT",
+    });
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions", {
+          repositoryId: "r1",
+          prompt: "collision",
+          target: { commandId: "cmd-echo" },
+          timeout: 1,
+        })
+      ).status,
+    ).toBe(409);
   });
 });

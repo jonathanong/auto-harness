@@ -49,6 +49,10 @@ export const DYNAMO_TABLES: TableDef[] = [
     ],
   },
   {
+    name: "ConcurrencyLocks",
+    partitionKey: { name: "concurrencyId", type: "S" },
+  },
+  {
     name: "SessionLogs",
     partitionKey: { name: "sessionId", type: "S" },
     sortKey: { name: "timestampSeq", type: "S" },

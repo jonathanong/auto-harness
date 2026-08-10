@@ -1,4 +1,8 @@
-import { isValidScheduledBranchRef, validateTargetRouting } from "@auto-harness/shared";
+import {
+  isActiveSessionStatus,
+  isValidScheduledBranchRef,
+  validateTargetRouting,
+} from "@auto-harness/shared";
 
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -25,6 +29,7 @@ type ScheduleInput = {
   nextRunAt: string;
   enabled?: boolean;
   ref?: string;
+  concurrencyId?: string;
   id?: string;
 };
 
@@ -39,8 +44,9 @@ export function putSchedule(
   if (!routing.ok) return routing;
   const labels = resolveTargetLabels(state, routing.value.target, routing.value.fallbacks);
   if (!labels.ok) return labels;
+  const id = input.id ?? state.scheduleIdFactory();
   const rec: ScheduleRecord = {
-    id: input.id ?? state.scheduleIdFactory(),
+    id,
     repositoryId: input.repositoryId,
     name: input.name,
     target: routing.value.target,
@@ -54,6 +60,7 @@ export function putSchedule(
     lastRunAt: null,
     createdAt: state.now(),
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
+    concurrencyId: input.concurrencyId?.trim() || `schedule-${id}`,
   };
   state.schedules.set(rec.id, rec);
   if (state.storage) queueWrite(state, state.storage.putSchedule({ ...rec }));
@@ -61,12 +68,20 @@ export function putSchedule(
 }
 
 export function getSchedule(state: ControlPlaneState, id: string): ScheduleRecord | null {
-  const schedule = state.schedules.get(id);
-  return schedule ? { ...schedule } : null;
+  const s = state.schedules.get(id);
+  return s ? withActiveSession(state, s) : null;
 }
 
 export function listSchedules(state: ControlPlaneState): ScheduleRecord[] {
-  return [...state.schedules.values()].map((schedule) => ({ ...schedule }));
+  return [...state.schedules.values()].map((s) => withActiveSession(state, s));
+}
+
+function withActiveSession(state: ControlPlaneState, schedule: ScheduleRecord): ScheduleRecord {
+  const concurrencyId = schedule.concurrencyId?.trim() || `schedule-${schedule.id}`;
+  const active = [...state.sessions.values()].find(
+    (session) => session.concurrencyId === concurrencyId && isActiveSessionStatus(session.status),
+  );
+  return { ...schedule, concurrencyId, activeSessionId: active?.id ?? null };
 }
 
 export function updateSchedule(
@@ -94,6 +109,9 @@ export function updateSchedule(
     fallbacks: routing.value.fallbacks,
     targetLabels: labels.labels,
     queueTtlSeconds: routing.value.queueTtlSeconds,
+    ...(patch.concurrencyId !== undefined
+      ? { concurrencyId: patch.concurrencyId.trim() || `schedule-${id}` }
+      : {}),
   };
   state.schedules.set(id, next);
   if (state.storage) queueWrite(state, state.storage.putSchedule({ ...next }));

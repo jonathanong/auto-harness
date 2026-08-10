@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
@@ -13,13 +13,16 @@ export type SessionFiltersProps = {
   basePath?: string;
 };
 
-function buildHref(basePath: string, status: string, q: string): string {
+function buildHref(basePath: string, status: string, q: string, concurrencyId: string): string {
   const p = new URLSearchParams();
   if (status && status !== "all") {
     p.set("status", status);
   }
   if (q) {
     p.set("q", q);
+  }
+  if (concurrencyId) {
+    p.set("concurrencyId", concurrencyId);
   }
   const s = p.toString();
   return s ? `${basePath}?${s}` : basePath;
@@ -32,14 +35,27 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const [pending, start] = useTransition();
   const status = sp.get("status") ?? "all";
   const q = sp.get("q") ?? "";
+  const concurrencyId = sp.get("concurrencyId") ?? "";
+  const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
+
+  useEffect(() => {
+    setConcurrencyDraft(concurrencyId);
+  }, [concurrencyId]);
 
   const push = useCallback(
-    (next: { status?: string; q?: string }) => {
+    (next: { status?: string; q?: string; concurrencyId?: string }) => {
       start(() => {
-        router.push(buildHref(basePath, next.status ?? status, next.q ?? q));
+        router.push(
+          buildHref(
+            basePath,
+            next.status ?? status,
+            next.q ?? q,
+            next.concurrencyId ?? concurrencyId,
+          ),
+        );
       });
     },
-    [router, basePath, status, q],
+    [router, basePath, status, q, concurrencyId],
   );
 
   return (
@@ -68,14 +84,14 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
         </select>
       </div>
       <div className="min-w-[12rem] flex-1 space-y-1">
-        <Label htmlFor="q" tip="Substring match on session id or prompt (Enter or blur to apply)">
+        <Label htmlFor="q" tip="Substring match on session id, prompt, or concurrency ID">
           Search
         </Label>
         <Input
           id="q"
           data-pw="session-filter-q"
           defaultValue={q}
-          placeholder="session id or prompt…"
+          placeholder="session id, prompt, or concurrency ID…"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               push({ q: (e.target as HTMLInputElement).value });
@@ -84,6 +100,30 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
           onBlur={(e) => {
             if (e.target.value !== q) {
               push({ q: e.target.value });
+            }
+          }}
+        />
+      </div>
+      <div className="min-w-[12rem] space-y-1">
+        <Label htmlFor="concurrencyId" tip="Exact match on the session concurrency ID">
+          Concurrency ID
+        </Label>
+        <Input
+          id="concurrencyId"
+          data-pw="session-filter-concurrency-id"
+          value={concurrencyDraft}
+          placeholder="exact concurrency ID…"
+          onChange={(e) => {
+            setConcurrencyDraft(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              push({ concurrencyId: concurrencyDraft });
+            }
+          }}
+          onBlur={() => {
+            if (concurrencyDraft !== concurrencyId) {
+              push({ concurrencyId: concurrencyDraft });
             }
           }}
         />

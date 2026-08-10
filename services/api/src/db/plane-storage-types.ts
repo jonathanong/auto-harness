@@ -61,6 +61,7 @@ export type ScheduleRecord = {
   lastRunAt: string | null;
   createdAt: string;
   ref?: string;
+  concurrencyId?: string;
 };
 
 export type LogRecord = {
@@ -158,4 +159,18 @@ export function isConditionalTransactionFailed(err: unknown): boolean {
   }
   const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
   return reasons?.some((reason) => reason.Code === "ConditionalCheckFailed") ?? false;
+}
+
+/** Whether a particular transactional item, rather than any item, lost its condition. */
+export function isConditionalTransactionFailureAt(err: unknown, index: number): boolean {
+  if (
+    typeof err !== "object" ||
+    err === null ||
+    !("name" in err) ||
+    (err as { name?: string }).name !== "TransactionCanceledException"
+  ) {
+    return false;
+  }
+  const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
+  return reasons?.[index]?.Code === "ConditionalCheckFailed";
 }

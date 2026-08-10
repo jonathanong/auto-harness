@@ -26,17 +26,49 @@ test.describe("control plane schedules", () => {
     await page.getByTestId("schedule-target").selectOption(`command:${commandId}`);
     await page.getByTestId("schedule-cron").fill("0 * * * *");
     await page.getByTestId("schedule-queue-ttl").fill("1234");
+    await page.getByTestId("schedule-concurrency-id").fill(`${repoId}-${name}`);
     await page.getByTestId("schedule-submit").click();
+    await expect(page).toHaveURL(/\/schedules\/[^/?]+/, { timeout: 15_000 });
+    await expect(page.getByTestId("page-schedule-detail")).toBeVisible();
+    await expect(page.getByTestId("schedule-detail-name")).toHaveText(name);
+    await expect(page.getByTestId("form-edit-schedule")).toBeVisible();
+    const detailUrl = page.url();
+    await expect(page.getByTestId("schedule-history-table")).toContainText("No runs yet.");
+    await expect(page.getByTestId("edit-schedule-repository-id")).toHaveValue(repoId);
+    await expect(page.getByTestId("edit-schedule-name")).toHaveValue(name);
+    await expect(page.getByTestId("edit-schedule-cron")).toHaveValue("0 * * * *");
+    await expect(page.getByTestId("edit-schedule-timeout")).toHaveValue("600");
+    await expect(page.getByTestId("edit-schedule-next-run")).not.toHaveValue("");
+    await expect(page.getByTestId("edit-schedule-concurrency-id")).toHaveValue(`${repoId}-${name}`);
+    await expect(page.getByTestId("edit-schedule-enabled")).toBeChecked();
+    await page.getByTestId("edit-schedule-ref").fill("main");
+    await page.getByTestId("edit-schedule-submit").click();
+    await expect(page.getByTestId("edit-schedule-error")).toBeHidden();
+    await page.reload();
+    await expect(page.getByTestId("edit-schedule-ref")).toHaveValue("main");
+
+    await page.getByRole("button", { name: "Trigger" }).click();
+    await expect(page).toHaveURL(/\/sessions\/[^/?]+/);
+    await page.goto(detailUrl);
+    await expect(page.getByTestId("schedule-detail-active-session")).toBeVisible();
+    await expect(page.getByTestId("schedule-history-table").getByRole("row")).toHaveCount(2);
+
+    await page.goto(`/schedules/not-found-${Date.now()}`);
+    await expect(page.getByTestId("page-schedule-detail-not-found")).toBeVisible();
+
+    // Verify provider-fallback fields survive the create/detail flow and remain editable.
+    await page.goto("/schedules");
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
     const row = page.locator('[data-pw^="schedule-row-"]').filter({ hasText: name });
     await expect(row).toBeVisible();
     await expect(row).toContainText("1234s");
-
     const scheduleId = (await row.getAttribute("data-pw"))!.replace("schedule-row-", "");
     await page.getByTestId(`schedule-edit-${scheduleId}`).click();
     await expect(page.getByTestId(`form-edit-schedule-${scheduleId}`)).toBeVisible();
     await page.getByTestId("schedule-queue-ttl").fill("4321");
     await page.getByTestId(`schedule-edit-submit-${scheduleId}`).click();
+    await expect(page).toHaveURL(/\/schedules\/[^/?]+/, { timeout: 15_000 });
+    await page.goto("/schedules");
     await expect(page.getByTestId(`schedule-row-${scheduleId}`)).toContainText("4321s", {
       timeout: 15_000,
     });

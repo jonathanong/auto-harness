@@ -11,8 +11,6 @@ export type SessionType = "prompt" | "scheduled";
 
 export type SessionSource = "api" | "ui" | "webhook" | "schedule";
 
-export type OnConflict = "queue" | "replace" | "reject";
-
 export type LogStream = "stdout" | "stderr" | "system";
 
 /** Machine-readable failure reasons. */

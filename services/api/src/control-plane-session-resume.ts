@@ -1,4 +1,4 @@
-import { isTerminalSessionStatus } from "@auto-harness/shared";
+import { isActiveSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -7,13 +7,14 @@ import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 
 const DEFAULT_CONTINUATION_PROMPT = "Continue from the previous session.";
 
-type ResumeOverrides = {
+export type ResumeOptions = {
+  pinExpiresAt?: string;
   prompt?: string;
   timeout?: number;
   priority?: number;
 };
 
-function validateResumeOverrides(opts: ResumeOverrides): string | null {
+function validateResumeOverrides(opts: ResumeOptions): string | null {
   if (opts.prompt !== undefined && (typeof opts.prompt !== "string" || opts.prompt.length === 0)) {
     return "prompt must be a non-empty string";
   }
@@ -36,8 +37,24 @@ function validateResumeOverrides(opts: ResumeOverrides): string | null {
 export function resumeSession(
   state: ControlPlaneState,
   sessionId: string,
-  opts: { pinExpiresAt?: string } & ResumeOverrides = {},
-): { ok: true; session: PublicSession } | { ok: false; error: string } {
+  opts: ResumeOptions = {},
+): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
+  const prepared = prepareResumedSession(state, sessionId, opts);
+  if (!prepared.ok) return prepared;
+  if (prepared.created) persistSession(state, prepared.session);
+  return {
+    ok: true,
+    session: toPublic(state, prepared.session),
+    created: prepared.created,
+  };
+}
+
+/** Validate and construct a resume without persisting it. */
+export function prepareResumedSession(
+  state: ControlPlaneState,
+  sessionId: string,
+  opts: ResumeOptions = {},
+): { ok: true; session: SessionRecord; created: boolean } | { ok: false; error: string } {
   const source = state.sessions.get(sessionId);
   if (!source) return { ok: false, error: "session not found" };
   if (!isTerminalSessionStatus(source.status)) {
@@ -61,6 +78,15 @@ export function resumeSession(
   ) {
     return { ok: false, error: "pinExpiresAt must be a valid timestamp" };
   }
+  // With durable storage, the lock transaction is authoritative. A process
+  // cache can be stale, so it must not decide which active resume is returned.
+  if (source.concurrencyId && !state.storage) {
+    const active = [...state.sessions.values()].find(
+      (session) =>
+        session.concurrencyId === source.concurrencyId && isActiveSessionStatus(session.status),
+    );
+    if (active) return { ok: true, session: active, created: false };
+  }
   const id = state.idFactory();
   const createdAt = state.now();
   const pinExpiresAt =
@@ -79,7 +105,6 @@ export function resumeSession(
     timeout: opts.timeout ?? source.timeout,
     priority: opts.priority ?? source.priority,
     requiredLabels: [...source.requiredLabels],
-    onConflict: source.onConflict,
     status: "queued",
     queueShard: Math.abs(hashString(id)) % state.shardCount,
     createdAt,
@@ -101,13 +126,12 @@ export function resumeSession(
     ...(source.ref !== undefined ? { ref: source.ref } : {}),
     ...(source.cliResumeRef !== undefined ? { cliResumeRef: source.cliResumeRef } : {}),
     ...(source.resumeSpec !== undefined ? { resumeSpec: copyResumeSpec(source.resumeSpec) } : {}),
-    ...(source.concurrencyKey !== undefined ? { concurrencyKey: source.concurrencyKey } : {}),
+    ...(source.concurrencyId !== undefined ? { concurrencyId: source.concurrencyId } : {}),
     ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
     type: "prompt",
     source: "api",
   };
-  persistSession(state, resumed);
-  return { ok: true, session: toPublic(state, resumed) };
+  return { ok: true, session: resumed, created: true };
 }
 
 function copyResumeSpec(source: NonNullable<SessionRecord["resumeSpec"]>) {

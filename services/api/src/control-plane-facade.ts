@@ -25,6 +25,7 @@ import { listCommandProfiles } from "./control-plane-command-profiles.ts";
 import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
+import * as durableSessions from "./control-plane-sessions-durable.ts";
 import * as worktrees from "./control-plane-worktrees.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 
@@ -80,6 +81,12 @@ export class ControlPlaneBase {
     body: unknown,
   ): { ok: true; session: PublicSession } | { ok: false; error: string; code?: string } {
     return sessions.createSession(this.state, body);
+  }
+
+  async createSessionDurable(
+    body: unknown,
+  ): Promise<Awaited<ReturnType<typeof durableSessions.createSessionDurable>>> {
+    return durableSessions.createSessionDurable(this.state, body);
   }
 
   getSession(id: string): PublicSession | null {
@@ -192,8 +199,15 @@ export class ControlPlaneBase {
   resumeSession(
     sessionId: string,
     opts: { pinExpiresAt?: string; prompt?: string; timeout?: number; priority?: number } = {},
-  ): { ok: true; session: PublicSession } | { ok: false; error: string } {
+  ): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
     return sessions.resumeSession(this.state, sessionId, opts);
+  }
+
+  async resumeSessionDurable(
+    sessionId: string,
+    opts: { pinExpiresAt?: string; prompt?: string; timeout?: number; priority?: number } = {},
+  ): Promise<Awaited<ReturnType<typeof durableSessions.resumeSessionDurable>>> {
+    return durableSessions.resumeSessionDurable(this.state, sessionId, opts);
   }
 
   putSchedule(input: {
@@ -207,6 +221,7 @@ export class ControlPlaneBase {
     nextRunAt: string;
     enabled?: boolean;
     ref?: string;
+    concurrencyId?: string;
     id?: string;
   }): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
     return schedules.putSchedule(this.state, input);

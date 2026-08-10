@@ -16,6 +16,7 @@ type Session = {
   targetLabel?: string;
   source?: string;
   hostId?: string | null;
+  concurrencyId?: string | null;
 };
 
 export default async function SessionsPage({

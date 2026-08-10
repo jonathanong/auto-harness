@@ -156,6 +156,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         nextRunAt: body.nextRunAt,
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
+        ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
       });
       if (!result.ok) {
@@ -183,7 +184,11 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
       return true;
     }
-    send(res, 201, result.session);
+    if (!scoped(ctx, result.session.repositoryId)) {
+      hidden(res);
+      return true;
+    }
+    send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
     return true;
   }
   const schedMatch = /^\/api\/v1\/schedules\/([^/]+)$/.exec(url.pathname);
@@ -236,6 +241,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
           ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
+          ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         });
         if (!result.ok) {
           send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });

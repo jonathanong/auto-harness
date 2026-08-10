@@ -124,6 +124,15 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await createIfMissing(ddb, {
+    TableName: names.concurrencyLocks,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "concurrencyId", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [{ AttributeName: "concurrencyId", KeyType: KeyType.HASH }],
+  });
+
+  await createIfMissing(ddb, {
     TableName: names.sessionLogs,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [

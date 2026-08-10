@@ -51,6 +51,7 @@ export async function offlineHostAndRequeueDurableImpl(
         online: false,
         fence: { hostId, connectionId },
         attemptId: session.attemptId!,
+        ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
       });
       if (released) {
         state.sessions.set(sessionId, { ...session, worktreeId: null });

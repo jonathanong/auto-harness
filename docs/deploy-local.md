@@ -65,7 +65,7 @@ curl -sS http://127.0.0.1:7420/api/v1/hosts
 curl -sS http://127.0.0.1:7420/api/v1/session-targets   # attached provider accounts + standalone commands
 ```
 
-Session path after agent is online: `POST /api/v1/sessions` then `POST /api/v1/scheduler/assign` (local create does not auto-assign). Details: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
+Session path after the host daemon is online: `POST /api/v1/sessions` (optionally with a global exact `concurrencyId`) then `POST /api/v1/scheduler/assign` (local create does not auto-assign). A duplicate active identity returns `200`/`created: false`; a new session returns `201`/`created: true`. Details: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
 ---
 

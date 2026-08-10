@@ -186,17 +186,18 @@ Handlers share:
 
 ### Tables and access patterns
 
-| Table        | PK             | SK          | GSIs                                          | Primary access patterns                                       |
-| ------------ | -------------- | ----------- | --------------------------------------------- | ------------------------------------------------------------- |
-| Users        | `id`           | —           | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users               |
-| Repositories | `id`           | —           | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)     |
-| Sessions     | `id`           | —           | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter |
-| Schedules    | `id`           | —           | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`          |
-| SessionLogs  | `sessionId`    | `timestamp` | —                                             | Append logs; range read for REST/history                      |
-| Connections  | `connectionId` | —           | `hostId`                                      | Connect/disconnect; find agent connection for assign          |
-| Worktrees    | `id`           | —           | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo               |
-| AuditLogs    | `id`           | `timestamp` | `userId-timestamp`                            | Append-only audit; query by user                              |
-| Integrations | `id`           | —           | —                                             | Get/put Slack config                                          |
+| Table                   | PK              | SK          | GSIs                                          | Primary access patterns                                                    |
+| ----------------------- | --------------- | ----------- | --------------------------------------------- | -------------------------------------------------------------------------- |
+| Users                   | `id`            | —           | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users                            |
+| Repositories            | `id`            | —           | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)                  |
+| Sessions                | `id`            | —           | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter              |
+| Schedules               | `id`            | —           | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`                       |
+| SessionLogs             | `sessionId`     | `timestamp` | —                                             | Append logs; range read for REST/history                                   |
+| SessionConcurrencyLocks | `concurrencyId` | —           | —                                             | Conditional acquire/release for active session dedupe and schedule overlap |
+| Connections             | `connectionId`  | —           | `hostId`                                      | Connect/disconnect; find agent connection for assign                       |
+| Worktrees               | `id`            | —           | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo                            |
+| AuditLogs               | `id`            | `timestamp` | `userId-timestamp`                            | Append-only audit; query by user                                           |
+| Integrations            | `id`            | —           | —                                             | Get/put Slack config                                                       |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
@@ -295,6 +296,11 @@ When a session ends or is cancelled:
 - If multiple agents host the same repo path inventory, pick round-robin among those agents (by agent-level `lastAssignedAt` or last scheduled assign time)
 - Agent enforces **serial main-checkout lock** per repository (see [host-daemon.md](host-daemon.md))
 
+Each session may carry an optional global exact-match `concurrencyId`. The scheduler acquires it
+in the durable SessionConcurrencyLocks table before enqueueing; a duplicate manual create returns
+the existing session (`200`, `created: false`). Terminal sessions release the lock for retry. This
+is the scheduler's concurrency invariant, not a best-effort scan of session rows.
+
 ### Multi-agent behavior summary
 
 | Situation                                 | Behavior                                                                                                   |
@@ -315,15 +321,22 @@ Triggered every **60 seconds** by EventBridge.
 ```
 1. Query Schedules where enabled=true and nextRunAt <= now
 2. For each due schedule:
-   a. Create Session { type: scheduled, source: schedule, command, timeout, repositoryId, priority: 0 }
-   b. lastRunAt = now; nextRunAt = next cron fire
-   c. Invoke scheduler for the new session
+   a. Derive concurrencyId = explicit schedule value or `schedule-${scheduleId}`
+   b. Acquire the schedule's due-fire claim and concurrency lock atomically
+   c. If the lock is already held, skip creating a duplicate, advance `nextRunAt`, and leave
+      `lastRunAt` unchanged
+   d. Otherwise create Session { type: scheduled, source: schedule, concurrencyId, timeout,
+      repositoryId, priority: 0 }, set `lastRunAt = now`, advance `nextRunAt`, and invoke scheduler
 3. Stale-session sweep:
    - Sessions with status=running and (now - startedAt) > timeout + grace
      and no recent agent activity → mark timed_out, free worktree if still marked busy
 ```
 
 Grace window (e.g. 60–120s) avoids racing a legitimate slow `session:status`.
+
+The lock table is keyed by the exact `concurrencyId` and stores the active session id plus expiry
+metadata. Conditional put is the write-side invariant; conditional delete on terminal transition
+releases it only for the owning session.
 
 ---
 

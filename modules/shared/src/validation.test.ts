@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isActiveSessionStatus,
   formatLogSortKey,
-  isOnConflict,
   isSessionErrorCode,
   isSessionStatus,
   isTerminalSessionStatus,
@@ -31,6 +31,15 @@ describe("isTerminalSessionStatus", () => {
   });
 });
 
+describe("isActiveSessionStatus", () => {
+  it("accepts active statuses only", () => {
+    expect(isActiveSessionStatus("queued")).toBe(true);
+    expect(isActiveSessionStatus("running")).toBe(true);
+    expect(isActiveSessionStatus("completed")).toBe(false);
+    expect(isActiveSessionStatus(null)).toBe(false);
+  });
+});
+
 describe("isSessionErrorCode", () => {
   it("accepts known codes", () => {
     expect(isSessionErrorCode("usage_limit")).toBe(true);
@@ -39,15 +48,6 @@ describe("isSessionErrorCode", () => {
 
   it("rejects unknown codes", () => {
     expect(isSessionErrorCode("boom")).toBe(false);
-  });
-});
-
-describe("isOnConflict", () => {
-  it("accepts queue, replace, reject", () => {
-    expect(isOnConflict("queue")).toBe(true);
-    expect(isOnConflict("replace")).toBe(true);
-    expect(isOnConflict("reject")).toBe(true);
-    expect(isOnConflict("skip")).toBe(false);
   });
 });
 
@@ -65,7 +65,6 @@ describe("validateCreateSessionInput", () => {
     if (result.ok) {
       expect(result.value.priority).toBe(0);
       expect(result.value.requiredLabels).toEqual([]);
-      expect(result.value.onConflict).toBe("queue");
       expect(result.value.queueTtlSeconds).toBe(691200);
       expect(result.value.ref).toBeUndefined();
     }
@@ -76,14 +75,14 @@ describe("validateCreateSessionInput", () => {
       ...base,
       priority: 10,
       requiredLabels: ["codex"],
-      onConflict: "replace",
+      concurrencyId: "pr-12",
       ref: "feature/x",
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.priority).toBe(10);
       expect(result.value.requiredLabels).toEqual(["codex"]);
-      expect(result.value.onConflict).toBe("replace");
+      expect(result.value.concurrencyId).toBe("pr-12");
       expect(result.value.ref).toBe("feature/x");
     }
   });
@@ -196,14 +195,6 @@ describe("validateCreateSessionInput", () => {
     });
   });
 
-  it("rejects invalid onConflict", () => {
-    const result = validateCreateSessionInput({
-      ...base,
-      onConflict: "skip" as unknown as "queue",
-    });
-    expect(result.ok).toBe(false);
-  });
-
   it("rejects empty ref when set", () => {
     const result = validateCreateSessionInput({ ...base, ref: "" });
     expect(result).toEqual({
@@ -212,21 +203,21 @@ describe("validateCreateSessionInput", () => {
     });
   });
 
-  it("accepts concurrencyKey and metadata", () => {
+  it("accepts concurrencyId and metadata", () => {
     const result = validateCreateSessionInput({
       ...base,
-      concurrencyKey: "pr-12",
+      concurrencyId: "pr-12",
       metadata: { pr: 12 },
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.value.concurrencyKey).toBe("pr-12");
+      expect(result.value.concurrencyId).toBe("pr-12");
       expect(result.value.metadata).toEqual({ pr: 12 });
     }
   });
 
-  it("rejects bad concurrencyKey and metadata", () => {
-    expect(validateCreateSessionInput({ ...base, concurrencyKey: "" }).ok).toBe(false);
+  it("rejects bad concurrencyId and metadata", () => {
+    expect(validateCreateSessionInput({ ...base, concurrencyId: "" }).ok).toBe(false);
     expect(validateCreateSessionInput({ ...base, metadata: [] }).ok).toBe(false);
   });
 });

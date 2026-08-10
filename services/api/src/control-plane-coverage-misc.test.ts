@@ -5,7 +5,7 @@ import { supersedeSession } from "./control-plane-sessions.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("ControlPlane coverage: schedule fail usage limit supersede defaults", () => {
-  it("schedule fail usage limit supersede defaults", () => {
+  it("schedule fail usage limit supersede defaults", async () => {
     const planeJ = new ControlPlane({
       scheduleIdFactory: () => "sj",
       idFactory: () => "sj-sess",
@@ -197,12 +197,19 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
       prompt: "p",
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
-      concurrencyKey: "kq",
-      onConflict: "queue",
+      concurrencyId: "kq",
     });
     planeQ.state.sessions.get("q1")!.worktreeId = "wq";
+    const released: string[] = [];
+    planeQ.state.storage = {
+      putSession: async () => {},
+      putWorktree: async () => {},
+      releaseConcurrencyLock: async (concurrencyId: string) => released.push(concurrencyId),
+    } as never;
     supersedeSession(planeQ.state, "q1", "replace queued with wt");
     expect(planeQ.getSession("q1")?.status).toBe("cancelled");
     expect(planeQ.getWorktree("wq")?.status).toBe("idle");
+    await planeQ.settleStorage();
+    expect(released).toEqual(["kq"]);
   });
 });

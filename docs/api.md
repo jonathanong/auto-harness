@@ -4,7 +4,9 @@ HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/ap
 
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
-**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, `concurrencyKey`, `onConflict`, and `metadata`; response includes UI `url` and route labels. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. List search is client-side only (no DynamoDB full-text).
+**Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
+
+`concurrencyId` is an exact, caller-chosen idempotency/concurrency identity shared by manual and scheduled creates. While its lock is held, a repeated create returns `200 OK` with the existing session and `created: false`; a new identity returns `201 Created` with `created: true`. A terminal session releases its lock, so a later request may retry with the same id. The lock is durable and atomic across API workers.
 
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
@@ -308,28 +310,31 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
   "timeout": 1800,
   "priority": 10,
   "requiredLabels": ["codex"],
+  "concurrencyId": "filaments-pr-shepherd-123",
   "source": "ui"
 }
 ```
 
-| Field             | Type     | Required | Description                                                                                                                                                            |
-| ----------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `repositoryId`    | string   | ✓        | Target repository                                                                                                                                                      |
-| `prompt`          | string   | ✓        | The prompt/instruction for the AI agent                                                                                                                                |
-| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. |
-| `fallbacks`       | object[] | ✗        | Ordered additional targets. The scheduler advances only when the preceding target has no eligible route.                                                               |
-| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime, default `691200` (8 days). Expiry reports `queue_expired`; fallback attempts do not reset it.                                                 |
-| `timeout`         | number   | ✓        | Max session duration in seconds. The agent kills the process after this time.                                                                                          |
-| `priority`        | number   | ✗        | Higher = more urgent. Default: `0`                                                                                                                                     |
-| `requiredLabels`  | string[] | ✗        | Worktree labels required. Default: `[]` (any worktree)                                                                                                                 |
-| `source`          | string   | ✗        | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                              |
-| `type`            | string   | ✗        | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                    |
+| Field                           | Type     | Required    | Description                                                                                                                                                                                                                                |
+| ------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repositoryId`                  | string   | ✓           | Target repository                                                                                                                                                                                                                          |
+| `prompt`                        | string   | ✓           | The prompt/instruction for the AI agent                                                                                                                                                                                                    |
+| `target`                        | object   | ✓           | Primary `{ providerId }` or `{ commandId }` target. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated.                                                                     |
+| `fallbacks`                     | object[] | ✗           | Ordered additional targets. The scheduler advances only when the preceding target has no eligible route.                                                                                                                                   |
+| `queueTtlSeconds`               | number   | ✗           | Absolute queue lifetime, default `691200` (8 days). Expiry reports `queue_expired`; fallback attempts do not reset it.                                                                                                                     |
+| `timeout`                       | number   | ✓           | Max session duration in seconds. The agent kills the process after this time.                                                                                                                                                              |
+| `priority`                      | number   | ✗           | Higher = more urgent. Default: `0`                                                                                                                                                                                                         |
+| `requiredLabels`                | string[] | ✗           | Worktree labels required. Default: `[]` (any worktree)                                                                                                                                                                                     |
+| `source`                        | string   | ✗           | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                                                                                                  |
+| `type`                          | string   | ✗           | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                                                                                        |
+| `providerAccountId`/`commandId` | string   | exactly one | Session target — a Provider Account (cascade-resolved to a Command at assign time) or a standalone Command. Never a free-form command string. See [Providers, Provider Accounts, and Commands](#providers-provider-accounts-and-commands). |
+| `concurrencyId`                 | string   | ✗           | Global exact-match identity. An active duplicate returns the existing session (`200`, `created: false`); terminal sessions release the identity for retry.                                                                                 |
 
 Unknown target/fallback IDs, duplicate route references, or malformed target objects are rejected `400` at create time.
 
 > **Note:** The Web UI uses this same endpoint to create sessions directly from the browser. The UI provides repo/prompt controls, a primary target picker, ordered fallback controls, queue TTL, timeout, priority, labels, and route/queue status in session details.
 
-**Response:** `201 Created`
+**Response:** `201 Created` for a new session (`created: true`), or `200 OK` when an active matching `concurrencyId` returns the existing session (`created: false`).
 
 ```json
 {
@@ -344,6 +349,9 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "timeout": 1800,
   "priority": 10,
   "requiredLabels": ["codex"],
+  "concurrencyId": "filaments-pr-shepherd-123",
+  "url": "http://127.0.0.1:7421/sessions/sess-x1y2z3",
+  "created": true,
   "source": "ui",
   "type": "prompt",
   "createdAt": "2026-08-01T12:00:00Z"
@@ -358,20 +366,23 @@ If the session exceeds `timeout` seconds while running, the agent kills the proc
 
 If the agent detects an **AI vendor usage/rate limit** in CLI output, it reports `errorCode: "usage_limit"`. The control plane pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or fallback. Providerless commands do not pause an account. See [host-daemon.md — Usage limits](host-daemon.md#usage-limits-ai-vendor--cli-quotas).
 
+The concurrency identity is released for terminal states (`completed`, `failed`, `cancelled`, `timed_out`), allowing an explicit retry with the same id. A manual duplicate while the original is queued or running is deduplicated and returns the original session; it never creates a second queued run.
+
 #### `GET /sessions`
 
 List sessions with optional filters.
 
 **Query parameters:**
 
-| Param          | Type   | Description                                                                            |
-| -------------- | ------ | -------------------------------------------------------------------------------------- |
-| `status`       | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
-| `repositoryId` | string | Filter by repository                                                                   |
-| `search`       | string | Full-text search across session prompts                                                |
-| `sort`         | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
-| `limit`        | number | Max results (default: 50, max: 100)                                                    |
-| `cursor`       | string | Pagination cursor from previous response                                               |
+| Param           | Type   | Description                                                                            |
+| --------------- | ------ | -------------------------------------------------------------------------------------- |
+| `status`        | string | Filter by status: `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
+| `repositoryId`  | string | Filter by repository                                                                   |
+| `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
+| `limit`         | number | Max results (default: 50, max: 100)                                                    |
+| `cursor`        | string | Pagination cursor from previous response                                               |
+| `concurrencyId` | string | Exact concurrency identity (may span schedules and manual sessions)                    |
+| `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                         |
 
 **Response:** `200 OK`
 
@@ -615,17 +626,19 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field             | Type     | Required | Description                                                                           |
-| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------- |
-| `repositoryId`    | string   | ✓        | Target repository                                                                     |
-| `name`            | string   | ✓        | Human-readable name for the schedule                                                  |
-| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                    |
-| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                  |
-| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                 |
-| `cron`            | string   | ✓        | Cron expression (5-field)                                                             |
-| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                     |
-| `enabled`         | boolean  | ✗        | Default: `true`                                                                       |
-| `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected. |
+| Field                           | Type     | Required    | Description                                                                                                                           |
+| ------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryId`                  | string   | ✓           | Target repository                                                                                                                     |
+| `name`                          | string   | ✓           | Human-readable name for the schedule                                                                                                  |
+| `target`                        | object   | ✓           | Primary `{ providerId }` or `{ commandId }` target                                                                                    |
+| `fallbacks`                     | object[] | ✗           | Ordered fallback targets; same semantics as sessions                                                                                  |
+| `queueTtlSeconds`               | number   | ✗           | Absolute queue lifetime for each fire; default 8 days                                                                                 |
+| `cron`                          | string   | ✓           | Cron expression (5-field)                                                                                                             |
+| `timeout`                       | number   | ✗           | Max duration in seconds. Default: `3600` (1 hour)                                                                                     |
+| `enabled`                       | boolean  | ✗           | Default: `true`                                                                                                                       |
+| `ref`                           | string   | ✗           | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                 |
+| `providerAccountId`/`commandId` | string   | exactly one | Same target model as sessions — never a free-form shell string                                                                        |
+| `concurrencyId`                 | string   | ✗           | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is. |
 
 **Response:** `201 Created`
 
@@ -669,15 +682,19 @@ Delete a schedule. **Admin only.**
 
 Manually trigger a schedule immediately. Creates a session with `type: 'scheduled'` and `source: 'schedule'`. **Operator or admin.**
 
-**Response:** `201 Created`
+**Response:** `201 Created` with `created: true`, or `200 OK` with `created: false` and the existing session when the manual trigger is a duplicate.
 
 ```json
 {
   "sessionId": "sess-t1r2g3",
   "scheduleId": "sched-m1n2o3",
-  "status": "queued"
+  "status": "queued",
+  "created": true,
+  "concurrencyId": "schedule-sched-m1n2o3"
 }
 ```
+
+Automatic cron fires use `schedule-${scheduleId}` unless the schedule supplies an explicit concurrency identity. If a prior fire is still active, cron skips creating a duplicate, advances `nextRunAt`, and leaves `lastRunAt` unchanged. This makes overlap safe while preserving the timestamp of the last session that actually ran.
 
 ---
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 import {
@@ -56,6 +56,7 @@ export function ScheduleCreateForm({
           timeout: Number(fd.get("timeout") ?? 600),
           nextRunAt: String(fd.get("nextRunAt") ?? new Date().toISOString()),
           ref: String(fd.get("ref") ?? "") || undefined,
+          concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
         };
         start(async () => {
           const res = await fetch(
@@ -72,18 +73,20 @@ export function ScheduleCreateForm({
             setError(await res.text());
             return;
           }
-          if (!schedule) form.reset();
-          router.refresh();
+          const payload = (await res.json()) as { id?: string };
+          if (payload.id) {
+            router.push(
+              withToast(`/schedules/${encodeURIComponent(payload.id)}`, "Schedule created."),
+            );
+          } else {
+            form.reset();
+            router.refresh();
+          }
         });
       }}
     >
       <div className="space-y-1">
-        <Label
-          htmlFor="repositoryId"
-          tip="Catalog repository id this schedule creates sessions for"
-        >
-          repositoryId
-        </Label>
+        <Label htmlFor="repositoryId">repositoryId</Label>
         <Input
           id="repositoryId"
           name="repositoryId"
@@ -93,9 +96,7 @@ export function ScheduleCreateForm({
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name" tip="Display name for this schedule">
-          name
-        </Label>
+        <Label htmlFor="name">name</Label>
         <Input
           id="name"
           name="name"
@@ -111,9 +112,7 @@ export function ScheduleCreateForm({
         initialFallbacks={schedule?.fallbacks}
       />
       <div className="space-y-1">
-        <Label htmlFor="cron" tip="Five-field cron expression (UTC) for automatic runs">
-          cron
-        </Label>
+        <Label htmlFor="cron">cron</Label>
         <Input
           id="cron"
           name="cron"
@@ -124,9 +123,7 @@ export function ScheduleCreateForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="timeout" tip="Session timeout in seconds for each scheduled run">
-            timeout
-          </Label>
+          <Label htmlFor="timeout">timeout</Label>
           <Input
             id="timeout"
             name="timeout"
@@ -135,19 +132,12 @@ export function ScheduleCreateForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ref" tip="Git ref checked out for scheduled sessions">
-            ref
-          </Label>
+          <Label htmlFor="ref">ref</Label>
           <Input id="ref" name="ref" defaultValue={schedule?.ref ?? "main"} />
         </div>
       </div>
       <div className="space-y-1">
-        <Label
-          htmlFor="queueTtlSeconds"
-          tip="Absolute maximum time each scheduled session may wait in the queue"
-        >
-          queue TTL (s)
-        </Label>
+        <Label htmlFor="queueTtlSeconds">queue TTL (s)</Label>
         <Input
           id="queueTtlSeconds"
           name="queueTtlSeconds"
@@ -158,9 +148,16 @@ export function ScheduleCreateForm({
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="nextRunAt" tip="First (or next) fire time as ISO-8601 timestamp">
-          nextRunAt (ISO)
-        </Label>
+        <Label htmlFor="concurrencyId">Concurrency ID override</Label>
+        <Input
+          id="concurrencyId"
+          name="concurrencyId"
+          placeholder="auto-generated for this schedule"
+          data-pw="schedule-concurrency-id"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="nextRunAt">nextRunAt (ISO)</Label>
         <Input
           id="nextRunAt"
           name="nextRunAt"

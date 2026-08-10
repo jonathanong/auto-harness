@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
+import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
@@ -30,6 +30,7 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           timeout: Number(fd.get("timeout") ?? 600),
           ref: String(fd.get("ref") ?? "") || undefined,
+          concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
         };
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/sessions`, {
@@ -43,12 +44,29 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
             return;
           }
           let id = "";
+          let created = true;
+          let activeSessionId = "";
           try {
-            id = (JSON.parse(text) as { id?: string }).id ?? "";
+            const payload = JSON.parse(text) as {
+              id?: string;
+              created?: boolean;
+              activeSessionId?: string;
+            };
+            id = payload.id ?? "";
+            created = payload.created !== false;
+            activeSessionId = payload.activeSessionId ?? "";
           } catch {
             /* ignore */
           }
-          router.push(id ? `/sessions/${encodeURIComponent(id)}` : "/sessions");
+          const targetId = created ? id : activeSessionId || id;
+          const message = created
+            ? "Session queued."
+            : "A session with this concurrency ID is already active; showing it instead.";
+          router.push(
+            targetId
+              ? withToast(`/sessions/${encodeURIComponent(targetId)}`, message)
+              : withToast("/sessions", message),
+          );
           router.refresh();
         });
       }}
@@ -113,6 +131,24 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
           min={1}
           data-pw="create-session-queue-ttl"
         />
+      </div>
+      <div className="space-y-1">
+        <Label
+          htmlFor="concurrencyId"
+          tip="Optional stable ID that prevents duplicate queued or running work"
+        >
+          Concurrency ID
+        </Label>
+        <Input
+          id="concurrencyId"
+          name="concurrencyId"
+          placeholder="filaments-pr-shepherd-123"
+          data-pw="create-session-concurrency-id"
+        />
+        <p className="text-xs text-muted-foreground">
+          Repeated requests with this ID reuse the active session; a new one can be queued after it
+          finishes.
+        </p>
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="create-session-error">
