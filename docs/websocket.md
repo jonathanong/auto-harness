@@ -38,11 +38,12 @@ Unauthenticated connect → reject. Keepalive: **agent-initiated** (`host:keepal
 
 ### Server → agent
 
-| Type             | Payload                                                                                                                                                                   | Purpose                                                                                                                                                                                                         |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `session:assign` | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it |
-| `session:cancel` | `sessionId`                                                                                                                                                               | Stop queued/running work                                                                                                                                                                                        |
-| `ping`           | `{}`                                                                                                                                                                      | Keepalive                                                                                                                                                                                                       |
+| Type                   | Payload                                                                                                                                                                   | Purpose                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session:assign`       | `sessionId`, `repositoryId`, `prompt`, `resolvedArgv`, `timeout`, `worktreeId?`, `ref?`, `setupScript?`, `resume?`, `resumedFromSessionId?`, `cliResumeRef?`, `metadata?` | Run or **resume** a session (`worktreeId` null = main checkout); `resolvedArgv` is already resolved control-plane-side from a Provider Account/Command (D4) — the agent never resolves a target, just spawns it |
+| `session:acknowledged` | `sessionId`                                                                                                                                                               | The current host connection's `session:ack` committed durably. The daemon may start setup/CLI work only after this reply.                                                                                       |
+| `session:cancel`       | `sessionId`                                                                                                                                                               | Stop queued/running work                                                                                                                                                                                        |
+| `ping`                 | `{}`                                                                                                                                                                      | Keepalive                                                                                                                                                                                                       |
 
 ```json
 {
@@ -91,6 +92,12 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 | `pong`            | `{}`                                                              | Keepalive reply                                                                                                                                                                                           |
 
 **Draining (auto-update):** agent sets `draining: true`, stops accepting new `session:assign` (nack or ignore), finishes in-flight sessions **without killing CLIs**, then disconnects and restarts. Control plane must not schedule new work to that agent while draining. See [host-daemon.md — Auto-update](host-daemon.md#auto-update-graceful-restart).
+
+`session:ack` is not itself permission to execute: a successful client write
+only proves the frame reached the local WebSocket stack. The server sends
+`session:acknowledged` only after its fenced durable acknowledgement commits.
+The daemon aborts an unconfirmed assignment on disconnect or confirmation
+timeout and does not include it in reconnect `runningSessions`.
 
 ```json
 {

@@ -402,6 +402,7 @@ describe("durable control-plane transitions", () => {
     expect((await ctx.storage.getWorktree("worktree-cancelled-late-terminal"))?.status).toBe(
       "idle",
     );
+    expect((await ctx.storage.getWorktree("worktree-cancelled-late-terminal"))?.online).toBe(true);
     const terminal = await ctx.storage.getSession("session-cancelled-late-terminal");
     expect(terminal?.status).toBe("cancelled");
     expect(terminal?.worktreeId).toBeNull();
@@ -414,6 +415,117 @@ describe("durable control-plane transitions", () => {
         })
       ).ok,
     ).toBe(true);
+  });
+
+  it("durably restores earlier reconnect confirmations when a later grace sweep wins", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const hostId = "host-reconnect-rollback";
+    const deadline = "2026-01-01T00:01:15.000Z";
+    const oldConnection = "connection-reconnect-old";
+    for (const suffix of ["first", "second"] as const) {
+      const sessionId = `session-reconnect-${suffix}`;
+      const worktreeId = `worktree-reconnect-${suffix}`;
+      await ctx.storage.putWorktree({
+        id: worktreeId,
+        name: worktreeId,
+        hostId,
+        repositoryId: "repo-reconnect-rollback",
+        path: `/tmp/${worktreeId}`,
+        labels: [],
+        status: "busy",
+        online: false,
+        currentSessionId: sessionId,
+        connectionId: oldConnection,
+      });
+      await ctx.storage.putSession({
+        id: sessionId,
+        repositoryId: "repo-reconnect-rollback",
+        prompt: suffix,
+        targetLabel: "reconnect rollback",
+        timeout: 1,
+        priority: 0,
+        requiredLabels: [],
+        onConflict: "queue",
+        status: "running",
+        queueShard: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        hostId,
+        worktreeId,
+        ackReceivedAt: "2026-01-01T00:00:01.000Z",
+        reconnectDeadlineAt: deadline,
+        assignmentConnectionId: oldConnection,
+      });
+    }
+    const originalConfirm = ctx.storage.confirmReconnect.bind(ctx.storage);
+    ctx.storage.confirmReconnect = async (opts) => {
+      if (opts.sessionId === "session-reconnect-second") {
+        // Deterministically model the reclaim transaction winning after the
+        // first report was confirmed but before this one is confirmed.
+        await ctx.storage!.tryRequeueSession({
+          sessionId: "session-reconnect-second",
+          worktreeId: "worktree-reconnect-second",
+          queueShard: 0,
+          reason: "grace sweep won",
+          forceOffline: true,
+          expectedHostId: hostId,
+          expectedReconnectDeadlineAt: deadline,
+          expectedConnectionId: oldConnection,
+          fence: { hostId, connectionId: opts.connectionId },
+        });
+      }
+      return originalConfirm(opts);
+    };
+    try {
+      const plane = new ControlPlane({
+        storage: ctx.storage,
+        connectionIdFactory: () => "connection-reconnect-new",
+      });
+      await plane.hydrateFromStorage();
+      await expect(
+        plane.registerHostDurable({
+          hostId,
+          worktrees: [
+            {
+              id: "worktree-reconnect-first",
+              name: "worktree-reconnect-first",
+              repositoryId: "repo-reconnect-rollback",
+              path: "/tmp/worktree-reconnect-first",
+              labels: [],
+            },
+            {
+              id: "worktree-reconnect-second",
+              name: "worktree-reconnect-second",
+              repositoryId: "repo-reconnect-rollback",
+              path: "/tmp/worktree-reconnect-second",
+              labels: [],
+            },
+          ],
+          commandProfiles: [],
+          runningSessions: ["session-reconnect-first", "session-reconnect-second"],
+        }),
+      ).resolves.toMatchObject({ ok: false });
+
+      const first = await ctx.storage.getSession("session-reconnect-first");
+      const firstWorktree = await ctx.storage.getWorktree("worktree-reconnect-first");
+      expect(first).toMatchObject({
+        status: "running",
+        reconnectDeadlineAt: deadline,
+        assignmentConnectionId: oldConnection,
+      });
+      expect(firstWorktree).toMatchObject({
+        status: "busy",
+        online: false,
+        connectionId: oldConnection,
+      });
+      expect((await ctx.storage.getSession("session-reconnect-second"))?.status).toBe("queued");
+      expect((await ctx.storage.getWorktree("worktree-reconnect-second"))?.online).toBe(false);
+      expect(await ctx.storage.getHostLock(hostId)).toBeNull();
+    } finally {
+      ctx.storage.confirmReconnect = originalConfirm;
+    }
   });
 
   it("makes duplicate acknowledgements and terminal reports idempotent", async () => {
@@ -1332,6 +1444,7 @@ describe("durable control-plane transitions", () => {
 
     const idleStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
     idleStorage.setWorktreeOnline = async () => undefined;
+    idleStorage.setWorktreeOnlineFenced = async () => true;
     const idle = new ControlPlane({ storage: idleStorage });
     idle.state.worktrees.set("coverage-idle-worktree", {
       id: "coverage-idle-worktree",
@@ -1359,6 +1472,7 @@ describe("durable control-plane transitions", () => {
     const missingSessionStorage = Object.create(ctx.storage) as DynamoPlaneStorage;
     missingSessionStorage.getSession = async () => null;
     missingSessionStorage.setWorktreeOnline = async () => undefined;
+    missingSessionStorage.setWorktreeOnlineFenced = async () => true;
     const missingSession = new ControlPlane({ storage: missingSessionStorage });
     missingSession.state.worktrees.set("coverage-missing-session-worktree", {
       id: "coverage-missing-session-worktree",

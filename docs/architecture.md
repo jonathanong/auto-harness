@@ -91,6 +91,7 @@ sequenceDiagram
     Agent->>Agent: Claim worktree
     Agent->>API: session:ack
     API->>DDB: status=running
+    API-->>Agent: session:acknowledged
     Agent->>Agent: Setup script
     Agent->>Tool: Spawn (argv, no shell inject)
     loop Logs

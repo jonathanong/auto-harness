@@ -36,6 +36,7 @@ describe("durable host-message fencing", () => {
     ).toEqual({ ok: false, error: "stale host connection" });
     expect(await plane.handleHostMessageDurable({ type: "session:ack", sessionId: "s" })).toEqual({
       ok: true,
+      sessionAcknowledged: "s",
     });
     expect(
       await plane.handleHostMessageDurable({ type: "host:keepalive", hostId: "h", at: "later" }),
@@ -121,8 +122,8 @@ describe("durable host-message fencing", () => {
       getHostLock: async () => "c",
       putLogFenced: async () => (calls.push("log"), true),
       deleteLog: async () => {},
-      releaseCancelledSessionWorktree: async (opts: { fence?: unknown }) => {
-        calls.push(opts.fence ? "cancel-fenced" : "cancel");
+      releaseCancelledSessionWorktree: async (opts: { fence?: unknown; online: boolean }) => {
+        calls.push(opts.fence ? `cancel-fenced-${opts.online}` : `cancel-${opts.online}`);
         return true;
       },
     } as never;
@@ -146,7 +147,7 @@ describe("durable host-message fencing", () => {
         status: "cancelled",
       }),
     ).toEqual({ ok: true });
-    expect(calls).toEqual(["log", "cancel"]);
+    expect(calls).toEqual(["log", "cancel-true"]);
 
     const local = new ControlPlane();
     local.state.sessions.set("done", { ...running("done"), status: "completed" });

@@ -3,14 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop outbound delivery", () => {
   it("delivers all logs before exactly one terminal status", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const sent: HostToServerMessage[] = [];
-      const transport = createLoopbackTransport({
+      const transport = createAcknowledgingLoopbackTransport({
         sendToServer: async (message) => {
           await new Promise<void>((resolve) => setTimeout(resolve, 1));
           sent.push(message);
@@ -46,7 +46,7 @@ describe("DaemonLoop outbound delivery", () => {
     try {
       const sent: HostToServerMessage[] = [];
       let failLogOnce = false;
-      const transport = createLoopbackTransport({
+      const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (message) => {
           if (failLogOnce && message.type === "session:log") {
             failLogOnce = false;

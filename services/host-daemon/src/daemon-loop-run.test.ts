@@ -2,15 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 
-import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { DaemonLoop } from "./daemon-loop.ts";
+import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 describe("DaemonLoop run", () => {
   it("registers, acks, runs profile, reports terminal status and logs", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];
-      const transport = createLoopbackTransport({
+      const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },

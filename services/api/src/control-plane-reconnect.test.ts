@@ -48,6 +48,7 @@ function durableRunning(id: string, worktreeId: string, assignmentConnectionId?:
     createdAt: "t",
     hostId: "h",
     worktreeId,
+    ackReceivedAt: "t",
     reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     ...(assignmentConnectionId ? { assignmentConnectionId } : {}),
   };
@@ -120,6 +121,7 @@ describe("reconnect reconciliation", () => {
       createdAt: "t",
       hostId: "h",
       worktreeId: "w",
+      ackReceivedAt: "t",
       reconnectDeadlineAt: "2000-01-01T00:00:00.000Z",
     };
     const worktree = {
@@ -145,7 +147,7 @@ describe("reconnect reconciliation", () => {
         calls.push(opts.requireNoHostLock ? "reclaim" : "omit"), true
       ),
     } as never;
-    await reconcileHostRunningSessions(plane.state, "h", ["s"]);
+    expect(await reconcileHostRunningSessions(plane.state, "h", ["s"])).toEqual([]);
     expect(calls).toEqual(["confirm"]);
     await reclaimReconnectDeadlines(plane.state, Date.now());
     expect(calls).toContain("reclaim");
@@ -182,7 +184,7 @@ describe("reconnect reconciliation", () => {
         return opts.sessionId !== "failed";
       },
     } as never;
-    expect(await reconcileHostRunningSessions(plane.state, "h", ["reported"])).toEqual(["omitted"]);
+    expect(await reconcileHostRunningSessions(plane.state, "h", ["reported"])).toBe(false);
     expect(await reclaimReconnectDeadlines(plane.state, Date.now())).toEqual([
       "reported",
       "omitted",
@@ -191,10 +193,160 @@ describe("reconnect reconciliation", () => {
     expect(calls.some((call) => call.sessionId === "failed")).toBe(true);
   });
 
+  it("restores earlier durable confirmations when a later reported session loses reconciliation", async () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "new");
+    const first = durableRunning("first", "w-first", "old");
+    const second = durableRunning("second", "w-second", "old");
+    const firstWorktree = { ...durableWorktree("w-first", "first"), connectionId: "old" };
+    const secondWorktree = { ...durableWorktree("w-second", "second"), connectionId: "old" };
+    const calls: string[] = [];
+    plane.state.storage = {
+      getSession: async (id: string) => ({ first, second })[id] ?? null,
+      getWorktree: async (id: string) =>
+        ({ "w-first": firstWorktree, "w-second": secondWorktree })[id] ?? null,
+      confirmReconnect: async (opts: { sessionId: string }) => {
+        calls.push(`confirm:${opts.sessionId}`);
+        return opts.sessionId === "first";
+      },
+      restoreReconnectPending: async (opts: {
+        sessionId: string;
+        connectionId: string;
+        previousDeadlineAt?: string;
+        previousAssignmentConnectionId?: string;
+        previousWorktreeConnectionId?: string;
+      }) => {
+        calls.push(`restore:${opts.sessionId}`);
+        expect(opts).toMatchObject({
+          connectionId: "new",
+          previousDeadlineAt: "2000-01-01T00:00:00.000Z",
+          previousAssignmentConnectionId: "old",
+          previousWorktreeConnectionId: "old",
+        });
+        return true;
+      },
+    } as never;
+
+    expect(await reconcileHostRunningSessions(plane.state, "h", ["first", "second"])).toBe(false);
+    expect(calls).toEqual(["confirm:first", "confirm:second", "restore:first"]);
+    expect(plane.state.sessions.get("first")).toEqual(first);
+    expect(plane.state.worktrees.get("w-first")).toEqual(firstWorktree);
+  });
+
   it("does nothing for an unleased durable host", async () => {
     const plane = new ControlPlane();
     plane.state.storage = { listWorktreesByHost: async () => [] } as never;
     await expect(reconcileHostRunningSessions(plane.state, "none", [])).resolves.toEqual([]);
+  });
+
+  it("rejects registration and rolls back its lease when grace expiry wins after validation", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "new-connection" });
+    const running = durableRunning("sweep-winner", "w");
+    const idleInventory = { ...durableWorktree("w", null, "idle"), online: false };
+    const busyBeforeSweep = durableWorktree("w", "sweep-winner");
+    let sessionReads = 0;
+    let worktreeReads = 0;
+    const calls: string[] = [];
+    plane.state.storage = {
+      // Registration validation sees the acknowledged running session. The
+      // later reconciliation read sees the grace sweep's queued result.
+      getSession: async () => {
+        sessionReads++;
+        return sessionReads === 1 ? running : { ...running, status: "queued" as const };
+      },
+      getWorktree: async () => (++worktreeReads === 1 ? busyBeforeSweep : idleInventory),
+      listWorktreesByHost: async () => [busyBeforeSweep],
+      tryRegisterHost: async () => (calls.push("lease"), true),
+      putWorktreeFenced: async () => (calls.push("inventory"), true),
+      releaseHostConnection: async () => (calls.push("release"), true),
+      getHostLock: async () => null,
+      setWorktreeOnlineFenced: async (id: string, connectionId: string, online: boolean) => (
+        calls.push(`offline:${id}:${connectionId}:${online}`), true
+      ),
+    } as never;
+
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["sweep-winner"],
+      }),
+    ).resolves.toEqual({
+      ok: false,
+      error: "reported running session lost reconnect reconciliation",
+    });
+    expect(calls).toEqual(["lease", "inventory", "offline:w:new-connection:false", "release"]);
+    expect(plane.state.hostConnection.has("h")).toBe(false);
+  });
+
+  it("does not offline replacement B when A loses reconciliation cleanup", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "A" });
+    const running = durableRunning("lost", "w");
+    const preSweepWorktree = durableWorktree("w", "lost");
+    const inventory = {
+      ...durableWorktree("w", null, "idle"),
+      repositoryId: "repo-1",
+      online: false,
+    };
+    const replacement = { ...inventory, online: true, connectionId: "B" };
+    let sessionReads = 0;
+    let worktreeReads = 0;
+    const calls: string[] = [];
+    plane.state.storage = {
+      getSession: async () => {
+        sessionReads++;
+        if (sessionReads === 1) return running;
+        // B won after A's registration validation but before reconciliation.
+        plane.state.worktrees.set("w", replacement);
+        plane.state.hostConnection.set("h", "B");
+        plane.state.connections.set("B", {
+          connectionId: "B",
+          type: "host",
+          hostId: "h",
+          connectedAt: "now",
+          lastHeartbeatAt: "now",
+          commandProfiles: ["echo-prompt"],
+        });
+        return { ...running, status: "queued" as const };
+      },
+      getWorktree: async () => (++worktreeReads === 1 ? preSweepWorktree : inventory),
+      listWorktreesByHost: async () => [preSweepWorktree],
+      tryRegisterHost: async () => (calls.push("lease:A"), true),
+      putWorktreeFenced: async () => (calls.push("inventory:A"), true),
+      setWorktreeOnlineFenced: async (
+        _id: string,
+        connectionId: string,
+        online: boolean,
+        fence: { hostId: string; connectionId: string },
+      ) => {
+        calls.push(`offline:${connectionId}:${online}:${fence.connectionId}`);
+        expect(fence).toEqual({ hostId: "h", connectionId: "A" });
+        return false;
+      },
+      releaseHostConnection: async (_hostId: string, connectionId: string) => {
+        calls.push(`release:${connectionId}`);
+        return false;
+      },
+      getHostLock: async () => "B",
+    } as never;
+
+    await expect(
+      plane.registerHostDurable({
+        hostId: "h",
+        worktrees: [{ id: "w", name: "w", repositoryId: "r", path: "/w", labels: [] }],
+        commandProfiles: [],
+        runningSessions: ["lost"],
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    expect(calls).toEqual(["lease:A", "inventory:A", "offline:A:false:A", "release:A"]);
+    expect(plane.state.worktrees.get("w")).toEqual(replacement);
+    expect(plane.state.hostConnection.get("h")).toBe("B");
+    expect(plane.state.disconnectedHosts.has("h")).toBe(false);
+    plane.state.storage = undefined;
+    seedBaseCommand(plane);
+    const queued = plane.createSession(baseSessionBody());
+    expect(plane.assignQueued().map((item) => item.session.id)).toEqual([queued.session.id]);
   });
 
   it("adopts legacy no-deadline reports and ignores expired rows missing ownership", async () => {
@@ -207,13 +359,14 @@ describe("reconnect reconciliation", () => {
     durable.state.storage = {
       listWorktreesByHost: async () => [worktree],
       getSession: async () => legacy,
+      getWorktree: async () => worktree,
       confirmReconnect: async (opts: { deadlineAt?: string }) => {
         expect(opts.deadlineAt).toBeUndefined();
         confirmed++;
         return true;
       },
     } as never;
-    await reconcileHostRunningSessions(durable.state, "h", ["legacy"]);
+    expect(await reconcileHostRunningSessions(durable.state, "h", ["legacy"])).toEqual([]);
     expect(confirmed).toBe(1);
 
     const missing = new ControlPlane();
@@ -229,7 +382,7 @@ describe("reconnect reconciliation", () => {
     const local = new ControlPlane();
     local.state.sessions.set("local", durableRunning("local", "lw"));
     local.state.worktrees.set("lw", durableWorktree("lw", "local"));
-    await reconcileHostRunningSessions(local.state, "h", ["local"]);
+    expect(await reconcileHostRunningSessions(local.state, "h", ["local"])).toEqual([]);
     expect(local.state.worktrees.get("lw")?.connectionId).toBeUndefined();
   });
 });

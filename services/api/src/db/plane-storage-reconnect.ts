@@ -3,7 +3,7 @@ import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { isConditionalTransactionFailed } from "./plane-storage-types.ts";
 
-type ReconnectSession = {
+export type ReconnectSession = {
   sessionId: string;
   hostId: string;
   worktreeId: string;

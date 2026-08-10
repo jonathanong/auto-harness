@@ -169,7 +169,13 @@ export async function handleHostMessageDurable(
   msg: HostToServerMessage,
   sourceConnectionId?: string,
   replaceExisting = false,
-): Promise<{ ok: boolean; error?: string; connectionId?: string }> {
+): Promise<{
+  ok: boolean;
+  error?: string;
+  connectionId?: string;
+  /** Present only after the durable ack transaction committed. */
+  sessionAcknowledged?: string;
+}> {
   if (msg.type === "host:register") {
     const result = await registerHostDurable(state, {
       hostId: msg.hostId,
@@ -183,7 +189,15 @@ export async function handleHostMessageDurable(
       : { ok: false, error: result.error };
   }
   if (!state.storage) {
-    return handleHostMessage(state, msg);
+    const localSession = msg.type === "session:ack" ? state.sessions.get(msg.sessionId) : undefined;
+    const canAcknowledge =
+      msg.type === "session:ack" &&
+      localSession?.status === "running" &&
+      localSession.ackReceivedAt === undefined;
+    const result = handleHostMessage(state, msg);
+    return msg.type === "session:ack" && result.ok && canAcknowledge
+      ? { ...result, sessionAcknowledged: msg.sessionId }
+      : result;
   }
   const storage = state.storage;
   let fence: { hostId: string; connectionId: string } | undefined;
@@ -247,6 +261,7 @@ export async function handleHostMessageDurable(
         ackReceivedAt: session.ackReceivedAt ?? state.now(),
       });
       state.pendingAcks.delete(msg.sessionId);
+      return { ok: true, sessionAcknowledged: msg.sessionId };
     }
     return { ok: true };
   }
@@ -278,12 +293,18 @@ async function applySessionStatusDurable(
     const released = await state.storage.releaseCancelledSessionWorktree({
       sessionId: session.id,
       worktreeId,
+      online: true,
       ...(fence ? { fence } : {}),
     });
     if (released) {
       const wt = state.worktrees.get(worktreeId);
       if (wt?.currentSessionId === session.id) {
-        state.worktrees.set(worktreeId, { ...wt, status: "idle", currentSessionId: null });
+        state.worktrees.set(worktreeId, {
+          ...wt,
+          status: "idle",
+          currentSessionId: null,
+          online: true,
+        });
       }
       state.sessions.set(session.id, { ...session, worktreeId: null, hostId: null });
       state.pendingAcks.delete(session.id);

@@ -332,7 +332,41 @@ export async function registerHostDurable(
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
   }
-  await reconcileHostRunningSessions(state, opts.hostId, opts.runningSessions ?? []);
+  const reconciled = await reconcileHostRunningSessions(
+    state,
+    opts.hostId,
+    opts.runningSessions ?? [],
+  );
+  if (reconciled === false) {
+    // The lease is ours, but a concurrently-expired session was requeued
+    // before it could be confirmed.  Do not publish this half-registration:
+    // first restore reconciliation/inventory state while the exact lease is
+    // still held, then release it. A replacement must never be offlined by a
+    // stale cleanup that ran after dropping its authority.
+    for (const next of nextWorktrees) {
+      if (
+        await state.storage.setWorktreeOnlineFenced(next.id, connectionId, false, {
+          hostId: opts.hostId,
+          connectionId,
+        })
+      ) {
+        state.worktrees.set(next.id, { ...next, online: false });
+      }
+    }
+    const released = await state.storage.releaseHostConnection(opts.hostId, connectionId);
+    const durableOwner = await state.storage.getHostLock(opts.hostId);
+    const ownsLocalHost = state.hostConnection.get(opts.hostId) === connectionId;
+    if (released && durableOwner === null && ownsLocalHost) {
+      state.connections.delete(connectionId);
+      state.hostConnection.delete(opts.hostId);
+      state.disconnectedHosts.set(opts.hostId, { lastHeartbeatAt: at });
+    } else if (!ownsLocalHost) {
+      // B is already active in this process. Removing only A's connection row
+      // preserves B's online worktrees and scheduler eligibility.
+      state.connections.delete(connectionId);
+    }
+    return { ok: false, error: "reported running session lost reconnect reconciliation" };
+  }
   return { ok: true, connectionId };
 }
 

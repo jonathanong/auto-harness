@@ -34,7 +34,7 @@ describe("createPlaneWsBridge", () => {
     ).toBe(null);
   });
 
-  it("registers agent and delivers session:assign", async () => {
+  it("registers agent, delivers session:assign, then confirms its persisted ACK", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({
       onHostMessage: bridge.onHostMessage,
@@ -97,6 +97,9 @@ describe("createPlaneWsBridge", () => {
           plane.assignQueued();
         }
         if (msg.type === "session:assign") {
+          ws.send(JSON.stringify({ type: "session:ack", sessionId: "sess-1" }));
+        }
+        if (msg.type === "session:acknowledged") {
           ws.close();
           resolve();
         }
@@ -108,6 +111,7 @@ describe("createPlaneWsBridge", () => {
     });
 
     expect(received.some((m) => (m as { type: string }).type === "session:assign")).toBe(true);
+    expect(received).toContainEqual({ type: "session:acknowledged", sessionId: "sess-1" });
     await new Promise((r) => setTimeout(r, 50));
     hub.close();
     await new Promise((resolve) => setTimeout(resolve, 50));

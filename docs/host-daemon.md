@@ -123,6 +123,7 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 - Routes inbound messages by `type` to Session Runner
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**. TCP open is not ready: the daemon waits for `host:registered` before assignments or queued control frames flow.
 - On reconnect: re-register full inventory + bounded IDs of acknowledged **in-progress** sessions. This fresh registration snapshot bypasses the source outbound FIFO, so it becomes the WebSocket registration barrier before buffered logs or control frames. The control plane fences mutations with the returned connection ID, keeps acknowledged work reserved for 75 seconds, and emits a system-log loss marker after an outage drops logs.
+- A `session:ack` write is not enough to start a CLI. The daemon waits for the matching `session:acknowledged` reply, emitted only after the server's fenced durable ACK transaction commits. Missing confirmation times out or aborts on disconnect; that unconfirmed assignment never enters reconnect inventory.
 - The source outbound FIFO is bounded to 1,000 frames / 4 MiB (including its active write): normal logs drop under pressure, one recovery marker per affected session is retained, and repeated keepalives coalesce. Control transitions backpressure in FIFO order instead of adding unbounded queue entries.
 - Responds to server `ping` with `pong`
 - Handles `post` failures only as disconnect (server detects stale connections separately)
@@ -156,7 +157,7 @@ Orchestrates a single session after `session:assign`:
 
 1. Validate payload (`sessionId`, `repositoryId`, `command`, `timeout`, optional `worktreeId`, `prompt`, `setupScript`, `resume`, `resumedFromSessionId`, `cliResumeRef`)
 2. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
-3. Send `session:ack`
+3. Send `session:ack`, then wait for `session:acknowledged` from the current registered connection. On disconnect or confirmation timeout, abort without setup, CLI execution, status, or reconnect inventory.
 4. **Setup:**
    - Normal run: run setup script (may reset branch / install)
    - **Resume** (`resume: true`): **skip destructive setup** (no `git reset --hard` / wipe). Optional light `resumeSetup` only if configured; default is leave the worktree as-is

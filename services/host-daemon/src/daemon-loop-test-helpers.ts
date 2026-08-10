@@ -4,6 +4,25 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 
 import type { DaemonConfig } from "./config.ts";
+import type { HostToServerMessage } from "@auto-harness/shared";
+import { createLoopbackTransport } from "./loopback-transport.ts";
+
+/** Test-only in-process peer that confirms an ACK only after its mock server
+ * handler completes. Tests that need an ambiguous write must use the raw
+ * loopback transport and deliver the confirmation themselves. */
+export function createAcknowledgingLoopbackTransport(opts: {
+  sendToServer: (msg: HostToServerMessage) => void | Promise<void>;
+}) {
+  const transport = createLoopbackTransport({
+    sendToServer: async (message) => {
+      await opts.sendToServer(message);
+      if (message.type === "session:ack") {
+        transport.deliver({ type: "session:acknowledged", sessionId: message.sessionId });
+      }
+    },
+  });
+  return transport;
+}
 
 async function runOk(command: string, args: string[], cwd?: string): Promise<string> {
   return new Promise((resolve, reject) => {

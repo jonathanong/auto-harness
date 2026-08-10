@@ -46,6 +46,86 @@ describe("DaemonLoop reconnect", () => {
     }
   });
 
+  it("does not execute when an ACK write succeeds but the peer closes before durable confirmation", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = new EventTransport();
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver(assignMessage("write-without-server-ack"));
+      await settle();
+      expect(transport.sent).toContainEqual({
+        type: "session:ack",
+        sessionId: "write-without-server-ack",
+      });
+
+      // `send()` completed, but the peer has not processed the frame. The
+      // disconnect must abort unconfirmed work; a late reply cannot revive it.
+      transport.disconnect();
+      transport.deliver({ type: "session:acknowledged", sessionId: "write-without-server-ack" });
+      await loop.waitForIdle();
+
+      expect(transport.sent.filter((message) => message.type === "session:status")).toEqual([]);
+      expect(loop.inflightCount()).toBe(0);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("runs only after one durable ACK confirmation and ignores duplicate or late replies", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const transport = new EventTransport();
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver(assignMessage("confirmed-once"));
+      await settle();
+      expect(transport.sent.some((message) => message.type === "session:ack")).toBe(true);
+
+      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
+      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
+      await loop.waitForIdle();
+      transport.deliver({ type: "session:acknowledged", sessionId: "confirmed-once" });
+
+      expect(
+        transport.sent.filter(
+          (message) => message.type === "session:status" && message.sessionId === "confirmed-once",
+        ),
+      ).toHaveLength(1);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("aborts a healthy-but-unconfirmed ACK after the confirmation timeout", async () => {
+    const { config, cleanup } = await makeRepo();
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      const transport = new EventTransport();
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        ackConfirmationMs: 5,
+        timers: globalThis,
+        onLog: (line) => lines.push(line),
+      });
+      await loop.start();
+      transport.deliver(assignMessage("ack-timeout"));
+      await settle();
+      await vi.advanceTimersByTimeAsync(5);
+      await loop.waitForIdle();
+
+      expect(lines).toContain("acknowledgement confirmation timed out for ack-timeout");
+      expect(transport.sent.filter((message) => message.type === "session:status")).toEqual([]);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("refreshes inventory, keeps alive, and exposes draining state", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -306,6 +386,9 @@ class EventTransport implements DaemonTransport {
   connect(): void {
     this.connected?.();
   }
+  deliver(message: HostWireMessage): void {
+    this.message?.(message);
+  }
 }
 
 class BarrierTransport implements DaemonTransport {
@@ -352,4 +435,17 @@ async function settle(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
   await Promise.resolve();
+}
+
+function assignMessage(sessionId: string): Extract<HostWireMessage, { type: "session:assign" }> {
+  return {
+    type: "session:assign",
+    sessionId,
+    repositoryId: "demo",
+    prompt: "hello",
+    resolvedArgv: ["printf", "%s", "hello"],
+    timeout: 30,
+    worktreeId: "wt-1",
+    assignedAt: new Date().toISOString(),
+  };
 }

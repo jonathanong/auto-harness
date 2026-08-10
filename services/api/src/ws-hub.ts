@@ -121,6 +121,15 @@ export function createPlaneWsBridge(): {
                 connectionId: boundConnectionId,
               }),
             );
+          } else if (
+            msg.type === "session:ack" &&
+            result.sessionAcknowledged === msg.sessionId &&
+            socket.readyState === socket.OPEN
+          ) {
+            // The client must not equate a successful WebSocket write with a
+            // server acknowledgement. This reply is emitted only after the
+            // fenced, durable acknowledgement transaction has committed.
+            socket.send(JSON.stringify({ type: "session:acknowledged", sessionId: msg.sessionId }));
           }
         };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire

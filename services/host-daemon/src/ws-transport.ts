@@ -245,7 +245,11 @@ export function createWsTransport(options: Options): DaemonTransport & {
           target.close(1008, "registration rejected");
         } else if (
           registered &&
-          (message.type === "session:assign" ||
+          ((message.type === "session:acknowledged" &&
+            typeof message.sessionId === "string" &&
+            message.sessionId.length > 0 &&
+            message.sessionId.length <= 512) ||
+            message.type === "session:assign" ||
             message.type === "session:cancel" ||
             message.type === "host:drain")
         ) {

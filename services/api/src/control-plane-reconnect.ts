@@ -1,15 +1,54 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import {
+  restoreConfirmedSessions,
+  type ReconnectConfirmation,
+} from "./control-plane-reconnect-rollback.ts";
 
 export async function reconcileHostRunningSessions(
   state: ControlPlaneState,
   hostId: string,
   reported: readonly string[],
-): Promise<string[]> {
+): Promise<string[] | false> {
   const running = new Set(reported);
   const connectionId = state.hostConnection.get(hostId);
   const requeued: string[] = [];
+  const confirmed: ReconnectConfirmation[] = [];
   if (state.storage && !connectionId) return requeued;
+
+  // Treat every daemon-reported session as a claim that must be confirmed
+  // against the durable state *after* this registration acquired its lease.
+  // A grace sweep can win between pre-registration validation and this point;
+  // accepting the registration in that case would open a new socket barrier
+  // for a process whose work was already safely requeued.
+  for (const sessionId of running) {
+    const session = state.storage
+      ? await state.storage.getSession(sessionId)
+      : state.sessions.get(sessionId);
+    const worktree = session?.worktreeId
+      ? state.storage
+        ? await state.storage.getWorktree(session.worktreeId)
+        : state.worktrees.get(session.worktreeId)
+      : undefined;
+    if (
+      !session ||
+      session.status !== "running" ||
+      !session.ackReceivedAt ||
+      session.hostId !== hostId ||
+      !session.worktreeId ||
+      !worktree ||
+      worktree.hostId !== hostId ||
+      worktree.currentSessionId !== session.id
+    ) {
+      await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+      return false;
+    }
+    if (!(await confirmReportedSession(state, session, worktree, hostId, connectionId))) {
+      await restoreConfirmedSessions(state, hostId, connectionId, confirmed);
+      return false;
+    }
+    confirmed.push({ session, worktree });
+  }
   const worktrees = state.storage
     ? await state.storage.listWorktreesByHost(hostId)
     : [...state.worktrees.values()].filter((worktree) => worktree.hostId === hostId);
@@ -19,9 +58,8 @@ export async function reconcileHostRunningSessions(
       ? await state.storage.getSession(worktree.currentSessionId)
       : state.sessions.get(worktree.currentSessionId);
     if (!session || session.status !== "running" || session.hostId !== hostId) continue;
-    if (running.has(session.id)) {
-      await confirmReportedSession(state, session, worktree, hostId, connectionId);
-    } else if (!state.storage) {
+    if (running.has(session.id)) continue;
+    if (!state.storage) {
       session.status = "queued";
       session.worktreeId = null;
       session.hostId = null;
@@ -126,8 +164,8 @@ async function confirmReportedSession(
   worktree: import("./db/types.ts").WorktreeRecord,
   hostId: string,
   connectionId: string | undefined,
-): Promise<void> {
-  if (state.storage && !connectionId) return;
+): Promise<boolean> {
+  if (state.storage && !connectionId) return false;
   const deadlineAt = session.reconnectDeadlineAt;
   const confirmed =
     !state.storage ||
@@ -147,6 +185,7 @@ async function confirmReportedSession(
       ...(connectionId ? { connectionId } : {}),
     });
   }
+  return confirmed;
 }
 
 function queued(session: import("./db/types.ts").SessionRecord, reason: string) {

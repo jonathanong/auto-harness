@@ -16,6 +16,7 @@ import {
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
 import * as reconnect from "./plane-storage-reconnect.ts";
+import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
@@ -110,6 +111,10 @@ export class DynamoPlaneStorageBase {
   releaseCancelledSessionWorktree(opts: {
     sessionId: string;
     worktreeId: string;
+    /** Terminal reports from a live daemon preserve reachability; disconnect
+     * cleanup deliberately sets this false. Make the distinction explicit at
+     * every callsite instead of deriving it from the terminal session. */
+    online: boolean;
     fence?: { hostId: string; connectionId: string };
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
@@ -150,6 +155,18 @@ export class DynamoPlaneStorageBase {
     return reconnect.confirmReconnect(this.ctx, opts);
   }
 
+  restoreReconnectPending(opts: {
+    sessionId: string;
+    hostId: string;
+    worktreeId: string;
+    connectionId: string;
+    previousDeadlineAt?: string;
+    previousAssignmentConnectionId?: string;
+    previousWorktreeConnectionId?: string;
+  }): Promise<boolean> {
+    return reconnectRollback.restoreReconnectPending(this.ctx, opts);
+  }
+
   acknowledgeSession(
     sessionId: string,
     acknowledgedAt: string,
@@ -187,8 +204,9 @@ export class DynamoPlaneStorageBase {
     worktreeId: string,
     connectionId: string,
     online: boolean,
+    fence?: { hostId: string; connectionId: string },
   ): Promise<boolean> {
-    return sessions.setWorktreeOnlineFenced(this.ctx, worktreeId, connectionId, online);
+    return sessions.setWorktreeOnlineFenced(this.ctx, worktreeId, connectionId, online, fence);
   }
 
   tryAcquireHostLock(opts: {

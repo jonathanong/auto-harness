@@ -65,7 +65,9 @@ describe("durable disconnect worktree reconciliation", () => {
       getSession: async (id: string) => sessions.get(id) ?? null,
       getWorktree: async (id: string) => rows.find((row) => row.id === id) ?? null,
       setWorktreeOnlineFenced: async (id: string) => (calls.push(`offline:${id}`), true),
-      releaseCancelledSessionWorktree: async () => (calls.push("cancel"), true),
+      releaseCancelledSessionWorktree: async (opts: { online: boolean }) => (
+        calls.push(opts.online ? "cancel-online" : "cancel-offline"), true
+      ),
       markReconnectPending: async (opts: { sessionId: string }) => (
         calls.push(`ack:${opts.sessionId}`), true
       ),
@@ -80,7 +82,7 @@ describe("durable disconnect worktree reconciliation", () => {
       expect.arrayContaining([
         "offline:w-idle",
         "offline:w-missing",
-        "cancel",
+        "cancel-offline",
         "ack:ack",
         "queue:queue",
         "queue:lose",

@@ -320,7 +320,14 @@ export async function failExpiredResumeSession(
  */
 export async function releaseCancelledSessionWorktree(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; worktreeId: string; fence?: { hostId: string; connectionId: string } },
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    /** A late terminal report from a healthy socket frees the worktree for
+     * another assignment; only disconnect cleanup offlines it. */
+    online: boolean;
+    fence?: { hostId: string; connectionId: string };
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -357,7 +364,7 @@ export async function releaseCancelledSessionWorktree(
             Update: {
               TableName: ctx.tables.worktrees,
               Key: { id: opts.worktreeId },
-              UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :offline",
+              UpdateExpression: "SET #s = :idle, currentSessionId = :null, #o = :online",
               ConditionExpression:
                 "currentSessionId = :sid" +
                 (opts.fence
@@ -368,7 +375,7 @@ export async function releaseCancelledSessionWorktree(
                 ":idle": "idle",
                 ":null": null,
                 ":sid": opts.sessionId,
-                ":offline": false,
+                ":online": opts.online,
                 ...(opts.fence ? { ":connectionId": opts.fence.connectionId } : {}),
               },
             },
@@ -706,21 +713,50 @@ export async function setWorktreeOnlineFenced(
   worktreeId: string,
   connectionId: string,
   online: boolean,
+  fence?: { hostId: string; connectionId: string },
 ): Promise<boolean> {
   try {
-    await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.worktrees,
-        Key: { id: worktreeId },
-        UpdateExpression: "SET #o = :online",
-        ConditionExpression: "attribute_not_exists(connectionId) OR connectionId = :connectionId",
-        ExpressionAttributeNames: { "#o": "online" },
-        ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
-      }),
-    );
+    if (fence) {
+      await ctx.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            {
+              ConditionCheck: {
+                TableName: ctx.tables.hostLocks,
+                Key: { hostId: fence.hostId },
+                ConditionExpression: "connectionId = :connectionId",
+                ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+              },
+            },
+            {
+              Update: {
+                TableName: ctx.tables.worktrees,
+                Key: { id: worktreeId },
+                UpdateExpression: "SET #o = :online",
+                ConditionExpression:
+                  "attribute_not_exists(connectionId) OR connectionId = :connectionId",
+                ExpressionAttributeNames: { "#o": "online" },
+                ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
+              },
+            },
+          ],
+        }),
+      );
+    } else {
+      await ctx.doc.send(
+        new UpdateCommand({
+          TableName: ctx.tables.worktrees,
+          Key: { id: worktreeId },
+          UpdateExpression: "SET #o = :online",
+          ConditionExpression: "attribute_not_exists(connectionId) OR connectionId = :connectionId",
+          ExpressionAttributeNames: { "#o": "online" },
+          ExpressionAttributeValues: { ":online": online, ":connectionId": connectionId },
+        }),
+      );
+    }
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) return false;
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

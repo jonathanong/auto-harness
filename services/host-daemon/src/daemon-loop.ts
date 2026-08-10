@@ -22,12 +22,16 @@ export type DaemonLoopOptions = {
   onLog?: (line: string) => void;
   now?: () => string;
   reconnectAbortMs?: number;
+  /** Maximum wait for peer confirmation that `session:ack` committed. */
+  ackConfirmationMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 };
 type InflightSession = {
   controller: AbortController;
   work: Promise<void>;
+  /** Set only by a server `session:acknowledged` wire message. */
   acknowledged: boolean;
+  resolveAcknowledgement?: () => void;
 };
 const MAX_INFLIGHT_SESSIONS = 64;
 export class DaemonLoop {
@@ -43,6 +47,7 @@ export class DaemonLoop {
   private readonly transport: DaemonTransport;
   private readonly outbound: OutboundQueue;
   private readonly reconnectAbortMs: number;
+  private readonly ackConfirmationMs: number;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -52,6 +57,7 @@ export class DaemonLoop {
     this.onLog = options.onLog ?? undefined;
     this.now = options.now ?? (() => new Date().toISOString());
     this.reconnectAbortMs = options.reconnectAbortMs ?? 60_000;
+    this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -140,6 +146,17 @@ export class DaemonLoop {
       }
       return;
     }
+    if (msg.type === "session:acknowledged") {
+      const current = this.inflight.get(msg.sessionId);
+      // Duplicate and late confirmations are harmless. The peer's durable
+      // confirmation—not the outgoing write callback—permits execution.
+      if (!current || current.acknowledged || current.controller.signal.aborted) return;
+      current.acknowledged = true;
+      const resolve = current.resolveAcknowledgement;
+      current.resolveAcknowledgement = undefined;
+      resolve?.();
+      return;
+    }
     if (msg.type !== "session:assign") {
       return;
     }
@@ -159,12 +176,20 @@ export class DaemonLoop {
     }
 
     const controller = new AbortController();
+    // Install the slot before the first await so an immediate peer reply is
+    // tied to this exact assignment.
+    const entry: InflightSession = {
+      controller,
+      work: Promise.resolve(),
+      acknowledged: false,
+    };
+    this.inflight.set(msg.sessionId, entry);
     const work = this.runAssign(msg, controller.signal);
-    this.inflight.set(msg.sessionId, { controller, work, acknowledged: false });
+    entry.work = work;
     try {
       await work;
     } finally {
-      this.inflight.delete(msg.sessionId);
+      if (this.inflight.get(msg.sessionId) === entry) this.inflight.delete(msg.sessionId);
     }
   }
 
@@ -173,10 +198,7 @@ export class DaemonLoop {
     signal: AbortSignal,
   ): Promise<void> {
     await this.outbound.send({ type: "session:ack", sessionId: msg.sessionId }, { signal });
-    if (signal.aborted) return;
-    const inflight = this.inflight.get(msg.sessionId);
-    if (!inflight || inflight.controller.signal !== signal) return;
-    inflight.acknowledged = true;
+    if (!(await this.waitForAcknowledgement(msg.sessionId, signal))) return;
 
     const assign = sessionAssignFromWire(msg);
 
@@ -212,6 +234,38 @@ export class DaemonLoop {
 
   private async emitLog(chunk: SessionLogChunk): Promise<void> {
     await sendDaemonLog(this.outbound, this.onLog, chunk);
+  }
+
+  private async waitForAcknowledgement(sessionId: string, signal: AbortSignal): Promise<boolean> {
+    const inflight = this.inflight.get(sessionId);
+    if (!inflight || inflight.controller.signal !== signal || signal.aborted) return false;
+    if (inflight.acknowledged) return true;
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const finish = (acknowledged: boolean) => {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", aborted);
+        if (timeout) this.timers.clearTimeout(timeout);
+        if (inflight.resolveAcknowledgement === confirmed) {
+          inflight.resolveAcknowledgement = undefined;
+        }
+        resolve(acknowledged);
+      };
+      const confirmed = () => finish(true);
+      const aborted = () => finish(false);
+      inflight.resolveAcknowledgement = confirmed;
+      signal.addEventListener("abort", aborted, { once: true });
+      timeout = this.timers.setTimeout(() => {
+        this.onLog?.(`acknowledgement confirmation timed out for ${sessionId}`);
+        inflight.controller.abort();
+        finish(false);
+      }, this.ackConfirmationMs);
+      // A loopback peer can reply synchronously between the earlier state
+      // check and installing this resolver.
+      if (inflight.acknowledged) confirmed();
+    });
   }
 }
 
