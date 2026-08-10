@@ -36,14 +36,14 @@ describe("durable session concurrency", () => {
     });
     expect(plane.getSession("resume-2")).not.toHaveProperty("cliResumeRef");
 
-    plane.state.sessions.set("invalid-source", {
+    plane.state.sessions.set("active-source", {
       ...source,
-      id: "invalid-source",
-      commandId: "missing-command",
+      id: "active-source",
+      status: "queued",
     });
-    await expect(plane.resumeSessionDurable("invalid-source")).resolves.toMatchObject({
+    await expect(plane.resumeSessionDurable("active-source")).resolves.toMatchObject({
       ok: false,
-      code: "VALIDATION_ERROR",
+      error: "source session must be terminal before resume",
     });
   });
 

@@ -1,7 +1,4 @@
-import {
-  isActiveSessionStatus,
-  isTerminalSessionStatus,
-} from "@auto-harness/shared";
+import { isActiveSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -57,9 +54,7 @@ export function prepareResumedSession(
   state: ControlPlaneState,
   sessionId: string,
   opts: ResumeOptions = {},
-):
-  | { ok: true; session: SessionRecord; created: boolean }
-  | { ok: false; error: string } {
+): { ok: true; session: SessionRecord; created: boolean } | { ok: false; error: string } {
   const source = state.sessions.get(sessionId);
   if (!source) return { ok: false, error: "session not found" };
   if (!isTerminalSessionStatus(source.status)) {

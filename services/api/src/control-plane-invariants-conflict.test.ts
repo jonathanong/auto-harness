@@ -35,15 +35,25 @@ describe("ControlPlane concurrency and late status", () => {
     if (!created.ok) return;
     plane.state.sessions.get(created.session.id)!.hostId = "host-1";
     plane.forceStatus(created.session.id, "completed");
-    expect(plane.resumeSession(created.session.id)).toMatchObject({
-      ok: true,
-      created: true,
-      session: { id: "resume-2", concurrencyId: "resume-lock" },
-    });
+    const active = plane.createSession(
+      baseSessionBody({ concurrencyId: "resume-lock", prompt: "already resumed" }),
+    );
+    expect(active).toMatchObject({ ok: true, created: true, session: { id: "resume-2" } });
     expect(plane.resumeSession(created.session.id)).toMatchObject({
       ok: true,
       created: false,
       session: { id: "resume-2" },
+    });
+    plane.forceStatus("resume-2", "completed");
+    expect(plane.resumeSession(created.session.id)).toMatchObject({
+      ok: true,
+      created: true,
+      session: { id: "resume-3", concurrencyId: "resume-lock" },
+    });
+    expect(plane.resumeSession(created.session.id)).toMatchObject({
+      ok: true,
+      created: false,
+      session: { id: "resume-3" },
     });
   });
 

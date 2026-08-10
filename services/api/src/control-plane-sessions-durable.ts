@@ -2,10 +2,7 @@ import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import { buildSessionRecord, validateSessionCreate } from "./control-plane-session-create.ts";
-import {
-  prepareResumedSession,
-  type ResumeOptions,
-} from "./control-plane-session-resume.ts";
+import { prepareResumedSession, type ResumeOptions } from "./control-plane-session-resume.ts";
 import { createSession, resumeSession } from "./control-plane-sessions.ts";
 
 /** Durable REST create path: DynamoDB owns the concurrency-id compare-and-create. */
