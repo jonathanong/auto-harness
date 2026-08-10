@@ -7,6 +7,54 @@ import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-te
 import { SpawnProcessRunner, type ProcessRunner, type ProcessResult } from "./executor.ts";
 
 describe("DaemonLoop run", () => {
+  it("acks, runs, and reports a scheduled main-checkout assignment", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const serverMsgs: HostToServerMessage[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          serverMsgs.push(message);
+        },
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "scheduled-main",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "run maintenance",
+        resolvedArgv: ["printf", "%s\\n", "scheduled-main"],
+        timeout: 30,
+        worktreeId: null,
+        ref: "main",
+        assignedAt: new Date().toISOString(),
+      });
+      await loop.waitForIdle();
+
+      expect(
+        serverMsgs.some(
+          (message) =>
+            message.type === "session:ack" &&
+            message.sessionId === "scheduled-main" &&
+            message.worktreeId === null,
+        ),
+      ).toBe(true);
+      expect(
+        serverMsgs.some(
+          (message) =>
+            message.type === "session:status" &&
+            message.sessionId === "scheduled-main" &&
+            message.worktreeId === null &&
+            message.status === "completed",
+        ),
+      ).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("registers, acks, runs profile, reports terminal status and logs", async () => {
     const { config, cleanup } = await makeRepo();
     try {

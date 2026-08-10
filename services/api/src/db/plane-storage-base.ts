@@ -145,6 +145,19 @@ export class DynamoPlaneStorageBase {
     return mainCheckout.tryAssignMainCheckoutSession(this.ctx, opts);
   }
 
+  cancelRunningMainCheckoutSession(opts: {
+    sessionId: string;
+    hostId: string;
+    connectionId: string;
+    attemptId: string;
+    queueShard: number;
+    completedAt: string;
+    deadlineAt: string;
+    errorMessage: string;
+  }): Promise<boolean> {
+    return mainCheckout.cancelRunningMainCheckoutSession(this.ctx, opts);
+  }
+
   releaseMainCheckoutSession(opts: {
     sessionId: string;
     hostId: string;
@@ -161,8 +174,24 @@ export class DynamoPlaneStorageBase {
     retryAfter?: string;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
+    concurrencyId?: string;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
+  }
+
+  requeueMainCheckoutUsageLimitedSession(opts: {
+    sessionId: string;
+    hostId: string;
+    repositoryId: string;
+    connectionId: string;
+    attemptId: string;
+    providerAccountId: string;
+    queueShard: number;
+    now: string;
+    usageLimitedUntil: string;
+    errorMessage?: string;
+  }): Promise<boolean> {
+    return mainCheckout.requeueMainCheckoutUsageLimitedSession(this.ctx, opts);
   }
 
   markMainCheckoutReconnectPending(opts: {

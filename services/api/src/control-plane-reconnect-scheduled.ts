@@ -123,24 +123,40 @@ export async function reclaimScheduledReconnect(
 ): Promise<boolean> {
   if (!session.mainCheckoutLease || !session.hostId || !session.assignmentConnectionId)
     return false;
+  const cancelled = session.status === "cancelled";
   const released = state.storage
     ? await state.storage.releaseMainCheckoutSession({
         sessionId: session.id,
         hostId: session.hostId,
         repositoryId: session.repositoryId,
         connectionId: session.assignmentConnectionId,
-        status: "queued",
+        status: cancelled ? "cancelled" : "queued",
         queueShard: session.queueShard,
-        reason: "daemon reconnect deadline exceeded; requeued",
+        reason: cancelled
+          ? (session.errorMessage ?? "cancelled by operator")
+          : "daemon reconnect deadline exceeded; requeued",
+        ...(cancelled ? { expectedStatus: "cancelled" as const } : {}),
+        ...(cancelled && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
       })
     : releaseScheduledLeaseLocal(state, session);
   if (released) {
-    state.sessions.set(
-      session.id,
-      queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
-    );
+    if (state.storage) releaseScheduledLeaseLocal(state, session);
+    if (cancelled) {
+      const next = { ...session };
+      delete next.mainCheckoutLease;
+      delete next.assignmentConnectionId;
+      delete next.assignmentSentAt;
+      delete next.ackReceivedAt;
+      delete next.reconnectDeadlineAt;
+      state.sessions.set(session.id, next);
+    } else {
+      state.sessions.set(
+        session.id,
+        queueReconnectSession(session, "daemon reconnect deadline exceeded; requeued"),
+      );
+      requeued.push(session.id);
+    }
     state.pendingAcks.delete(session.id);
-    requeued.push(session.id);
   }
   return true;
 }

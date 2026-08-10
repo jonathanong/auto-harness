@@ -13,7 +13,9 @@ export {
 } from "./plane-storage-main-checkout-reconnect.ts";
 export { restoreMainCheckoutReconnect } from "./plane-storage-main-checkout-rollback.ts";
 export { getMainCheckoutCursor, getMainCheckoutLease } from "./plane-storage-main-checkout-read.ts";
+export { cancelRunningMainCheckoutSession } from "./plane-storage-main-checkout-cancel.ts";
 export { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
+export { requeueMainCheckoutUsageLimitedSession } from "./plane-storage-main-checkout-usage-limit.ts";
 
 export async function ensureMainCheckoutLeaseMap(
   ctx: PlaneStorageCtx,
@@ -122,8 +124,8 @@ export async function tryAssignMainCheckoutSession(
                     Key: { id: opts.providerAccountId },
                     UpdateExpression: "SET lastAssignedAt = :now, updatedAt = :now",
                     ConditionExpression:
-                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR usageLimitedUntil <= :now)",
-                    ExpressionAttributeValues: { ":now": opts.now },
+                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
+                    ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
                   },
                 },
               ]

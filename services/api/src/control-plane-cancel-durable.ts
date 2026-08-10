@@ -17,7 +17,33 @@ export async function cancelSessionDurable(
   if (isTerminalSessionStatus(session.status)) {
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
-  if (session.status === "running") return cancelSession(state, id);
+  if (session.status === "running") {
+    if (!session.mainCheckoutLease) return cancelSession(state, id);
+    if (!session.hostId || !session.assignmentConnectionId || !session.attemptId) {
+      return { ok: false, error: "running session is missing its assignment fence" };
+    }
+    const completedAt = state.now();
+    const deadlineAt = new Date(Date.parse(completedAt) + state.reconnectGraceMs).toISOString();
+    const errorMessage = "cancelled by operator";
+    const cancelled = await state.storage.cancelRunningMainCheckoutSession({
+      sessionId: id,
+      hostId: session.hostId,
+      connectionId: session.assignmentConnectionId,
+      attemptId: session.attemptId,
+      queueShard: session.queueShard,
+      completedAt,
+      deadlineAt,
+      errorMessage,
+    });
+    if (!cancelled) return { ok: false, error: "session changed before cancellation" };
+    state.pendingAcks.delete(id);
+    session.status = "cancelled";
+    session.errorMessage = errorMessage;
+    session.completedAt = completedAt;
+    session.reconnectDeadlineAt = deadlineAt;
+    state.onHostMessage?.(session.hostId, { type: "session:cancel", sessionId: id });
+    return { ok: true, session: toPublic(state, session) };
+  }
 
   const completedAt = state.now();
   const errorMessage = "cancelled by operator";

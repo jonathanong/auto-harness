@@ -17,7 +17,11 @@ import {
 import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
-import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
+import {
+  assignScheduledQueuedDurable,
+  releaseScheduledLeaseLocal,
+} from "./control-plane-scheduled-assign.ts";
+import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
@@ -384,6 +388,7 @@ async function applySessionStatusDurable(
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+      ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
     });
     if (released) {
       releaseScheduledLeaseLocal(state, session);
@@ -408,6 +413,68 @@ async function applySessionStatusDurable(
     return { ok: true };
   }
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
+    const providerAccountId = session.resolvedRoute?.providerAccountId;
+    if (msg.status === "failed" && msg.errorCode === "usage_limit" && providerAccountId) {
+      const account = await storage.getProviderAccount(providerAccountId);
+      if (!account) {
+        state.providerAccounts.delete(providerAccountId);
+        const requeued = await storage.releaseMainCheckoutSession({
+          sessionId: session.id,
+          hostId: session.hostId,
+          repositoryId: session.repositoryId,
+          connectionId: session.assignmentConnectionId,
+          attemptId: msg.attemptId,
+          status: "queued",
+          queueShard: session.queueShard,
+          reason: "provider account missing; requeued",
+          errorCode: "usage_limit",
+        });
+        if (!requeued) return { ok: true };
+        releaseScheduledLeaseLocal(state, session);
+        state.sessions.set(session.id, {
+          ...queueReconnectSession(session, "provider account missing; requeued"),
+          errorCode: "usage_limit",
+        });
+        state.pendingAcks.delete(session.id);
+        await assignScheduledQueuedDurable(state);
+        return { ok: true };
+      } else {
+        const now = state.now();
+        const usageLimitedUntil = new Date(
+          Date.parse(now) + account.usageLimitCooldownSeconds * 1000,
+        ).toISOString();
+        const requeued = await storage.requeueMainCheckoutUsageLimitedSession({
+          sessionId: session.id,
+          hostId: session.hostId,
+          repositoryId: session.repositoryId,
+          connectionId: session.assignmentConnectionId,
+          attemptId: msg.attemptId,
+          providerAccountId,
+          queueShard: session.queueShard,
+          now,
+          usageLimitedUntil,
+          ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+        });
+        if (!requeued) return { ok: true };
+        releaseScheduledLeaseLocal(state, session);
+        state.sessions.set(session.id, {
+          ...queueReconnectSession(session, msg.errorMessage ?? "provider usage limit; requeued"),
+          errorCode: "usage_limit",
+        });
+        const cachedAccount = state.providerAccounts.get(providerAccountId);
+        if (cachedAccount) {
+          state.providerAccounts.set(providerAccountId, {
+            ...cachedAccount,
+            usageLimitedUntil,
+            lastUsageLimitedAt: now,
+            updatedAt: now,
+          });
+        }
+        state.pendingAcks.delete(session.id);
+        await assignScheduledQueuedDurable(state);
+        return { ok: true };
+      }
+    }
     const retries = session.retryCount ?? 0;
     const shouldRetry =
       msg.status === "failed" &&
@@ -431,6 +498,7 @@ async function applySessionStatusDurable(
       ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
       ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
       ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
+      ...(!shouldRetry && session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
     });
     if (!committed) return { ok: true };
     releaseScheduledLeaseLocal(state, session);
@@ -626,6 +694,10 @@ function applySessionStatus(
     return { ok: true };
   }
 
+  const releasedMainCheckout =
+    terminal && session.mainCheckoutLease ? releaseScheduledLeaseLocal(state, session) : false;
+  if (terminal && session.mainCheckoutLease && !releasedMainCheckout) return { ok: true };
+
   session.status = msg.status;
   if (msg.exitCode !== undefined) {
     session.exitCode = msg.exitCode;
@@ -644,23 +716,42 @@ function applySessionStatus(
     session.completedAt = state.now();
     state.pendingAcks.delete(msg.sessionId);
     if (session.mainCheckoutLease) {
-      if (releaseScheduledLeaseLocal(state, session)) {
-        delete session.mainCheckoutLease;
-        delete session.assignmentConnectionId;
-        delete session.assignmentSentAt;
-        delete session.ackReceivedAt;
-        delete session.reconnectDeadlineAt;
-      }
+      delete session.mainCheckoutLease;
+      delete session.assignmentConnectionId;
+      delete session.assignmentSentAt;
+      delete session.ackReceivedAt;
+      delete session.reconnectDeadlineAt;
     } else if (session.worktreeId) {
       releaseWorktree(state, session.worktreeId);
     }
 
+    const scheduledProviderAccountId =
+      session.type === "scheduled" && msg.status === "failed" && msg.errorCode === "usage_limit"
+        ? session.resolvedRoute?.providerAccountId
+        : undefined;
     const scheduledRetry =
       session.type === "scheduled" &&
       msg.status === "failed" &&
       msg.errorCode === "usage_limit" &&
+      !scheduledProviderAccountId &&
       (session.retryCount ?? 0) < state.usageLimitRetryCeiling;
-    if (scheduledRetry) {
+    if (scheduledProviderAccountId) {
+      const account = state.providerAccounts.get(scheduledProviderAccountId);
+      if (account) {
+        const now = state.now();
+        account.usageLimitedUntil = new Date(
+          Date.parse(now) + account.usageLimitCooldownSeconds * 1000,
+        ).toISOString();
+        account.lastUsageLimitedAt = now;
+        account.updatedAt = now;
+        state.providerAccounts.set(scheduledProviderAccountId, account);
+      }
+      session.status = "queued";
+      session.worktreeId = null;
+      session.hostId = null;
+      delete session.completedAt;
+      void assignScheduledQueuedDurable(state).catch(() => undefined);
+    } else if (scheduledRetry) {
       const retryCount = (session.retryCount ?? 0) + 1;
       session.retryCount = retryCount;
       session.retryAfter = new Date(

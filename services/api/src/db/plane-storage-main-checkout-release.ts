@@ -19,6 +19,7 @@ type ReleaseMainCheckoutOptions = {
   retryAfter?: string;
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
+  concurrencyId?: string;
 };
 
 export async function releaseMainCheckoutSession(
@@ -56,6 +57,19 @@ export async function releaseMainCheckoutSession(
               ExpressionAttributeValues: expressionValues(opts),
             },
           },
+          ...(opts.concurrencyId && !isQueued
+            ? [
+                {
+                  Delete: {
+                    TableName: ctx.tables.concurrencyLocks,
+                    Key: { concurrencyId: opts.concurrencyId },
+                    ConditionExpression:
+                      "attribute_not_exists(concurrencyId) OR sessionId = :sessionId",
+                    ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+                  },
+                },
+              ]
+            : []),
         ],
       }),
     );

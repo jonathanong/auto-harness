@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { HostWireMessage } from "@auto-harness/shared";
 
@@ -166,13 +166,16 @@ describe("scheduled main-checkout dispatcher", () => {
     expect(plane.getSession(second.id)?.hostId).toBe("host-a");
   });
 
-  it("resolves a provider-account schedule through host attachment and overrides", async () => {
+  it("resolves a provider schedule and reroutes after an account usage limit", async () => {
     const plane = makePlane({ idFactory: () => "provider-session" });
     expect(
       plane.createProvider({ id: "provider", name: "claude", defaultCommandId: "provider-cmd" }),
     ).toMatchObject({ ok: true });
     expect(
       plane.createProviderAccount({ id: "account", providerId: "provider", label: "work" }),
+    ).toMatchObject({ ok: true });
+    expect(
+      plane.createProviderAccount({ id: "account-b", providerId: "provider", label: "backup" }),
     ).toMatchObject({ ok: true });
     expect(
       plane.createCommand({
@@ -187,7 +190,10 @@ describe("scheduled main-checkout dispatcher", () => {
     const inventory = plane.state.hostInventories.get("provider-host")!;
     plane.state.hostInventories.set("provider-host", {
       ...inventory,
-      providerAccounts: [{ providerAccountId: "account", commandId: "provider-cmd" }],
+      providerAccounts: [
+        { providerAccountId: "account", commandId: "provider-cmd" },
+        { providerAccountId: "account-b", commandId: "provider-cmd" },
+      ],
     });
     const session = trigger(plane, {
       id: "provider-schedule",
@@ -203,6 +209,20 @@ describe("scheduled main-checkout dispatcher", () => {
       repositoryId: "repo-1",
       resolvedArgv: ["claude", "scheduled:nightly"],
       worktreeId: null,
+    });
+    plane.handleHostMessage({
+      type: "session:status",
+      sessionId: session.id,
+      status: "failed",
+      errorCode: "usage_limit",
+      ...scheduledFence(plane, session.id),
+    });
+    await vi.waitFor(() => {
+      expect(plane.state.providerAccounts.get("account")?.usageLimitedUntil).toBeTruthy();
+      expect(plane.getSession(session.id)).toMatchObject({
+        status: "running",
+        resolvedRoute: { providerAccountId: "account-b" },
+      });
     });
   });
 

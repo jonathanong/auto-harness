@@ -134,8 +134,11 @@ export async function reclaimReconnectDeadlines(
     ? await state.storage.listAllSessions()
     : [...state.sessions.values()];
   for (const session of sessions) {
+    const reclaimableStatus =
+      session.status === "running" ||
+      (session.status === "cancelled" && session.mainCheckoutLease === true);
     if (
-      session.status !== "running" ||
+      !reclaimableStatus ||
       !session.reconnectDeadlineAt ||
       Date.parse(session.reconnectDeadlineAt) > nowMs ||
       (!session.worktreeId && !session.mainCheckoutLease)
