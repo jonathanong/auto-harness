@@ -1,5 +1,6 @@
 import { mayAccessRepository } from "./auth-policy.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { parseLogQuery } from "./log-query.ts";
 
 function canAccess(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -37,12 +38,17 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
 
   const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
   if (method === "GET" && logsMatch) {
+    const query = parseLogQuery(url.searchParams);
+    if (!query.ok) {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: query.error } });
+      return true;
+    }
     try {
       const session = await plane.getSessionDurable(logsMatch[1]!);
-      if (session && !canAccess(ctx, session.repositoryId)) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+      if (!session || !canAccess(ctx, session.repositoryId)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
       } else {
-        send(res, 200, { items: await plane.getLogsDurable(logsMatch[1]!) });
+        send(res, 200, { items: await plane.getLogsDurable(logsMatch[1]!, query.query) });
       }
     } catch {
       sendInternalError(res);

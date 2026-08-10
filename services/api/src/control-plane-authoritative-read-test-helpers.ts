@@ -5,8 +5,9 @@ import type {
   ProviderRecord,
   RepositoryRecord,
 } from "./db/plane-storage.ts";
-import type { ArchiveObject, LogRecord, ScheduleRecord } from "./control-plane-types.ts";
+import type { ArchiveObject, LogQuery, LogRecord, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+import { selectLogs } from "./log-query.ts";
 
 function copy<T extends object>(records: Map<string, T>, id: string): T | null {
   const record = records.get(id);
@@ -67,6 +68,7 @@ export function createAuthoritativeReadStorage() {
     putLog: async (record: LogRecord) =>
       logs.set(record.sessionId, [...(logs.get(record.sessionId) ?? []), { ...record }]),
     listLogs: async (id: string) => [...(logs.get(id) ?? [])].map((record) => ({ ...record })),
+    queryLogs: async (id: string, query: LogQuery) => selectLogs(logs.get(id) ?? [], query),
     putWorktree: async (record: WorktreeRecord) => worktrees.set(record.id, { ...record }),
     deleteWorktree: async (id: string) => worktrees.delete(id),
     listAllWorktrees: async () => list(worktrees),

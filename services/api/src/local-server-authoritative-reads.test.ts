@@ -47,6 +47,87 @@ describe("durable session routes", () => {
     ).toEqual(["first", "second"]);
   });
 
+  it("enforces the bounded historical-log route contract", async () => {
+    const plane = new ControlPlane();
+    plane.state.sessions.set("session", {
+      id: "session",
+      repositoryId: "repository",
+      prompt: "work",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetLabels: ["command"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2026-01-01T00:01:00.000Z",
+      timeout: 1,
+      priority: 0,
+      requiredLabels: [],
+      status: "queued",
+      queueShard: 0,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      type: "prompt",
+      source: "api",
+    });
+    plane.state.logs.set("session", [
+      {
+        sessionId: "session",
+        timestampSeq: "2026-01-01T00:00:01.000Z#0000000001",
+        stream: "stdout",
+        content: "later stdout",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        seq: 1,
+      },
+      {
+        sessionId: "session",
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000002",
+        stream: "stderr",
+        content: "stderr",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        seq: 2,
+      },
+      {
+        sessionId: "session",
+        timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+        stream: "stdout",
+        content: "first stdout",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        seq: 1,
+      },
+    ]);
+    const { handler } = createLocalApp({ plane });
+
+    const filtered = await invokeHandler(
+      handler,
+      "GET",
+      "/api/v1/sessions/session/logs?stream=stdout&limit=1",
+    );
+    expect(filtered.status).toBe(200);
+    expect((filtered.json as { items: Array<{ content: string }> }).items).toEqual([
+      expect.objectContaining({ content: "first stdout" }),
+    ]);
+
+    const since = await invokeHandler(
+      handler,
+      "GET",
+      "/api/v1/sessions/session/logs?since=2026-01-01T00%3A00%3A00Z",
+    );
+    expect(
+      (since.json as { items: Array<{ content: string }> }).items.map(({ content }) => content),
+    ).toEqual(["later stdout"]);
+
+    for (const path of [
+      "/api/v1/sessions/session/logs?stream=unknown",
+      "/api/v1/sessions/session/logs?since=tomorrow",
+      "/api/v1/sessions/session/logs?limit=10001",
+    ]) {
+      const response = await invokeHandler(handler, "GET", path);
+      expect(response.status).toBe(400);
+      expect(response.json).toMatchObject({ error: { code: "VALIDATION_ERROR" } });
+    }
+    const missing = await invokeHandler(handler, "GET", "/api/v1/sessions/missing/logs");
+    expect(missing.status).toBe(404);
+    expect(missing.json).toMatchObject({ error: { code: "NOT_FOUND" } });
+  });
+
   it("returns structured errors when the durable session collection or detail read fails", async () => {
     const plane = new ControlPlane({
       storage: {
@@ -74,7 +155,7 @@ describe("durable session routes", () => {
         const session = plane.state.sessions.get(id);
         return session ? { ...session } : null;
       },
-      listLogs: async () => {
+      queryLogs: async () => {
         throw new Error("storage unavailable");
       },
     } as never;

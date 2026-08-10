@@ -74,6 +74,17 @@ export type ScheduleRecord = {
   concurrencyId?: string;
 };
 
+export const LOG_STREAMS = ["stdout", "stderr", "system"] as const;
+
+export type LogStream = (typeof LOG_STREAMS)[number];
+
+/** A bounded REST history query. `since` is normalized ISO-8601 UTC. */
+export type LogQuery = {
+  stream?: LogStream;
+  since?: string;
+  limit: number;
+};
+
 export type LogRecord = {
   sessionId: string;
   timestampSeq: string;

@@ -1,5 +1,5 @@
 import type { WorktreeRecord } from "./db/types.ts";
-import type { LogRecord, PublicSession, ScheduleRecord } from "./control-plane-types.ts";
+import type { LogQuery, LogRecord, PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as agents from "./control-plane-agents.ts";
 import { listCommandProfiles } from "./control-plane-command-profiles.ts";
@@ -39,8 +39,8 @@ export class ControlPlaneReadFacade extends ControlPlaneBase {
     return sessions.listSessionsPage(this.state, query ?? {});
   }
 
-  async getLogsDurable(sessionId: string): Promise<LogRecord[]> {
-    return durableRuntime.getLogsDurable(this.state, sessionId);
+  async getLogsDurable(sessionId: string, query?: LogQuery): Promise<LogRecord[]> {
+    return durableRuntime.getLogsDurable(this.state, sessionId, query);
   }
 
   async getScheduleDurable(id: string): Promise<ScheduleRecord | null> {

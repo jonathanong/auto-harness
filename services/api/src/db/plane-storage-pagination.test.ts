@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   listArchives,
   listHostInventories,
   listLogs,
+  queryLogs,
   listRepositories,
   listSchedules,
 } from "./plane-storage-catalog.ts";
@@ -102,5 +103,57 @@ describe("DynamoDB storage pagination", () => {
       expect(firstPage.input.ExclusiveStartKey).toBeUndefined();
       expect(secondPage.input.ExclusiveStartKey).toEqual({ tableName: firstPage.input.TableName });
     }
+  });
+
+  it("uses a bounded, ordered Dynamo query and continues sparse stream-filter pages", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Items: [],
+        LastEvaluatedKey: { sessionId: "session-1", timestampSeq: "first" },
+      })
+      .mockResolvedValueOnce({
+        Items: [
+          {
+            sessionId: "session-1",
+            timestampSeq: "2026-01-01T00:00:01.000Z#0000000001",
+            stream: "stdout",
+            content: "line",
+            timestamp: "2026-01-01T00:00:01.000Z",
+            seq: 1,
+          },
+        ],
+      });
+    const ctx = {
+      doc: { send },
+      tables: { sessionLogs: "SessionLogs" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(
+      queryLogs(ctx, "session-1", {
+        stream: "stdout",
+        since: "2026-01-01T00:00:00.000Z",
+        limit: 1,
+      }),
+    ).resolves.toMatchObject([{ content: "line" }]);
+
+    expect(send).toHaveBeenCalledTimes(2);
+    const first = send.mock.calls[0]?.[0] as { input: Record<string, unknown> };
+    const second = send.mock.calls[1]?.[0] as { input: Record<string, unknown> };
+    expect(first.input).toMatchObject({
+      KeyConditionExpression: "sessionId = :s AND timestampSeq > :since",
+      FilterExpression: "stream = :stream",
+      Limit: 1,
+      ScanIndexForward: true,
+      ExpressionAttributeValues: {
+        ":s": "session-1",
+        ":stream": "stdout",
+        ":since": "2026-01-01T00:00:00.000Z\uffff",
+      },
+    });
+    expect(second.input).toMatchObject({
+      Limit: 1,
+      ExclusiveStartKey: { sessionId: "session-1", timestampSeq: "first" },
+    });
   });
 });

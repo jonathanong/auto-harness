@@ -119,6 +119,11 @@ describe("authoritative durable reads", () => {
       "first",
       "second",
     ]);
+    expect(
+      (await restarted.getLogsDurable("session", { stream: "stdout", limit: 1 })).map(
+        (record) => record.content,
+      ),
+    ).toEqual(["first"]);
     expect(restarted.getWorktree("worktree")?.path).toBe("/worktree");
     expect(restarted.getArchive("session")?.body).toContain("first");
     expect((await reader.updateRepositoryDurable("repository", { name: "renamed" })).ok).toBe(true);

@@ -570,11 +570,17 @@ Get **historical** session logs. For live streaming, use the [WebSocket API](web
 
 **Query parameters:**
 
-| Param    | Type   | Description                                      |
-| -------- | ------ | ------------------------------------------------ |
-| `stream` | string | Filter by stream: `stdout`, `stderr`, `system`   |
-| `since`  | string | ISO 8601 timestamp — return logs after this time |
-| `limit`  | number | Max log entries (default: 1000)                  |
+| Param    | Type    | Description                                                                          |
+| -------- | ------- | ------------------------------------------------------------------------------------ |
+| `stream` | string  | Optional enum: `stdout`, `stderr`, or `system`                                       |
+| `since`  | string  | Optional ISO 8601 timestamp with an explicit timezone; return logs strictly after it |
+| `limit`  | integer | Optional result cap: default `1000`, minimum `1`, safe maximum `10000`               |
+
+Results are always ascending by the durable `timestampSeq` key (timestamp then
+agent sequence). Filters apply before `limit`. Invalid query parameters return
+`400 VALIDATION_ERROR`; a missing or inaccessible session returns `404 NOT_FOUND`.
+Storage failures return `500 INTERNAL_ERROR`. This endpoint is historical only:
+it neither opens a WebSocket live tail nor reads S3 archives in the current release.
 
 **Response:** `200 OK`
 

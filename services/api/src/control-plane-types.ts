@@ -4,6 +4,7 @@ import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 export type { ConnectionRecord } from "./db/plane-storage-types.ts";
+export type { LogQuery, LogRecord } from "./db/plane-storage-types.ts";
 
 export type ScheduleRecord = {
   id: string;
@@ -23,15 +24,6 @@ export type ScheduleRecord = {
   concurrencyId?: string;
   /** Computed for API responses; never persisted. */
   activeSessionId?: string | null;
-};
-
-export type LogRecord = {
-  sessionId: string;
-  timestampSeq: string;
-  stream: string;
-  content: string;
-  timestamp: string;
-  seq: number;
 };
 
 export type ArchiveObject = {
