@@ -143,6 +143,9 @@ export async function ownedDelete(
   markers: readonly OwnedDeletionMarker[],
   write: TransactionItem,
 ): Promise<void> {
+  if (markers.length > 99) {
+    throw new Error("catalog delete exceeds DynamoDB's 100 transaction action limit");
+  }
   await ctx.doc.send(
     new TransactWriteCommand({
       TransactItems: [...withMarkerTable(ctx, ownedMarkerConditions([...markers])), write],

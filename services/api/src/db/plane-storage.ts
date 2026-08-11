@@ -81,8 +81,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return providerAccounts.listProviderAccounts(this.ctx);
   }
 
-  deleteProviderAccount(id: string): Promise<boolean> {
-    return providerAccounts.deleteProviderAccount(this.ctx, id);
+  deleteProviderAccount(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return providerAccounts.deleteProviderAccount(this.ctx, id, markers);
   }
 
   putCommand(

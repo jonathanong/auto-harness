@@ -5,6 +5,11 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
+import {
+  ownedMarkerConditions,
+  type OwnedDeletionMarker,
+  withMarkerTable,
+} from "./plane-storage-deletion-markers.ts";
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 
 export async function putProviderAccount(
@@ -72,14 +77,22 @@ export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<Provid
   return records;
 }
 
-export async function deleteProviderAccount(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
+export async function deleteProviderAccount(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<boolean> {
   const account = await getProviderAccount(ctx, id);
   if (!account) return false;
   if (!(await ensureProviderAccountCount(ctx, account.providerId))) return false;
+  if ((markers?.length ?? 0) > 98) {
+    throw new Error("catalog delete exceeds DynamoDB's 100 transaction action limit");
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...withMarkerTable(ctx, ownedMarkerConditions(markers ?? [])),
           {
             Delete: {
               TableName: ctx.tables.providerAccounts,

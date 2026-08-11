@@ -87,12 +87,16 @@ export async function deleteProviderAccountDurable(
   if (!state.storage) return deleteProviderAccount(state, id);
   await getProviderAccountDurable(state, id);
   if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
-  return withDeletionMarkers(state, [`provider-account:${id}`], async () => {
+  return withDeletionMarkers(state, [`provider-account:${id}`], async (owner) => {
     const refs = await refreshDeleteReferences(state);
     if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
     const result = deleteConflict("provider account", dependenciesForAccount(refs, id));
     if (!result.ok) return result;
-    if (!(await state.storage!.deleteProviderAccount(id))) {
+    if (
+      !(await state.storage!.deleteProviderAccount(id, [
+        { key: `provider-account:${id}`, owner, now: state.now() },
+      ]))
+    ) {
       const authoritative = await state.storage!.getProviderAccount(id);
       if (authoritative) state.providerAccounts.set(id, authoritative);
       return { ok: false, error: "provider account changed concurrently", conflict: true };
