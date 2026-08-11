@@ -6,13 +6,13 @@ import { auditAppendFailureRequests } from "./audit-route-failure-test-helpers.t
 import { auditFixture } from "./audit-test-helpers.ts";
 
 describe("audit route acknowledgement", () => {
-  it("fails closed when a route's durable audit append is unavailable", async () => {
-    const plane = auditFixture();
-    const { handler } = createLocalApp({ plane, authMode: "disabled" });
-    plane.appendAuditLog = async () => {
-      throw new Error("audit down");
-    };
+  it("fails closed when each route's durable audit append is unavailable", async () => {
     for (const [method, path, body] of auditAppendFailureRequests) {
+      const plane = auditFixture();
+      const { handler } = createLocalApp({ plane, authMode: "disabled" });
+      plane.appendAuditLog = async () => {
+        throw new Error("audit down");
+      };
       expect((await invokeHandler(handler, method, path, body)).status).toBe(500);
     }
   });
