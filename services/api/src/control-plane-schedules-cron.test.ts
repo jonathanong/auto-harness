@@ -93,4 +93,59 @@ describe("schedule UTC cron validation", () => {
     expect(plane.tryClaimScheduleFire(schedule.id, legacyCursor, now)).not.toBeNull();
     expect(plane.getSchedule(schedule.id)?.nextRunAt).toBe("2026-01-01T00:01:00.000Z");
   });
+
+  it("keeps manual and cron claims behind schedule state and session creation guards", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const plane = new ControlPlane({ now: () => now, scheduleIdFactory: () => "schedule-1" });
+    seedBaseCommand(plane);
+    expect(plane.triggerSchedule("missing", now)).toEqual({
+      ok: false,
+      error: "schedule not found",
+    });
+
+    const disabled = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "disabled",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 60,
+      enabled: false,
+    });
+    expect(plane.triggerSchedule(disabled.id, now)).toEqual({
+      ok: false,
+      error: "schedule is disabled",
+    });
+    expect(plane.evaluateCron(now)).toEqual([]);
+
+    plane.state.schedules.delete(disabled.id);
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "nightly",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 60,
+    });
+    const stored = plane.state.schedules.get(schedule.id)!;
+    expect(plane.tryClaimScheduleFire(schedule.id, "stale-cursor", now)).toBeNull();
+
+    stored.nextRunAt = "2026-01-02T00:00:00.000Z";
+    expect(plane.tryClaimScheduleFire(schedule.id, stored.nextRunAt, now)).toBeNull();
+    expect(plane.evaluateCron(now)).toEqual([]);
+
+    stored.nextRunAt = now;
+    stored.target = { commandId: "missing" };
+    expect(plane.triggerSchedule(schedule.id, now)).toEqual({
+      ok: false,
+      error: "commandId missing not found",
+    });
+    expect(plane.tryClaimScheduleFire(schedule.id, now, now)).toBeNull();
+
+    stored.target = { commandId: "cmd-base" };
+    stored.repositoryId = "";
+    expect(plane.triggerSchedule(schedule.id, now)).toEqual({
+      ok: false,
+      error: "repositoryId is required",
+    });
+    expect(plane.tryClaimScheduleFire(schedule.id, now, now)).toBeNull();
+  });
 });
