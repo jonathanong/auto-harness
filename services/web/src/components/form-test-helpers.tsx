@@ -15,6 +15,7 @@ const router = {
   refresh: vi.fn(),
   replace: vi.fn(),
 } satisfies AppRouterInstance;
+const mountedRoots = new Set<() => void>();
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,7 +32,12 @@ export function mountForm(node: React.ReactNode) {
       </AppRouterContext.Provider>,
     ),
   );
-  return { container, unmount: () => act(() => root.unmount()) };
+  const unmount = () => {
+    if (!mountedRoots.delete(unmount)) return;
+    act(() => root.unmount());
+  };
+  mountedRoots.add(unmount);
+  return { container, unmount };
 }
 
 export function field<T extends HTMLElement>(container: Element, pw: string): T {
@@ -71,7 +77,6 @@ export function createApiFake(...replies: ApiReply[]) {
 export function submit(form: HTMLFormElement) {
   act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 }
-
 export function press(element: HTMLElement) {
   act(() => element.click());
 }
@@ -82,8 +87,8 @@ export function json(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" },
   });
 }
-
 afterEach(() => {
+  for (const unmount of mountedRoots) unmount();
   document.body.replaceChildren();
   router.back.mockReset();
   router.forward.mockReset();
