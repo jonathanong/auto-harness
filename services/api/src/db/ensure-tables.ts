@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
+import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
@@ -67,6 +68,7 @@ export async function ensureControlPlaneTables(opts: {
       },
     ],
   });
+  await ensureSessionsRepositoryIndex(ddb, names.sessions);
 
   await createIfMissing(ddb, {
     TableName: names.sessions,

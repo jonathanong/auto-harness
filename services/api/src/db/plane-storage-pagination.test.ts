@@ -191,4 +191,28 @@ describe("DynamoDB storage pagination", () => {
       ExpressionAttributeValues: { ":repositoryId": "repo-1" },
     });
   });
+
+  it("falls back to a filtered scan while the repository index is unavailable", async () => {
+    let queryAttempts = 0;
+    const send = async (command: { input: Record<string, unknown> }) => {
+      if (command.input.IndexName === "repositoryId-createdAt") {
+        queryAttempts += 1;
+        const error = new Error("index is still being created");
+        error.name = "ValidationException";
+        throw error;
+      }
+      return {
+        Items: [{ id: "session-1", repositoryId: "repo-1", createdAt: "2026-01-01" }],
+      };
+    };
+    const ctx = {
+      doc: { send },
+      tables: { sessions: "Sessions" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
+      { id: "session-1" },
+    ]);
+    expect(queryAttempts).toBe(1);
+  });
 });

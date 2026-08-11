@@ -67,6 +67,7 @@ export default async function SessionsPage({
         items={items}
         hrefBase="/sessions"
         emptyMessage="No sessions for this agent."
+        search={filters.q}
       />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>

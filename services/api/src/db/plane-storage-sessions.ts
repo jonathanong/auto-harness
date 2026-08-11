@@ -28,6 +28,7 @@ import {
 } from "./plane-storage-deletion-markers.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
+const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
 
 class SessionIdCollisionError extends Error {
   constructor(sessionId: string) {
@@ -270,16 +271,54 @@ export async function listSessionsByRepository(
   ctx: PlaneStorageCtx,
   repositoryId: string,
 ): Promise<SessionRecord[]> {
+  try {
+    const records: SessionRecord[] = [];
+    let startKey: Record<string, unknown> | undefined;
+    do {
+      const res = await ctx.doc.send(
+        new QueryCommand({
+          TableName: ctx.tables.sessions,
+          IndexName: SESSIONS_REPOSITORY_INDEX,
+          KeyConditionExpression: "repositoryId = :repositoryId",
+          ExpressionAttributeValues: { ":repositoryId": repositoryId },
+          ScanIndexForward: true,
+          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+        }),
+      );
+      records.push(
+        ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
+      );
+      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey && Object.keys(startKey).length > 0);
+    return records;
+  } catch (error) {
+    if (!isRepositoryIndexUnavailable(error)) throw error;
+    return listSessionsByRepositoryScan(ctx, repositoryId);
+  }
+}
+
+function isRepositoryIndexUnavailable(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ValidationException"
+  );
+}
+
+/** Compatibility path while an existing table's new GSI is being created. */
+async function listSessionsByRepositoryScan(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+): Promise<SessionRecord[]> {
   const records: SessionRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
-      new QueryCommand({
+      new ScanCommand({
         TableName: ctx.tables.sessions,
-        IndexName: "repositoryId-createdAt",
-        KeyConditionExpression: "repositoryId = :repositoryId",
+        FilterExpression: "repositoryId = :repositoryId",
         ExpressionAttributeValues: { ":repositoryId": repositoryId },
-        ScanIndexForward: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -287,7 +326,7 @@ export async function listSessionsByRepository(
       ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
     );
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
