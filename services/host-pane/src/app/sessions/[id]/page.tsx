@@ -33,7 +33,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
   let logs: LogEntry[] = [];
   try {
     const data = await apiGet<{ items: LogEntry[] }>(
-      `/api/v1/sessions/${encodeURIComponent(id)}/logs`,
+      `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=10000`,
     );
     logs = data.items ?? [];
   } catch {

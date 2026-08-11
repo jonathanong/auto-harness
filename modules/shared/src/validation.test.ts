@@ -234,6 +234,10 @@ describe("formatLogSortKey", () => {
       formatLogSortKey("2026-08-01T12:00:00.000Z", 12) <
         formatLogSortKey("2026-08-01T12:00:00.000Z", 100),
     ).toBe(true);
+    expect(formatLogSortKey("2026-08-01T13:00:00+01:00", 1)).toBe(
+      "2026-08-01T12:00:00.000Z#0000000001",
+    );
+    expect(formatLogSortKey("legacy-clock", 1)).toBe("legacy-clock#0000000001");
   });
 
   it("rejects bad inputs", () => {
