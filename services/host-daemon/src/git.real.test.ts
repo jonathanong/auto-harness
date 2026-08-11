@@ -2,7 +2,7 @@
  * Real-git integration: checkoutRef must support a branch that is already
  * checked out in the primary worktree (documented ref: "main").
  */
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -73,5 +73,29 @@ describe("createGitClient real git", () => {
     await client.checkoutRef({ cwd: wt, ref: "main" });
     const head = await client.revParse(wt, "HEAD");
     expect(head).toBe(mainSha);
+  });
+
+  it("recognizes an absolute worktree when the repository path is a symlink", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-link-"));
+    const externalRoot = mkdtempSync(join(tmpdir(), "ah-git-external-"));
+    roots.push(root, externalRoot);
+    const repo = join(root, "nested", "repo");
+    const linkedRepo = join(root, "repo-link");
+    const wt = join(externalRoot, "wt-1");
+    mkdirSync(repo, { recursive: true });
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "f.txt"), "main\n");
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["branch", "-M", "main"]);
+    symlinkSync(repo, linkedRepo);
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.ensureWorktree({ repoPath: repo, worktreePath: wt, branch: "main" });
+    await expect(
+      client.ensureWorktree({ repoPath: linkedRepo, worktreePath: wt, branch: "main" }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -1,3 +1,6 @@
+import { realpath } from "node:fs/promises";
+import { resolve } from "node:path";
+
 import type { ProcessRunner } from "./executor.ts";
 
 export type GitClient = {
@@ -36,6 +39,30 @@ async function runGit(
   };
 }
 
+async function canonicalPath(path: string): Promise<string> {
+  const absolutePath = resolve(path);
+  try {
+    return await realpath(absolutePath);
+  } catch {
+    // Keep lexical normalization for scripted or not-yet-created paths.
+    return absolutePath;
+  }
+}
+
+async function listedWorktreePaths(output: string, repoPath: string): Promise<Set<string>> {
+  const paths = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.startsWith("worktree ")) {
+      continue;
+    }
+    const worktreePath = line.slice("worktree ".length);
+    if (worktreePath.length > 0) {
+      paths.add(await canonicalPath(resolve(repoPath, worktreePath)));
+    }
+  }
+  return paths;
+}
+
 export function createGitClient(runner: ProcessRunner): GitClient {
   return {
     async ensureRepo(path: string) {
@@ -48,7 +75,8 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     async ensureWorktree({ repoPath, worktreePath, branch }) {
       await this.ensureRepo(repoPath);
       const list = await runGit(runner, repoPath, ["worktree", "list", "--porcelain"]);
-      if (list.stdout.includes(worktreePath)) {
+      const worktreeIdentity = await canonicalPath(resolve(repoPath, worktreePath));
+      if ((await listedWorktreePaths(list.stdout, repoPath)).has(worktreeIdentity)) {
         return;
       }
       // Always add detached so the branch can remain checked out in the main tree.
