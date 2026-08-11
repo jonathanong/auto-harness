@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { deleteCommand } from "./control-plane-command-delete.ts";
+import { deleteCommand, deleteCommandDurable } from "./control-plane-command-delete.ts";
+import { deleteProviderDurable } from "./control-plane-provider-delete.ts";
 import { deleteRepository } from "./control-plane-repository-delete.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
@@ -40,5 +41,89 @@ describe("non-durable catalog deletes with storage", () => {
     expect(deleteRepository(state, "repository")).toEqual({ ok: true });
     await Promise.all(state.pendingPersists);
     expect(deleted).toEqual(["repository"]);
+  });
+
+  it("retains a command when refreshed durable references prove it is still scheduled", async () => {
+    const state = createControlPlaneState();
+    const command = {
+      id: "command",
+      name: "command",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.commands.set(command.id, command);
+    const deleted: string[] = [];
+    state.storage = {
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => {},
+      listSchedules: async () => [
+        {
+          id: "schedule",
+          repositoryId: "repository",
+          target: { commandId: command.id },
+          fallbacks: [],
+        },
+      ],
+      listAllSessions: async () => [],
+      listAllWorktrees: async () => [],
+      listHostInventories: async () => [],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+      listCommands: async () => [command],
+      deleteCommand: async (id: string) => void deleted.push(id),
+    } as never;
+    await expect(deleteCommandDurable(state, command.id)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(deleted).toEqual([]);
+    expect(state.commands.get(command.id)).toEqual(command);
+  });
+
+  it("retains a provider when refreshed durable commands still reference it", async () => {
+    const state = createControlPlaneState();
+    const provider = {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const command = {
+      id: "command",
+      name: "command",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: provider.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.providers.set(provider.id, provider);
+    const deleted: string[] = [];
+    state.storage = {
+      getProvider: async () => provider,
+      listProviderAccounts: async () => [],
+      listCommands: async () => [command],
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => {},
+      listSchedules: async () => [],
+      listAllSessions: async () => [],
+      listAllWorktrees: async () => [],
+      listHostInventories: async () => [],
+      listProviders: async () => [provider],
+      deleteProvider: async (id: string) => {
+        deleted.push(id);
+        return true;
+      },
+    } as never;
+    await expect(deleteProviderDurable(state, provider.id)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(deleted).toEqual([]);
+    expect(state.providers.get(provider.id)).toEqual(provider);
   });
 });
