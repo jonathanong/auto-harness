@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@auto-harness/ui";
 
 import { ChangePasswordForm } from "../../components/change-password-form.tsx";
+import { SettingsPageClient } from "../../components/settings-page-client.tsx";
 import { apiGet } from "../../lib/api.ts";
 
 type Principal = {
@@ -8,6 +9,8 @@ type Principal = {
   role: "admin" | "operator" | "read-only";
   kind: "admin" | "user" | "service-account";
 };
+
+export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const principal =
@@ -63,6 +66,7 @@ export default async function SettingsPage() {
           </Card>
         )
       ) : null}
+      <SettingsPageClient />
     </div>
   );
 }
