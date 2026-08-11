@@ -97,6 +97,27 @@ describe("LocalScheduler", () => {
     await scheduler.stop();
   });
 
+  it("reports a failed operation to the default local logger", async () => {
+    const error = new Error("temporary DynamoDB failure");
+    const logger = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const { calls, plane } = makePlane({
+        cron: async () => {
+          throw error;
+        },
+      });
+      const scheduler = new LocalScheduler(plane);
+
+      scheduler.start();
+      await flush();
+      expect(logger).toHaveBeenCalledWith("local scheduler operation failed", error);
+      expect(calls).toEqual(["cron", "ack", "stale", "queued", "scheduled"]);
+      await scheduler.stop();
+    } finally {
+      logger.mockRestore();
+    }
+  });
+
   it("uses a one-minute default and rejects invalid intervals", async () => {
     const { plane } = makePlane();
     const scheduler = new LocalScheduler(plane);

@@ -3,6 +3,10 @@ import type { ControlPlane } from "./control-plane.ts";
 /** EventBridge-equivalent cadence for the local control plane. */
 export const DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS = 60_000;
 
+function reportSchedulerError(error: unknown): void {
+  console.error("local scheduler operation failed", error);
+}
+
 type SchedulerPlane = Pick<
   ControlPlane,
   | "evaluateCronDurable"
@@ -37,7 +41,7 @@ export class LocalScheduler {
   constructor(plane: SchedulerPlane, options: LocalSchedulerOptions = {}) {
     this.plane = plane;
     this.intervalMs = options.intervalMs ?? DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS;
-    this.onError = options.onError;
+    this.onError = options.onError ?? reportSchedulerError;
     if (!Number.isFinite(this.intervalMs) || this.intervalMs <= 0) {
       throw new RangeError("local scheduler intervalMs must be a positive finite number");
     }
