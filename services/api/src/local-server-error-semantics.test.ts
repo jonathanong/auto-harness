@@ -45,6 +45,16 @@ describe("local route error semantics", () => {
     const missing = await invokeHandler(handler, "POST", "/api/v1/sessions/missing/cancel", {});
     expect(missing.status).toBe(404);
     expect(errorCode(missing)).toBe("NOT_FOUND");
+
+    plane.cancelSessionDurable = async () => ({ ok: false, error: "session cannot cancel" });
+    const conflictCancel = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/sessions/missing/cancel",
+      {},
+    );
+    expect(conflictCancel.status).toBe(409);
+    expect(errorCode(conflictCancel)).toBe("CONFLICT");
   });
 
   it("does not turn host backend failures into invalid JSON errors", async () => {
