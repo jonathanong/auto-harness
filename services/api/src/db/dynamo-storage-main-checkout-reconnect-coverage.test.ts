@@ -126,6 +126,18 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
     ).Item;
     expect(item).toMatchObject({ assignmentConnectionId: opts.connectionId });
     expect(item?.reconnectDeadlineAt).toBeUndefined();
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({ TableName: tables.hostLocks, Key: { hostId: opts.hostId } }),
+        )
+      ).Item?.mainCheckoutLeases,
+    ).toMatchObject({
+      [opts.repositoryId]: {
+        sessionId: opts.sessionId,
+        connectionId: opts.connectionId,
+      },
+    });
 
     await ctx.doc.send(
       new PutCommand({
