@@ -1,14 +1,20 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  esbuild: { jsx: "automatic" },
   test: {
-    include: ["modules/**/*.test.ts", "services/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     testTimeout: 60_000,
     coverage: {
       provider: "v8",
-      include: ["modules/*/src/**/*.ts", "services/*/src/**/*.ts"],
+      include: [
+        "modules/*/src/**/*.ts",
+        "services/*/src/**/*.ts",
+        // Provider scope forms are exercised in happy-dom with real React and Next contexts.
+        "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx",
+      ],
       exclude: [
-        "**/*.test.ts",
+        "**/*.test.{ts,tsx}",
         "**/*-test-helpers.ts",
         "**/dist/**",
         "**/.next/**",
@@ -39,9 +45,8 @@ export default defineConfig({
         "**/db/plane-storage-sessions.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
-        // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
+        // Next.js app routers and app-owned components remain e2e-only.
         "**/app/**",
-        "**/components/**",
         "**/modules/ui/**",
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
