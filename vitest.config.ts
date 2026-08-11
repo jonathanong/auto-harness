@@ -31,7 +31,7 @@ export default defineConfig({
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
-        "**/*-test-helpers.ts",
+        "**/*-test-helpers.{ts,tsx}",
         "**/dist/**",
         "**/.next/**",
         "**/types.ts",
