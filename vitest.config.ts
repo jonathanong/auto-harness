@@ -23,6 +23,8 @@ export default defineConfig({
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
         "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button}.tsx",
         "modules/ui/src/components/{session-actions,session-filters,session-logs}.tsx",
+        // Host settings forms are exercised in happy-dom with real React and Next contexts.
+        "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -127,6 +129,13 @@ export default defineConfig({
           functions: 100,
           statements: 100,
         },
+        "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
       },
       reporter: ["text", "lcov"],
     },
