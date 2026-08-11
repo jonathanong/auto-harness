@@ -26,5 +26,15 @@ describe("session ordering", () => {
     expect(compareSessions(first, samePriority, "priority_asc")).toBeLessThan(0);
     expect(compareSessionToCursor(samePriority, position, "priority_desc")).toBeLessThan(0);
     expect(compareSessionToCursor(samePriority, position, "priority_asc")).toBeGreaterThan(0);
+
+    const sameDate = session("c", "2026-01-01", 1);
+    expect(compareSessions(first, sameDate, "latest")).toBeGreaterThan(0);
+    expect(compareSessions(first, sameDate, "oldest")).toBeLessThan(0);
+    expect(compareSessions(first, sameDate, "priority_desc")).toBeGreaterThan(0);
+    expect(compareSessions(first, sameDate, "priority_asc")).toBeLessThan(0);
+    expect(compareSessionToCursor(sameDate, position, "latest")).toBeLessThan(0);
+    expect(compareSessionToCursor(sameDate, position, "oldest")).toBeGreaterThan(0);
+    expect(compareSessionToCursor(sameDate, position, "priority_desc")).toBeLessThan(0);
+    expect(compareSessionToCursor(sameDate, position, "priority_asc")).toBeGreaterThan(0);
   });
 });

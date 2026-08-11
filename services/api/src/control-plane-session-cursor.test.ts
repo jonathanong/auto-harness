@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHmac } from "node:crypto";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import {
@@ -69,5 +70,12 @@ describe("session cursor primitives", () => {
     expect(() => decodeSessionCursor(state, malformed, base)).toThrow(InvalidSessionCursorError);
     const primitive = encodeSessionCursor(state, null as unknown as SessionCursor);
     expect(() => decodeSessionCursor(state, primitive, base)).toThrow(InvalidSessionCursorError);
+    const invalidJson = Buffer.from("{", "utf8").toString("base64url");
+    const signature = createHmac("sha256", state.sessionCursorSecret)
+      .update(invalidJson)
+      .digest("base64url");
+    expect(() => decodeSessionCursor(state, `${invalidJson}.${signature}`, base)).toThrow(
+      InvalidSessionCursorError,
+    );
   });
 });
