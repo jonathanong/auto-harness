@@ -7,9 +7,13 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("page-dashboard")).toBeVisible();
     await expect(page.getByTestId("dashboard-heading")).toHaveText("Dashboard");
     await expect(page.getByTestId("dashboard-stats")).toBeVisible();
+    await expect(page.getByTestId("stat-running")).toBeVisible();
     await expect(page.getByTestId("stat-running-value")).toBeVisible();
+    await expect(page.getByTestId("stat-queued")).toBeVisible();
     await expect(page.getByTestId("stat-queued-value")).toBeVisible();
+    await expect(page.getByTestId("stat-hosts-online")).toBeVisible();
     await expect(page.getByTestId("stat-hosts-online-value")).toBeVisible();
+    await expect(page.getByTestId("dashboard-api-error")).toBeHidden();
   });
 
   test("nav links are present", async ({ page }) => {

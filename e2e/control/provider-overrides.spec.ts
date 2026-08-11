@@ -68,6 +68,11 @@ test.describe("control plane provider account scope overrides", () => {
       },
     });
 
+    // The settings tab exposes the host attachment link.
+    await page.goto(`/repositories/${repoId}?tab=settings`);
+    await expect(page.getByTestId("repository-settings")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId(`repository-attached-host-${hostId}`)).toBeVisible();
+
     // Disable at repository scope.
     await page.goto(`/repositories/${repoId}?tab=provider-accounts`);
     await expect(page.getByTestId("repository-provider-accounts-tab")).toBeVisible({
@@ -80,6 +85,8 @@ test.describe("control plane provider account scope overrides", () => {
     await expect(repoRow).toContainText(`${providerName}-default`);
     await expect(page.getByTestId(`scope-provider-enabled-form-${account.id}`)).toBeVisible();
     await expect(page.getByTestId(`scope-provider-command-form-${account.id}`)).toBeVisible();
+    await expect(page.getByTestId(`scope-provider-enabled-error-${account.id}`)).toHaveCount(0);
+    await expect(page.getByTestId(`scope-provider-command-error-${account.id}`)).toHaveCount(0);
     await page
       .getByTestId(`scope-provider-enabled-select-${account.id}`)
       .selectOption({ label: "Disabled" });
