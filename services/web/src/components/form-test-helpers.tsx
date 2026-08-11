@@ -16,7 +16,7 @@ const router = {
   replace: vi.fn(),
 } satisfies AppRouterInstance;
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 export { router };
 
@@ -53,10 +53,6 @@ export function setValue(
 
 export function submit(form: HTMLFormElement) {
   act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-}
-
-export function press(element: HTMLElement) {
-  act(() => element.click());
 }
 
 export function json(body: unknown, status = 200): Response {
