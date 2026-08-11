@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { startLocalServer } from "./local-server.ts";
 import { MemorySessionStore } from "./memory-store.ts";
@@ -82,5 +82,21 @@ describe("startLocalServer", () => {
         plane: new ControlPlane(),
       }),
     ).rejects.toBeTruthy();
+  });
+
+  it("starts and stops the autonomous local scheduler with the listener", async () => {
+    const plane = new ControlPlane();
+    const cron = vi.spyOn(plane, "evaluateCronDurable");
+    const server = await startLocalServer({
+      port: 17500 + Math.floor(Math.random() * 100),
+      useDynamo: false,
+      enableWs: false,
+      plane,
+      scheduler: { intervalMs: 60_000 },
+    });
+
+    await vi.waitFor(() => expect(cron).toHaveBeenCalledTimes(1));
+    await server.close();
+    expect(await server.scheduler.tick()).toBe(false);
   });
 });
