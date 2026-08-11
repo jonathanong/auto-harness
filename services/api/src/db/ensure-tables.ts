@@ -24,9 +24,6 @@ async function createIfMissing(
   client: DynamoDBClient,
   input: ConstructorParameters<typeof CreateTableCommand>[0],
 ): Promise<void> {
-  if (!input?.TableName) {
-    return;
-  }
   if (await tableExists(client, input.TableName)) {
     return;
   }

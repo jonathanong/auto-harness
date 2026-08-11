@@ -18,12 +18,10 @@ export default defineConfig({
         "**/providers.ts",
         "**/daemon-transport.ts",
         "**/cli.ts",
-        // DynamoDB Local SDK wiring — covered by dynamo.test.ts integration, not line-perfect unit coverage
-        "**/db/dynamo.ts",
-        "**/db/ensure-tables.ts",
-        "**/db/plane-storage.ts",
+        // Follow-up DynamoDB storage-adapter coverage tranches: base/catalog/locks,
+        // sessions, then auth/clear/reconnect/main-checkout. The core client/table/
+        // bootstrap adapter is instrumented here by real-Dynamo tests.
         "**/db/plane-storage-*.ts",
-        "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
         // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
         "**/app/**",
