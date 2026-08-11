@@ -83,4 +83,19 @@ describe("catalog deletion markers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("releases ownership when the guarded delete itself rejects", async () => {
+    const released: string[] = [];
+    const state = createControlPlaneState();
+    state.storage = {
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async (key: string) => void released.push(key),
+    } as never;
+    await expect(
+      withDeletionMarkers(state, ["repository:r", "command:c"], async () => {
+        throw new Error("delete failed");
+      }),
+    ).rejects.toThrow("delete failed");
+    expect(released).toEqual(["command:c", "repository:r"]);
+  });
 });

@@ -147,4 +147,50 @@ describe("catalog delete references in every route shape", () => {
       ),
     ).toEqual([]);
   });
+
+  it("keeps unrelated catalog rows out while recognizing direct account and command inventory attachments", () => {
+    const mixed: DeleteReferences = {
+      ...refs,
+      schedules: [
+        ...refs.schedules,
+        {
+          id: "other-schedule",
+          repositoryId: "other",
+          target: { commandId: "other" },
+          fallbacks: [],
+        },
+      ],
+      sessions: [
+        ...refs.sessions,
+        { ...refs.sessions[0], id: "other-session", target: { commandId: "other" }, fallbacks: [] },
+      ],
+      inventories: [
+        {
+          hostId: "direct-host",
+          repositories: [{ id: "other", worktrees: [] }],
+          providerAccounts: [{ providerAccountId: "account", commandId: "command" }],
+        },
+      ],
+      accounts: [
+        ...refs.accounts,
+        { ...refs.accounts[0], id: "other-account", providerId: "other" },
+      ],
+      commands: [
+        ...refs.commands,
+        { ...refs.commands[0], id: "other-command", providerId: "other" },
+      ],
+    };
+    expect(dependenciesForProvider(mixed, "provider")).not.toContainEqual({
+      kind: "provider-account",
+      id: "other-account",
+    });
+    expect(dependenciesForAccount(mixed, "account")).toContainEqual({
+      kind: "host-inventory",
+      id: "direct-host",
+    });
+    expect(dependenciesForCommand(mixed, "command")).toContainEqual({
+      kind: "host-inventory",
+      id: "direct-host",
+    });
+  });
 });
