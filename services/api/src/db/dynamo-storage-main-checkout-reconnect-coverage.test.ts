@@ -5,7 +5,6 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
@@ -13,35 +12,24 @@ import {
   markMainCheckoutReconnectPending,
 } from "./plane-storage-main-checkout-reconnect.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
-
-let client: DynamoDBClient;
-let ctx: PlaneStorageCtx;
-let tables: DynamoTableNames;
+let client: DynamoDBClient, ctx: PlaneStorageCtx, tables: DynamoTableNames;
 let available = false;
-
 beforeAll(async () => {
   const clients = createDynamoClients();
   client = clients.client;
   try {
     await client.send(new ListTablesCommand({}));
-    tables = await ensureControlPlaneTables({
-      client,
-      prefix: `AhMainReconnect${process.pid}${Date.now()}`,
-    });
+    tables = await ensureControlPlaneTables({ client, prefix: `AhMR${process.pid}${Date.now()}` });
     ctx = { doc: clients.doc, tables };
     available = true;
-  } catch {
-    available = false;
-  }
+  } catch {}
 });
-
 afterAll(async () => {
   if (!available) return;
   await Promise.all(
     Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
   );
 });
-
 describe("DynamoDB Local main-checkout reconnect transactions", () => {
   it("allows only one pending mark in a real conditional race", async () => {
     if (!available) return;
@@ -69,7 +57,6 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
         },
       }),
     );
-
     const opts = {
       sessionId: "mark-session",
       hostId: "mark-host",
@@ -93,7 +80,6 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
       await markMainCheckoutReconnectPending(ctx, { ...opts, connectionId: "stale-connection" }),
     ).toBe(false);
   });
-
   it("confirms a reconnect once, with and without the observed deadline", async () => {
     if (!available) return;
     await ctx.doc.send(
@@ -132,14 +118,11 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
     };
     expect(await confirmMainCheckoutReconnect(ctx, opts)).toBe(true);
     expect(await confirmMainCheckoutReconnect(ctx, opts)).toBe(false);
-
-    const item = (
-      await ctx.doc.send(
-        new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
-      )
-    ).Item;
-    expect(item).toMatchObject({ assignmentConnectionId: opts.connectionId });
-    expect(item?.reconnectDeadlineAt).toBeUndefined();
+    const session = await ctx.doc.send(
+      new GetCommand({ TableName: tables.sessions, Key: { id: opts.sessionId } }),
+    );
+    expect(session.Item).toMatchObject({ assignmentConnectionId: opts.connectionId });
+    expect(session.Item?.reconnectDeadlineAt).toBeUndefined();
     expect(
       (
         await ctx.doc.send(
@@ -152,7 +135,6 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
         connectionId: opts.connectionId,
       },
     });
-
     await ctx.doc.send(
       new PutCommand({
         TableName: tables.hostLocks,
@@ -192,7 +174,6 @@ describe("DynamoDB Local main-checkout reconnect transactions", () => {
       }),
     ).toBe(true);
   });
-
   it("rethrows a real DynamoDB outage rather than reporting a race loss", async () => {
     if (!available) return;
     const unavailable = { ...ctx, tables: { ...tables, hostLocks: "missing-reconnect-table" } };
