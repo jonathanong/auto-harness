@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { deleteCommand, deleteCommandDurable } from "./control-plane-command-delete.ts";
 import { deleteProviderDurable } from "./control-plane-provider-delete.ts";
-import { deleteRepository } from "./control-plane-repository-delete.ts";
+import { deleteRepository, deleteRepositoryDurable } from "./control-plane-repository-delete.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 
 const now = "2026-01-01T00:00:00.000Z";
@@ -125,5 +125,44 @@ describe("non-durable catalog deletes with storage", () => {
     });
     expect(deleted).toEqual([]);
     expect(state.providers.get(provider.id)).toEqual(provider);
+  });
+
+  it("retains a repository when refreshed durable schedules still reference it", async () => {
+    const state = createControlPlaneState();
+    const repository = {
+      id: "repository",
+      name: "repository",
+      url: "https://example.test/repository",
+      defaultBranch: "main",
+      createdAt: now,
+      updatedAt: now,
+    };
+    state.repositories.set(repository.id, repository);
+    const deleted: string[] = [];
+    state.storage = {
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => {},
+      listSchedules: async () => [
+        {
+          id: "schedule",
+          repositoryId: repository.id,
+          target: { commandId: "command" },
+          fallbacks: [],
+        },
+      ],
+      listAllSessions: async () => [],
+      listAllWorktrees: async () => [],
+      listHostInventories: async () => [],
+      listProviders: async () => [],
+      listProviderAccounts: async () => [],
+      listCommands: async () => [],
+      deleteRepository: async (id: string) => void deleted.push(id),
+    } as never;
+    await expect(deleteRepositoryDurable(state, repository.id)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(deleted).toEqual([]);
+    expect(state.repositories.get(repository.id)).toEqual(repository);
   });
 });

@@ -147,6 +147,16 @@ describe("catalog delete references", () => {
   it("derives stable Dynamo marker keys for every catalog reference shape", () => {
     expect(referenceMarkers("now", {})).toEqual([]);
     expect(
+      inventoryReferenceMarkers("now", {
+        hostId: "host",
+        repositories: [{ id: "repo", worktrees: [{}] }],
+        providerAccounts: [{ providerAccountId: "account" }],
+      }),
+    ).toEqual([
+      { key: "provider-account:account", now: "now" },
+      { key: "repository:repo", now: "now" },
+    ]);
+    expect(
       referenceMarkers("now", {
         repositoryId: "repo",
         target: { providerId: "provider" },
