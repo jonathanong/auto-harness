@@ -1,6 +1,7 @@
 import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
+import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
 export async function updateProviderAccount(
   ctx: PlaneStorageCtx,
@@ -46,6 +47,8 @@ export async function updateProviderAccount(
     values,
   };
   if (opts.patch.providerId && opts.patch.providerId !== opts.expectedProviderId) {
+    if (!(await ensureProviderAccountCount(ctx, opts.expectedProviderId ?? ""))) return false;
+    if (!(await ensureProviderAccountCount(ctx, opts.patch.providerId))) return false;
     return moveProviderAccount(ctx, {
       ...common,
       oldProviderId: opts.expectedProviderId,

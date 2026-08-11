@@ -12,6 +12,7 @@ import {
   type PlaneStorageCtx,
   type ProviderRecord,
 } from "./plane-storage-types.ts";
+import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
 export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Promise<void> {
   await ctx.doc.send(
@@ -57,6 +58,7 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
 }
 
 export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
+  if (!(await ensureProviderAccountCount(ctx, id))) return false;
   try {
     await ctx.doc.send(
       new DeleteCommand({

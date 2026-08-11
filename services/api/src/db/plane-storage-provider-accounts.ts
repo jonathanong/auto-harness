@@ -1,4 +1,9 @@
-import { GetCommand, ScanCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  ScanCommand,
+  TransactWriteCommand,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 
@@ -6,6 +11,7 @@ export async function putProviderAccount(
   ctx: PlaneStorageCtx,
   rec: ProviderAccountRecord,
 ): Promise<boolean> {
+  if (!(await ensureProviderAccountCount(ctx, rec.providerId))) return false;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -67,6 +73,7 @@ export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<Provid
 export async function deleteProviderAccount(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
   const account = await getProviderAccount(ctx, id);
   if (!account) return false;
+  if (!(await ensureProviderAccountCount(ctx, account.providerId))) return false;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -75,7 +82,7 @@ export async function deleteProviderAccount(ctx: PlaneStorageCtx, id: string): P
             Delete: {
               TableName: ctx.tables.providerAccounts,
               Key: { id },
-              ConditionExpression: "providerId = :providerId AND version = :version",
+              ConditionExpression: `providerId = :providerId AND ${versionCondition(account.version ?? 0)}`,
               ExpressionAttributeValues: {
                 ":providerId": account.providerId,
                 ":version": account.version,
@@ -101,8 +108,41 @@ export async function deleteProviderAccount(ctx: PlaneStorageCtx, id: string): P
   }
 }
 
+/** Backfill legacy provider reference counts once, guarded against concurrent initializers. */
+export async function ensureProviderAccountCount(
+  ctx: PlaneStorageCtx,
+  providerId: string,
+): Promise<boolean> {
+  const provider = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.providers, Key: { id: providerId } }),
+  );
+  if (!provider.Item) return false;
+  if (typeof (provider.Item as { accountCount?: unknown }).accountCount === "number") return true;
+  const count = (await listProviderAccounts(ctx)).filter(
+    (account) => account.providerId === providerId,
+  ).length;
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.providers,
+        Key: { id: providerId },
+        UpdateExpression: "SET accountCount = :count",
+        ConditionExpression: "attribute_exists(id) AND attribute_not_exists(accountCount)",
+        ExpressionAttributeValues: { ":count": count },
+      }),
+    );
+  } catch (err) {
+    if (!isConditionalFailure(err)) throw err;
+  }
+  return true;
+}
+
 function normalize(record: ProviderAccountRecord | undefined): ProviderAccountRecord | null {
   return record ? { ...record, version: record.version ?? 0 } : null;
+}
+
+function versionCondition(expectedVersion: number): string {
+  return expectedVersion === 0 ? "attribute_not_exists(version)" : "version = :version";
 }
 
 function isConditionalFailure(err: unknown): boolean {
