@@ -130,6 +130,7 @@ async function runProcessAndFinish(
       status: "timed_out",
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+      ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });
   }
 
@@ -138,6 +139,7 @@ async function runProcessAndFinish(
       status: "cancelled",
       exitCode: result.exitCode,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+      ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });
   }
 
@@ -148,6 +150,7 @@ async function runProcessAndFinish(
       errorCode: "usage_limit",
       errorMessage: "Usage limit detected in CLI output",
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+      ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });
   }
 
@@ -156,6 +159,7 @@ async function runProcessAndFinish(
       status: "completed",
       exitCode: 0,
       ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+      ...(result.usage !== undefined ? { usage: result.usage } : {}),
     });
   }
 
@@ -164,5 +168,6 @@ async function runProcessAndFinish(
     exitCode: result.exitCode,
     errorMessage: `process exited with code ${String(result.exitCode)}`,
     ...(cliResumeRef !== undefined ? { cliResumeRef } : {}),
+    ...(result.usage !== undefined ? { usage: result.usage } : {}),
   });
 }

@@ -128,6 +128,7 @@ export {
 } from "./provider-account-parse.ts";
 
 export type { Command, Provider, ProviderAccount, ResumeRefCapture } from "./providers.ts";
+export { validateUsageRates, type SessionUsage, type UsageRates } from "./usage.ts";
 export {
   isValidCliResumeRef,
   MAX_COMMAND_ARGV_ITEMS,

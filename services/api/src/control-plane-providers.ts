@@ -1,4 +1,10 @@
-import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+/* eslint-disable max-lines */
+import {
+  isValidSlugName,
+  SLUG_NAME_HINT,
+  validateUsageRates,
+  type UsageRates,
+} from "@auto-harness/shared";
 
 import type { ProviderRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -23,7 +29,7 @@ function findProviderByName(
 
 export function createProvider(
   state: ControlPlaneState,
-  input: { id?: string; name: string; defaultCommandId?: string | null },
+  input: { id?: string; name: string; defaultCommandId?: string | null; usageRates?: UsageRates },
 ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
   const result = prepareCreateProvider(state, input);
   if (!result.ok) return result;
@@ -36,7 +42,7 @@ export function createProvider(
 
 function prepareCreateProvider(
   state: ControlPlaneState,
-  input: { id?: string; name: string; defaultCommandId?: string | null },
+  input: { id?: string; name: string; defaultCommandId?: string | null; usageRates?: UsageRates },
 ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
   if (!input.name) {
     return { ok: false, error: "name is required" };
@@ -58,6 +64,7 @@ function prepareCreateProvider(
     defaultCommandId: input.defaultCommandId ?? null,
     createdAt: at,
     updatedAt: at,
+    ...(input.usageRates ? { usageRates: input.usageRates } : {}),
   };
   return { ok: true, provider: rec };
 }
@@ -96,7 +103,7 @@ export function listProviders(state: ControlPlaneState): ProviderRecord[] {
 export function updateProvider(
   state: ControlPlaneState,
   id: string,
-  patch: Partial<{ name: string; defaultCommandId: string | null }>,
+  patch: Partial<{ name: string; defaultCommandId: string | null; usageRates: UsageRates | null }>,
 ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
   const result = prepareUpdateProvider(state, id, patch);
   if (!result.ok) return result;
@@ -110,11 +117,21 @@ export function updateProvider(
 function prepareUpdateProvider(
   state: ControlPlaneState,
   id: string,
-  patch: Partial<{ name: string; defaultCommandId: string | null }>,
+  patch: Partial<{ name: string; defaultCommandId: string | null; usageRates: UsageRates | null }>,
 ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
   const existing = state.providers.get(id);
   if (!existing) {
     return { ok: false, error: "provider not found" };
+  }
+  if (
+    patch.usageRates !== undefined &&
+    patch.usageRates !== null &&
+    !validateUsageRates(patch.usageRates)
+  ) {
+    return {
+      ok: false,
+      error: "usageRates must contain uppercase ISO currency and non-negative micros",
+    };
   }
   if (patch.name !== undefined) {
     if (!isValidSlugName(patch.name)) {
@@ -129,7 +146,11 @@ function prepareUpdateProvider(
     updatedAt: state.now(),
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.defaultCommandId !== undefined ? { defaultCommandId: patch.defaultCommandId } : {}),
+    ...(patch.usageRates !== undefined && patch.usageRates !== null
+      ? { usageRates: patch.usageRates }
+      : {}),
   };
+  if (patch.usageRates === null) delete next.usageRates;
   return { ok: true, provider: next };
 }
 

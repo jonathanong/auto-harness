@@ -5,6 +5,7 @@ import type {
   SessionStatus,
   SessionTerminalStatus,
 } from "@auto-harness/shared";
+import type { SessionUsage } from "@auto-harness/shared";
 
 import type { ProcessRunner } from "./executor.ts";
 import type { LogStreamer } from "./log-streamer.ts";
@@ -16,6 +17,7 @@ export type SessionRunResult = {
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
+  usage?: SessionUsage;
   logs: SessionLogChunk[];
 };
 
@@ -25,6 +27,7 @@ type SessionOutcome = {
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
+  usage?: SessionUsage;
 };
 
 export async function failSession(
@@ -75,5 +78,6 @@ export async function finishSession(
     ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
     ...(outcome.errorMessage !== undefined ? { errorMessage: outcome.errorMessage } : {}),
     ...(outcome.cliResumeRef !== undefined ? { cliResumeRef: outcome.cliResumeRef } : {}),
+    ...(outcome.usage !== undefined ? { usage: outcome.usage } : {}),
   };
 }

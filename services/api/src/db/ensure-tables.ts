@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import {
   BillingMode,
   CreateTableCommand,
@@ -219,6 +220,28 @@ export async function ensureControlPlaneTables(opts: {
 
   await createIfMissing(ddb, rateLimitTableDefinition(names.rateLimits));
   await enableRateLimitTtl(ddb, names.rateLimits);
+
+  await createIfMissing(ddb, {
+    TableName: names.sessionUsage,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "sessionId", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "usageKey", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [
+      { AttributeName: "sessionId", KeyType: KeyType.HASH },
+      { AttributeName: "usageKey", KeyType: KeyType.RANGE },
+    ],
+  });
+
+  await createIfMissing(ddb, {
+    TableName: names.sessionUsageKinds,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "sessionAttempt", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [{ AttributeName: "sessionAttempt", KeyType: KeyType.HASH }],
+  });
 
   return names;
 }

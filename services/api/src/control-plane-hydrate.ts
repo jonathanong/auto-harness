@@ -17,6 +17,7 @@ import type {
   ScheduleRecord,
 } from "./control-plane-types.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
+import type { UsageRecord } from "./usage.ts";
 
 type HydratableState = {
   storage: DynamoPlaneStorage | undefined;
@@ -32,6 +33,7 @@ type HydratableState = {
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
   auditLogs: Map<string, AuditLogRecord>;
+  usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveObject>;
   pendingAcks: { clear(): void };
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
@@ -54,6 +56,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     commands,
     archives,
     auditLogs,
+    usageRecords,
   ] = await Promise.all([
     state.storage.listAllSessions(),
     state.storage.listAllWorktrees(),
@@ -66,6 +69,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.storage.listCommands(),
     state.storage.listArchives(),
     state.storage.listAllAuditLogs(),
+    state.storage.listUsageRecords(),
   ]);
   const logs = new Map<string, LogRecord[]>();
   for (const session of sessions) {
@@ -88,6 +92,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.providerAccounts.clear();
   state.commands.clear();
   state.auditLogs.clear();
+  state.usageRecords.clear();
   state.archives.clear();
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
@@ -115,6 +120,9 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   for (const record of accounts) state.providerAccounts.set(record.id, record);
   for (const record of commands) state.commands.set(record.id, record);
   for (const record of auditLogs) state.auditLogs.set(record.id, record);
+  for (const record of usageRecords) {
+    state.usageRecords.set(`${record.sessionId}\0${record.attemptId}\0${record.sequence}`, record);
+  }
   for (const [sessionId, records] of logs) state.logs.set(sessionId, records);
   for (const record of archives) state.archives.set(record.key, record);
 }

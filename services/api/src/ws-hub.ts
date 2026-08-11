@@ -15,6 +15,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
+import { validateUsage } from "./usage.ts";
 
 const MAX_WS_FRAME_BYTES = 128 * 1024;
 const MAX_WS_MESSAGES_PER_SECOND = 100;
@@ -309,6 +310,14 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
     }
     if (message.type === "host:status") {
       return boundedText(message.hostId) && message.draining === true
+        ? (message as HostToServerMessage)
+        : null;
+    }
+    if (message.type === "session:usage") {
+      return boundedText(message.sessionId) &&
+        (message.worktreeId === null || boundedText(message.worktreeId)) &&
+        boundedText(message.attemptId) &&
+        validateUsage(message.usage)
         ? (message as HostToServerMessage)
         : null;
     }
