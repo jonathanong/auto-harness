@@ -161,6 +161,11 @@ test.describe("control plane providers", () => {
       "account is still attached",
     );
 
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-confirm`)).toBeHidden();
+    await page.getByTestId(`provider-account-remove-${account.id}`).click();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-error`)).toBeHidden();
+
     await page.getByTestId(`provider-account-remove-${account.id}-confirm-submit`).click();
     await expect(page.getByTestId(`provider-account-row-${account.id}`)).toBeHidden({
       timeout: 15_000,

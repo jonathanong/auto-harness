@@ -43,6 +43,10 @@ export function ConfirmButton({
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const close = () => {
+    setOpen(false);
+    setError(null);
+  };
 
   const trigger = (
     <Button type="button" variant={variant} size={size} disabled={disabled} data-pw={pw}>
@@ -54,8 +58,8 @@ export function ConfirmButton({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) setError(null);
+        if (!nextOpen) close();
+        else setOpen(true);
       }}
     >
       <DialogTrigger asChild>
@@ -72,7 +76,7 @@ export function ConfirmButton({
           </p>
         ) : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
+          <Button type="button" variant="outline" size="sm" onClick={close}>
             Cancel
           </Button>
           <Button
