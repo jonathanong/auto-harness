@@ -45,6 +45,10 @@ describe("historical log query contract", () => {
     "stream=other",
     "since=not-a-timestamp",
     "since=2026-02-30T00%3A00%3A00Z",
+    "since=2026-01-01T24%3A00%3A00Z",
+    "since=2026-01-01T00%3A60%3A00Z",
+    "since=2026-01-01T00%3A00%3A60Z",
+    "since=2026-01-01T00%3A00%3A00%2B24%3A00",
     "limit=0",
     "limit=1.5",
     "limit=1e3",
@@ -54,9 +58,10 @@ describe("historical log query contract", () => {
   });
 
   it("filters before limiting and keeps total timestampSeq order", () => {
-    expect(
-      selectLogs(records, { stream: "stdout", limit: 1 }).map((record) => record.content),
-    ).toEqual(["first"]);
+    const selected = selectLogs(records, { stream: "stdout", limit: 1 });
+    expect(selected.map((record) => record.content)).toEqual(["first"]);
+    selected[0]!.content = "changed";
+    expect(records[1]!.content).toBe("first");
     expect(
       selectLogs(records, { since: "2026-01-01T00:00:00.000Z", limit: 10 }).map(
         (record) => record.content,
