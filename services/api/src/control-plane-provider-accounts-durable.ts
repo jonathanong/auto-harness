@@ -10,6 +10,8 @@ import {
   prepareUpdateProviderAccount,
 } from "./control-plane-provider-accounts-prepare.ts";
 
+export { clearProviderAccountUsageLimitDurable } from "./control-plane-provider-accounts.ts";
+
 /** Persist an account before exposing it through the process cache. */
 export async function createProviderAccountDurable(
   state: ControlPlaneState,
@@ -18,7 +20,12 @@ export async function createProviderAccountDurable(
   if (!state.storage) return createProviderAccount(state, input);
   const result = prepareCreateProviderAccount(state, input);
   if (!result.ok) return result;
-  await state.storage.putProviderAccount({ ...result.account });
+  const created = await state.storage.putProviderAccount({ ...result.account });
+  if (!created) {
+    const authoritative = await state.storage.getProviderAccount(result.account.id);
+    if (authoritative) state.providerAccounts.set(authoritative.id, authoritative);
+    return { ok: false, error: "provider account already exists" };
+  }
   state.providerAccounts.set(result.account.id, result.account);
   return { ok: true, account: { ...result.account } };
 }
@@ -39,7 +46,8 @@ export async function updateProviderAccountDurable(
   if (!result.ok) return result;
   const updated = await state.storage.updateProviderAccount({
     id,
-    expectedUpdatedAt: result.existing.updatedAt,
+    expectedVersion: result.existing.version ?? 0,
+    expectedProviderId: result.existing.providerId,
     updatedAt: result.account.updatedAt,
     patch: result.patch,
   });
@@ -66,7 +74,11 @@ export async function deleteProviderAccountDurable(
 ): Promise<ReturnType<typeof deleteProviderAccount>> {
   if (!state.storage) return deleteProviderAccount(state, id);
   if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
-  await state.storage.deleteProviderAccount(id);
+  if (!(await state.storage.deleteProviderAccount(id))) {
+    const authoritative = await state.storage.getProviderAccount(id);
+    if (authoritative) state.providerAccounts.set(id, authoritative);
+    return { ok: false, error: "provider account changed concurrently" };
+  }
   state.providerAccounts.delete(id);
   return { ok: true };
 }

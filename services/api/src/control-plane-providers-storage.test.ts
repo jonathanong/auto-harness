@@ -34,6 +34,10 @@ describe("ControlPlane providers — real DynamoDB Local write-through", () => {
 
     plane.deleteCommand("c1");
     plane.deleteProviderAccount("a1");
+    // Account deletion decrements the provider's durable reference count in
+    // its own transaction, so wait for it before attempting the guarded
+    // provider delete.
+    await plane.settleStorage();
     plane.deleteProvider("p1");
     await plane.settleStorage();
 

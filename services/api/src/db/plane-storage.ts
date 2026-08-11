@@ -4,6 +4,8 @@ import {
   type ProviderRecord,
 } from "./plane-storage-types.ts";
 import * as catalog from "./plane-storage-catalog-providers.ts";
+import * as providerAccounts from "./plane-storage-provider-accounts.ts";
+import * as providerAccountUpdates from "./plane-storage-provider-account-updates.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -33,17 +35,18 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listProviders(this.ctx);
   }
 
-  deleteProvider(id: string): Promise<void> {
+  deleteProvider(id: string): Promise<boolean> {
     return catalog.deleteProvider(this.ctx, id);
   }
 
-  putProviderAccount(rec: ProviderAccountRecord): Promise<void> {
-    return catalog.putProviderAccount(this.ctx, rec);
+  putProviderAccount(rec: ProviderAccountRecord): Promise<boolean> {
+    return providerAccounts.putProviderAccount(this.ctx, rec);
   }
 
   updateProviderAccount(opts: {
     id: string;
-    expectedUpdatedAt: string;
+    expectedVersion: number;
+    expectedProviderId?: string;
     updatedAt: string;
     patch: Partial<
       Pick<
@@ -52,28 +55,28 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
       >
     >;
   }): Promise<boolean> {
-    return catalog.updateProviderAccount(this.ctx, opts);
+    return providerAccountUpdates.updateProviderAccount(this.ctx, opts);
   }
 
   clearProviderAccountUsageLimit(opts: {
     id: string;
-    expectedUpdatedAt: string;
+    expectedVersion: number;
     expectedUsageLimitedUntil?: string | null;
     updatedAt: string;
   }): Promise<boolean> {
-    return catalog.clearProviderAccountUsageLimit(this.ctx, opts);
+    return providerAccountUpdates.clearProviderAccountUsageLimit(this.ctx, opts);
   }
 
   getProviderAccount(id: string): Promise<ProviderAccountRecord | null> {
-    return catalog.getProviderAccount(this.ctx, id);
+    return providerAccounts.getProviderAccount(this.ctx, id);
   }
 
   listProviderAccounts(): Promise<ProviderAccountRecord[]> {
-    return catalog.listProviderAccounts(this.ctx);
+    return providerAccounts.listProviderAccounts(this.ctx);
   }
 
-  deleteProviderAccount(id: string): Promise<void> {
-    return catalog.deleteProviderAccount(this.ctx, id);
+  deleteProviderAccount(id: string): Promise<boolean> {
+    return providerAccounts.deleteProviderAccount(this.ctx, id);
   }
 
   putCommand(rec: CommandRecord): Promise<void> {

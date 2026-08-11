@@ -203,6 +203,26 @@ export async function putRepository(ctx: PlaneStorageCtx, rec: RepositoryRecord)
   );
 }
 
+/** Insert a repository without allowing a stale process to overwrite it. */
+export async function createRepository(
+  ctx: PlaneStorageCtx,
+  rec: RepositoryRecord,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.repositories,
+        Item: { ...rec },
+        ConditionExpression: "attribute_not_exists(id)",
+      }),
+    );
+    return true;
+  } catch (err) {
+    if (isConditionalFailed(err)) return false;
+    throw err;
+  }
+}
+
 export async function getRepository(
   ctx: PlaneStorageCtx,
   id: string,

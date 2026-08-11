@@ -47,11 +47,17 @@ export function updateProviderAccount(
       state.storage
         .updateProviderAccount({
           id,
-          expectedUpdatedAt: result.existing.updatedAt,
+          expectedVersion: result.existing.version ?? 0,
+          expectedProviderId: result.existing.providerId,
           updatedAt: result.account.updatedAt,
           patch: result.patch,
         })
-        .then(() => undefined),
+        .then(async (updated) => {
+          if (updated) return;
+          const authoritative = await state.storage?.getProviderAccount(id);
+          if (authoritative) state.providerAccounts.set(id, authoritative);
+          else state.providerAccounts.delete(id);
+        }),
     );
   }
   return { ok: true, account: { ...result.account } };
@@ -76,7 +82,7 @@ export function clearProviderAccountUsageLimit(
       state.storage
         .clearProviderAccountUsageLimit({
           id,
-          expectedUpdatedAt: existing.updatedAt,
+          expectedVersion: existing.version ?? 0,
           ...(existing.usageLimitedUntil !== undefined
             ? { expectedUsageLimitedUntil: existing.usageLimitedUntil }
             : {}),
@@ -101,10 +107,15 @@ export async function clearProviderAccountUsageLimitDurable(
     state.providerAccounts.delete(id);
     return { ok: false, error: "provider account not found" };
   }
-  const account = { ...existing, usageLimitedUntil: null, updatedAt: state.now() };
+  const account = {
+    ...existing,
+    usageLimitedUntil: null,
+    updatedAt: state.now(),
+    version: (existing.version ?? 0) + 1,
+  };
   const cleared = await state.storage.clearProviderAccountUsageLimit({
     id,
-    expectedUpdatedAt: existing.updatedAt,
+    expectedVersion: existing.version ?? 0,
     ...(existing.usageLimitedUntil !== undefined
       ? { expectedUsageLimitedUntil: existing.usageLimitedUntil }
       : {}),

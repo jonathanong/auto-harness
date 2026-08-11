@@ -1,178 +1,122 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
+import { ControlPlane } from "../control-plane.ts";
 import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
-import {
-  clearProviderAccountUsageLimit,
-  updateProviderAccount,
-} from "./plane-storage-catalog-providers.ts";
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const ctx = createDynamoTestCtx("StoPr");
 
-describe("DynamoDB Local storage — providers/provider-accounts/commands", () => {
-  it("persists providers, provider accounts, and commands", async () => {
-    if (!ctx.available || !ctx.storage) {
-      expect(true).toBe(true);
-      return;
-    }
-    const s = ctx.storage;
+const fixedNow = () => "2026-01-01T00:00:00.000Z";
 
-    await s.putProvider({
-      id: "prov-1",
-      name: "claude",
+describe("DynamoDB Local provider catalog storage", () => {
+  it("does not delete a provider while it owns an account", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const storage = ctx.storage;
+    await storage.putProvider({
+      id: "prov-guard",
+      name: "guard",
       defaultCommandId: null,
       createdAt: "t",
       updatedAt: "t",
     });
-    expect((await s.getProvider("prov-1"))?.name).toBe("claude");
-    expect(await s.getProvider("nope")).toBeNull();
-    expect((await s.listProviders()).length).toBeGreaterThan(0);
-
-    await s.putProviderAccount({
-      id: "acct-1",
-      providerId: "prov-1",
-      label: "jonathanrichardong@gmail.com",
-      createdAt: "t",
-      updatedAt: "t",
-    });
-    expect((await s.getProviderAccount("acct-1"))?.providerId).toBe("prov-1");
-    expect(await s.getProviderAccount("nope")).toBeNull();
-    expect((await s.listProviderAccounts()).length).toBeGreaterThan(0);
-
-    const accountBeforeEdit = await s.getProviderAccount("acct-1");
     expect(
-      await s.updateProviderAccount({
-        id: "acct-1",
-        expectedUpdatedAt: accountBeforeEdit?.updatedAt ?? "",
-        updatedAt: "t2",
-        patch: { label: "updated@example.com" },
+      await storage.putProviderAccount({
+        id: "acct-guard",
+        providerId: "prov-guard",
+        label: "guard@example.com",
+        usageLimitCooldownSeconds: 60,
+        usageLimitedUntil: null,
+        lastUsageLimitedAt: null,
+        lastAssignedAt: null,
+        createdAt: "t",
+        updatedAt: "t",
       }),
     ).toBe(true);
-    expect((await s.getProviderAccount("acct-1"))?.label).toBe("updated@example.com");
-
-    // A stale clear cannot erase a newer account version, and a stale update
-    // cannot recreate an account deleted by another control-plane process.
-    expect(
-      await s.clearProviderAccountUsageLimit({
-        id: "acct-1",
-        expectedUpdatedAt: accountBeforeEdit?.updatedAt ?? "",
-        updatedAt: "t3",
-      }),
-    ).toBe(false);
-
-    await s.putCommand({
-      id: "cmd-1",
-      name: "claude-print",
-      argv: ["claude", "-p"],
-      appendPrompt: true,
-      providerId: "prov-1",
+    expect(await storage.deleteProvider("prov-guard")).toBe(false);
+    await storage.putProvider({
+      id: "prov-next",
+      name: "next",
+      defaultCommandId: null,
       createdAt: "t",
       updatedAt: "t",
     });
-    expect((await s.getCommand("cmd-1"))?.argv).toEqual(["claude", "-p"]);
-    expect(await s.getCommand("nope")).toBeNull();
-    expect((await s.listCommands()).length).toBeGreaterThan(0);
-
-    await s.deleteProvider("prov-1");
-    expect(await s.getProvider("prov-1")).toBeNull();
-    await s.deleteProviderAccount("acct-1");
-    expect(await s.getProviderAccount("acct-1")).toBeNull();
     expect(
-      await s.updateProviderAccount({
-        id: "acct-1",
-        expectedUpdatedAt: "t2",
-        updatedAt: "t4",
-        patch: { label: "must-not-revive" },
+      await storage.updateProviderAccount({
+        id: "acct-guard",
+        expectedVersion: 1,
+        expectedProviderId: "prov-guard",
+        updatedAt: "t",
+        patch: { providerId: "prov-next" },
       }),
-    ).toBe(false);
-    await s.deleteCommand("cmd-1");
-    expect(await s.getCommand("cmd-1")).toBeNull();
+    ).toBe(true);
+    expect(await storage.deleteProvider("prov-guard")).toBe(true);
+    expect(await storage.deleteProvider("prov-next")).toBe(false);
+    expect(await storage.deleteProviderAccount("acct-guard")).toBe(true);
+    expect(await storage.deleteProvider("prov-next")).toBe(true);
   });
 
-  it("uses field-level conditional updates for account edits and clears", async () => {
-    const sent: Array<{ input?: Record<string, unknown> }> = [];
-    let conditionalFailure = false;
-    const fakeCtx = {
-      tables: { providerAccounts: "ProviderAccounts" },
-      doc: {
-        send: vi.fn(async (command: { input?: Record<string, unknown> }) => {
-          sent.push(command);
-          if (conditionalFailure) throw { name: "ConditionalCheckFailedException" };
-          return {};
-        }),
-      },
-    } as unknown as PlaneStorageCtx;
-
-    expect(
-      await updateProviderAccount(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "t1",
-        updatedAt: "t2",
-        patch: {
-          providerId: "prov-1",
-          label: "a",
-          usageLimitCooldownSeconds: 10,
-          usageLimitedUntil: null,
-        },
-      }),
-    ).toBe(true);
-    expect(sent[0]?.input?.UpdateExpression).toContain("SET updatedAt = :updatedAt");
-    expect(sent[0]?.input?.ConditionExpression).toBe(
-      "attribute_exists(id) AND updatedAt = :expectedUpdatedAt",
-    );
-
-    conditionalFailure = true;
-    expect(
-      await updateProviderAccount(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "stale",
-        updatedAt: "t3",
-        patch: { label: "stale" },
-      }),
-    ).toBe(false);
-    expect(
-      await clearProviderAccountUsageLimit(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "stale",
-        updatedAt: "t3",
-      }),
-    ).toBe(false);
-
-    conditionalFailure = false;
-    expect(
-      await clearProviderAccountUsageLimit(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "t2",
-        expectedUsageLimitedUntil: null,
-        updatedAt: "t4",
-      }),
-    ).toBe(true);
-    expect(sent.at(-1)?.input?.ConditionExpression).toContain(
-      "usageLimitedUntil = :expectedUsageLimitedUntil",
-    );
-
-    fakeCtx.doc.send.mockImplementationOnce(async () => {
-      throw new Error("storage unavailable");
+  it("uses a monotonic fence when fixed-clock workers update one account", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const storage = ctx.storage;
+    await storage.putProvider({
+      id: "prov-fence",
+      name: "fence",
+      defaultCommandId: null,
+      createdAt: "t",
+      updatedAt: "t",
     });
-    await expect(
-      updateProviderAccount(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "t4",
-        updatedAt: "t5",
-        patch: { label: "unavailable" },
-      }),
-    ).rejects.toThrow("storage unavailable");
-
-    fakeCtx.doc.send.mockImplementationOnce(async () => {
-      throw new Error("storage unavailable");
+    await storage.putProviderAccount({
+      id: "acct-fence",
+      providerId: "prov-fence",
+      label: "before",
+      usageLimitCooldownSeconds: 60,
+      usageLimitedUntil: null,
+      lastUsageLimitedAt: null,
+      lastAssignedAt: null,
+      createdAt: "t",
+      updatedAt: "t",
     });
-    await expect(
-      clearProviderAccountUsageLimit(fakeCtx, {
-        id: "acct-1",
-        expectedUpdatedAt: "t4",
-        expectedUsageLimitedUntil: null,
-        updatedAt: "t5",
-      }),
-    ).rejects.toThrow("storage unavailable");
+    const [first, second] = [
+      new ControlPlane({ storage, now: fixedNow }),
+      new ControlPlane({ storage, now: fixedNow }),
+    ];
+    await Promise.all([first.hydrateFromStorage(), second.hydrateFromStorage()]);
+    first.updateProviderAccount("acct-fence", { label: "first" });
+    second.updateProviderAccount("acct-fence", { label: "second" });
+    await Promise.all([first.settleStorage(), second.settleStorage()]);
+    const durable = await storage.getProviderAccount("acct-fence");
+    expect(durable).toMatchObject({ version: 2 });
+    expect(["first", "second"]).toContain(durable?.label);
+    const loser = durable?.label === "first" ? second : first;
+    expect(loser.getProviderAccount("acct-fence")).toEqual(durable);
+  });
+
+  it("keeps provider references valid while account creation races provider deletion", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const storage = ctx.storage;
+    await storage.putProvider({
+      id: "prov-race",
+      name: "race",
+      defaultCommandId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    const creator = new ControlPlane({ storage, now: fixedNow });
+    const deleter = new ControlPlane({ storage, now: fixedNow });
+    await Promise.all([creator.hydrateFromStorage(), deleter.hydrateFromStorage()]);
+    expect(
+      creator.createProviderAccount({
+        id: "acct-race",
+        providerId: "prov-race",
+        label: "race@example.com",
+      }).ok,
+    ).toBe(true);
+    expect(deleter.deleteProvider("prov-race").ok).toBe(true);
+    await Promise.all([creator.settleStorage(), deleter.settleStorage()]);
+    const [provider, account] = await Promise.all([
+      storage.getProvider("prov-race"),
+      storage.getProviderAccount("acct-race"),
+    ]);
+    expect(Boolean(provider)).toBe(Boolean(account));
+    if (account) expect(account.providerId).toBe("prov-race");
   });
 });

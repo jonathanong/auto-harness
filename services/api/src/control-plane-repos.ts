@@ -85,7 +85,12 @@ export async function createRepositoryDurable(
   if (!state.storage) return createRepository(state, input);
   const result = prepareCreateRepository(state, input);
   if (!result.ok) return result;
-  await state.storage.putRepository({ ...result.repository });
+  const created = await state.storage.createRepository({ ...result.repository });
+  if (!created) {
+    const authoritative = await state.storage.getRepository(result.repository.id);
+    if (authoritative) state.repositories.set(authoritative.id, authoritative);
+    return { ok: false, error: "repository already exists" };
+  }
   state.repositories.set(result.repository.id, result.repository);
   return { ok: true, repository: { ...result.repository } };
 }
