@@ -90,7 +90,7 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
     );
     records.push(...((res.Items ?? []) as LogRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -123,7 +123,7 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
     );
     records.push(...((res.Items ?? []) as ScheduleRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -162,7 +162,7 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
     );
     records.push(...((res.Items ?? []) as RepositoryRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -355,7 +355,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
     );
     records.push(...((res.Items ?? []) as ArchiveObject[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -393,7 +393,7 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
     );
     records.push(...((res.Items ?? []) as HostInventoryRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 

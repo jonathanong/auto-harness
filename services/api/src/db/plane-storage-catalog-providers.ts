@@ -37,7 +37,7 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
     );
     records.push(...((res.Items ?? []) as ProviderRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -185,7 +185,7 @@ export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<Provid
     );
     records.push(...((res.Items ?? []) as ProviderAccountRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -214,7 +214,7 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
     );
     records.push(...((res.Items ?? []) as CommandRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 

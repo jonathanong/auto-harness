@@ -46,7 +46,7 @@ export async function getAuthAccountByUsername(
     const user = res.Items?.[0] as AuthAccountRecord | undefined;
     if (user) return user;
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return null;
 }
 
@@ -62,7 +62,7 @@ export async function listAuthAccounts(ctx: PlaneStorageCtx): Promise<AuthAccoun
     );
     records.push(...((res.Items ?? []) as AuthAccountRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 

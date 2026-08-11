@@ -207,7 +207,7 @@ export async function listAllSessions(ctx: PlaneStorageCtx): Promise<SessionReco
     );
     items.push(...((res.Items ?? []) as Record<string, unknown>[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return items.map(itemToSession);
 }
 
@@ -232,7 +232,7 @@ export async function listSessionsByStatus(
     );
     records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 
@@ -306,7 +306,7 @@ export async function listAllWorktrees(ctx: PlaneStorageCtx): Promise<WorktreeRe
     );
     items.push(...((res.Items ?? []) as WorktreeRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return items;
 }
 
@@ -328,7 +328,7 @@ export async function listWorktreesForRepo(
     );
     records.push(...((res.Items ?? []) as WorktreeRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return records;
 }
 

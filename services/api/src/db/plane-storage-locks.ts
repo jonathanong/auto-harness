@@ -328,6 +328,6 @@ export async function listConnections(ctx: PlaneStorageCtx): Promise<ConnectionR
     );
     items.push(...((res.Items ?? []) as ConnectionRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return items;
 }

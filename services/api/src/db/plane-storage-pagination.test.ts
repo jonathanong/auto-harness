@@ -37,7 +37,7 @@ describe("DynamoDB storage pagination", () => {
         const page = command.input.ExclusiveStartKey ? 1 : 0;
         return {
           Items: pages[tableName]?.[page] ?? [],
-          ...(page === 0 ? { LastEvaluatedKey: { tableName } } : {}),
+          LastEvaluatedKey: page === 0 ? { tableName } : {},
         };
       },
     };

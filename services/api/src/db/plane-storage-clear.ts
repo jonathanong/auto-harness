@@ -51,7 +51,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+    } while (startKey && Object.keys(startKey).length > 0);
   }
   {
     let startKey: Record<string, unknown> | undefined;
@@ -71,7 +71,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+    } while (startKey && Object.keys(startKey).length > 0);
   }
   for (const s of await listSchedules(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.schedules, Key: { id: s.id } }));
@@ -121,6 +121,6 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+    } while (startKey && Object.keys(startKey).length > 0);
   }
 }
