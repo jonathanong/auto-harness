@@ -257,7 +257,7 @@ export function registerHost(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
-    draining?: boolean;
+    draining?: true;
     replaceExisting?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
@@ -384,7 +384,7 @@ export async function registerHostDurable(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
-    draining?: boolean;
+    draining?: true;
     replaceExisting?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
@@ -486,8 +486,6 @@ export async function registerHostDurable(
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
   state.disconnectedHosts.delete(opts.hostId);
-  if (opts.draining) state.drainingHosts.add(opts.hostId);
-  else state.drainingHosts.delete(opts.hostId);
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
   }
@@ -524,6 +522,11 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;
   }
+  // Keep the previous local drain state until every durable registration
+  // write succeeds. A failed replacement must not reopen a draining host or
+  // leave a failed draining registration excluded in this process.
+  if (opts.draining) state.drainingHosts.add(opts.hostId);
+  else state.drainingHosts.delete(opts.hostId);
   state.hostInventories.set(opts.hostId, registrationInventory);
   return { ok: true, connectionId };
 }
@@ -676,14 +679,14 @@ export async function drainHostDurable(
   // just as it is for assignment.
   const ownerConnectionId =
     connectionId ?? state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
-  if (ownerConnectionId) {
-    const marked = await state.storage.markHostDraining(hostId, ownerConnectionId);
-    if (!marked) {
-      return { ok: false, runningSessionIds: [] };
-    }
+  if (!ownerConnectionId) {
+    return { ok: false, runningSessionIds: [] };
+  }
+  const marked = await state.storage.markHostDraining(hostId, ownerConnectionId);
+  if (!marked) {
+    return { ok: false, runningSessionIds: [] };
   }
 
-  state.drainingHosts.add(hostId);
   const running = [...state.sessions.values()]
     .filter((s) => s.hostId === hostId && s.status === "running")
     .map((s) => s.id);
@@ -694,9 +697,17 @@ export async function drainHostDurable(
     // Keep the durable inventory truthful for readers and restart hydration.
     // The preceding lock transition is the scheduler authority if a write
     // races or a second process has a stale worktree cache.
-    await state.storage.setWorktreeOnline(wt.id, false);
+    if (
+      !(await state.storage.setWorktreeOnlineFenced(wt.id, ownerConnectionId, false, {
+        hostId,
+        connectionId: ownerConnectionId,
+      }))
+    ) {
+      return { ok: false, runningSessionIds: [] };
+    }
     state.worktrees.set(wt.id, { ...wt, online: false });
   }
+  state.drainingHosts.add(hostId);
   state.onHostMessage?.(hostId, { type: "host:drain" });
   return { ok: true, runningSessionIds: running };
 }

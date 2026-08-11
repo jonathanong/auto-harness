@@ -120,6 +120,7 @@ export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[
 export function handleHostMessage(
   state: ControlPlaneState,
   msg: HostToServerMessage,
+  sourceConnectionId?: string,
 ): { ok: boolean; error?: string } {
   switch (msg.type) {
     case "host:register": {
@@ -186,7 +187,7 @@ export function handleHostMessage(
         : { ok: false, error: "agent not connected" };
     }
     case "host:status": {
-      const result = drainHost(state, msg.hostId);
+      const result = drainHost(state, msg.hostId, sourceConnectionId);
       return result.ok ? { ok: true } : { ok: false, error: "stale host connection" };
     }
   }
@@ -231,7 +232,7 @@ export async function handleHostMessageDurable(
     // `onHostMessage`. Keeping it out of this result prevents a local WS hub
     // from delivering the same confirmation once through its bridge and once
     // as a direct socket response.
-    return handleHostMessage(state, msg);
+    return handleHostMessage(state, msg, sourceConnectionId);
   }
   const storage = state.storage;
   let fence: { hostId: string; connectionId: string } | undefined;

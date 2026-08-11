@@ -116,6 +116,25 @@ describe("durable host-message fencing", () => {
     ).toEqual({ ok: true });
   });
 
+  it("enforces the same source fence for an in-memory drain request", async () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "current");
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "stale",
+      ),
+    ).toEqual({ ok: false, error: "stale host connection" });
+    expect(plane.isDraining("h")).toBe(false);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "current",
+      ),
+    ).toEqual({ ok: true });
+    expect(plane.isDraining("h")).toBe(true);
+  });
+
   it("fences logs and terminal statuses to the current connection", async () => {
     const plane = new ControlPlane({ now: () => "now" });
     plane.state.sessions.set("s", running());

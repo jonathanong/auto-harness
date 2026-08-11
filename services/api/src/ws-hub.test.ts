@@ -1,7 +1,7 @@
 /* eslint-disable max-lines */
 import { createServer } from "node:http";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -187,6 +187,62 @@ describe("createPlaneWsBridge", () => {
         resolve();
       });
     });
+  });
+
+  it("sends host:draining only after the durable status handler confirms it", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane();
+    const handled = vi.spyOn(plane, "handleHostMessageDurable").mockImplementation(async (msg) => {
+      if (msg.type === "host:register") {
+        plane.state.hostConnection.set(msg.hostId, "connection-1");
+        return { ok: true, connectionId: "connection-1" };
+      }
+      if (msg.type === "host:status") return { ok: true, hostDraining: msg.hostId };
+      return { ok: false, error: "unexpected message" };
+    });
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const received: unknown[] = [];
+    await new Promise<void>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () =>
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "a1",
+            worktrees: [],
+            commandProfiles: [],
+          }),
+        ),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string };
+        received.push(message);
+        if (message.type === "host:registered") {
+          ws.send(JSON.stringify({ type: "host:status", hostId: "a1", draining: true }));
+        }
+        if (message.type === "host:draining") {
+          ws.close();
+          resolve();
+        }
+      });
+      ws.on("error", reject);
+      setTimeout(() => reject(new Error("timeout")), 3000);
+    });
+    expect(received).toContainEqual({ type: "host:draining", hostId: "a1" });
+    expect(handled).toHaveBeenLastCalledWith(
+      { type: "host:status", hostId: "a1", draining: true },
+      "connection-1",
+      false,
+    );
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   });
 
   it("authenticates a bound service account through the Authorization header", async () => {

@@ -137,7 +137,7 @@ export type HostToServerMessage =
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
       /** A reconnecting daemon retains drain until this shutdown completes. */
-      draining?: boolean;
+      draining?: true;
     }
   | { type: "session:ack"; sessionId: string; worktreeId: string | null; attemptId: string }
   | {
