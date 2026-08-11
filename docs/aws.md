@@ -183,6 +183,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | `WEB_ORIGIN`                     | ✓         | CORS allow-list origin                         |
 | `WS_API_ENDPOINT`                | ✓         | Management API endpoint for `postToConnection` |
 | `KMS_KEY_ID`                     | for Slack | Encrypt integration secrets                    |
+| `HARNESS_RATE_LIMIT_*`           | optional  | REST buckets, window, fail mode, and WS budget |
 | `AWS_REGION`                     | auto      | Region                                         |
 
 ---
@@ -202,6 +203,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | Connections             | `connectionId`    | —             | `hostId`                                      | Connect/disconnect; find agent connection for assign                       |
 | Worktrees               | `id`              | —             | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo                            |
 | AuditLogs               | `scope` (`audit`) | `timestampId` | —                                             | Append-only newest-first query; opaque cursors + exact filters             |
+| RateLimits              | `bucketKey`       | —             | —                                             | Atomic actor/bucket fixed-window counters with TTL                         |
 | Integrations            | `id`              | —             | —                                             | Get/put Slack config                                                       |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.

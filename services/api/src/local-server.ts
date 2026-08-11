@@ -29,7 +29,17 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     throw new Error("non-loopback API bind requires HARNESS_AUTH_MODE=required");
   }
   const enableWs = options.enableWs !== false;
-  const bridge = enableWs ? createPlaneWsBridge() : null;
+  const wsRateLimit =
+    options.wsRateLimitPerSecond ??
+    (Number.isInteger(Number(process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND))
+      ? Number(process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND)
+      : undefined);
+  const bridge = enableWs
+    ? createPlaneWsBridge({
+        ...(wsRateLimit && wsRateLimit > 0 ? { maxMessagesPerSecond: wsRateLimit } : {}),
+        ...(options.onRateLimitEvent ? { onRateLimitEvent: options.onRateLimitEvent } : {}),
+      })
+    : null;
 
   let plane = options.plane;
   let store = options.store;

@@ -44,6 +44,9 @@ EOF
 pnpm local:api
 # → http://127.0.0.1:7420
 
+# Optional rate-limit tuning (safe defaults are used when unset)
+# HARNESS_RATE_LIMIT_MUTATION=60 HARNESS_RATE_LIMIT_READ=300 pnpm local:api
+
 # Control-plane UI
 pnpm local:web
 # → http://127.0.0.1:7421

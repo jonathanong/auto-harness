@@ -58,6 +58,23 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
     let startKey: Record<string, unknown> | undefined;
     do {
       const res = await ctx.doc.send(
+        new ScanCommand({ TableName: ctx.tables.rateLimits, ExclusiveStartKey: startKey }),
+      );
+      for (const item of res.Items ?? []) {
+        await ctx.doc.send(
+          new DeleteCommand({
+            TableName: ctx.tables.rateLimits,
+            Key: { bucketKey: item.bucketKey },
+          }),
+        );
+      }
+      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey);
+  }
+  {
+    let startKey: Record<string, unknown> | undefined;
+    do {
+      const res = await ctx.doc.send(
         new ScanCommand({
           TableName: ctx.tables.concurrencyLocks,
           ExclusiveStartKey: startKey,

@@ -207,5 +207,12 @@ export async function ensureControlPlaneTables(opts: {
     ],
   });
 
+  await createIfMissing(ddb, {
+    TableName: names.rateLimits,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "bucketKey", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "bucketKey", KeyType: KeyType.HASH }],
+  });
+
   return names;
 }

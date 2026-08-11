@@ -88,6 +88,11 @@ export const DYNAMO_TABLES: TableDef[] = [
     sortKey: { name: "timestampId", type: "S" },
   },
   {
+    name: "RateLimits",
+    partitionKey: { name: "bucketKey", type: "S" },
+    ttlAttribute: "expiresAt",
+  },
+  {
     name: "Providers",
     partitionKey: { name: "id", type: "S" },
   },
