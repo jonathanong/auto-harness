@@ -3,6 +3,7 @@ import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
+import { updateScheduleDurable } from "./control-plane-schedules-durable.ts";
 
 /**
  * Durable repository, schedule, and host-inventory management delegates.
@@ -26,7 +27,7 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     id: string,
     patch: Parameters<typeof schedules.updateSchedule>[2],
   ): Promise<ReturnType<typeof schedules.updateSchedule>> {
-    return schedules.updateScheduleDurable(this.state, id, patch);
+    return updateScheduleDurable(this.state, id, patch);
   }
 
   deleteSchedule(id: string): ReturnType<typeof schedules.deleteSchedule> {
