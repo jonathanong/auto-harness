@@ -550,6 +550,7 @@ export async function enforceAckDeadlinesDurable(
             status: "queued",
             queueShard: session.queueShard,
             reason: "agent did not acknowledge assignment; requeued",
+            requireUnacknowledged: true,
           })
         : false;
     if (!won) {
