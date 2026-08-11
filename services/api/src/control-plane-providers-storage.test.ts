@@ -13,11 +13,11 @@ describe("ControlPlane providers — real DynamoDB Local write-through", () => {
     }
     const plane = new ControlPlane({ storage: ctx.storage, now: () => "t" });
 
-    // queueWrite fires each mutation's Dynamo write without awaiting it — settleStorage
-    // must run between mutations of the *same* record, or their writes can land out of
-    // order (nothing in production serializes same-key writes either; each of these
-    // corresponds to a separate request in practice, never fired back-to-back like this).
+    // queueWrite fires each mutation's Dynamo write without awaiting it. Settle the
+    // provider before creating its dependent account: the account insert atomically
+    // checks that its provider exists.
     plane.createProvider({ id: "p1", name: "claude" });
+    await plane.settleStorage();
     plane.createCommand({ id: "c1", name: "echo", argv: ["echo"] });
     plane.createProviderAccount({ id: "a1", providerId: "p1", label: "x@y.com" });
     await plane.settleStorage();
