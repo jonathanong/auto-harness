@@ -2,6 +2,7 @@ import type { HostWireMessage, SessionStatus, TargetRef } from "@auto-harness/sh
 
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
+import type { SecretEncryptor } from "./secret-crypto.ts";
 
 export type { ConnectionRecord } from "./db/plane-storage-types.ts";
 
@@ -55,6 +56,8 @@ export type ControlPlaneOptions = {
    * DynamoDB updates (Invariants 1, 3, 4).
    */
   storage?: DynamoPlaneStorage;
+  /** KMS-backed integration secret boundary. Missing means Slack writes fail closed. */
+  secretEncryptor?: SecretEncryptor;
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;

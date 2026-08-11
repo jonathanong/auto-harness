@@ -2,6 +2,7 @@ import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from 
 import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
+import { configuredSecretEncryptor } from "./secret-crypto.ts";
 
 export type CreateControlPlaneOptions = ControlPlaneOptions &
   CreateDynamoClientOptions & {
@@ -56,6 +57,9 @@ export async function createControlPlane(
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
     ...(options.webhookUrl !== undefined ? { webhookUrl: options.webhookUrl } : {}),
     ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),
+    ...(options.secretEncryptor !== undefined
+      ? { secretEncryptor: options.secretEncryptor }
+      : { secretEncryptor: configuredSecretEncryptor() }),
   });
   await plane.hydrateFromStorage();
   return { plane, storage };

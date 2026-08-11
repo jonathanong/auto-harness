@@ -4,12 +4,37 @@ import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
+import * as slack from "./control-plane-slack.ts";
 
 /**
  * Durable repository, schedule, and host-inventory management delegates.
  * This extension keeps the primary facade below the per-file size limit.
  */
 export class ControlPlaneManagement extends ControlPlaneCatalog {
+  getSlackIntegration(): ReturnType<typeof slack.getSlackIntegration> {
+    return slack.getSlackIntegration(this.state);
+  }
+
+  getSlackIntegrationDurable(): ReturnType<typeof slack.getSlackIntegrationDurable> {
+    return slack.getSlackIntegrationDurable(this.state);
+  }
+
+  createSlackIntegrationDurable(
+    input: slack.SlackConfigInput,
+  ): ReturnType<typeof slack.createSlackIntegrationDurable> {
+    return slack.createSlackIntegrationDurable(this.state, input);
+  }
+
+  updateSlackIntegrationDurable(
+    input: slack.SlackConfigPatch,
+  ): ReturnType<typeof slack.updateSlackIntegrationDurable> {
+    return slack.updateSlackIntegrationDurable(this.state, input);
+  }
+
+  deleteSlackIntegrationDurable(): ReturnType<typeof slack.deleteSlackIntegrationDurable> {
+    return slack.deleteSlackIntegrationDurable(this.state);
+  }
+
   async putScheduleDurable(
     input: Parameters<typeof schedules.putSchedule>[1],
   ): Promise<ReturnType<typeof schedules.putSchedule>> {

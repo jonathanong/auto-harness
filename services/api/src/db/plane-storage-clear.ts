@@ -14,6 +14,7 @@ import {
   listProviders,
 } from "./plane-storage-catalog-providers.ts";
 import { listAllAuditLogs } from "./plane-storage-audit.ts";
+import { getSlackIntegration } from "./plane-storage-integrations.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
@@ -107,6 +108,11 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         TableName: ctx.tables.auditLogs,
         Key: { scope: "audit", timestampId: `${audit.createdAt}#${audit.id}` },
       }),
+    );
+  }
+  if (await getSlackIntegration(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({ TableName: ctx.tables.integrations, Key: { id: "slack" } }),
     );
   }
   {

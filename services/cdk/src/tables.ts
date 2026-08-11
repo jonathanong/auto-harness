@@ -99,6 +99,10 @@ export const DYNAMO_TABLES: TableDef[] = [
     name: "Commands",
     partitionKey: { name: "id", type: "S" },
   },
+  {
+    name: "Integrations",
+    partitionKey: { name: "id", type: "S" },
+  },
 ];
 
 export const S3_ARCHIVE_BUCKET = {

@@ -207,5 +207,12 @@ export async function ensureControlPlaneTables(opts: {
     ],
   });
 
+  await createIfMissing(ddb, {
+    TableName: names.integrations,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
+    KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+  });
+
   return names;
 }

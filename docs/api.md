@@ -257,6 +257,63 @@ Delete a service account and revoke its API key. **Admin only.**
 
 ---
 
+### Integrations — Slack
+
+Slack configuration is a single global integration at `/integrations/slack`.
+All methods require an unscoped **admin** account; operators, read-only users,
+and repository- or host-scoped admins receive `403`.
+
+#### `POST /integrations/slack`
+
+Create the integration. `botToken` and `defaultChannel` are required.
+`botToken` must be an `xoxb-…` bot token and `defaultChannel` must be either a
+Slack channel name (for example `#harness`) or a Slack channel ID (for example
+`C0123ABCDE`). `signingSecret` is optional and is stored only for future
+verified Slack ingress; it does not enable OAuth or message delivery.
+
+```json
+{
+  "botToken": "xoxb-…",
+  "signingSecret": "optional-32-plus-character-hex-secret",
+  "defaultChannel": "#harness",
+  "enabled": true,
+  "notifications": {
+    "onSessionCreated": true,
+    "onSessionStarted": true,
+    "onSessionCompleted": true,
+    "onSessionFailed": true,
+    "onSessionCancelled": true,
+    "onScheduleCompleted": false
+  }
+}
+```
+
+#### `GET /integrations/slack`
+
+Return the current configuration without `botToken`, `signingSecret`, or
+ciphertext. The response includes only `botTokenConfigured` and
+`signingSecretConfigured` flags for those values.
+
+#### `PUT /integrations/slack`
+
+Replace the configuration. It uses the same complete body as `POST`, including
+the bot token, so an update never needs to decrypt secrets on the management
+path. Concurrent configuration changes return `409 CONFLICT` rather than
+silently overwriting one another.
+
+#### `DELETE /integrations/slack`
+
+Remove the configuration. **Response:** `204 No Content`.
+
+The API writes an audit event for every create, update, delete, validation
+failure, and storage failure. Request bodies and secret values are never sent
+to the audit writer. The KMS key is selected by required `KMS_KEY_ID`; if it is
+not configured or KMS encryption fails, create/update fail closed and no
+configuration is persisted, with `500 INTERNAL_ERROR` rather than a validation
+response.
+
+---
+
 ### Repositories
 
 #### `POST /repositories`

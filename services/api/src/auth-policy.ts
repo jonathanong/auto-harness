@@ -4,6 +4,11 @@ import type { Principal } from "./auth.ts";
 export function authorize(principal: Principal, method: string, pathname: string): boolean {
   const scopedAdmin =
     principal.role === "admin" && (!!principal.allowedRepositoryIds || !!principal.boundHostId);
+  // Integration credentials are global control-plane secrets. Repository/host
+  // scoped administrators must not gain access merely by having the admin role.
+  if (pathname === "/api/v1/integrations/slack") {
+    return principal.role === "admin" && !scopedAdmin;
+  }
   if (principal.role === "admin" && !scopedAdmin) return true;
   if (pathname.startsWith("/api/v1/auth/")) return false;
   if (pathname === "/api/v1/host/messages") {

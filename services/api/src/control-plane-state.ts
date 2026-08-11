@@ -17,6 +17,8 @@ import type {
   ProviderRecord,
   RepositoryRecord,
 } from "./db/plane-storage.ts";
+import type { SecretEncryptor } from "./secret-crypto.ts";
+import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateFromStorage } from "./control-plane-hydrate.ts";
 import type {
@@ -47,6 +49,9 @@ export type ControlPlaneState = {
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
+  /** Ciphertext-only integration cache. REST reads refresh from durable storage. */
+  slackIntegration: SlackIntegrationRecord | undefined;
+  secretEncryptor: SecretEncryptor | undefined;
   /** Append-only audit records hydrated for local/in-memory reads. */
   auditLogs: Map<string, AuditLogRecord>;
   archives: Map<string, ArchiveObject>;
@@ -98,6 +103,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     providers: new Map(),
     providerAccounts: new Map(),
     commands: new Map(),
+    slackIntegration: undefined,
+    secretEncryptor: options.secretEncryptor,
     auditLogs: new Map(),
     archives: new Map(),
     webhookDeliveries: [],
