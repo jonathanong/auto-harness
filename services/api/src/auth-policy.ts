@@ -6,6 +6,9 @@ export function authorize(principal: Principal, method: string, pathname: string
     principal.role === "admin" && (!!principal.allowedRepositoryIds || !!principal.boundHostId);
   if (principal.role === "admin" && !scopedAdmin) return true;
   if (pathname.startsWith("/api/v1/auth/")) return false;
+  if (method === "DELETE" && /^\/api\/v1\/schedules\/[^/]+$/.test(pathname)) {
+    return principal.role === "admin";
+  }
   if (pathname === "/api/v1/host/messages") {
     return (
       principal.kind === "service-account" &&

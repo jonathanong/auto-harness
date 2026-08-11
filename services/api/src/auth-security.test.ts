@@ -217,6 +217,20 @@ describe("control-plane authentication security", () => {
     expect(authorize(operator, "POST", "/api/v1/hosts/drain")).toBe(false);
     expect(authorize(admin, "POST", "/api/v1/auth/users")).toBe(true);
     expect(authorize(operator, "POST", "/api/v1/auth/users")).toBe(false);
+    const scheduleRoute = "/api/v1/schedules/schedule-1";
+    expect(authorize(readOnly, "GET", "/api/v1/schedules")).toBe(true);
+    expect(authorize(readOnly, "POST", "/api/v1/schedules")).toBe(false);
+    expect(authorize(readOnly, "PATCH", scheduleRoute)).toBe(false);
+    expect(authorize(readOnly, "POST", `${scheduleRoute}/trigger`)).toBe(false);
+    expect(authorize(readOnly, "DELETE", scheduleRoute)).toBe(false);
+    expect(authorize(operator, "POST", "/api/v1/schedules")).toBe(true);
+    expect(authorize(operator, "PATCH", scheduleRoute)).toBe(true);
+    expect(authorize(operator, "POST", `${scheduleRoute}/trigger`)).toBe(true);
+    expect(authorize(operator, "DELETE", scheduleRoute)).toBe(false);
+    expect(authorize(admin, "POST", "/api/v1/schedules")).toBe(true);
+    expect(authorize(admin, "PATCH", scheduleRoute)).toBe(true);
+    expect(authorize(admin, "POST", `${scheduleRoute}/trigger`)).toBe(true);
+    expect(authorize(admin, "DELETE", scheduleRoute)).toBe(true);
     expect(mayAccessRepository({ ...operator, allowedRepositoryIds: ["repo-a"] }, "repo-b")).toBe(
       false,
     );
