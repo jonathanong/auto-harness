@@ -131,4 +131,20 @@ describe("catalog delete references in every route shape", () => {
     const state = createControlPlaneState();
     await expect(refreshDeleteReferences(state)).resolves.toMatchObject({ schedules: [] });
   });
+
+  it("does not mistake an active session without a resolved route for a pinned catalog reference", () => {
+    const unresolved = { ...refs.sessions[0] };
+    delete unresolved.resolvedRoute;
+    delete unresolved.pinnedProviderAccountId;
+    delete unresolved.pinnedCommandId;
+    expect(
+      dependenciesForAccount({ ...refs, sessions: [unresolved], inventories: [] }, "account"),
+    ).toEqual([]);
+    expect(
+      dependenciesForCommand(
+        { ...refs, sessions: [unresolved], inventories: [], providers: [] },
+        "other",
+      ),
+    ).toEqual([]);
+  });
 });
