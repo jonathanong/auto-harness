@@ -30,11 +30,11 @@ Architecture: [aws.md](aws.md). Auth: [auth.md](auth.md).
 
 ### Updates
 
-| What changed                   | Where to look                                         |
-| ------------------------------ | ----------------------------------------------------- |
-| Local monorepo / API process   | [deploy-local.md](deploy-local.md#update)             |
-| AWS Lambda / infra / secrets   | [deploy-aws.md](deploy-aws.md#update)                 |
-| Agent binary, config, profiles | [deploy-host-daemon.md](deploy-host-daemon.md#update) |
+| What changed                   | Where to look                                            |
+| ------------------------------ | -------------------------------------------------------- |
+| Local monorepo / API process   | [deploy-local.md](deploy-local.md#update)                |
+| AWS foundation schema          | [deploy-aws.md](deploy-aws.md#synthesize-the-foundation) |
+| Agent binary, config, profiles | [deploy-host-daemon.md](deploy-host-daemon.md#update)    |
 
 Prefer **control plane first**, then **agents** (drain before agent restart).
 
@@ -43,7 +43,7 @@ Prefer **control plane first**, then **agents** (drain before agent restart).
 | Surface                              | Where to look                                           |
 | ------------------------------------ | ------------------------------------------------------- |
 | Local processes + DynamoDB container | [deploy-local.md](deploy-local.md#teardown)             |
-| AWS stack                            | [deploy-aws.md](deploy-aws.md#teardown)                 |
+| AWS foundation (synth-only)          | Not available—there is no deployed runtime stack yet    |
 | Single agent host                    | [deploy-host-daemon.md](deploy-host-daemon.md#teardown) |
 
 Always drain agents before destroying the control plane.

@@ -1,4 +1,4 @@
-import { CfnOutput, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
+import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -97,9 +97,29 @@ export class AutoHarnessFoundationStack extends Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      lifecycleRules: [
+        {
+          id: "ArchiveStorageTransitions",
+          transitions: [
+            {
+              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+              transitionAfter: Duration.days(30),
+            },
+            { storageClass: s3.StorageClass.GLACIER, transitionAfter: Duration.days(90) },
+          ],
+          noncurrentVersionTransitions: [
+            {
+              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+              transitionAfter: Duration.days(30),
+            },
+            { storageClass: s3.StorageClass.GLACIER, transitionAfter: Duration.days(90) },
+          ],
+        },
+      ],
       versioned: true,
       removalPolicy,
     });
+    archiveBucket.policy?.applyRemovalPolicy(removalPolicy);
 
     const tableResources = DYNAMO_TABLES.flatMap((definition) => {
       const table = tables[definition.name];

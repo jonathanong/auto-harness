@@ -58,7 +58,37 @@ describe("AutoHarnessFoundationStack", () => {
         IgnorePublicAcls: true,
         RestrictPublicBuckets: true,
       },
+      LifecycleConfiguration: {
+        Rules: [
+          {
+            Id: "ArchiveStorageTransitions",
+            Status: "Enabled",
+            Transitions: [
+              { StorageClass: "STANDARD_IA", TransitionInDays: 30 },
+              { StorageClass: "GLACIER", TransitionInDays: 90 },
+            ],
+            NoncurrentVersionTransitions: [
+              { StorageClass: "STANDARD_IA", TransitionInDays: 30 },
+              { StorageClass: "GLACIER", TransitionInDays: 90 },
+            ],
+          },
+        ],
+      },
       VersioningConfiguration: { Status: "Enabled" },
+    });
+    template.hasResource("AWS::S3::BucketPolicy", {
+      DeletionPolicy: "Retain",
+      UpdateReplacePolicy: "Retain",
+      Properties: {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Condition: { Bool: { "aws:SecureTransport": "false" } },
+              Effect: "Deny",
+            }),
+          ]),
+        },
+      },
     });
     template.hasResourceProperties("AWS::IAM::ManagedPolicy", {
       PolicyDocument: {
@@ -101,7 +131,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(16);
+    ).toHaveLength(17);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",
