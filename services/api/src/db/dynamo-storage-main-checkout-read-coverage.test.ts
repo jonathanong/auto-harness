@@ -1,0 +1,92 @@
+import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
+import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { getMainCheckoutCursor, getMainCheckoutLease } from "./plane-storage-main-checkout-read.ts";
+import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+
+let client: DynamoDBClient;
+let ctx: PlaneStorageCtx;
+let tables: DynamoTableNames;
+
+beforeAll(async () => {
+  const clients = createDynamoClients();
+  client = clients.client;
+  tables = await ensureControlPlaneTables({
+    client,
+    prefix: `AhMainRead${process.pid}${Date.now()}`,
+  });
+  ctx = { doc: clients.doc, tables };
+});
+
+afterAll(async () => {
+  await Promise.all(
+    Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
+  );
+});
+
+describe("DynamoDB Local main-checkout reads", () => {
+  it("reads the cursor and an exact repository lease", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: "read-host",
+          lastScheduledAssignedAt: "2026-01-01T00:00:00.000Z",
+          mainCheckoutLeases: {
+            "read-repository": { sessionId: "read-session", connectionId: "read-connection" },
+          },
+        },
+      }),
+    );
+
+    expect(await getMainCheckoutCursor(ctx, "read-host")).toBe("2026-01-01T00:00:00.000Z");
+    expect(await getMainCheckoutLease(ctx, "read-host", "read-repository")).toEqual({
+      sessionId: "read-session",
+      connectionId: "read-connection",
+    });
+  });
+
+  it("returns null for missing hosts, absent attributes, and malformed lease values", async () => {
+    expect(await getMainCheckoutCursor(ctx, "missing-read-host")).toBeNull();
+    expect(await getMainCheckoutLease(ctx, "missing-read-host", "read-repository")).toBeNull();
+
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: { hostId: "empty-read-host", mainCheckoutLeases: {} },
+      }),
+    );
+    expect(await getMainCheckoutCursor(ctx, "empty-read-host")).toBeNull();
+    expect(await getMainCheckoutLease(ctx, "empty-read-host", "read-repository")).toBeNull();
+
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: "malformed-read-host",
+          mainCheckoutLeases: { "read-repository": "not-a-lease" },
+        },
+      }),
+    );
+    expect(await getMainCheckoutLease(ctx, "malformed-read-host", "read-repository")).toBeNull();
+  });
+
+  it("rethrows a real DynamoDB resource failure", async () => {
+    await expect(
+      getMainCheckoutCursor(
+        { ...ctx, tables: { ...tables, hostLocks: "missing-main-read-table" } },
+        "read-host",
+      ),
+    ).rejects.toThrow();
+    await expect(
+      getMainCheckoutLease(
+        { ...ctx, tables: { ...tables, hostLocks: "missing-main-read-table" } },
+        "read-host",
+        "read-repository",
+      ),
+    ).rejects.toThrow();
+  });
+});

@@ -23,8 +23,6 @@ export default defineConfig({
         "**/db/plane-storage-sessions.ts",
         "**/db/plane-storage-auth.ts",
         "**/db/plane-storage-clear.ts",
-        "**/db/plane-storage-main-checkout-read.ts",
-        "**/db/plane-storage-main-checkout-reconnect.ts",
         "**/create-plane.ts",
         // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
         "**/app/**",
