@@ -46,6 +46,7 @@ export async function putProvider(
   // mandatory. The document client drops undefined expression values, so
   // include timestamp clauses only when the caller supplied them.
   const timestampUpdates: string[] = [];
+  const removals: string[] = [];
   const values: Record<string, unknown> = {
     ":name": rec.name,
     ":zero": 0,
@@ -62,10 +63,16 @@ export async function putProvider(
     timestampUpdates.push("updatedAt = :updatedAt");
     values[":updatedAt"] = rec.updatedAt;
   }
+  if (rec.usageRates === undefined) {
+    removals.push("usageRates");
+  } else {
+    timestampUpdates.push("usageRates = :usageRates");
+    values[":usageRates"] = rec.usageRates;
+  }
   const update = {
     TableName: ctx.tables.providers,
     Key: { id: rec.id },
-    UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
+    UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}${removals.length ? ` REMOVE ${removals.join(", ")}` : ""}`,
     ExpressionAttributeNames: { "#name": "name" },
     ExpressionAttributeValues: values,
   };

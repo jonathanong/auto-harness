@@ -44,6 +44,12 @@ type HydratableState = {
 /** Restore the complete durable snapshot before making it visible to callers. */
 export async function hydrateFromStorage(state: HydratableState): Promise<void> {
   if (!state.storage) return;
+  // Legacy storage fakes and adapters can still hydrate their pre-usage
+  // snapshot. Production Dynamo storage always implements this additive read.
+  const listUsageRecords =
+    typeof state.storage.listUsageRecords === "function"
+      ? state.storage.listUsageRecords()
+      : Promise.resolve([] as UsageRecord[]);
   const [
     sessions,
     worktrees,
@@ -69,7 +75,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.storage.listCommands(),
     state.storage.listArchives(),
     state.storage.listAllAuditLogs(),
-    state.storage.listUsageRecords(),
+    listUsageRecords,
   ]);
   const logs = new Map<string, LogRecord[]>();
   for (const session of sessions) {

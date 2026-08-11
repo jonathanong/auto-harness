@@ -60,7 +60,7 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
   }
 
   async getUsageDurable(sessionId?: string): Promise<ReturnType<typeof usage.usageRecords>> {
-    if (this.state.storage) {
+    if (this.state.storage && typeof this.state.storage.listUsageRecords === "function") {
       const records = await this.state.storage.listUsageRecords(sessionId);
       for (const record of records)
         this.state.usageRecords.set(

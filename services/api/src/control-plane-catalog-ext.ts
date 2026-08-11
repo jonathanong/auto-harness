@@ -29,6 +29,7 @@ export class ControlPlaneCatalog extends ControlPlaneReadFacade {
     id?: string;
     name: string;
     defaultCommandId?: string | null;
+    usageRates?: UsageRates;
   }): Promise<ReturnType<typeof providers.createProvider>> {
     return providers.createProviderDurable(this.state, input);
   }
