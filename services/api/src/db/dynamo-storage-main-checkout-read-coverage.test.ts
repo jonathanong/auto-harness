@@ -67,11 +67,27 @@ describe("DynamoDB Local main-checkout reads", () => {
         TableName: tables.hostLocks,
         Item: {
           hostId: "malformed-read-host",
-          mainCheckoutLeases: { "read-repository": "not-a-lease" },
+          mainCheckoutLeases: {
+            primitive: "not-a-lease",
+            empty: {},
+            missingConnectionId: { sessionId: "read-session" },
+            nonStringSessionId: { sessionId: 1, connectionId: "read-connection" },
+            nonStringConnectionId: { sessionId: "read-session", connectionId: 1 },
+          },
         },
       }),
     );
-    expect(await getMainCheckoutLease(ctx, "malformed-read-host", "read-repository")).toBeNull();
+    await expect(getMainCheckoutLease(ctx, "malformed-read-host", "primitive")).resolves.toBeNull();
+    await expect(getMainCheckoutLease(ctx, "malformed-read-host", "empty")).resolves.toBeNull();
+    await expect(
+      getMainCheckoutLease(ctx, "malformed-read-host", "missingConnectionId"),
+    ).resolves.toBeNull();
+    await expect(
+      getMainCheckoutLease(ctx, "malformed-read-host", "nonStringSessionId"),
+    ).resolves.toBeNull();
+    await expect(
+      getMainCheckoutLease(ctx, "malformed-read-host", "nonStringConnectionId"),
+    ).resolves.toBeNull();
   });
 
   it("rethrows a real DynamoDB resource failure", async () => {
