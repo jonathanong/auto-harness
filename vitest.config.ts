@@ -21,6 +21,7 @@ export default defineConfig({
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
         // Shared repository, session, and worktree detail views.
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
+        "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
