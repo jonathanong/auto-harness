@@ -38,13 +38,20 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("edit-schedule-name")).toHaveValue(name);
     await expect(page.getByTestId("edit-schedule-cron")).toHaveValue("0 * * * *");
     await expect(page.getByTestId("edit-schedule-timeout")).toHaveValue("600");
-    await expect(page.getByTestId("edit-schedule-next-run")).not.toHaveValue("");
     await expect(page.getByTestId("edit-schedule-concurrency-id")).toHaveValue(`${repoId}-${name}`);
     await expect(page.getByTestId("edit-schedule-enabled")).toBeChecked();
+    await page.getByTestId("edit-schedule-cron").fill("30 * * * *");
     await page.getByTestId("edit-schedule-ref").fill("main");
     await page.getByTestId("edit-schedule-submit").click();
     await expect(page.getByTestId("edit-schedule-error")).toBeHidden();
+    const detailScheduleId = detailUrl.split("/").pop()!;
+    const updated = await request.get(`http://127.0.0.1:7430/api/v1/schedules/${detailScheduleId}`);
+    expect(await updated.json()).toMatchObject({
+      cron: "30 * * * *",
+      nextRunAt: expect.stringMatching(/:30:00\.000Z$/),
+    });
     await page.reload();
+    await expect(page.getByTestId("edit-schedule-cron")).toHaveValue("30 * * * *");
     await expect(page.getByTestId("edit-schedule-ref")).toHaveValue("main");
 
     await page.getByRole("button", { name: "Trigger" }).click();
