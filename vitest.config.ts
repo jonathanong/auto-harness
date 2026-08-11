@@ -11,7 +11,7 @@ export default defineConfig({
         "services/*/src/**/*.ts",
         // Shared, framework-independent display primitives and detail views.
         "modules/ui/src/lib/utils.ts",
-        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link,tooltip,dialog,confirm-button,toast,cursor-pagination,detail-header,provider-account-health,session-execution-summary,session-route-summary,sessions-table,tabs,repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link,tooltip,dialog,confirm-button,toast,cursor-pagination,detail-header,provider-account-health,session-execution-summary,session-route-summary,sessions-table,tabs,repository-detail,session-detail,session-actions,session-filters,session-logs,worktree-detail,worktrees-hierarchy}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
