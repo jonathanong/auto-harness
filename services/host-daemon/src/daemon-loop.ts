@@ -137,16 +137,18 @@ export class DaemonLoop {
     });
     try {
       await this.sendDrainStatus();
-      this.scheduleDrainRetry();
     } catch (error) {
-      // Keep drainRequested set: the next registration advertises the same
-      // intent, but surface the failed notification so shutdown cannot exit
-      // while the control plane may still schedule this host.
-      this.drainConfirmation = undefined;
-      this.resolveDrainConfirmation = undefined;
-      this.scheduleDrainRetry();
-      throw error;
+      // Keep the confirmation pending when the initial notification cannot
+      // leave this daemon. In particular, a signal-triggered shutdown must
+      // not reject and let Node exit while in-flight work is still running.
+      // Retrying (or reconnect registration) resolves this exact promise.
+      this.onLog?.(
+        `drain notification failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
+    // A lost acknowledgement needs the same retry path as a failed initial
+    // write, and the promise above remains pending until either path commits.
+    this.scheduleDrainRetry();
     return this.drainConfirmation;
   }
 

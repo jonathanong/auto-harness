@@ -90,13 +90,24 @@ describe("DaemonLoop drain", () => {
     }
   });
 
-  it("retries an unacknowledged drain notification without exiting", async () => {
+  it("retries a failed or unacknowledged drain notification without exiting", async () => {
     vi.useFakeTimers();
     const { config, cleanup } = await makeRepo();
     try {
       const sent: Array<{ type: string }> = [];
+      let firstDrain = true;
+      let drainAttempts = 0;
       const transport = createLoopbackTransport({
-        sendToServer: (message) => void sent.push(message),
+        sendToServer: (message) => {
+          if (message.type === "host:status") {
+            drainAttempts++;
+            if (firstDrain) {
+              firstDrain = false;
+              throw new Error("connection lost");
+            }
+          }
+          sent.push(message);
+        },
       });
       const loop = new DaemonLoop({ config, transport, drainRetryMs: 1, timers: globalThis });
       await loop.start();
@@ -104,13 +115,14 @@ describe("DaemonLoop drain", () => {
       const draining = loop.beginDrain();
       await Promise.resolve();
       await vi.advanceTimersByTimeAsync(1);
-      expect(sent.filter((message) => message.type === "host:status")).toHaveLength(2);
+      expect(drainAttempts).toBe(2);
+      expect(sent.filter((message) => message.type === "host:status")).toHaveLength(1);
       expect(loop.isDraining()).toBe(false);
 
       transport.deliver({ type: "host:draining", hostId: config.hostId });
       await draining;
       await vi.advanceTimersByTimeAsync(10);
-      expect(sent.filter((message) => message.type === "host:status")).toHaveLength(2);
+      expect(drainAttempts).toBe(2);
       loop.stop();
     } finally {
       cleanup();
