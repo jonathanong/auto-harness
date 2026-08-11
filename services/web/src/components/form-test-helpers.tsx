@@ -4,6 +4,10 @@ import {
   AppRouterContext,
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import {
+  PathnameContext,
+  SearchParamsContext,
+} from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { TooltipProvider } from "@auto-harness/ui";
 import { afterEach, vi } from "vitest";
 
@@ -20,14 +24,24 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 export { router };
 
-export function mountForm(node: React.ReactNode) {
+export function mountForm(
+  node: React.ReactNode,
+  {
+    pathname = "/",
+    searchParams = new URLSearchParams(),
+  }: { pathname?: string | null; searchParams?: URLSearchParams } = {},
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   act(() =>
     root.render(
       <AppRouterContext.Provider value={router}>
-        <TooltipProvider delayDuration={0}>{node}</TooltipProvider>
+        <PathnameContext.Provider value={pathname}>
+          <SearchParamsContext.Provider value={searchParams}>
+            <TooltipProvider delayDuration={0}>{node}</TooltipProvider>
+          </SearchParamsContext.Provider>
+        </PathnameContext.Provider>
       </AppRouterContext.Provider>,
     ),
   );
