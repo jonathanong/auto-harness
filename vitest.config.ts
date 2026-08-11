@@ -19,6 +19,8 @@ export default defineConfig({
         "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
         "modules/ui/src/components/{detail-header,provider-account-health,session-execution-summary,session-route-summary,sessions-table,tabs}.tsx",
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
+        // Shared repository, session, and worktree detail views.
+        "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
