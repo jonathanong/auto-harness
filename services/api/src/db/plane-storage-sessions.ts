@@ -174,10 +174,7 @@ export async function createSession(
       const lock = await getConcurrencyLock(ctx, session.concurrencyId);
       if (!lock) {
         if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
-        if (attempt + 1 === MAX_CREATE_SESSION_ATTEMPTS) {
-          throw new CreateSessionRetryExhaustedError(session.concurrencyId);
-        }
-        await waitForCreateSessionRetry(attempt);
+        if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) await waitForCreateSessionRetry(attempt);
         continue;
       }
       const current = await getSession(ctx, lock.sessionId, true);
@@ -186,10 +183,7 @@ export async function createSession(
       }
       await releaseConcurrencyLock(ctx, session.concurrencyId, lock.sessionId);
       if (sessionIdConditionFailed) throw new SessionIdCollisionError(session.id);
-      if (attempt + 1 === MAX_CREATE_SESSION_ATTEMPTS) {
-        throw new CreateSessionRetryExhaustedError(session.concurrencyId);
-      }
-      await waitForCreateSessionRetry(attempt);
+      if (attempt + 1 < MAX_CREATE_SESSION_ATTEMPTS) await waitForCreateSessionRetry(attempt);
     }
   }
   throw new CreateSessionRetryExhaustedError(session.concurrencyId);
