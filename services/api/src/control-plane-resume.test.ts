@@ -238,7 +238,7 @@ describe("control-plane native resume", () => {
         enabled: true,
       }).ok,
     ).toBe(true);
-    expect(scheduled.evaluateCron()).toHaveLength(1);
+    expect(scheduled.evaluateCron("2026-01-01T01:00:00.000Z")).toHaveLength(1);
     const scheduledSession = scheduled.listSessions()[0]!;
     scheduled.forceStatus(scheduledSession.id, "completed");
     expect(scheduled.resumeSession(scheduledSession.id)).toEqual({

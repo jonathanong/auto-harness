@@ -23,7 +23,6 @@ export type EditableSchedule = {
   enabled: boolean;
   timeout: number;
   queueTtlSeconds: number;
-  nextRunAt: string;
   ref?: string;
   concurrencyId?: string | null;
   activeSessionId?: string | null;
@@ -57,7 +56,6 @@ export function ScheduleEditForm({
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? schedule.queueTtlSeconds),
           cron: String(fd.get("cron") ?? ""),
           timeout: Number(fd.get("timeout") ?? 600),
-          nextRunAt: String(fd.get("nextRunAt") ?? ""),
           enabled: fd.get("enabled") === "on",
           ref: String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim(),
@@ -158,18 +156,6 @@ export function ScheduleEditForm({
             data-pw="edit-schedule-ref"
           />
         </div>
-      </div>
-      <div className="space-y-1">
-        <Label htmlFor="nextRunAt" tip="Next fire time as ISO-8601 timestamp">
-          Next run (ISO)
-        </Label>
-        <Input
-          id="nextRunAt"
-          name="nextRunAt"
-          required
-          defaultValue={schedule.nextRunAt}
-          data-pw="edit-schedule-next-run"
-        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="concurrencyId" tip="Stable ID shared by scheduled runs">

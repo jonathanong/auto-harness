@@ -13,7 +13,7 @@ describe("scheduled assignment rollout", () => {
       target: { commandId: "cmd-base" },
       cron: "* * * * *",
       timeout: 30,
-      nextRunAt: "t",
+      nextRunAt: "2026-01-01T00:00:00.000Z",
       ref: "main",
     });
     plane.registerHost({

@@ -49,6 +49,7 @@ describe("schedule concurrency", () => {
     const plane = new ControlPlane({
       idFactory: () => `sess-${++sessionNumber}`,
       scheduleIdFactory: () => "nightly",
+      now: () => "2026-01-01T00:00:00.000Z",
     });
     seedBaseCommand(plane);
     const schedule = putScheduleOrThrow(plane, {
@@ -60,11 +61,11 @@ describe("schedule concurrency", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
     });
     expect(schedule.concurrencyId).toBe("schedule-nightly");
-    expect(plane.evaluateCron("2026-01-01T00:00:00.000Z")).toHaveLength(1);
-    expect(plane.evaluateCron("2026-01-01T00:01:00.000Z")).toHaveLength(0);
+    expect(plane.evaluateCron("2026-01-01T00:01:00.000Z")).toHaveLength(1);
+    expect(plane.evaluateCron("2026-01-01T00:02:00.000Z")).toHaveLength(0);
     expect(plane.getSchedule(schedule.id)).toMatchObject({
-      nextRunAt: "2026-01-01T00:02:00.000Z",
-      lastRunAt: "2026-01-01T00:00:00.000Z",
+      nextRunAt: "2026-01-01T00:03:00.000Z",
+      lastRunAt: "2026-01-01T00:01:00.000Z",
       activeSessionId: "sess-1",
     });
   });
@@ -144,7 +145,7 @@ describe("schedule concurrency", () => {
       triggerScheduleDurable(manual.plane.state, manual.schedule.id, "2026-01-01T00:00:30.000Z"),
     ).resolves.toMatchObject({ ok: true, created: false, session: { id: "active-session" } });
     expect(manual.plane.getSchedule(manual.schedule.id)?.nextRunAt).toBe(
-      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:01:00.000Z",
     );
 
     for (const skipped of [true, false]) {
@@ -161,11 +162,11 @@ describe("schedule concurrency", () => {
           cron.plane.state,
           cron.schedule.id,
           cron.schedule.nextRunAt,
-          "2026-01-01T00:00:00.000Z",
+          "2026-01-01T00:01:00.000Z",
         ),
       ).resolves.toBeNull();
       expect(cron.plane.getSchedule(cron.schedule.id)?.nextRunAt).toBe(
-        skipped ? "2026-01-01T00:01:00.000Z" : "2026-01-01T00:00:00.000Z",
+        skipped ? "2026-01-01T00:02:00.000Z" : "2026-01-01T00:01:00.000Z",
       );
     }
 
@@ -192,7 +193,7 @@ describe("schedule concurrency", () => {
         fallback.plane.state,
         fallback.schedule.id,
         fallback.schedule.nextRunAt,
-        "2026-01-01T00:00:00.000Z",
+        "2026-01-01T00:01:00.000Z",
       ),
     ).resolves.toMatchObject({ id: "scheduled-session" });
   });

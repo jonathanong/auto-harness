@@ -1,10 +1,14 @@
 /* eslint-disable max-lines */
+import { isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
 import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+
+const PERSISTED_ISO_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
@@ -22,6 +26,8 @@ export function triggerSchedule(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  const newNextRunAt = nextRunAt(schedule, nowIso);
+  if (!newNextRunAt) return { ok: false, error: "invalid schedule cron or timestamp" };
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return target;
@@ -31,7 +37,7 @@ export function triggerSchedule(
     return { ok: false, error: result.error };
   }
   if (result.created) {
-    schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+    schedule.nextRunAt = newNextRunAt;
     schedule.lastRunAt = nowIso;
     if (state.storage) {
       queueWrite(state, state.storage.putSchedule({ ...schedule }));
@@ -60,12 +66,13 @@ export async function triggerScheduleDurable(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  const newNextRunAt = nextRunAt(schedule, nowIso);
+  if (!newNextRunAt) return { ok: false, error: "invalid schedule cron or timestamp" };
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return target;
   }
   const session = createScheduledSession(state, schedule);
-  const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId: id,
     expectedNextRunAt: schedule.nextRunAt,
@@ -94,6 +101,7 @@ export function evaluateCron(
   nowIso: string = state.now(),
 ): PublicSession[] {
   const created: PublicSession[] = [];
+  if (!isValidUtcTimestamp(nowIso)) return created;
   const nowMs = Date.parse(nowIso);
   for (const schedule of state.schedules.values()) {
     if (!schedule.enabled) {
@@ -123,6 +131,8 @@ export function tryClaimScheduleFire(
   if (!schedule || !schedule.enabled) {
     return null;
   }
+  const newNextRunAt = nextRunAt(schedule, nowIso);
+  if (!newNextRunAt) return null;
   if (schedule.nextRunAt !== expectedNextRunAt) {
     return null;
   }
@@ -137,7 +147,7 @@ export function tryClaimScheduleFire(
   if (!result.ok) {
     return null;
   }
-  schedule.nextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
+  schedule.nextRunAt = newNextRunAt;
   if (!result.created) {
     return null;
   }
@@ -154,6 +164,7 @@ export async function evaluateCronDurable(
     return evaluateCron(state, nowIso);
   }
   const created: PublicSession[] = [];
+  if (!isValidUtcTimestamp(nowIso)) return created;
   const nowMs = Date.parse(nowIso);
   for (const schedule of state.schedules.values()) {
     if (!schedule.enabled || Date.parse(schedule.nextRunAt) > nowMs) {
@@ -186,6 +197,8 @@ export async function tryClaimScheduleFireDurable(
   if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
     return null;
   }
+  const newNextRunAt = nextRunAt(schedule, nowIso);
+  if (!newNextRunAt) return null;
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
@@ -194,7 +207,6 @@ export async function tryClaimScheduleFireDurable(
     return null;
   }
   const session = createScheduledSession(state, schedule);
-  const newNextRunAt = new Date(Date.parse(nowIso) + 60_000).toISOString();
   const outcome = await state.storage.tryClaimScheduleAndCreateSession({
     scheduleId,
     expectedNextRunAt,
@@ -222,6 +234,20 @@ export async function tryClaimScheduleFireDurable(
   state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
   return toPublic(state, session);
+}
+
+function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {
+  if (!isValidPersistedCursor(schedule.nextRunAt) || !isValidUtcTimestamp(nowIso)) return null;
+  return nextCronOccurrence(schedule.cron, nowIso);
+}
+
+/**
+ * The API accepts only canonical UTC cursors, but pre-existing persisted rows
+ * may use an ISO offset. Keep that original value for the storage CAS and
+ * normalize only the newly-derived cursor written after a successful claim.
+ */
+function isValidPersistedCursor(value: string): boolean {
+  return PERSISTED_ISO_TIMESTAMP.test(value) && Number.isFinite(Date.parse(value));
 }
 
 function createScheduledSession(state: ControlPlaneState, schedule: ScheduleRecord): SessionRecord {

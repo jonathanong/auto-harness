@@ -122,13 +122,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         typeof body.target !== "object" ||
         body.target === null ||
         typeof body.cron !== "string" ||
-        typeof body.timeout !== "number" ||
-        typeof body.nextRunAt !== "string"
+        typeof body.timeout !== "number"
       ) {
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: "repositoryId, name, target, cron, timeout, and nextRunAt are required",
+            message: "repositoryId, name, target, cron, and timeout are required",
           },
         });
         return true;
@@ -136,6 +135,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       if (body.ref !== undefined && typeof body.ref !== "string") {
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: "ref must be a valid scheduled branch name" },
+        });
+        return true;
+      }
+      if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
+        send(res, 400, {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "nextRunAt must be an ISO-8601 UTC timestamp",
+          },
         });
         return true;
       }
@@ -153,7 +161,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.queueTtlSeconds === "number"
           ? { queueTtlSeconds: body.queueTtlSeconds }
           : {}),
-        nextRunAt: body.nextRunAt,
+        ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
@@ -220,6 +228,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
             error: {
               code: "VALIDATION_ERROR",
               message: "ref must be a valid scheduled branch name",
+            },
+          });
+          return true;
+        }
+        if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
+          send(res, 400, {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "nextRunAt must be an ISO-8601 UTC timestamp",
             },
           });
           return true;

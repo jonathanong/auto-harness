@@ -140,7 +140,7 @@ describe("scheduled dispatcher coverage edges", () => {
       timeout: 10,
       nextRunAt: NOW,
     });
-    plane.evaluateCron(NOW);
+    plane.evaluateCron("2026-01-01T00:01:00.000Z");
     const { handler } = createLocalApp({ plane });
     const response = await invokeHandler(handler, "POST", "/api/v1/scheduler/assign");
     expect(response.json).toEqual({

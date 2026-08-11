@@ -46,7 +46,7 @@ export class ControlPlane extends ControlPlaneCatalog {
       cron: string;
       timeout: number;
       queueTtlSeconds: number;
-      nextRunAt: string;
+      nextRunAt?: string;
       enabled: boolean;
       ref: string;
       repositoryId: string;

@@ -220,7 +220,7 @@ export class ControlPlaneBase {
     cron: string;
     timeout: number;
     queueTtlSeconds?: number;
-    nextRunAt: string;
+    nextRunAt?: string;
     enabled?: boolean;
     ref?: string;
     concurrencyId?: string;

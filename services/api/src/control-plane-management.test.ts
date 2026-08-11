@@ -134,7 +134,7 @@ describe("ControlPlane operator management", () => {
       target: { commandId: "cmd-c" },
       cron: "* * * * *",
       timeout: 1,
-      nextRunAt: "t",
+      nextRunAt: "2026-01-01T00:00:00.000Z",
     });
     expect(auto.id).toBe("sched-auto");
 
@@ -148,7 +148,7 @@ describe("ControlPlane operator management", () => {
       expect(fired.session.prompt).toBe("scheduled:nightly2");
     }
     expect(plane.getSchedule("sched-1")?.lastRunAt).toBe("2026-01-02T00:00:00.000Z");
-    expect(plane.getSchedule("sched-1")?.nextRunAt).toBe("2026-01-02T00:01:00.000Z");
+    expect(plane.getSchedule("sched-1")?.nextRunAt).toBe("2026-01-02T01:00:00.000Z");
 
     plane.updateSchedule("sched-1", { enabled: false });
     expect(plane.triggerSchedule("sched-1").ok).toBe(false);
