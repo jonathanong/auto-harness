@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  esbuild: { jsx: "automatic" },
   test: {
     include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     testTimeout: 60_000,
@@ -12,6 +13,9 @@ export default defineConfig({
         // First UI tranche: shared, framework-independent display primitives.
         "modules/ui/src/lib/utils.ts",
         "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link,tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
+        // Basic control-plane catalog forms are exercised in happy-dom with real React
+        // and Next contexts. App routes and the remaining app-owned components stay e2e-only.
+        "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -34,7 +38,7 @@ export default defineConfig({
         // Next.js app routers and app-owned components remain e2e-only. Shared display
         // primitives are explicitly included above and exercised by Vitest.
         "**/app/**",
-        "**/services/*/src/components/**",
+        "**/services/host-pane/src/components/**",
         // The public barrel is outside this display-primitives tranche; it only
         // re-exports the remaining UI surface, which stays e2e-only for now.
         "**/modules/ui/src/index.ts",
