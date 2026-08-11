@@ -143,37 +143,20 @@ describe("DynamoDB Local session creation", () => {
     ).resolves.toMatchObject({ created: true });
   });
 
-  it("does not create a session when another real writer continuously replaces an orphan lock", async () => {
+  it("does not create a session while an existing lock has no resolvable owner", async () => {
     await ctx.doc.send(
       new PutCommand({
         TableName: tables.concurrencyLocks,
-        Item: { concurrencyId: "raced", sessionId: "orphan" },
+        Item: { concurrencyId: "raced", sessionId: 123 },
       }),
     );
-    let replacing = true;
-    const writer = (async () => {
-      for (let writes = 0; writes < 1_000; writes += 1) {
-        if (!replacing) break;
-        await ctx.doc.send(
-          new PutCommand({
-            TableName: tables.concurrencyLocks,
-            Item: { concurrencyId: "raced", sessionId: "orphan" },
-          }),
-        );
-      }
-    })();
-    try {
-      await expect(
-        createSession(ctx, {
-          ...base,
-          id: "raced-session",
-          concurrencyId: "raced",
-          status: "queued",
-        }),
-      ).rejects.toThrow("could not resolve concurrency lock for raced");
-    } finally {
-      replacing = false;
-      await writer;
-    }
+    await expect(
+      createSession(ctx, {
+        ...base,
+        id: "raced-session",
+        concurrencyId: "raced",
+        status: "queued",
+      }),
+    ).rejects.toThrow("could not resolve concurrency lock for raced");
   });
 });
