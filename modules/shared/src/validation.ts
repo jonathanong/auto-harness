@@ -46,6 +46,11 @@ export function isSessionSource(value: unknown): value is SessionSource {
   return typeof value === "string" && (SESSION_SOURCES as readonly string[]).includes(value);
 }
 
+/** Internal deletion leases share the concurrency-lock table but reserve this namespace. */
+export function isReservedConcurrencyId(value: string): boolean {
+  return value.startsWith("catalog-delete:");
+}
+
 /** Validate fields required to create a session (control-plane create path). */
 export function validateCreateSessionInput(input: {
   repositoryId: unknown;
@@ -119,6 +124,9 @@ export function validateCreateSessionInput(input: {
   if (input.concurrencyId !== undefined) {
     if (!isNonEmptyString(input.concurrencyId)) {
       return { ok: false, error: "concurrencyId must be a non-empty string when set" };
+    }
+    if (isReservedConcurrencyId(input.concurrencyId)) {
+      return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
     }
     concurrencyId = input.concurrencyId;
   }

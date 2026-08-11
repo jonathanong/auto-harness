@@ -8,6 +8,7 @@ import {
   type DeleteResult,
 } from "./control-plane-delete-guards.ts";
 import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
+import { getCommandDurable } from "./control-plane-durable-read-catalog.ts";
 
 export function deleteCommand(state: ControlPlaneState, id: string): DeleteResult {
   const result = canDeleteCommand(state, id, referencesFromState(state));
@@ -22,6 +23,7 @@ export async function deleteCommandDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteCommand>> {
   if (!state.storage) return deleteCommand(state, id);
+  await getCommandDurable(state, id);
   if (!state.commands.has(id)) return { ok: false, error: "command not found" };
   return withDeletionMarkers(state, [`command:${id}`], async (owner) => {
     const result = canDeleteCommand(state, id, await refreshDeleteReferences(state));

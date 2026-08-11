@@ -63,8 +63,8 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
   const [schedules, sessions, worktrees, inventories, providers, accounts, commands] =
     await Promise.all([
       state.storage.listSchedules(),
-      state.storage.listAllSessions(),
-      state.storage.listAllWorktrees(),
+      state.storage.listAllSessions(true),
+      state.storage.listAllWorktrees(true),
       state.storage.listHostInventories(),
       state.storage.listProviders(),
       state.storage.listProviderAccounts(),

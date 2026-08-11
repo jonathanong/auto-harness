@@ -57,6 +57,7 @@ describe("non-durable catalog deletes with storage", () => {
     state.commands.set(command.id, command);
     const deleted: string[] = [];
     state.storage = {
+      getCommand: async () => command,
       acquireDeletionMarker: async () => true,
       releaseDeletionMarker: async () => {},
       listSchedules: async () => [
@@ -78,6 +79,7 @@ describe("non-durable catalog deletes with storage", () => {
     await expect(deleteCommandDurable(state, command.id)).resolves.toMatchObject({
       ok: false,
       conflict: true,
+      dependencies: [{ kind: "schedule", id: "schedule" }],
     });
     expect(deleted).toEqual([]);
     expect(state.commands.get(command.id)).toEqual(command);
@@ -140,6 +142,7 @@ describe("non-durable catalog deletes with storage", () => {
     state.repositories.set(repository.id, repository);
     const deleted: string[] = [];
     state.storage = {
+      getRepository: async () => repository,
       acquireDeletionMarker: async () => true,
       releaseDeletionMarker: async () => {},
       listSchedules: async () => [
@@ -161,6 +164,7 @@ describe("non-durable catalog deletes with storage", () => {
     await expect(deleteRepositoryDurable(state, repository.id)).resolves.toMatchObject({
       ok: false,
       conflict: true,
+      dependencies: [{ kind: "schedule", id: "schedule" }],
     });
     expect(deleted).toEqual([]);
     expect(state.repositories.get(repository.id)).toEqual(repository);

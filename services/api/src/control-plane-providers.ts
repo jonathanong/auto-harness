@@ -73,9 +73,10 @@ export async function createProviderDurable(
   if (!result.ok) return result;
   await state.storage.putProvider(
     { ...result.provider },
-    result.provider.defaultCommandId
-      ? markersFor(state.now(), [`command:${result.provider.defaultCommandId}`])
-      : [],
+    markersFor(state.now(), [
+      `provider:${result.provider.id}`,
+      ...(result.provider.defaultCommandId ? [`command:${result.provider.defaultCommandId}`] : []),
+    ]),
   );
   state.providers.set(result.provider.id, result.provider);
   return { ok: true, provider: { ...result.provider } };
@@ -144,9 +145,10 @@ export async function updateProviderDurable(
   if (!result.ok) return result;
   await state.storage.putProvider(
     { ...result.provider },
-    result.provider.defaultCommandId
-      ? markersFor(state.now(), [`command:${result.provider.defaultCommandId}`])
-      : [],
+    markersFor(state.now(), [
+      `provider:${id}`,
+      ...(result.provider.defaultCommandId ? [`command:${result.provider.defaultCommandId}`] : []),
+    ]),
   );
   state.providers.set(id, result.provider);
   return { ok: true, provider: { ...result.provider } };

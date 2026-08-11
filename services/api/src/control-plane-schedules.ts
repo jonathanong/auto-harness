@@ -1,5 +1,6 @@
 import {
   isActiveSessionStatus,
+  isReservedConcurrencyId,
   isValidScheduledBranchRef,
   isValidUtcTimestamp,
   nextCronOccurrence,
@@ -62,6 +63,9 @@ function preparePutSchedule(
   }
   if (input.ref !== undefined && !isValidScheduledBranchRef(input.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
+  }
+  if (input.concurrencyId !== undefined && isReservedConcurrencyId(input.concurrencyId.trim())) {
+    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
   if (input.nextRunAt !== undefined && !isValidUtcTimestamp(input.nextRunAt)) {
     return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
@@ -161,6 +165,9 @@ export function prepareUpdateSchedule(
   }
   if (patch.ref !== undefined && !isValidScheduledBranchRef(patch.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
+  }
+  if (patch.concurrencyId !== undefined && isReservedConcurrencyId(patch.concurrencyId.trim())) {
+    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
   const routing = validateTargetRouting({
     target: patch.target ?? existing.target,

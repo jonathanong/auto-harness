@@ -101,6 +101,30 @@ describe("provider deletion", () => {
     expect(state.providers.get(provider.id)).toEqual(provider);
   });
 
+  it("clears a provider that disappears while its guarded delete loses the race", async () => {
+    const state = createControlPlaneState({ now: () => provider.updatedAt });
+    state.providers.set(provider.id, provider);
+    let reads = 0;
+    state.storage = {
+      getProvider: async () => (reads++ === 0 ? provider : null),
+      listProviderAccounts: async () => [],
+      listCommands: async () => [],
+      listSchedules: async () => [],
+      listAllSessions: async () => [],
+      listAllWorktrees: async () => [],
+      listHostInventories: async () => [],
+      listProviders: async () => [provider],
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => {},
+      deleteProvider: async () => false,
+    } as never;
+    await expect(deleteProviderDurable(state, provider.id)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    expect(state.providers.has(provider.id)).toBe(false);
+  });
+
   it("does not write when a provider deletion marker is held by another operation", async () => {
     const state = createControlPlaneState();
     state.providers.set(provider.id, provider);

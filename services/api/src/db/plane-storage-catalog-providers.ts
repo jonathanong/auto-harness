@@ -8,6 +8,7 @@ import {
 
 import {
   isConditionalFailed,
+  isConditionalTransactionFailed,
   type CommandRecord,
   type PlaneStorageCtx,
   type ProviderRecord,
@@ -99,7 +100,7 @@ export async function deleteProvider(
     else await ctx.doc.send(new DeleteCommand(deletion));
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) return false;
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

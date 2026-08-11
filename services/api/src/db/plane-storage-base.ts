@@ -55,8 +55,8 @@ export class DynamoPlaneStorageBase {
     return sessions.getSession(this.ctx, id, consistentRead);
   }
 
-  listAllSessions(): Promise<SessionRecord[]> {
-    return sessions.listAllSessions(this.ctx);
+  listAllSessions(consistentRead = false): Promise<SessionRecord[]> {
+    return sessions.listAllSessions(this.ctx, consistentRead);
   }
 
   async listSessionsByHost(hostId: string): Promise<SessionRecord[]> {
@@ -88,8 +88,8 @@ export class DynamoPlaneStorageBase {
     return sessions.getWorktree(this.ctx, id);
   }
 
-  listAllWorktrees(): Promise<WorktreeRecord[]> {
-    return sessions.listAllWorktrees(this.ctx);
+  listAllWorktrees(consistentRead = false): Promise<WorktreeRecord[]> {
+    return sessions.listAllWorktrees(this.ctx, consistentRead);
   }
 
   async listWorktreesByHost(hostId: string): Promise<WorktreeRecord[]> {

@@ -22,7 +22,9 @@ import {
 } from "./plane-storage-types.ts";
 import {
   guardedWrite,
+  markerConditions,
   ownedDelete,
+  withMarkerTable,
   type DeletionMarker,
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
@@ -174,7 +176,7 @@ export async function updateScheduleManagement(
           ],
         }),
       );
-      return getSchedule(ctx, rec.id);
+      return getSchedule(ctx, rec.id, true);
     }
     const res = await ctx.doc.send(new UpdateCommand({ ...update, ReturnValues: "ALL_NEW" }));
     return res.Attributes ? (res.Attributes as ScheduleRecord) : null;
@@ -187,8 +189,15 @@ export async function updateScheduleManagement(
 export async function getSchedule(
   ctx: PlaneStorageCtx,
   id: string,
+  consistentRead = false,
 ): Promise<ScheduleRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.schedules, Key: { id } }));
+  const res = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.schedules,
+      Key: { id },
+      ...(consistentRead ? { ConsistentRead: true } : {}),
+    }),
+  );
   return (res.Item as ScheduleRecord | undefined) ?? null;
 }
 

@@ -114,7 +114,12 @@ export async function createSession(
       }
     } catch (err) {
       if (isConditionalFailed(err)) throw new SessionIdCollisionError(session.id);
-      if (isConditionalTransactionFailed(err)) throw new CatalogDeletionInProgressError();
+      if (isConditionalTransactionFailed(err)) {
+        if (isConditionalTransactionFailureAt(err, markers.length)) {
+          throw new SessionIdCollisionError(session.id);
+        }
+        throw new CatalogDeletionInProgressError();
+      }
       throw err;
     }
     return { created: true, session };
@@ -240,13 +245,16 @@ export async function getSession(
   return res.Item ? itemToSession(res.Item) : null;
 }
 
-export async function listAllSessions(ctx: PlaneStorageCtx): Promise<SessionRecord[]> {
+export async function listAllSessions(
+  ctx: PlaneStorageCtx,
+  consistentRead = false,
+): Promise<SessionRecord[]> {
   const items: Record<string, unknown>[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
-        ConsistentRead: true,
+        ...(consistentRead ? { ConsistentRead: true } : {}),
         TableName: ctx.tables.sessions,
         ExclusiveStartKey: startKey,
       }),
@@ -344,13 +352,16 @@ export async function getWorktree(
   return (res.Item as WorktreeRecord | undefined) ?? null;
 }
 
-export async function listAllWorktrees(ctx: PlaneStorageCtx): Promise<WorktreeRecord[]> {
+export async function listAllWorktrees(
+  ctx: PlaneStorageCtx,
+  consistentRead = false,
+): Promise<WorktreeRecord[]> {
   const items: WorktreeRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
-        ConsistentRead: true,
+        ...(consistentRead ? { ConsistentRead: true } : {}),
         TableName: ctx.tables.worktrees,
         ExclusiveStartKey: startKey,
       }),

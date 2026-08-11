@@ -53,6 +53,7 @@ export async function deleteProviderDurable(
     ) {
       const authoritative = await state.storage!.getProvider(id);
       if (authoritative) state.providers.set(id, authoritative);
+      else state.providers.delete(id);
       return { ok: false, error: "provider changed concurrently", conflict: true };
     }
     state.providers.delete(id);

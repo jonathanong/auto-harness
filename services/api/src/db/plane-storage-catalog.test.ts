@@ -1,4 +1,4 @@
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -29,7 +29,7 @@ function schedule(ref?: string): ScheduleRecord {
 function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
   return {
     doc: { send } as never,
-    tables: { schedules: "Schedules" } as never,
+    tables: { schedules: "Schedules", concurrencyLocks: "Locks" } as never,
   };
 }
 
@@ -118,6 +118,20 @@ describe("durable schedule management updates", () => {
     });
 
     await expect(updateScheduleManagement(storage, schedule(), "old-next")).resolves.toBeNull();
+  });
+
+  it("reads the committed schedule consistently after a marker-guarded update", async () => {
+    const storage = scheduleCtx(async (command) => {
+      if (command instanceof TransactWriteCommand) return {};
+      expect(command).toBeInstanceOf(GetCommand);
+      expect((command as GetCommand).input.ConsistentRead).toBe(true);
+      return { Item: schedule() };
+    });
+    await expect(
+      updateScheduleManagement(storage, schedule(), "old-next", [
+        { key: "command:command-1", now: "now" },
+      ]),
+    ).resolves.toMatchObject({ id: "schedule-1" });
   });
 
   it("propagates storage failures", async () => {

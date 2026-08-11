@@ -167,6 +167,9 @@ describe("catalog delete references", () => {
       { key: "provider:provider", now: "now" },
       { key: "repository:repo", now: "now" },
     ]);
+    expect(referenceMarkers("now", { target: { commandId: "command" } })).toEqual([
+      { key: "command:command", now: "now" },
+    ]);
     expect(markersFor("now", ["command:c", "command:c", "provider:p"])).toEqual([
       { key: "command:c", now: "now" },
       { key: "provider:p", now: "now" },

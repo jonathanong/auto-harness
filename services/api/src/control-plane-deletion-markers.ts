@@ -17,6 +17,7 @@ export async function withDeletionMarkers<T extends { ok: boolean }>(
   const owner = randomUUID();
   const acquired: string[] = [];
   let timer: ReturnType<typeof setInterval> | undefined;
+  let leaseLost = false;
   try {
     for (const key of [...new Set(keys)].toSorted()) {
       if (!(await state.storage.acquireDeletionMarker(key, owner, state.now()))) {
@@ -28,12 +29,29 @@ export async function withDeletionMarkers<T extends { ok: boolean }>(
       timer = setInterval(() => {
         void Promise.all(
           acquired.map((key) => state.storage!.renewDeletionMarker!(key, owner, state.now())),
-        );
+        )
+          .then((renewed) => {
+            if (renewed.some((ok) => !ok)) leaseLost = true;
+          })
+          .catch(() => {
+            leaseLost = true;
+          });
       }, 5_000);
     }
-    return await operation(owner);
+    const result = await operation(owner);
+    return leaseLost
+      ? { ok: false, conflict: true, error: "catalog deletion lease was lost; retry the request" }
+      : result;
   } finally {
     if (timer) clearInterval(timer);
-    await Promise.all(acquired.map((key) => state.storage!.releaseDeletionMarker(key, owner)));
+    await Promise.all(
+      acquired.map(async (key) => {
+        try {
+          await state.storage!.releaseDeletionMarker(key, owner);
+        } catch {
+          // A best-effort release must not hide the completed delete result.
+        }
+      }),
+    );
   }
 }

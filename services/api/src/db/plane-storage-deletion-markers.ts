@@ -44,12 +44,18 @@ export async function acquireDeletionMarker(
   leaseMs = 30_000,
 ): Promise<boolean> {
   const at = Date.parse(now);
-  const expiresAt = new Date((Number.isFinite(at) ? at : Date.now()) + leaseMs).toISOString();
+  const expiresMs = (Number.isFinite(at) ? at : Date.now()) + leaseMs;
+  const expiresAt = new Date(expiresMs).toISOString();
   try {
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.concurrencyLocks,
-        Item: { concurrencyId: `${PREFIX}${key}`, deletionOwner: owner, expiresAt },
+        Item: {
+          concurrencyId: `${PREFIX}${key}`,
+          deletionOwner: owner,
+          expiresAt,
+          ttl: Math.floor(expiresMs / 1_000),
+        },
         ConditionExpression: "attribute_not_exists(concurrencyId) OR expiresAt <= :now",
         ExpressionAttributeValues: { ":now": now },
       }),
@@ -88,17 +94,21 @@ export async function renewDeletionMarker(
   leaseMs = 30_000,
 ): Promise<boolean> {
   const parsed = Date.parse(now);
-  const expiresAt = new Date(
-    (Number.isFinite(parsed) ? parsed : Date.now()) + leaseMs,
-  ).toISOString();
+  const expiresMs = (Number.isFinite(parsed) ? parsed : Date.now()) + leaseMs;
+  const expiresAt = new Date(expiresMs).toISOString();
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.concurrencyLocks,
         Key: { concurrencyId: `${PREFIX}${key}` },
-        UpdateExpression: "SET expiresAt = :expiresAt",
+        UpdateExpression: "SET expiresAt = :expiresAt, ttl = :ttl",
         ConditionExpression: "deletionOwner = :owner AND expiresAt > :now",
-        ExpressionAttributeValues: { ":owner": owner, ":now": now, ":expiresAt": expiresAt },
+        ExpressionAttributeValues: {
+          ":owner": owner,
+          ":now": now,
+          ":expiresAt": expiresAt,
+          ":ttl": Math.floor(expiresMs / 1_000),
+        },
       }),
     );
     return true;
