@@ -10,6 +10,7 @@ export const auditAppendFailureRequests = [
     },
   ],
   ["POST", "/api/v1/sessions/session-a/cancel", {}],
+  ["POST", "/api/v1/sessions/session-a/clone", {}],
   ["POST", "/api/v1/sessions/session-a/archive", {}],
   ["POST", "/api/v1/repositories", { name: "other", url: "https://example.test/other.git" }],
   ["PATCH", "/api/v1/repositories/repository-a", { name: "Renamed" }],

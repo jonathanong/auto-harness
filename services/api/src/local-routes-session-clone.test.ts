@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
@@ -37,11 +38,99 @@ describe("session clone route", () => {
     }
 
     expect((await clone()).status).toBe(201);
+    expect((await clone(null)).status).toBe(201);
     expect((await clone({ prompt: "again", timeout: 20, priority: 3 })).json).toMatchObject({
       prompt: "again",
       timeout: 20,
       priority: 3,
     });
+    expect(
+      (await plane.listAuditLogs({ action: "session:clone", outcome: "success" })).items,
+    ).toHaveLength(3);
+  });
+
+  it("fails closed when appending a clone audit record fails", async () => {
+    let id = 0;
+    const plane = new ControlPlane({ idFactory: () => `session-${++id}` });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane }).handler,
+          "POST",
+          "/api/v1/sessions/session-1/clone",
+        )
+      ).status,
+    ).toBe(500);
+  });
+
+  it("audits durable read failures and enforces clone repository scope", async () => {
+    const unavailablePlane = new ControlPlane({ idFactory: () => "session-1" });
+    unavailablePlane.state.storage = {
+      getSession: async () => {
+        throw new Error("unavailable");
+      },
+      putAuditLog: async () => undefined,
+    } as never;
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: unavailablePlane }).handler,
+          "POST",
+          "/api/v1/sessions/session-1/clone",
+        )
+      ).status,
+    ).toBe(500);
+
+    const plane = new ControlPlane({ idFactory: () => "session-1" });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
+        "base64url",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({
+      name: "allowed",
+      role: "admin",
+      allowedRepositoryIds: ["repo-1"],
+    });
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane, authService: auth }).handler,
+          "POST",
+          "/api/v1/sessions/session-1/clone",
+          undefined,
+          { authorization: `Bearer ${apiKey}` },
+        )
+      ).status,
+    ).toBe(201);
+    const { apiKey: deniedApiKey } = await auth.createServiceAccount({
+      name: "scoped",
+      role: "admin",
+      allowedRepositoryIds: ["other-repository"],
+    });
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane, authService: auth }).handler,
+          "POST",
+          "/api/v1/sessions/session-1/clone",
+          undefined,
+          { authorization: `Bearer ${deniedApiKey}` },
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await plane.listAuditLogs({ action: "session:clone", outcome: "denied" })).items,
+    ).toHaveLength(1);
   });
 
   it("returns an internal error when durable clone storage fails", async () => {
@@ -50,6 +139,7 @@ describe("session clone route", () => {
     plane.createSession(baseSessionBody());
     plane.state.storage = {
       getSession: async () => plane.state.sessions.get("session-1")!,
+      putAuditLog: async () => undefined,
       listCommands: async () => {
         throw new Error("unavailable");
       },
@@ -89,6 +179,7 @@ describe("session clone route", () => {
     conflictPlane.state.commands.set(concurrentCommand.id, concurrentCommand);
     conflictPlane.state.storage = {
       getSession: async () => source,
+      putAuditLog: async () => undefined,
       listCommands: async () => [command],
       listProviders: async () => [],
       listProviderAccounts: async () => [],

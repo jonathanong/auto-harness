@@ -12,7 +12,12 @@ function optionalQuery(url: URL, name: string): string | undefined {
 export async function handleAuditLogRoutes(ctx: RouteCtx): Promise<boolean> {
   const { method, url, res, plane } = ctx;
   if (method !== "GET" || url.pathname !== "/api/v1/audit-logs") return false;
-  if (!ctx.principal || ctx.principal.role !== "admin") {
+  if (
+    !ctx.principal ||
+    ctx.principal.role !== "admin" ||
+    ctx.principal.allowedRepositoryIds !== undefined ||
+    ctx.principal.boundHostId !== undefined
+  ) {
     send(res, 403, { error: { code: "FORBIDDEN", message: "admin access required" } });
     return true;
   }

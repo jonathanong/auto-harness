@@ -32,6 +32,25 @@ describe("audit authorization outcomes", () => {
         )
       ).status,
     ).toBe(404);
+    for (const metadata of [["invalid"], null, "invalid"]) {
+      expect(
+        (
+          await invokeHandler(
+            handler,
+            "POST",
+            "/api/v1/sessions",
+            {
+              repositoryId: "repository-a",
+              target: { commandId: "command-a" },
+              prompt: "safe",
+              timeout: 60,
+              metadata,
+            },
+            { authorization: `Bearer ${apiKey}` },
+          )
+        ).status,
+      ).toBe(400);
+    }
     expect(
       (await plane.listAuditLogs({ action: "session:create", outcome: "denied" })).items,
     ).toHaveLength(1);

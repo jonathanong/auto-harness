@@ -39,6 +39,16 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     sendSessionForbidden(res);
     return true;
   }
+  if (
+    ctx.principal &&
+    sessionBody?.metadata !== undefined &&
+    (typeof sessionBody.metadata !== "object" ||
+      sessionBody.metadata === null ||
+      Array.isArray(sessionBody.metadata))
+  ) {
+    send(res, 400, { error: { code: "VALIDATION_ERROR", message: "metadata must be an object" } });
+    return true;
+  }
   const input =
     ctx.principal && sessionBody
       ? {

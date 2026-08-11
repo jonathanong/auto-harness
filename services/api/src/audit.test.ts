@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- immutable audit access and query coverage share one contract. */
 import { describe, expect, it } from "vitest";
 
 import { auditActor, newAuditRecord, sanitizeAuditMetadata, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
@@ -121,8 +122,26 @@ describe("audit records", () => {
       resourceId: "s1",
       outcome: "success",
     });
+    await plane.appendAuditLog({
+      actor: { id: "user:b", kind: "user", role: "admin" },
+      action: "session:clone",
+      resourceType: "session",
+      resourceId: "s2",
+      repositoryId: "repo-a",
+      outcome: "success",
+    });
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({ name: "reader", role: "read-only" });
+    const { apiKey: scopedAdminKey } = await auth.createServiceAccount({
+      name: "scoped-admin",
+      role: "admin",
+      allowedRepositoryIds: ["repo-a"],
+    });
+    const { apiKey: hostBoundAdminKey } = await auth.createServiceAccount({
+      name: "host-bound-admin",
+      role: "admin",
+      boundHostId: "host-a",
+    });
     const { handler } = createLocalApp({ plane, authService: auth });
     const adminPage = await invokeHandler(
       handler,
@@ -133,12 +152,37 @@ describe("audit records", () => {
     );
     expect(adminPage.status).toBe(200);
     expect(adminPage.json).toMatchObject({
-      items: [{ id: "audit-admin", actor: { id: "user:a" } }],
+      items: [{ id: "audit-admin", actor: { id: "user:b" } }],
     });
+    expect(
+      (
+        await invokeHandler(
+          handler,
+          "GET",
+          "/api/v1/audit-logs?actorId=user:a&action=session%3Acreate&resourceType=session&resourceId=s1&repositoryId=repo-a&outcome=success",
+          undefined,
+          basic("root", "root"),
+        )
+      ).status,
+    ).toBe(200);
     expect(
       (
         await invokeHandler(handler, "GET", "/api/v1/audit-logs", undefined, {
           authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/audit-logs", undefined, {
+          authorization: `Bearer ${hostBoundAdminKey}`,
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/audit-logs", undefined, {
+          authorization: `Bearer ${scopedAdminKey}`,
         })
       ).status,
     ).toBe(403);
