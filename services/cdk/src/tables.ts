@@ -1,9 +1,10 @@
 /**
  * DynamoDB table definitions for Auto Harness (docs/plan.md §4, aws.md).
- * Pure data — deploy via CDK stack when AWS credentials are available.
+ * The CDK foundation stack consumes this catalog, and local DynamoDB setup
+ * mirrors it. Keep the catalog in sync with `services/api/src/db/ensure-tables.ts`.
  */
 
-type TableDef = {
+export type TableDef = {
   name: string;
   partitionKey: { name: string; type: "S" | "N" };
   sortKey?: { name: string; type: "S" | "N" };
@@ -30,9 +31,9 @@ export const DYNAMO_TABLES: TableDef[] = [
     partitionKey: { name: "id", type: "S" },
     gsis: [
       {
-        name: "hostId-status",
-        partitionKey: { name: "hostId", type: "S" },
-        sortKey: { name: "status", type: "S" },
+        name: "repositoryId-id",
+        partitionKey: { name: "repositoryId", type: "S" },
+        sortKey: { name: "id", type: "S" },
       },
     ],
   },
@@ -49,6 +50,10 @@ export const DYNAMO_TABLES: TableDef[] = [
     ],
   },
   {
+    name: "HostLocks",
+    partitionKey: { name: "hostId", type: "S" },
+  },
+  {
     name: "ConcurrencyLocks",
     partitionKey: { name: "concurrencyId", type: "S" },
     ttlAttribute: "ttl",
@@ -62,24 +67,18 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "Schedules",
     partitionKey: { name: "id", type: "S" },
-    gsis: [
-      {
-        name: "nextRunAt",
-        partitionKey: { name: "enabledKey", type: "S" },
-        sortKey: { name: "nextRunAt", type: "S" },
-      },
-    ],
   },
   {
     name: "Connections",
     partitionKey: { name: "connectionId", type: "S" },
-    gsis: [
-      {
-        // Conditional put uniqueness on hostId (Invariant 3)
-        name: "hostId",
-        partitionKey: { name: "hostId", type: "S" },
-      },
-    ],
+  },
+  {
+    name: "Archives",
+    partitionKey: { name: "key", type: "S" },
+  },
+  {
+    name: "HostInventories",
+    partitionKey: { name: "hostId", type: "S" },
   },
   {
     name: "AuditLogs",

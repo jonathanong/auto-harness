@@ -1,6 +1,9 @@
 # Deploy — AWS control plane
 
-**Design target.** API Gateway, Lambda, DynamoDB, S3, EventBridge. Architecture: [aws.md](aws.md).
+**Foundation available.** `services/cdk` can synthesize DynamoDB tables, the S3
+log-archive bucket, and unassigned least-privilege IAM policies. API Gateway,
+Lambda, WebSocket, EventBridge, and runtime deployment are still design work.
+Architecture: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
 
@@ -8,22 +11,21 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                                     | Status                                                                                              |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Design / data model                      | Documented in [aws.md](aws.md)                                                                      |
-| CDK package (`services/cdk`)             | Table metadata / identity only — **not** a full deployable stack yet                                |
-| `pnpm --filter @auto-harness/cdk deploy` | **Not production-ready** until a real CDK app lands and this runbook is validated in a real account |
+| Item                         | Status                                                            |
+| ---------------------------- | ----------------------------------------------------------------- |
+| Design / data model          | Documented in [aws.md](aws.md)                                    |
+| CDK package (`services/cdk`) | Synthesizable persistence foundation                              |
+| Runtime deployment           | Not implemented; there is deliberately no package `deploy` script |
 
-Do **not** treat the commands below as battle-tested until that lands. They are the **ops contract** to implement and operate against.
+Do not treat a successful synth as an AWS deployment claim. It validates the
+CloudFormation shape only.
 
 ---
 
-## Prerequisites (when deploying)
+## Prerequisites (for synthesis)
 
-- AWS account + credentials with rights for CloudFormation/CDK, Lambda, API Gateway, DynamoDB, S3, EventBridge, IAM, (optional) KMS
-- Node 22.x for Lambda runtime alignment when packaging
-- `cdk` CLI / `aws` CLI bootstrap in the target account/region
-- Pre-deploy local proof green: [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md)
+- Node ≥22.18 and pnpm
+- `pnpm install` from the repository root (the CDK CLI is a package development dependency)
 
 ---
 
@@ -43,48 +45,50 @@ Do **not** treat the commands below as battle-tested until that lands. They are 
 
 ---
 
-## Deploy
-
-Intended shape (update paths when the CDK app lands under `services/cdk`):
+## Synthesize the foundation
 
 ```bash
 pnpm install
-# bootstrap once per account/region if needed:
-#   npx cdk bootstrap aws://ACCOUNT/REGION
-
-# synthesize / deploy (illustrative — enable when package scripts exist)
-pnpm --filter @auto-harness/cdk deploy
-# or: npx cdk deploy --app '…' --all
+pnpm --filter @auto-harness/cdk synth
 ```
 
-### Expected stack outputs
+The default stack is `AutoHarnessFoundation`, creates tables named
+`AutoHarness-*`, and retains all data resources on replacement and deletion.
+Use CDK context to create a deliberately named disposable environment:
 
-| Output              | Consumer                                                                          |
-| ------------------- | --------------------------------------------------------------------------------- |
-| `RestApiUrl`        | Web UI, CI `HARNESS_API_URL`                                                      |
-| `WebSocketUrl`      | Agent connect (`wss://…/ws`) — see [deploy-host-daemon.md](deploy-host-daemon.md) |
-| `ArchiveBucketName` | Ops                                                                               |
-| `Region`            | Clients                                                                           |
+```bash
+pnpm --filter @auto-harness/cdk synth -- \
+  -c tablePrefix=Review20 \
+  -c archiveBucketName=review-20-cdk-foundation-archives \
+  -c removalPolicy=destroy
+```
 
-### Post-deploy smoke (minimum)
+`removalPolicy` accepts only `retain` (the default) or `destroy`. With
+`destroy`, CloudFormation still cannot remove a non-empty archive bucket; empty
+it explicitly before deleting the stack. The foundation deliberately does not
+enable CDK `autoDeleteObjects`, because that feature adds a custom-resource
+Lambda and would exceed this stack's no-runtime-resources boundary. Do not
+choose `destroy` for data that must survive a stack replacement.
 
-1. `GET {RestApiUrl}/health` or equivalent health route
-2. Create operator service account / bind agent key ([auth.md](auth.md#vps-agent-authentication))
-3. Register at least one repository
-4. Connect one agent ([deploy-host-daemon.md](deploy-host-daemon.md))
-5. `POST /sessions` + observe assign over WebSocket → terminal status
+### Foundation outputs
+
+| Output                                                      | Consumer                                          |
+| ----------------------------------------------------------- | ------------------------------------------------- |
+| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration |
+| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
+
+There is no `RestApiUrl`, `WebSocketUrl`, or `Region` output yet because those
+runtime resources are outside this foundation.
 
 ---
 
-## Update
+## Future deployment boundary
 
-| Change                      | Procedure                                                                                                         |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Lambda/handler code         | Build/bundle → `cdk deploy` (or pipeline) → verify health + one session                                           |
-| Infra (tables, routes, IAM) | `cdk diff` → `cdk deploy` → watch CloudWatch for errors                                                           |
-| Env / secrets               | Update parameter store / CDK context → redeploy or `update-function-configuration` → smoke login + agent register |
-| Breaking API changes        | Drain agents ([deploy-host-daemon.md](deploy-host-daemon.md)) → deploy control plane → roll agents → re-run E2E   |
-| Data migrations             | Prefer additive DynamoDB attributes; document any one-time backfill in the PR                                     |
+Before adding deployment, introduce the runtime resources and deployment
+runbook together: bootstrap requirements, an explicit deploy command, runtime
+roles, endpoint outputs, and an account-backed smoke test. This foundation does
+not authorize or imply any of those operations.
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance
@@ -111,31 +115,12 @@ Prefer **control plane first**, then agents, so old agents fail closed on unknow
 
 ---
 
-## Teardown
-
-```bash
-# After confirming no production traffic / agents drained
-pnpm --filter @auto-harness/cdk destroy
-# or: npx cdk destroy --all
-```
-
-Also:
-
-1. Drain and stop all VPS agents ([deploy-host-daemon.md](deploy-host-daemon.md#teardown)).
-2. Confirm DynamoDB tables and S3 archive bucket deletion policy (retain vs destroy — set retention in CDK before first prod deploy).
-3. Revoke service-account API keys and rotate any shared secrets.
-4. Remove DNS / custom domain bindings if used.
-
-Until destroy is validated in a non-prod account, treat teardown as **manual CloudFormation stack delete + agent stop**.
-
----
-
 ## Gates
 
-| When                    | Gate                                                                        |
-| ----------------------- | --------------------------------------------------------------------------- |
-| Before AWS deploy claim | Local E2E green ([host-daemon-e2e-testing.md](host-daemon-e2e-testing.md))  |
-| After AWS deploy        | Health, agent register, one full session lifecycle, CloudWatch errors quiet |
+| When                           | Gate                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests |
+| Before an AWS deployment claim | An implemented runtime deploy path and account-backed E2E proof           |
 
 ---
 

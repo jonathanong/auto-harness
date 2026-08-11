@@ -80,24 +80,26 @@ graph TB
 
 ```
 services/cdk/
-├── bin/auto-harness.ts
-└── lib/
-    ├── auto-harness-stack.ts   # top-level stack
-    ├── api-gateway.ts          # REST + WebSocket APIs, routes, stages
-    ├── lambda.ts               # function defs, env, IAM roles
-    ├── dynamodb.ts             # tables, GSIs, TTL
-    ├── s3.ts                   # archive bucket + lifecycle
-    └── eventbridge.ts          # 1-minute schedule rule
+└── src/
+    ├── cli.ts                  # CDK app; reads documented CDK context
+    ├── foundation-stack.ts      # DynamoDB, archive S3, and unassigned IAM policies
+    ├── tables.ts                # durable-table catalog shared by synthesis metadata
+    └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
 
-Stack outputs (typical):
+The current stack is a **synthesizable persistence foundation**, not the full
+control plane shown in the architecture diagram. It intentionally creates no
+Lambda, API Gateway, WebSocket, or EventBridge resources. The two managed
+policies are unassigned, narrow foundations for future API and archival
+runtimes; adding a principal remains a later change.
 
-| Output              | Example use             |
-| ------------------- | ----------------------- |
-| `RestApiUrl`        | Web UI / CI base URL    |
-| `WebSocketUrl`      | Agent `HARNESS_API_URL` |
-| `ArchiveBucketName` | Ops / debug             |
-| `Region`            | Client config           |
+Foundation stack outputs:
+
+| Output                                                 | Example use                                                             |
+| ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| `TablePrefix` and one `*TableName` output per table    | Set `HARNESS_DDB_PREFIX` or explicit future runtime table configuration |
+| `ArchiveBucketName`, `ArchiveBucketArn`                | Future archival runtime configuration                                   |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn` | Attach only to the corresponding future runtime role                    |
 
 ---
 
@@ -162,7 +164,7 @@ Keepalive: server `ping` every ~30s; agent/client `pong`. API Gateway idle timeo
 Handlers share:
 
 - `services/api/src/db/client.ts` — DynamoDB Document Client
-- `services/api/src/control-plane-assign.ts` — worktree assignment logic
+- `services/api/src/services/scheduler.ts` — assignment logic
 - `services/api/src/services/session-service.ts` — status transitions, validation
 - `services/api/src/services/notification.ts` — Slack thread updates
 - `modules/shared` — types, constants, Zod (or equivalent) schemas
@@ -191,33 +193,46 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                   | PK              | SK             | GSIs                                          | Primary access patterns                                                    |
-| ----------------------- | --------------- | -------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
-| Users                   | `id`            | —              | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users                            |
-| Repositories            | `id`            | —              | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)                  |
-| Sessions                | `id`            | —              | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter              |
-| Schedules               | `id`            | —              | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`                       |
-| SessionLogs             | `sessionId`     | `timestampSeq` | —                                             | Append logs; ordered, bounded range read for REST/history                  |
-| SessionConcurrencyLocks | `concurrencyId` | —              | —                                             | Conditional acquire/release for active session dedupe and schedule overlap |
-| Connections             | `connectionId`  | —              | `hostId`                                      | Connect/disconnect; find agent connection for assign                       |
-| Worktrees               | `id`            | —              | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo                            |
-| AuditLogs               | `id`            | `timestamp`    | `userId-timestamp`                            | Append-only audit; query by user                                           |
-| Integrations            | `id`            | —              | —                                             | Get/put Slack config                                                       |
+| Table            | PK                | SK             | GSIs                    | Primary access patterns             |
+| ---------------- | ----------------- | -------------- | ----------------------- | ----------------------------------- |
+| Users            | `id`              | —              | `username`              | Login by username                   |
+| Repositories     | `id`              | —              | —                       | CRUD by id                          |
+| Worktrees        | `id`              | —              | `repositoryId-id`       | List repository worktrees           |
+| Sessions         | `id`              | —              | `statusShard-createdAt` | Sharded queue query                 |
+| HostLocks        | `hostId`          | —              | —                       | Conditional host assignment lock    |
+| ConcurrencyLocks | `concurrencyId`   | —              | —                       | Conditional concurrency lock        |
+| SessionLogs      | `sessionId`       | `timestampSeq` | —                       | Append/range read; `ttl` is enabled |
+| Schedules        | `id`              | —              | —                       | CRUD by id                          |
+| Connections      | `connectionId`    | —              | —                       | Connection state                    |
+| Archives         | `key`             | —              | —                       | Archive metadata                    |
+| HostInventories  | `hostId`          | —              | —                       | Host inventory                      |
+| AuditLogs        | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query      |
+| Providers        | `id`              | —              | —                       | Provider catalog                    |
+| ProviderAccounts | `id`              | —              | —                       | Provider account catalog            |
+| Commands         | `id`              | —              | —                       | Command catalog                     |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
 **Capacity:** on-demand for all tables.
 
+`AuditLogs.timestampId` is `<ISO createdAt>#<event id>`, so concurrent writers
+remain totally ordered even when their timestamps are equal. The API cursor
+encodes the last evaluated DynamoDB key and is opaque to callers. Audit table
+writes are conditional inserts; no lifecycle code deletes or updates records.
+
 ### SessionLogs TTL and archival
 
 1. Each log item written with `ttl` = now + **7 days** (epoch seconds). DynamoDB TTL deletes expired items at no charge.
-2. On session reaching a terminal status (`completed` | `failed` | `cancelled` | `timed_out`), archival runs:
+2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
+   archive policy. A terminal-session archival worker is not part of this stack yet.
+   When that worker lands, it should:
    - Query all SessionLogs for `sessionId`
    - Write `s3://…/sessions/{sessionId}/logs.jsonl`
    - Prefer **leaving DynamoDB rows for TTL** (no bulk delete cost) unless storage pressure requires explicit delete after successful S3 put
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
-   parameters. S3 archive reads are a future enhancement; this REST route does
-   not currently fall back to S3.
+   parameters. Archived-object retrieval is not part of the foundation or its
+   archive-write policy; add a separately scoped read policy when that
+   enhancement is implemented.
 
 ### Connections model
 

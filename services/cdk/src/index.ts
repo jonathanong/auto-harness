@@ -1,5 +1,3 @@
-import { PACKAGE_SCOPE } from "@auto-harness/shared";
-
 import {
   describeControlPlane,
   DYNAMO_TABLES,
@@ -8,8 +6,11 @@ import {
   statusShardKey,
 } from "./tables.ts";
 
+export { AutoHarnessFoundationStack } from "./foundation-stack.ts";
+export type { FoundationResources, FoundationStackProps } from "./foundation-stack.ts";
+
 /** AWS CDK infrastructure service identity. */
-export const serviceName = `${PACKAGE_SCOPE}/cdk` as const;
+export const serviceName = "@auto-harness/cdk" as const;
 
 export function getServiceName(): string {
   return serviceName;
