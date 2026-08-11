@@ -117,4 +117,19 @@ describe("provider deletion", () => {
     });
     expect(state.providers.get(provider.id)).toEqual(provider);
   });
+
+  it("does not recreate a provider that disappeared before a durable delete began", async () => {
+    const state = createControlPlaneState();
+    state.providers.set(provider.id, provider);
+    state.storage = {
+      getProvider: async () => null,
+      listProviderAccounts: async () => [],
+      listCommands: async () => [],
+    } as never;
+    await expect(deleteProviderDurable(state, provider.id)).resolves.toEqual({
+      ok: false,
+      error: "provider not found",
+    });
+    expect(state.providers.has(provider.id)).toBe(false);
+  });
 });
