@@ -55,20 +55,20 @@ function catalogStorage() {
       [...providerAccounts.values()].map((record) => ({ ...record })),
     updateProviderAccount: async ({
       id,
-      expectedUpdatedAt,
+      expectedVersion,
       updatedAt,
       patch,
     }: {
       id: string;
-      expectedUpdatedAt: string;
+      expectedVersion: number;
       updatedAt: string;
       patch: Partial<
         Pick<ProviderAccountRecord, "providerId" | "label" | "usageLimitCooldownSeconds">
       >;
     }) => {
       const current = providerAccounts.get(id);
-      if (!current || current.updatedAt !== expectedUpdatedAt) return false;
-      providerAccounts.set(id, { ...current, ...patch, updatedAt });
+      if (!current || (current.version ?? 0) !== expectedVersion) return false;
+      providerAccounts.set(id, { ...current, ...patch, updatedAt, version: expectedVersion + 1 });
       return true;
     },
     deleteProviderAccount: async (id: string) => providerAccounts.delete(id),

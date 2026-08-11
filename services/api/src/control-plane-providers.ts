@@ -155,7 +155,14 @@ export function deleteProvider(
   }
   state.providers.delete(id);
   if (state.storage) {
-    queueWrite(state, state.storage.deleteProvider(id));
+    queueWrite(
+      state,
+      state.storage.deleteProvider(id).then(async (deleted) => {
+        if (deleted) return;
+        const authoritative = await state.storage?.getProvider(id);
+        if (authoritative) state.providers.set(id, authoritative);
+      }),
+    );
   }
   return { ok: true };
 }

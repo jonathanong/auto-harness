@@ -61,10 +61,10 @@ describe("ControlPlane provider account CRUD", () => {
 
   it("queues durable account writes without replacing full records", async () => {
     const storage = {
-      putProviderAccount: vi.fn(async () => undefined),
+      putProviderAccount: vi.fn(async () => true),
       updateProviderAccount: vi.fn(async () => true),
       clearProviderAccountUsageLimit: vi.fn(async () => true),
-      deleteProviderAccount: vi.fn(async () => undefined),
+      deleteProviderAccount: vi.fn(async () => true),
     };
     const plane = new ControlPlane({
       storage: storage as never,

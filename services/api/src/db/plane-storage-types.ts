@@ -17,7 +17,15 @@ export type PlaneStorageCtx = {
 };
 
 export type ProviderRecord = Provider;
-export type ProviderAccountRecord = ProviderAccount;
+/**
+ * `version` is an internal, monotonic DynamoDB compare-and-swap fence.  It is
+ * deliberately distinct from `updatedAt`: two workers can observe the same
+ * clock tick, whereas a counter cannot collide for one account row.
+ *
+ * It is optional only to permit hydrating rows written before the fence was
+ * introduced; storage normalizes those legacy rows to version zero.
+ */
+export type ProviderAccountRecord = ProviderAccount & { version?: number };
 export type CommandRecord = Command;
 
 /** Authentication principal record stored in the dedicated Users table. */

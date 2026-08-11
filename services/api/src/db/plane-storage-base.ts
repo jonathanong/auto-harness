@@ -516,6 +516,10 @@ export class DynamoPlaneStorageBase {
     return catalog.putRepository(this.ctx, rec);
   }
 
+  createRepository(rec: RepositoryRecord): Promise<boolean> {
+    return catalog.createRepository(this.ctx, rec);
+  }
+
   getRepository(id: string): Promise<RepositoryRecord | null> {
     return catalog.getRepository(this.ctx, id);
   }

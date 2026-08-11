@@ -6,15 +6,44 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-import type {
-  CommandRecord,
-  PlaneStorageCtx,
-  ProviderAccountRecord,
-  ProviderRecord,
+import {
+  isConditionalFailed,
+  type CommandRecord,
+  type PlaneStorageCtx,
+  type ProviderRecord,
 } from "./plane-storage-types.ts";
+import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
 export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Promise<void> {
-  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.providers, Item: { ...rec } }));
+  // Older callers constructed provider records before timestamps became
+  // mandatory. The document client drops undefined expression values, so
+  // include timestamp clauses only when the caller supplied them.
+  const timestampUpdates: string[] = [];
+  const values: Record<string, unknown> = {
+    ":name": rec.name,
+    ":zero": 0,
+  };
+  if (rec.defaultCommandId !== undefined) {
+    timestampUpdates.push("defaultCommandId = :defaultCommandId");
+    values[":defaultCommandId"] = rec.defaultCommandId;
+  }
+  if (rec.createdAt !== undefined) {
+    timestampUpdates.push("createdAt = if_not_exists(createdAt, :createdAt)");
+    values[":createdAt"] = rec.createdAt;
+  }
+  if (rec.updatedAt !== undefined) {
+    timestampUpdates.push("updatedAt = :updatedAt");
+    values[":updatedAt"] = rec.updatedAt;
+  }
+  await ctx.doc.send(
+    new UpdateCommand({
+      TableName: ctx.tables.providers,
+      Key: { id: rec.id },
+      UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
+      ExpressionAttributeNames: { "#name": "name" },
+      ExpressionAttributeValues: values,
+    }),
+  );
 }
 
 export async function getProvider(
@@ -41,156 +70,22 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
   return records;
 }
 
-export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.providers, Key: { id } }));
-}
-
-export async function putProviderAccount(
-  ctx: PlaneStorageCtx,
-  rec: ProviderAccountRecord,
-): Promise<void> {
-  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.providerAccounts, Item: { ...rec } }));
-}
-
-/**
- * Update only the mutable catalog fields observed by a control-plane process.
- * The updatedAt compare-and-swap prevents an older hydrated record from
- * overwriting a cooldown (or recreating an account deleted by another
- * process).  Creation remains an unconditional put; updates must use this
- * method.
- */
-export async function updateProviderAccount(
-  ctx: PlaneStorageCtx,
-  opts: {
-    id: string;
-    expectedUpdatedAt: string;
-    updatedAt: string;
-    patch: Partial<
-      Pick<
-        ProviderAccountRecord,
-        "providerId" | "label" | "usageLimitCooldownSeconds" | "usageLimitedUntil"
-      >
-    >;
-  },
-): Promise<boolean> {
-  const sets: string[] = ["updatedAt = :updatedAt"];
-  const values: Record<string, unknown> = {
-    ":expectedUpdatedAt": opts.expectedUpdatedAt,
-    ":updatedAt": opts.updatedAt,
-  };
-  if (opts.patch.providerId !== undefined) {
-    sets.push("providerId = :providerId");
-    values[":providerId"] = opts.patch.providerId;
-  }
-  if (opts.patch.label !== undefined) {
-    sets.push("label = :label");
-    values[":label"] = opts.patch.label;
-  }
-  if (opts.patch.usageLimitCooldownSeconds !== undefined) {
-    sets.push("usageLimitCooldownSeconds = :usageLimitCooldownSeconds");
-    values[":usageLimitCooldownSeconds"] = opts.patch.usageLimitCooldownSeconds;
-  }
-  if (opts.patch.usageLimitedUntil !== undefined) {
-    sets.push("usageLimitedUntil = :usageLimitedUntil");
-    values[":usageLimitedUntil"] = opts.patch.usageLimitedUntil;
-  }
+export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
+  if (!(await ensureProviderAccountCount(ctx, id))) return false;
   try {
     await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.providerAccounts,
-        Key: { id: opts.id },
-        UpdateExpression: `SET ${sets.join(", ")}`,
-        ConditionExpression: "attribute_exists(id) AND updatedAt = :expectedUpdatedAt",
-        ExpressionAttributeValues: values,
+      new DeleteCommand({
+        TableName: ctx.tables.providers,
+        Key: { id },
+        ConditionExpression: "attribute_not_exists(accountCount) OR accountCount = :zero",
+        ExpressionAttributeValues: { ":zero": 0 },
       }),
     );
     return true;
   } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "name" in err &&
-      (err as { name: string }).name === "ConditionalCheckFailedException"
-    ) {
-      return false;
-    }
+    if (isConditionalFailed(err)) return false;
     throw err;
   }
-}
-
-/** Clear only the cooldown field, guarded by the same account version CAS. */
-export async function clearProviderAccountUsageLimit(
-  ctx: PlaneStorageCtx,
-  opts: {
-    id: string;
-    expectedUpdatedAt: string;
-    expectedUsageLimitedUntil?: string | null;
-    updatedAt: string;
-  },
-): Promise<boolean> {
-  const expectedCooldown = opts.expectedUsageLimitedUntil;
-  const values: Record<string, unknown> = { ":expectedUpdatedAt": opts.expectedUpdatedAt };
-  const cooldownCondition =
-    expectedCooldown === undefined
-      ? "attribute_not_exists(usageLimitedUntil)"
-      : "usageLimitedUntil = :expectedUsageLimitedUntil";
-  if (expectedCooldown !== undefined) values[":expectedUsageLimitedUntil"] = expectedCooldown;
-  try {
-    await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.providerAccounts,
-        Key: { id: opts.id },
-        UpdateExpression: "SET usageLimitedUntil = :usageLimitedUntil, updatedAt = :updatedAt",
-        ConditionExpression: `attribute_exists(id) AND updatedAt = :expectedUpdatedAt AND ${cooldownCondition}`,
-        ExpressionAttributeValues: {
-          ...values,
-          ":updatedAt": opts.updatedAt,
-          ":usageLimitedUntil": null,
-        },
-      }),
-    );
-    return true;
-  } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "name" in err &&
-      (err as { name: string }).name === "ConditionalCheckFailedException"
-    ) {
-      return false;
-    }
-    throw err;
-  }
-}
-
-export async function getProviderAccount(
-  ctx: PlaneStorageCtx,
-  id: string,
-): Promise<ProviderAccountRecord | null> {
-  const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.providerAccounts, Key: { id } }),
-  );
-  return (res.Item as ProviderAccountRecord | undefined) ?? null;
-}
-
-export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<ProviderAccountRecord[]> {
-  const records: ProviderAccountRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const res = await ctx.doc.send(
-      new ScanCommand({
-        TableName: ctx.tables.providerAccounts,
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    records.push(...((res.Items ?? []) as ProviderAccountRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
-  return records;
-}
-
-export async function deleteProviderAccount(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.providerAccounts, Key: { id } }));
 }
 
 export async function putCommand(ctx: PlaneStorageCtx, rec: CommandRecord): Promise<void> {

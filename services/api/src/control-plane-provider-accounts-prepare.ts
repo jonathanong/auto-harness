@@ -50,6 +50,7 @@ export function prepareCreateProviderAccount(
       lastAssignedAt: null,
       createdAt: at,
       updatedAt: at,
+      version: 1,
     },
   };
 }
@@ -82,6 +83,7 @@ export function prepareUpdateProviderAccount(
   const account: ProviderAccountRecord = {
     ...existing,
     updatedAt: state.now(),
+    version: (existing.version ?? 0) + 1,
     ...(patch.providerId !== undefined ? { providerId: patch.providerId } : {}),
     ...(patch.label !== undefined ? { label: patch.label } : {}),
     ...(patch.usageLimitCooldownSeconds !== undefined

@@ -7,11 +7,8 @@ import {
   listRepositories,
   listSchedules,
 } from "./plane-storage-catalog.ts";
-import {
-  listCommands,
-  listProviderAccounts,
-  listProviders,
-} from "./plane-storage-catalog-providers.ts";
+import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
+import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
 import { listSessionsByStatus, listWorktreesForRepo } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
