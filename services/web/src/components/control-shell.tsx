@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { AppShell } from "@auto-harness/ui";
 
 const NAV = [
@@ -58,10 +59,35 @@ const NAV = [
     pw: "nav-hosts",
     tip: "Add host slots, view online/offline fleet, drain hosts",
   },
+  {
+    href: "/settings",
+    label: "Settings",
+    pw: "nav-settings",
+    tip: "Global settings, including admin-only Slack configuration",
+  },
 ];
 
 export function ControlShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
+  const [settingsAllowed, setSettingsAllowed] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/v1/integrations/slack", { cache: "no-store" })
+      .then((response) => {
+        if (active && (response.status === 401 || response.status === 403)) {
+          setSettingsAllowed(false);
+        }
+      })
+      .catch(() => {
+        // Keep the nav item visible when the capability probe is unavailable; the page
+        // still renders its permission-aware error state.
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <AppShell
       pw="control-shell"
@@ -69,7 +95,7 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       titleTip="Org-wide control plane: sessions, schedules, catalog, and host fleet"
       subtitle="Org-wide sessions, schedules, and host fleet"
       subtitleTip="Hosts self-register over the API/WebSocket; configure host paths on the host pane"
-      nav={NAV}
+      nav={settingsAllowed ? NAV : NAV.filter((item) => item.href !== "/settings")}
       pathname={pathname}
     >
       {children}

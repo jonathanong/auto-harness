@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, worktrees, schedules, hosts (agents), and the Providers/Commands catalog. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
+Next.js UI for sessions, repositories, worktrees, schedules, hosts (agents), the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
 ## Authentication
 
@@ -372,6 +372,27 @@ Edit name/argv/append-prompt/provider inline. Delete is disabled while the comma
 ---
 
 ## Settings
+
+The control-plane Settings page is available only to an unscoped admin. An
+expired or missing session follows the normal safe sign-in return path; a
+valid but unauthorized account receives a `403` permission state. The
+Settings nav item is hidden after the UI's permission probe receives `401` or
+`403`; direct navigation renders an accessible `403` permission error rather
+than exposing configuration state.
+
+### Slack configuration
+
+Settings shows only the redacted Slack state (`Configured` / `Not configured`,
+channel, enabled state, and notification toggles). Bot tokens and signing
+secrets are write-only: they are password inputs with no initial value, are
+never included in server-rendered data, and are cleared after a successful
+create or full replacement. Replacements always require the bot token again;
+the UI cannot recover or preserve a prior secret.
+
+The page supports create, complete replacement, and explicitly confirmed
+delete. It displays a persistent warning that configuration alone does not
+send Slack messages; OAuth, delivery, inbound verification, and session
+threads are separate capabilities and are not implemented by this UI.
 
 ### Service Accounts
 

@@ -148,3 +148,8 @@ export {
   type ProviderAccountScopeResolution,
   type ProviderAccountScopeSource,
 } from "./provider-cascade-scope.ts";
+export {
+  DEFAULT_SLACK_NOTIFICATIONS,
+  type PublicSlackIntegration,
+  type SlackNotifications,
+} from "./slack.ts";

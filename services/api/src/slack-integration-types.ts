@@ -1,22 +1,8 @@
+import { type PublicSlackIntegration, type SlackNotifications } from "@auto-harness/shared";
+
 export const SLACK_INTEGRATION_ID = "slack";
-
-export type SlackNotifications = {
-  onSessionCreated: boolean;
-  onSessionStarted: boolean;
-  onSessionCompleted: boolean;
-  onSessionFailed: boolean;
-  onSessionCancelled: boolean;
-  onScheduleCompleted: boolean;
-};
-
-export const DEFAULT_SLACK_NOTIFICATIONS: SlackNotifications = {
-  onSessionCreated: true,
-  onSessionStarted: true,
-  onSessionCompleted: true,
-  onSessionFailed: true,
-  onSessionCancelled: true,
-  onScheduleCompleted: false,
-};
+export { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
+export type { PublicSlackIntegration, SlackNotifications } from "@auto-harness/shared";
 
 /** The sole durable record. `encryptedConfig` must never reach REST output. */
 export type SlackIntegrationRecord = {
@@ -30,10 +16,6 @@ export type SlackIntegrationRecord = {
   version: number;
   createdAt: string;
   updatedAt: string;
-};
-
-export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
-  botTokenConfigured: true;
 };
 
 export function toPublicSlackIntegration(record: SlackIntegrationRecord): PublicSlackIntegration {
