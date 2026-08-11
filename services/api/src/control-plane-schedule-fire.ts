@@ -45,7 +45,7 @@ export function triggerSchedule(
     schedule.nextRunAt = newNextRunAt;
     schedule.lastRunAt = nowIso;
     if (state.storage) {
-      queueWrite(state, state.storage.putSchedule({ ...schedule }));
+      queueWrite(state, (storage) => storage!.putSchedule({ ...schedule }));
     }
   }
   return { ok: true, session: result.session, created: result.created };

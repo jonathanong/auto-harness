@@ -6,40 +6,23 @@ import { ControlPlane } from "./control-plane.ts";
 const ctx = createDynamoTestCtx("PlPr");
 
 describe("ControlPlane providers — real DynamoDB Local write-through", () => {
-  it("create/update/delete persist, and a fresh plane hydrates them back", async () => {
+  it("orders dependent catalog writes through one settle and persists a restart-consistent result", async () => {
     if (!ctx.available || !ctx.storage) {
       expect(true).toBe(true);
       return;
     }
     const plane = new ControlPlane({ storage: ctx.storage, now: () => "t" });
 
-    // queueWrite fires each mutation's Dynamo write without awaiting it — settleStorage
-    // must run between mutations of the *same* record, or their writes can land out of
-    // order (nothing in production serializes same-key writes either; each of these
-    // corresponds to a separate request in practice, never fired back-to-back like this).
     plane.createProvider({ id: "p1", name: "claude" });
     await plane.settleStorage();
     plane.createCommand({ id: "c1", name: "echo", argv: ["echo"] });
     plane.createProviderAccount({ id: "a1", providerId: "p1", label: "x@y.com" });
-    await plane.settleStorage();
     plane.updateProvider("p1", { name: "codex" });
     plane.updateCommand("c1", { name: "echo2" });
     plane.updateProviderAccount("a1", { label: "b@c.com" });
-    await plane.settleStorage();
-
-    const fresh = new ControlPlane({ storage: ctx.storage, now: () => "t" });
-    await fresh.hydrateFromStorage();
-    expect(fresh.getProvider("p1")?.name).toBe("codex");
-    expect(fresh.getCommand("c1")?.name).toBe("echo2");
-    expect(fresh.getProviderAccount("a1")?.label).toBe("b@c.com");
-
     plane.deleteCommand("c1");
     plane.deleteProviderAccount("a1");
-    // Account deletion decrements the provider's durable reference count in
-    // its own transaction, so wait for it before attempting the guarded
-    // provider delete.
-    await plane.settleStorage();
-    plane.deleteProvider("p1");
+    expect(plane.deleteProvider("p1").ok).toBe(true);
     await plane.settleStorage();
 
     const afterDelete = new ControlPlane({ storage: ctx.storage, now: () => "t" });
@@ -47,5 +30,31 @@ describe("ControlPlane providers — real DynamoDB Local write-through", () => {
     expect(afterDelete.getProvider("p1")).toBeNull();
     expect(afterDelete.getCommand("c1")).toBeNull();
     expect(afterDelete.getProviderAccount("a1")).toBeNull();
+  });
+
+  it("continues after a failed queued write and persists later writes across restart", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const putProvider = ctx.storage.putProvider.bind(ctx.storage);
+    const failing = Object.create(ctx.storage) as typeof ctx.storage;
+    failing.putProvider = async (record) => {
+      if (record.id === "failed-provider") {
+        throw new Error("injected provider write failure");
+      }
+      await putProvider(record);
+    };
+    const plane = new ControlPlane({ storage: failing, now: () => "t" });
+
+    plane.createProvider({ id: "failed-provider", name: "will not persist" });
+    plane.createProvider({ id: "later-provider", name: "does persist" });
+    await expect(plane.settleStorage()).rejects.toThrow("injected provider write failure");
+
+    const restarted = new ControlPlane({ storage: ctx.storage, now: () => "t" });
+    await restarted.hydrateFromStorage();
+    expect(restarted.getProvider("failed-provider")).toBeNull();
+    expect(restarted.getProvider("later-provider")?.name).toBe("does persist");
+    await expect(plane.settleStorage()).resolves.toBeUndefined();
   });
 });

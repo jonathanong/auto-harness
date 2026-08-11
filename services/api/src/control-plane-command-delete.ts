@@ -14,7 +14,7 @@ export function deleteCommand(state: ControlPlaneState, id: string): DeleteResul
   const result = canDeleteCommand(state, id, referencesFromState(state));
   if (!result.ok) return result;
   state.commands.delete(id);
-  if (state.storage) queueWrite(state, state.storage.deleteCommand(id));
+  if (state.storage) queueWrite(state, (storage) => storage!.deleteCommand(id));
   return { ok: true };
 }
 

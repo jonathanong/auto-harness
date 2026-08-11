@@ -20,7 +20,7 @@ export function createProviderAccount(
   if (!result.ok) return result;
   state.providerAccounts.set(result.account.id, result.account);
   if (state.storage) {
-    queueWrite(state, state.storage.putProviderAccount({ ...result.account }));
+    queueWrite(state, (storage) => storage!.putProviderAccount({ ...result.account }));
   }
   return { ok: true, account: { ...result.account } };
 }
@@ -48,9 +48,8 @@ export function updateProviderAccount(
   if (!result.ok) return result;
   state.providerAccounts.set(id, result.account);
   if (state.storage) {
-    queueWrite(
-      state,
-      state.storage
+    queueWrite(state, (storage) =>
+      storage!
         .updateProviderAccount({
           id,
           expectedVersion: result.existing.version ?? 0,
@@ -60,7 +59,7 @@ export function updateProviderAccount(
         })
         .then(async (updated) => {
           if (updated) return;
-          const authoritative = await state.storage?.getProviderAccount(id);
+          const authoritative = await storage?.getProviderAccount(id);
           if (authoritative) state.providerAccounts.set(id, authoritative);
           else state.providerAccounts.delete(id);
         }),
@@ -83,9 +82,8 @@ export function clearProviderAccountUsageLimit(
   };
   state.providerAccounts.set(id, account);
   if (state.storage) {
-    queueWrite(
-      state,
-      state.storage
+    queueWrite(state, (storage) =>
+      storage!
         .clearProviderAccountUsageLimit({
           id,
           expectedVersion: existing.version ?? 0,
@@ -154,7 +152,7 @@ export function deleteProviderAccount(state: ControlPlaneState, id: string): Del
   if (!result.ok) return result;
   state.providerAccounts.delete(id);
   if (state.storage) {
-    queueWrite(state, state.storage.deleteProviderAccount(id));
+    queueWrite(state, (storage) => storage!.deleteProviderAccount(id));
   }
   return { ok: true };
 }

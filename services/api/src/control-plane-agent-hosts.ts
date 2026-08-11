@@ -71,7 +71,7 @@ export function putHostInventory(
     const rec = result.config;
     state.hostInventories.set(hostId, rec);
     if (state.storage) {
-      queueWrite(state, state.storage.putHostInventory({ ...rec }));
+      queueWrite(state, (storage) => storage!.putHostInventory({ ...rec }));
     }
     syncWorktreesFromHost(state, rec, true);
     return { ok: true, config: { ...rec } };
@@ -144,7 +144,7 @@ export function deleteHostInventory(
   }
   state.hostInventories.delete(hostId);
   if (state.storage) {
-    queueWrite(state, state.storage.deleteHostInventory(hostId));
+    queueWrite(state, (storage) => storage!.deleteHostInventory(hostId));
   }
   // The host is gone entirely, so its worktree names must be released too —
   // otherwise they stay permanently reserved against a host that no longer exists.

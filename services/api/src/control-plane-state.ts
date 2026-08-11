@@ -34,6 +34,12 @@ import type {
 export type ControlPlaneState = {
   storage: DynamoPlaneStorage | undefined;
   pendingPersists: Promise<void>[];
+  /**
+   * Serializes fire-and-forget durable writes without starting the next write
+   * until the preceding one has settled. The recovered tail deliberately keeps
+   * later writes runnable after an earlier write fails.
+   */
+  writeTail: Promise<void>;
   sessions: Map<string, SessionRecord>;
   worktrees: Map<string, WorktreeRecord>;
   connections: Map<string, ConnectionRecord>;
@@ -83,6 +89,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
   return {
     storage: options.storage,
     pendingPersists: [],
+    writeTail: Promise.resolve(),
     sessions: new Map(),
     worktrees: new Map(),
     connections: new Map(),
@@ -128,21 +135,29 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     onHostMessage: options.onHostMessage,
   };
 }
-export function queueWrite(state: ControlPlaneState, p: Promise<void>): void {
-  state.pendingPersists.push(p);
+export function queueWrite(
+  state: ControlPlaneState,
+  write: (storage: DynamoPlaneStorage | undefined) => Promise<void>,
+): void {
+  const storage = state.storage;
+  const queued = state.writeTail.then(() => write(storage));
+  // Preserve the failure on `queued` for settleStorage, but recover the tail
+  // so one failed asynchronous write does not permanently poison the queue.
+  state.writeTail = queued.catch(() => undefined);
+  state.pendingPersists.push(queued);
 }
 
 export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
   state.sessions.set(session.id, { ...session });
   if (state.storage) {
-    queueWrite(state, state.storage.putSession({ ...session }));
+    queueWrite(state, (storage) => storage!.putSession({ ...session }));
   }
 }
 
 export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): void {
   state.worktrees.set(wt.id, { ...wt });
   if (state.storage) {
-    queueWrite(state, state.storage.putWorktree({ ...wt }));
+    queueWrite(state, (storage) => storage!.putWorktree({ ...wt }));
   }
 }
 

@@ -10,8 +10,7 @@ export function persistTerminalSessionThenReleaseConcurrencyLock(
   storage: NonNullable<ControlPlaneState["storage"]>,
 ): void {
   state.sessions.set(session.id, { ...session });
-  queueWrite(
-    state,
+  queueWrite(state, () =>
     storage
       .putSession({ ...session })
       .then(() => storage.releaseConcurrencyLock(concurrencyId, session.id)),

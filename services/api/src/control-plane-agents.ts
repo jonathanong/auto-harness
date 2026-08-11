@@ -289,9 +289,8 @@ export function registerHost(
   );
   if (state.storage) {
     const replaceLock = opts.replaceExisting === true || existing !== undefined;
-    queueWrite(
-      state,
-      state.storage
+    queueWrite(state, (storage) =>
+      storage!
         .tryAcquireHostLock({
           hostId: opts.hostId,
           connectionId,
@@ -314,7 +313,7 @@ export function registerHost(
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
-    queueWrite(state, state.storage.putConnection(conn));
+    queueWrite(state, (storage) => storage!.putConnection(conn));
   }
   state.hostConnection.set(opts.hostId, connectionId);
   state.disconnectedHosts.delete(opts.hostId);
@@ -330,7 +329,9 @@ export function registerHost(
     previousInventory,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
-  if (state.storage) queueWrite(state, state.storage.putHostInventory(registrationInventory));
+  if (state.storage) {
+    queueWrite(state, (storage) => storage!.putHostInventory(registrationInventory));
+  }
 
   for (const wt of opts.worktrees) {
     const prev = state.worktrees.get(wt.id);
