@@ -13,6 +13,10 @@ import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
 
+type NamedCreateTableInput = ConstructorParameters<typeof CreateTableCommand>[0] & {
+  TableName: string;
+};
+
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
     await client.send(new DescribeTableCommand({ TableName: name }));
@@ -24,9 +28,8 @@ async function tableExists(client: DynamoDBClient, name: string): Promise<boolea
 
 async function createIfMissing(
   client: DynamoDBClient,
-  input: ConstructorParameters<typeof CreateTableCommand>[0],
+  input: NamedCreateTableInput,
 ): Promise<void> {
-  if (!input?.TableName) return;
   if (await tableExists(client, input.TableName)) return;
   try {
     await client.send(new CreateTableCommand(input));
