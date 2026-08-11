@@ -100,7 +100,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     }
   }
 
-  if (await handleSessionReadRoutes(ctx)) return true;
+  if (handleSessionReadRoutes(ctx)) return true;
 
   const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
   if (method === "POST" && cancelMatch) {
@@ -184,31 +184,6 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     } catch {
       sendInternalError(res);
     }
-    return true;
-  }
-
-  const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
-  if (method === "GET" && logsMatch) {
-    const id = logsMatch[1]!;
-    const session = plane.getSession(id);
-    if (session && !canAccess(ctx, session.repositoryId)) {
-      sendForbidden(res);
-      return true;
-    }
-    send(res, 200, { items: plane.getLogs(id) });
-    return true;
-  }
-
-  const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
-  if (method === "POST" && archiveMatch) {
-    const id = archiveMatch[1]!;
-    const session = plane.getSession(id);
-    if (session && !canAccess(ctx, session.repositoryId)) {
-      sendForbidden(res);
-      return true;
-    }
-    const archived = plane.archiveSessionLogs(id);
-    send(res, 200, archived);
     return true;
   }
 
