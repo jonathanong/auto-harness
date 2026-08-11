@@ -18,10 +18,9 @@ export default defineConfig({
         "**/providers.ts",
         "**/daemon-transport.ts",
         "**/cli.ts",
-        // Follow-up DynamoDB storage-adapter coverage tranches: sessions,
-        // then auth/clear/reconnect/main-checkout. The base, catalog, provider,
-        // and lock adapters are instrumented by real-Dynamo tests.
-        "**/db/plane-storage-sessions.ts",
+        // Follow-up DynamoDB storage-adapter coverage tranches: auth/clear,
+        // then reconnect/main-checkout. The base, catalog, provider, lock, and
+        // session adapters are instrumented by real-Dynamo tests.
         "**/db/plane-storage-auth.ts",
         "**/db/plane-storage-clear.ts",
         "**/db/plane-storage-reconnect.ts",
