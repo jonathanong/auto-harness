@@ -5,8 +5,10 @@ import {
   dependenciesForCommand,
   dependenciesForProvider,
   dependenciesForRepository,
+  refreshDeleteReferences,
   type DeleteReferences,
 } from "./control-plane-delete-guards.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
 
 const now = "2026-01-01T00:00:00.000Z";
 const refs: DeleteReferences = {
@@ -108,5 +110,25 @@ describe("catalog delete references in every route shape", () => {
         { kind: "host-inventory", id: "host" },
       ]),
     );
+  });
+
+  it("treats absent override maps as no account dependency and reads in-memory references without storage", async () => {
+    expect(
+      dependenciesForAccount(
+        {
+          ...refs,
+          inventories: [
+            {
+              hostId: "host",
+              repositories: [{ id: "repository", worktrees: [{}] }],
+              providerAccounts: [],
+            },
+          ],
+        },
+        "account",
+      ),
+    ).toEqual([{ kind: "session", id: "running", status: "running" }]);
+    const state = createControlPlaneState();
+    await expect(refreshDeleteReferences(state)).resolves.toMatchObject({ schedules: [] });
   });
 });
