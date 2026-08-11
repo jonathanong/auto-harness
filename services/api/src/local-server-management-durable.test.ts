@@ -140,6 +140,7 @@ describe("management routes durable writes", () => {
         providerId: provider.id,
         label: "new@example.test",
       }),
+      invoke("POST", "/api/v1/schedules/schedule/trigger"),
       invoke("PUT", "/api/v1/hosts/new-host/inventory", { repositories: [], commandProfiles: {} }),
     ]);
     for (const response of creates) {

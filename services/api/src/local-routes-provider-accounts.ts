@@ -84,9 +84,12 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
             : {}),
         });
         if (!result.ok) {
-          const status = result.conflict ? 409 : 404;
+          const status = result.conflict ? 409 : plane.getProviderAccount(id) ? 400 : 404;
           send(res, status, {
-            error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
+            error: {
+              code: status === 409 ? "CONFLICT" : status === 400 ? "VALIDATION_ERROR" : "NOT_FOUND",
+              message: result.error,
+            },
           });
           return true;
         }

@@ -85,7 +85,7 @@ function catalogStorage() {
 }
 
 describe("durable management restart visibility", () => {
-  it("survives restart only after every create and update has completed", async () => {
+  it("persists durable management changes across restarts", async () => {
     const storage = catalogStorage();
     const plane = new ControlPlane({
       storage,
@@ -138,6 +138,14 @@ describe("durable management restart visibility", () => {
         })
       ).ok,
     ).toBe(true);
+
+    const afterCreate = new ControlPlane({ storage });
+    await afterCreate.hydrateFromStorage();
+    expect(
+      afterCreate.listWorktrees().find((worktree) => worktree.id === "worktree"),
+    ).toMatchObject({
+      path: "/repository/wt",
+    });
 
     expect(
       (await plane.updateRepositoryDurable("repository", { name: "repository-updated" })).ok,

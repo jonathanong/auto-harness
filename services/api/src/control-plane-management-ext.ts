@@ -15,7 +15,7 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return schedules.putScheduleDurable(this.state, input);
   }
 
-  override updateSchedule(
+  updateSchedule(
     id: string,
     patch: Parameters<typeof schedules.updateSchedule>[2],
   ): ReturnType<typeof schedules.updateSchedule> {
