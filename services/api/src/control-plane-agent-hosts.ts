@@ -1,4 +1,5 @@
 import type { HostInventoryRecord } from "./db/plane-storage.ts";
+import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
@@ -9,13 +10,26 @@ function syncWorktreesFromHost(
   host: HostInventoryRecord,
   persist: boolean,
 ): void {
+  const { worktrees, removedIds } = projectHostWorktrees(state, host);
+  for (const worktree of worktrees) {
+    if (persist) persistWorktree(state, worktree);
+    else state.worktrees.set(worktree.id, worktree);
+  }
+  for (const id of removedIds) state.worktrees.delete(id);
+}
+
+function projectHostWorktrees(
+  state: ControlPlaneState,
+  host: HostInventoryRecord,
+): { worktrees: WorktreeRecord[]; removedIds: string[] } {
   const online = state.hostConnection.has(host.hostId);
   const configuredIds = new Set<string>();
+  const worktrees: WorktreeRecord[] = [];
   for (const repo of host.repositories) {
     for (const wt of repo.worktrees) {
       configuredIds.add(wt.id);
       const prev = state.worktrees.get(wt.id);
-      const next = {
+      const next: WorktreeRecord = {
         id: wt.id,
         name: wt.name,
         hostId: host.hostId,
@@ -27,16 +41,17 @@ function syncWorktreesFromHost(
         currentSessionId: prev && prev.currentSessionId != null ? prev.currentSessionId : null,
         lastAssignedAt: prev && prev.lastAssignedAt != null ? prev.lastAssignedAt : null,
       };
-      if (persist) persistWorktree(state, next);
-      else state.worktrees.set(next.id, next);
+      worktrees.push(next);
     }
   }
   // Host inventory is authoritative: drop worktrees no longer listed for this agent.
+  const removedIds: string[] = [];
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === host.hostId && !configuredIds.has(id) && wt.status !== "busy") {
-      state.worktrees.delete(id);
+      removedIds.push(id);
     }
   }
+  return { worktrees, removedIds };
 }
 
 export function putHostInventory(
@@ -83,11 +98,15 @@ export async function putHostInventoryDurable(
   if (!state.storage) return putHostInventory(state, hostId, body);
   const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
+  const projection = projectHostWorktrees(state, result.config);
   await state.storage.putHostInventory({ ...result.config });
+  await Promise.all([
+    ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
+    ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),
+  ]);
   state.hostInventories.set(hostId, result.config);
-  // These are a cache projection of the durable inventory. Do not queue an
-  // unrelated worktree write after the successful inventory response.
-  syncWorktreesFromHost(state, result.config, false);
+  for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
+  for (const id of projection.removedIds) state.worktrees.delete(id);
   return { ok: true, config: { ...result.config } };
 }
 
@@ -135,7 +154,11 @@ export async function deleteHostInventoryDurable(
   if (!state.hostInventories.has(hostId)) {
     return { ok: false, error: "agent host config not found" };
   }
+  const worktreeIds = [...state.worktrees.values()]
+    .filter((worktree) => worktree.hostId === hostId)
+    .map((worktree) => worktree.id);
   await state.storage.deleteHostInventory(hostId);
+  await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
   state.hostInventories.delete(hostId);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === hostId) state.worktrees.delete(id);

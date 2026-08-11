@@ -69,6 +69,10 @@ export class DynamoPlaneStorageBase {
     return sessions.putWorktree(this.ctx, wt);
   }
 
+  deleteWorktree(id: string): Promise<void> {
+    return sessions.deleteWorktree(this.ctx, id);
+  }
+
   putWorktreeFenced(
     wt: WorktreeRecord,
     fence: { hostId: string; connectionId: string },
@@ -487,6 +491,10 @@ export class DynamoPlaneStorageBase {
 
   putSchedule(rec: ScheduleRecord): Promise<void> {
     return catalog.putSchedule(this.ctx, rec);
+  }
+
+  updateScheduleManagement(rec: ScheduleRecord): Promise<ScheduleRecord | null> {
+    return catalog.updateScheduleManagement(this.ctx, rec);
   }
 
   getSchedule(id: string): Promise<ScheduleRecord | null> {

@@ -16,6 +16,7 @@ function catalogStorage() {
   const providers = new Map<string, ProviderRecord>();
   const providerAccounts = new Map<string, ProviderAccountRecord>();
   const hostInventories = new Map<string, HostInventoryRecord>();
+  const worktrees = new Map<string, import("./db/types.ts").WorktreeRecord>();
 
   return {
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
@@ -23,6 +24,17 @@ function catalogStorage() {
     deleteRepository: async (id: string) => repositories.delete(id),
     putSchedule: async (record: import("./control-plane.ts").ScheduleRecord) =>
       schedules.set(record.id, { ...record }),
+    updateScheduleManagement: async (record: import("./control-plane.ts").ScheduleRecord) => {
+      const current = schedules.get(record.id);
+      if (!current) return null;
+      const updated = {
+        ...record,
+        nextRunAt: current.nextRunAt,
+        lastRunAt: current.lastRunAt,
+      };
+      schedules.set(record.id, updated);
+      return { ...updated };
+    },
     listSchedules: async () => [...schedules.values()].map((record) => ({ ...record })),
     deleteSchedule: async (id: string) => schedules.delete(id),
     putCommand: async (record: CommandRecord) => commands.set(record.id, { ...record }),
@@ -62,8 +74,11 @@ function catalogStorage() {
       hostInventories.set(record.hostId, { ...record }),
     listHostInventories: async () => [...hostInventories.values()].map((record) => ({ ...record })),
     deleteHostInventory: async (hostId: string) => hostInventories.delete(hostId),
+    putWorktree: async (record: import("./db/types.ts").WorktreeRecord) =>
+      worktrees.set(record.id, { ...record }),
+    deleteWorktree: async (id: string) => worktrees.delete(id),
     listAllSessions: async () => [],
-    listAllWorktrees: async () => [],
+    listAllWorktrees: async () => [...worktrees.values()].map((record) => ({ ...record })),
     listConnections: async () => [],
     listArchives: async () => [],
   } as never;
@@ -157,6 +172,7 @@ describe("durable management restart visibility", () => {
     expect(restarted.getProviderAccount("account")?.label).toBe("updated@example.test");
     expect(restarted.getSchedule("schedule")?.name).toBe("schedule-updated");
     expect(restarted.getHostInventory("host")?.logLevel).toBe("debug");
+    expect(restarted.listWorktrees().filter((worktree) => worktree.hostId === "host")).toEqual([]);
 
     expect((await plane.deleteRepositoryDurable("repository")).ok).toBe(true);
     expect((await plane.deleteScheduleDurable("schedule")).ok).toBe(true);

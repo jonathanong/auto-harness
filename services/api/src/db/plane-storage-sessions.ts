@@ -245,6 +245,10 @@ export async function putWorktree(ctx: PlaneStorageCtx, wt: WorktreeRecord): Pro
   );
 }
 
+export async function deleteWorktree(ctx: PlaneStorageCtx, id: string): Promise<void> {
+  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.worktrees, Key: { id } }));
+}
+
 /** Registration inventory is written only while its exact host lease is
  * current. This prevents an old API process from publishing stale inventory
  * after a replacement connection has won the host lock. */
