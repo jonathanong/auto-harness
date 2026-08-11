@@ -10,13 +10,14 @@ prompts or log chunks.
 ## Endpoint
 
 ```
-wss://<api-domain>/ws with `Authorization: Bearer <credential>`
+wss://<api-domain>/ws                  host control with `Authorization: Bearer <credential>`
+wss://<api-domain>/ws/viewer?ticket=… browser log viewing with a short-lived viewer ticket
 ```
 
-| Connection | Credential                                                           | First message     |
-| ---------- | -------------------------------------------------------------------- | ----------------- |
-| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                  | `host:register`   |
-| Web UI     | Short-lived ticket or session-derived token (see [auth.md](auth.md)) | `client:register` |
+| Connection | Credential                                                                          | First message       |
+| ---------- | ----------------------------------------------------------------------------------- | ------------------- |
+| VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                 | `host:register`     |
+| Web UI     | Short-lived viewer ticket obtained with its session cookie (see [auth.md](auth.md)) | `session:subscribe` |
 
 All application messages are JSON with a `type` field. API Gateway routes: `$connect`, `$disconnect`, `$default`.
 
@@ -127,34 +128,35 @@ assignment.
 
 ### Client → server
 
-| Type                  | Payload                                       |
-| --------------------- | --------------------------------------------- |
-| `client:register`     | `{ userId }` (or principal from connect auth) |
-| `session:subscribe`   | `{ sessionId }`                               |
-| `session:unsubscribe` | `{ sessionId }`                               |
+| Type                  | Payload                              |
+| --------------------- | ------------------------------------ |
+| `session:subscribe`   | `{ sessionId }`                      |
+| `session:unsubscribe` | `{ sessionId }` — sent on page leave |
 
 ### Server → client
 
-| Type             | Payload                             |
-| ---------------- | ----------------------------------- |
-| `session:log`    | Same as agent log (forwarded)       |
-| `session:status` | `{ sessionId, status, exitCode? }`  |
-| `host:status`    | `{ hostId, status }` online/offline |
+| Type                 | Payload                                                 |
+| -------------------- | ------------------------------------------------------- |
+| `session:log`        | Same as agent log plus `timestampSeq` cursor            |
+| `session:status`     | `{ sessionId, status, exitCode? }`                      |
+| `session:subscribed` | `{ sessionId, cursor, status }` after replay            |
+| `session:error`      | `{ sessionId, code }` (`NOT_FOUND` never reveals scope) |
+| `host:status`        | `{ hostId, status }` online/offline                     |
 
 ---
 
 ## Live session viewing
 
-1. Connect + `client:register`
-2. `session:subscribe` for a session id
-3. Server **replays last ~100** buffered lines, then tails new `session:log`
-4. `session:status` on terminal transitions
-5. `session:unsubscribe` on leave (or auto on disconnect)
+1. `POST /auth/viewer-ticket` through the web origin with the authenticated browser session.
+2. Connect to API `/ws/viewer?ticket=…`, then `session:subscribe` for one session id (the server checks repository scope).
+3. Server replays a bounded cursor page, then tails new `session:log` records.
+4. Reconnect with the last received `timestampSeq` as optional `after`; duplicate replay is safe.
+5. `session:status` reports lifecycle changes; `session:unsubscribe` is sent on leave (or auto on disconnect).
 
 Notes:
 
 - Many clients may subscribe to one session
-- Full history: REST [`GET /sessions/:id/logs`](api.md); live tail: this protocol
+- Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail
 - Streams may interleave; order is preserved per stream
 - Agent rate-limits/batches logs; server persists to DynamoDB and fans out
 

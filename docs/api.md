@@ -67,6 +67,10 @@ secrets, prompts, or session-log content.
 
 `401` if missing/invalid; `403` if role insufficient.
 
+#### `POST /auth/viewer-ticket`
+
+Issue a short-lived, single-purpose browser WebSocket credential from the authenticated session cookie. The browser presents it only as the `ticket` query parameter on `/ws/viewer`; service-account credentials are never accepted by that read-only socket.
+
 ---
 
 ## Conventions
@@ -631,7 +635,7 @@ Cancel a queued or running session. **Operator (own sessions) or admin.**
 
 #### `GET /sessions/:id/logs`
 
-Get **historical** session logs. For live streaming, use the [WebSocket API](websocket.md#live-session-viewing).
+Get bounded **historical** session logs. For live streaming, use the authenticated read-only browser [WebSocket API](websocket.md#live-session-viewing); it resumes with its `timestampSeq` cursor and never replaces this history query.
 
 **Query parameters:**
 

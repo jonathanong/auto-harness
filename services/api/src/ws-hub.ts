@@ -190,7 +190,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
 
       const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
         // HTTP upgrade requests always carry their request target.
-        if (new URL(req.url!, "http://localhost").pathname !== "/ws") {
+        const pathname = new URL(req.url!, "http://localhost").pathname;
+        if (pathname !== "/ws") {
+          // The browser viewer owns `/ws/viewer` on this same HTTP server.
+          // Do not consume its upgrade before that read-only hub can inspect it.
+          if (pathname === "/ws/viewer") return;
           socket.destroy();
           return;
         }

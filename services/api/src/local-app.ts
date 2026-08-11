@@ -59,7 +59,9 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       method === "POST" &&
       (url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout");
     const selfServiceAuthRoute =
-      url.pathname === "/api/v1/auth/me" || url.pathname === "/api/v1/auth/password";
+      url.pathname === "/api/v1/auth/me" ||
+      url.pathname === "/api/v1/auth/password" ||
+      url.pathname === "/api/v1/auth/viewer-ticket";
     if (loginRoute) {
       const limited = await enforceRateLimit({
         config,

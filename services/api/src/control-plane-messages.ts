@@ -73,6 +73,7 @@ export function appendLog(
   };
   const { retained, evicted } = retainLogs(state, rec);
   state.logs.set(opts.sessionId, retained);
+  state.onLogCommitted?.(rec);
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putLog(rec));
     for (const removed of evicted) {
@@ -111,6 +112,7 @@ export async function appendLogDurable(
     }
   }
   state.logs.set(opts.sessionId, retained);
+  state.onLogCommitted?.(rec);
   return rec;
 }
 
@@ -290,6 +292,7 @@ export async function handleHostMessageDurable(
       for (const removed of evicted)
         await storage.deleteLog(removed.sessionId, removed.timestampSeq);
       state.logs.set(log.sessionId, retained);
+      state.onLogCommitted?.({ ...log, timestampSeq: formatLogSortKey(log.timestamp, log.seq) });
     } else {
       await appendLogDurable(state, log);
     }

@@ -8,6 +8,7 @@ import type { LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
+import { attachViewerWsHub, type ViewerWsHub } from "./viewer-ws-hub.ts";
 
 export { createLocalApp } from "./local-app.ts";
 
@@ -17,6 +18,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   store: MemorySessionStore;
   plane: ControlPlane;
   ws?: WsHub;
+  viewerWs?: ViewerWsHub;
   scheduler: LocalScheduler;
 }> {
   const port = options.port ?? 7420;
@@ -82,6 +84,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   });
 
   const wsHub = bridge ? bridge.attach(server, resolvedPlane, auth) : undefined;
+  const viewerWsHub = enableWs ? attachViewerWsHub(server, resolvedPlane, auth) : undefined;
 
   await new Promise<void>((resolve, reject) => {
     server.listen(port, host, () => {
@@ -98,10 +101,12 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane: resolvedPlane,
     scheduler,
     ...(wsHub !== undefined ? { ws: wsHub } : {}),
+    ...(viewerWsHub !== undefined ? { viewerWs: viewerWsHub } : {}),
     close: async () => {
       await scheduler.stop();
       await new Promise<void>((resolve, reject) => {
         wsHub?.close();
+        viewerWsHub?.close();
         server.close((err) => {
           if (err) {
             reject(err);

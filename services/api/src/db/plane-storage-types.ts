@@ -82,6 +82,8 @@ export type LogStream = (typeof LOG_STREAMS)[number];
 export type LogQuery = {
   stream?: LogStream;
   since?: string;
+  /** Exact durable cursor used by viewer reconnects. */
+  after?: string;
   limit: number;
 };
 
