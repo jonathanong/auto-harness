@@ -191,22 +191,27 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                   | PK              | SK          | GSIs                                          | Primary access patterns                                                    |
-| ----------------------- | --------------- | ----------- | --------------------------------------------- | -------------------------------------------------------------------------- |
-| Users                   | `id`            | —           | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users                            |
-| Repositories            | `id`            | —           | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)                  |
-| Sessions                | `id`            | —           | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter              |
-| Schedules               | `id`            | —           | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`                       |
-| SessionLogs             | `sessionId`     | `timestamp` | —                                             | Append logs; range read for REST/history                                   |
-| SessionConcurrencyLocks | `concurrencyId` | —           | —                                             | Conditional acquire/release for active session dedupe and schedule overlap |
-| Connections             | `connectionId`  | —           | `hostId`                                      | Connect/disconnect; find agent connection for assign                       |
-| Worktrees               | `id`            | —           | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo                            |
-| AuditLogs               | `id`            | `timestamp` | `userId-timestamp`                            | Append-only audit; query by user                                           |
-| Integrations            | `id`            | —           | —                                             | Get/put Slack config                                                       |
+| Table                   | PK                | SK            | GSIs                                          | Primary access patterns                                                    |
+| ----------------------- | ----------------- | ------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
+| Users                   | `id`              | —             | `username`, `apiKeyHash`                      | Login by username; auth by key hash; list users                            |
+| Repositories            | `id`              | —             | —                                             | CRUD by id; list all (scan or sparse GSI later if needed)                  |
+| Sessions                | `id`              | —             | `status-createdAt`, `repositoryId-createdAt`  | Get by id; queue (`status=queued`); list by repo; sort/filter              |
+| Schedules               | `id`              | —             | `repositoryId-nextRunAt`                      | List by repo; cron: due rows with `nextRunAt <= now`                       |
+| SessionLogs             | `sessionId`       | `timestamp`   | —                                             | Append logs; range read for REST/history                                   |
+| SessionConcurrencyLocks | `concurrencyId`   | —             | —                                             | Conditional acquire/release for active session dedupe and schedule overlap |
+| Connections             | `connectionId`    | —             | `hostId`                                      | Connect/disconnect; find agent connection for assign                       |
+| Worktrees               | `id`              | —             | `hostId`, `repositoryId-status` (recommended) | Idle matching for scheduler; list by agent/repo                            |
+| AuditLogs               | `scope` (`audit`) | `timestampId` | —                                             | Append-only newest-first query; opaque cursors + exact filters             |
+| Integrations            | `id`              | —             | —                                             | Get/put Slack config                                                       |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
 **Capacity:** on-demand for all tables.
+
+`AuditLogs.timestampId` is `<ISO createdAt>#<event id>`, so concurrent writers
+remain totally ordered even when their timestamps are equal. The API cursor
+encodes the last evaluated DynamoDB key and is opaque to callers. Audit table
+writes are conditional inserts; no lifecycle code deletes or updates records.
 
 ### SessionLogs TTL and archival
 

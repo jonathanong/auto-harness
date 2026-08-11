@@ -13,6 +13,7 @@ import {
   listProviderAccounts,
   listProviders,
 } from "./plane-storage-catalog-providers.ts";
+import { listAllAuditLogs } from "./plane-storage-audit.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
@@ -99,6 +100,14 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   }
   for (const c of await listCommands(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.commands, Key: { id: c.id } }));
+  }
+  for (const audit of await listAllAuditLogs(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.auditLogs,
+        Key: { scope: "audit", timestampId: `${audit.createdAt}#${audit.id}` },
+      }),
+    );
   }
   {
     let startKey: Record<string, unknown> | undefined;

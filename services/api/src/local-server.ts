@@ -1,106 +1,14 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer } from "node:http";
 
-import { AuthService } from "./auth.ts";
-import { authorize } from "./auth-policy.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
-import { applyLocalCors } from "./local-cors.ts";
-import { type LocalServerOptions, send } from "./local-http.ts";
-import { handleAuthRoutes } from "./local-routes-auth.ts";
-import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
-import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
-import { handleCommandRoutes } from "./local-routes-commands.ts";
-import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts";
-import { handleProviderRoutes } from "./local-routes-providers.ts";
-import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
-import { handleSessionRoutes } from "./local-routes-sessions.ts";
-import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
+import { AuthService } from "./auth.ts";
+import { createLocalApp } from "./local-app.ts";
+import type { LocalServerOptions } from "./local-http.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
 
-export function createLocalApp(options: LocalServerOptions = {}): {
-  store: MemorySessionStore;
-  plane: ControlPlane;
-  handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
-} {
-  const auth = options.authService ?? new AuthService({ mode: options.authMode });
-  const plane =
-    options.plane ??
-    options.store?.plane ??
-    new ControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
-    });
-  const store = options.store ?? new MemorySessionStore({ plane });
-
-  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    // Browser UIs on :7421 / :7422 call this API on :7420 — allow local CORS.
-    if (applyLocalCors(req, res)) {
-      return;
-    }
-
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const method = req.method ?? "GET";
-    const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
-
-    if (method === "GET" && url.pathname === "/health") {
-      send(res, 200, { ok: true });
-      return;
-    }
-
-    const authRoute = url.pathname.startsWith("/api/v1/auth/");
-    const sessionRoute =
-      url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout";
-    if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
-
-    if (auth.mode === "required") {
-      const principal = await auth.authenticate(req);
-      if (!principal) {
-        send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
-        return;
-      }
-      if (!authorize(principal, method, url.pathname)) {
-        send(res, 403, {
-          error: { code: "FORBIDDEN", message: "insufficient role for this operation" },
-        });
-        return;
-      }
-      ctx.principal = principal;
-    }
-    if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
-
-    if (await handleSessionRoutes(ctx)) {
-      return;
-    }
-    if (await handleRepositoryRoutes(ctx)) {
-      return;
-    }
-    if (await handleScheduleRoutes(ctx)) {
-      return;
-    }
-    if (await handleHostSchedulerRoutes(ctx)) {
-      return;
-    }
-    if (await handleHostInventoryRoutes(ctx)) {
-      return;
-    }
-    if (await handleProviderRoutes(ctx)) {
-      return;
-    }
-    if (await handleProviderAccountRoutes(ctx)) {
-      return;
-    }
-    if (await handleCommandRoutes(ctx)) {
-      return;
-    }
-    if (await handleSessionTargetRoutes(ctx)) {
-      return;
-    }
-
-    send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
-  };
-
-  return { store, plane, handler };
-}
+export { createLocalApp } from "./local-app.ts";
 
 export async function startLocalServer(options: LocalServerOptions = {}): Promise<{
   port: number;

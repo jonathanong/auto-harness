@@ -30,6 +30,9 @@ export function createAuthoritativeReadStorage() {
   const worktrees = new Map<string, WorktreeRecord>();
   const archives = new Map<string, ArchiveObject>();
   const storage = {
+    putAuditLog: async () => undefined,
+    listAuditLogs: async () => ({ items: [] }),
+    listAllAuditLogs: async () => [],
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
     getRepository: async (id: string) => copy(repositories, id),
     listRepositories: async () => list(repositories),

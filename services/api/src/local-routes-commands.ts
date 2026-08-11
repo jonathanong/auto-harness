@@ -1,29 +1,6 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import type { ResumeRefCapture } from "@auto-harness/shared";
-
-function commandPatchFromBody(body: Record<string, unknown>): {
-  name?: string;
-  argv?: string[];
-  appendPrompt?: boolean;
-  providerId?: string | null;
-  resumeArgvTemplate?: string[] | null;
-  resumeRefCapture?: ResumeRefCapture | null;
-} {
-  return {
-    ...(typeof body.name === "string" ? { name: body.name } : {}),
-    ...(Array.isArray(body.argv) ? { argv: body.argv as string[] } : {}),
-    ...(typeof body.appendPrompt === "boolean" ? { appendPrompt: body.appendPrompt } : {}),
-    ...(typeof body.providerId === "string" || body.providerId === null
-      ? { providerId: body.providerId }
-      : {}),
-    ...(Object.prototype.hasOwnProperty.call(body, "resumeArgvTemplate")
-      ? { resumeArgvTemplate: body.resumeArgvTemplate as string[] | null }
-      : {}),
-    ...(Object.prototype.hasOwnProperty.call(body, "resumeRefCapture")
-      ? { resumeRefCapture: body.resumeRefCapture as ResumeRefCapture | null }
-      : {}),
-  };
-}
+import { writeRouteAudit } from "./local-audit.ts";
+import { commandPatchFromBody } from "./local-routes-command-patch.ts";
 
 /** Command CRUD routes. Returns true if handled. */
 export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -52,12 +29,39 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
         ...commandPatchFromBody(body),
       });
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "command:create",
+            resourceType: "command",
+            resourceId: "new",
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "command:create",
+          resourceType: "command",
+          resourceId: result.command.id,
+          metadata: { providerId: result.command.providerId ?? "none" },
+        }))
+      )
+        return true;
       send(res, 201, result.command);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "command:create",
+          resourceType: "command",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
@@ -89,6 +93,15 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       try {
         const result = await plane.updateCommandDurable(id, commandPatchFromBody(body));
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "command:update",
+              resourceType: "command",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           const status = plane.getCommand(id) ? 400 : 404;
           send(res, status, {
             error: {
@@ -98,9 +111,27 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
           });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "command:update",
+            resourceType: "command",
+            resourceId: result.command.id,
+            metadata: { providerId: result.command.providerId ?? "none" },
+          }))
+        )
+          return true;
         send(res, 200, result.command);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "command:update",
+            resourceType: "command",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
@@ -109,14 +140,40 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       try {
         const result = await plane.deleteCommandDurable(id);
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "command:delete",
+              resourceType: "command",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           const status = plane.getCommand(id) ? 409 : 404;
           const code = status === 409 ? "CONFLICT" : "NOT_FOUND";
           send(res, status, { error: { code, message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "command:delete",
+            resourceType: "command",
+            resourceId: id,
+          }))
+        )
+          return true;
         send(res, 204, null);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "command:delete",
+            resourceType: "command",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }

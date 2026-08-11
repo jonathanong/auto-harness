@@ -7,10 +7,10 @@ import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
-import { ControlPlaneBase } from "./control-plane-facade.ts";
+import { ControlPlaneAuditFacade } from "./control-plane-audit-facade.ts";
 
 /** Durable read-through facade kept separate from mutation-heavy base methods. */
-export class ControlPlaneReadFacade extends ControlPlaneBase {
+export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
   async listWorktreesDurable(): Promise<WorktreeRecord[]> {
     return durableRuntime.listWorktreesDurable(this.state);
   }

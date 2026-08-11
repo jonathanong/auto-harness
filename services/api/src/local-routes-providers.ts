@@ -1,4 +1,5 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { writeRouteAudit } from "./local-audit.ts";
 
 /** Provider CRUD routes. Returns true if handled. */
 export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -28,12 +29,38 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
           : {}),
       });
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:create",
+            resourceType: "provider",
+            resourceId: "new",
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "provider:create",
+          resourceType: "provider",
+          resourceId: result.provider.id,
+        }))
+      )
+        return true;
       send(res, 201, result.provider);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "provider:create",
+          resourceType: "provider",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
@@ -70,12 +97,38 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
             : {}),
         });
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "provider:update",
+              resourceType: "provider",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:update",
+            resourceType: "provider",
+            resourceId: id,
+          }))
+        )
+          return true;
         send(res, 200, result.provider);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:update",
+            resourceType: "provider",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
@@ -84,14 +137,40 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
       try {
         const result = await plane.deleteProviderDurable(id);
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "provider:delete",
+              resourceType: "provider",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           const status = plane.getProvider(id) ? 409 : 404;
           const code = status === 409 ? "CONFLICT" : "NOT_FOUND";
           send(res, status, { error: { code, message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:delete",
+            resourceType: "provider",
+            resourceId: id,
+          }))
+        )
+          return true;
         send(res, 204, null);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:delete",
+            resourceType: "provider",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }

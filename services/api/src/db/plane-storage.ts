@@ -4,6 +4,7 @@ import {
   type ProviderRecord,
 } from "./plane-storage-types.ts";
 import * as catalog from "./plane-storage-catalog-providers.ts";
+import * as audit from "./plane-storage-audit.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -21,6 +22,20 @@ export type {
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
+  putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {
+    return audit.putAuditLog(this.ctx, record);
+  }
+
+  listAuditLogs(
+    query?: import("../audit-types.ts").AuditLogListQuery,
+  ): Promise<import("../audit-types.ts").AuditLogPage> {
+    return audit.listAuditLogs(this.ctx, query);
+  }
+
+  listAllAuditLogs(): Promise<import("../audit-types.ts").AuditLogRecord[]> {
+    return audit.listAllAuditLogs(this.ctx);
+  }
+
   putProvider(rec: ProviderRecord): Promise<void> {
     return catalog.putProvider(this.ctx, rec);
   }

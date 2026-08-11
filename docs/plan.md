@@ -200,11 +200,14 @@ erDiagram
 
     AuditLog {
         string id PK
-        string timestamp "sort key"
-        string userId
+        string createdAt
+        string actor "id + kind + role; system for scheduler actions"
         string action "e.g. session:create, account:delete"
+        string resourceType
         string resourceId
-        string metadata "IP, user agent"
+        string repositoryId "nullable, repository scope when known"
+        string outcome "success | denied | failed"
+        object metadata "bounded; excludes credentials, prompts, and logs"
     }
 
     Integration {
@@ -525,7 +528,9 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   before finalizing DynamoDB/S3 cost estimates (see [costs.md](costs.md) — prior estimates assumed
   roughly two orders of magnitude fewer log chunks per session than a long-running CLI session
   actually produces).
-- Audit logging.
+- Audit logging (append-only AuditLogs records, authenticated admin history,
+  bounded secret-safe metadata, and fail-closed acknowledgement if an audit
+  append cannot persist).
 
 **Status:** session log archival (`archiveSessionLogs`), opt-in webhooks
 (`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainHost` +

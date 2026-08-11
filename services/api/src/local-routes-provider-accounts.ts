@@ -1,5 +1,6 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { assignQueuedDurable } from "./control-plane-assign.ts";
+import { writeRouteAudit } from "./local-audit.ts";
+import { handleProviderAccountUsageRoute } from "./local-routes-provider-account-usage.ts";
 
 /** Provider account CRUD routes. Returns true if handled. */
 export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -30,35 +31,44 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
           : {}),
       });
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider-account:create",
+            resourceType: "provider-account",
+            resourceId: "new",
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "provider-account:create",
+          resourceType: "provider-account",
+          resourceId: result.account.id,
+          metadata: { providerId: result.account.providerId },
+        }))
+      )
+        return true;
       send(res, 201, result.account);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "provider-account:create",
+          resourceType: "provider-account",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
   }
-  const clearMatch = /^\/api\/v1\/provider-accounts\/([^/]+)\/usage-limit$/.exec(url.pathname);
-  if (method === "DELETE" && clearMatch) {
-    let result: Awaited<ReturnType<typeof plane.clearProviderAccountUsageLimitDurable>>;
-    try {
-      result = await plane.clearProviderAccountUsageLimitDurable(clearMatch[1]!);
-    } catch {
-      sendInternalError(res);
-      return true;
-    }
-    if (!result.ok) {
-      send(res, result.conflict ? 409 : 404, {
-        error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
-      });
-      return true;
-    }
-    await assignQueuedDurable(plane.state);
-    send(res, 200, result.account);
-    return true;
-  }
+  if (await handleProviderAccountUsageRoute(ctx)) return true;
   const match = /^\/api\/v1\/provider-accounts\/([^/]+)$/.exec(url.pathname);
   if (match) {
     const id = match[1]!;
@@ -92,15 +102,42 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
             : {}),
         });
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "provider-account:update",
+              resourceType: "provider-account",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           const status = result.conflict ? 409 : 404;
           send(res, status, {
             error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND", message: result.error },
           });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider-account:update",
+            resourceType: "provider-account",
+            resourceId: result.account.id,
+            metadata: { providerId: result.account.providerId },
+          }))
+        )
+          return true;
         send(res, 200, result.account);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider-account:update",
+            resourceType: "provider-account",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
@@ -109,12 +146,38 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       try {
         const result = await plane.deleteProviderAccountDurable(id);
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "provider-account:delete",
+              resourceType: "provider-account",
+              resourceId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider-account:delete",
+            resourceType: "provider-account",
+            resourceId: id,
+          }))
+        )
+          return true;
         send(res, 204, null);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider-account:delete",
+            resourceType: "provider-account",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }

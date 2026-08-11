@@ -10,6 +10,35 @@ Live streaming and agent control use the [WebSocket protocol](websocket.md). Cre
 
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
+## Audit logs
+
+`GET /audit-logs` is available only to authenticated admins. It returns an
+append-only audit page:
+
+```json
+{
+  "items": [
+    {
+      "id": "audit-…",
+      "actor": { "id": "user:alice", "kind": "user", "role": "admin" },
+      "action": "repository:update",
+      "resourceType": "repository",
+      "resourceId": "repo-1",
+      "outcome": "success",
+      "createdAt": "2026-08-10T00:00:00.000Z",
+      "metadata": {}
+    }
+  ],
+  "nextCursor": "opaque-when-more-results-exist"
+}
+```
+
+Optional exact-match filters are `actorId`, `action`, `resourceType`,
+`resourceId`, `repositoryId`, and `outcome` (`success`, `denied`, or `failed`).
+`limit` is 1–100 and defaults to 50. Audit records have no update or delete
+endpoint. Metadata never includes passwords, API keys, tokens, integration
+secrets, prompts, or session-log content.
+
 ## Authentication
 
 | Method         | Format                               | Used by                        |

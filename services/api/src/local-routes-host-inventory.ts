@@ -1,5 +1,6 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import { writeRouteAudit } from "./local-audit.ts";
 
 /**
  * Host inventory routes (paths + command profile argv).
@@ -37,6 +38,15 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   const hostId = decodeURIComponent(match[1]!);
 
   if (!mayAccessHost(ctx.principal, hostId)) {
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: `host-inventory:${method === "DELETE" ? "delete" : "update"}`,
+        resourceType: "host-inventory",
+        resourceId: hostId,
+        outcome: "denied",
+      }))
+    )
+      return true;
     send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
     return true;
   }
@@ -91,11 +101,29 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
     try {
       const result = await plane.putHostInventoryDurable(hostId, body);
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "host-inventory:update",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: result.error },
         });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "host-inventory:update",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          metadata: { repositories: result.config.repositories.map((repository) => repository.id) },
+        }))
+      )
+        return true;
       const config = result.config;
       send(res, 200, {
         ...config,
@@ -105,6 +133,15 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "host-inventory:update",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
@@ -114,14 +151,40 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
     try {
       const result = await plane.deleteHostInventoryDurable(hostId);
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "host-inventory:delete",
+            resourceType: "host-inventory",
+            resourceId: hostId,
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 404, {
           error: { code: "NOT_FOUND", message: result.error },
         });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "host-inventory:delete",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+        }))
+      )
+        return true;
       send(res, 204, null);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "host-inventory:delete",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }

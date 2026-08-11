@@ -18,6 +18,9 @@ function catalogStorage() {
   const hostInventories = new Map<string, HostInventoryRecord>();
 
   return {
+    putAuditLog: async () => undefined,
+    listAuditLogs: async () => ({ items: [] }),
+    listAllAuditLogs: async () => [],
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
     getRepository: async (id: string) => {
       const record = repositories.get(id);
