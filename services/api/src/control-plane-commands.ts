@@ -20,8 +20,6 @@ export type CommandInput = {
   providerId?: string | null;
 };
 
-export { deleteCommand, deleteCommandDurable } from "./control-plane-command-delete.ts";
-
 export function createCommand(
   state: ControlPlaneState,
   input: CommandInput,
