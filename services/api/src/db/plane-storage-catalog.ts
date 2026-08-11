@@ -20,7 +20,12 @@ import {
   type RepositoryRecord,
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
-import { guardedWrite, type DeletionMarker } from "./plane-storage-deletion-markers.ts";
+import {
+  guardedWrite,
+  ownedDelete,
+  type DeletionMarker,
+  type OwnedDeletionMarker,
+} from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
@@ -193,6 +198,7 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.schedules,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -252,6 +258,7 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.repositories,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -262,8 +269,14 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   return records;
 }
 
-export async function deleteRepository(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.repositories, Key: { id } }));
+export async function deleteRepository(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<void> {
+  const write = { Delete: { TableName: ctx.tables.repositories, Key: { id } } };
+  if (markers?.length) return ownedDelete(ctx, markers, write);
+  await ctx.doc.send(new DeleteCommand(write.Delete));
 }
 
 /** Conditional nextRunAt advance (Invariant 4). */
@@ -445,6 +458,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.archives,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -482,6 +496,7 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.hostInventories,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),

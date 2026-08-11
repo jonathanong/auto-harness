@@ -246,6 +246,7 @@ export async function listAllSessions(ctx: PlaneStorageCtx): Promise<SessionReco
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.sessions,
         ExclusiveStartKey: startKey,
       }),
@@ -349,6 +350,7 @@ export async function listAllWorktrees(ctx: PlaneStorageCtx): Promise<WorktreeRe
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.worktrees,
         ExclusiveStartKey: startKey,
       }),

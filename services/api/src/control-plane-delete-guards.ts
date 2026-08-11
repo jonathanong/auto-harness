@@ -3,6 +3,7 @@ import { isActiveSessionStatus } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
+import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
 
 export type DeleteDependency = {
   kind:
@@ -39,6 +40,9 @@ export type DeleteReferences = {
     }>;
     providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   }>;
+  providers: ReadonlyArray<ProviderRecord>;
+  accounts: ReadonlyArray<ProviderAccountRecord>;
+  commands: ReadonlyArray<CommandRecord>;
 };
 
 export function referencesFromState(state: ControlPlaneState): DeleteReferences {
@@ -47,6 +51,9 @@ export function referencesFromState(state: ControlPlaneState): DeleteReferences 
     sessions: [...state.sessions.values()],
     worktrees: [...state.worktrees.values()],
     inventories: [...state.hostInventories.values()],
+    providers: [...state.providers.values()],
+    accounts: [...state.providerAccounts.values()],
+    commands: [...state.commands.values()],
   };
 }
 
@@ -63,25 +70,14 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
       state.storage.listProviderAccounts(),
       state.storage.listCommands(),
     ]);
-  state.schedules = new Map(schedules.map((row) => [row.id, row]));
-  state.sessions = new Map(sessions.map((row) => [row.id, row]));
-  state.worktrees = new Map(worktrees.map((row) => [row.id, row]));
-  state.hostInventories = new Map(inventories.map((row) => [row.hostId, row]));
-  state.providers = new Map(providers.map((row) => [row.id, row]));
-  state.providerAccounts = new Map(accounts.map((row) => [row.id, row]));
-  state.commands = new Map(commands.map((row) => [row.id, row]));
-  return { schedules, sessions, worktrees, inventories };
+  return { schedules, sessions, worktrees, inventories, providers, accounts, commands };
 }
 
-export function dependenciesForProvider(
-  state: ControlPlaneState,
-  refs: DeleteReferences,
-  id: string,
-): DeleteDependency[] {
+export function dependenciesForProvider(refs: DeleteReferences, id: string): DeleteDependency[] {
   const dependencies: DeleteDependency[] = [];
-  for (const account of state.providerAccounts.values())
+  for (const account of refs.accounts)
     if (account.providerId === id) dependencies.push({ kind: "provider-account", id: account.id });
-  for (const command of state.commands.values())
+  for (const command of refs.commands)
     if (command.providerId === id) dependencies.push({ kind: "command", id: command.id });
   for (const schedule of refs.schedules)
     if (referencesProvider(schedule.target, schedule.fallbacks, id))
@@ -110,13 +106,9 @@ export function dependenciesForAccount(refs: DeleteReferences, id: string): Dele
   return unique(dependencies);
 }
 
-export function dependenciesForCommand(
-  state: ControlPlaneState,
-  refs: DeleteReferences,
-  id: string,
-): DeleteDependency[] {
+export function dependenciesForCommand(refs: DeleteReferences, id: string): DeleteDependency[] {
   const dependencies: DeleteDependency[] = [];
-  for (const provider of state.providers.values())
+  for (const provider of refs.providers)
     if (provider.defaultCommandId === id) dependencies.push({ kind: "provider", id: provider.id });
   for (const inventory of refs.inventories) {
     const attached =

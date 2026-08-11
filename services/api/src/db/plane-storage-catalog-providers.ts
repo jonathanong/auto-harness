@@ -13,7 +13,12 @@ import {
   type ProviderRecord,
 } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
-import { guardedWrite, type DeletionMarker } from "./plane-storage-deletion-markers.ts";
+import {
+  guardedWrite,
+  ownedDelete,
+  type DeletionMarker,
+  type OwnedDeletionMarker,
+} from "./plane-storage-deletion-markers.ts";
 
 export async function putProvider(
   ctx: PlaneStorageCtx,
@@ -66,6 +71,7 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.providers,
         ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
@@ -77,17 +83,21 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
   return records;
 }
 
-export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
+export async function deleteProvider(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<boolean> {
   if (!(await ensureProviderAccountCount(ctx, id))) return false;
   try {
-    await ctx.doc.send(
-      new DeleteCommand({
-        TableName: ctx.tables.providers,
-        Key: { id },
-        ConditionExpression: "attribute_not_exists(accountCount) OR accountCount = :zero",
-        ExpressionAttributeValues: { ":zero": 0 },
-      }),
-    );
+    const deletion = {
+      TableName: ctx.tables.providers,
+      Key: { id },
+      ConditionExpression: "attribute_not_exists(accountCount) OR accountCount = :zero",
+      ExpressionAttributeValues: { ":zero": 0 },
+    };
+    if (markers?.length) await ownedDelete(ctx, markers, { Delete: deletion });
+    else await ctx.doc.send(new DeleteCommand(deletion));
     return true;
   } catch (err) {
     if (isConditionalFailed(err)) return false;
@@ -117,6 +127,7 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.commands,
         ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
@@ -128,6 +139,12 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
   return records;
 }
 
-export async function deleteCommand(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.commands, Key: { id } }));
+export async function deleteCommand(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<void> {
+  const write = { Delete: { TableName: ctx.tables.commands, Key: { id } } };
+  if (markers?.length) return ownedDelete(ctx, markers, write);
+  await ctx.doc.send(new DeleteCommand(write.Delete));
 }

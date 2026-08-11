@@ -192,10 +192,14 @@ export async function deleteProviderDurable(
     listCommandsDurable(state),
   ]);
   if (!state.providers.has(id)) return { ok: false, error: "provider not found" };
-  return withDeletionMarkers(state, [`provider:${id}`], async () => {
+  return withDeletionMarkers(state, [`provider:${id}`], async (owner) => {
     const result = canDeleteProvider(state, id, await refreshDeleteReferences(state));
     if (!result.ok) return result;
-    if (!(await state.storage!.deleteProvider(id))) {
+    if (
+      !(await state.storage!.deleteProvider(id, [
+        { key: `provider:${id}`, owner, now: state.now() },
+      ]))
+    ) {
       const authoritative = await state.storage!.getProvider(id);
       if (authoritative) state.providers.set(id, authoritative);
       return { ok: false, error: "provider changed concurrently", conflict: true };

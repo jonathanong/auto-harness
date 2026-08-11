@@ -26,11 +26,13 @@ export function inventoryReferenceMarkers(
   const keys = new Set<string>();
   for (const repository of inventory.repositories) {
     keys.add(`repository:${repository.id}`);
-    for (const override of Object.values(repository.providerAccountOverrides ?? {})) {
+    for (const [accountId, override] of Object.entries(repository.providerAccountOverrides ?? {})) {
+      keys.add(`provider-account:${accountId}`);
       if (override.commandId) keys.add(`command:${override.commandId}`);
     }
     for (const worktree of repository.worktrees) {
-      for (const override of Object.values(worktree.providerAccountOverrides ?? {})) {
+      for (const [accountId, override] of Object.entries(worktree.providerAccountOverrides ?? {})) {
+        keys.add(`provider-account:${accountId}`);
         if (override.commandId) keys.add(`command:${override.commandId}`);
       }
     }

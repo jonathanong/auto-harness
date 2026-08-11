@@ -8,14 +8,15 @@ type MarkerResult<T> = T | { ok: false; error: string; conflict: true };
 export async function withDeletionMarkers<T extends { ok: boolean }>(
   state: ControlPlaneState,
   keys: readonly string[],
-  operation: () => Promise<T>,
+  operation: (owner: string) => Promise<T>,
 ): Promise<MarkerResult<T>> {
-  if (!state.storage) return operation();
+  if (!state.storage) return operation("");
   if (!("acquireDeletionMarker" in state.storage) || !("releaseDeletionMarker" in state.storage)) {
-    return operation();
+    return operation("");
   }
   const owner = randomUUID();
   const acquired: string[] = [];
+  let timer: ReturnType<typeof setInterval> | undefined;
   try {
     for (const key of [...new Set(keys)].toSorted()) {
       if (!(await state.storage.acquireDeletionMarker(key, owner, state.now()))) {
@@ -23,8 +24,16 @@ export async function withDeletionMarkers<T extends { ok: boolean }>(
       }
       acquired.push(key);
     }
-    return await operation();
+    if ("renewDeletionMarker" in state.storage) {
+      timer = setInterval(() => {
+        void Promise.all(
+          acquired.map((key) => state.storage!.renewDeletionMarker!(key, owner, state.now())),
+        );
+      }, 5_000);
+    }
+    return await operation(owner);
   } finally {
+    if (timer) clearInterval(timer);
     await Promise.all(acquired.map((key) => state.storage!.releaseDeletionMarker(key, owner)));
   }
 }

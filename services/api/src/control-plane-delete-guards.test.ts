@@ -46,14 +46,14 @@ describe("catalog delete references", () => {
       commandProfiles: {},
     });
     const refs = referencesFromState(plane.state);
-    expect(dependenciesForProvider(plane.state, refs, "provider")).toEqual(
+    expect(dependenciesForProvider(refs, "provider")).toEqual(
       expect.arrayContaining([
         { kind: "provider-account", id: "account" },
         { kind: "command", id: "command" },
         { kind: "session", id: created.ok ? created.session.id : "", status: "queued" },
       ]),
     );
-    expect(dependenciesForCommand(plane.state, refs, "command")).toEqual(
+    expect(dependenciesForCommand(refs, "command")).toEqual(
       expect.arrayContaining([
         { kind: "schedule", id: "schedule" },
         { kind: "host-inventory", id: "host" },

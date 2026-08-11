@@ -38,8 +38,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listProviders(this.ctx);
   }
 
-  deleteProvider(id: string): Promise<boolean> {
-    return catalog.deleteProvider(this.ctx, id);
+  deleteProvider(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return catalog.deleteProvider(this.ctx, id, markers);
   }
 
   putProviderAccount(rec: ProviderAccountRecord): Promise<boolean> {
@@ -97,8 +100,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listCommands(this.ctx);
   }
 
-  deleteCommand(id: string): Promise<void> {
-    return catalog.deleteCommand(this.ctx, id);
+  deleteCommand(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<void> {
+    return catalog.deleteCommand(this.ctx, id, markers);
   }
 
   clearAll(): Promise<void> {

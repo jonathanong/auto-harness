@@ -79,9 +79,10 @@ export async function createCommandDurable(
   if (!result.ok) return result;
   await state.storage.putCommand(
     { ...result.command },
-    result.command.providerId
-      ? markersFor(state.now(), [`provider:${result.command.providerId}`])
-      : [],
+    markersFor(state.now(), [
+      `command:${result.command.id}`,
+      ...(result.command.providerId ? [`provider:${result.command.providerId}`] : []),
+    ]),
   );
   state.commands.set(result.command.id, result.command);
   return { ok: true, command: { ...result.command } };
@@ -172,9 +173,10 @@ export async function updateCommandDurable(
   if (!result.ok) return result;
   await state.storage.putCommand(
     { ...result.command },
-    result.command.providerId
-      ? markersFor(state.now(), [`provider:${result.command.providerId}`])
-      : [],
+    markersFor(state.now(), [
+      `command:${id}`,
+      ...(result.command.providerId ? [`provider:${result.command.providerId}`] : []),
+    ]),
   );
   state.commands.set(id, result.command);
   return { ok: true, command: { ...result.command } };

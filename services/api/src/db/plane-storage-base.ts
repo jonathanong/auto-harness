@@ -508,6 +508,10 @@ export class DynamoPlaneStorageBase {
     return deletionMarkers.releaseDeletionMarker(this.ctx, key, owner);
   }
 
+  renewDeletionMarker(key: string, owner: string, now: string): Promise<boolean> {
+    return deletionMarkers.renewDeletionMarker(this.ctx, key, owner, now);
+  }
+
   updateScheduleManagement(
     rec: ScheduleRecord,
     expectedNextRunAt: string,
@@ -544,8 +548,11 @@ export class DynamoPlaneStorageBase {
     return catalog.listRepositories(this.ctx);
   }
 
-  deleteRepository(id: string): Promise<void> {
-    return catalog.deleteRepository(this.ctx, id);
+  deleteRepository(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<void> {
+    return catalog.deleteRepository(this.ctx, id, markers);
   }
 
   tryClaimSchedule(

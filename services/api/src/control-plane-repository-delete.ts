@@ -23,10 +23,12 @@ export async function deleteRepositoryDurable(
 ): Promise<ReturnType<typeof deleteRepository>> {
   if (!state.storage) return deleteRepository(state, id);
   if (!state.repositories.has(id)) return { ok: false, error: "repository not found" };
-  return withDeletionMarkers(state, [`repository:${id}`], async () => {
+  return withDeletionMarkers(state, [`repository:${id}`], async (owner) => {
     const result = canDeleteRepository(state, id, await refreshDeleteReferences(state));
     if (!result.ok) return result;
-    await state.storage!.deleteRepository(id);
+    await state.storage!.deleteRepository(id, [
+      { key: `repository:${id}`, owner, now: state.now() },
+    ]);
     state.repositories.delete(id);
     return { ok: true };
   });
