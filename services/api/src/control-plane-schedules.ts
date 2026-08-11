@@ -14,6 +14,7 @@ import {
   getScheduleDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 export {
   evaluateCron,
@@ -103,7 +104,10 @@ export async function putScheduleDurable(
   await refreshTargetCatalogDurable(state);
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
-  await state.storage.putSchedule({ ...result.schedule });
+  await state.storage.putSchedule(
+    { ...result.schedule },
+    referenceMarkers(state.now(), result.schedule),
+  );
   state.schedules.set(result.schedule.id, result.schedule);
   return { ok: true, schedule: { ...result.schedule } };
 }

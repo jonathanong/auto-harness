@@ -9,6 +9,7 @@ import {
   listHostInventoriesDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
+import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 function syncWorktreesFromHost(
   state: ControlPlaneState,
@@ -105,7 +106,10 @@ export async function putHostInventoryDurable(
   const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
   const projection = projectHostWorktrees(state, result.config);
-  await state.storage.putHostInventory({ ...result.config });
+  await state.storage.putHostInventory(
+    { ...result.config },
+    inventoryReferenceMarkers(state.now(), result.config),
+  );
   await Promise.all([
     ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
     ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),

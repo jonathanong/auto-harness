@@ -23,8 +23,11 @@ export type {
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
-  putProvider(rec: ProviderRecord): Promise<void> {
-    return catalog.putProvider(this.ctx, rec);
+  putProvider(
+    rec: ProviderRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putProvider(this.ctx, rec, markers);
   }
 
   getProvider(id: string): Promise<ProviderRecord | null> {
@@ -79,8 +82,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return providerAccounts.deleteProviderAccount(this.ctx, id);
   }
 
-  putCommand(rec: CommandRecord): Promise<void> {
-    return catalog.putCommand(this.ctx, rec);
+  putCommand(
+    rec: CommandRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putCommand(this.ctx, rec, markers);
   }
 
   getCommand(id: string): Promise<CommandRecord | null> {

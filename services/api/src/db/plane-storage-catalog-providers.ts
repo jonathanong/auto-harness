@@ -13,8 +13,13 @@ import {
   type ProviderRecord,
 } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
+import { guardedWrite, type DeletionMarker } from "./plane-storage-deletion-markers.ts";
 
-export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Promise<void> {
+export async function putProvider(
+  ctx: PlaneStorageCtx,
+  rec: ProviderRecord,
+  markers?: readonly DeletionMarker[],
+): Promise<void> {
   // Older callers constructed provider records before timestamps became
   // mandatory. The document client drops undefined expression values, so
   // include timestamp clauses only when the caller supplied them.
@@ -35,15 +40,16 @@ export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Pr
     timestampUpdates.push("updatedAt = :updatedAt");
     values[":updatedAt"] = rec.updatedAt;
   }
-  await ctx.doc.send(
-    new UpdateCommand({
-      TableName: ctx.tables.providers,
-      Key: { id: rec.id },
-      UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
-      ExpressionAttributeNames: { "#name": "name" },
-      ExpressionAttributeValues: values,
-    }),
-  );
+  const update = {
+    TableName: ctx.tables.providers,
+    Key: { id: rec.id },
+    UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
+    ExpressionAttributeNames: { "#name": "name" },
+    ExpressionAttributeValues: values,
+  };
+  await guardedWrite(ctx, markers, { Update: update }, async () => {
+    await ctx.doc.send(new UpdateCommand(update));
+  });
 }
 
 export async function getProvider(
@@ -89,8 +95,15 @@ export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<
   }
 }
 
-export async function putCommand(ctx: PlaneStorageCtx, rec: CommandRecord): Promise<void> {
-  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.commands, Item: { ...rec } }));
+export async function putCommand(
+  ctx: PlaneStorageCtx,
+  rec: CommandRecord,
+  markers?: readonly DeletionMarker[],
+): Promise<void> {
+  const write = { Put: { TableName: ctx.tables.commands, Item: { ...rec } } };
+  await guardedWrite(ctx, markers, write, async () => {
+    await ctx.doc.send(new PutCommand(write.Put));
+  });
 }
 
 export async function getCommand(ctx: PlaneStorageCtx, id: string): Promise<CommandRecord | null> {

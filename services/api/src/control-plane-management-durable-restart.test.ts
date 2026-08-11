@@ -189,8 +189,8 @@ describe("durable management restart visibility", () => {
     expect(restarted.getHostInventory("host")?.logLevel).toBe("debug");
     expect(restarted.listWorktrees().filter((worktree) => worktree.hostId === "host")).toEqual([]);
 
-    expect((await plane.deleteRepositoryDurable("repository")).ok).toBe(true);
     expect((await plane.deleteScheduleDurable("schedule")).ok).toBe(true);
+    expect((await plane.deleteRepositoryDurable("repository")).ok).toBe(true);
     expect((await plane.deleteCommandDurable("command")).ok).toBe(true);
     expect((await plane.deleteProviderAccountDurable("account")).ok).toBe(true);
     expect((await plane.deleteProviderDurable("provider")).ok).toBe(true);

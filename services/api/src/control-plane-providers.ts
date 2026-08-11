@@ -9,6 +9,15 @@ import {
   listProviderAccountsDurable,
   listProvidersDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import {
+  deleteConflict,
+  dependenciesForProvider,
+  referencesFromState,
+  refreshDeleteReferences,
+  type DeleteResult,
+} from "./control-plane-delete-guards.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
+import { markersFor } from "./control-plane-delete-reference-markers.ts";
 
 function findProviderByName(
   state: ControlPlaneState,
@@ -73,7 +82,12 @@ export async function createProviderDurable(
   await listProvidersDurable(state);
   const result = prepareCreateProvider(state, input);
   if (!result.ok) return result;
-  await state.storage.putProvider({ ...result.provider });
+  await state.storage.putProvider(
+    { ...result.provider },
+    result.provider.defaultCommandId
+      ? markersFor(state.now(), [`command:${result.provider.defaultCommandId}`])
+      : [],
+  );
   state.providers.set(result.provider.id, result.provider);
   return { ok: true, provider: { ...result.provider } };
 }
@@ -139,28 +153,19 @@ export async function updateProviderDurable(
   await listProvidersDurable(state);
   const result = prepareUpdateProvider(state, id, patch);
   if (!result.ok) return result;
-  await state.storage.putProvider({ ...result.provider });
+  await state.storage.putProvider(
+    { ...result.provider },
+    result.provider.defaultCommandId
+      ? markersFor(state.now(), [`command:${result.provider.defaultCommandId}`])
+      : [],
+  );
   state.providers.set(id, result.provider);
   return { ok: true, provider: { ...result.provider } };
 }
 
-export function deleteProvider(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.providers.has(id)) {
-    return { ok: false, error: "provider not found" };
-  }
-  for (const a of state.providerAccounts.values()) {
-    if (a.providerId === id) {
-      return { ok: false, error: "provider has attached accounts — remove them first" };
-    }
-  }
-  for (const c of state.commands.values()) {
-    if (c.providerId === id) {
-      return { ok: false, error: "provider has commands — remove or reassign them first" };
-    }
-  }
+export function deleteProvider(state: ControlPlaneState, id: string): DeleteResult {
+  const result = canDeleteProvider(state, id, referencesFromState(state));
+  if (!result.ok) return result;
   state.providers.delete(id);
   if (state.storage) {
     queueWrite(
@@ -186,29 +191,27 @@ export async function deleteProviderDurable(
     listProviderAccountsDurable(state),
     listCommandsDurable(state),
   ]);
-  const result = canDeleteProvider(state, id);
-  if (!result.ok) return result;
-  await state.storage.deleteProvider(id);
-  state.providers.delete(id);
-  return { ok: true };
+  if (!state.providers.has(id)) return { ok: false, error: "provider not found" };
+  return withDeletionMarkers(state, [`provider:${id}`], async () => {
+    const result = canDeleteProvider(state, id, await refreshDeleteReferences(state));
+    if (!result.ok) return result;
+    if (!(await state.storage!.deleteProvider(id))) {
+      const authoritative = await state.storage!.getProvider(id);
+      if (authoritative) state.providers.set(id, authoritative);
+      return { ok: false, error: "provider changed concurrently", conflict: true };
+    }
+    state.providers.delete(id);
+    return { ok: true };
+  });
 }
 
 function canDeleteProvider(
   state: ControlPlaneState,
   id: string,
-): { ok: true } | { ok: false; error: string } {
+  refs = referencesFromState(state),
+): DeleteResult {
   if (!state.providers.has(id)) {
     return { ok: false, error: "provider not found" };
   }
-  for (const a of state.providerAccounts.values()) {
-    if (a.providerId === id) {
-      return { ok: false, error: "provider has attached accounts — remove them first" };
-    }
-  }
-  for (const c of state.commands.values()) {
-    if (c.providerId === id) {
-      return { ok: false, error: "provider has commands — remove or reassign them first" };
-    }
-  }
-  return { ok: true };
+  return deleteConflict("provider", dependenciesForProvider(refs, id));
 }

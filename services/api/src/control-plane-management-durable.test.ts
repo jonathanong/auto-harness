@@ -74,8 +74,8 @@ describe("durable management writes", () => {
       ).ok,
     ).toBe(true);
 
-    expect((await plane.deleteRepositoryDurable("repository")).ok).toBe(true);
     expect((await plane.deleteScheduleDurable("schedule")).ok).toBe(true);
+    expect((await plane.deleteRepositoryDurable("repository")).ok).toBe(true);
     expect((await plane.deleteCommandDurable("command")).ok).toBe(true);
     expect((await plane.deleteProviderAccountDurable("account")).ok).toBe(true);
     expect((await plane.deleteProviderDurable("provider")).ok).toBe(true);

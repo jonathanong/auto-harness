@@ -1,6 +1,7 @@
 import type { CommandRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+import { markersFor } from "./control-plane-delete-reference-markers.ts";
 import {
   validateCommandArgv,
   validateCommandResumeSpec,
@@ -18,6 +19,8 @@ export type CommandInput = {
   /** Soft FK — the UI filters/suggests by it; a mismatched value is never hard-blocked. */
   providerId?: string | null;
 };
+
+export { deleteCommand, deleteCommandDurable } from "./control-plane-command-delete.ts";
 
 export function createCommand(
   state: ControlPlaneState,
@@ -74,7 +77,12 @@ export async function createCommandDurable(
   if (input.id) await getCommandDurable(state, input.id);
   const result = prepareCreateCommand(state, input);
   if (!result.ok) return result;
-  await state.storage.putCommand({ ...result.command });
+  await state.storage.putCommand(
+    { ...result.command },
+    result.command.providerId
+      ? markersFor(state.now(), [`provider:${result.command.providerId}`])
+      : [],
+  );
   state.commands.set(result.command.id, result.command);
   return { ok: true, command: { ...result.command } };
 }
@@ -162,41 +170,12 @@ export async function updateCommandDurable(
   await getCommandDurable(state, id);
   const result = prepareUpdateCommand(state, id, patch);
   if (!result.ok) return result;
-  await state.storage.putCommand({ ...result.command });
+  await state.storage.putCommand(
+    { ...result.command },
+    result.command.providerId
+      ? markersFor(state.now(), [`provider:${result.command.providerId}`])
+      : [],
+  );
   state.commands.set(id, result.command);
   return { ok: true, command: { ...result.command } };
-}
-
-export function deleteCommand(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.commands.has(id)) {
-    return { ok: false, error: "command not found" };
-  }
-  for (const p of state.providers.values()) {
-    if (p.defaultCommandId === id) {
-      return { ok: false, error: "command is a provider's default command" };
-    }
-  }
-  state.commands.delete(id);
-  if (state.storage) {
-    queueWrite(state, state.storage.deleteCommand(id));
-  }
-  return { ok: true };
-}
-
-export function canDeleteCommand(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.commands.has(id)) {
-    return { ok: false, error: "command not found" };
-  }
-  for (const p of state.providers.values()) {
-    if (p.defaultCommandId === id) {
-      return { ok: false, error: "command is a provider's default command" };
-    }
-  }
-  return { ok: true };
 }

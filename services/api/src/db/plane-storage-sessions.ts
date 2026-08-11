@@ -21,6 +21,11 @@ import {
   sessionToItem,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
+import {
+  markerConditions,
+  withMarkerTable,
+  type DeletionMarker,
+} from "./plane-storage-deletion-markers.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 
@@ -38,9 +43,20 @@ class CreateSessionRetryExhaustedError extends Error {
   }
 }
 
+class CatalogDeletionInProgressError extends Error {
+  constructor() {
+    super("catalog deletion is in progress");
+    this.name = "CatalogDeletionInProgressError";
+  }
+}
+
 export function isCreateSessionConflict(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
-  return err.name === "SessionIdCollisionError" || err.name === "CreateSessionRetryExhaustedError";
+  return [
+    "SessionIdCollisionError",
+    "CreateSessionRetryExhaustedError",
+    "CatalogDeletionInProgressError",
+  ].includes(err.name);
 }
 
 function waitForCreateSessionRetry(attempt: number): Promise<void> {
@@ -68,18 +84,37 @@ export type CreateSessionResult =
 export async function createSession(
   ctx: PlaneStorageCtx,
   session: SessionRecord,
+  markers: readonly DeletionMarker[] = [],
 ): Promise<CreateSessionResult> {
   if (!session.concurrencyId) {
     try {
-      await ctx.doc.send(
-        new PutCommand({
-          TableName: ctx.tables.sessions,
-          Item: sessionToItem(session),
-          ConditionExpression: "attribute_not_exists(id)",
-        }),
-      );
+      if (markers.length === 0) {
+        await ctx.doc.send(
+          new PutCommand({
+            TableName: ctx.tables.sessions,
+            Item: sessionToItem(session),
+            ConditionExpression: "attribute_not_exists(id)",
+          }),
+        );
+      } else {
+        await ctx.doc.send(
+          new TransactWriteCommand({
+            TransactItems: [
+              ...withMarkerTable(ctx, markerConditions([...markers])),
+              {
+                Put: {
+                  TableName: ctx.tables.sessions,
+                  Item: sessionToItem(session),
+                  ConditionExpression: "attribute_not_exists(id)",
+                },
+              },
+            ],
+          }),
+        );
+      }
     } catch (err) {
       if (isConditionalFailed(err)) throw new SessionIdCollisionError(session.id);
+      if (isConditionalTransactionFailed(err)) throw new CatalogDeletionInProgressError();
       throw err;
     }
     return { created: true, session };
@@ -90,6 +125,7 @@ export async function createSession(
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
+            ...withMarkerTable(ctx, markerConditions([...markers])),
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,
@@ -112,8 +148,17 @@ export async function createSession(
       if (!isConditionalTransactionFailed(err)) {
         throw err;
       }
-      const lockConditionFailed = isConditionalTransactionFailureAt(err, 0);
-      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, 1);
+      const markerCount = markers.length;
+      if (
+        markerCount &&
+        [...Array(markerCount).keys()].some((index) =>
+          isConditionalTransactionFailureAt(err, index),
+        )
+      ) {
+        throw new CatalogDeletionInProgressError();
+      }
+      const lockConditionFailed = isConditionalTransactionFailureAt(err, markerCount);
+      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 1);
       // When both conditions lose, the active lock is authoritative: it may
       // already own this same session ID and should still be returned as the
       // duplicate. A session-only collision can never succeed on retry.
