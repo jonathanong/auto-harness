@@ -16,6 +16,7 @@ export default defineConfig({
         // Basic control-plane catalog forms are exercised in happy-dom with real React
         // and Next contexts. App routes and the remaining app-owned components stay e2e-only.
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form,schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select}.tsx",
+        "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
