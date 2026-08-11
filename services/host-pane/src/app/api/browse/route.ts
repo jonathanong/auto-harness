@@ -16,7 +16,8 @@ function isWithinBrowseRoot(path: string): boolean {
 /**
  * Directory-only autocomplete for path fields — this host's own filesystem,
  * never proxied to the control plane (which isn't running on this machine).
- * GET /api/browse?path=<partial absolute path> -> {items: string[]}
+ * GET /api/browse?path=<partial absolute path> -> {items: string[]}; an empty
+ * path lists the configured browse root.
  */
 export async function GET(request: Request): Promise<Response> {
   if (process.env.HARNESS_AUTH_MODE === "required" && !hasValidSession(request)) {
@@ -26,9 +27,12 @@ export async function GET(request: Request): Promise<Response> {
   const input = raw || browseRoot;
   if (!isWithinBrowseRoot(input)) return Response.json({ items: [] });
 
-  const searchDir = input.endsWith("/") ? input : dirname(input);
+  // An empty field means browse the configured root. A non-empty partial path
+  // searches its parent directory so its basename remains the autocomplete prefix.
+  const directoryInput = raw === "" || input.endsWith("/");
+  const searchDir = directoryInput ? input : dirname(input);
   if (!isWithinBrowseRoot(searchDir)) return Response.json({ items: [] });
-  const prefix = input.endsWith("/") ? "" : basename(input).toLowerCase();
+  const prefix = directoryInput ? "" : basename(input).toLowerCase();
 
   let entries: Array<{ name: string; isDirectory: () => boolean }> = [];
   try {

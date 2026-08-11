@@ -1,9 +1,4 @@
-import {
-  emptyHostInventory,
-  type Command,
-  type Provider,
-  type ProviderAccount,
-} from "@auto-harness/shared";
+import { type Command, type Provider, type ProviderAccount } from "@auto-harness/shared";
 import { DrainButton } from "@auto-harness/ui";
 
 import { HostConfigForm } from "../../components/host-config-form.tsx";
@@ -86,10 +81,7 @@ export default async function SettingsPage() {
           Power-user edit of full inventory (profiles, bulk worktrees). Prefer the forms on
           Repositories when possible.
         </p>
-        <HostConfigForm
-          hostId={id}
-          initialJson={initialJson || JSON.stringify(emptyHostInventory(), null, 2)}
-        />
+        <HostConfigForm hostId={id} initialJson={initialJson} />
       </div>
     </div>
   );
