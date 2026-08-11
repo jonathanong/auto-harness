@@ -118,6 +118,10 @@ export const DYNAMO_TABLES: TableDef[] = [
     name: "SessionUsageKinds",
     partitionKey: { name: "sessionAttempt", type: "S" },
   },
+  {
+    name: "Integrations",
+    partitionKey: { name: "id", type: "S" },
+  },
 ];
 
 export const S3_ARCHIVE_BUCKET = {

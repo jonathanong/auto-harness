@@ -8,6 +8,7 @@ import * as providerAccounts from "./plane-storage-provider-accounts.ts";
 import * as providerAccountUpdates from "./plane-storage-provider-account-updates.ts";
 import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
+import * as integrations from "./plane-storage-integrations.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -27,6 +28,23 @@ export type {
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
   /** Marker prevents arbitrary test/storage doubles from being treated as durable rate storage. */
   readonly rateLimitStore = true;
+
+  getSlackIntegration(): Promise<
+    import("../slack-integration-types.ts").SlackIntegrationRecord | null
+  > {
+    return integrations.getSlackIntegration(this.ctx);
+  }
+
+  putSlackIntegration(
+    record: import("../slack-integration-types.ts").SlackIntegrationRecord,
+    expectedVersion: number | null,
+  ): Promise<boolean> {
+    return integrations.putSlackIntegration(this.ctx, record, expectedVersion);
+  }
+
+  deleteSlackIntegration(expectedVersion: number): Promise<boolean> {
+    return integrations.deleteSlackIntegration(this.ctx, expectedVersion);
+  }
 
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {
     return audit.putAuditLog(this.ctx, record);

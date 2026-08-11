@@ -286,6 +286,32 @@ Delete a service account and revoke its API key. **Admin only.**
 
 ---
 
+### Integrations — Slack
+
+Slack configuration is the singleton `/integrations/slack`. Every method
+requires an unscoped **admin** account; operators, read-only users, and
+repository- or host-scoped admins receive `403`.
+
+`POST` creates and `PUT` replaces the configuration. Both require a complete
+body, including the `xoxb-…` bot token and a channel name (such as `#harness`)
+or Slack channel ID. `enabled`, notification toggles, and an optional signing
+secret are supported. `GET` returns no token, signing secret, or ciphertext:
+only `botTokenConfigured` and `signingSecretConfigured` flags. `DELETE` returns
+`204`.
+
+KMS encrypts the secret fields with `KMS_KEY_ID` and the stable
+`auto-harness/slack-integration` / `slack` encryption context before the
+configuration reaches DynamoDB. Missing KMS configuration or an encryption
+failure fails the write closed. Configuration writes use a durable version so a
+stale worker receives `409 CONFLICT`, rather than overwriting another worker.
+All create, update, delete, validation, and storage outcomes are audit events;
+the request body and secret values are never passed to audit metadata.
+
+This configuration-only endpoint does not implement Slack OAuth, incoming
+events, outbound HTTP, or session-thread delivery.
+
+---
+
 ### Repositories
 
 #### `POST /repositories`

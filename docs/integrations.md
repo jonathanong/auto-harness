@@ -53,6 +53,10 @@ Configure Slack integration. **Admin only.**
 | `notifications`  | object  | ✗        | Toggle which events post to Slack                                  |
 
 > **Note:** The bot token is encrypted at rest in DynamoDB using AWS KMS.
+> `KMS_KEY_ID` is required for configuration writes. Ciphertext is bound to the
+> stable Slack integration encryption context, and the API never returns, logs,
+> or audits bot tokens or optional signing secrets. Missing KMS configuration or
+> encryption failures fail the write closed.
 
 #### `GET /integrations/slack`
 
@@ -61,6 +65,10 @@ Get current Slack configuration (token is redacted).
 #### `PUT /integrations/slack`
 
 Update Slack configuration. **Admin only.**
+
+`PUT` replaces the complete configuration and therefore includes `botToken`.
+This slice configures storage only: it does not implement Slack OAuth, incoming
+event verification, message delivery, or session-thread lifecycle.
 
 #### `DELETE /integrations/slack`
 

@@ -125,6 +125,16 @@ domain mutation was already committed. This fail-closed acknowledgement makes
 the exceptional state observable and recoverable rather than silently reporting
 an unaudited success.
 
+## Integration secrets
+
+The Slack bot token and optional signing secret are the narrow exception to the
+control plane's usual no-secret rule. They are encrypted with the KMS key named
+by `KMS_KEY_ID` before they are stored in the Integrations table, and ciphertext
+is bound to a stable Slack-specific encryption context. Plaintext is never
+retained in REST responses, logs, audit metadata, or durable records. If KMS is
+unavailable, Slack configuration writes fail closed. Repository, SSH, and AI
+provider credentials remain agent-held and are never accepted by this API.
+
 ## VPS hardening recommendations
 
 The VPS runs AI agents with filesystem and network access. Harden it:
