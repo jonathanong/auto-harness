@@ -22,6 +22,7 @@ export default defineConfig({
         // Shared repository, session, and worktree detail views.
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
         "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button}.tsx",
+        "modules/ui/src/components/{session-actions,session-filters,session-logs}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -120,6 +121,12 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "modules/ui/src/components/{session-actions,session-filters,session-logs}.tsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
       },
       reporter: ["text", "lcov"],
     },
