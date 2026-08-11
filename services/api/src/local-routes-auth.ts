@@ -1,4 +1,4 @@
-import { type AuthService, type Role } from "./auth.ts";
+import { type Role } from "./auth.ts";
 import { validateCredential } from "./auth-accounts.ts";
 import { readJson, send, sendInternalError } from "./local-http.ts";
 import {
