@@ -266,7 +266,8 @@ CREATE=$(curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
 echo "$CREATE"
 SID=$(printf '%s' "$CREATE" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
 
-# Scheduler must be invoked: create alone does not auto-assign locally
+# The local scheduler dispatches automatically (a sweep runs when the API
+# starts, then once per minute). Force a sweep instead of waiting when running this smoke:
 curl -sS -X POST http://127.0.0.1:7420/api/v1/scheduler/assign
 # expect items[].sessionId === $SID
 

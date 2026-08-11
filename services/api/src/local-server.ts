@@ -15,6 +15,7 @@ import { handleProviderRoutes } from "./local-routes-providers.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
+import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
 
@@ -108,6 +109,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   store: MemorySessionStore;
   plane: ControlPlane;
   ws?: WsHub;
+  scheduler: LocalScheduler;
 }> {
   const port = options.port ?? 7420;
   const host = options.host ?? "127.0.0.1";
@@ -156,6 +158,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);
+  const scheduler = new LocalScheduler(resolvedPlane, options.scheduler);
   const server = createServer((req, res) => {
     void handler(req, res);
   });
@@ -169,13 +172,17 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     server.on("error", reject);
   });
 
+  scheduler.start();
+
   return {
     port,
     store: resolvedStore,
     plane: resolvedPlane,
+    scheduler,
     ...(wsHub !== undefined ? { ws: wsHub } : {}),
-    close: () =>
-      new Promise((resolve, reject) => {
+    close: async () => {
+      await scheduler.stop();
+      await new Promise<void>((resolve, reject) => {
         wsHub?.close();
         server.close((err) => {
           if (err) {
@@ -184,7 +191,8 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
           }
           resolve();
         });
-      }),
+      });
+    },
   };
 }
 

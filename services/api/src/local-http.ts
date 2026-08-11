@@ -7,6 +7,7 @@ import type { MemorySessionStore } from "./memory-store.ts";
 import type { AuthMode } from "./auth.ts";
 import type { AuthService } from "./auth.ts";
 import type { Principal } from "./auth.ts";
+import type { LocalSchedulerOptions } from "./local-scheduler.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -28,6 +29,8 @@ export type LocalServerOptions = {
   /** Attach /ws agent hub (default true for startLocalServer). */
   enableWs?: boolean;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
+  /** Local EventBridge-equivalent scheduler configuration. */
+  scheduler?: LocalSchedulerOptions;
 };
 
 export type RouteCtx = {

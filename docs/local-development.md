@@ -184,7 +184,7 @@ export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:daemon -- run-session --file /path/to/session.assign.json
 ```
 
-> Local API create does **not** always auto-dispatch over WebSocket for every workflow. Bridge create → run with the assign file, use `pnpm local:e2e` (in-process), or `pnpm local:ws-e2e` for the real `/ws` agent channel.
+> The local API begins an EventBridge-equivalent scheduler sweep on startup and repeats it every minute. It evaluates cron, reclaims stale hosts, enforces ACK deadlines, and dispatches queued sessions over the real `/ws` channel. The `POST /scheduler/*` routes remain available when an operator needs to force a sweep.
 
 ---
 
@@ -217,7 +217,7 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
    - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**
    - Host pane: http://127.0.0.1:7422/repositories → **Add repository**
 4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step) → attach an account to the host on its detail page's Provider accounts tab.
-5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`) and `POST /scheduler/assign`.
+5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`). The local scheduler dispatches it on its next sweep (within one minute). `POST /scheduler/assign` is still useful to force a manual sweep.
 
 Local defaults: `HARNESS_HOST_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
