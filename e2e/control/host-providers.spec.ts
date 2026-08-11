@@ -78,4 +78,51 @@ test.describe("control plane host provider accounts", () => {
     await page.getByTestId(`host-provider-account-remove-${account.id}-confirm-submit`).click();
     await expect(row).toBeHidden({ timeout: 15_000 });
   });
+
+  test("failed detach stays open, reports the inventory error, and can be retried", async ({
+    page,
+    request,
+  }) => {
+    const hostId = `pw-detach-error-${test.info().parallelIndex}-${Date.now()}`;
+    const providerName = `pw-detach-provider-${test.info().parallelIndex}-${Date.now()}`;
+    const provider = await (
+      await request.post(`${API}/api/v1/providers`, { data: { name: providerName } })
+    ).json();
+    const account = await (
+      await request.post(`${API}/api/v1/provider-accounts`, {
+        data: { providerId: provider.id, label: `${providerName}@example.com` },
+      })
+    ).json();
+    await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
+      data: {
+        repositories: [],
+        providerAccounts: [{ providerAccountId: account.id }],
+        commandProfiles: {},
+      },
+    });
+    let failOnce = true;
+    await page.route(`**/api/v1/hosts/${hostId}/inventory`, async (route) => {
+      if (failOnce && route.request().method() === "PUT") {
+        failOnce = false;
+        await route.fulfill({ status: 500, body: "could not update inventory" });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto(`/hosts/${hostId}?tab=provider-accounts`);
+    const row = page.getByTestId(`host-provider-account-row-${account.id}`);
+    await expect(row).toBeVisible();
+    await page.getByTestId(`host-provider-account-remove-${account.id}`).click();
+    await page.getByTestId(`host-provider-account-remove-${account.id}-confirm-submit`).click();
+    await expect(
+      page.getByTestId(`host-provider-account-remove-${account.id}-confirm`),
+    ).toBeVisible();
+    await expect(page.getByTestId(`host-provider-account-remove-${account.id}-error`)).toHaveText(
+      "could not update inventory",
+    );
+
+    await page.getByTestId(`host-provider-account-remove-${account.id}-confirm-submit`).click();
+    await expect(row).toBeHidden({ timeout: 15_000 });
+  });
 });
