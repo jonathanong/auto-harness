@@ -87,6 +87,8 @@ export const DYNAMO_TABLES: TableDef[] = [
   },
   {
     name: "AuditLogs",
+    // One append-only control-plane partition supports newest-first cursor
+    // pagination. The audit event id remains an immutable payload attribute.
     partitionKey: { name: "scope", type: "S" },
     sortKey: { name: "timestampId", type: "S" },
   },

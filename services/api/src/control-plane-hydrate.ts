@@ -16,6 +16,7 @@ import type {
   LogRecord,
   ScheduleRecord,
 } from "./control-plane-types.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
 
 type HydratableState = {
   storage: DynamoPlaneStorage | undefined;
@@ -30,6 +31,7 @@ type HydratableState = {
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
+  auditLogs: Map<string, AuditLogRecord>;
   archives: Map<string, ArchiveObject>;
   pendingAcks: { clear(): void };
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
@@ -51,6 +53,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     accounts,
     commands,
     archives,
+    auditLogs,
   ] = await Promise.all([
     state.storage.listAllSessions(),
     state.storage.listAllWorktrees(),
@@ -62,6 +65,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.storage.listProviderAccounts(),
     state.storage.listCommands(),
     state.storage.listArchives(),
+    state.storage.listAllAuditLogs(),
   ]);
   const logs = new Map<string, LogRecord[]>();
   for (const session of sessions) {
@@ -83,6 +87,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.providers.clear();
   state.providerAccounts.clear();
   state.commands.clear();
+  state.auditLogs.clear();
   state.archives.clear();
   state.drainingHosts.clear();
   state.disconnectedHosts.clear();
@@ -109,6 +114,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   for (const record of providers) state.providers.set(record.id, record);
   for (const record of accounts) state.providerAccounts.set(record.id, record);
   for (const record of commands) state.commands.set(record.id, record);
+  for (const record of auditLogs) state.auditLogs.set(record.id, record);
   for (const [sessionId, records] of logs) state.logs.set(sessionId, records);
   for (const record of archives) state.archives.set(record.key, record);
 }

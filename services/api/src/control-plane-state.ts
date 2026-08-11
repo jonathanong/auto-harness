@@ -29,6 +29,7 @@ import type {
   ScheduleRecord,
   WebhookDelivery,
 } from "./control-plane-types.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
@@ -52,6 +53,8 @@ export type ControlPlaneState = {
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
+  /** Append-only audit records hydrated for local/in-memory reads. */
+  auditLogs: Map<string, AuditLogRecord>;
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
@@ -75,6 +78,7 @@ export type ControlPlaneState = {
   providerIdFactory: () => string;
   providerAccountIdFactory: () => string;
   commandIdFactory: () => string;
+  auditIdFactory: () => string;
   shardCount: number;
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
@@ -102,6 +106,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     providers: new Map(),
     providerAccounts: new Map(),
     commands: new Map(),
+    auditLogs: new Map(),
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),
@@ -124,6 +129,9 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       ? options.providerAccountIdFactory
       : newId,
     commandIdFactory: options.commandIdFactory ? options.commandIdFactory : newId,
+    auditIdFactory: options.auditIdFactory
+      ? options.auditIdFactory
+      : () => `audit-${randomBytes(12).toString("hex")}`,
     shardCount: options.shardCount ? options.shardCount : DEFAULT_QUEUE_SHARD_COUNT,
     ackDeadlineMs: options.ackDeadlineMs ? options.ackDeadlineMs : DEFAULT_ACK_DEADLINE_MS,
     heartbeatStaleMs: options.heartbeatStaleMs

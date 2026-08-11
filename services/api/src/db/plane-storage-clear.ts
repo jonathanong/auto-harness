@@ -11,6 +11,7 @@ import {
 import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
 import { deleteAuthAccount, listAuthAccounts } from "./plane-storage-auth.ts";
+import { listAllAuditLogs } from "./plane-storage-audit.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
@@ -52,7 +53,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey && Object.keys(startKey).length > 0);
+    } while (startKey);
   }
   {
     let startKey: Record<string, unknown> | undefined;
@@ -72,7 +73,7 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey && Object.keys(startKey).length > 0);
+    } while (startKey);
   }
   for (const s of await listSchedules(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.schedules, Key: { id: s.id } }));
@@ -101,6 +102,14 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
   for (const c of await listCommands(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.commands, Key: { id: c.id } }));
   }
+  for (const audit of await listAllAuditLogs(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.auditLogs,
+        Key: { scope: "audit", timestampId: `${audit.createdAt}#${audit.id}` },
+      }),
+    );
+  }
   {
     let startKey: Record<string, unknown> | undefined;
     do {
@@ -122,6 +131,6 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
         );
       }
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey && Object.keys(startKey).length > 0);
+    } while (startKey);
   }
 }
