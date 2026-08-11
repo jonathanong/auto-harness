@@ -1,5 +1,6 @@
 import { readJson, send, type RouteCtx } from "./local-http.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
+import { handleSessionCloneRoute } from "./local-routes-session-clone.ts";
 
 function canAccess(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -30,6 +31,8 @@ function validResumeBody(body: Record<string, unknown>): boolean {
 /** Session collection + sub-resource routes. Returns true if handled. */
 export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
+
+  if (await handleSessionCloneRoute(ctx)) return true;
 
   if (method === "POST" && url.pathname === "/api/v1/sessions") {
     try {
