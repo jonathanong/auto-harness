@@ -65,13 +65,18 @@ describe("ProviderDefaultCommandForm", () => {
     expect(field(view.container, "provider-default-command-error").textContent).toBe(
       "request failed (503)",
     );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const fallbackFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fallbackFetch);
     field(view.container, "provider-default-command-select").remove();
     submit(form);
     await act(async () => Promise.resolve());
-    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
-      body: JSON.stringify({ defaultCommandId: null }),
-    });
+    expect(fallbackFetch).toHaveBeenCalledWith(
+      "/api/v1/providers/p",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ defaultCommandId: null }),
+      }),
+    );
     view.unmount();
   });
 });
