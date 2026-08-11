@@ -1,0 +1,83 @@
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { describe, expect, it, vi } from "vitest";
+
+import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import { HostProviderAccountCommandForm } from "./host-provider-account-command-form.tsx";
+
+const commands = [
+  { id: "command-1", name: "fast", argv: ["fast"], appendPrompt: true, providerId: "p" },
+];
+const inventory = {
+  repositories: [],
+  providerAccounts: [{ providerAccountId: "account" }],
+  commandProfiles: {},
+};
+
+describe("HostProviderAccountCommandForm", () => {
+  it("saves the selected host-level command override", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json(inventory))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostProviderAccountCommandForm
+        hostId="host"
+        providerAccountId="account"
+        currentCommandId={undefined}
+        providerCommands={commands}
+      />,
+    );
+    setValue(field(view.container, "host-provider-account-command-select-account"), "command-1");
+    submit(field(view.container, "host-provider-account-command-form-account"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
+      providerAccounts: [{ providerAccountId: "account", commandId: "command-1" }],
+    });
+    expect(router.refresh).toHaveBeenCalledOnce();
+    view.unmount();
+  });
+
+  it("clears an inherited selection and reports a pending save failure", async () => {
+    let finish!: (response: Response) => void;
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        json({
+          ...inventory,
+          providerAccounts: [{ providerAccountId: "account", commandId: "old" }],
+        }),
+      )
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <HostProviderAccountCommandForm
+        hostId="host"
+        providerAccountId="account"
+        currentCommandId="old"
+        providerCommands={commands}
+      />,
+    );
+    const form = field<HTMLFormElement>(
+      view.container,
+      "host-provider-account-command-form-account",
+    );
+    field(view.container, "host-provider-account-command-select-account").remove();
+    submit(form);
+    await act(async () => Promise.resolve());
+    expect(
+      field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
+        .disabled,
+    ).toBe(true);
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
+      providerAccounts: [{ providerAccountId: "account" }],
+    });
+    await act(async () => finish(new Response("nope", { status: 500 })));
+    expect(field(view.container, "host-provider-account-command-error-account").textContent).toBe(
+      "nope",
+    );
+    view.unmount();
+  });
+});
