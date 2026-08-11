@@ -88,11 +88,13 @@ export async function tryRegisterHost(
           ":connectionId": opts.connection.connectionId,
           ":existing": existingConnectionId,
           ":draining": opts.draining ?? false,
+          ":false": false,
           ":empty": {},
         }
       : {
           ":connectionId": opts.connection.connectionId,
           ":draining": opts.draining ?? false,
+          ":false": false,
           ":true": true,
           ":empty": {},
         };
