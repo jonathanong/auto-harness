@@ -43,6 +43,7 @@ test.describe("control plane host provider accounts", () => {
     await page.goto(`/hosts/${hostId}?tab=provider-accounts`);
     await expect(page.getByTestId("host-provider-accounts-section")).toBeVisible();
     await expect(page.getByTestId("form-attach-provider-account")).toBeVisible();
+    await expect(page.getByTestId("attach-provider-account-error")).toBeHidden();
     await page
       .getByTestId("attach-provider-account-select")
       .selectOption({ label: `${providerName} — ${accountLabel}` });
@@ -53,6 +54,9 @@ test.describe("control plane host provider accounts", () => {
     await expect(
       page.getByTestId(`host-provider-account-command-form-${account.id}`),
     ).toBeVisible();
+    await expect(page.getByTestId(`host-provider-account-command-error-${account.id}`)).toHaveCount(
+      0,
+    );
     // No override yet — effective command falls back to the provider default.
     await expect(row).toContainText(`${providerName}-default`);
 

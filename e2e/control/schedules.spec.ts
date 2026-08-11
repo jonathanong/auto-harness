@@ -20,7 +20,9 @@ test.describe("control plane schedules", () => {
 
     await page.goto("/schedules");
     await expect(page.getByTestId("page-schedules")).toBeVisible();
+    await expect(page.getByTestId("schedules-heading")).toHaveText("Schedules");
     await expect(page.getByTestId("form-create-schedule")).toBeVisible();
+    await expect(page.getByTestId("schedule-error")).toBeHidden();
     await page.getByTestId("schedule-repository-id").fill(repoId);
     await page.getByTestId("schedule-name").fill(name);
     await page.getByTestId("schedule-target").selectOption(`command:${commandId}`);
@@ -32,6 +34,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("page-schedule-detail")).toBeVisible();
     await expect(page.getByTestId("schedule-detail-name")).toHaveText(name);
     await expect(page.getByTestId("form-edit-schedule")).toBeVisible();
+    await expect(page.getByTestId("edit-schedule-queue-ttl")).toHaveValue("1234");
     const detailUrl = page.url();
     await expect(page.getByTestId("schedule-history-table")).toContainText("No runs yet.");
     await expect(page.getByTestId("edit-schedule-repository-id")).toHaveValue(repoId);
@@ -69,6 +72,9 @@ test.describe("control plane schedules", () => {
     await expect(page.getByText(name).first()).toBeVisible({ timeout: 15_000 });
     const row = page.locator('[data-pw^="schedule-row-"]').filter({ hasText: name });
     await expect(row).toBeVisible();
+    await expect(
+      page.locator('[data-pw^="schedule-route-"]').filter({ hasText: name }),
+    ).toBeVisible();
     await expect(row).toContainText("1234s");
     const scheduleId = (await row.getAttribute("data-pw"))!.replace("schedule-row-", "");
     await page.getByTestId(`schedule-edit-${scheduleId}`).click();

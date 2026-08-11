@@ -20,6 +20,7 @@ test.describe("control plane commands", () => {
     await page.goto("/commands");
     await page.getByTestId("add-command-open").click();
     await expect(page.getByTestId("form-command-catalog")).toBeVisible();
+    await expect(page.getByTestId("command-catalog-error")).toBeHidden();
     await page.getByTestId("command-catalog-name").fill(name);
     await page.getByTestId("command-catalog-argv").fill("echo");
     await expect(page.getByTestId("command-catalog-append-prompt")).toBeChecked();
@@ -39,6 +40,7 @@ test.describe("control plane commands", () => {
     await page.goto(`/commands/${commandId}`);
     await page.getByTestId("edit-command-open").click();
     await expect(page.getByTestId("form-edit-command")).toBeVisible();
+    await expect(page.getByTestId("edit-command-error")).toBeHidden();
     await expect(page.getByTestId("edit-command-name")).toHaveValue(name);
     await expect(page.getByTestId("edit-command-append-prompt")).toBeChecked();
     await page.getByTestId("edit-command-argv").fill("echo\n-n");
@@ -51,6 +53,7 @@ test.describe("control plane commands", () => {
 
     await page.getByTestId("delete-command-open").click();
     await expect(page.getByTestId("delete-command-confirm")).toBeVisible();
+    await expect(page.getByTestId("delete-command-error")).toBeHidden();
     await page.getByTestId("delete-command-confirm-submit").click();
     await expect(page).toHaveURL(/\/commands$/, { timeout: 15_000 });
 

@@ -27,9 +27,17 @@ test.describe("host pane worktrees", () => {
         await page.getByTestId(`worktree-link-${wtId}`).click();
 
         await expect(page).toHaveURL(new RegExp(`/worktrees/${wtId}$`));
+        await expect(page.getByTestId("page-worktree-detail")).toBeVisible();
         await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
         await page.getByTestId("tab-settings").click();
         await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
+        await page.getByTestId("worktree-edit-open").click();
+        await expect(page.getByTestId("form-edit-worktree")).toBeVisible();
+        await expect(page.getByTestId("worktree-edit-path")).toHaveValue(wtPath);
+        await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("echo");
+        await expect(page.getByTestId("worktree-edit-error")).toBeHidden();
+        await page.getByTestId("worktree-edit-submit").click();
+        await expect(page.getByTestId("worktree-edit-open")).toBeVisible({ timeout: 15_000 });
 
         await page.getByTestId(`worktree-remove-${wtId}`).click();
         await page.getByTestId(`worktree-remove-${wtId}-confirm-submit`).click();
@@ -41,5 +49,10 @@ test.describe("host pane worktrees", () => {
         await removeHostRepo(request, repoId);
       }
     });
+  });
+
+  test("unknown worktree id shows a not-found state", async ({ page }) => {
+    await page.goto("/worktrees/does-not-exist-xyz");
+    await expect(page.getByTestId("page-worktree-detail-not-found")).toBeVisible();
   });
 });
