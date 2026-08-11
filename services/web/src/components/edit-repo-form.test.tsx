@@ -1,0 +1,116 @@
+// @vitest-environment happy-dom
+
+import React, { act } from "react";
+import { describe, expect, it, vi } from "vitest";
+
+import { field, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
+import { EditRepoForm } from "./edit-repo-form.tsx";
+
+const repository = {
+  id: "repo/one",
+  url: "git@example.test:one.git",
+  defaultBranch: "trunk",
+  setupScript: "install",
+  terminalHookScript: "hook",
+};
+
+describe("EditRepoForm", () => {
+  it("opens with catalog values, exposes documented selectors, and cancels", () => {
+    const view = mountForm(<EditRepoForm repository={repository} />);
+    expect(field<HTMLButtonElement>(view.container, "edit-repo-open").textContent).toBe(
+      "Edit repository",
+    );
+    press(field(view.container, "edit-repo-open"));
+    expect(field<HTMLInputElement>(view.container, "edit-repo-url").value).toBe(repository.url);
+    expect(field<HTMLTextAreaElement>(view.container, "edit-repo-setup").value).toBe("install");
+    expect(field<HTMLButtonElement>(view.container, "edit-repo-submit").textContent).toBe("Save");
+    press(
+      [...view.container.querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      )!,
+    );
+    expect(view.container.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("validates a blank URL, normalizes the default branch, and refreshes on success", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<EditRepoForm repository={repository} />);
+    press(field(view.container, "edit-repo-open"));
+    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
+    setValue(field(view.container, "edit-repo-url"), "/repo");
+    setValue(field(view.container, "edit-repo-url"), "   ");
+    submit(form);
+    expect(field(view.container, "edit-repo-error").textContent).toBe("url is required");
+    setValue(field(view.container, "edit-repo-url"), " /new ");
+    setValue(field(view.container, "edit-repo-branch"), " ");
+    submit(form);
+    await act(async () => Promise.resolve());
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/repositories/repo%2Fone",
+      expect.objectContaining({ method: "PUT" }),
+    );
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      url: "/new",
+      defaultBranch: "main",
+      setupScript: "install",
+      terminalHookScript: "hook",
+    });
+    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(view.container.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("sends empty optional scripts, disables save while pending, and reports request errors", async () => {
+    let finish!: (res: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<EditRepoForm repository={{ id: "repo", url: null }} />);
+    press(field(view.container, "edit-repo-open"));
+    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
+    setValue(field(view.container, "edit-repo-url"), "/repo");
+    setValue(field(view.container, "edit-repo-branch"), "feature");
+    submit(form);
+    expect(field<HTMLButtonElement>(view.container, "edit-repo-submit").disabled).toBe(true);
+    await act(async () => finish(new Response("cannot edit", { status: 409 })));
+    expect(field(view.container, "edit-repo-error").textContent).toBe("cannot edit");
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      defaultBranch: "feature",
+      setupScript: "",
+      terminalHookScript: "",
+    });
+    view.unmount();
+  });
+
+  it("falls back for absent form values", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<EditRepoForm repository={{ id: "repo" }} />);
+    press(field(view.container, "edit-repo-open"));
+    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
+    setValue(field(view.container, "edit-repo-url"), "/repo");
+    field(view.container, "edit-repo-branch").remove();
+    field(view.container, "edit-repo-setup").remove();
+    field(view.container, "edit-repo-hook").remove();
+    submit(form);
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+      url: "/repo",
+      defaultBranch: "main",
+      setupScript: "",
+      terminalHookScript: "",
+    });
+    view.unmount();
+  });
+
+  it("treats an absent URL as required", () => {
+    const view = mountForm(<EditRepoForm repository={{ id: "repo" }} />);
+    press(field(view.container, "edit-repo-open"));
+    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
+    field(view.container, "edit-repo-url").remove();
+    submit(form);
+    expect(field(view.container, "edit-repo-error").textContent).toBe("url is required");
+    view.unmount();
+  });
+});
