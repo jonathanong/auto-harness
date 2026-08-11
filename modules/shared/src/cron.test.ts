@@ -36,8 +36,12 @@ describe("strict UTC cron", () => {
       "* * * *",
       "* 24 * * *",
       "*/0 * * * *",
+      "*/2/3 * * * *",
+      "*/ * * * *",
       "1- * * * *",
       "1/2 * * * *",
+      "x * * * *",
+      "9007199254740992 * * * *",
       "0 0 * * 7",
       "0 0 * * * extra",
     ]) {
@@ -47,5 +51,11 @@ describe("strict UTC cron", () => {
     expect(parseCron("0 0 31 2 *")).not.toBeNull();
     expect(nextCronOccurrence("0 0 31 2 *", "2026-01-01T00:00:00.000Z")).toBeNull();
     expect(nextCronOccurrence("* * * * *", "invalid")).toBeNull();
+  });
+
+  it("skips dates that match neither constrained day field", () => {
+    expect(nextCronOccurrence("0 0 13 * 1", "2026-01-13T00:00:00.000Z")).toBe(
+      "2026-01-19T00:00:00.000Z",
+    );
   });
 });
