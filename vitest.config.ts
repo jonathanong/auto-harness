@@ -19,12 +19,12 @@ export default defineConfig({
         "**/daemon-transport.ts",
         "**/cli.ts",
         // Follow-up DynamoDB storage-adapter coverage tranches: sessions, auth,
-        // clear, and the main-checkout subadapters. The base, catalog, provider,
-        // lock, reconnect, and main-checkout transaction adapters use real Dynamo.
+        // clear, and the remaining main-checkout read/reconnect subadapters.
         "**/db/plane-storage-sessions.ts",
         "**/db/plane-storage-auth.ts",
         "**/db/plane-storage-clear.ts",
-        "**/db/plane-storage-main-checkout-*.ts",
+        "**/db/plane-storage-main-checkout-read.ts",
+        "**/db/plane-storage-main-checkout-reconnect.ts",
         "**/create-plane.ts",
         // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
         "**/app/**",
