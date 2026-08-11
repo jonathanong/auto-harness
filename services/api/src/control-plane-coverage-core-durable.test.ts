@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { assignQueuedDurable } from "./control-plane-assign.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { handleHostMessageDurable } from "./control-plane-messages.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
@@ -9,12 +10,12 @@ describe("durable control-plane core edge coverage", () => {
   it("persists a durable queue expiry before removing it from the assignment queue", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:10.000Z", shardCount: 1 });
     const expired: string[] = [];
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       expireQueuedSession: async (input: { sessionId: string }) => {
         expired.push(input.sessionId);
         return true;
       },
-    } as never;
+    });
     plane.state.sessions.set("expired", {
       id: "expired",
       repositoryId: "repo",
