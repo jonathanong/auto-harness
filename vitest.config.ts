@@ -17,6 +17,7 @@ export default defineConfig({
         "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select}.tsx",
         "modules/ui/src/lib/utils.ts",
         "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
+        "modules/ui/src/components/{detail-header,provider-account-health,session-execution-summary,session-route-summary,sessions-table,tabs}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
