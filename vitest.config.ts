@@ -58,12 +58,8 @@ export default defineConfig({
         // implementations. The core client/table/bootstrap adapter is covered here
         // with real-Dynamo integration tests.
         "**/db/plane-storage-auth.ts",
-        "**/db/plane-storage-base.ts",
-        "**/db/plane-storage-catalog-providers.ts",
-        "**/db/plane-storage-catalog.ts",
         "**/db/plane-storage-clear.ts",
         "**/db/plane-storage-deletion-markers.ts",
-        "**/db/plane-storage-locks.ts",
         "**/db/plane-storage-main-checkout-read.ts",
         "**/db/plane-storage-main-checkout-reconnect.ts",
         "**/db/plane-storage-main-checkout.ts",
