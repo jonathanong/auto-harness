@@ -377,16 +377,16 @@ List sessions with optional filters.
 
 **Query parameters:**
 
-| Param           | Type   | Description                                                                            |
-| --------------- | ------ | -------------------------------------------------------------------------------------- |
+| Param           | Type   | Description                                                                                                |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
 | `status`        | string | Filter by status, or `all` (default): `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
-| `repositoryId`  | string | Filter by repository                                                                   |
-| `hostId`        | string | Filter by assigned host                                                                |
-| `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`              |
-| `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                             |
-| `cursor`        | string | Pagination cursor from previous response                                               |
-| `concurrencyId` | string | Exact concurrency identity (may span schedules and manual sessions)                    |
-| `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                         |
+| `repositoryId`  | string | Filter by repository                                                                                       |
+| `hostId`        | string | Filter by assigned host                                                                                    |
+| `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`                                  |
+| `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                                                |
+| `cursor`        | string | Pagination cursor from previous response                                                                   |
+| `concurrencyId` | string | Exact concurrency identity (may span schedules and manual sessions)                                        |
+| `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                                             |
 
 Results are scoped to the authenticated principal's allowed repositories and host binding
 before the `limit` is applied. `nextCursor` is an opaque, signed cursor bound to all filters,
