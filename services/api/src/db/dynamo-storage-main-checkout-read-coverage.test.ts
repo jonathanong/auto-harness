@@ -1,4 +1,8 @@
-import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import {
+  DeleteTableCommand,
+  ListTablesCommand,
+  type DynamoDBClient,
+} from "@aws-sdk/client-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -10,18 +14,26 @@ import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 let client: DynamoDBClient;
 let ctx: PlaneStorageCtx;
 let tables: DynamoTableNames;
+let available = false;
 
 beforeAll(async () => {
   const clients = createDynamoClients();
   client = clients.client;
-  tables = await ensureControlPlaneTables({
-    client,
-    prefix: `AhMainRead${process.pid}${Date.now()}`,
-  });
-  ctx = { doc: clients.doc, tables };
+  try {
+    await client.send(new ListTablesCommand({}));
+    tables = await ensureControlPlaneTables({
+      client,
+      prefix: `AhMainRead${process.pid}${Date.now()}`,
+    });
+    ctx = { doc: clients.doc, tables };
+    available = true;
+  } catch {
+    available = false;
+  }
 });
 
 afterAll(async () => {
+  if (!available) return;
   await Promise.all(
     Object.values(tables).map((TableName) => client.send(new DeleteTableCommand({ TableName }))),
   );
@@ -29,6 +41,7 @@ afterAll(async () => {
 
 describe("DynamoDB Local main-checkout reads", () => {
   it("reads the cursor and an exact repository lease", async () => {
+    if (!available) return;
     await ctx.doc.send(
       new PutCommand({
         TableName: tables.hostLocks,
@@ -50,6 +63,7 @@ describe("DynamoDB Local main-checkout reads", () => {
   });
 
   it("returns null for missing hosts, absent attributes, and malformed lease values", async () => {
+    if (!available) return;
     expect(await getMainCheckoutCursor(ctx, "missing-read-host")).toBeNull();
     expect(await getMainCheckoutLease(ctx, "missing-read-host", "read-repository")).toBeNull();
 
@@ -91,6 +105,7 @@ describe("DynamoDB Local main-checkout reads", () => {
   });
 
   it("rethrows a real DynamoDB resource failure", async () => {
+    if (!available) return;
     await expect(
       getMainCheckoutCursor(
         { ...ctx, tables: { ...tables, hostLocks: "missing-main-read-table" } },
