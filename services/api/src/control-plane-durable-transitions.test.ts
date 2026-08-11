@@ -165,8 +165,10 @@ describe("durable control-plane transitions", () => {
     expect(await created.plane.assignQueuedDurable()).toHaveLength(1);
     expect((await ctx.storage.getSession(sessionId))?.resumeSpec).toEqual(resumeSpec);
 
-    expect(created.plane.deleteCommand(commandId).ok).toBe(true);
-    await created.plane.settleStorage();
+    // Catalog deletes now reject a queued live target; model the externally
+    // removed row this recovery test is intentionally exercising.
+    await ctx.storage.deleteCommand(commandId);
+    created.plane.state.commands.delete(commandId);
     expect(await ctx.storage.getCommand(commandId)).toBeNull();
 
     const hydrated = await createControlPlane({

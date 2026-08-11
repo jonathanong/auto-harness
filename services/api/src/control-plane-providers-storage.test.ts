@@ -18,6 +18,7 @@ describe("ControlPlane providers — real DynamoDB Local write-through", () => {
     // order (nothing in production serializes same-key writes either; each of these
     // corresponds to a separate request in practice, never fired back-to-back like this).
     plane.createProvider({ id: "p1", name: "claude" });
+    await plane.settleStorage();
     plane.createCommand({ id: "c1", name: "echo", argv: ["echo"] });
     plane.createProviderAccount({ id: "a1", providerId: "p1", label: "x@y.com" });
     await plane.settleStorage();
