@@ -16,7 +16,6 @@ export {
   InvalidSessionCursorError,
   InvalidSessionListQueryError,
   type ListSessionsPageQuery,
-  type SessionListScope,
   type SessionListSort,
 } from "./control-plane-session-cursor.ts";
 import type { ListSessionsPageQuery } from "./control-plane-session-cursor.ts";
