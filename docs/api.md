@@ -454,9 +454,9 @@ copied, so a clone never deduplicates against or replaces its source.
 
 Runtime state is never copied: host/worktree placement or leases, assignment
 fences, resolved argv/route, resume pins or CLI references, status timestamps,
-logs, schedule provenance, session metadata, credentials/secrets, and audit
-records. The authenticated actor id is recorded as the new session's
-`metadata.createdBy` (when authentication is enabled).
+logs, schedule provenance, session metadata, and credentials/secrets. The
+authenticated actor id is recorded as the new session's `metadata.createdBy`
+(when authentication is enabled).
 
 Optional request body to override fields:
 
@@ -474,9 +474,7 @@ authorization is checked against the source repository.
 **Errors:** `404 NOT_FOUND` for an unknown or unauthorized source, `400
 VALIDATION_ERROR` for malformed JSON or unsupported/invalid overrides, `409
 CONFLICT` for a durable create conflict that requires retry, and `500
-INTERNAL_ERROR` when durable state or the audit append cannot be persisted.
-Every accepted, denied, failed, or successful clone
-attempt appends an audit event (`action: "session:clone"`).
+INTERNAL_ERROR` when durable state cannot be read or persisted.
 
 **Response:** `201 Created` (same schema as `POST /sessions` response)
 
