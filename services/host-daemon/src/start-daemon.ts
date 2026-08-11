@@ -21,6 +21,73 @@ type StartDaemonOptions = {
   fetchFn?: typeof fetch;
 };
 
+type InventoryPollOptions = {
+  config: DaemonConfig;
+  identity: HostIdentity;
+  applyInventory: (next: DaemonConfig) => Promise<void>;
+  pollMs: number;
+  log: (line: string) => void;
+  error: (line: string) => void;
+  fetchFn?: typeof fetch;
+};
+
+function noopInventoryPollStop(): Promise<void> {
+  return Promise.resolve();
+}
+
+/**
+ * Poll the control plane for inventory changes.
+ *
+ * The applied fingerprint is advanced only after the daemon accepts the new
+ * inventory. A single-flight guard also prevents interval ticks from racing
+ * while a fetch or inventory application is still in progress.
+ */
+export function startInventoryPoll(options: InventoryPollOptions): () => Promise<void> {
+  let lastFp = inventoryFingerprint(options.config);
+  let inFlight = false;
+  let stopped = false;
+  let activePoll: Promise<void> | undefined;
+  const timer = setInterval(() => {
+    if (stopped || inFlight) return;
+    inFlight = true;
+    const poll = (async () => {
+      try {
+        const next = await fetchHostInventory(
+          options.identity,
+          options.fetchFn ? { fetchFn: options.fetchFn } : {},
+        );
+        const fp = inventoryFingerprint(next);
+        if (fp === lastFp) {
+          return;
+        }
+        await options.applyInventory(next);
+        lastFp = fp;
+        options.log(
+          `host inventory updated from control plane (${next.repositories.length} repo(s), ${Object.keys(next.commandProfiles).length} profile(s))`,
+        );
+      } catch (err) {
+        options.error(`inventory poll failed: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        inFlight = false;
+      }
+    })();
+    activePoll = poll;
+    void poll.then(
+      () => {
+        if (activePoll === poll) activePoll = undefined;
+      },
+      () => {
+        if (activePoll === poll) activePoll = undefined;
+      },
+    );
+  }, options.pollMs);
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+    await activePoll;
+  };
+}
+
 /**
  * Phase 3 agent daemon: connect WebSocket, register (even with empty inventory),
  * poll control plane for host inventory updates (repos attached via UI).
@@ -78,32 +145,18 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
         : ` (${repoCount} repo(s))`),
   );
 
-  let lastFp = inventoryFingerprint(options.config);
   const pollMs = options.inventoryPollMs ?? 15_000;
-  let pollTimer: ReturnType<typeof setInterval> | undefined;
+  let stopInventoryPoll = noopInventoryPollStop;
   if (pollMs > 0 && options.identity) {
-    const identity = options.identity;
-    pollTimer = setInterval(() => {
-      void (async () => {
-        try {
-          const next = await fetchHostInventory(
-            identity,
-            options.fetchFn ? { fetchFn: options.fetchFn } : {},
-          );
-          const fp = inventoryFingerprint(next);
-          if (fp === lastFp) {
-            return;
-          }
-          lastFp = fp;
-          await loop.applyInventory(next);
-          log(
-            `host inventory updated from control plane (${next.repositories.length} repo(s), ${Object.keys(next.commandProfiles).length} profile(s))`,
-          );
-        } catch (err) {
-          error(`inventory poll failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
-      })();
-    }, pollMs);
+    stopInventoryPoll = startInventoryPoll({
+      config: options.config,
+      identity: options.identity,
+      applyInventory: (next) => loop.applyInventory(next),
+      pollMs,
+      log,
+      error,
+      fetchFn: options.fetchFn,
+    });
   }
 
   const keepalive = setInterval(() => {
@@ -113,9 +166,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   }, 20_000);
 
   const stop = async (): Promise<void> => {
-    if (pollTimer) {
-      clearInterval(pollTimer);
-    }
+    await stopInventoryPoll();
     clearInterval(keepalive);
     loop.beginDrain();
     await loop.waitForIdle();
