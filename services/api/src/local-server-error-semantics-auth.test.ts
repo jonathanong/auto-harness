@@ -96,8 +96,17 @@ describe("local auth route error semantics", () => {
     const { handler } = createLocalApp({ authService: auth, plane });
     const headers = { authorization: `Bearer ${apiKey}` };
 
-    plane.listHostsDurable = async () => [
-      { hostId: "host", repositoryIds: [], worktreeIds: ["worktree"] },
+    plane.listHosts = () => [
+      {
+        hostId: "host",
+        online: false,
+        lastHeartbeatAt: null,
+        commandProfiles: [],
+        capabilities: [],
+        worktreeIds: ["worktree"],
+        repositories: [],
+        repositoryIds: [],
+      },
     ];
     const hosts = await invokeHandler(handler, "GET", "/api/v1/hosts", undefined, headers);
     expect(hosts.status).toBe(200);
