@@ -40,9 +40,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       body = await readJson(req);
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
       return true;
     }
     try {
@@ -81,10 +79,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       const result = await plane.createSessionDurable(input);
       if (!result.ok) {
         send(res, result.code === "CONFLICT" ? 409 : 400, {
-          error: {
-            code: result.code ?? "VALIDATION_ERROR",
-            message: result.error,
-          },
+          error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
         });
         return true;
       }
@@ -100,7 +95,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
     }
   }
 
-  if (handleSessionReadRoutes(ctx)) return true;
+  if (await handleSessionReadRoutes(ctx)) return true;
 
   const cancelMatch = /^\/api\/v1\/sessions\/([^/]+)\/cancel$/.exec(url.pathname);
   if (method === "POST" && cancelMatch) {
@@ -114,10 +109,7 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
       if (!result.ok) {
         const missing = result.error === "session not found";
         send(res, missing ? 404 : 409, {
-          error: {
-            code: missing ? "NOT_FOUND" : "CONFLICT",
-            message: result.error,
-          },
+          error: { code: missing ? "NOT_FOUND" : "CONFLICT", message: result.error },
         });
         return true;
       }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import {
   assignScheduledQueuedDurable,
   releaseScheduledLeaseLocal,
@@ -147,11 +148,11 @@ describe("scheduled assignment branch coverage", () => {
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
 
     current.mainCheckoutLeases.delete("h1\0repo");
-    current.storage = {
+    setDurableReadStorage(current, {
       getMainCheckoutCursor: async () => null,
       ensureMainCheckoutLeaseMap: async () => true,
       tryAssignMainCheckoutSession: async () => false,
-    } as never;
+    });
     current.sessions.set("storage-lost", session({ id: "storage-lost" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
   });
@@ -177,14 +178,14 @@ describe("scheduled assignment branch coverage", () => {
     const current = state();
     current.connections.set("c1", connection("h1", "c1"));
     current.hostConnection.set("h1", "c1");
-    current.storage = {
+    setDurableReadStorage(current, {
       getMainCheckoutCursor: async () => {
         current.hostConnection.delete("h1");
         return "";
       },
       ensureMainCheckoutLeaseMap: async () => true,
       tryAssignMainCheckoutSession: async () => true,
-    } as never;
+    });
     current.sessions.set("vanished", session({ id: "vanished" }));
     expect(await assignScheduledQueuedDurable(current)).toEqual([]);
   });

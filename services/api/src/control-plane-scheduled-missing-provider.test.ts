@@ -21,22 +21,22 @@ describe("scheduled provider deletion", () => {
       now: () => NOW,
       shardCount: 1,
     });
-    created.plane.createProvider({
+    await created.plane.createProviderDurable({
       id: "missing-provider",
       name: "provider",
       defaultCommandId: "missing-provider-command",
     });
-    created.plane.createProviderAccount({
+    await created.plane.createProviderAccountDurable({
       id: "missing-account-a",
       providerId: "missing-provider",
       label: "A",
     });
-    created.plane.createProviderAccount({
+    await created.plane.createProviderAccountDurable({
       id: "missing-account-b",
       providerId: "missing-provider",
       label: "B",
     });
-    created.plane.createCommand({
+    await created.plane.createCommandDurable({
       id: "missing-provider-command",
       name: "provider command",
       argv: ["provider"],
@@ -54,13 +54,15 @@ describe("scheduled provider deletion", () => {
     });
     if (!registered.ok) throw new Error(registered.error);
     const inventory = created.plane.state.hostInventories.get("missing-provider-host")!;
-    created.plane.state.hostInventories.set("missing-provider-host", {
+    const configuredInventory = {
       ...inventory,
       providerAccounts: [
         { providerAccountId: "missing-account-a", commandId: "missing-provider-command" },
         { providerAccountId: "missing-account-b", commandId: "missing-provider-command" },
       ],
-    });
+    };
+    created.plane.state.hostInventories.set("missing-provider-host", configuredInventory);
+    await created.plane.state.storage!.putHostInventory(configuredInventory);
     const session = await created.plane.createSessionDurable({
       repositoryId: "missing-provider-repo",
       prompt: "scheduled run",

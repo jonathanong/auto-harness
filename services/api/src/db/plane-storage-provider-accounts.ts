@@ -59,6 +59,7 @@ export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<Provid
     const res = await ctx.doc.send(
       new ScanCommand({
         TableName: ctx.tables.providerAccounts,
+        ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );

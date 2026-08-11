@@ -8,6 +8,10 @@ import {
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
 import { compareSessionsForQueue } from "./control-plane-ordering.ts";
+import {
+  listQueuedSessionsDurable,
+  refreshSchedulerReadModel,
+} from "./control-plane-durable-read-runtime.ts";
 
 const leaseKey = (hostId: string, repositoryId: string) => `${hostId}\0${repositoryId}`;
 
@@ -26,7 +30,11 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string): Pr
   }
   const hosts = [...unique.keys()]
     .filter((hostId) => !state.drainingHosts.has(hostId) && !state.disconnectedHosts.has(hostId))
-    .filter((hostId) => !state.mainCheckoutLeases.has(leaseKey(hostId, repositoryId)));
+    .filter(
+      (hostId) =>
+        state.storage !== undefined ||
+        !state.mainCheckoutLeases.has(leaseKey(hostId, repositoryId)),
+    );
   const cursors = new Map<string, string>();
   for (const hostId of hosts) {
     const cursor = state.storage
@@ -67,6 +75,10 @@ function wire(session: import("./db/types.ts").SessionRecord, now: string): Host
 export async function assignScheduledQueuedDurable(
   state: ControlPlaneState,
 ): Promise<ScheduledAssignment[]> {
+  if (state.storage) {
+    await refreshSchedulerReadModel(state);
+    await listQueuedSessionsDurable(state, "scheduled");
+  }
   const assigned: ScheduledAssignment[] = [];
   const now = state.now();
   const catalog = buildProviderCatalog(state);

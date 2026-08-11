@@ -31,6 +31,7 @@ describe("DynamoDB Local storage", () => {
       ref: "main",
     });
     expect((await s.getSession("sess-1"))?.ref).toBe("main");
+    expect((await s.getSession("sess-1", true))?.ref).toBe("main");
     expect(await s.getSession("missing")).toBeNull();
     expect((await s.listAllSessions()).length).toBeGreaterThan(0);
     expect((await s.listSessionsByStatus("queued", 0)).some((x) => x.id === "sess-1")).toBe(true);

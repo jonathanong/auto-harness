@@ -324,6 +324,7 @@ export async function listConnections(ctx: PlaneStorageCtx): Promise<ConnectionR
       new ScanCommand({
         TableName: ctx.tables.connections,
         ExclusiveStartKey: startKey,
+        ConsistentRead: true,
       }),
     );
     items.push(...((res.Items ?? []) as ConnectionRecord[]));

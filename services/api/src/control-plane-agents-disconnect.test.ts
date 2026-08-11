@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { disconnectHostDurable } from "./control-plane-agents.ts";
 import { ControlPlane } from "./control-plane.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
 import { seedBaseCommand } from "./control-plane-test-helpers.ts";
 
@@ -44,13 +45,13 @@ describe("durable host disconnect", () => {
       hostId: "h",
       worktreeId: "w",
     };
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       listWorktreesByHost: async () => [worktree],
       getSession: async () => running,
       tryRequeueSession: async () => true,
       releaseHostConnection: async () => false,
       deleteConnection: async () => undefined,
-    } as never;
+    });
 
     expect(await reclaimStaleHostsDurable(plane.state, Date.now())).toEqual(["s"]);
     expect(plane.state.connections.has("c")).toBe(false);
@@ -133,14 +134,16 @@ describe("durable host disconnect", () => {
       status: "queued",
       queueShard: 0,
       createdAt: "old",
+      type: "prompt",
+      source: "api",
     });
     const assigns: Array<Record<string, unknown>> = [];
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       getHostLock: async () => "B",
       deleteConnection: async () => undefined,
       listAllSessions: async () => [],
       tryAssignSession: async (opts: Record<string, unknown>) => (assigns.push(opts), true),
-    } as never;
+    });
 
     expect(await disconnectHostDurable(plane.state, "A")).toEqual([]);
     expect(plane.state.hostConnection.get("h")).toBe("B");

@@ -104,28 +104,42 @@ describe("durable scheduled terminal and provider fallback", () => {
   it("cools a usage-limited scheduled account then reroutes to its fallback account", async () => {
     if (!ctx.available || !ctx.storage) return;
     const run = await plane("provider-connection", "provider-host", "provider-repo");
-    run.plane.createProvider({
+    const provider = await run.plane.createProviderDurable({
       id: "provider",
       name: "provider",
       defaultCommandId: "provider-command",
     });
-    run.plane.createProviderAccount({ id: "account-a", providerId: "provider", label: "A" });
-    run.plane.createProviderAccount({ id: "account-b", providerId: "provider", label: "B" });
-    run.plane.createCommand({
+    if (!provider.ok) throw new Error(provider.error);
+    const accountA = await run.plane.createProviderAccountDurable({
+      id: "account-a",
+      providerId: "provider",
+      label: "A",
+    });
+    if (!accountA.ok) throw new Error(accountA.error);
+    const accountB = await run.plane.createProviderAccountDurable({
+      id: "account-b",
+      providerId: "provider",
+      label: "B",
+    });
+    if (!accountB.ok) throw new Error(accountB.error);
+    const command = await run.plane.createCommandDurable({
       id: "provider-command",
       name: "provider command",
       argv: ["provider"],
       appendPrompt: true,
       providerId: "provider",
     });
+    if (!command.ok) throw new Error(command.error);
     const inventory = run.plane.state.hostInventories.get("provider-host")!;
-    run.plane.state.hostInventories.set("provider-host", {
+    const configuredInventory = {
       ...inventory,
       providerAccounts: [
         { providerAccountId: "account-a", commandId: "provider-command" },
         { providerAccountId: "account-b", commandId: "provider-command" },
       ],
-    });
+    };
+    run.plane.state.hostInventories.set("provider-host", configuredInventory);
+    await run.plane.state.storage!.putHostInventory(configuredInventory);
     await run.plane.settleStorage();
     expect(
       resolveScheduledSessionTarget(

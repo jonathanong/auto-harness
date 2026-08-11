@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
+import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { supersedeSession } from "./control-plane-sessions.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
@@ -30,11 +31,11 @@ describe("concurrency lock lifecycle", () => {
       worktreeId: "wt-1",
       hostId: "host-1",
     });
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       putSession: async () => {},
       putWorktree: async () => {},
       releaseConcurrencyLock: async (concurrencyId: string) => released.push(concurrencyId),
-    } as never;
+    });
 
     expect(plane.cancelSession("sess-1")).toMatchObject({
       ok: true,
@@ -60,10 +61,10 @@ describe("concurrency lock lifecycle", () => {
       hostId: "host-1",
       worktreeId: "wt-1",
     });
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       putSession: async () => {},
       releaseConcurrencyLock: async (concurrencyId: string) => released.push(concurrencyId),
-    } as never;
+    });
 
     expect(plane.cancelSession("sess-1")).toMatchObject({
       ok: true,
@@ -81,11 +82,11 @@ describe("concurrency lock lifecycle", () => {
       now: () => "2026-01-01T00:00:00.000Z",
     });
     seedBaseCommand(plane);
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       putSession: async () => {},
       putWorktree: async () => {},
       cancelQueuedSession: async () => cancelWins,
-    } as never;
+    });
 
     await expect(plane.cancelSessionDurable("missing")).resolves.toEqual({
       ok: false,
@@ -146,7 +147,7 @@ describe("concurrency lock lifecycle", () => {
       hostId: "host-r",
       worktreeId: "worktree-r",
     });
-    plane.state.storage = { putSession: async () => {} } as never;
+    setDurableReadStorage(plane.state, { putSession: async () => {} });
     supersedeSession(plane.state, "running", "replace running");
     expect(messages).toEqual([{ type: "session:cancel", sessionId: "running" }]);
   });
@@ -166,7 +167,7 @@ describe("concurrency lock lifecycle", () => {
       now: () => "2026-01-01T00:00:00.000Z",
     });
     seedBaseCommand(plane);
-    plane.state.storage = {
+    setDurableReadStorage(plane.state, {
       createSession: async (session: import("./db/types.ts").SessionRecord) => {
         const owner = session.concurrencyId ? locks.get(session.concurrencyId) : undefined;
         if (owner) return { created: false, session: sessions.get(owner)! };
@@ -181,7 +182,7 @@ describe("concurrency lock lifecycle", () => {
       releaseConcurrencyLock: async (concurrencyId: string, sessionId: string) => {
         if (locks.get(concurrencyId) === sessionId) locks.delete(concurrencyId);
       },
-    } as never;
+    });
     const body = baseSessionBody({ concurrencyId: "terminal-lock" });
 
     const first = await plane.createSessionDurable(body);

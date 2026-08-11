@@ -3,6 +3,10 @@ import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
+import {
+  getRepositoryDurable,
+  listRepositoriesDurable,
+} from "./control-plane-durable-read-catalog.ts";
 
 function findRepositoryByName(
   state: ControlPlaneState,
@@ -83,6 +87,7 @@ export async function createRepositoryDurable(
   input: Parameters<typeof createRepository>[1],
 ): Promise<ReturnType<typeof createRepository>> {
   if (!state.storage) return createRepository(state, input);
+  await listRepositoriesDurable(state);
   const result = prepareCreateRepository(state, input);
   if (!result.ok) return result;
   // Keep durable callers compatible with storage adapters from before
@@ -178,6 +183,7 @@ export async function updateRepositoryDurable(
   patch: Parameters<typeof updateRepository>[2],
 ): Promise<ReturnType<typeof updateRepository>> {
   if (!state.storage) return updateRepository(state, id, patch);
+  await listRepositoriesDurable(state);
   const result = prepareUpdateRepository(state, id, patch);
   if (!result.ok) return result;
   await state.storage.putRepository({ ...result.repository });
@@ -205,7 +211,7 @@ export async function deleteRepositoryDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteRepository>> {
   if (!state.storage) return deleteRepository(state, id);
-  if (!state.repositories.has(id)) return { ok: false, error: "repository not found" };
+  if (!(await getRepositoryDurable(state, id))) return { ok: false, error: "repository not found" };
   await state.storage.deleteRepository(id);
   state.repositories.delete(id);
   return { ok: true };

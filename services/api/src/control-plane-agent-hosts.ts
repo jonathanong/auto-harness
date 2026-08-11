@@ -4,6 +4,11 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
 import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
+import {
+  getHostInventoryDurable,
+  listHostInventoriesDurable,
+} from "./control-plane-durable-read-catalog.ts";
+import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
 
 function syncWorktreesFromHost(
   state: ControlPlaneState,
@@ -96,6 +101,7 @@ export async function putHostInventoryDurable(
   body: unknown,
 ): Promise<ReturnType<typeof putHostInventory>> {
   if (!state.storage) return putHostInventory(state, hostId, body);
+  await Promise.all([listHostInventoriesDurable(state), listWorktreesDurable(state)]);
   const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
   const projection = projectHostWorktrees(state, result.config);
@@ -151,9 +157,10 @@ export async function deleteHostInventoryDurable(
   hostId: string,
 ): Promise<ReturnType<typeof deleteHostInventory>> {
   if (!state.storage) return deleteHostInventory(state, hostId);
-  if (!state.hostInventories.has(hostId)) {
+  if (!(await getHostInventoryDurable(state, hostId))) {
     return { ok: false, error: "agent host config not found" };
   }
+  await listWorktreesDurable(state);
   const worktreeIds = [...state.worktrees.values()]
     .filter((worktree) => worktree.hostId === hostId)
     .map((worktree) => worktree.id);
