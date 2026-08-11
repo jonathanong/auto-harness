@@ -39,6 +39,11 @@ describe("list-query", () => {
     expect(parseSessionListQuery(new URLSearchParams("limit=500")).limit).toBe(100);
   });
 
+  it("uses supplied defaults and falls back from an unsupported sort", () => {
+    expect(parseSessionListQuery(new URLSearchParams(), { limit: 25 }).limit).toBe(25);
+    expect(parseSessionListQuery(new URLSearchParams("sort=not-supported")).sort).toBe("latest");
+  });
+
   it("builds session list hrefs", () => {
     expect(sessionListHref({})).toBe("/sessions");
     expect(sessionListHref({ status: "failed", q: "a", concurrencyId: "pr-1", cursor: "c" })).toBe(
@@ -49,6 +54,12 @@ describe("list-query", () => {
   it("omits limit at the default and includes it otherwise", () => {
     expect(sessionListHref({ limit: 50 })).toBe("/sessions");
     expect(sessionListHref({ limit: 20 })).toBe("/sessions?limit=20");
+  });
+
+  it("includes every supported navigation filter", () => {
+    expect(
+      sessionListHref({ repositoryId: "repo-1", scheduleId: "schedule-1", sort: "oldest" }),
+    ).toBe("/sessions?repositoryId=repo-1&scheduleId=schedule-1&sort=oldest");
   });
 
   it("builds API paths", () => {
