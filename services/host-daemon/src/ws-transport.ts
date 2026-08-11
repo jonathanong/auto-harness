@@ -254,6 +254,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
             message.sessionId.length <= 512) ||
             message.type === "session:assign" ||
             message.type === "session:cancel" ||
+            message.type === "host:draining" ||
             message.type === "host:drain")
         ) {
           messageHandler?.(message as HostWireMessage);

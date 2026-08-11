@@ -24,6 +24,8 @@ export type DaemonLoopOptions = {
   reconnectAbortMs?: number;
   /** Maximum wait for peer confirmation that `session:ack` committed. */
   ackConfirmationMs?: number;
+  /** Retry an unacknowledged durable drain notification at this interval. */
+  drainRetryMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 };
 type InflightSession = {
@@ -40,6 +42,11 @@ export class DaemonLoop {
   private readonly inflight = new Map<string, InflightSession>();
   private readonly nextLogSeq = new Map<string, number>();
   private draining = false;
+  /** Set before a drain write so reconnect registration cannot reopen capacity. */
+  private drainRequested = false;
+  private drainConfirmation: Promise<void> | undefined;
+  private resolveDrainConfirmation: (() => void) | undefined;
+  private drainRetry: ReturnType<typeof setTimeout> | undefined;
   private readonly isDrainingExternal: (() => boolean) | undefined;
   private readonly onLog: ((line: string) => void) | undefined;
   private readonly now: () => string;
@@ -48,6 +55,7 @@ export class DaemonLoop {
   private readonly outbound: OutboundQueue;
   private readonly reconnectAbortMs: number;
   private readonly ackConfirmationMs: number;
+  private readonly drainRetryMs: number;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
@@ -58,6 +66,7 @@ export class DaemonLoop {
     this.now = options.now ?? (() => new Date().toISOString());
     this.reconnectAbortMs = options.reconnectAbortMs ?? 75_000;
     this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
+    this.drainRetryMs = options.drainRetryMs ?? 1_000;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -89,6 +98,11 @@ export class DaemonLoop {
       abortInflight: () => {
         for (const session of this.inflight.values()) session.controller.abort();
       },
+      onRegistered: () => {
+        // A reconnect registration carrying `draining: true` is itself a
+        // durable acknowledgement. This covers a lost drain reply.
+        if (this.drainRequested) this.confirmDrain();
+      },
       abortAfterMs: this.reconnectAbortMs,
       timers: this.timers,
     });
@@ -104,6 +118,7 @@ export class DaemonLoop {
       [...this.inflight].flatMap(([sessionId, session]) =>
         session.acknowledged ? [sessionId] : [],
       ),
+      this.drainRequested || this.draining,
     );
   }
   async keepalive(): Promise<void> {
@@ -113,8 +128,26 @@ export class DaemonLoop {
       at: this.now(),
     });
   }
-  beginDrain(): void {
-    this.draining = true;
+  async beginDrain(): Promise<void> {
+    if (this.draining) return;
+    if (this.drainConfirmation) return this.drainConfirmation;
+    this.drainRequested = true;
+    this.drainConfirmation = new Promise<void>((resolve) => {
+      this.resolveDrainConfirmation = resolve;
+    });
+    try {
+      await this.sendDrainStatus();
+      this.scheduleDrainRetry();
+    } catch (error) {
+      // Keep drainRequested set: the next registration advertises the same
+      // intent, but surface the failed notification so shutdown cannot exit
+      // while the control plane may still schedule this host.
+      this.drainConfirmation = undefined;
+      this.resolveDrainConfirmation = undefined;
+      this.scheduleDrainRetry();
+      throw error;
+    }
+    return this.drainConfirmation;
   }
 
   isDraining(): boolean {
@@ -129,13 +162,18 @@ export class DaemonLoop {
   }
 
   stop(): void {
+    if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     this.connectionEvents?.stop();
     this.transport.close();
   }
 
   private async handleServerMessage(msg: HostWireMessage): Promise<void> {
     if (msg.type === "host:drain") {
-      this.beginDrain();
+      this.confirmDrain();
+      return;
+    }
+    if (msg.type === "host:draining" && msg.hostId === this.config.hostId) {
+      this.confirmDrain();
       return;
     }
     if (msg.type === "session:cancel") {
@@ -191,6 +229,38 @@ export class DaemonLoop {
     } finally {
       if (this.inflight.get(msg.sessionId) === entry) this.inflight.delete(msg.sessionId);
     }
+  }
+
+  private confirmDrain(): void {
+    this.draining = true;
+    this.drainRequested = true;
+    if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
+    this.drainRetry = undefined;
+    const resolve = this.resolveDrainConfirmation;
+    this.resolveDrainConfirmation = undefined;
+    resolve?.();
+  }
+
+  private async sendDrainStatus(): Promise<void> {
+    await this.outbound.send({
+      type: "host:status",
+      hostId: this.config.hostId,
+      draining: true,
+    });
+  }
+
+  private scheduleDrainRetry(): void {
+    if (this.draining || this.drainRetry) return;
+    this.drainRetry = this.timers.setTimeout(() => {
+      this.drainRetry = undefined;
+      void this.sendDrainStatus()
+        .catch((error: unknown) => {
+          this.onLog?.(
+            `drain notification retry failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => this.scheduleDrainRetry());
+    }, this.drainRetryMs);
   }
 
   private async runAssign(

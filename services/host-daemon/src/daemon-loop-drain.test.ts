@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { makeRepo } from "./daemon-loop-test-helpers.ts";
@@ -22,9 +22,11 @@ describe("DaemonLoop drain", () => {
         isDraining: () => false,
       });
       await loop.start();
-      loop.beginDrain();
+      const draining = loop.beginDrain();
+      expect(loop.isDraining()).toBe(false);
+      transport.deliver({ type: "host:draining", hostId: config.hostId });
+      await draining;
       expect(loop.isDraining()).toBe(true);
-      transport.deliver({ type: "host:drain" });
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-x",
@@ -59,6 +61,60 @@ describe("DaemonLoop drain", () => {
       loop3.stop();
     } finally {
       cleanup();
+    }
+  });
+
+  it("keeps a reconnect registration draining until the durable acknowledgement arrives", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: Array<{ type: string; draining?: boolean }> = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport });
+      await loop.start();
+
+      const draining = loop.beginDrain();
+      await Promise.resolve();
+      expect(sent.at(-1)).toMatchObject({ type: "host:status", draining: true });
+      await loop.register();
+      expect(sent.at(-1)).toMatchObject({ type: "host:register", draining: true });
+      expect(loop.isDraining()).toBe(false);
+
+      transport.deliver({ type: "host:drain" });
+      await draining;
+      expect(loop.isDraining()).toBe(true);
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("retries an unacknowledged drain notification without exiting", async () => {
+    vi.useFakeTimers();
+    const { config, cleanup } = await makeRepo();
+    try {
+      const sent: Array<{ type: string }> = [];
+      const transport = createLoopbackTransport({
+        sendToServer: (message) => void sent.push(message),
+      });
+      const loop = new DaemonLoop({ config, transport, drainRetryMs: 1, timers: globalThis });
+      await loop.start();
+
+      const draining = loop.beginDrain();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sent.filter((message) => message.type === "host:status")).toHaveLength(2);
+      expect(loop.isDraining()).toBe(false);
+
+      transport.deliver({ type: "host:draining", hostId: config.hostId });
+      await draining;
+      await vi.advanceTimersByTimeAsync(10);
+      expect(sent.filter((message) => message.type === "host:status")).toHaveLength(2);
+      loop.stop();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
     }
   });
 });

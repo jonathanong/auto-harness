@@ -17,6 +17,8 @@ describe("createPlaneWsBridge", () => {
       commandProfiles: ["echo-prompt"],
     };
     expect(parseHostMessage(valid)).toEqual(valid);
+    expect(parseHostMessage({ ...valid, draining: true })).toEqual({ ...valid, draining: true });
+    expect(parseHostMessage({ ...valid, draining: false })).toBe(null);
     expect(
       parseHostMessage({ ...valid, worktrees: [{ ...valid.worktrees[0], labels: [1] }] }),
     ).toBe(null);
@@ -41,6 +43,12 @@ describe("createPlaneWsBridge", () => {
         cliResumeRef: "bad\u0000ref",
       }),
     ).toBe(null);
+    expect(parseHostMessage({ type: "host:status", hostId: "a1", draining: true })).toEqual({
+      type: "host:status",
+      hostId: "a1",
+      draining: true,
+    });
+    expect(parseHostMessage({ type: "host:status", hostId: "a1", draining: false })).toBe(null);
     expect(
       parseHostMessage({
         type: "session:status",

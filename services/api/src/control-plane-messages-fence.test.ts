@@ -75,6 +75,22 @@ describe("durable host-message fencing", () => {
         "stale",
       ),
     ).toEqual({ ok: false, error: "stale host connection" });
+    let drained = 0;
+    plane.state.storage.markHostDraining = async () => (drained++, true);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "stale",
+      ),
+    ).toEqual({ ok: false, error: "stale host connection" });
+    expect(drained).toBe(0);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "current",
+      ),
+    ).toEqual({ ok: true, hostDraining: "h" });
+    expect(drained).toBe(1);
     expect(
       await plane.handleHostMessageDurable({
         type: "session:ack",

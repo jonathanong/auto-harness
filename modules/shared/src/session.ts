@@ -114,6 +114,8 @@ export type HostWireMessage =
    * current host connection. A successful WebSocket write is not an ACK. */
   | { type: "session:acknowledged"; sessionId: string }
   | { type: "session:cancel"; sessionId: string }
+  /** Durable acknowledgement of an agent-initiated drain request. */
+  | { type: "host:draining"; hostId: string }
   | { type: "host:drain" };
 
 export type HostToServerMessage =
@@ -134,6 +136,8 @@ export type HostToServerMessage =
       capabilities?: HostCapability[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
+      /** A reconnecting daemon retains drain until this shutdown completes. */
+      draining?: boolean;
     }
   | { type: "session:ack"; sessionId: string; worktreeId: string | null; attemptId: string }
   | {
@@ -155,4 +159,6 @@ export type HostToServerMessage =
       timestamp: string;
       seq: number;
     }
+  /** One-way, connection-fenced request to remove this host from scheduling. */
+  | { type: "host:status"; hostId: string; draining: true }
   | { type: "host:keepalive"; hostId: string; at: string };

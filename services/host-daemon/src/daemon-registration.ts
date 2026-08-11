@@ -8,6 +8,7 @@ export async function registerDaemon(
   config: DaemonConfig,
   transport: Pick<DaemonTransport, "send">,
   runningSessions: readonly string[],
+  draining = false,
 ): Promise<void> {
   // Registration is the reconnect barrier.  It deliberately bypasses the
   // producer-side FIFO so WsTransport can synchronously replace its pending
@@ -30,6 +31,7 @@ export async function registerDaemon(
     commandProfiles: Object.keys(config.commandProfiles).toSorted(),
     capabilities: ["scheduled-main-checkout"],
     runningSessions: [...runningSessions].toSorted(),
+    ...(draining ? { draining: true } : {}),
   };
   await transport.send(registration);
 }

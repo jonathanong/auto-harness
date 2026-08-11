@@ -148,6 +148,20 @@ describe("agent registration branch boundaries", () => {
     expect(online).toEqual(["idle"]);
   });
 
+  it("keeps a reconnecting drain excluded until a fresh registration clears it", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "draining" });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+        draining: true,
+      }),
+    ).toEqual({ ok: true, connectionId: "draining" });
+    expect(plane.isDraining("h")).toBe(true);
+    expect(plane.getWorktree("w")).toMatchObject({ online: false });
+  });
+
   it("publishes omitted durable idle inventory even when the process cache is stale", async () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "c" });
     const writes: string[] = [];

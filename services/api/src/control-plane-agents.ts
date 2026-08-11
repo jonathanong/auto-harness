@@ -257,6 +257,7 @@ export function registerHost(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    draining?: boolean;
     replaceExisting?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
@@ -295,6 +296,7 @@ export function registerHost(
           hostId: opts.hostId,
           connectionId,
           replaceExisting: replaceLock,
+          draining: opts.draining,
         })
         .then(() => {
           /* lock written */
@@ -317,8 +319,8 @@ export function registerHost(
   }
   state.hostConnection.set(opts.hostId, connectionId);
   state.disconnectedHosts.delete(opts.hostId);
-  // Re-register clears drain so a restarted agent can take work again.
-  state.drainingHosts.delete(opts.hostId);
+  if (opts.draining) state.drainingHosts.add(opts.hostId);
+  else state.drainingHosts.delete(opts.hostId);
   const registrationInventory = buildRegisteredInventory(
     opts.hostId,
     registeredRepositories,
@@ -344,7 +346,7 @@ export function registerHost(
       path: wt.path,
       labels: wt.labels,
       status: "idle",
-      online: true,
+      online: !opts.draining,
       currentSessionId: prev && prev.currentSessionId != null ? prev.currentSessionId : null,
       lastAssignedAt: prev && prev.lastAssignedAt != null ? prev.lastAssignedAt : null,
       connectionId,
@@ -356,7 +358,7 @@ export function registerHost(
       wt.status !== "busy" &&
       !opts.worktrees.some((w) => w.id === wt.id)
     ) {
-      wt.online = true;
+      wt.online = !opts.draining;
       persistWorktree(state, { ...wt, connectionId });
     }
   }
@@ -382,6 +384,7 @@ export async function registerHostDurable(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    draining?: boolean;
     replaceExisting?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
@@ -425,6 +428,7 @@ export async function registerHostDurable(
     connection: conn,
     replaceExisting: opts.replaceExisting === true,
     ...(existing ? { existingConnectionId: existing } : {}),
+    draining: opts.draining,
   });
   if (!won) {
     return { ok: false, error: `hostId ${opts.hostId} already has an active connection` };
@@ -444,7 +448,7 @@ export async function registerHostDurable(
       path: wt.path,
       labels: wt.labels,
       status: "idle" as const,
-      online: true,
+      online: !opts.draining,
       currentSessionId: prev?.currentSessionId ?? null,
       lastAssignedAt: prev?.lastAssignedAt ?? null,
       connectionId,
@@ -458,7 +462,7 @@ export async function registerHostDurable(
   const registeredIds = new Set(opts.worktrees.map((worktree) => worktree.id));
   for (const existingWorktree of await state.storage.listWorktreesByHost(opts.hostId)) {
     if (registeredIds.has(existingWorktree.id) || existingWorktree.status === "busy") continue;
-    nextWorktrees.push({ ...existingWorktree, online: true, connectionId });
+    nextWorktrees.push({ ...existingWorktree, online: !opts.draining, connectionId });
   }
   const publishedWorktrees = [] as Array<import("./db/types.ts").WorktreeRecord>;
   try {
@@ -482,7 +486,8 @@ export async function registerHostDurable(
   state.connections.set(connectionId, conn);
   state.hostConnection.set(opts.hostId, connectionId);
   state.disconnectedHosts.delete(opts.hostId);
-  state.drainingHosts.delete(opts.hostId);
+  if (opts.draining) state.drainingHosts.add(opts.hostId);
+  else state.drainingHosts.delete(opts.hostId);
   for (const next of nextWorktrees) {
     state.worktrees.set(next.id, next);
   }
@@ -631,7 +636,11 @@ export async function heartbeatDurable(
 export function drainHost(
   state: ControlPlaneState,
   hostId: string,
+  connectionId?: string,
 ): { ok: boolean; runningSessionIds: string[] } {
+  if (connectionId && state.hostConnection.get(hostId) !== connectionId) {
+    return { ok: false, runningSessionIds: [] };
+  }
   state.drainingHosts.add(hostId);
   const running = [...state.sessions.values()]
     .filter((s) => s.hostId === hostId && s.status === "running")
@@ -657,17 +666,18 @@ export function drainHost(
 export async function drainHostDurable(
   state: ControlPlaneState,
   hostId: string,
+  connectionId?: string,
 ): Promise<{ ok: boolean; runningSessionIds: string[] }> {
   if (!state.storage) {
-    return drainHost(state, hostId);
+    return drainHost(state, hostId, connectionId);
   }
   // A freshly hydrated API process may have worktrees but not the owning
   // socket in its local map. The durable lease is authoritative for drain,
   // just as it is for assignment.
-  const connectionId =
-    state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
-  if (connectionId) {
-    const marked = await state.storage.markHostDraining(hostId, connectionId);
+  const ownerConnectionId =
+    connectionId ?? state.hostConnection.get(hostId) ?? (await state.storage.getHostLock(hostId));
+  if (ownerConnectionId) {
+    const marked = await state.storage.markHostDraining(hostId, ownerConnectionId);
     if (!marked) {
       return { ok: false, runningSessionIds: [] };
     }

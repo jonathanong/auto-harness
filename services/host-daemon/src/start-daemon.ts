@@ -166,7 +166,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   }, 20_000);
 
   const stop = async (): Promise<void> => {
-    loop.beginDrain();
+    // Keep this channel alive until the fenced drain commits. If it fails,
+    // callers receive the error and can retry without exiting this daemon.
+    await loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);
     await loop.waitForIdle();
