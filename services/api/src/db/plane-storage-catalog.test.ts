@@ -90,8 +90,9 @@ describe("durable schedule management updates", () => {
     const storage = scheduleCtx(async (command) => {
       expect(command).toBeInstanceOf(UpdateCommand);
       const input = (command as UpdateCommand).input;
-      expect(input.UpdateExpression).not.toContain("nextRunAt");
+      expect(input.UpdateExpression).toContain("nextRunAt = :nextRunAt");
       expect(input.UpdateExpression).not.toContain("lastRunAt");
+      expect(input.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
       expect(input.UpdateExpression).toContain("#ref = :ref");
       expect(input.UpdateExpression).toContain("concurrencyId = :concurrencyId");
       return {
@@ -100,7 +101,11 @@ describe("durable schedule management updates", () => {
     });
 
     await expect(
-      updateScheduleManagement(storage, { ...schedule("main"), concurrencyId: "schedule-1" }),
+      updateScheduleManagement(
+        storage,
+        { ...schedule("main"), concurrencyId: "schedule-1" },
+        "old-next",
+      ),
     ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });
   });
 
@@ -112,7 +117,7 @@ describe("durable schedule management updates", () => {
       throw { name: "ConditionalCheckFailedException" };
     });
 
-    await expect(updateScheduleManagement(storage, schedule())).resolves.toBeNull();
+    await expect(updateScheduleManagement(storage, schedule(), "old-next")).resolves.toBeNull();
   });
 
   it("propagates storage failures", async () => {
@@ -120,6 +125,7 @@ describe("durable schedule management updates", () => {
       updateScheduleManagement(
         scheduleCtx(async () => Promise.reject(new Error("write failed"))),
         schedule(),
+        "old-next",
       ),
     ).rejects.toThrow("write failed");
   });

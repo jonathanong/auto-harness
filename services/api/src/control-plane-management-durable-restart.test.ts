@@ -24,12 +24,14 @@ function catalogStorage() {
     deleteRepository: async (id: string) => repositories.delete(id),
     putSchedule: async (record: import("./control-plane.ts").ScheduleRecord) =>
       schedules.set(record.id, { ...record }),
-    updateScheduleManagement: async (record: import("./control-plane.ts").ScheduleRecord) => {
+    updateScheduleManagement: async (
+      record: import("./control-plane.ts").ScheduleRecord,
+      expectedNextRunAt: string,
+    ) => {
       const current = schedules.get(record.id);
-      if (!current) return null;
+      if (!current || current.nextRunAt !== expectedNextRunAt) return null;
       const updated = {
         ...record,
-        nextRunAt: current.nextRunAt,
         lastRunAt: current.lastRunAt,
       };
       schedules.set(record.id, updated);

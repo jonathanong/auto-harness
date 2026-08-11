@@ -493,8 +493,11 @@ export class DynamoPlaneStorageBase {
     return catalog.putSchedule(this.ctx, rec);
   }
 
-  updateScheduleManagement(rec: ScheduleRecord): Promise<ScheduleRecord | null> {
-    return catalog.updateScheduleManagement(this.ctx, rec);
+  updateScheduleManagement(
+    rec: ScheduleRecord,
+    expectedNextRunAt: string,
+  ): Promise<ScheduleRecord | null> {
+    return catalog.updateScheduleManagement(this.ctx, rec, expectedNextRunAt);
   }
 
   getSchedule(id: string): Promise<ScheduleRecord | null> {

@@ -104,13 +104,15 @@ export async function putSchedule(ctx: PlaneStorageCtx, rec: ScheduleRecord): Pr
 }
 
 /**
- * Update operator-owned schedule fields without replacing the cron cursor.
- * Scheduler claims update nextRunAt and lastRunAt conditionally; a management
- * write must not restore a cursor read before one of those claims succeeded.
+ * Update operator-owned schedule fields and reset the cron cursor only while
+ * the cursor still matches the caller's snapshot. Scheduler claims advance
+ * nextRunAt conditionally, so this fence prevents a management write from
+ * restoring a cursor read before a concurrent claim succeeded.
  */
 export async function updateScheduleManagement(
   ctx: PlaneStorageCtx,
   rec: ScheduleRecord,
+  expectedNextRunAt: string,
 ): Promise<ScheduleRecord | null> {
   try {
     const set = [
@@ -123,6 +125,7 @@ export async function updateScheduleManagement(
       "enabled = :enabled",
       "timeout = :timeout",
       "queueTtlSeconds = :queueTtlSeconds",
+      "nextRunAt = :nextRunAt",
       "createdAt = :createdAt",
     ];
     const remove: string[] = [];
@@ -135,7 +138,7 @@ export async function updateScheduleManagement(
         TableName: ctx.tables.schedules,
         Key: { id: rec.id },
         UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
-        ConditionExpression: "attribute_exists(id)",
+        ConditionExpression: "attribute_exists(id) AND nextRunAt = :expectedNextRunAt",
         ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
         ExpressionAttributeValues: {
           ":repositoryId": rec.repositoryId,
@@ -147,6 +150,8 @@ export async function updateScheduleManagement(
           ":enabled": rec.enabled,
           ":timeout": rec.timeout,
           ":queueTtlSeconds": rec.queueTtlSeconds,
+          ":nextRunAt": rec.nextRunAt,
+          ":expectedNextRunAt": expectedNextRunAt,
           ":createdAt": rec.createdAt,
           ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
           ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),

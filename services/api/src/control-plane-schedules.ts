@@ -183,15 +183,27 @@ export async function updateScheduleDurable(
   patch: Parameters<typeof updateSchedule>[2],
 ): Promise<ReturnType<typeof updateSchedule>> {
   if (!state.storage) return updateSchedule(state, id, patch);
-  const result = prepareUpdateSchedule(state, id, patch);
-  if (!result.ok) return result;
-  const saved = await state.storage.updateScheduleManagement({ ...result.schedule });
-  if (!saved) {
-    state.schedules.delete(id);
-    return { ok: false, error: "schedule not found" };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const existing = state.schedules.get(id);
+    if (!existing) return { ok: false, error: "schedule not found" };
+    const result = prepareUpdateSchedule(state, id, patch);
+    if (!result.ok) return result;
+    const saved = await state.storage.updateScheduleManagement(
+      { ...result.schedule },
+      existing.nextRunAt,
+    );
+    if (saved) {
+      state.schedules.set(id, saved);
+      return { ok: true, schedule: { ...saved } };
+    }
+    const authoritative = await state.storage.getSchedule(id);
+    if (!authoritative) {
+      state.schedules.delete(id);
+      return { ok: false, error: "schedule not found" };
+    }
+    state.schedules.set(id, authoritative);
   }
-  state.schedules.set(id, saved);
-  return { ok: true, schedule: { ...saved } };
+  return { ok: false, error: "schedule changed concurrently; retry" };
 }
 
 export function deleteSchedule(
