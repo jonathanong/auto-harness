@@ -11,7 +11,7 @@ export default defineConfig({
         "services/*/src/**/*.ts",
         // First UI tranche: shared, framework-independent display primitives.
         "modules/ui/src/lib/utils.ts",
-        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx",
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link,tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
