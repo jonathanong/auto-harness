@@ -56,4 +56,62 @@ describe("daemon registration", () => {
     expect(config.commandProfiles).toEqual(next.commandProfiles);
     expect(calls).toEqual(["ensure", "register"]);
   });
+
+  it("restores the prior inventory when preparation fails", async () => {
+    const config = {
+      hostId: "h",
+      logLevel: "info" as const,
+      repositories: [{ id: "old", path: "/old", defaultBranch: "main", worktrees: [] }],
+      providerAccounts: [],
+      commandProfiles: { old: { argv: ["old"] } },
+    };
+    const next = {
+      ...config,
+      logLevel: "debug" as const,
+      repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
+      commandProfiles: { next: { argv: ["next"] } },
+    };
+
+    await expect(
+      applyDaemonInventory(
+        config,
+        next,
+        {
+          ensureAll: async () => {
+            throw new Error("worktree preparation failed");
+          },
+        } as never,
+        async () => {},
+      ),
+    ).rejects.toThrow("worktree preparation failed");
+    expect(config.repositories).toEqual([
+      { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
+    ]);
+    expect(config.commandProfiles).toEqual({ old: { argv: ["old"] } });
+    expect(config.logLevel).toBe("info");
+  });
+
+  it("restores the prior inventory when registration fails", async () => {
+    const config = {
+      hostId: "h",
+      logLevel: "info" as const,
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+    };
+    const next = {
+      ...config,
+      logLevel: "debug" as const,
+      commandProfiles: { next: { argv: ["next"] } },
+    };
+
+    await expect(
+      applyDaemonInventory(config, next, { ensureAll: async () => {} } as never, async () => {
+        throw new Error("registration failed");
+      }),
+    ).rejects.toThrow("registration failed");
+    expect(config.repositories).toEqual([]);
+    expect(config.commandProfiles).toEqual({});
+    expect(config.logLevel).toBe("info");
+  });
 });

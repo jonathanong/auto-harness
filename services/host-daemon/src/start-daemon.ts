@@ -166,9 +166,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   }, 20_000);
 
   const stop = async (): Promise<void> => {
+    loop.beginDrain();
     await stopInventoryPoll();
     clearInterval(keepalive);
-    loop.beginDrain();
     await loop.waitForIdle();
     loop.stop();
   };

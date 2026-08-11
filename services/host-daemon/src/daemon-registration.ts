@@ -40,9 +40,19 @@ export async function applyDaemonInventory(
   worktrees: WorktreeManager,
   register: () => Promise<void>,
 ): Promise<void> {
+  const previousRepositories = config.repositories;
+  const previousCommandProfiles = config.commandProfiles;
+  const previousLogLevel = config.logLevel;
   config.repositories = next.repositories;
   config.commandProfiles = next.commandProfiles;
   if (next.logLevel) config.logLevel = next.logLevel;
-  await worktrees.ensureAll();
-  await register();
+  try {
+    await worktrees.ensureAll();
+    await register();
+  } catch (err) {
+    config.repositories = previousRepositories;
+    config.commandProfiles = previousCommandProfiles;
+    config.logLevel = previousLogLevel;
+    throw err;
+  }
 }
