@@ -8,6 +8,7 @@ import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
 import { ControlPlaneAuditFacade } from "./control-plane-audit-facade.ts";
+import * as usage from "./control-plane-usage.ts";
 
 /** Durable read-through facade kept separate from mutation-heavy base methods. */
 export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
@@ -41,6 +42,24 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
 
   async getLogsDurable(sessionId: string): Promise<LogRecord[]> {
     return durableRuntime.getLogsDurable(this.state, sessionId);
+  }
+
+  async getUsageDurable(sessionId?: string): Promise<ReturnType<typeof usage.usageRecords>> {
+    if (this.state.storage) {
+      const records = await this.state.storage.listUsageRecords(sessionId);
+      for (const record of records)
+        this.state.usageRecords.set(
+          `${record.sessionId}\0${record.attemptId}\0${record.sequence}`,
+          record,
+        );
+    }
+    return usage.usageRecords(this.state, sessionId);
+  }
+
+  async getUsageAggregateDurable(
+    sessionId?: string,
+  ): Promise<ReturnType<typeof usage.usageAggregate>> {
+    return usage.aggregateUsage(await this.getUsageDurable(sessionId));
   }
 
   async getScheduleDurable(id: string): Promise<ScheduleRecord | null> {

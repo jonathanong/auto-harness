@@ -2,6 +2,11 @@
 
 Real-time channel between the control plane, VPS agents, and the Web UI. REST CRUD is documented in [api.md](api.md). Agent internals: [host-daemon.md](host-daemon.md). Server routing/IAM: [aws.md](aws.md).
 
+`session:usage` is a host-to-control-plane message carrying a CLI-authoritative provider-neutral
+usage record (`sessionId`, `worktreeId`, `attemptId`, and `usage`). The control plane ignores stale
+attempts and stale host connections, deduplicates sequence numbers, and never derives usage from
+prompts or log chunks.
+
 ## Endpoint
 
 ```

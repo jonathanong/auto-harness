@@ -4,7 +4,7 @@ import type { SessionStatus } from "@auto-harness/shared";
 import type { SessionResumeSpec } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
-import type { SessionRecord, WorktreeRecord } from "./types.ts";
+import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
 import {
   type HostInventoryRecord,
   type ArchiveObject,
@@ -22,6 +22,7 @@ import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
 import * as mainCheckout from "./plane-storage-main-checkout.ts";
+import * as usage from "./plane-storage-usage.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -63,6 +64,17 @@ export class DynamoPlaneStorageBase {
 
   listSessionsByStatus(status: SessionStatus, shard: number): Promise<SessionRecord[]> {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
+  }
+
+  putUsageRecord(
+    record: UsageRecord,
+    fence?: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return usage.putUsageRecord(this.ctx, record, fence);
+  }
+
+  listUsageRecords(sessionId?: string): Promise<UsageRecord[]> {
+    return usage.listUsageRecords(this.ctx, sessionId);
   }
 
   putWorktree(wt: WorktreeRecord): Promise<void> {

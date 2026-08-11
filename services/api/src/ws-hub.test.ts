@@ -59,6 +59,21 @@ describe("createPlaneWsBridge", () => {
         seq: Number.POSITIVE_INFINITY,
       }),
     ).toBe(null);
+    expect(
+      parseHostMessage({
+        type: "session:usage",
+        sessionId: "s",
+        worktreeId: "wt-1",
+        attemptId: "attempt-1",
+        usage: {
+          kind: "delta",
+          sequence: 1,
+          inputTokens: "2",
+          source: "cli",
+          observedAt: "2026-01-01T00:00:00.000Z",
+        },
+      }),
+    ).toMatchObject({ type: "session:usage", attemptId: "attempt-1" });
   });
 
   it("registers an agent, delivers session:assign, then confirms its in-memory ACK once", async () => {

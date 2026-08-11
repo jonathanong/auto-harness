@@ -22,6 +22,7 @@ import {
   releaseScheduledLeaseLocal,
 } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
@@ -164,6 +165,9 @@ export function handleHostMessage(
     case "session:status": {
       return applySessionStatus(state, msg);
     }
+    case "session:usage": {
+      return ingestUsage(state, msg);
+    }
     case "session:log": {
       if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
         return { ok: false, error: "log chunk exceeds 32 KiB" };
@@ -183,6 +187,7 @@ export function handleHostMessage(
         : { ok: false, error: "agent not connected" };
     }
   }
+  return { ok: false, error: "unsupported host message" };
 }
 
 /**
@@ -311,6 +316,9 @@ export async function handleHostMessageDurable(
   if (msg.type === "session:status") {
     return applySessionStatusDurable(state, msg, fence);
   }
+  if (msg.type === "session:usage") {
+    return ingestUsageDurable(state, msg, fence);
+  }
   return { ok: false, error: "unsupported host message" };
 }
 
@@ -321,6 +329,20 @@ async function applySessionStatusDurable(
 ): Promise<{ ok: boolean; error?: string }> {
   const storage = state.storage;
   if (!storage) return handleHostMessage(state, msg);
+  if (msg.usage) {
+    const usageResult = await ingestUsageDurable(
+      state,
+      {
+        type: "session:usage",
+        sessionId: msg.sessionId,
+        worktreeId: msg.worktreeId,
+        attemptId: msg.attemptId,
+        usage: msg.usage,
+      },
+      fence,
+    );
+    if (!usageResult.ok) return usageResult;
+  }
   // Do not trust a potentially missing or stale per-process session cache:
   // this node may not be the scheduler that emitted the assignment.
   const session =
@@ -661,6 +683,16 @@ function applySessionStatus(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
 ): { ok: boolean; error?: string } {
+  if (msg.usage) {
+    const usageResult = ingestUsage(state, {
+      type: "session:usage",
+      sessionId: msg.sessionId,
+      worktreeId: msg.worktreeId,
+      attemptId: msg.attemptId,
+      usage: msg.usage,
+    });
+    if (!usageResult.ok) return usageResult;
+  }
   const session = state.sessions.get(msg.sessionId);
   if (!session) {
     return { ok: false, error: "session not found" };

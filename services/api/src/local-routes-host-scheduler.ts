@@ -80,7 +80,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       if (
         body.type === "session:ack" ||
         body.type === "session:status" ||
-        body.type === "session:log"
+        body.type === "session:log" ||
+        body.type === "session:usage"
       ) {
         send(res, 410, {
           error: { code: "HOST_MESSAGE_WEBSOCKET_REQUIRED", message: "use the host WebSocket" },

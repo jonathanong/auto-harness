@@ -7,6 +7,7 @@ import type {
 } from "./types.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability } from "./host-capabilities.ts";
+import type { SessionUsage } from "./usage.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
@@ -59,6 +60,7 @@ export type SessionStatusUpdate = {
   errorCode?: SessionErrorCode;
   errorMessage?: string;
   cliResumeRef?: string;
+  usage?: SessionUsage;
 };
 
 export type CreateSessionFields = {
@@ -146,6 +148,14 @@ export type HostToServerMessage =
       errorCode?: SessionErrorCode;
       errorMessage?: string;
       cliResumeRef?: string;
+      usage?: SessionUsage;
+    }
+  | {
+      type: "session:usage";
+      sessionId: string;
+      worktreeId: string | null;
+      attemptId: string;
+      usage: SessionUsage;
     }
   | {
       type: "session:log";

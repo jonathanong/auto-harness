@@ -1,5 +1,5 @@
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
-import type { ResumeRefCapture } from "@auto-harness/shared";
+import type { ResumeRefCapture, UsageRates } from "@auto-harness/shared";
 import { ControlPlaneReadFacade } from "./control-plane-facade-reads.ts";
 import * as commands from "./control-plane-commands.ts";
 import * as durableCommands from "./control-plane-commands-durable.ts";
@@ -20,6 +20,7 @@ export class ControlPlaneCatalog extends ControlPlaneReadFacade {
     id?: string;
     name: string;
     defaultCommandId?: string | null;
+    usageRates?: UsageRates;
   }): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
     return providers.createProvider(this.state, input);
   }
@@ -51,14 +52,22 @@ export class ControlPlaneCatalog extends ControlPlaneReadFacade {
 
   updateProvider(
     id: string,
-    patch: Partial<{ name: string; defaultCommandId: string | null }>,
+    patch: Partial<{
+      name: string;
+      defaultCommandId: string | null;
+      usageRates: UsageRates | null;
+    }>,
   ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
     return providers.updateProvider(this.state, id, patch);
   }
 
   async updateProviderDurable(
     id: string,
-    patch: Partial<{ name: string; defaultCommandId: string | null }>,
+    patch: Partial<{
+      name: string;
+      defaultCommandId: string | null;
+      usageRates: UsageRates | null;
+    }>,
   ): Promise<ReturnType<typeof providers.updateProvider>> {
     return providers.updateProviderDurable(this.state, id, patch);
   }

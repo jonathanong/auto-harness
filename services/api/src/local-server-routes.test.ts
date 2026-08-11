@@ -61,6 +61,23 @@ describe("createLocalApp agent and scheduler routes", () => {
     expect(
       (
         await invoke("POST", "/api/v1/host/messages", {
+          type: "session:usage",
+          sessionId: "sess-1",
+          worktreeId: assigned.worktreeId as string,
+          attemptId: assigned.attemptId as string,
+          usage: {
+            kind: "delta",
+            sequence: 1,
+            inputTokens: "1",
+            source: "cli",
+            observedAt: "2026-01-01T00:00:00.000Z",
+          },
+        })
+      ).status,
+    ).toBe(410);
+    expect(
+      (
+        await invoke("POST", "/api/v1/host/messages", {
           type: "session:log",
           sessionId: "sess-1",
           stream: "stdout",

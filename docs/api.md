@@ -2,6 +2,24 @@
 
 HTTP API for sessions, repositories, auth, schedules, and agents. Served at `/api/v1` via API Gateway + Lambda.
 
+## Session usage and configured cost
+
+Hosts may report provider-neutral usage only when a CLI adapter emits an authoritative usage
+record. Prompts and log chunks are never inspected for token counts or cost. Reports carry
+`kind` (`cumulative` or `delta`), a monotonic per-attempt `sequence`, decimal-string counters,
+and optional operator-configured `costMicros`/ISO currency. The control plane attributes each
+accepted report from the durable session route to its repository, provider, Provider Account, and
+Command; host-supplied attribution is ignored. Old attempt IDs and replaced host connections are
+discarded.
+
+`GET /api/v1/sessions/:id/usage` returns report detail plus an aggregate. Repository-scoped
+`GET /api/v1/usage?repositoryId=...` supports optional `providerId`, `providerAccountId`, and
+`commandId` filters. Access is repository-scoped and every successful report read is audited.
+Duplicate sequence reports are idempotent and out-of-order reports are safe. A durable per-attempt
+kind marker rejects mixing cumulative and delta reports; aggregate costs are grouped in
+`costMicrosByCurrency` so currencies are never added together. Provider `usageRates` are optional
+operator configuration only; Auto Harness does not fetch vendor prices or implement billing.
+
 Live streaming and agent control use the [WebSocket protocol](websocket.md). Credentials: [auth.md](auth.md). Deploy: [setup.md](setup.md). Local stack: [local-development.md](local-development.md).
 
 **Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).

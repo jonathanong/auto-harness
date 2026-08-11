@@ -1,4 +1,5 @@
 import type { SessionResumeSpec, SessionStatus, TargetRef } from "@auto-harness/shared";
+export type { UsageRecord } from "../usage.ts";
 
 export type SessionRecord = {
   id: string;

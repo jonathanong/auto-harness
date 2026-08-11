@@ -20,6 +20,8 @@ export type DynamoTableNames = {
   providerAccounts: string;
   commands: string;
   auditLogs: string;
+  sessionUsage: string;
+  sessionUsageKinds: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -40,6 +42,8 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     providerAccounts: `${p}-ProviderAccounts`,
     commands: `${p}-Commands`,
     auditLogs: `${p}-AuditLogs`,
+    sessionUsage: `${p}-SessionUsage`,
+    sessionUsageKinds: `${p}-SessionUsageKinds`,
   };
 }
 

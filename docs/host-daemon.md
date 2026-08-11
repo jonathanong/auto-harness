@@ -2,6 +2,15 @@
 
 Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
+## Session usage and cost attribution
+
+Usage accounting is separate from usage-limit detection. A provider-aware CLI adapter may return a
+structured `SessionUsage` value from the process runner; the daemon forwards it in terminal status
+or a `session:usage` frame. The daemon does not scan prompts, stdout, stderr, or retained logs for
+token counts or prices, and the control plane accepts only `source: "cli"`. Counts and configured
+monetary values are decimal strings; monetary values use integer micros. Provider rates are
+optional operator configuration and are never fetched from a vendor.
+
 | Need                       | Doc                                          |
 | -------------------------- | -------------------------------------------- |
 | Install / config / systemd | [setup.md](setup.md)                         |
