@@ -29,6 +29,12 @@ describe("strict UTC cron", () => {
     expect(nextCronOccurrence("0 0 * * 1", "2026-01-13T00:00:00.000Z")).toBe(
       "2026-01-19T00:00:00.000Z",
     );
+    expect(nextCronOccurrence("0 0 */1 * 1", "2026-01-13T00:00:00.000Z")).toBe(
+      "2026-01-19T00:00:00.000Z",
+    );
+    expect(nextCronOccurrence("0 0 13 * */1", "2026-01-13T00:00:00.000Z")).toBe(
+      "2026-02-13T00:00:00.000Z",
+    );
   });
 
   it("rejects malformed, out-of-range, and impossible expressions", () => {
@@ -51,6 +57,14 @@ describe("strict UTC cron", () => {
     expect(parseCron("0 0 31 2 *")).not.toBeNull();
     expect(nextCronOccurrence("0 0 31 2 *", "2026-01-01T00:00:00.000Z")).toBeNull();
     expect(nextCronOccurrence("* * * * *", "invalid")).toBeNull();
+  });
+
+  it("bounds impossible calendar expressions without scanning years of minutes", () => {
+    const started = performance.now();
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      expect(nextCronOccurrence("0 0 31 2 *", "2026-01-01T00:00:00.000Z")).toBeNull();
+    }
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it("skips dates that match neither constrained day field", () => {

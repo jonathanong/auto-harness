@@ -75,4 +75,22 @@ describe("schedule UTC cron validation", () => {
     });
     expect(plane.evaluateCron("not-a-timestamp")).toEqual([]);
   });
+
+  it("fires legacy offset cursors with their original compare-and-swap value", () => {
+    const now = "2026-01-01T00:00:00.000Z";
+    const plane = new ControlPlane({ now: () => now, scheduleIdFactory: () => "schedule-1" });
+    seedBaseCommand(plane);
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "nightly",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 60,
+    });
+    const legacyCursor = "2026-01-01T00:00:00+00:00";
+    plane.state.schedules.get(schedule.id)!.nextRunAt = legacyCursor;
+
+    expect(plane.tryClaimScheduleFire(schedule.id, legacyCursor, now)).not.toBeNull();
+    expect(plane.getSchedule(schedule.id)?.nextRunAt).toBe("2026-01-01T00:01:00.000Z");
+  });
 });

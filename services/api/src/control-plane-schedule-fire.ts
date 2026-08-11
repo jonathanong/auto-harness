@@ -7,6 +7,9 @@ import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 
+const PERSISTED_ISO_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
+
 /**
  * Manual trigger: creates one scheduled session and advances nextRunAt
  * (same provenance as cron: type/source schedule).
@@ -234,8 +237,17 @@ export async function tryClaimScheduleFireDurable(
 }
 
 function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {
-  if (!isValidUtcTimestamp(schedule.nextRunAt) || !isValidUtcTimestamp(nowIso)) return null;
+  if (!isValidPersistedCursor(schedule.nextRunAt) || !isValidUtcTimestamp(nowIso)) return null;
   return nextCronOccurrence(schedule.cron, nowIso);
+}
+
+/**
+ * The API accepts only canonical UTC cursors, but pre-existing persisted rows
+ * may use an ISO offset. Keep that original value for the storage CAS and
+ * normalize only the newly-derived cursor written after a successful claim.
+ */
+function isValidPersistedCursor(value: string): boolean {
+  return PERSISTED_ISO_TIMESTAMP.test(value) && Number.isFinite(Date.parse(value));
 }
 
 function createScheduledSession(state: ControlPlaneState, schedule: ScheduleRecord): SessionRecord {

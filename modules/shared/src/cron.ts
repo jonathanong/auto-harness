@@ -63,19 +63,52 @@ export function nextCronOccurrence(expression: string, after: string): string | 
   candidate.setUTCSeconds(0, 0);
   candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
 
-  // A valid five-field cron must recur within the Gregorian calendar's 400-year
-  // cycle. Eight years covers the longest practical gap (Feb 29) while keeping
-  // malformed-but-syntactic expressions such as "0 0 31 2 *" rejectable.
-  const limit = 8 * 366 * 24 * 60;
-  for (let minute = 0; minute < limit; minute += 1) {
-    if (matches(cron, candidate)) return candidate.toISOString();
-    candidate.setUTCMinutes(candidate.getUTCMinutes() + 1);
+  // Eight calendar years cover the longest practical gap (Feb 29). Advance by
+  // calendar fields instead of checking every minute, so syntactically valid
+  // but impossible expressions such as "0 0 31 2 *" reject cheaply.
+  const finalYear = candidate.getUTCFullYear() + 8;
+  while (candidate.getUTCFullYear() <= finalYear) {
+    const month = nextValue(cron.month.values, candidate.getUTCMonth() + 1);
+    if (month === null) {
+      resetToMonth(candidate, candidate.getUTCFullYear() + 1, firstValue(cron.month.values));
+      continue;
+    }
+    if (month !== candidate.getUTCMonth() + 1) {
+      resetToMonth(candidate, candidate.getUTCFullYear(), month);
+    }
+
+    const day = nextMatchingDay(cron, candidate);
+    if (day === null) {
+      resetToMonth(candidate, candidate.getUTCFullYear(), candidate.getUTCMonth() + 2);
+      continue;
+    }
+    if (day !== candidate.getUTCDate()) {
+      candidate.setUTCDate(day);
+      candidate.setUTCHours(0, 0, 0, 0);
+    }
+
+    const hour = nextValue(cron.hour.values, candidate.getUTCHours());
+    if (hour === null) {
+      candidate.setUTCDate(candidate.getUTCDate() + 1);
+      candidate.setUTCHours(0, 0, 0, 0);
+      continue;
+    }
+    if (hour !== candidate.getUTCHours()) candidate.setUTCHours(hour, 0, 0, 0);
+
+    const minute = nextValue(cron.minute.values, candidate.getUTCMinutes());
+    if (minute === null) {
+      candidate.setUTCHours(candidate.getUTCHours() + 1, 0, 0, 0);
+      continue;
+    }
+    candidate.setUTCMinutes(minute, 0, 0);
+    return candidate.toISOString();
   }
   return null;
 }
 
 function parseField(source: string, min: number, max: number): CronField | null {
   const values = new Set<number>();
+  let any = false;
   for (const item of source.split(",")) {
     const stepParts = item.split("/");
     if (stepParts.length > 2 || stepParts.some((part) => part.length === 0)) return null;
@@ -86,6 +119,7 @@ function parseField(source: string, min: number, max: number): CronField | null 
     let start: number;
     let end: number;
     if (rangeSource === "*") {
+      any = true;
       start = min;
       end = max;
     } else {
@@ -108,7 +142,7 @@ function parseField(source: string, min: number, max: number): CronField | null 
     }
     for (let value = start; value <= end; value += step) values.add(value);
   }
-  return { any: source === "*", values };
+  return { any, values };
 }
 
 function parseInteger(value: string): number | null {
@@ -117,15 +151,18 @@ function parseInteger(value: string): number | null {
   return Number.isSafeInteger(parsed) ? parsed : null;
 }
 
-function matches(cron: ParsedCron, date: Date): boolean {
-  if (
-    !cron.minute.values.has(date.getUTCMinutes()) ||
-    !cron.hour.values.has(date.getUTCHours()) ||
-    !cron.month.values.has(date.getUTCMonth() + 1)
-  ) {
-    return false;
+function nextMatchingDay(cron: ParsedCron, date: Date): number | null {
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  for (let day = date.getUTCDate(); day <= lastDay; day += 1) {
+    if (matchesDay(cron, day, new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), day)))) {
+      return day;
+    }
   }
-  const dayOfMonth = cron.dayOfMonth.values.has(date.getUTCDate());
+  return null;
+}
+
+function matchesDay(cron: ParsedCron, dayOfMonthValue: number, date: Date): boolean {
+  const dayOfMonth = cron.dayOfMonth.values.has(dayOfMonthValue);
   const dayOfWeek = cron.dayOfWeek.values.has(date.getUTCDay());
   // Traditional five-field cron uses OR when both day fields are constrained.
   return cron.dayOfMonth.any && cron.dayOfWeek.any
@@ -135,4 +172,20 @@ function matches(cron: ParsedCron, date: Date): boolean {
       : cron.dayOfWeek.any
         ? dayOfMonth
         : dayOfMonth || dayOfWeek;
+}
+
+function nextValue(values: Set<number>, value: number): number | null {
+  for (let candidate = value; candidate <= 59; candidate += 1) {
+    if (values.has(candidate)) return candidate;
+  }
+  return null;
+}
+
+function firstValue(values: Set<number>): number {
+  return Math.min(...values);
+}
+
+function resetToMonth(date: Date, year: number, month: number): void {
+  date.setUTCFullYear(year, month - 1, 1);
+  date.setUTCHours(0, 0, 0, 0);
 }
