@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createDynamoTestCtx } from "./dynamo-test-helpers.ts";
 import {
   clearProviderAccountUsageLimit,
+  listCommands,
+  listProviderAccounts,
+  listProviders,
   updateProviderAccount,
 } from "./plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -174,5 +177,13 @@ describe("DynamoDB Local storage — providers/provider-accounts/commands", () =
         updatedAt: "t5",
       }),
     ).rejects.toThrow("storage unavailable");
+
+    const emptyCtx = {
+      tables: {},
+      doc: { send: async () => ({}) },
+    } as unknown as PlaneStorageCtx;
+    await expect(listProviders(emptyCtx)).resolves.toEqual([]);
+    await expect(listProviderAccounts(emptyCtx)).resolves.toEqual([]);
+    await expect(listCommands(emptyCtx)).resolves.toEqual([]);
   });
 });

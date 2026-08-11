@@ -1,7 +1,12 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { tryClaimScheduleAndCreateSession } from "./plane-storage-catalog.ts";
+import {
+  putLogFenced,
+  skipScheduleForActiveConcurrency,
+  tryClaimSchedule,
+  tryClaimScheduleAndCreateSession,
+} from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("durable schedule creation", () => {
@@ -53,5 +58,103 @@ describe("durable schedule creation", () => {
       }),
     ).resolves.toEqual({ kind: "lost" });
     expect(calls).toBe(1);
+  });
+
+  it("rethrows unavailable DynamoDB errors instead of misclassifying them as conflicts", async () => {
+    const unavailable = {
+      doc: { send: async () => Promise.reject(new Error("unavailable")) },
+      tables: {},
+    } as unknown as PlaneStorageCtx;
+    await expect(
+      putLogFenced(unavailable, {} as never, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toThrow("unavailable");
+    await expect(
+      tryClaimSchedule(unavailable, "schedule", "before", "after", "last"),
+    ).rejects.toThrow("unavailable");
+    await expect(
+      tryClaimScheduleAndCreateSession(unavailable, {
+        scheduleId: "schedule",
+        expectedNextRunAt: "before",
+        newNextRunAt: "after",
+        lastRunAt: "last",
+        session: {} as never,
+      }),
+    ).rejects.toThrow("unavailable");
+    await expect(
+      skipScheduleForActiveConcurrency(unavailable, {
+        scheduleId: "schedule",
+        expectedNextRunAt: "before",
+        newNextRunAt: "after",
+        concurrencyId: "lock",
+        sessionId: "session",
+      }),
+    ).rejects.toThrow("unavailable");
+  });
+
+  it("cleans an orphaned concurrency lock after its transaction loses", async () => {
+    let reads = 0;
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof TransactWriteCommand) {
+            throw {
+              name: "TransactionCanceledException",
+              CancellationReasons: [
+                { Code: "None" },
+                { Code: "None" },
+                { Code: "ConditionalCheckFailed" },
+              ],
+            };
+          }
+          reads += 1;
+          return reads === 1 ? { Item: { sessionId: "orphan" } } : {};
+        },
+      } as never,
+      tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+    } as PlaneStorageCtx;
+    await expect(
+      tryClaimScheduleAndCreateSession(ctx, {
+        scheduleId: "schedule",
+        expectedNextRunAt: "before",
+        newNextRunAt: "after",
+        lastRunAt: "last",
+        session: { id: "new", concurrencyId: "lock" } as never,
+      }),
+    ).resolves.toEqual({ kind: "lost" });
+    expect(reads).toBe(3);
+  });
+
+  it("recognizes a running concurrency owner as a duplicate", async () => {
+    let reads = 0;
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof TransactWriteCommand) {
+            throw {
+              name: "TransactionCanceledException",
+              CancellationReasons: [
+                { Code: "None" },
+                { Code: "None" },
+                { Code: "ConditionalCheckFailed" },
+              ],
+            };
+          }
+          reads += 1;
+          return reads === 1
+            ? { Item: { sessionId: "running" } }
+            : { Item: { id: "running", status: "running" } };
+        },
+      } as never,
+      tables: { sessions: "Sessions", concurrencyLocks: "Locks" },
+    } as PlaneStorageCtx;
+    await expect(
+      tryClaimScheduleAndCreateSession(ctx, {
+        scheduleId: "schedule",
+        expectedNextRunAt: "before",
+        newNextRunAt: "after",
+        lastRunAt: "last",
+        session: { id: "new", concurrencyId: "lock" } as never,
+      }),
+    ).resolves.toMatchObject({ kind: "duplicate", session: { id: "running" } });
   });
 });
