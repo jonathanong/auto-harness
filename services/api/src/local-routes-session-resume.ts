@@ -102,8 +102,15 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
         }))
       )
         return true;
-      send(res, existing.type === "scheduled" ? 409 : 400, {
-        error: { code: "RESUME_ERROR", message: result.error },
+      const missing = result.error === "session not found";
+      const conflict =
+        existing.type === "scheduled" ||
+        /already terminal|must be terminal|no agent|conflicted|changed before/i.test(result.error);
+      send(res, missing ? 404 : conflict ? 409 : 400, {
+        error: {
+          code: missing ? "NOT_FOUND" : conflict ? "CONFLICT" : "VALIDATION_ERROR",
+          message: result.error,
+        },
       });
       return true;
     }

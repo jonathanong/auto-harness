@@ -54,26 +54,32 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
         return true;
       }
     }
+    let principal: Principal | null;
     try {
-      const principal =
+      principal =
         basic ??
         (typeof body?.username === "string" && typeof body.password === "string"
           ? await auth.authenticatePassword(body.username, body.password)
           : null);
-      if (!principal) {
-        if (!(await audit(ctx, undefined, "auth:login", "credential", "login", "denied")))
-          return true;
-        send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });
-        return true;
-      }
-      if (!(await audit(ctx, principal, "auth:login", "session", principal.id, "success")))
-        return true;
-      auth.issueCookie(res, principal);
-      send(res, 200, { principal });
     } catch {
       if (!(await audit(ctx, undefined, "auth:login", "credential", "login", "failed")))
         return true;
       send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });
+      return true;
+    }
+    if (!principal) {
+      if (!(await audit(ctx, undefined, "auth:login", "credential", "login", "denied")))
+        return true;
+      send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });
+      return true;
+    }
+    if (!(await audit(ctx, principal, "auth:login", "session", principal.id, "success")))
+      return true;
+    try {
+      auth.issueCookie(res, principal);
+      send(res, 200, { principal });
+    } catch {
+      sendInternalError(res);
     }
     return true;
   }

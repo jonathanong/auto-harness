@@ -41,7 +41,10 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
           }))
         )
           return true;
-        send(res, 400, { error: { code: "CANCEL_ERROR", message: result.error } });
+        const missing = result.error === "session not found";
+        send(res, missing ? 404 : 409, {
+          error: { code: missing ? "NOT_FOUND" : "CONFLICT", message: result.error },
+        });
         return true;
       }
       if (

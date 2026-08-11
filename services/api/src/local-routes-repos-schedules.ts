@@ -11,6 +11,14 @@ function hidden(res: RouteCtx["res"]): void {
   send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
 }
 
+function scheduleTriggerError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/disabled|concurrent|updated|claimed|already active|conflict/i.test(error)) {
+    return { status: 409, code: "CONFLICT" };
+  }
+  return { status: 400, code: "TRIGGER_ERROR" };
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -266,13 +274,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         typeof body.target !== "object" ||
         body.target === null ||
         typeof body.cron !== "string" ||
-        typeof body.timeout !== "number" ||
-        typeof body.nextRunAt !== "string"
+        typeof body.timeout !== "number"
       ) {
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: "repositoryId, name, target, cron, timeout, and nextRunAt are required",
+            message: "repositoryId, name, target, cron, and timeout are required",
           },
         });
         return true;
@@ -280,6 +287,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       if (body.ref !== undefined && typeof body.ref !== "string") {
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: "ref must be a valid scheduled branch name" },
+        });
+        return true;
+      }
+      if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
+        send(res, 400, {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "nextRunAt must be an ISO-8601 UTC timestamp",
+          },
         });
         return true;
       }
@@ -314,7 +330,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.queueTtlSeconds === "number"
           ? { queueTtlSeconds: body.queueTtlSeconds }
           : {}),
-        nextRunAt: body.nextRunAt,
+        ...(typeof body.nextRunAt === "string" ? { nextRunAt: body.nextRunAt } : {}),
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
@@ -419,7 +435,8 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         }))
       )
         return true;
-      send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
+      const mapped = scheduleTriggerError(result.error);
+      send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
       return true;
     }
     if (!scoped(ctx, result.session.repositoryId)) {
@@ -495,6 +512,15 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
             error: {
               code: "VALIDATION_ERROR",
               message: "ref must be a valid scheduled branch name",
+            },
+          });
+          return true;
+        }
+        if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
+          send(res, 400, {
+            error: {
+              code: "VALIDATION_ERROR",
+              message: "nextRunAt must be an ISO-8601 UTC timestamp",
             },
           });
           return true;
