@@ -207,7 +207,7 @@ export async function listAllSessions(ctx: PlaneStorageCtx): Promise<SessionReco
     );
     items.push(...((res.Items ?? []) as Record<string, unknown>[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return items.map(itemToSession);
 }
 
@@ -216,17 +216,24 @@ export async function listSessionsByStatus(
   status: SessionStatus,
   shard: number,
 ): Promise<SessionRecord[]> {
-  const res = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.sessions,
-      IndexName: "statusShard-createdAt",
-      KeyConditionExpression: "statusShard = :ss",
-      ExpressionAttributeValues: {
-        ":ss": statusShardAttr(status, shard),
-      },
-    }),
-  );
-  return (res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>));
+  const records: SessionRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: "statusShard-createdAt",
+        KeyConditionExpression: "statusShard = :ss",
+        ExpressionAttributeValues: {
+          ":ss": statusShardAttr(status, shard),
+        },
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey && Object.keys(startKey).length > 0);
+  return records;
 }
 
 export async function putWorktree(ctx: PlaneStorageCtx, wt: WorktreeRecord): Promise<void> {
@@ -299,7 +306,7 @@ export async function listAllWorktrees(ctx: PlaneStorageCtx): Promise<WorktreeRe
     );
     items.push(...((res.Items ?? []) as WorktreeRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey && Object.keys(startKey).length > 0);
   return items;
 }
 
@@ -307,15 +314,22 @@ export async function listWorktreesForRepo(
   ctx: PlaneStorageCtx,
   repositoryId: string,
 ): Promise<WorktreeRecord[]> {
-  const res = await ctx.doc.send(
-    new QueryCommand({
-      TableName: ctx.tables.worktrees,
-      IndexName: "repositoryId-id",
-      KeyConditionExpression: "repositoryId = :r",
-      ExpressionAttributeValues: { ":r": repositoryId },
-    }),
-  );
-  return (res.Items ?? []) as WorktreeRecord[];
+  const records: WorktreeRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.worktrees,
+        IndexName: "repositoryId-id",
+        KeyConditionExpression: "repositoryId = :r",
+        ExpressionAttributeValues: { ":r": repositoryId },
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as WorktreeRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey && Object.keys(startKey).length > 0);
+  return records;
 }
 
 /** Conditional claim (Invariant 1): idle + online → busy. */
