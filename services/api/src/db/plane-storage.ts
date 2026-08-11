@@ -7,6 +7,7 @@ import * as catalog from "./plane-storage-catalog-providers.ts";
 import * as providerAccounts from "./plane-storage-provider-accounts.ts";
 import * as providerAccountUpdates from "./plane-storage-provider-account-updates.ts";
 import * as audit from "./plane-storage-audit.ts";
+import * as rateLimits from "./plane-storage-rate-limits.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -24,6 +25,9 @@ export type {
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
+  /** Marker prevents arbitrary test/storage doubles from being treated as durable rate storage. */
+  readonly rateLimitStore = true;
+
   putAuditLog(record: import("../audit-types.ts").AuditLogRecord): Promise<void> {
     return audit.putAuditLog(this.ctx, record);
   }
@@ -36,6 +40,12 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
 
   listAllAuditLogs(): Promise<import("../audit-types.ts").AuditLogRecord[]> {
     return audit.listAllAuditLogs(this.ctx);
+  }
+
+  consumeRateLimit(
+    input: rateLimits.DurableRateLimitInput,
+  ): Promise<import("../rate-limit.ts").RateLimitDecision> {
+    return rateLimits.consumeRateLimit(this.ctx, input);
   }
 
   putProvider(

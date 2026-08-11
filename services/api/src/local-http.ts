@@ -8,6 +8,7 @@ import type { AuthMode } from "./auth.ts";
 import type { AuthService } from "./auth.ts";
 import type { Principal } from "./auth.ts";
 import type { LocalSchedulerOptions } from "./local-scheduler.ts";
+import type { RateLimitConfigOverrides, RateLimitEvent } from "./rate-limit.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -31,6 +32,16 @@ export type LocalServerOptions = {
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
   /** Local EventBridge-equivalent scheduler configuration. */
   scheduler?: LocalSchedulerOptions;
+  /** API fixed-window policy. Defaults to the documented safe limits. */
+  rateLimitConfig?: RateLimitConfigOverrides;
+  /** Injectable wall clock for deterministic boundary tests. */
+  rateLimitNow?: () => number;
+  /** Only enable when a trusted proxy overwrites X-Forwarded-For. */
+  trustProxy?: boolean;
+  /** Metrics/log sink; events contain no request body or credential. */
+  onRateLimitEvent?: (event: RateLimitEvent) => void;
+  /** Per-connection WebSocket messages per second. */
+  wsRateLimitPerSecond?: number;
 };
 
 export type RouteCtx = {

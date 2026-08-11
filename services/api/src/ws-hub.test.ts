@@ -9,6 +9,47 @@ import { AuthService } from "./auth.ts";
 import { createPlaneWsBridge, parseHostMessage } from "./ws-hub.ts";
 
 describe("createPlaneWsBridge", () => {
+  it("enforces the configured per-connection message budget and emits a safe event", async () => {
+    const events: Array<{ outcome: string; bucket: string; limit: number; actorKey: string }> = [];
+    const bridge = createPlaneWsBridge({
+      maxMessagesPerSecond: 1,
+      onRateLimitEvent: (event) => events.push(event),
+    });
+    const server = createServer();
+    const hub = bridge.attach(server, new ControlPlane());
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closeCode = await new Promise<number>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+      ws.on("open", () => {
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "a1",
+            worktrees: [],
+            commandProfiles: [],
+          }),
+        );
+        ws.send(
+          JSON.stringify({ type: "host:keepalive", hostId: "a1", at: new Date().toISOString() }),
+        );
+      });
+      ws.on("close", resolve);
+      ws.on("error", reject);
+    });
+
+    expect(closeCode).toBe(1008);
+    expect(events).toEqual([
+      { outcome: "denied", bucket: "host", limit: 1, actorKey: "websocket-connection" },
+    ]);
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
   it("rejects malformed nested messages before they reach the control plane", () => {
     const valid = {
       type: "host:register",

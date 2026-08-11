@@ -20,6 +20,7 @@ export type DynamoTableNames = {
   providerAccounts: string;
   commands: string;
   auditLogs: string;
+  rateLimits: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -40,6 +41,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     providerAccounts: `${p}-ProviderAccounts`,
     commands: `${p}-Commands`,
     auditLogs: `${p}-AuditLogs`,
+    rateLimits: `${p}-RateLimits`,
   };
 }
 

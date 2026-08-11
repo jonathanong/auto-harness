@@ -45,11 +45,42 @@ cors: {
 
 ## Rate limiting
 
-| Endpoint           | Limit                                   |
-| ------------------ | --------------------------------------- |
-| `POST /sessions`   | 60 requests/minute per service account  |
-| `GET` endpoints    | 300 requests/minute per service account |
-| WebSocket messages | 100 messages/second per connection      |
+REST uses fixed-window limits keyed by the authenticated actor (`kind:id`),
+with separate buckets for login, reads, mutations, scheduler calls, and host
+traffic. Defaults are login **10/minute**, reads **300/minute**, mutations and
+scheduler **60/minute**, and host REST traffic **600/minute**. WebSocket host
+traffic is limited independently to **100 messages/second per connection** so
+keepalives and batched logs do not consume a REST actor's budget. Health checks
+are intentionally exempt.
+
+The local listener accepts these environment overrides (all values are positive
+integers): `HARNESS_RATE_LIMIT_WINDOW_SECONDS`,
+`HARNESS_RATE_LIMIT_LOGIN`, `HARNESS_RATE_LIMIT_READ`,
+`HARNESS_RATE_LIMIT_MUTATION`, `HARNESS_RATE_LIMIT_SCHEDULER`,
+`HARNESS_RATE_LIMIT_HOST`, `HARNESS_RATE_LIMIT_MAX_ENTRIES`, and
+`HARNESS_WS_RATE_LIMIT_PER_SECOND`. Set `HARNESS_RATE_LIMIT_MODE=disabled` only
+for an isolated loopback test. Login is keyed by the peer socket address. A
+forwarded address is used only when `HARNESS_TRUST_PROXY=true`; otherwise
+`X-Forwarded-For` is ignored because it is spoofable.
+
+In memory-only mode, counters are bounded by `HARNESS_RATE_LIMIT_MAX_ENTRIES`
+and evict the oldest key when full. With DynamoDB-backed mode, each counter is
+an atomic conditional update in the `RateLimits` table with TTL cleanup, so
+multiple API workers share the same budget. Durable failures fail closed by
+default (`HARNESS_RATE_LIMIT_FAIL_MODE=closed`); `open` is an explicit
+availability tradeoff for development and emits an error metric event. A
+closed durable failure returns `503 RATE_LIMIT_UNAVAILABLE`; an exhausted
+budget returns standards-compatible `429 RATE_LIMITED`, `Retry-After` seconds,
+and `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and epoch-second
+`X-RateLimit-Reset` headers.
+
+Applications may provide `onRateLimitEvent` when constructing the local server
+to connect metrics/logging. Events include only a hashed actor key, bucket,
+limit, outcome, and reset data. Denied mutations append a bounded
+`rate-limit:deny` audit event containing the route and bucket, never request
+bodies, credentials, prompts, logs, or raw IP addresses. If that audit append
+fails, the endpoint fails closed with `500` rather than returning an
+unaudited denial.
 
 Local ingress also rejects HTTP JSON bodies over 1 MiB, WebSocket frames over
 128 KiB, and individual log chunks over 32 KiB. In-memory session log retention
