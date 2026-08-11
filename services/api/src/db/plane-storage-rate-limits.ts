@@ -44,6 +44,17 @@ export async function consumeRateLimit(
     ).Item as Counter | undefined;
     const currentStart = current?.windowStartMs;
 
+    // A delayed request from an older window must never reset a counter that a
+    // newer request has already advanced.
+    if (currentStart !== undefined && currentStart > start) {
+      return {
+        allowed: false,
+        limit: input.limit,
+        remaining: 0,
+        resetAtMs: currentStart + input.windowSeconds * 1000,
+      };
+    }
+
     if (currentStart === start) {
       const count = current?.count ?? 0;
       if (count >= input.limit) {

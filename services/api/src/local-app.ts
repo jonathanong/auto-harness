@@ -37,10 +37,11 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     options.store?.plane ??
     new ControlPlane({ publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421" });
   const store = options.store ?? new MemorySessionStore({ plane });
+  const envRateLimitConfig = rateLimitConfigFromEnv();
   const config: RateLimitConfig = mergeRateLimitConfig({
-    ...rateLimitConfigFromEnv(),
+    ...envRateLimitConfig,
     ...options.rateLimitConfig,
-    ...(options.rateLimitConfig?.limits ? { limits: options.rateLimitConfig.limits } : {}),
+    limits: { ...envRateLimitConfig.limits, ...options.rateLimitConfig?.limits },
   });
   const memoryLimiter = new MemoryRateLimiter(config.maxEntries);
   const now = options.rateLimitNow ?? (() => Date.now());
@@ -93,6 +94,21 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
     if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (auth.mode === "required") {
+      const limited = await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        principal: undefined,
+        bucket: "login",
+        trustProxy,
+      });
+      if (limited) return;
       const principal = await auth.authenticate(req);
       if (!principal)
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");

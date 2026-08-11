@@ -7,6 +7,7 @@ import {
   ProjectionType,
   ResourceInUseException,
   ScalarAttributeType,
+  UpdateTimeToLiveCommand,
 } from "@aws-sdk/client-dynamodb";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
@@ -224,6 +225,13 @@ export async function ensureControlPlaneTables(opts: {
     AttributeDefinitions: [{ AttributeName: "bucketKey", AttributeType: ScalarAttributeType.S }],
     KeySchema: [{ AttributeName: "bucketKey", KeyType: KeyType.HASH }],
   });
+
+  await ddb.send(
+    new UpdateTimeToLiveCommand({
+      TableName: names.rateLimits,
+      TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
+    }),
+  );
 
   return names;
 }
