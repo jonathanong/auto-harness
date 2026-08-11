@@ -57,15 +57,17 @@ async function assignedScheduledSession(
   if (!created.ok) throw new Error(created.error);
   expect(await run.plane.assignScheduledQueuedDurable()).toHaveLength(1);
   const assigned = run.plane.state.sessions.get(created.session.id)!;
-  await run.plane.handleHostMessageDurable(
-    {
-      type: "session:ack",
-      sessionId: assigned.id,
-      worktreeId: null,
-      attemptId: assigned.attemptId!,
-    },
-    run.connectionId,
-  );
+  await expect(
+    run.plane.handleHostMessageDurable(
+      {
+        type: "session:ack",
+        sessionId: assigned.id,
+        worktreeId: null,
+        attemptId: assigned.attemptId!,
+      },
+      run.connectionId,
+    ),
+  ).resolves.toMatchObject({ ok: true, sessionAcknowledged: assigned.id });
   return assigned;
 }
 
