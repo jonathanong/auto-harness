@@ -145,6 +145,7 @@ describe("catalog delete references", () => {
   });
 
   it("derives stable Dynamo marker keys for every catalog reference shape", () => {
+    expect(referenceMarkers("now", {})).toEqual([]);
     expect(
       referenceMarkers("now", {
         repositoryId: "repo",
