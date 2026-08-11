@@ -13,7 +13,6 @@ import {
 } from "./control-plane-session-target.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
-import { Scheduler } from "./services/scheduler.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -94,39 +93,6 @@ describe("scheduled dispatcher coverage edges", () => {
         "host",
       ),
     ).toBeNull();
-  });
-
-  it("keeps scheduled jobs out of the legacy worktree scheduler", async () => {
-    const scheduledSession = scheduled();
-    let claimed = 0;
-    const scheduler = new Scheduler({
-      sessions: {
-        putNew: async () => {},
-        get: async () => null,
-        listByStatus: async () => [scheduledSession],
-        updateStatus: async () => {},
-      },
-      worktrees: {
-        tryClaim: async () => (++claimed, true),
-        release: async () => {},
-        listIdleForRepo: async () => [
-          {
-            id: "wt",
-            name: "wt",
-            hostId: "host",
-            repositoryId: "repo",
-            path: "/wt",
-            labels: [],
-            status: "idle",
-            online: true,
-          },
-        ],
-      },
-      shardCount: 1,
-      now: () => NOW,
-    });
-    await expect(scheduler.assignQueued()).resolves.toEqual([]);
-    expect(claimed).toBe(0);
   });
 
   it("requires a reported scheduled run to match its exact local lease", () => {

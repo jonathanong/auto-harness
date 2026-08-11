@@ -5,7 +5,10 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
-import { compareSessionsForQueue, compareWorktreesForRoundRobin } from "./services/scheduler.ts";
+import {
+  compareSessionsForQueue,
+  compareWorktreesForRoundRobin,
+} from "./control-plane-ordering.ts";
 import { releaseWorktree, tryClaimWorktree } from "./control-plane-worktrees.ts";
 import {
   buildProviderCatalog,

@@ -7,7 +7,7 @@ import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
-import { compareSessionsForQueue } from "./services/scheduler.ts";
+import { compareSessionsForQueue } from "./control-plane-ordering.ts";
 
 const leaseKey = (hostId: string, repositoryId: string) => `${hostId}\0${repositoryId}`;
 
