@@ -10,6 +10,14 @@ function hidden(res: RouteCtx["res"]): void {
   send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
 }
 
+function scheduleTriggerError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/disabled|concurrent|updated|claimed|already active|conflict/i.test(error)) {
+    return { status: 409, code: "CONFLICT" };
+  }
+  return { status: 400, code: "TRIGGER_ERROR" };
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -216,7 +224,8 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (!result.ok) {
-      send(res, 400, { error: { code: "TRIGGER_ERROR", message: result.error } });
+      const mapped = scheduleTriggerError(result.error);
+      send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
       return true;
     }
     if (!scoped(ctx, result.session.repositoryId)) {

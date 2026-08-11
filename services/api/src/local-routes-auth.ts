@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { type AuthService, type Role } from "./auth.ts";
+import { validateCredential } from "./auth-accounts.ts";
 import type { ControlPlane } from "./control-plane.ts";
-import { readJson, send } from "./local-http.ts";
+import { readJson, send, sendInternalError } from "./local-http.ts";
 
 type AuthRouteContext = {
   auth: AuthService;
@@ -17,9 +18,23 @@ type AuthRouteContext = {
 export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> {
   const { auth, plane, req, res, url, method } = ctx;
   if (method === "POST" && url.pathname === "/api/v1/auth/login") {
+    let basic: Awaited<ReturnType<typeof auth.authenticate>>;
     try {
-      const basic = await auth.authenticate(req);
-      const body = basic ? null : ((await readJson(req)) as Record<string, unknown>);
+      basic = await auth.authenticate(req);
+    } catch {
+      sendInternalError(res);
+      return true;
+    }
+    let body: Record<string, unknown> | null = null;
+    if (!basic) {
+      try {
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        return true;
+      }
+    }
+    try {
       const principal =
         basic ??
         (typeof body?.username === "string" && typeof body.password === "string"
@@ -32,7 +47,7 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
       auth.issueCookie(res, principal);
       send(res, 200, { principal });
     } catch {
-      send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });
+      sendInternalError(res);
     }
     return true;
   }
@@ -47,19 +62,27 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
       return true;
     }
     if (method === "POST") {
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
-        if (
-          typeof body.username !== "string" ||
-          typeof body.password !== "string" ||
-          !isRole(body.role)
-        )
-          throw new Error("username, password, and role are required");
-        const user = await auth.createUser(
-          { username: body.username, password: body.password, role: body.role },
-          plane.state.storage,
-        );
-        send(res, 201, user);
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        return true;
+      }
+      if (
+        !isRecord(body) ||
+        typeof body.username !== "string" ||
+        typeof body.password !== "string" ||
+        !isRole(body.role)
+      ) {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "username, password, and role are required" },
+        });
+        return true;
+      }
+      try {
+        validateCredential(body.username, "username");
+        validateCredential(body.password, "password");
       } catch (error) {
         send(res, 400, {
           error: {
@@ -67,6 +90,20 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
             message: error instanceof Error ? error.message : "invalid account",
           },
         });
+        return true;
+      }
+      try {
+        const user = await auth.createUser(
+          { username: body.username, password: body.password, role: body.role },
+          plane.state.storage,
+        );
+        send(res, 201, user);
+      } catch (error) {
+        if (error instanceof Error && error.message === "username already exists") {
+          send(res, 409, { error: { code: "CONFLICT", message: error.message } });
+        } else {
+          sendInternalError(res);
+        }
       }
       return true;
     }
@@ -87,18 +124,45 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
       return true;
     }
     if (method === "POST") {
+      let body: Record<string, unknown>;
       try {
-        const body = (await readJson(req)) as Record<string, unknown>;
-        if (typeof body.name !== "string" || !isRole(body.role))
-          throw new Error("name and role are required");
-        const rawRepositories = body.allowedRepositoryIds ?? body.allowedRepositories;
-        if (
-          rawRepositories !== undefined &&
-          (!Array.isArray(rawRepositories) ||
-            !rawRepositories.every((value) => typeof value === "string" && value.length > 0))
-        ) {
-          throw new Error("allowedRepositories must be an array of non-empty strings");
-        }
+        body = (await readJson(req)) as Record<string, unknown>;
+      } catch {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
+        return true;
+      }
+      if (!isRecord(body) || typeof body.name !== "string" || !isRole(body.role)) {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "name and role are required" },
+        });
+        return true;
+      }
+      const rawRepositories = body.allowedRepositoryIds ?? body.allowedRepositories;
+      if (
+        rawRepositories !== undefined &&
+        (!Array.isArray(rawRepositories) ||
+          !rawRepositories.every((value) => typeof value === "string" && value.length > 0))
+      ) {
+        send(res, 400, {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: "allowedRepositories must be an array of non-empty strings",
+          },
+        });
+        return true;
+      }
+      try {
+        validateCredential(body.name, "name");
+      } catch (error) {
+        send(res, 400, {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: error instanceof Error ? error.message : "invalid account",
+          },
+        });
+        return true;
+      }
+      try {
         const allowedRepositoryIds = rawRepositories as string[] | undefined;
         const result = await auth.createServiceAccount(
           {
@@ -110,13 +174,8 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
           plane.state.storage,
         );
         send(res, 201, result);
-      } catch (error) {
-        send(res, 400, {
-          error: {
-            code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
-          },
-        });
+      } catch {
+        sendInternalError(res);
       }
       return true;
     }
@@ -139,4 +198,8 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
 
 function isRole(value: unknown): value is Role {
   return value === "admin" || value === "operator" || value === "read-only";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
 }

@@ -170,11 +170,11 @@ describe("createLocalApp operator management REST", () => {
     expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: false })).status).toBe(
       200,
     );
-    expect((await invoke("POST", "/api/v1/schedules/sched-1/trigger")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/schedules/sched-1/trigger")).status).toBe(409);
     expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: true })).status).toBe(
       200,
     );
-    expect((await invoke("POST", "/api/v1/schedules/missing/trigger")).status).toBe(400);
+    expect((await invoke("POST", "/api/v1/schedules/missing/trigger")).status).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/sched-1")).status).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/sched-1")).status).toBe(404);
 
@@ -189,7 +189,7 @@ describe("createLocalApp operator management REST", () => {
     const cancelled = await invoke("POST", `/api/v1/sessions/${sid}/cancel`);
     expect(cancelled.status).toBe(200);
     expect(cancelled.json).toMatchObject({ status: "cancelled" });
-    expect((await invoke("POST", `/api/v1/sessions/${sid}/cancel`)).status).toBe(400);
+    expect((await invoke("POST", `/api/v1/sessions/${sid}/cancel`)).status).toBe(409);
 
     expect((await invoke("GET", "/api/v1/hosts")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ hostId: "a1" })]),

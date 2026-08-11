@@ -1,5 +1,13 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 
+function providerUpdateError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/already in use|already exists|attached|commands/i.test(error)) {
+    return { status: 409, code: "CONFLICT" };
+  }
+  return { status: 400, code: "VALIDATION_ERROR" };
+}
+
 /** Provider CRUD routes. Returns true if handled. */
 export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -62,7 +70,8 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
             : {}),
         });
         if (!result.ok) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          const mapped = providerUpdateError(result.error);
+          send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
           return true;
         }
         send(res, 200, result.provider);

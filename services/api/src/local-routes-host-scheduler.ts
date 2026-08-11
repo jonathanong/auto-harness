@@ -1,4 +1,4 @@
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 
@@ -42,52 +42,62 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "POST" && url.pathname === "/api/v1/host/messages") {
+    let rawBody: unknown;
     try {
-      const body = parseHostMessage(await readJson(req));
-      if (!body) {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "invalid host message" },
-        });
+      rawBody = await readJson(req);
+    } catch {
+      send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+      });
+      return true;
+    }
+    const body = parseHostMessage(rawBody);
+    if (!body) {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid host message" } });
+      return true;
+    }
+    if (body.type === "host:register" || body.type === "host:keepalive") {
+      if (!mayAccessHost(ctx.principal, body.hostId)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
-      if (body.type === "host:register" || body.type === "host:keepalive") {
-        if (!mayAccessHost(ctx.principal, body.hostId)) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-          return true;
-        }
-      } else if (ctx.principal?.boundHostId) {
-        const session = plane.getSession(body.sessionId);
-        if (!session || !mayAccessHost(ctx.principal, session.hostId ?? undefined)) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-          return true;
-        }
-      }
-      // ACK/status/log transitions require the WebSocket connection epoch.
-      // The legacy HTTP relay has no durable per-connection fence, so keeping
-      // it writable would let a superseded host mutate a replacement lease.
-      if (
-        body.type === "session:ack" ||
-        body.type === "session:status" ||
-        body.type === "session:log"
-      ) {
-        send(res, 410, {
-          error: { code: "HOST_MESSAGE_WEBSOCKET_REQUIRED", message: "use the host WebSocket" },
-        });
+    } else if (ctx.principal?.boundHostId) {
+      const session = plane.getSession(body.sessionId);
+      if (!session || !mayAccessHost(ctx.principal, session.hostId ?? undefined)) {
+        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
+    }
+    // ACK/status/log transitions require the WebSocket connection epoch.
+    // The legacy HTTP relay has no durable per-connection fence, so keeping
+    // it writable would let a superseded host mutate a replacement lease.
+    if (
+      body.type === "session:ack" ||
+      body.type === "session:status" ||
+      body.type === "session:log"
+    ) {
+      send(res, 410, {
+        error: { code: "HOST_MESSAGE_WEBSOCKET_REQUIRED", message: "use the host WebSocket" },
+      });
+      return true;
+    }
+    try {
       const result = await plane.handleHostMessageDurable(body);
       if (!result.ok) {
-        send(res, 400, {
-          error: { code: "AGENT_MESSAGE_ERROR", message: result.error },
+        const missing = result.error === "session not found";
+        const conflict = /stale|changed|fence|connection/i.test(result.error);
+        send(res, missing ? 404 : conflict ? 409 : 400, {
+          error: {
+            code: missing ? "NOT_FOUND" : conflict ? "CONFLICT" : "AGENT_MESSAGE_ERROR",
+            message: result.error,
+          },
         });
         return true;
       }
       send(res, 200, { ok: true });
       return true;
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      sendInternalError(res);
       return true;
     }
   }
@@ -131,18 +141,30 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "POST" && url.pathname === "/api/v1/hosts/drain") {
+    let body: { hostId?: string };
     try {
-      const body = (await readJson(req)) as { hostId?: string };
-      if (!body.hostId) {
-        send(res, 400, {
-          error: { code: "VALIDATION_ERROR", message: "hostId required" },
-        });
-        return true;
-      }
-      if (!mayAccessHost(ctx.principal, body.hostId)) {
-        send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-        return true;
-      }
+      body = (await readJson(req)) as { hostId?: string };
+    } catch {
+      send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+      });
+      return true;
+    }
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      typeof body.hostId !== "string" ||
+      !body.hostId
+    ) {
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "hostId required" } });
+      return true;
+    }
+    if (!mayAccessHost(ctx.principal, body.hostId)) {
+      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+      return true;
+    }
+    try {
       const drained = await plane.drainHostDurable(body.hostId);
       if (!drained.ok) {
         send(res, 409, {
@@ -153,9 +175,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 200, drained);
       return true;
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      sendInternalError(res);
       return true;
     }
   }
