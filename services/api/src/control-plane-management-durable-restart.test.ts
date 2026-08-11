@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one durable storage fake keeps restart assertions cohesive. */
 import { describe, expect, it } from "vitest";
 
 import type {

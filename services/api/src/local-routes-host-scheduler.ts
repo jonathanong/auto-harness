@@ -139,7 +139,13 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
       return true;
     }
-    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.hostId !== "string" || !body.hostId) {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      Array.isArray(body) ||
+      typeof body.hostId !== "string" ||
+      !body.hostId
+    ) {
       send(res, 400, { error: { code: "VALIDATION_ERROR", message: "hostId required" } });
       return true;
     }
