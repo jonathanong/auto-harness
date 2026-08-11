@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   listArchives,
@@ -29,16 +29,20 @@ describe("DynamoDB storage pagination", () => {
       Sessions: [[{ id: "session-1", statusShard: "queued#0" }], [{ id: "session-2" }]],
       Worktrees: [[{ id: "worktree-1" }], [{ id: "worktree-2" }]],
     };
-    const send = vi.fn(async (command: { input: Record<string, unknown> }) => {
-      const tableName = command.input.TableName as string;
-      const page = command.input.ExclusiveStartKey ? 1 : 0;
-      return {
-        Items: pages[tableName]?.[page] ?? [],
-        ...(page === 0 ? { LastEvaluatedKey: { tableName } } : {}),
-      };
-    });
+    const commands: Array<{ input: Record<string, unknown> }> = [];
+    const doc = {
+      async send(command: { input: Record<string, unknown> }) {
+        commands.push(command);
+        const tableName = command.input.TableName as string;
+        const page = command.input.ExclusiveStartKey ? 1 : 0;
+        return {
+          Items: pages[tableName]?.[page] ?? [],
+          ...(page === 0 ? { LastEvaluatedKey: { tableName } } : {}),
+        };
+      },
+    };
     const ctx = {
-      doc: { send },
+      doc,
       tables: {
         archives: "Archives",
         commands: "Commands",
@@ -91,10 +95,13 @@ describe("DynamoDB storage pagination", () => {
       { id: "worktree-2" },
     ]);
 
-    expect(send).toHaveBeenCalledTimes(20);
+    expect(commands).toHaveLength(20);
     for (let index = 0; index < 20; index += 2) {
-      const firstPage = send.mock.calls[index]?.[0] as { input: Record<string, unknown> };
-      const secondPage = send.mock.calls[index + 1]?.[0] as { input: Record<string, unknown> };
+      const firstPage = commands[index];
+      const secondPage = commands[index + 1];
+      expect(firstPage).toBeDefined();
+      expect(secondPage).toBeDefined();
+      if (!firstPage || !secondPage) continue;
       expect(firstPage.input.ExclusiveStartKey).toBeUndefined();
       expect(secondPage.input.ExclusiveStartKey).toEqual({ tableName: firstPage.input.TableName });
     }
