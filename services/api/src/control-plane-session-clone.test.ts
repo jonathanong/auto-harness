@@ -84,4 +84,46 @@ describe("session clone", () => {
       code: "VALIDATION_ERROR",
     });
   });
+
+  it("rejects missing inputs and invalid sources without mutating the source", () => {
+    const plane = new ControlPlane({ idFactory: () => "clone" });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+
+    expect(plane.cloneSession("missing")).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    for (const options of [
+      { prompt: "" },
+      { prompt: 1 },
+      { timeout: Number.NaN },
+      { timeout: "30" },
+      { priority: Number.POSITIVE_INFINITY },
+      { priority: "high" },
+      { createdBy: 1 },
+      { unexpected: true },
+    ]) {
+      expect(plane.cloneSession("clone", options as never)).toMatchObject({
+        ok: false,
+        code: "VALIDATION_ERROR",
+      });
+    }
+
+    plane.state.commands.clear();
+    expect(plane.cloneSession("clone")).toMatchObject({ ok: false, code: "VALIDATION_ERROR" });
+    expect(plane.getSession("clone")?.status).toBe("queued");
+  });
+
+  it("uses the same clone contract without durable storage", async () => {
+    let id = 0;
+    const plane = new ControlPlane({ idFactory: () => `session-${++id}` });
+    seedBaseCommand(plane);
+    plane.createSession(baseSessionBody());
+
+    await expect(
+      plane.cloneSessionDurable("session-1", { prompt: "again" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      created: true,
+      session: { id: "session-2", prompt: "again" },
+    });
+  });
 });
