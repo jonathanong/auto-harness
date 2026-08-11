@@ -3,10 +3,7 @@ import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import {
-  getRepositoryDurable,
-  listRepositoriesDurable,
-} from "./control-plane-durable-read-catalog.ts";
+import { listRepositoriesDurable } from "./control-plane-durable-read-catalog.ts";
 
 function findRepositoryByName(
   state: ControlPlaneState,

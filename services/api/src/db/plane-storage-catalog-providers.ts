@@ -73,7 +73,6 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
       new ScanCommand({
         ConsistentRead: true,
         TableName: ctx.tables.providers,
-        ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -129,7 +128,6 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
       new ScanCommand({
         ConsistentRead: true,
         TableName: ctx.tables.commands,
-        ConsistentRead: true,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
