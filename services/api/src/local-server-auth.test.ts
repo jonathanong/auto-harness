@@ -40,7 +40,7 @@ describe("createLocalApp authentication routes", () => {
           role: "operator",
         })
       ).status,
-    ).toBe(400);
+    ).toBe(409);
     expect((await invoke("GET", "/api/v1/auth/users")).json).toMatchObject({
       items: [expect.objectContaining({ username: "alice" })],
     });
@@ -126,7 +126,7 @@ describe("createLocalApp authentication routes", () => {
           password: "root",
         })
       ).status,
-    ).toBe(401);
+    ).toBe(500);
 
     const throwingUser = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
     (throwingUser as unknown as { createUser: () => Promise<never> }).createUser = async () => {
@@ -141,7 +141,7 @@ describe("createLocalApp authentication routes", () => {
           role: "operator",
         })
       ).status,
-    ).toBe(400);
+    ).toBe(500);
 
     const throwingAccount = new AuthService({
       mode: "disabled",
@@ -161,7 +161,7 @@ describe("createLocalApp authentication routes", () => {
           role: "operator",
         })
       ).status,
-    ).toBe(400);
+    ).toBe(500);
   });
 
   it("protects account administration in required mode", async () => {

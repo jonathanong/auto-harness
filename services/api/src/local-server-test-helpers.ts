@@ -61,6 +61,7 @@ export async function invokeBadJson(
   const req = {
     method,
     url: path,
+    headers: {},
     on(event: string, cb: (...args: unknown[]) => void) {
       if (event === "data") {
         cb(Buffer.from("{bad"));
