@@ -129,4 +129,29 @@ describe("catalog deletion markers", () => {
       vi.useRealTimers();
     }
   });
+
+  it("contains rejected renewal requests without hiding the completed delete", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createControlPlaneState();
+      state.storage = {
+        acquireDeletionMarker: async () => true,
+        renewDeletionMarker: async () => Promise.reject(new Error("renewal failed")),
+        releaseDeletionMarker: async () => {},
+      } as never;
+      let finish: (() => void) | undefined;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const operation = withDeletionMarkers(state, ["command:c"], async () => {
+        await done;
+        return { ok: true };
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      finish!();
+      await expect(operation).resolves.toMatchObject({ ok: false, conflict: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

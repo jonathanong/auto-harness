@@ -17,6 +17,16 @@ describe("schedule UTC cron validation", () => {
         concurrencyId: "catalog-delete:repository:repo",
       }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo",
+      name: "valid-lock",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 1,
+    });
+    expect(
+      plane.updateSchedule(schedule.id, { concurrencyId: "catalog-delete:command:cmd-base" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
   });
 
   it("rejects invalid server clocks, supplied cursors, and cron updates without changing a schedule", () => {
