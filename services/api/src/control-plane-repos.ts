@@ -85,6 +85,14 @@ export async function createRepositoryDurable(
   if (!state.storage) return createRepository(state, input);
   const result = prepareCreateRepository(state, input);
   if (!result.ok) return result;
+  // Keep durable callers compatible with storage adapters from before
+  // conditional repository creation was introduced. Production Dynamo storage
+  // always takes the conditional path below.
+  if (!state.storage.createRepository) {
+    await state.storage.putRepository({ ...result.repository });
+    state.repositories.set(result.repository.id, result.repository);
+    return { ok: true, repository: { ...result.repository } };
+  }
   const created = await state.storage.createRepository({ ...result.repository });
   if (!created) {
     const authoritative = await state.storage.getRepository(result.repository.id);

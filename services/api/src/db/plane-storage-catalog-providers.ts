@@ -15,20 +15,33 @@ import {
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
 
 export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Promise<void> {
+  // Older callers constructed provider records before timestamps became
+  // mandatory. The document client drops undefined expression values, so
+  // include timestamp clauses only when the caller supplied them.
+  const timestampUpdates: string[] = [];
+  const values: Record<string, unknown> = {
+    ":name": rec.name,
+    ":zero": 0,
+  };
+  if (rec.defaultCommandId !== undefined) {
+    timestampUpdates.push("defaultCommandId = :defaultCommandId");
+    values[":defaultCommandId"] = rec.defaultCommandId;
+  }
+  if (rec.createdAt !== undefined) {
+    timestampUpdates.push("createdAt = if_not_exists(createdAt, :createdAt)");
+    values[":createdAt"] = rec.createdAt;
+  }
+  if (rec.updatedAt !== undefined) {
+    timestampUpdates.push("updatedAt = :updatedAt");
+    values[":updatedAt"] = rec.updatedAt;
+  }
   await ctx.doc.send(
     new UpdateCommand({
       TableName: ctx.tables.providers,
       Key: { id: rec.id },
-      UpdateExpression:
-        "SET #name = :name, defaultCommandId = :defaultCommandId, createdAt = if_not_exists(createdAt, :createdAt), updatedAt = :updatedAt, accountCount = if_not_exists(accountCount, :zero)",
+      UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
       ExpressionAttributeNames: { "#name": "name" },
-      ExpressionAttributeValues: {
-        ":name": rec.name,
-        ":defaultCommandId": rec.defaultCommandId,
-        ":createdAt": rec.createdAt,
-        ":updatedAt": rec.updatedAt,
-        ":zero": 0,
-      },
+      ExpressionAttributeValues: values,
     }),
   );
 }
