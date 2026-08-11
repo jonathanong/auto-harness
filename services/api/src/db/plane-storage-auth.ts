@@ -23,7 +23,9 @@ export async function getAuthAccount(
   ctx: PlaneStorageCtx,
   id: string,
 ): Promise<AuthAccountRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.users, Key: { id } }));
+  const res = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.users, Key: { id }, ConsistentRead: true }),
+  );
   return (res.Item as AuthAccountRecord | undefined) ?? null;
 }
 

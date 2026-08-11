@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { AuthService, authModeFromEnv, type Principal } from "./auth.ts";
 import { createServiceAccount as createAccount } from "./auth-accounts.ts";
 import { authorize, mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import type { AuthAccountRecord } from "./db/plane-storage.ts";
 
 function admins(entries: Array<{ username: string; password: string }>): string {
   return Buffer.from(JSON.stringify(entries)).toString("base64url");
@@ -300,6 +301,52 @@ describe("control-plane authentication security", () => {
       Boolean(await auth.authenticatePassword("alice", "after-one")) !==
         Boolean(await auth.authenticatePassword("alice", "after-two")),
     ).toBe(true);
+  });
+
+  it("reads durable password hashes on every worker after rotation or deletion", async () => {
+    let record: AuthAccountRecord | null = null;
+    const storage = {
+      listAuthAccounts: async () => (record ? [{ ...record }] : []),
+      getAuthAccount: async (id: string) => (record?.id === id ? { ...record } : null),
+      getAuthAccountByUsername: async (username: string) =>
+        record?.username === username ? { ...record } : null,
+      putAuthAccount: async (value: AuthAccountRecord) => {
+        record = { ...value };
+      },
+      updateAuthAccountPassword: async (
+        id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        updatedAt: string,
+      ) => {
+        if (record?.id !== id || record.passwordHash !== expectedPasswordHash) return false;
+        record = { ...record, passwordHash, updatedAt };
+        return true;
+      },
+      deleteAuthAccount: async () => {
+        record = null;
+      },
+    };
+    const options = {
+      mode: "required" as const,
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    };
+    const first = new AuthService(options);
+    await first.hydrate(storage);
+    const user = await first.createUser(
+      { username: "alice", password: "before", role: "operator" },
+      storage,
+    );
+    const second = new AuthService(options);
+    await second.hydrate(storage);
+
+    expect(await second.authenticatePassword("alice", "before")).toMatchObject(user);
+    expect(await first.changePassword(user, "before", "after")).toBe("changed");
+    expect(await second.authenticatePassword("alice", "before")).toBeNull();
+    expect(await second.authenticatePassword("alice", "after")).toMatchObject(user);
+    record = null;
+    expect(await second.authenticatePassword("alice", "after")).toBeNull();
   });
 
   it("checks roles, repository scopes, and host bindings centrally", () => {

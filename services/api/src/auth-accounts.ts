@@ -9,6 +9,7 @@ export type User = Principal & { passwordHash: string };
 export type ServiceAccount = Principal & { keyHash: string; name: string };
 export type AuthStorage = {
   listAuthAccounts(): Promise<AuthAccountRecord[]>;
+  getAuthAccount?(id: string): Promise<AuthAccountRecord | null>;
   getAuthAccountByUsername?(username: string): Promise<AuthAccountRecord | null>;
   putAuthAccount(record: AuthAccountRecord): Promise<void>;
   /** Atomically replace a user password hash only when its current hash still matches. */

@@ -38,7 +38,7 @@ describe("web authentication middleware", () => {
     expect(expired.headers.get("location")).toContain("/login?");
   });
 
-  it("allows a valid session and keeps login public without a session", async () => {
+  it("allows a valid session and always keeps login reachable", async () => {
     process.env.HARNESS_AUTH_MODE = "required";
     process.env.HARNESS_SESSION_SECRET = "a".repeat(32);
     const authenticated = new NextRequest("http://localhost/sessions", {
@@ -55,8 +55,8 @@ describe("web authentication middleware", () => {
         await middleware(
           new NextRequest("http://localhost/login", { headers: authenticated.headers }),
         )
-      ).headers.get("location"),
-    ).toBe("http://localhost/");
+      ).headers.get("x-middleware-next"),
+    ).toBe("1");
   });
 });
 

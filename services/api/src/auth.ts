@@ -214,13 +214,25 @@ export class AuthService {
   }
 
   async authenticatePassword(username: string, password: string): Promise<Principal | null> {
-    let user =
-      this.admins.find((candidate) => candidate.username === username) ?? this.users.get(username);
+    let user = this.admins.find((candidate) => candidate.username === username);
     if (!user) {
-      const record = await this.storage?.getAuthAccountByUsername?.(username);
-      if (record?.kind === "user" && record.passwordHash) {
-        user = toUser(record);
-        this.users.set(user.username, user);
+      const cached = this.users.get(username);
+      const readAccount =
+        cached && this.storage?.getAuthAccount
+          ? () => this.storage!.getAuthAccount!(cached.id)
+          : this.storage?.getAuthAccountByUsername
+            ? () => this.storage!.getAuthAccountByUsername!(username)
+            : undefined;
+      const record = readAccount ? await readAccount() : undefined;
+      if (record !== undefined) {
+        if (record?.kind === "user" && record.username === username && record.passwordHash) {
+          user = toUser(record);
+          this.users.set(username, user);
+        } else {
+          this.users.delete(username);
+        }
+      } else {
+        user = cached;
       }
     }
     const valid = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
