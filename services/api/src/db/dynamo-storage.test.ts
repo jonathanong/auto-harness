@@ -120,6 +120,14 @@ describe("DynamoDB Local storage", () => {
       seq: 2,
     });
     expect((await s.listLogs("sess-1")).map((l) => l.seq)).toEqual([1, 2]);
+    expect(
+      (
+        await s.queryLogs("sess-1", {
+          after: "2026-01-01T00:00:00.000Z#0000000001",
+          limit: 1,
+        })
+      ).map((l) => l.seq),
+    ).toEqual([2]);
 
     await s.putSchedule({
       id: "sch-1",

@@ -50,15 +50,11 @@ export type ControlPlaneState = {
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
-  /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
-   * encoded with NUL, which repository IDs cannot contain on supported APIs. */
+  /** In-memory HostLocks.mainCheckoutLeases counterpart; key contains a NUL-separated pair. */
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
   /** Agents in drain: no new assigns; worktrees stay offline after release (Phase 5). */
   drainingHosts: Set<string>;
-  /**
-   * Agents without a live connection that still need heartbeat-style reclaim
-   * (e.g. after disconnect while busy). lastHeartbeatAt is when they went offline.
-   */
+  /** Offline agents still needing heartbeat-style reclaim; timestamp is when they went offline. */
   disconnectedHosts: Map<string, { lastHeartbeatAt: string }>;
   publicBaseUrl: string;
   now: () => string;
@@ -78,6 +74,7 @@ export type ControlPlaneState = {
   archivePrefix: string;
   webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
+  onLogCommitted: ((record: LogRecord) => void) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -127,6 +124,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,
+    onLogCommitted: options.onLogCommitted,
   };
 }
 export function queueWrite(state: ControlPlaneState, p: Promise<void>): void {
@@ -203,9 +201,7 @@ export async function hydrateFromStorage(state: ControlPlaneState): Promise<void
   for (const pa of await state.storage.listProviderAccounts()) {
     state.providerAccounts.set(pa.id, pa);
   }
-  for (const c of await state.storage.listCommands()) {
-    state.commands.set(c.id, c);
-  }
+  for (const c of await state.storage.listCommands()) state.commands.set(c.id, c);
   for (const a of await state.storage.listArchives()) {
     state.archives.set(a.key, a);
   }

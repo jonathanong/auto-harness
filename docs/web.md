@@ -183,14 +183,16 @@ The initial prompt is displayed in a highlighted, read-only block below the head
 
 Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
 
-**Implementation:** Uses [xterm.js](https://xtermjs.org/) for full terminal emulation — ANSI colors, cursor movement, progress bars, and interactive output from AI CLIs render correctly.
+**Implementation:** The page renders the REST bootstrap and follows it with a
+read-only browser log WebSocket. The status line visibly reports live,
+reconnecting, paused, or unavailable state.
 
 **Behavior:**
 
 1. **On page load** — fetches historical logs via `GET /sessions/:id/logs` and renders them in the terminal
-2. **For running sessions** — opens a WebSocket connection and subscribes to `session:subscribe`. The server replays the last 100 buffered lines, then streams new output in real-time.
-3. **For completed sessions** — displays the full log history (read-only, no WebSocket needed)
-4. **Stream tabs** — toggle between `stdout`, `stderr`, `system`, or `all` (interleaved, default)
+2. **For live tailing** — opens `/ws/viewer` and subscribes with the greatest rendered `timestampSeq`; the server replays only newer committed records, then streams the tail.
+3. **On a network interruption** — reconnects exponentially (up to 30 seconds) from the latest cursor. The rendered tail is bounded to 1,000 deduplicated entries.
+4. **For completed sessions** — displays the full available history read-only.
 
 **Terminal controls:**
 

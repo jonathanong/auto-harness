@@ -542,7 +542,9 @@ Cancel a queued or running session. **Operator (own sessions) or admin.**
 
 #### `GET /sessions/:id/logs`
 
-Get **historical** session logs. For live streaming, use the [WebSocket API](websocket.md#live-session-viewing).
+Get **historical** session logs. Each record includes the durable `timestampSeq`
+cursor used to bridge this bootstrap to the browser's live
+[viewer WebSocket](websocket.md#live-session-viewing) without a gap.
 
 **Query parameters:**
 
@@ -558,6 +560,8 @@ Get **historical** session logs. For live streaming, use the [WebSocket API](web
 {
   "items": [
     {
+      "timestampSeq": "2026-08-01T12:00:06Z#0000000001",
+      "seq": 1,
       "timestamp": "2026-08-01T12:00:06Z",
       "stream": "stdout",
       "content": "Analyzing codebase..."

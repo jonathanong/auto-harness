@@ -2,6 +2,7 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type {
   Command,
   HostCapability,
+  LogStream,
   Provider,
   ProviderAccount,
   TargetRef,
@@ -74,6 +75,9 @@ export type LogRecord = {
   timestamp: string;
   seq: number;
 };
+
+/** Bounded cursor query shared by REST history and live-viewer tailing. */
+export type LogQuery = { after?: string; since?: string; stream?: LogStream; limit: number };
 
 export type ArchiveObject = {
   key: string;

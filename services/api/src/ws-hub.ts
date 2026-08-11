@@ -175,7 +175,6 @@ export function createPlaneWsBridge(): {
 
       const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
         if (new URL(req.url ?? "/", "http://localhost").pathname !== "/ws") {
-          socket.destroy();
           return;
         }
         const principal = authenticateSocket(req, auth);

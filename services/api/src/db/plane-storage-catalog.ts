@@ -15,6 +15,7 @@ import {
   isConditionalTransactionFailureAt,
   type HostInventoryRecord,
   type ArchiveObject,
+  type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
@@ -82,6 +83,30 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
       KeyConditionExpression: "sessionId = :s",
       ExpressionAttributeValues: { ":s": sessionId },
       ScanIndexForward: true,
+    }),
+  );
+  return (res.Items ?? []) as LogRecord[];
+}
+
+/** Cursor-bounded log query; `after` is the exact timestampSeq live cursor. */
+export async function queryLogs(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  query: LogQuery,
+): Promise<LogRecord[]> {
+  const after = query.after ?? (query.since ? `${query.since}\uffff` : undefined);
+  const res = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.sessionLogs,
+      KeyConditionExpression: after ? "sessionId = :s AND timestampSeq > :after" : "sessionId = :s",
+      ExpressionAttributeValues: {
+        ":s": sessionId,
+        ...(after ? { ":after": after } : {}),
+        ...(query.stream ? { ":stream": query.stream } : {}),
+      },
+      ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
+      ScanIndexForward: true,
+      Limit: query.limit,
     }),
   );
   return (res.Items ?? []) as LogRecord[];

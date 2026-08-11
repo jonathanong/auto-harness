@@ -165,12 +165,15 @@ export async function handleSessionRoutes(ctx: RouteCtx): Promise<boolean> {
   const logsMatch = /^\/api\/v1\/sessions\/([^/]+)\/logs$/.exec(url.pathname);
   if (method === "GET" && logsMatch) {
     const id = logsMatch[1]!;
-    const session = plane.getSession(id);
+    const session = plane.state.storage
+      ? await plane.state.storage.getSession(id)
+      : plane.getSession(id);
     if (session && !canAccess(ctx, session.repositoryId)) {
       sendForbidden(res);
       return true;
     }
-    send(res, 200, { items: plane.getLogs(id) });
+    const items = plane.state.storage ? await plane.state.storage.listLogs(id) : plane.getLogs(id);
+    send(res, 200, { items });
     return true;
   }
 

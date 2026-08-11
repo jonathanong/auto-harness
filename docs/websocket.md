@@ -112,40 +112,51 @@ assignment.
 
 ---
 
-## Client (Web UI) ↔ server
+## Browser log viewer ↔ server
+
+The browser viewer is a **separate read-only protocol** at
+`wss://<api-domain>/ws/viewer`. It is not the `/ws` host mutation channel.
+The upgrade validates the `auto_harness_session` JWT cookie (or another
+non-host-bound authenticated principal) before accepting the socket. A
+host-bound service-account credential is never a viewer credential.
 
 ### Client → server
 
-| Type                  | Payload                                       |
-| --------------------- | --------------------------------------------- |
-| `client:register`     | `{ userId }` (or principal from connect auth) |
-| `session:subscribe`   | `{ sessionId }`                               |
-| `session:unsubscribe` | `{ sessionId }`                               |
+| Type                 | Payload                               |
+| -------------------- | ------------------------------------- |
+| `viewer:subscribe`   | `{ sessionId, after?: timestampSeq }` |
+| `viewer:unsubscribe` | `{ sessionId }`                       |
 
 ### Server → client
 
-| Type             | Payload                             |
-| ---------------- | ----------------------------------- |
-| `session:log`    | Same as agent log (forwarded)       |
-| `session:status` | `{ sessionId, status, exitCode? }`  |
-| `host:status`    | `{ hostId, status }` online/offline |
+| Type                | Payload                                            |
+| ------------------- | -------------------------------------------------- | ----------------------- |
+| `viewer:log`        | `{ record }`, where record includes `timestampSeq` |
+| `viewer:subscribed` | `{ sessionId, cursor }`                            |
+| `viewer:error`      | `{ code: "NOT_FOUND"                               | "SUBSCRIPTION_LIMIT" }` |
+
+No other incoming frame is accepted; a browser connection cannot submit
+`host:register`, `session:log`, acknowledgements, or status mutations. Each
+connection has at most eight session subscriptions. The server authorizes the
+session's repository before replaying or tailing it and returns `NOT_FOUND`
+for both missing and out-of-scope sessions.
 
 ---
 
 ## Live session viewing
 
-1. Connect + `client:register`
-2. `session:subscribe` for a session id
-3. Server **replays last ~100** buffered lines, then tails new `session:log`
-4. `session:status` on terminal transitions
-5. `session:unsubscribe` on leave (or auto on disconnect)
+1. REST bootstrap `GET /sessions/:id/logs`, retaining the greatest `timestampSeq`.
+2. Connect to `/ws/viewer` and send `viewer:subscribe` with that cursor.
+3. Server replays committed records strictly after the cursor, then tails committed records.
+4. On disconnect, reconnect with exponential backoff and the latest rendered cursor.
+5. `viewer:unsubscribe` on leave (or auto on disconnect).
 
 Notes:
 
-- Many clients may subscribe to one session
-- Full history: REST [`GET /sessions/:id/logs`](api.md); live tail: this protocol
-- Streams may interleave; order is preserved per stream
-- Agent rate-limits/batches logs; server persists to DynamoDB and fans out
+- Many clients may subscribe to one session; client memory is capped and keeps the newest cursor records.
+- The cursor is `timestampSeq` (`<timestamp>#<zero-padded-seq>`), so replay and tail are globally ordered and deduplicable.
+- Logs are sent only after a durable fenced write succeeds. A bounded durable cursor poll fills records committed by another API worker.
+- If a socket has more than 512 KiB buffered, the server closes it with `1013`; reconnect replay is the backpressure recovery path.
 
 ---
 

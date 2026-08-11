@@ -105,6 +105,7 @@ test.describe("control plane sessions", () => {
         await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
         await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+        await expect(page.getByTestId("session-logs-live-state")).toHaveText("Live");
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
         );

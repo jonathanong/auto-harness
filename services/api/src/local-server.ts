@@ -17,6 +17,7 @@ import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
+import { attachViewerWsHub, type ViewerWsHub } from "./viewer-ws-hub.ts";
 
 export function createLocalApp(options: LocalServerOptions = {}): {
   store: MemorySessionStore;
@@ -113,6 +114,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   store: MemorySessionStore;
   plane: ControlPlane;
   ws?: WsHub;
+  viewerWs?: ViewerWsHub;
 }> {
   const port = options.port ?? 7420;
   const host = options.host ?? "127.0.0.1";
@@ -166,6 +168,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   });
 
   const wsHub = bridge ? bridge.attach(server, resolvedPlane, auth) : undefined;
+  const viewerWsHub = bridge ? attachViewerWsHub(server, resolvedPlane, auth) : undefined;
 
   await new Promise<void>((resolve, reject) => {
     server.listen(port, host, () => {
@@ -179,9 +182,11 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     store: resolvedStore,
     plane: resolvedPlane,
     ...(wsHub !== undefined ? { ws: wsHub } : {}),
+    ...(viewerWsHub !== undefined ? { viewerWs: viewerWsHub } : {}),
     close: () =>
       new Promise((resolve, reject) => {
         wsHub?.close();
+        viewerWsHub?.close();
         server.close((err) => {
           if (err) {
             reject(err);

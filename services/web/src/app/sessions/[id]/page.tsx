@@ -1,11 +1,18 @@
 import Link from "next/link";
-import { SessionActions, SessionDetail, SessionLogs, type SessionSummary } from "@auto-harness/ui";
+import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
 
+import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
-type LogEntry = { seq: number; stream: string; content: string; timestamp: string };
+type LogEntry = {
+  timestampSeq: string;
+  seq: number;
+  stream: string;
+  content: string;
+  timestamp: string;
+};
 
 export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -52,7 +59,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       >
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Logs</h3>
-          <SessionLogs items={logs} />
+          <SessionLiveLogs sessionId={session.id} initialItems={logs} />
         </div>
       </SessionDetail>
     </div>

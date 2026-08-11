@@ -75,6 +75,8 @@ export type ControlPlaneOptions = {
   /** Opt-in outbound webhook URL (Phase 5). */
   webhookUrl?: string | null;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
+  /** Called after a log record is committed and placed in the process cache. */
+  onLogCommitted?: (record: LogRecord) => void;
 };
 
 export type PublicSession = SessionRecord & { url: string };

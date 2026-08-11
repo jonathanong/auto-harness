@@ -8,6 +8,8 @@ const apiUpstream = (
   .replace(/\/$/, "")
   .replace(/\/ws$/, "");
 
+const viewerWsUpstream = apiUpstream.replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
@@ -21,6 +23,9 @@ const nextConfig: NextConfig = {
   // for that build to land in, so a normal dev build and an e2e build can coexist on disk
   // without one clobbering the other. See docs/e2e.md.
   ...(process.env.HARNESS_E2E ? { distDir: ".next-e2e" } : {}),
+  env: {
+    NEXT_PUBLIC_HARNESS_VIEWER_WS_URL: `${viewerWsUpstream}/ws/viewer`,
+  },
   // Browser calls same origin (/api/v1/…) → Next proxies to control plane (no CORS).
   async rewrites() {
     return [
