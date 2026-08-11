@@ -28,6 +28,26 @@ export function createRepository(
     terminalHookScript?: string;
   },
 ): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
+  const result = prepareCreateRepository(state, input);
+  if (!result.ok) return result;
+  state.repositories.set(result.repository.id, result.repository);
+  if (state.storage) {
+    queueWrite(state, state.storage.putRepository({ ...result.repository }));
+  }
+  return { ok: true, repository: { ...result.repository } };
+}
+
+function prepareCreateRepository(
+  state: ControlPlaneState,
+  input: {
+    id?: string;
+    name: string;
+    url: string;
+    defaultBranch?: string;
+    setupScript?: string;
+    terminalHookScript?: string;
+  },
+): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
   if (!input.name || !input.url) {
     return { ok: false, error: "name and url are required" };
   }
@@ -54,11 +74,20 @@ export function createRepository(
       ? { terminalHookScript: input.terminalHookScript }
       : {}),
   };
-  state.repositories.set(id, rec);
-  if (state.storage) {
-    queueWrite(state, state.storage.putRepository({ ...rec }));
-  }
-  return { ok: true, repository: { ...rec } };
+  return { ok: true, repository: rec };
+}
+
+/** Persist a repository before exposing it through the process cache. */
+export async function createRepositoryDurable(
+  state: ControlPlaneState,
+  input: Parameters<typeof createRepository>[1],
+): Promise<ReturnType<typeof createRepository>> {
+  if (!state.storage) return createRepository(state, input);
+  const result = prepareCreateRepository(state, input);
+  if (!result.ok) return result;
+  await state.storage.putRepository({ ...result.repository });
+  state.repositories.set(result.repository.id, result.repository);
+  return { ok: true, repository: { ...result.repository } };
 }
 
 export function getRepository(state: ControlPlaneState, id: string): RepositoryRecord | null {
@@ -73,6 +102,26 @@ export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
 }
 
 export function updateRepository(
+  state: ControlPlaneState,
+  id: string,
+  patch: Partial<{
+    name: string;
+    url: string;
+    defaultBranch: string;
+    setupScript: string;
+    terminalHookScript: string;
+  }>,
+): { ok: true; repository: RepositoryRecord } | { ok: false; error: string } {
+  const result = prepareUpdateRepository(state, id, patch);
+  if (!result.ok) return result;
+  state.repositories.set(id, result.repository);
+  if (state.storage) {
+    queueWrite(state, state.storage.putRepository({ ...result.repository }));
+  }
+  return { ok: true, repository: { ...result.repository } };
+}
+
+function prepareUpdateRepository(
   state: ControlPlaneState,
   id: string,
   patch: Partial<{
@@ -106,11 +155,21 @@ export function updateRepository(
       ? { terminalHookScript: patch.terminalHookScript }
       : {}),
   };
-  state.repositories.set(id, next);
-  if (state.storage) {
-    queueWrite(state, state.storage.putRepository({ ...next }));
-  }
-  return { ok: true, repository: { ...next } };
+  return { ok: true, repository: next };
+}
+
+/** Persist an update before replacing the cached repository. */
+export async function updateRepositoryDurable(
+  state: ControlPlaneState,
+  id: string,
+  patch: Parameters<typeof updateRepository>[2],
+): Promise<ReturnType<typeof updateRepository>> {
+  if (!state.storage) return updateRepository(state, id, patch);
+  const result = prepareUpdateRepository(state, id, patch);
+  if (!result.ok) return result;
+  await state.storage.putRepository({ ...result.repository });
+  state.repositories.set(id, result.repository);
+  return { ok: true, repository: { ...result.repository } };
 }
 
 export function deleteRepository(
@@ -124,5 +183,17 @@ export function deleteRepository(
   if (state.storage) {
     queueWrite(state, state.storage.deleteRepository(id));
   }
+  return { ok: true };
+}
+
+/** Delete durable state before dropping the cached repository. */
+export async function deleteRepositoryDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<ReturnType<typeof deleteRepository>> {
+  if (!state.storage) return deleteRepository(state, id);
+  if (!state.repositories.has(id)) return { ok: false, error: "repository not found" };
+  await state.storage.deleteRepository(id);
+  state.repositories.delete(id);
   return { ok: true };
 }

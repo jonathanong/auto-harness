@@ -40,6 +40,17 @@ export function putSchedule(
   state: ControlPlaneState,
   input: ScheduleInput,
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+  const result = preparePutSchedule(state, input);
+  if (!result.ok) return result;
+  state.schedules.set(result.schedule.id, result.schedule);
+  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...result.schedule }));
+  return { ok: true, schedule: { ...result.schedule } };
+}
+
+function preparePutSchedule(
+  state: ControlPlaneState,
+  input: ScheduleInput,
+): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const now = state.now();
   if (!isValidUtcTimestamp(now)) {
     return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };
@@ -76,9 +87,20 @@ export function putSchedule(
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId: input.concurrencyId?.trim() || `schedule-${id}`,
   };
-  state.schedules.set(rec.id, rec);
-  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...rec }));
-  return { ok: true, schedule: { ...rec } };
+  return { ok: true, schedule: rec };
+}
+
+/** Persist a schedule before making it visible to this control-plane process. */
+export async function putScheduleDurable(
+  state: ControlPlaneState,
+  input: ScheduleInput,
+): Promise<ReturnType<typeof putSchedule>> {
+  if (!state.storage) return putSchedule(state, input);
+  const result = preparePutSchedule(state, input);
+  if (!result.ok) return result;
+  await state.storage.putSchedule({ ...result.schedule });
+  state.schedules.set(result.schedule.id, result.schedule);
+  return { ok: true, schedule: { ...result.schedule } };
 }
 
 export function getSchedule(state: ControlPlaneState, id: string): ScheduleRecord | null {
@@ -99,6 +121,18 @@ function withActiveSession(state: ControlPlaneState, schedule: ScheduleRecord): 
 }
 
 export function updateSchedule(
+  state: ControlPlaneState,
+  id: string,
+  patch: Partial<Omit<ScheduleInput, "id">>,
+): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+  const result = prepareUpdateSchedule(state, id, patch);
+  if (!result.ok) return result;
+  state.schedules.set(id, result.schedule);
+  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...result.schedule }));
+  return { ok: true, schedule: { ...result.schedule } };
+}
+
+export function prepareUpdateSchedule(
   state: ControlPlaneState,
   id: string,
   patch: Partial<Omit<ScheduleInput, "id">>,
@@ -139,9 +173,7 @@ export function updateSchedule(
       ? { concurrencyId: patch.concurrencyId.trim() || `schedule-${id}` }
       : {}),
   };
-  state.schedules.set(id, next);
-  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...next }));
-  return { ok: true, schedule: { ...next } };
+  return { ok: true, schedule: next };
 }
 
 export function deleteSchedule(
@@ -151,5 +183,17 @@ export function deleteSchedule(
   if (!state.schedules.has(id)) return { ok: false, error: "schedule not found" };
   state.schedules.delete(id);
   if (state.storage) queueWrite(state, state.storage.deleteSchedule(id));
+  return { ok: true };
+}
+
+/** Delete durable state before removing the schedule from the cache. */
+export async function deleteScheduleDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<ReturnType<typeof deleteSchedule>> {
+  if (!state.storage) return deleteSchedule(state, id);
+  if (!state.schedules.has(id)) return { ok: false, error: "schedule not found" };
+  await state.storage.deleteSchedule(id);
+  state.schedules.delete(id);
   return { ok: true };
 }

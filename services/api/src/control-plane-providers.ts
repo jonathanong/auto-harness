@@ -21,6 +21,19 @@ export function createProvider(
   state: ControlPlaneState,
   input: { id?: string; name: string; defaultCommandId?: string | null },
 ): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
+  const result = prepareCreateProvider(state, input);
+  if (!result.ok) return result;
+  state.providers.set(result.provider.id, result.provider);
+  if (state.storage) {
+    queueWrite(state, state.storage.putProvider({ ...result.provider }));
+  }
+  return { ok: true, provider: { ...result.provider } };
+}
+
+function prepareCreateProvider(
+  state: ControlPlaneState,
+  input: { id?: string; name: string; defaultCommandId?: string | null },
+): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
   if (!input.name) {
     return { ok: false, error: "name is required" };
   }
@@ -42,11 +55,20 @@ export function createProvider(
     createdAt: at,
     updatedAt: at,
   };
-  state.providers.set(id, rec);
-  if (state.storage) {
-    queueWrite(state, state.storage.putProvider({ ...rec }));
-  }
-  return { ok: true, provider: { ...rec } };
+  return { ok: true, provider: rec };
+}
+
+/** Persist a provider before exposing it through the process cache. */
+export async function createProviderDurable(
+  state: ControlPlaneState,
+  input: Parameters<typeof createProvider>[1],
+): Promise<ReturnType<typeof createProvider>> {
+  if (!state.storage) return createProvider(state, input);
+  const result = prepareCreateProvider(state, input);
+  if (!result.ok) return result;
+  await state.storage.putProvider({ ...result.provider });
+  state.providers.set(result.provider.id, result.provider);
+  return { ok: true, provider: { ...result.provider } };
 }
 
 export function getProvider(state: ControlPlaneState, id: string): ProviderRecord | null {
@@ -61,6 +83,20 @@ export function listProviders(state: ControlPlaneState): ProviderRecord[] {
 }
 
 export function updateProvider(
+  state: ControlPlaneState,
+  id: string,
+  patch: Partial<{ name: string; defaultCommandId: string | null }>,
+): { ok: true; provider: ProviderRecord } | { ok: false; error: string } {
+  const result = prepareUpdateProvider(state, id, patch);
+  if (!result.ok) return result;
+  state.providers.set(id, result.provider);
+  if (state.storage) {
+    queueWrite(state, state.storage.putProvider({ ...result.provider }));
+  }
+  return { ok: true, provider: { ...result.provider } };
+}
+
+function prepareUpdateProvider(
   state: ControlPlaneState,
   id: string,
   patch: Partial<{ name: string; defaultCommandId: string | null }>,
@@ -83,11 +119,21 @@ export function updateProvider(
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.defaultCommandId !== undefined ? { defaultCommandId: patch.defaultCommandId } : {}),
   };
-  state.providers.set(id, next);
-  if (state.storage) {
-    queueWrite(state, state.storage.putProvider({ ...next }));
-  }
-  return { ok: true, provider: { ...next } };
+  return { ok: true, provider: next };
+}
+
+/** Persist a provider update before replacing the cache entry. */
+export async function updateProviderDurable(
+  state: ControlPlaneState,
+  id: string,
+  patch: Parameters<typeof updateProvider>[2],
+): Promise<ReturnType<typeof updateProvider>> {
+  if (!state.storage) return updateProvider(state, id, patch);
+  const result = prepareUpdateProvider(state, id, patch);
+  if (!result.ok) return result;
+  await state.storage.putProvider({ ...result.provider });
+  state.providers.set(id, result.provider);
+  return { ok: true, provider: { ...result.provider } };
 }
 
 export function deleteProvider(
@@ -110,6 +156,39 @@ export function deleteProvider(
   state.providers.delete(id);
   if (state.storage) {
     queueWrite(state, state.storage.deleteProvider(id));
+  }
+  return { ok: true };
+}
+
+/** Delete durable state before dropping the cached provider. */
+export async function deleteProviderDurable(
+  state: ControlPlaneState,
+  id: string,
+): Promise<ReturnType<typeof deleteProvider>> {
+  if (!state.storage) return deleteProvider(state, id);
+  const result = canDeleteProvider(state, id);
+  if (!result.ok) return result;
+  await state.storage.deleteProvider(id);
+  state.providers.delete(id);
+  return { ok: true };
+}
+
+function canDeleteProvider(
+  state: ControlPlaneState,
+  id: string,
+): { ok: true } | { ok: false; error: string } {
+  if (!state.providers.has(id)) {
+    return { ok: false, error: "provider not found" };
+  }
+  for (const a of state.providerAccounts.values()) {
+    if (a.providerId === id) {
+      return { ok: false, error: "provider has attached accounts — remove them first" };
+    }
+  }
+  for (const c of state.commands.values()) {
+    if (c.providerId === id) {
+      return { ok: false, error: "provider has commands — remove or reassign them first" };
+    }
   }
   return { ok: true };
 }

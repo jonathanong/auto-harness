@@ -95,3 +95,10 @@ export function send(res: ServerResponse, status: number, body: unknown): void {
   }
   res.end(payload);
 }
+
+/** Do not expose storage-provider details while returning the documented error envelope. */
+export function sendInternalError(res: ServerResponse): void {
+  send(res, 500, {
+    error: { code: "INTERNAL_ERROR", message: "unable to persist control-plane state" },
+  });
+}

@@ -167,6 +167,33 @@ describe("DynamoDB Local storage", () => {
         "t",
       ),
     ).toBe(false);
+    await expect(
+      s.updateScheduleManagement(
+        {
+          ...(await s.getSchedule("sch-1"))!,
+          name: "renamed job",
+          nextRunAt: "2026-01-01T00:30:00.000Z",
+          lastRunAt: "stale-last-run",
+        },
+        "2026-01-01T00:01:00.000Z",
+      ),
+    ).resolves.toMatchObject({
+      name: "renamed job",
+      nextRunAt: "2026-01-01T00:30:00.000Z",
+      lastRunAt: "2026-01-01T00:00:00.000Z",
+    });
+    await expect(
+      s.updateScheduleManagement(
+        { ...(await s.getSchedule("sch-1"))!, name: "stale rename" },
+        "2026-01-01T00:01:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    await expect(s.getSchedule("sch-1")).resolves.toMatchObject({
+      name: "renamed job",
+      nextRunAt: "2026-01-01T00:30:00.000Z",
+    });
+    await s.deleteWorktree("wt-1");
+    expect(await s.getWorktree("wt-1")).toBeNull();
 
     await s.putArchive({
       key: "session-logs/sess-1.json",

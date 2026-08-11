@@ -1,4 +1,4 @@
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 
 /**
@@ -57,8 +57,9 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "PUT") {
+    let body: unknown;
     try {
-      const body = await readJson(req);
+      body = await readJson(req);
       if (
         ctx.principal?.allowedRepositoryIds &&
         (!body ||
@@ -73,7 +74,14 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
         send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }
-      const result = plane.putHostInventory(hostId, body);
+    } catch {
+      send(res, 400, {
+        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
+      });
+      return true;
+    }
+    try {
+      const result = await plane.putHostInventoryDurable(hostId, body);
       if (!result.ok) {
         send(res, 400, {
           error: { code: "VALIDATION_ERROR", message: result.error },
@@ -89,23 +97,26 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       });
       return true;
     } catch {
-      send(res, 400, {
-        error: { code: "VALIDATION_ERROR", message: "invalid JSON body" },
-      });
+      sendInternalError(res);
       return true;
     }
   }
 
   if (method === "DELETE") {
-    const result = plane.deleteHostInventory(hostId);
-    if (!result.ok) {
-      send(res, 404, {
-        error: { code: "NOT_FOUND", message: result.error },
-      });
+    try {
+      const result = await plane.deleteHostInventoryDurable(hostId);
+      if (!result.ok) {
+        send(res, 404, {
+          error: { code: "NOT_FOUND", message: result.error },
+        });
+        return true;
+      }
+      send(res, 204, null);
+      return true;
+    } catch {
+      sendInternalError(res);
       return true;
     }
-    send(res, 204, null);
-    return true;
   }
 
   return false;

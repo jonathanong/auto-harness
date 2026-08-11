@@ -103,6 +103,69 @@ export async function putSchedule(ctx: PlaneStorageCtx, rec: ScheduleRecord): Pr
   );
 }
 
+/**
+ * Update operator-owned schedule fields and reset the cron cursor only while
+ * the cursor still matches the caller's snapshot. Scheduler claims advance
+ * nextRunAt conditionally, so this fence prevents a management write from
+ * restoring a cursor read before a concurrent claim succeeded.
+ */
+export async function updateScheduleManagement(
+  ctx: PlaneStorageCtx,
+  rec: ScheduleRecord,
+  expectedNextRunAt: string,
+): Promise<ScheduleRecord | null> {
+  try {
+    const set = [
+      "repositoryId = :repositoryId",
+      "#name = :name",
+      "target = :target",
+      "fallbacks = :fallbacks",
+      "targetLabels = :targetLabels",
+      "cron = :cron",
+      "enabled = :enabled",
+      "timeout = :timeout",
+      "queueTtlSeconds = :queueTtlSeconds",
+      "nextRunAt = :nextRunAt",
+      "createdAt = :createdAt",
+    ];
+    const remove: string[] = [];
+    if (rec.ref === undefined) remove.push("#ref");
+    else set.push("#ref = :ref");
+    if (rec.concurrencyId === undefined) remove.push("concurrencyId");
+    else set.push("concurrencyId = :concurrencyId");
+    const res = await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.schedules,
+        Key: { id: rec.id },
+        UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
+        ConditionExpression: "attribute_exists(id) AND nextRunAt = :expectedNextRunAt",
+        ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
+        ExpressionAttributeValues: {
+          ":repositoryId": rec.repositoryId,
+          ":name": rec.name,
+          ":target": rec.target,
+          ":fallbacks": rec.fallbacks,
+          ":targetLabels": rec.targetLabels,
+          ":cron": rec.cron,
+          ":enabled": rec.enabled,
+          ":timeout": rec.timeout,
+          ":queueTtlSeconds": rec.queueTtlSeconds,
+          ":nextRunAt": rec.nextRunAt,
+          ":expectedNextRunAt": expectedNextRunAt,
+          ":createdAt": rec.createdAt,
+          ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
+          ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return res.Attributes ? (res.Attributes as ScheduleRecord) : null;
+  } catch (err) {
+    if (isConditionalFailed(err)) return null;
+    throw err;
+  }
+}
+
 export async function getSchedule(
   ctx: PlaneStorageCtx,
   id: string,

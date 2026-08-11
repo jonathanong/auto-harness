@@ -1,8 +1,37 @@
-import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { tryClaimScheduleAndCreateSession } from "./plane-storage-catalog.ts";
-import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import {
+  tryClaimScheduleAndCreateSession,
+  updateScheduleManagement,
+} from "./plane-storage-catalog.ts";
+import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
+
+function schedule(ref?: string): ScheduleRecord {
+  return {
+    id: "schedule-1",
+    repositoryId: "repo-1",
+    name: "schedule",
+    target: { commandId: "command-1" },
+    fallbacks: [],
+    targetLabels: ["command"],
+    cron: "* * * * *",
+    enabled: true,
+    timeout: 30,
+    queueTtlSeconds: 60,
+    nextRunAt: "stale-next",
+    lastRunAt: "stale-last",
+    createdAt: "created",
+    ...(ref === undefined ? {} : { ref }),
+  };
+}
+
+function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
+  return {
+    doc: { send } as never,
+    tables: { schedules: "Schedules" } as never,
+  };
+}
 
 describe("durable schedule creation", () => {
   it("does not treat a failed schedule-cursor condition as a concurrency duplicate", async () => {
@@ -53,5 +82,51 @@ describe("durable schedule creation", () => {
       }),
     ).resolves.toEqual({ kind: "lost" });
     expect(calls).toBe(1);
+  });
+});
+
+describe("durable schedule management updates", () => {
+  it("updates operator fields without replacing a cron-advanced cursor", async () => {
+    const storage = scheduleCtx(async (command) => {
+      expect(command).toBeInstanceOf(UpdateCommand);
+      const input = (command as UpdateCommand).input;
+      expect(input.UpdateExpression).toContain("nextRunAt = :nextRunAt");
+      expect(input.UpdateExpression).not.toContain("lastRunAt");
+      expect(input.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
+      expect(input.UpdateExpression).toContain("#ref = :ref");
+      expect(input.UpdateExpression).toContain("concurrencyId = :concurrencyId");
+      return {
+        Attributes: { ...schedule("main"), nextRunAt: "fresh-next", lastRunAt: "fresh-last" },
+      };
+    });
+
+    await expect(
+      updateScheduleManagement(
+        storage,
+        { ...schedule("main"), concurrencyId: "schedule-1" },
+        "old-next",
+      ),
+    ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });
+  });
+
+  it("removes an omitted ref and reports a concurrently deleted schedule", async () => {
+    const storage = scheduleCtx(async (command) => {
+      expect((command as UpdateCommand).input.UpdateExpression).toContain(
+        "REMOVE #ref, concurrencyId",
+      );
+      throw { name: "ConditionalCheckFailedException" };
+    });
+
+    await expect(updateScheduleManagement(storage, schedule(), "old-next")).resolves.toBeNull();
+  });
+
+  it("propagates storage failures", async () => {
+    await expect(
+      updateScheduleManagement(
+        scheduleCtx(async () => Promise.reject(new Error("write failed"))),
+        schedule(),
+        "old-next",
+      ),
+    ).rejects.toThrow("write failed");
   });
 });
