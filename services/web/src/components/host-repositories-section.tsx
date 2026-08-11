@@ -57,9 +57,6 @@ export function HostRepositoriesSection({
           emptyMessage="No repositories attached to this host yet."
           renderRepoActions={(g) => {
             const repo = reposById[g.repositoryId];
-            if (!repo) {
-              return null;
-            }
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
                 <HostRepoSettingsForm hostId={hostId} inventory={inventory} repo={repo} />
@@ -68,7 +65,7 @@ export function HostRepositoriesSection({
                     hostId={hostId}
                     inventory={inventory}
                     repo={repo}
-                    repoName={g.repositoryName ?? repo.id}
+                    repoName={namesById[repo.id] ?? repo.id}
                   />
                   <RemoveRepoButton hostId={hostId} repositoryId={repo.id} />
                 </div>

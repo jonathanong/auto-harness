@@ -15,7 +15,7 @@ export default defineConfig({
         "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link,tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
         // Control-plane catalog and host settings forms are exercised in happy-dom with
         // real React and Next contexts. App routes and remaining components stay e2e-only.
-        "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form,schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select,add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
+        "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form,schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select,add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form,add-provider-account-form,remove-provider-account-button,remove-provider-account-from-host-button,host-repositories-section}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
