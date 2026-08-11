@@ -47,14 +47,14 @@ describe("ControlPlane providers — real DynamoDB Local write-through", () => {
     };
     const plane = new ControlPlane({ storage: failing, now: () => "t" });
 
-    plane.createProvider({ id: "failed-provider", name: "will not persist" });
-    plane.createProvider({ id: "later-provider", name: "does persist" });
+    plane.createProvider({ id: "failed-provider", name: "will-not-persist" });
+    plane.createProvider({ id: "later-provider", name: "does-persist" });
     await expect(plane.settleStorage()).rejects.toThrow("injected provider write failure");
 
     const restarted = new ControlPlane({ storage: ctx.storage, now: () => "t" });
     await restarted.hydrateFromStorage();
     expect(restarted.getProvider("failed-provider")).toBeNull();
-    expect(restarted.getProvider("later-provider")?.name).toBe("does persist");
+    expect(restarted.getProvider("later-provider")?.name).toBe("does-persist");
     await expect(plane.settleStorage()).resolves.toBeUndefined();
   });
 });

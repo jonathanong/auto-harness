@@ -180,5 +180,7 @@ export { hydrateFromStorage };
 export async function settleStorage(state: ControlPlaneState): Promise<void> {
   const pending = state.pendingPersists;
   state.pendingPersists = [];
-  await Promise.all(pending);
+  const results = await Promise.allSettled(pending);
+  const failed = results.find((result) => result.status === "rejected");
+  if (failed) throw failed.reason;
 }
