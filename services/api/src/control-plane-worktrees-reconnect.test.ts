@@ -141,4 +141,24 @@ describe("durable disconnect worktree reconciliation", () => {
       online: false,
     });
   });
+
+  it("evicts stale cache rows when an acknowledged reconnect race is no longer requeueable", async () => {
+    const plane = new ControlPlane();
+    const row = worktree("ack-stale", "ack-stale");
+    const running = session("ack-stale", "running", true);
+    let reads = 0;
+    plane.state.sessions.set("ack-stale", running);
+    plane.state.worktrees.set(row.id, row);
+    plane.state.storage = {
+      listWorktreesByHost: async () => [row],
+      getSession: async () => (reads++ === 0 ? running : null),
+      getWorktree: async () => null,
+      markReconnectPending: async () => false,
+      tryRequeueSession: async () => false,
+    } as never;
+
+    await expect(offlineHostAndRequeueDurable(plane.state, "h", "c", "bye")).resolves.toEqual([]);
+    expect(plane.state.sessions.has("ack-stale")).toBe(false);
+    expect(plane.state.worktrees.has(row.id)).toBe(false);
+  });
 });

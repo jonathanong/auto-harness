@@ -120,6 +120,19 @@ describe("createLocalApp operator management REST", () => {
     });
     expect(sched.status).toBe(201);
     expect(sched.json).toMatchObject({ id: "sched-1", name: "nightly" });
+    expect(
+      (
+        await invoke("POST", "/api/v1/schedules", {
+          repositoryId: "repo-1",
+          name: "bad-ref",
+          target: { commandId: "cmd-echo" },
+          cron: "0 0 * * *",
+          timeout: 30,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+          ref: 42,
+        })
+      ).status,
+    ).toBe(400);
     expect((await invoke("GET", "/api/v1/schedules")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ id: "sched-1" })]),
     });
@@ -140,6 +153,7 @@ describe("createLocalApp operator management REST", () => {
           enabled: true,
           ref: "develop",
           repositoryId: "repo-1",
+          concurrencyId: "nightly-key",
         })
       ).json,
     ).toMatchObject({
@@ -150,6 +164,7 @@ describe("createLocalApp operator management REST", () => {
       queueTtlSeconds: 20,
     });
     expect((await invoke("PATCH", "/api/v1/schedules/nope", { name: "x" })).status).toBe(404);
+    expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { ref: 42 })).status).toBe(400);
     expect(
       (
         await invoke("PATCH", "/api/v1/schedules/sched-1", {

@@ -10,6 +10,19 @@ describe("parseDaemonConfig", () => {
       apiUrl: "wss://example/ws",
       apiKey: "hns_x",
       logLevel: "warn",
+      providerAccounts: [{ providerAccountId: "acct" }],
+      repositories: [
+        {
+          ...valid.repositories[0],
+          providerAccountOverrides: { acct: { enabled: false } },
+          worktrees: [
+            {
+              ...valid.repositories[0].worktrees[0],
+              providerAccountOverrides: { acct: { commandId: "echo-prompt" } },
+            },
+          ],
+        },
+      ],
     });
     expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("wss://example/ws");
@@ -17,6 +30,10 @@ describe("parseDaemonConfig", () => {
     expect(config.logLevel).toBe("warn");
     expect(config.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);
+    expect(config.repositories[0]?.providerAccountOverrides).toEqual({ acct: { enabled: false } });
+    expect(config.repositories[0]?.worktrees[0]?.providerAccountOverrides).toEqual({
+      acct: { commandId: "echo-prompt" },
+    });
   });
 
   it("defaults branch and log level", () => {
