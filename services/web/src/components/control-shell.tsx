@@ -16,7 +16,7 @@ const NAV = [
     href: "/sessions/new",
     label: "New session",
     pw: "nav-session-new",
-    tip: "Create a one-off session for a repository and command profile",
+    tip: "Create a one-off session for a repository with a Provider or Command target",
   },
   {
     href: "/sessions",
