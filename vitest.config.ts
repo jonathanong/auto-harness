@@ -2,13 +2,19 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["modules/**/*.test.ts", "services/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     testTimeout: 60_000,
     coverage: {
       provider: "v8",
-      include: ["modules/*/src/**/*.ts", "services/*/src/**/*.ts"],
+      include: [
+        "modules/*/src/**/*.ts",
+        "services/*/src/**/*.ts",
+        // First UI tranche: shared, framework-independent display primitives.
+        "modules/ui/src/lib/utils.ts",
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx",
+      ],
       exclude: [
-        "**/*.test.ts",
+        "**/*.test.{ts,tsx}",
         "**/*-test-helpers.ts",
         "**/dist/**",
         "**/.next/**",
@@ -25,10 +31,13 @@ export default defineConfig({
         "**/db/plane-storage-*.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
-        // Next.js app routers + UI (manual / e2e; not unit-covered line-perfect)
+        // Next.js app routers and app-owned components remain e2e-only. Shared display
+        // primitives are explicitly included above and exercised by Vitest.
         "**/app/**",
-        "**/components/**",
-        "**/modules/ui/**",
+        "**/services/*/src/components/**",
+        // The public barrel is outside this display-primitives tranche; it only
+        // re-exports the remaining UI surface, which stays e2e-only for now.
+        "**/modules/ui/src/index.ts",
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
