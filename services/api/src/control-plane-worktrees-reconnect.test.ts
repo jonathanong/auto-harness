@@ -141,4 +141,55 @@ describe("durable disconnect worktree reconciliation", () => {
       online: false,
     });
   });
+
+  it("drops stale cache rows when a lost reconnect requeue finds durable rows removed", async () => {
+    const plane = new ControlPlane();
+    const row = worktree("ack-gone", "ack-gone");
+    const running = session("ack-gone", "running", true);
+    let sessionReads = 0;
+    let worktreeReads = 0;
+    plane.state.sessions.set(running.id, running);
+    plane.state.worktrees.set(row.id, row);
+    plane.state.storage = {
+      listWorktreesByHost: async () => [row],
+      getSession: async () => {
+        sessionReads += 1;
+        // The first read is the assignment; the second is the conditional
+        // requeue precondition. A concurrent durable cleanup wins afterward.
+        return sessionReads < 3 ? running : null;
+      },
+      getWorktree: async () => {
+        worktreeReads += 1;
+        return worktreeReads === 1 ? row : null;
+      },
+      markReconnectPending: async () => false,
+      tryRequeueSession: async () => false,
+    } as never;
+
+    expect(await offlineHostAndRequeueDurable(plane.state, "h", "c", "bye")).toEqual([]);
+    expect(plane.state.sessions.has(running.id)).toBe(false);
+    expect(plane.state.worktrees.has(row.id)).toBe(false);
+  });
+
+  it("adopts the durable terminal rows when reconnect marking loses after completion", async () => {
+    const plane = new ControlPlane();
+    const row = worktree("ack-complete", "ack-complete");
+    const running = session("ack-complete", "running", true);
+    const completed = { ...running, status: "completed" as const };
+    const released = { ...row, status: "idle" as const, currentSessionId: null, online: false };
+    let sessionReads = 0;
+    plane.state.storage = {
+      listWorktreesByHost: async () => [row],
+      getSession: async () => (++sessionReads === 1 ? running : completed),
+      getWorktree: async () => released,
+      markReconnectPending: async () => false,
+      tryRequeueSession: async () => {
+        throw new Error("a completed durable row must not be requeued");
+      },
+    } as never;
+
+    expect(await offlineHostAndRequeueDurable(plane.state, "h", "c", "bye")).toEqual([]);
+    expect(plane.state.sessions.get(running.id)).toEqual(completed);
+    expect(plane.state.worktrees.get(row.id)).toEqual(released);
+  });
 });
