@@ -442,7 +442,21 @@ Get session details.
 
 #### `POST /sessions/:id/clone`
 
-Clone a session — creates a **new** session with the same prompt, command, timeout, priority, and labels. Assignment uses normal **label match + round-robin** (any eligible worktree). **Operator or admin.**
+Clone a session as a clean, independent rerun. The response always
+contains a **new** session id and is `201 Created`. Assignment uses normal
+**label match + round-robin** (any eligible worktree). **Operator or admin.**
+
+The clone snapshots only replayable session inputs: `repositoryId`, `prompt`,
+the target/fallback chain, `queueTtlSeconds`, `timeout`, `priority`,
+`requiredLabels`, and `ref`. It starts as `queued`, with a fresh queue deadline,
+`type: "prompt"`, and `source: "api"`. `concurrencyId` is deliberately not
+copied, so a clone never deduplicates against or replaces its source.
+
+Runtime state is never copied: host/worktree placement or leases, assignment
+fences, resolved argv/route, resume pins or CLI references, status timestamps,
+logs, schedule provenance, session metadata, and credentials/secrets. The
+authenticated actor id is recorded as the new session's `metadata.createdBy`
+(when authentication is enabled).
 
 Optional request body to override fields:
 
@@ -452,6 +466,15 @@ Optional request body to override fields:
   "priority": 20
 }
 ```
+
+Only `prompt`, `timeout`, and `priority` may be overridden. The source may be
+queued, running, or terminal because no runtime state is copied. Repository
+authorization is checked against the source repository.
+
+**Errors:** `404 NOT_FOUND` for an unknown or unauthorized source, `400
+VALIDATION_ERROR` for malformed JSON or unsupported/invalid overrides, `409
+CONFLICT` for a durable create conflict that requires retry, and `500
+INTERNAL_ERROR` when durable state cannot be read or persisted.
 
 **Response:** `201 Created` (same schema as `POST /sessions` response)
 

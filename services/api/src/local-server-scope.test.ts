@@ -209,6 +209,7 @@ describe("scoped control-plane REST resources", () => {
     expect((await invoke("POST", "/api/v1/repositories", repoC, adminKey)).status).toBe(403);
     expect((await invoke("GET", `/api/v1/sessions/${sessionB.id}`)).status).toBe(404);
     expect((await invoke("POST", `/api/v1/sessions/${sessionB.id}/cancel`)).status).toBe(404);
+    expect((await invoke("POST", `/api/v1/sessions/${sessionB.id}/clone`)).status).toBe(404);
     expect((await invoke("GET", `/api/v1/sessions/${sessionB.id}/logs`)).status).toBe(404);
     expect((await invoke("POST", `/api/v1/sessions/${sessionB.id}/archive`)).status).toBe(404);
     expect((await invoke("GET", "/api/v1/hosts/host-b/inventory")).status).toBe(404);

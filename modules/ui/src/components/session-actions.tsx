@@ -24,10 +24,10 @@ export function SessionActions({
 }: SessionActionsProps) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [action, setAction] = useState<"cancel" | "resume" | "archive" | null>(null);
+  const [action, setAction] = useState<"cancel" | "resume" | "clone" | "archive" | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const run = (which: "cancel" | "resume" | "archive", path: string) => {
+  const run = (which: "cancel" | "resume" | "clone" | "archive", path: string) => {
     setError(null);
     setAction(which);
     start(async () => {
@@ -38,7 +38,7 @@ export function SessionActions({
         setError(await res.text());
         return;
       }
-      if (which === "resume") {
+      if (which === "resume" || which === "clone") {
         const body = (await res.json()) as { id?: string };
         if (body.id) {
           router.push(`${detailHrefBase}/${encodeURIComponent(body.id)}`);
@@ -67,18 +67,32 @@ export function SessionActions({
           </WithTooltip>
         ) : null}
         {TERMINAL_STATUSES.has(status) ? (
-          <WithTooltip tip="Create a new session pinned to the same host, resuming from here">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              disabled={pending}
-              data-pw="session-resume"
-              onClick={() => run("resume", "resume")}
-            >
-              {pending && action === "resume" ? "…" : "Resume"}
-            </Button>
-          </WithTooltip>
+          <>
+            <WithTooltip tip="Create a new session pinned to the same host, resuming from here">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                data-pw="session-resume"
+                onClick={() => run("resume", "resume")}
+              >
+                {pending && action === "resume" ? "…" : "Resume"}
+              </Button>
+            </WithTooltip>
+            <WithTooltip tip="Create a clean independent rerun of this session">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={pending}
+                data-pw="session-clone"
+                onClick={() => run("clone", "clone")}
+              >
+                {pending && action === "clone" ? "…" : "Re-run"}
+              </Button>
+            </WithTooltip>
+          </>
         ) : null}
         <WithTooltip tip="Move current logs to durable archive storage">
           <Button

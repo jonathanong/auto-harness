@@ -5,6 +5,8 @@ import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
+import * as clone from "./control-plane-session-clone.ts";
+import * as durableSessions from "./control-plane-sessions-durable.ts";
 
 export type {
   ArchiveObject,
@@ -22,6 +24,19 @@ export type {
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
 export class ControlPlane extends ControlPlaneManagement {
+  cloneSession(
+    sessionId: string,
+    opts: clone.CloneOptions = {},
+  ): ReturnType<typeof clone.cloneSession> {
+    return clone.cloneSession(this.state, sessionId, opts);
+  }
+
+  async cloneSessionDurable(
+    sessionId: string,
+    opts: clone.CloneOptions = {},
+  ): Promise<Awaited<ReturnType<typeof durableSessions.cloneSessionDurable>>> {
+    return durableSessions.cloneSessionDurable(this.state, sessionId, opts);
+  }
   async assignScheduledQueuedDurable(): Promise<
     Array<{ session: PublicSession; hostId: string; worktreeId: null }>
   > {

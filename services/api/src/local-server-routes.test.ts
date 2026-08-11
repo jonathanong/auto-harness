@@ -6,7 +6,7 @@ import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
 describe("createLocalApp agent and scheduler routes", () => {
-  it("covers agents, profiles, scheduler, logs, resume, drain routes", async () => {
+  it("covers agents, profiles, scheduler, logs, resume, clone, drain routes", async () => {
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;
@@ -112,6 +112,17 @@ describe("createLocalApp agent and scheduler routes", () => {
     ).toBe(true);
     expect((await invoke("GET", "/api/v1/sessions/sess-1/logs")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/sess-1/archive")).status).toBe(200);
+    const cloned = await invoke("POST", "/api/v1/sessions/sess-1/clone", { priority: 7 });
+    expect(cloned.status).toBe(201);
+    expect(cloned.json).toMatchObject({
+      id: "sess-2",
+      status: "queued",
+      priority: 7,
+      created: true,
+    });
+    expect(
+      (await invoke("POST", "/api/v1/sessions/sess-1/clone", { commandId: "not-allowed" })).status,
+    ).toBe(400);
     const resumed = await invoke("POST", "/api/v1/sessions/sess-1/resume", {
       prompt: "continue with the edge case",
       timeout: 20,
