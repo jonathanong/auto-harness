@@ -85,6 +85,8 @@ describe("session clone route", () => {
     conflictPlane.createSession(baseSessionBody());
     const source = conflictPlane.state.sessions.get("session-2")!;
     const command = conflictPlane.state.commands.get("cmd-base")!;
+    const concurrentCommand = { ...command, id: "cmd-concurrent", name: "concurrent" };
+    conflictPlane.state.commands.set(concurrentCommand.id, concurrentCommand);
     conflictPlane.state.storage = {
       getSession: async () => source,
       listCommands: async () => [command],
@@ -92,6 +94,7 @@ describe("session clone route", () => {
       listProviderAccounts: async () => [],
       createSession: async (session: typeof source) => ({ created: false, session }),
     } as never;
+    conflictPlane.state.sessions.clear();
     expect(
       (
         await invokeHandler(
@@ -101,5 +104,6 @@ describe("session clone route", () => {
         )
       ).status,
     ).toBe(409);
+    expect(conflictPlane.state.commands.get(concurrentCommand.id)).toEqual(concurrentCommand);
   });
 });

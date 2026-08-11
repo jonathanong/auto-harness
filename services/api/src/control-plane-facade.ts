@@ -94,6 +94,10 @@ export class ControlPlaneBase {
     return sessions.getSession(this.state, id);
   }
 
+  async getSessionDurable(id: string): Promise<PublicSession | null> {
+    return durableSessions.getSessionDurable(this.state, id);
+  }
+
   forceStatus(id: string, status: SessionStatus): PublicSession | null {
     return sessions.forceStatus(this.state, id, status);
   }

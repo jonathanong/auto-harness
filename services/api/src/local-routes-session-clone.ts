@@ -44,7 +44,13 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
   const match = /^\/api\/v1\/sessions\/([^/]+)\/clone$/.exec(url.pathname);
   if (method !== "POST" || !match) return false;
   const sourceId = match[1]!;
-  const source = plane.getSession(sourceId);
+  let source: Awaited<ReturnType<typeof plane.getSessionDurable>>;
+  try {
+    source = await plane.getSessionDurable(sourceId);
+  } catch {
+    send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    return true;
+  }
   if (!source || (ctx.principal && !mayAccessRepository(ctx.principal, source.repositoryId))) {
     send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
     return true;
