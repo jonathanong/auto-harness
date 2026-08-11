@@ -143,4 +143,16 @@ describe("AutoHarnessFoundationStack", () => {
   it("rejects an unsafe table prefix", () => {
     expect(() => foundationTemplate({ tablePrefix: "unsafe/prefix" })).toThrow("tablePrefix");
   });
+
+  it("accepts the longest safe table prefix and rejects the next character", () => {
+    const longestSafePrefix = "a".repeat(238);
+
+    foundationTemplate({ tablePrefix: longestSafePrefix }).hasResourceProperties(
+      "AWS::DynamoDB::Table",
+      { TableName: `${longestSafePrefix}-ProviderAccounts` },
+    );
+    expect(() => foundationTemplate({ tablePrefix: `${longestSafePrefix}a` })).toThrow(
+      "tablePrefix is too long",
+    );
+  });
 });

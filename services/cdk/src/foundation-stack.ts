@@ -23,12 +23,19 @@ export type FoundationResources = {
 };
 
 const defaultTablePrefix = "AutoHarness";
+const maxDynamoTableNameLength = 255;
+const longestCatalogTableNameLength = Math.max(
+  ...DYNAMO_TABLES.map((definition) => definition.name.length),
+);
 
 function assertTablePrefix(prefix: string): void {
   if (!/^[A-Za-z0-9_.-]+$/.test(prefix)) {
     throw new Error(
       "tablePrefix may contain only letters, numbers, dots, underscores, and hyphens",
     );
+  }
+  if (prefix.length + 1 + longestCatalogTableNameLength > maxDynamoTableNameLength) {
+    throw new Error("tablePrefix is too long for generated DynamoDB table names");
   }
 }
 

@@ -63,6 +63,12 @@ pnpm --filter @auto-harness/cdk synth -- \
   -c removalPolicy=destroy
 ```
 
+### Teardown a disposable foundation
+
+The repository has no deploy or destroy script. If an operator independently
+deploys a foundation synthesized with `removalPolicy=destroy`, delete it with
+the same external deployment tool.
+
 `removalPolicy` accepts only `retain` (the default) or `destroy`. With
 `destroy`, CloudFormation still cannot remove a non-empty archive bucket; empty
 it explicitly before deleting the stack. The foundation deliberately does not

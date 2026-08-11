@@ -40,11 +40,11 @@ Prefer **control plane first**, then **agents** (drain before agent restart).
 
 ### Teardown
 
-| Surface                              | Where to look                                           |
-| ------------------------------------ | ------------------------------------------------------- |
-| Local processes + DynamoDB container | [deploy-local.md](deploy-local.md#teardown)             |
-| AWS foundation (synth-only)          | Not available—there is no deployed runtime stack yet    |
-| Single agent host                    | [deploy-host-daemon.md](deploy-host-daemon.md#teardown) |
+| Surface                              | Where to look                                                                 |
+| ------------------------------------ | ----------------------------------------------------------------------------- |
+| Local processes + DynamoDB container | [deploy-local.md](deploy-local.md#teardown)                                   |
+| AWS disposable foundation            | [Manual deletion constraints](deploy-aws.md#teardown-a-disposable-foundation) |
+| Single agent host                    | [deploy-host-daemon.md](deploy-host-daemon.md#teardown)                       |
 
 Always drain agents before destroying the control plane.
 
