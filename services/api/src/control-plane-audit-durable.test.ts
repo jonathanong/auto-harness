@@ -67,14 +67,14 @@ describe("durable audit records", () => {
     expect(
       (
         await invokeHandler(handler, "POST", "/api/v1/repositories", {
-          name: "recovery repo",
+          name: "recovery-repo",
           url: "https://example.test/recovery.git",
         })
       ).status,
     ).toBe(500);
     dynamo.storage.putAuditLog = original;
     expect((await dynamo.storage.listRepositories()).map((repo) => repo.name)).toContain(
-      "recovery repo",
+      "recovery-repo",
     );
   });
 
