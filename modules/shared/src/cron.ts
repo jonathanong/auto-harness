@@ -43,9 +43,13 @@ export function isValidUtcTimestamp(value: string): boolean {
 export function parseCron(expression: string): ParsedCron | null {
   const fields = expression.split(" ");
   if (fields.length !== 5 || fields.some((field) => field.length === 0)) return null;
-  const parsed = fields.map((field, index) => parseField(field, ...CRON_FIELDS[index]!));
-  if (parsed.some((field) => field === null)) return null;
-  const [minute, hour, dayOfMonth, month, dayOfWeek] = parsed as CronField[];
+  const [minuteSource, hourSource, dayOfMonthSource, monthSource, dayOfWeekSource] = fields;
+  const minute = parseField(minuteSource!, ...CRON_FIELDS[0]);
+  const hour = parseField(hourSource!, ...CRON_FIELDS[1]);
+  const dayOfMonth = parseField(dayOfMonthSource!, ...CRON_FIELDS[2]);
+  const month = parseField(monthSource!, ...CRON_FIELDS[3]);
+  const dayOfWeek = parseField(dayOfWeekSource!, ...CRON_FIELDS[4]);
+  if (!minute || !hour || !dayOfMonth || !month || !dayOfWeek) return null;
   return { minute, hour, dayOfMonth, month, dayOfWeek };
 }
 
@@ -79,15 +83,28 @@ function parseField(source: string, min: number, max: number): CronField | null 
     const step = stepSource === undefined ? 1 : parseInteger(stepSource);
     if (step === null || step < 1) return null;
 
-    let start = min;
-    let end = max;
-    if (rangeSource !== "*") {
+    let start: number;
+    let end: number;
+    if (rangeSource === "*") {
+      start = min;
+      end = max;
+    } else {
       const range = rangeSource!.split("-");
       if (range.length > 2 || range.some((part) => part.length === 0)) return null;
-      start = parseInteger(range[0]!);
-      end = range.length === 1 ? start : parseInteger(range[1]!);
-      if (start === null || end === null || start < min || end > max || start > end) return null;
+      const rangeStart = parseInteger(range[0]!);
+      const rangeEnd = range.length === 1 ? rangeStart : parseInteger(range[1]!);
+      if (
+        rangeStart === null ||
+        rangeEnd === null ||
+        rangeStart < min ||
+        rangeEnd > max ||
+        rangeStart > rangeEnd
+      ) {
+        return null;
+      }
       if (stepSource !== undefined && range.length === 1) return null;
+      start = rangeStart;
+      end = rangeEnd;
     }
     for (let value = start; value <= end; value += step) values.add(value);
   }
