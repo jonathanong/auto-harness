@@ -102,6 +102,11 @@ describe("AutoHarnessFoundationStack", () => {
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
     ).toHaveLength(16);
+    expect(
+      Object.values(json.Resources).filter(
+        (resource) => resource.Type === "AWS::CloudFormation::CustomResource",
+      ),
+    ).toHaveLength(0);
     template.resourceCountIs("AWS::Lambda::Function", 0);
   });
 

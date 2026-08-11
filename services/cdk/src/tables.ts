@@ -82,8 +82,8 @@ export const DYNAMO_TABLES: TableDef[] = [
   },
   {
     name: "AuditLogs",
-    partitionKey: { name: "id", type: "S" },
-    sortKey: { name: "createdAt", type: "S" },
+    partitionKey: { name: "scope", type: "S" },
+    sortKey: { name: "timestampId", type: "S" },
   },
   {
     name: "Providers",
