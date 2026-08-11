@@ -30,5 +30,20 @@ describe("session creation preparation", () => {
     expect(prepared).toMatchObject({ ok: true });
     if (!prepared.ok) throw new Error(prepared.error);
     expect(buildSessionRecord(state, prepared)).not.toHaveProperty("scheduleId");
+
+    const scheduled = validateSessionCreate(
+      state,
+      {
+        repositoryId: "repo-1",
+        prompt: "scheduled work",
+        target: { commandId: "command-1" },
+        timeout: 30,
+        scheduleId: "schedule-1",
+      },
+      { allowScheduleId: true },
+    );
+    expect(scheduled).toMatchObject({ ok: true });
+    if (!scheduled.ok) throw new Error(scheduled.error);
+    expect(buildSessionRecord(state, scheduled)).toMatchObject({ scheduleId: "schedule-1" });
   });
 });

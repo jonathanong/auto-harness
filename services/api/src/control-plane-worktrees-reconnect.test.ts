@@ -102,6 +102,32 @@ describe("durable disconnect worktree reconciliation", () => {
     expect(plane.state.worktrees.get(row.id)?.status).toBe("busy");
   });
 
+  it("requeues an unacknowledged local assignment and frees its worktree", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    const row = worktree("unack", "unack");
+    const running = session("unack", "running");
+    plane.state.worktrees.set(row.id, row);
+    plane.state.sessions.set(running.id, running);
+    plane.state.pendingAcks.set(running.id, {
+      sessionId: running.id,
+      worktreeId: row.id,
+      assignedAtMs: 0,
+    });
+
+    expect(offlineHostAndRequeue(plane.state, "h", "transport lost")).toEqual(["unack"]);
+    expect(plane.state.sessions.get("unack")).toMatchObject({
+      status: "queued",
+      hostId: null,
+      worktreeId: null,
+      errorMessage: "transport lost",
+    });
+    expect(plane.state.worktrees.get(row.id)).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+      online: false,
+    });
+  });
+
   it("conditionally requeues an acknowledged row if setting its reconnect deadline loses", async () => {
     const plane = new ControlPlane();
     const row = worktree("ack-loss", "ack-loss");

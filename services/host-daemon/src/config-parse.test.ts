@@ -59,6 +59,12 @@ describe("parseDaemonConfig", () => {
     );
   });
 
+  it("rejects a non-array repository inventory", () => {
+    expect(() =>
+      parseDaemonConfig({ hostId: "x", repositories: "nope", commandProfiles: {} }),
+    ).toThrow(/repositories/);
+  });
+
   it("rejects non-object root and bad profiles", () => {
     expect(() => parseDaemonConfig(null)).toThrow(/object/);
     expect(() =>

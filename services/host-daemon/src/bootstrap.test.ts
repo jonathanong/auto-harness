@@ -104,4 +104,13 @@ describe("fetchHostInventory", () => {
       ),
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);
   });
+
+  it("rejects a successful response whose inventory is not an object", async () => {
+    await expect(
+      fetchHostInventory(
+        { hostId: "a", apiUrl: "http://x", logLevel: "info" },
+        { fetchFn: (async () => Response.json("not-an-inventory")) as typeof fetch },
+      ),
+    ).rejects.toThrow(/config root must be an object/);
+  });
 });

@@ -81,6 +81,29 @@ describe("SpawnProcessRunner cancellation", () => {
     await expect(run).resolves.toMatchObject({ cancelled: true, timedOut: false });
   });
 
+  it("falls back to a direct child signal when process-group signalling is unavailable", async () => {
+    const controller = new AbortController();
+    const originalKill = process.kill;
+    process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
+      if (pid < 0) throw new Error("process groups unavailable");
+      return originalKill(pid, signal);
+    }) as typeof process.kill;
+    try {
+      const run = new SpawnProcessRunner().run({
+        argv: [process.execPath, "-e", "setInterval(() => {}, 1_000)"],
+        cwd: process.cwd(),
+        timeoutMs: 10_000,
+        terminationGraceMs: 20,
+        signal: controller.signal,
+        onChunk: () => undefined,
+      });
+      setTimeout(() => controller.abort(), 50);
+      await expect(run).resolves.toMatchObject({ cancelled: true, timedOut: false });
+    } finally {
+      process.kill = originalKill;
+    }
+  });
+
   it("does not spawn when the signal was already aborted", async () => {
     const controller = new AbortController();
     controller.abort();

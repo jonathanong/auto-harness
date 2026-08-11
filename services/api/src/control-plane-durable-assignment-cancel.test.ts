@@ -112,6 +112,10 @@ describe("durable assignment and cancellation", () => {
     const running = plane.state.sessions.get("session")!;
     running.status = "running";
     running.mainCheckoutLease = true;
+    await expect(cancelSessionDurable(plane.state, "session")).resolves.toEqual({
+      ok: false,
+      error: "running session is missing its assignment fence",
+    });
     running.hostId = "host";
     running.assignmentConnectionId = "connection";
     running.attemptId = "attempt";

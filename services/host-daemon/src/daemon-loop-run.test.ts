@@ -59,12 +59,13 @@ describe("DaemonLoop run", () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];
+      const localLogs: string[] = [];
       const transport = createAcknowledgingLoopbackTransport({
         sendToServer: (m) => {
           serverMsgs.push(m);
         },
       });
-      const loop = new DaemonLoop({ config, transport });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => localLogs.push(line) });
       await loop.start();
       expect(serverMsgs.some((m) => m.type === "host:register")).toBe(true);
 
@@ -78,6 +79,9 @@ describe("DaemonLoop run", () => {
         timeout: 30,
         worktreeId: "wt-1",
         ref: "main",
+        targetIndex: 0,
+        commandId: "echo-prompt",
+        providerAccountId: "account-1",
         assignedAt: new Date().toISOString(),
       };
       transport.deliver(assign);
@@ -96,6 +100,9 @@ describe("DaemonLoop run", () => {
         ),
       ).toBe(true);
       expect(serverMsgs.some((m) => m.type === "session:log")).toBe(true);
+      expect(localLogs).toContain(
+        "resolved route for sess-loop: target=0 command=echo-prompt providerAccount=account-1",
+      );
 
       await loop.keepalive();
       expect(serverMsgs.some((m) => m.type === "host:keepalive")).toBe(true);

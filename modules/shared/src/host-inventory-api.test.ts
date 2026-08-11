@@ -27,6 +27,7 @@ describe("getInventory / putInventory", () => {
       new Response(
         JSON.stringify({
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
+          providerAccounts: [{ providerAccountId: "acct-1" }],
           commandProfiles: { p: { argv: ["true"], appendPrompt: false } },
           capabilities: ["scheduled-main-checkout", "not-real"],
           logLevel: "debug",
@@ -36,6 +37,7 @@ describe("getInventory / putInventory", () => {
     try {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
+      expect(inv.providerAccounts).toEqual([{ providerAccountId: "acct-1" }]);
       expect(inv.logLevel).toBe("debug");
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
