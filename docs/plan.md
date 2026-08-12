@@ -29,7 +29,7 @@ purpose. Raise it with the project owner before changing any row.
 | #   | Decision                                                                                                                                                                                                                                                                                                                                                                                                            | Rationale                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Do not propose                                                                                                                                                                     |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | D1  | The agent holds git + AI vendor credentials and does its own GitHub writes (PRs, comments, labels) directly from the session.                                                                                                                                                                                                                                                                                       | A prior design considered a three-phase execute → validate → publish split (run Codex with no push credential, validate the patch in an immutable runtime, publish from a separate pristine checkout) to keep untrusted output away from any credential. That split cost real complexity for a mitigation a scoped token buys more cheaply (see D7). Deliberately dropped: _"the current system is too complex and agents keep making it over complicated."_ | A bundle/validator/publisher pipeline. Patch attestation. Split-credential jobs. A "trusted runtime" concept.                                                                      |
-| D2  | There is no callback DAG. Callers `POST /sessions` and exit. Results reach humans via the **Slack session thread** and via **the agent's own GitHub writes** (opening/updating a PR, commenting a link) — not via a webhook fired back at the caller.                                                                                                                                                               | Repo harness callers are fire-and-forget by design ([harness.md](harness.md)); the triggering GitHub Actions job is gone by the time the session finishes.                                                                                                                                                                                                                                                                                                   | Blocking `POST /sessions` until terminal. Polling loops in the caller's CI. A generic outbound-webhook framework as a _required_ mechanism (optional, low-priority — see Phase 5). |
+| D2  | There is no callback DAG. Callers `POST /sessions` and exit. The target human feedback is the **Slack session thread** plus **the agent's own GitHub writes** (opening/updating a PR, commenting a link), not a webhook fired back at the caller. Slack delivery is not implemented yet; GitHub writes depend on agent credentials.                                                                                 | Repo harness callers are fire-and-forget by design ([harness.md](harness.md)); the triggering GitHub Actions job is gone by the time the session finishes.                                                                                                                                                                                                                                                                                                   | Blocking `POST /sessions` until terminal. Polling loops in the caller's CI. A generic outbound-webhook framework as a _required_ mechanism (optional, low-priority — see Phase 5). |
 | D3  | Failure escalation (e.g. "Codex couldn't fix it, open an issue for a human") is an **agent-side terminal hook**: agent config points at a repo-local script, invoked with session metadata as env on every terminal status.                                                                                                                                                                                         | No GitHub Actions job survives to run escalation logic post-migration, so _something_ has to. Keeping it agent-side keeps escalation policy where it already lives (in the target repo, versioned with it) and keeps GitHub tokens out of the control plane. It also covers failure modes a prompt cannot see itself hit: `usage_limit`, `timed_out`, agent crash, setup-script failure.                                                                     | A rules engine or escalation templates inside Auto Harness. A control-plane GitHub App making the decision.                                                                        |
 | D4  | `command` is a named catalog Command, or a Provider/Command target with ordered fallbacks, resolved control-plane-side into fixed `resolvedArgv`. Provider targets select healthy attached Provider Accounts; a `providerId: null` Command is a providerless pure CLI.                                                                                                                                              | A free string is a straight line from operator role to arbitrary command execution on the VPS, and string→argv construction is its own injection surface. Catalog names and fixed argv close that injection surface.                                                                                                                                                                                                                                         | Free-form `command` strings. Shell strings. `shell: true` anywhere in the executor.                                                                                                |
 | D5  | Session **resume pins to the agent only**, not agent+worktree. The worktree is re-established via `ref` (see D6) rather than kept untouched.                                                                                                                                                                                                                                                                        | The AI CLIs this system targets keep their own session/conversation state outside the working tree (e.g. under the CLI's own state directory), and shepherd-style flows push their commits to the remote each tick. The durable state for resume is _(CLI session id, remote branch)_ — not "don't touch this worktree." Pinning to a worktree and waiting indefinitely for it to free up is a liveness hazard for no real benefit once this is understood.  | Worktree-level pinning. Indefinite pin waits. Snapshotting or freezing a worktree to preserve state.                                                                               |
@@ -186,7 +186,7 @@ erDiagram
         string timestampSeq "SK, format: <ISO-timestamp> + <zero-padded-seq> — see Invariant 5"
         string stream "stdout | stderr | system"
         string content
-        number ttl "DynamoDB TTL, auto-delete after expiry"
+        number ttl "target: DynamoDB TTL, auto-delete after expiry; not emitted today"
     }
 
     Connection {
@@ -240,7 +240,7 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 | List queued sessions for assignment | Sessions      | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.       |
 | List sessions by repo               | Sessions      | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                        |
 | Full-text prompt search             | —             | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
-| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent** before batching; the server never reorders.                                                                         |
+| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. The current API writes each chunk individually; target batching must preserve this order.                          |
 | Range-read logs for REST/history    | SessionLogs   | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
 | Idle matching worktrees             | Worktrees     | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
 | Find agent connection for assign    | Connections   | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                         |
@@ -355,6 +355,10 @@ migration marker. **No product-repo automation workflow may cut over before the 
 `pnpm check`, `pnpm local:e2e`, `pnpm local:cli-e2e` (documented CLI + `ref: main` while primary
 tree is on `main`), and `pnpm local:api-smoke`.
 
+The current executor uses `child_process.spawn` with separate stdout/stderr pipes. The PTY
+deliverable remains open; neither `node-pty` execution nor interactive terminal semantics should
+be inferred from this phase's local-exit status.
+
 **Deviations (intentional, Phase 1 only):**
 
 - Local API uses **Amazon DynamoDB Local** (`docker compose` / `pnpm local:dynamodb`) via the
@@ -419,8 +423,12 @@ tree is on `main`), and `pnpm local:api-smoke`.
 **Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
 session create with `ref`/`commandProfile`/`concurrencyId`/`metadata`/`url`.
-CDK table defs in `services/cdk` (no live AWS deploy required in-repo). Local store is
-DynamoDB Local via `pnpm local:dynamodb` (official image).
+CDK on `main` synthesizes the persistence foundation only. It does not include a deploy command,
+live REST/WebSocket runtime, or account-backed smoke test. The synthesized SessionLogs table
+enables the `ttl` attribute, but runtime log records do not populate it and local table creation
+does not configure TTL, so current logs do not expire through TTL. The current archive path writes
+the DynamoDB Archives table rather than S3. The local store is DynamoDB Local via
+`pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 
@@ -475,10 +483,12 @@ DynamoDB Local via `pnpm local:dynamodb` (official image).
 - A crashed agent's worktree is reclaimed materially faster than the full session `timeout` would
   otherwise require.
 
-**Status (code-complete, local WS):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
+**Status (code-complete and tested locally):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
 `auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
 deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable
-concurrency dedupe (Inv 9), heartbeat stale reclaim. Live AWS API Gateway deploy is operational.
+concurrency dedupe (Inv 9), heartbeat stale reclaim. Log persistence is currently one write per
+chunk, not `BatchWriteItem`. No live AWS API Gateway deployment or account-backed Phase 3 E2E has
+been demonstrated.
 
 **Migration marker: a plan-only repo workflow (e.g. `codex-plan`, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and account cooldown/fallback routing
@@ -507,9 +517,14 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
   [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and signed
   cursors; search remains client-side over the current page.
 
-**Status:** `pnpm local:web` serves the API-backed create-session UI with target/fallback routing,
-ref, concurrency identity, priority, and label constraints populated from online worktrees. Full
-Next.js dashboard deferred; create path is shippable.
+**Status (local):** the `services/web` Next.js app provides the supported control-plane management
+surfaces. Its API-backed create-session UI includes target/fallback routing, ref, concurrency
+identity, priority, and label constraints populated from online worktrees; it also provides
+authenticated live-log tailing and Slack configuration. `services/host-pane` on `:7422` is a
+local, per-host debugging tool and is never required for normal management workflows (Invariant
+10). The log viewer is a monospace text renderer, not xterm.js, and the daemon feeds it
+stdout/stderr pipes rather than PTY output. Slack configuration is storage-only and does not send
+messages. No cloud-hosted UI/runtime has been deployed or account-tested.
 
 **Migration marker:** UI availability doesn't gate any repo-workflow cutover — CLI/API-driven
 callers don't need it. Useful before wider multi-repo rollout.
@@ -536,9 +551,12 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   bounded secret-safe metadata, and fail-closed acknowledgement if an audit
   append cannot persist).
 
-**Status:** session log archival (`archiveSessionLogs`), opt-in webhooks
-(`setWebhookUrl` / deliveries), agent drain without killing in-flight CLIs (`drainHost` +
-`DaemonLoop.beginDrain`).
+**Status (precursor behavior only):** `archiveSessionLogs` serializes logs into the DynamoDB
+Archives table, not S3. Webhook "deliveries" are recorded in in-process state but do not
+perform an outbound HTTP request. `drainHost` + `DaemonLoop.beginDrain` stop new assignments
+without killing in-flight CLIs, but an operator must still wait, install, and restart manually;
+there is no automatic updater. Slack config CRUD exists, while OAuth, delivery, inbound
+verification, and session-thread lifecycle do not.
 
 **Migration marker:** none of this gates any product-repo automation workflow.
 

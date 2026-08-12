@@ -8,6 +8,9 @@ Ops is split by **surface**. Pick the doc for what you are running.
 | **AWS foundation** — DynamoDB, S3 archive, unassigned IAM policies | **[deploy-aws.md](deploy-aws.md)**                 | **Synthesizable only**; runtime control plane remains design work    |
 | **VPS agent** — daemon, profiles, worktrees                        | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Partial** (local start supported; systemd is the production shape) |
 
+No AWS surface has been deployed or validated against an AWS account by this repository. A
+successful CDK synth proves template shape only, not deployability or runtime behavior.
+
 Pre-deploy E2E (prove the stack before any cloud claim): [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).  
 Day-to-day local commands: [local-development.md](local-development.md).  
 Install overview: [setup.md](setup.md).  
@@ -36,7 +39,9 @@ Architecture: [aws.md](aws.md). Auth: [auth.md](auth.md).
 | AWS foundation schema          | [deploy-aws.md](deploy-aws.md#synthesize-the-foundation) |
 | Agent binary, config, profiles | [deploy-host-daemon.md](deploy-host-daemon.md#update)    |
 
-Prefer **control plane first**, then **agents** (drain before agent restart).
+Prefer **control plane first**, then **agents**. Agent updates are manual today: an operator must
+request drain, wait for in-flight sessions, install the update, and restart the daemon. Automatic
+download/restart orchestration remains future work.
 
 ### Teardown
 

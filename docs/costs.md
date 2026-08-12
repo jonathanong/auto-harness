@@ -35,7 +35,9 @@ Deep “why product”: [why.md](why.md).
 Because subscriptions do not support Agent SDKs for this automation path:
 
 1. Install the vendor **CLI** on the agent host and authenticate under the **subscription** account/profile.
-2. Sessions invoke that CLI in **non-interactive** form (e.g. print/quiet flags, prompt as argv)—with a PTY when the tool still expects a TTY.
+2. Sessions invoke that CLI in **non-interactive** form (e.g. print/quiet flags, prompt as argv).
+   The current runner captures stdout/stderr pipes; PTY support for tools that require a TTY is
+   part of the target design, not the shipped runner.
 3. Auto Harness never calls a vendor Agent SDK over the public API as the default integration.
 
 That is a **product constraint**, not an implementation preference: it is how you attach factory automation to subscription capacity.
@@ -46,7 +48,14 @@ Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs 
 
 ## Estimated Monthly Costs (AWS only)
 
-Based on **100 sessions/day, 2 connected agents, 1 developer using the UI**:
+These are **planning estimates for the target AWS deployment**, based on **100 sessions/day,
+2 connected agents, 1 developer using the UI**. The repository has not deployed or
+account-tested the AWS runtime, and the log-volume assumptions below have not been calibrated
+against a representative long-running CLI transcript. They are not a measured bill or a current
+production cost claim.
+
+Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
+pages for the deployment region before approving a budget.
 
 | Service                   | Usage                                    | Unit Price                     | Monthly Cost  |
 | ------------------------- | ---------------------------------------- | ------------------------------ | ------------- |
@@ -112,7 +121,8 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: ~50 writes (batched via `BatchWriteItem`)
+- Log entries: currently one write (or fenced transaction) per received chunk; chunk count must be
+  measured from the chosen CLI and workload
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
@@ -122,28 +132,39 @@ At 100 sessions/day: ~200K writes + ~300K reads = **~$0.33**
 
 SessionLogs is the highest-volume table. A chatty AI agent can produce hundreds of stdout chunks per session. Without mitigation, this is the most expensive DynamoDB component.
 
-**Mitigation strategies (all implemented):**
+**Current implementation:** every accepted `session:log` chunk is persisted individually with a
+`PutItem`-shaped write (or a fenced transaction containing that put). SessionLogs records do not
+carry a `ttl`; local table creation does not configure TTL, while the synthesized AWS table's TTL
+setting has nothing to expire without that attribute. On terminal status, the API serializes logs
+into the DynamoDB Archives table; it does not upload to S3. Consequently, the totals above and the
+optimized comparison below must be recalculated before an AWS launch.
 
-| Strategy          | Impact                                                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Batching**      | Agent buffers log chunks and writes via `BatchWriteItem` (up to 25 items per call). Reduces write API calls by ~25x.                       |
-| **DynamoDB TTL**  | Each log entry has a `ttl` attribute set to 7 days. DynamoDB auto-deletes expired entries at **no cost** — TTL deletions are free.         |
-| **S3 archival**   | On session completion, logs are archived to S3 as a single `.jsonl` file. After archival, the DynamoDB entries are left to expire via TTL. |
-| **Rate limiting** | The agent’s log streamer rate-limits WebSocket messages to avoid flooding (max 10 messages/second per session).                            |
+**Target mitigation strategies:**
+
+| Strategy          | Impact                                                                                                     |
+| ----------------- | ---------------------------------------------------------------------------------------------------------- |
+| **Batching**      | Buffer log chunks and write via `BatchWriteItem` (up to 25 items per call), reducing write API calls.      |
+| **DynamoDB TTL**  | Add a `ttl` attribute and enable table TTL so expired log entries are deleted without application deletes. |
+| **S3 archival**   | Upload completed logs to S3 as one archive object, then leave DynamoDB entries to expire via TTL.          |
+| **Rate limiting** | Bound the agent's WebSocket log-message rate so a chatty CLI cannot flood the control plane.               |
 
 **Cost comparison:**
 
-| Approach                         | Writes/session        | Monthly cost (100 sessions/day) |
-| -------------------------------- | --------------------- | ------------------------------- |
-| Naive (1 write per chunk)        | ~500                  | **$5.63**                       |
-| Batched (25 per batch)           | ~20                   | **$0.23**                       |
-| Batched + TTL (no manual delete) | ~20 writes, 0 deletes | **$0.23**                       |
+| Approach                                  | Writes/session                  | Monthly cost (100 sessions/day) |
+| ----------------------------------------- | ------------------------------- | ------------------------------- |
+| Current (1 write per received chunk)      | workload-dependent              | Not yet measured                |
+| Target batched example (500 chunks, 25×)  | ~20 batch requests              | Recalculate before launch       |
+| Target batching + TTL (no manual deletes) | ~20 batches, 0 explicit deletes | Recalculate before launch       |
 
-With batching and TTL, SessionLogs adds roughly **$0.23/month** at 100 sessions/day. Storage stays under 500 MB because TTL auto-deletes after 7 days.
+Do not use the former ~50-chunk or $0.23/month assumptions for capacity planning. Measure a real
+transcript, then account for actual item sizes, batch behavior, retries, API Gateway frames, and
+retention.
 
 ### S3
 
-Archived session logs are cheap to store.
+This section models the **target S3 archive**, not current runtime behavior. The synthesized
+foundation creates an archive bucket and lifecycle policy, but no runtime uploads logs to it yet;
+current archive objects are rows in the DynamoDB Archives table.
 
 - **Storage**: $0.023 per GB/month (Standard), $0.0125 (Infrequent Access), $0.004 (Glacier)
 - **Requests**: $0.005 per 1K PUT, $0.0004 per 1K GET
@@ -174,7 +195,8 @@ For new AWS accounts, the first 12 months of free tier covers most of the auto h
 | API Gateway WebSocket | Not included in free tier     | ~500K messages                  | ✗ (~$0.50) |
 | CloudWatch Logs       | 5 GB ingestion                | ~1 GB                           | ✓          |
 
-**Effective cost with free tier: ~$0.50/month** (just the WebSocket messages).
+**Modeled effective cost with free tier: ~$0.50/month** (just the WebSocket messages), subject to
+the unvalidated workload assumptions above.
 
 ## VPS Costs
 
@@ -211,7 +233,8 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 
 If you deliberately point a CLI at **API keys**, treat that as a separate budget (true pay-per-session variance). Default docs and capacity planning assume **subscription authentication on the agent host**.
 
-**AWS infrastructure (~$2/month at small-team scale) should be a rounding error next to seats and machines.**
+**Target AWS infrastructure should be a rounding error next to seats and machines.** The ~$2
+small-team figure is a design estimate, not an observed bill.
 
 ## Cost Optimization Tips
 
@@ -224,8 +247,9 @@ If you deliberately point a CLI at **API keys**, treat that as a separate budget
 
 ### AWS + VPS
 
-1. **Set log retention** — CloudWatch Logs can accumulate. Set 7–14 day retention.
-2. **Archive aggressively** — Move completed session logs to S3 quickly, then to Glacier.
+1. **Set log retention when deploying** — CloudWatch Logs can accumulate. Set 7–14 day retention.
+2. **Implement the archive path** — Move completed session logs to S3, then to Glacier; the
+   current runtime only writes DynamoDB archive rows.
 3. **Right-size Lambda** — 256 MB is sufficient for most handlers. Don't over-allocate.
 4. **Monitor with Cost Explorer** — Set up a $10 billing alert to catch any surprises.
 5. **Use reserved capacity** — If DynamoDB costs grow, switch from on-demand to provisioned with auto-scaling.
