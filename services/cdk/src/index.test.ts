@@ -17,6 +17,7 @@ describe("CDK table catalog", () => {
       "Archives",
       "HostInventories",
       "AuditLogs",
+      "RateLimits",
       "Providers",
       "ProviderAccounts",
       "Commands",
@@ -35,6 +36,10 @@ describe("CDK table catalog", () => {
     expect(DYNAMO_TABLES.find((table) => table.name === "AuditLogs")).toMatchObject({
       partitionKey: { name: "scope" },
       sortKey: { name: "timestampId" },
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "RateLimits")).toMatchObject({
+      partitionKey: { name: "bucketKey" },
+      ttlAttribute: "expiresAt",
     });
     const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);
