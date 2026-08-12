@@ -2,18 +2,23 @@
 
 ## Slack
 
+> **Current status:** Auto Harness can create, read, replace, and delete an encrypted, redacted
+> Slack configuration through the admin API and Web UI. It does not yet call Slack, perform OAuth
+> or inbound verification, create session threads, or deliver lifecycle messages. The delivery
+> flow below is the promised end state.
+
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
 | Channel    | What they see                                                                                             |
 | ---------- | --------------------------------------------------------------------------------------------------------- |
-| **Slack**  | Session lifecycle thread (queued → running → done/fail) from Auto Harness                                 |
+| **Slack**  | Target: session lifecycle thread (queued → running → done/fail) from Auto Harness                         |
 | **GitHub** | PRs, issue/PR comments, reviews, checks—repo updates produced by the agent session (or follow-on tooling) |
 
-Auto Harness owns the **Slack** session thread. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
+Auto Harness will own the **Slack** session thread once delivery is implemented. **GitHub** updates depend on what the session is allowed to do on the VPS (git/`gh` credentials on the agent host)—not on the Actions run that kicked it off.
 
-Auto Harness posts real-time session updates to Slack: each session gets a thread in a configured channel, updated as the session progresses.
+The target delivery behavior posts real-time session updates to Slack: each session gets a thread in a configured channel, updated as the session progresses.
 
-### Setup
+### Delivery setup (target)
 
 1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
 2. Add the `chat:write` OAuth scope
@@ -23,7 +28,7 @@ Auto Harness posts real-time session updates to Slack: each session gets a threa
 
 ### Configuration
 
-#### `POST /integrations/slack`
+#### `POST /api/v1/integrations/slack`
 
 Configure Slack integration. **Admin only.**
 
@@ -58,11 +63,11 @@ Configure Slack integration. **Admin only.**
 > or audits bot tokens or optional signing secrets. Missing KMS configuration or
 > encryption failures fail the write closed.
 
-#### `GET /integrations/slack`
+#### `GET /api/v1/integrations/slack`
 
 Get current Slack configuration (token is redacted).
 
-#### `PUT /integrations/slack`
+#### `PUT /api/v1/integrations/slack`
 
 Update Slack configuration. **Admin only.**
 
@@ -70,7 +75,7 @@ Update Slack configuration. **Admin only.**
 This slice configures storage only: it does not implement Slack OAuth, incoming
 event verification, message delivery, or session-thread lifecycle.
 
-#### `DELETE /integrations/slack`
+#### `DELETE /api/v1/integrations/slack`
 
 Remove Slack integration. **Admin only.**
 
@@ -89,7 +94,7 @@ Repositories can override the default Slack channel:
 
 If not set, the default channel from the integration config is used.
 
-### Thread Lifecycle
+### Thread Lifecycle (target)
 
 Each session creates a Slack thread that tracks the full lifecycle:
 
@@ -186,7 +191,7 @@ The original message is updated with ❌ status. The thread includes the last fe
 ⚪ Session cancelled by jong
 ```
 
-### Thread Metadata
+### Thread Metadata (target)
 
 The Slack `thread_ts` (thread timestamp) is stored on the Session record in DynamoDB so that subsequent status updates can reply to the correct thread:
 
@@ -200,12 +205,12 @@ The Slack `thread_ts` (thread timestamp) is stored on the Session record in Dyna
 }
 ```
 
-### Rate Limiting
+### Rate Limiting (target)
 
-Slack API rate limits are ~1 message/second per channel. Auto-Harness batches updates:
+The delivery implementation must respect Slack API rate limits and batch updates:
 
 - Log streaming is **not** sent to Slack (too noisy). Logs are only available in the Web UI (link the session from the thread when useful).
-- Fire-and-forget CI callers rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
+- Once delivery ships, fire-and-forget CI callers can rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
@@ -228,13 +233,19 @@ The bot must be invited to the target channel(s) via `/invite @auto-harness-bot`
 1. Event triggers a short workflow (failure, comment, schedule, …).
 2. Workflow calls Auto Harness **`POST /sessions`** (service account).
 3. Workflow **exits**; it does not poll session status.
-4. Humans follow **Slack** (session thread) and/or **GitHub** (PRs/comments/checks). UI/logs for deep dive.
+4. Today, humans follow **GitHub** (PRs/comments/checks) and the UI/logs. Once Slack delivery ships,
+   its session thread becomes the fire-and-forget notification path.
 
-**Requirements:** Slack integration enabled for unattended runs; session id returned on create; no need for GHA to poll. Worked examples: [harness.md](harness.md).
+**Target requirements:** Slack delivery enabled for unattended runs; session id returned on create;
+no need for GHA to poll. Until delivery ships, use GitHub activity or the UI instead. Worked
+examples: [harness.md](harness.md).
 
 ### Custom Webhooks (Outbound)
 
-Optional machine-to-machine callbacks if something other than Slack must react to terminal status. **Not required** for the GHA fire-and-forget + Slack pattern.
+**Target only:** optional machine-to-machine callbacks if something other than Slack must react to
+terminal status. The current API can record a configured URL and a would-be delivery in
+in-process state, but it does not make an outbound HTTP request. Webhooks are **not required** for
+the GHA fire-and-forget + Slack pattern.
 
 ```json
 {

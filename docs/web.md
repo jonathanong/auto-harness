@@ -4,6 +4,10 @@
 
 Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
+The UI runs against the supported local control plane. Cloud-hosted UI/API behavior remains a
+target until the AWS runtime has a deploy path and account-backed verification. Sections that say
+**Target** retain the intended product behavior without claiming it is already shipped.
+
 ## Authentication
 
 UI-facing login behavior below. Server-side credential types, auth priority, and JWT cookie details: [auth.md](auth.md).
@@ -183,7 +187,13 @@ The initial prompt is displayed in a highlighted, read-only block below the head
 
 Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
 
-**Implementation:** Uses [xterm.js](https://xtermjs.org/) for full terminal emulation — ANSI colors, cursor movement, progress bars, and interactive output from AI CLIs render correctly.
+**Current implementation:** a read-only, monospace React log renders timestamp, stream, and
+content as text. It live-tails over the viewer WebSocket, but it is not xterm.js, does not emulate
+ANSI cursor behavior, and is not an interactive terminal. The host daemon currently captures
+separate stdout/stderr pipes rather than a PTY.
+
+**Target:** use [xterm.js](https://xtermjs.org/) with PTY-backed output so ANSI colors, cursor
+movement, progress bars, and interactive output from AI CLIs render faithfully.
 
 **Behavior:**
 
@@ -192,7 +202,7 @@ Below the prompt, a terminal-like log viewer displays session output. This is th
 3. **Lifecycle and errors** — shows `Connecting`, `Live — <status>`, `Reconnecting`, or an explicit unavailable/paused error. The connection retries with capped exponential backoff.
 4. **On leave** — sends `session:unsubscribe` before closing the browser socket.
 
-**Terminal controls:**
+**Target terminal controls (not implemented by the current text viewer):**
 
 | Control    | Function                                                                                                          |
 | ---------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -203,7 +213,7 @@ Below the prompt, a terminal-like log viewer displays session output. This is th
 | Fullscreen | Expand the terminal to fill the viewport                                                                          |
 | Download   | Download the full log as a `.txt` file                                                                            |
 
-**Status transitions** are displayed as system messages in the terminal:
+**Target status transitions** are displayed as system messages in the terminal:
 
 ```
 [system] Session started at 2026-08-01T12:00:05Z

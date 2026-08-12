@@ -13,6 +13,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Local daemon (`pnpm local:daemon start`) | **Supported** against local API/WS                                                                            |
 | Production systemd unit                  | **Intended shape** — document and validate per host                                                           |
 | Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)) |
+| Automatic update download / restart      | **Not implemented**; updates use the manual drain procedure below                                             |
 
 ---
 
@@ -76,7 +77,7 @@ Host inventory template: [examples/local/host-inventory.config.json](../examples
 
 ### Agent binary / package
 
-Preferred path — **drain, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
+Current path — an operator must **drain, deploy, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 
 1. Signal drain:
    - Control plane: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`
@@ -87,6 +88,9 @@ Preferred path — **drain, then restart** ([host-daemon.md](host-daemon.md#auto
 5. Confirm re-register and capacity restored (`draining` cleared).
 
 Do **not** kill in-flight AI CLIs for routine upgrades.
+
+The intended auto-update feature will orchestrate these same steps, but no updater currently
+downloads code, waits for drain completion, or restarts the service automatically.
 
 ### Command profiles / repos
 
