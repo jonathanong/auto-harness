@@ -24,6 +24,7 @@ describe("CDK table catalog", () => {
       "SessionUsage",
       "SessionUsageKinds",
       "Integrations",
+      "NotificationDeliveries",
     ]);
     expect(DYNAMO_TABLES.find((table) => table.name === "Worktrees")?.gsis).toEqual([
       {
@@ -50,6 +51,16 @@ describe("CDK table catalog", () => {
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "Integrations")).toMatchObject({
       partitionKey: { name: "id" },
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "NotificationDeliveries")).toMatchObject({
+      partitionKey: { name: "id" },
+      gsis: [
+        {
+          name: "status-nextAttemptAt",
+          partitionKey: { name: "status" },
+          sortKey: { name: "nextAttemptAt" },
+        },
+      ],
     });
     const sessions = DYNAMO_TABLES.find((t) => t.name === "Sessions");
     expect(sessions?.gsis?.some((g) => g.name === "statusShard-createdAt")).toBe(true);

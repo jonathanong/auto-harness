@@ -9,6 +9,7 @@ import * as providerAccountUpdates from "./plane-storage-provider-account-update
 import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
+import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -28,6 +29,32 @@ export type {
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
   /** Marker prevents arbitrary test/storage doubles from being treated as durable rate storage. */
   readonly rateLimitStore = true;
+
+  enqueue(record: import("../slack-delivery-types.ts").SlackDeliveryRecord) {
+    return notificationDeliveries.enqueue(this.ctx, record);
+  }
+
+  claimDue(
+    input: Parameters<import("../slack-delivery-types.ts").SlackOutboxStore["claimDue"]>[0],
+  ) {
+    return notificationDeliveries.claimDue(this.ctx, input);
+  }
+
+  get(id: string) {
+    return notificationDeliveries.get(this.ctx, id);
+  }
+
+  complete(
+    input: Parameters<import("../slack-delivery-types.ts").SlackOutboxStore["complete"]>[0],
+  ) {
+    return notificationDeliveries.complete(this.ctx, input);
+  }
+
+  reschedule(
+    input: Parameters<import("../slack-delivery-types.ts").SlackOutboxStore["reschedule"]>[0],
+  ) {
+    return notificationDeliveries.reschedule(this.ctx, input);
+  }
 
   getSlackIntegration(): Promise<
     import("../slack-integration-types.ts").SlackIntegrationRecord | null

@@ -218,6 +218,19 @@ erDiagram
         boolean enabled
     }
 
+    NotificationDelivery {
+        string id PK "stable idempotency key"
+        string sessionId FK
+        string event
+        string operation "post-root | post-reply | update-root"
+        string status "pending | delivering | sent | dead"
+        string nextAttemptAt "GSI sort key and lease recovery deadline"
+        string dependsOnId "nullable"
+        string threadRootId "nullable"
+        string remoteChannel "nullable"
+        string remoteMessageTs "nullable"
+    }
+
     User ||--o{ Session : creates
     Repository ||--o{ Worktree : has
     Repository ||--o{ Session : targets
@@ -225,6 +238,7 @@ erDiagram
     Schedule ||--o{ Session : creates
     Worktree ||--o| Session : runs
     Session ||--o{ SessionLog : produces
+    Session ||--o{ NotificationDelivery : queues
 ```
 
 **Changed from an earlier draft of this document:** `command` → `commandProfile` (D4);
@@ -234,17 +248,18 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 
 ### Access patterns
 
-| Access pattern                      | Table / index | Key shape                                                                           | Notes                                                                                                                                                                                  |
-| ----------------------------------- | ------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Get session by id                   | Sessions      | PK `id`                                                                             |                                                                                                                                                                                        |
-| List queued sessions for assignment | Sessions      | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.       |
-| List sessions by repo               | Sessions      | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                        |
-| Full-text prompt search             | —             | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
-| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                   |
-| Range-read logs for REST/history    | SessionLogs   | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
-| Idle matching worktrees             | Worktrees     | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
-| Find agent connection for assign    | Connections   | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                         |
-| Due schedules                       | Schedules     | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                     |
+| Access pattern                      | Table / index          | Key shape                                                                           | Notes                                                                                                                                                                                  |
+| ----------------------------------- | ---------------------- | ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Get session by id                   | Sessions               | PK `id`                                                                             |                                                                                                                                                                                        |
+| List queued sessions for assignment | Sessions               | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.       |
+| List sessions by repo               | Sessions               | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                        |
+| Full-text prompt search             | —                      | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
+| Append session log chunk            | SessionLogs            | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                   |
+| Range-read logs for REST/history    | SessionLogs            | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
+| Idle matching worktrees             | Worktrees              | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
+| Find agent connection for assign    | Connections            | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                         |
+| Due schedules                       | Schedules              | GSI `repositoryId-nextRunAt`, or scan across all repos for the cron sweep           | Claim is the conditional advance of `nextRunAt` — see Invariant 4.                                                                                                                     |
+| Due notification operations         | NotificationDeliveries | GSI `status-nextAttemptAt`                                                          | Workers conditionally lease pending or expired-delivering rows; stable IDs make lifecycle replay insert-only.                                                                          |
 
 ---
 

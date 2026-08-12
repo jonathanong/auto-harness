@@ -21,6 +21,7 @@ The control plane owns:
 | Cron schedules                | EventBridge rule (1 min) → Cron Lambda                         |
 | Authn / authz                 | Session cookies, API keys, basic auth (see [auth.md](auth.md)) |
 | Integrations                  | Slack (and future webhooks) via KMS-encrypted config           |
+| Notification delivery outbox  | Durable leased lifecycle operations; no Slack transport yet    |
 | Audit trail                   | AuditLogs table                                                |
 
 The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([host-daemon.md](host-daemon.md), [security.md](security.md)). Authn/authz: [auth.md](auth.md).
@@ -156,6 +157,7 @@ timeout.
 | Agents             | REST `/agents/*`                                   | Connected agents derived from Connections + Worktrees                          |
 | Schedules          | REST `/schedules/*`                                | CRUD + manual trigger                                                          |
 | Integrations       | REST `/integrations/*`                             | Slack config (KMS encrypt/decrypt token)                                       |
+| Notifications      | Future lifecycle worker                            | Claim durable delivery operations and invoke an approved transport             |
 | WS Connect         | `$connect`                                         | Validate token; store connection                                               |
 | WS Disconnect      | `$disconnect`                                      | Cleanup + agent offline handling                                               |
 | WS Message         | `$default`                                         | Agent/client messages; log writes; status updates; subscribe                   |
@@ -196,24 +198,26 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table            | PK                | SK             | GSIs                    | Primary access patterns             |
-| ---------------- | ----------------- | -------------- | ----------------------- | ----------------------------------- |
-| Users            | `id`              | —              | `username`              | Login by username                   |
-| Repositories     | `id`              | —              | —                       | CRUD by id                          |
-| Worktrees        | `id`              | —              | `repositoryId-id`       | List repository worktrees           |
-| Sessions         | `id`              | —              | `statusShard-createdAt` | Sharded queue query                 |
-| HostLocks        | `hostId`          | —              | —                       | Conditional host assignment lock    |
-| ConcurrencyLocks | `concurrencyId`   | —              | —                       | Conditional concurrency lock        |
-| SessionLogs      | `sessionId`       | `timestampSeq` | —                       | Append/range read; `ttl` is enabled |
-| Schedules        | `id`              | —              | —                       | CRUD by id                          |
-| Connections      | `connectionId`    | —              | —                       | Connection state                    |
-| Archives         | `key`             | —              | —                       | Archive metadata                    |
-| HostInventories  | `hostId`          | —              | —                       | Host inventory                      |
-| AuditLogs        | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query      |
-| RateLimits       | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL  |
-| Providers        | `id`              | —              | —                       | Provider catalog                    |
-| ProviderAccounts | `id`              | —              | —                       | Provider account catalog            |
-| Commands         | `id`              | —              | —                       | Command catalog                     |
+| Table                  | PK                | SK             | GSIs                    | Primary access patterns             |
+| ---------------------- | ----------------- | -------------- | ----------------------- | ----------------------------------- |
+| Users                  | `id`              | —              | `username`              | Login by username                   |
+| Repositories           | `id`              | —              | —                       | CRUD by id                          |
+| Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees           |
+| Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                 |
+| HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock    |
+| ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock        |
+| SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; `ttl` is enabled |
+| Schedules              | `id`              | —              | —                       | CRUD by id                          |
+| Connections            | `connectionId`    | —              | —                       | Connection state                    |
+| Archives               | `key`             | —              | —                       | Archive metadata                    |
+| HostInventories        | `hostId`          | —              | —                       | Host inventory                      |
+| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query      |
+| RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL  |
+| Providers              | `id`              | —              | —                       | Provider catalog                    |
+| ProviderAccounts       | `id`              | —              | —                       | Provider account catalog            |
+| Commands               | `id`              | —              | —                       | Command catalog                     |
+| Integrations           | `id`              | —              | —                       | Encrypted integration configuration |
+| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox      |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 

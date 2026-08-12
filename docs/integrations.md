@@ -3,9 +3,11 @@
 ## Slack
 
 > **Current status:** Auto Harness can create, read, replace, and delete an encrypted, redacted
-> Slack configuration through the admin API and Web UI. It does not yet call Slack, perform OAuth
-> or inbound verification, create session threads, or deliver lifecycle messages. The delivery
-> flow below is the promised end state.
+> Slack configuration through the admin API and Web UI. A local-only delivery core now formats
+> lifecycle messages and provides a durable, leased outbox with retry, dependency ordering, and
+> stable idempotency keys behind a transport interface. It is not wired to session transitions and
+> deliberately has no network-backed Slack transport, OAuth, inbound verification, or token use.
+> The delivery flow below remains the promised end state.
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
@@ -213,6 +215,12 @@ The delivery implementation must respect Slack API rate limits and batch updates
 - Once delivery ships, fire-and-forget CI callers can rely on Slack (and GitHub repo activity) for humans; the trigger Actions run does not carry live agent logs.
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
+
+The prepared outbox stores one immutable operation ID per lifecycle action. Workers conditionally
+lease due rows, recover expired leases after a restart, retry with bounded exponential backoff, and
+dead-letter exhausted operations. Replies depend on the sent root operation, while the final root
+update depends on the terminal reply. A future Slack transport must deduplicate every ambiguous
+retry using the operation ID; activating that transport and runtime wiring is a separate step.
 
 ### Permissions Required
 
