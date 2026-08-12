@@ -71,6 +71,46 @@ describe("ServiceAccountTable", () => {
     expect(onDelete).toHaveBeenCalledWith("service:all");
   });
 
+  it("serializes rotation requests and reports failures", async () => {
+    let reject!: (cause: unknown) => void;
+    const onRotate = vi.fn(
+      () =>
+        new Promise<void>((_resolve, rejectPromise) => {
+          reject = rejectPromise;
+        }),
+    );
+    const view = mountForm(
+      <ServiceAccountTable
+        accounts={accounts}
+        repositories={[]}
+        onRotate={onRotate}
+        onDelete={vi.fn()}
+      />,
+    );
+    const first = field<HTMLButtonElement>(view.container, "service-account-rotate-service:all");
+    const second = field<HTMLButtonElement>(
+      view.container,
+      "service-account-rotate-service:scoped",
+    );
+    press(first);
+    press(first);
+    expect(onRotate).toHaveBeenCalledOnce();
+    expect(first.disabled).toBe(true);
+    expect(second.disabled).toBe(true);
+    expect(first.textContent).toBe("Rotating…");
+    await act(async () => reject(new Error("rotation unavailable")));
+    expect(first.disabled).toBe(false);
+    expect(second.disabled).toBe(false);
+    expect(field(view.container, "service-account-rotate-service:all-error").textContent).toBe(
+      "rotation unavailable",
+    );
+    press(second);
+    await act(async () => reject("offline"));
+    expect(field(view.container, "service-account-rotate-service:scoped-error").textContent).toBe(
+      "Unable to rotate account.",
+    );
+  });
+
   it("keeps delete confirmation open for Error and non-Error failures", async () => {
     const onDelete = vi
       .fn()

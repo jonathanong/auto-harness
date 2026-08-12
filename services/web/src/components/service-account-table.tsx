@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Button,
   ConfirmButton,
@@ -24,6 +25,8 @@ export function ServiceAccountTable({
   onRotate: (account: ServiceAccount) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const [rotatingId, setRotatingId] = useState<string>();
+  const [rotationError, setRotationError] = useState<{ id: string; message: string }>();
   const repositoryNames = new Map(
     repositories.map((repository) => [repository.id, repository.name]),
   );
@@ -67,10 +70,23 @@ export function ServiceAccountTable({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={rotatingId !== undefined}
                   data-pw={`service-account-rotate-${account.id}`}
-                  onClick={() => void onRotate(account)}
+                  onClick={() => {
+                    setRotatingId(account.id);
+                    setRotationError(undefined);
+                    void onRotate(account)
+                      .catch((cause) =>
+                        setRotationError({
+                          id: account.id,
+                          message:
+                            cause instanceof Error ? cause.message : "Unable to rotate account.",
+                        }),
+                      )
+                      .finally(() => setRotatingId(undefined));
+                  }}
                 >
-                  Rotate
+                  {rotatingId === account.id ? "Rotating…" : "Rotate"}
                 </Button>
                 <ConfirmButton
                   triggerLabel="Delete"
@@ -91,6 +107,15 @@ export function ServiceAccountTable({
                   }}
                 />
               </div>
+              {rotationError?.id === account.id ? (
+                <p
+                  className="mt-2 text-sm text-red-700"
+                  role="alert"
+                  data-pw={`service-account-rotate-${account.id}-error`}
+                >
+                  {rotationError.message}
+                </p>
+              ) : null}
             </TableCell>
           </TableRow>
         ))}

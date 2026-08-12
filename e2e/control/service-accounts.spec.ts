@@ -66,6 +66,11 @@ test.describe("service-account administration", () => {
     await page.getByTestId("service-account-key-done").click();
     await expect(page.getByText(created.apiKey, { exact: true })).toHaveCount(0);
 
+    rejectCreate = true;
+    await page.getByTestId(`service-account-rotate-${created.account.id}`).click();
+    await expect(page.getByTestId(`service-account-rotate-${created.account.id}-error`)).toHaveText(
+      "temporary account storage failure",
+    );
     const rotateResponse = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/v1/auth/service-accounts") &&
