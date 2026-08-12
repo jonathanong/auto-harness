@@ -157,7 +157,10 @@ Notes:
 - Many clients may subscribe to one session
 - Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail
 - Streams may interleave; order is preserved per stream
-- Agent rate-limits/batches logs; server persists to DynamoDB and fans out
+- The local WebSocket server coalesces up to 25 adjacent log frames over a short bounded window,
+  flushes them before any later control/status frame, and persists the batch in one
+  connection-fenced DynamoDB transaction before fan-out. The agent's `timestampSeq` order is
+  unchanged; the server never renumbers or reorders chunks.
 
 ---
 

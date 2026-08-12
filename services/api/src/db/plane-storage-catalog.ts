@@ -103,6 +103,41 @@ export async function putLogFenced(
   }
 }
 
+/**
+ * Persist one bounded ingress batch behind the same connection fence as a
+ * single log. A transaction is intentional: BatchWriteItem cannot condition
+ * the write on the host lease and could therefore admit stale-socket logs.
+ */
+export async function putLogsFenced(
+  ctx: PlaneStorageCtx,
+  records: readonly LogRecord[],
+  fence: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  if (records.length === 0) return true;
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: fence.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+            },
+          },
+          ...records.map((record) => ({
+            Put: { TableName: ctx.tables.sessionLogs, Item: { ...record } },
+          })),
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
+}
+
 export async function deleteLog(
   ctx: PlaneStorageCtx,
   sessionId: string,

@@ -240,7 +240,7 @@ bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHo
 | List queued sessions for assignment | Sessions      | GSI `status-createdAt`, sharded: query all of `queued#0` … `queued#(N-1)` and merge | See Invariant-adjacent note below — a single `status=queued` partition is a hot-partition risk under CI-storm bursts. `N` (shard count) is a deploy-time constant; start at 4–8.       |
 | List sessions by repo               | Sessions      | GSI `repositoryId-createdAt`                                                        |                                                                                                                                                                                        |
 | Full-text prompt search             | —             | **not implemented in v1**                                                           | DynamoDB cannot do this without a scan or an external index (OpenSearch). Phase 4 ships filter-only; revisit only if a real need appears, with an explicit external index, not a scan. |
-| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. The current API writes each chunk individually; target batching must preserve this order.                          |
+| Append session log chunk            | SessionLogs   | PK `sessionId`, SK `timestampSeq`                                                   | `seq` is a per-session monotonic counter assigned by the **agent**. Local WS ingress batches at most 25 adjacent chunks without changing this order.                                   |
 | Range-read logs for REST/history    | SessionLogs   | PK `sessionId`, SK range                                                            | Sort order is correct because `timestampSeq` is lexicographically ordered by construction (fixed-width zero-padded seq).                                                               |
 | Idle matching worktrees             | Worktrees     | GSI `repositoryId-status` (or scan for small fleets)                                | Claim uses a conditional write — see Invariant 1.                                                                                                                                      |
 | Find agent connection for assign    | Connections   | GSI `hostId`                                                                        | Conditional put on register — see Invariant 3.                                                                                                                                         |
@@ -449,7 +449,9 @@ path writes the DynamoDB Archives table rather than S3. The local store is Dynam
 - **Ack-deadline enforcement**: `session:assign` without `session:ack` inside the deadline
   requeues the session and frees the worktree (Invariant 2) — implemented in the scheduler
   service, triggered by a short-lived timer or a re-check on next scheduling pass.
-- Live log streaming over WS, batched to DynamoDB via `BatchWriteItem`.
+- Live log streaming over WS. The local WebSocket ingress coalesces at most 25 adjacent log
+  frames and commits them with one connection-fenced DynamoDB transaction; a plain
+  `BatchWriteItem` cannot preserve the host-connection fence.
 - Session status lifecycle: `queued → running → completed | failed | cancelled | timed_out`.
 - Session timeout enforcement (agent-side kill + report).
 - Queue management with priority; **durable `concurrencyId` lock resolution** (Invariant 9) at
@@ -490,9 +492,9 @@ path writes the DynamoDB Archives table rather than S3. The local store is Dynam
 **Status (code-complete and tested locally):** `DaemonLoop` + **WebSocket** (`/ws` on local API,
 `auto-harness-agent start`, `pnpm local:ws-e2e`) and loopback (`pnpm local:cloud-e2e`). Ack
 deadline requeue (Inv 2), usage_limit retry (Inv 6), agent-only resume pin (Inv 7), durable
-concurrency dedupe (Inv 9), heartbeat stale reclaim. Log persistence is currently one write per
-chunk, not `BatchWriteItem`. No live AWS API Gateway deployment or account-backed Phase 3 E2E has
-been demonstrated.
+concurrency dedupe (Inv 9), heartbeat stale reclaim. Local WS log ingress commits up to 25
+adjacent chunks in one connection-fenced transaction; a plain `BatchWriteItem` would not preserve
+that fence. No live AWS API Gateway deployment or account-backed Phase 3 E2E has been demonstrated.
 
 **Migration marker: a plan-only repo workflow (e.g. `codex-plan`, no publication) may cut over once this
 phase's acceptance criteria pass, plus the terminal hook from Phase 1 and account cooldown/fallback routing

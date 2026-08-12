@@ -504,6 +504,13 @@ export class DynamoPlaneStorageBase {
     return catalog.putLogFenced(this.ctx, rec, fence);
   }
 
+  putLogsFenced(
+    records: readonly LogRecord[],
+    fence: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return catalog.putLogsFenced(this.ctx, records, fence);
+  }
+
   deleteLog(sessionId: string, timestampSeq: string): Promise<void> {
     return catalog.deleteLog(this.ctx, sessionId, timestampSeq);
   }
