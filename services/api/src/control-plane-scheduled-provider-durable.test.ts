@@ -130,16 +130,24 @@ describe("durable scheduled terminal and provider fallback", () => {
       providerId: "provider",
     });
     if (!command.ok) throw new Error(command.error);
-    const inventory = run.plane.state.hostInventories.get("provider-host")!;
-    const configuredInventory = {
-      ...inventory,
-      providerAccounts: [
-        { providerAccountId: "account-a", commandId: "provider-command" },
-        { providerAccountId: "account-b", commandId: "provider-command" },
-      ],
-    };
-    run.plane.state.hostInventories.set("provider-host", configuredInventory);
-    await run.plane.state.storage!.putHostInventory(configuredInventory);
+    await expect(
+      run.plane.putHostInventoryDurable("provider-host", {
+        repositories: [
+          {
+            id: "provider-repo",
+            path: "/repos/provider-repo",
+            defaultBranch: "main",
+            worktrees: [],
+          },
+        ],
+        capabilities: ["scheduled-main-checkout"],
+        commandProfiles: {},
+        providerAccounts: [
+          { providerAccountId: "account-a", commandId: "provider-command" },
+          { providerAccountId: "account-b", commandId: "provider-command" },
+        ],
+      }),
+    ).resolves.toMatchObject({ ok: true });
     await run.plane.settleStorage();
     expect(
       resolveScheduledSessionTarget(

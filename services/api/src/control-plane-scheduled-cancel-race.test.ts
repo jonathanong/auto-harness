@@ -41,25 +41,24 @@ async function registeredPlane(connectionId: string) {
   return { ...created, connectionId };
 }
 
-describe("durable scheduled cancellation races", () => {
-  it("reclaims an exact cancelled attempt after disconnect and restart", async () => {
-    if (!ctx.available || !ctx.storage) return;
-    const run = await registeredPlane("cancel-exact");
-    const outbound: unknown[] = [];
-    run.plane.state.onHostMessage = (_hostId, message) => outbound.push(message);
-    const created = await run.plane.createSessionDurable({
-      repositoryId: REPOSITORY_ID,
-      prompt: "scheduled run",
-      target: { commandId: COMMAND_ID },
-      timeout: 30,
-      type: "scheduled",
-      source: "schedule",
-      concurrencyId: "cancel-exact-lock",
-    });
-    if (!created.ok) throw new Error(created.error);
-    expect(await run.plane.assignScheduledQueuedDurable()).toHaveLength(1);
-    const assigned = run.plane.getSession(created.session.id)!;
-    await run.plane.handleHostMessageDurable(
+async function assignedScheduledSession(
+  run: Awaited<ReturnType<typeof registeredPlane>>,
+  concurrencyId: string,
+) {
+  const created = await run.plane.createSessionDurable({
+    repositoryId: REPOSITORY_ID,
+    prompt: "scheduled run",
+    target: { commandId: COMMAND_ID },
+    timeout: 30,
+    type: "scheduled",
+    source: "schedule",
+    concurrencyId,
+  });
+  if (!created.ok) throw new Error(created.error);
+  expect(await run.plane.assignScheduledQueuedDurable()).toHaveLength(1);
+  const assigned = run.plane.state.sessions.get(created.session.id)!;
+  await expect(
+    run.plane.handleHostMessageDurable(
       {
         type: "session:ack",
         sessionId: assigned.id,
@@ -67,7 +66,31 @@ describe("durable scheduled cancellation races", () => {
         attemptId: assigned.attemptId!,
       },
       run.connectionId,
-    );
+    ),
+  ).resolves.toMatchObject({ ok: true, sessionAcknowledged: assigned.id });
+  return assigned;
+}
+
+describe("durable scheduled cancellation races", () => {
+  it("cancels a running scheduled session after its local cache was evicted", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const run = await registeredPlane("cancel-cache-evicted");
+    const assigned = await assignedScheduledSession(run, "cancel-cache-evicted-lock");
+
+    run.plane.state.sessions.clear();
+    await expect(run.plane.cancelSessionDurable(assigned.id)).resolves.toMatchObject({
+      ok: true,
+      session: { status: "cancelled" },
+    });
+    expect(run.plane.state.sessions.get(assigned.id)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("reclaims an exact cancelled attempt after disconnect and restart", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const run = await registeredPlane("cancel-exact");
+    const outbound: unknown[] = [];
+    run.plane.state.onHostMessage = (_hostId, message) => outbound.push(message);
+    const assigned = await assignedScheduledSession(run, "cancel-exact-lock");
 
     await expect(run.plane.cancelSessionDurable(assigned.id)).resolves.toMatchObject({
       ok: true,
@@ -128,30 +151,11 @@ describe("durable scheduled cancellation races", () => {
     );
   });
 
-  it("fences a stale cancel from overwriting a reassigned attempt", async () => {
+  it("fences a stale cached cancel from overwriting a reassigned attempt", async () => {
     if (!ctx.available || !ctx.storage) return;
     const stale = await registeredPlane("cancel-race-old");
-    const created = await stale.plane.createSessionDurable({
-      repositoryId: REPOSITORY_ID,
-      prompt: "scheduled run",
-      target: { commandId: COMMAND_ID },
-      timeout: 30,
-      type: "scheduled",
-      source: "schedule",
-      concurrencyId: "cancel-race-lock",
-    });
-    if (!created.ok) throw new Error(created.error);
-    expect(await stale.plane.assignScheduledQueuedDurable()).toHaveLength(1);
-    const first = stale.plane.state.sessions.get(created.session.id)!;
-    await stale.plane.handleHostMessageDurable(
-      {
-        type: "session:ack",
-        sessionId: first.id,
-        worktreeId: null,
-        attemptId: first.attemptId!,
-      },
-      stale.connectionId,
-    );
+    const first = await assignedScheduledSession(stale, "cancel-race-lock");
+    expect(stale.plane.state.sessions.get(first.id)?.attemptId).toBe(first.attemptId);
 
     const replacement = await registeredPlane("cancel-race-new");
     await replacement.plane.hydrateFromStorage();

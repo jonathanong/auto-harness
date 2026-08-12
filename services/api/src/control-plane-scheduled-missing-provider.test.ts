@@ -53,16 +53,24 @@ describe("scheduled provider deletion", () => {
       replaceExisting: true,
     });
     if (!registered.ok) throw new Error(registered.error);
-    const inventory = created.plane.state.hostInventories.get("missing-provider-host")!;
-    const configuredInventory = {
-      ...inventory,
-      providerAccounts: [
-        { providerAccountId: "missing-account-a", commandId: "missing-provider-command" },
-        { providerAccountId: "missing-account-b", commandId: "missing-provider-command" },
-      ],
-    };
-    created.plane.state.hostInventories.set("missing-provider-host", configuredInventory);
-    await created.plane.state.storage!.putHostInventory(configuredInventory);
+    await expect(
+      created.plane.putHostInventoryDurable("missing-provider-host", {
+        repositories: [
+          {
+            id: "missing-provider-repo",
+            path: "/repo",
+            defaultBranch: "main",
+            worktrees: [],
+          },
+        ],
+        capabilities: ["scheduled-main-checkout"],
+        commandProfiles: {},
+        providerAccounts: [
+          { providerAccountId: "missing-account-a", commandId: "missing-provider-command" },
+          { providerAccountId: "missing-account-b", commandId: "missing-provider-command" },
+        ],
+      }),
+    ).resolves.toMatchObject({ ok: true });
     const session = await created.plane.createSessionDurable({
       repositoryId: "missing-provider-repo",
       prompt: "scheduled run",
