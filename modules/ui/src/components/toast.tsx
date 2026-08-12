@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
+
+import { Button } from "./button.tsx";
 
 /**
  * Shows a one-off success message carried across a redirect via a `?toast=`
@@ -52,6 +54,39 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
       className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-foreground px-4 py-2 text-sm text-background shadow-lg"
     >
       {message}
+    </div>
+  );
+}
+
+/** Persistent mutation failure notification with an explicit retry action. */
+export function RetryToast({
+  children,
+  onRetry,
+  pending = false,
+}: {
+  children: ReactNode;
+  onRetry: () => void;
+  pending?: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-atomic="true"
+      data-pw="mutation-error-toast"
+      className="fixed bottom-4 right-4 z-50 max-w-sm rounded-md border border-destructive/40 bg-background p-4 text-sm text-foreground shadow-lg"
+    >
+      <div>{children}</div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="mt-3"
+        disabled={pending}
+        onClick={onRetry}
+        data-pw="mutation-error-retry"
+      >
+        {pending ? "Retrying…" : "Try again"}
+      </Button>
     </div>
   );
 }

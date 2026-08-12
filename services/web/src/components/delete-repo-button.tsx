@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, WithTooltip } from "@auto-harness/ui";
+import { Button, RetryToast, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import { deleteCatalogResource } from "./catalog-delete.ts";
 import type { RequestFunction } from "./request-types.ts";
 
 export function DeleteRepoButton({
@@ -20,6 +21,20 @@ export function DeleteRepoButton({
   const [pending, start] = useTransition();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deleteRepository = () => {
+    start(async () => {
+      const failure = await deleteCatalogResource(
+        request,
+        `${apiBase()}/api/v1/repositories/${encodeURIComponent(repositoryId)}`,
+      );
+      if (failure) {
+        setError(failure);
+        return;
+      }
+      router.push("/repositories");
+      router.refresh();
+    });
+  };
 
   if (!confirming) {
     return (
@@ -46,9 +61,9 @@ export function DeleteRepoButton({
           : "Permanently remove this repository from the catalog."}
       </p>
       {error ? (
-        <p className="text-sm text-red-700" data-pw="delete-repo-error">
-          {error}
-        </p>
+        <RetryToast onRetry={deleteRepository} pending={pending}>
+          <p data-pw="delete-repo-error">{error}</p>
+        </RetryToast>
       ) : null}
       <div className="flex gap-2">
         <WithTooltip tip="Permanently delete this catalog repository">
@@ -58,26 +73,20 @@ export function DeleteRepoButton({
             variant="destructive"
             disabled={pending}
             data-pw="delete-repo-confirm-submit"
-            onClick={() => {
-              setError(null);
-              start(async () => {
-                const res = await request(
-                  `${apiBase()}/api/v1/repositories/${encodeURIComponent(repositoryId)}`,
-                  { method: "DELETE" },
-                );
-                if (!res.ok) {
-                  setError(await res.text());
-                  return;
-                }
-                router.push("/repositories");
-                router.refresh();
-              });
-            }}
+            onClick={deleteRepository}
           >
             {pending ? "Deleting…" : "Confirm delete"}
           </Button>
         </WithTooltip>
-        <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setError(null);
+            setConfirming(false);
+          }}
+        >
           Cancel
         </Button>
       </div>

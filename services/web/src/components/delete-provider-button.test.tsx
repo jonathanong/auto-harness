@@ -66,7 +66,7 @@ describe("DeleteProviderButton", () => {
     cancelView.unmount();
   });
 
-  it("renders parsed API errors and status fallbacks", async () => {
+  it("renders parsed API errors in a retry toast and status fallbacks", async () => {
     const { request, enqueue } = createRequestFake(
       new Response(JSON.stringify({ error: { message: "provider is busy" } }), { status: 409 }),
     );
@@ -81,6 +81,7 @@ describe("DeleteProviderButton", () => {
     open(parsedView);
     press(confirm());
     await act(async () => Promise.resolve());
+    expect(field(document, "mutation-error-toast").getAttribute("role")).toBe("alert");
     expect(field(document, "delete-provider-error").textContent).toBe("provider is busy");
     parsedView.unmount();
 

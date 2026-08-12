@@ -68,6 +68,40 @@ test.describe("control plane commands", () => {
     });
   });
 
+  test("failed command deletion is announced and retryable", async ({ page }) => {
+    const name = `pw-cmd-retry-${test.info().parallelIndex}-${Date.now()}`;
+    await page.goto("/commands");
+    await page.getByTestId("add-command-open").click();
+    await page.getByTestId("command-catalog-name").fill(name);
+    await page.getByTestId("command-catalog-argv").fill("echo");
+    await page.getByTestId("command-catalog-submit").click();
+    await expect(page).toHaveURL(/\/commands\/[^/]+$/, { timeout: 15_000 });
+    const commandId = new URL(page.url()).pathname.split("/").pop()!;
+
+    let failDeleteOnce = true;
+    await page.route(`**/api/v1/commands/${commandId}`, async (route) => {
+      if (route.request().method() === "DELETE" && failDeleteOnce) {
+        failDeleteOnce = false;
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "command deletion temporarily unavailable" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.getByTestId("delete-command-open").click();
+    await page.getByTestId("delete-command-confirm-submit").click();
+    await expect(page.getByTestId("mutation-error-toast")).toHaveAttribute("role", "alert");
+    await expect(page.getByTestId("delete-command-error")).toHaveText(
+      "command deletion temporarily unavailable",
+    );
+    await page.getByTestId("mutation-error-retry").click();
+    await expect(page).toHaveURL(/\/commands$/, { timeout: 15_000 });
+  });
+
   test("unknown command id shows a not-found state", async ({ page }) => {
     await page.goto("/commands/does-not-exist-xyz");
     await expect(page.getByTestId("page-command-detail-not-found")).toBeVisible();
