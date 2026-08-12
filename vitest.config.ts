@@ -27,6 +27,7 @@ export default defineConfig({
         "**/db/plane-storage-catalog-providers.ts",
         "**/db/plane-storage-catalog.ts",
         "**/db/plane-storage-clear.ts",
+        "**/db/plane-storage-deletion-markers.ts",
         "**/db/plane-storage-locks.ts",
         "**/db/plane-storage-main-checkout-cancel.ts",
         "**/db/plane-storage-main-checkout-release.ts",
