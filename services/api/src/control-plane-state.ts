@@ -33,6 +33,7 @@ import type {
 } from "./control-plane-types.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
+import type { ArchiveWriter } from "./archive-writer.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
@@ -65,6 +66,7 @@ export type ControlPlaneState = {
   auditLogs: Map<string, AuditLogRecord>;
   usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveObject>;
+  archiveWriter: ArchiveWriter | undefined;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
   /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
@@ -123,6 +125,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     auditLogs: new Map(),
     usageRecords: new Map(),
     archives: new Map(),
+    archiveWriter: options.archiveWriter,
     webhookDeliveries: [],
     pendingAcks: new Map(),
     mainCheckoutLeases: new Map(),

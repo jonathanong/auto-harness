@@ -16,7 +16,11 @@ import {
   registerHost,
   registerHostDurable,
 } from "./control-plane-agents.ts";
-import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
+import {
+  archiveSessionLogs,
+  maybeDeliverWebhook,
+  queueSessionArchive,
+} from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 import {
@@ -913,7 +917,7 @@ function applySessionStatus(
       if (session.resumedFromSessionId && msg.cliResumeRef === undefined) {
         delete session.cliResumeRef;
       }
-      void archiveSessionLogs(state, session.id);
+      queueSessionArchive(state, session.id);
       void maybeDeliverWebhook(state, session);
     }
   }

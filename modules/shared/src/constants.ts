@@ -60,7 +60,7 @@ export const DEFAULT_HEARTBEAT_STALE_MS = 60_000;
 export const DEFAULT_HOST_KEEPALIVE_MS = 20_000;
 
 /** Session log archival target prefix (Phase 5). */
-export const DEFAULT_ARCHIVE_PREFIX = "session-logs/";
+export const DEFAULT_ARCHIVE_PREFIX = "sessions/";
 
 export const PACKAGE_SCOPE = "@auto-harness" as const;
 

@@ -123,8 +123,10 @@ describe("ControlPlane lifecycle", () => {
     expect(plane.getSession("sess-1")?.status).toBe("queued");
   });
 
-  it("archives logs and delivers optional webhook on terminal", () => {
+  it("archives JSONL logs to durable metadata and the configured object writer", async () => {
+    const uploaded: Array<{ key: string; body: string; contentType: string }> = [];
     const plane = new ControlPlane({
+      archiveWriter: { putArchive: async (object) => void uploaded.push(object) },
       idFactory: () => "sess-1",
       now: () => "2026-01-01T00:00:00.000Z",
       webhookUrl: "https://example.test/hook",
@@ -164,7 +166,15 @@ describe("ControlPlane lifecycle", () => {
       attemptId: assigned.attemptId!,
       status: "completed",
     });
+    await plane.settleStorage();
     expect(plane.getArchive("sess-1")?.body).toContain("hi");
+    expect(uploaded).toEqual([
+      {
+        key: "sessions/sess-1/logs.jsonl",
+        body: '{"timestamp":"2026-01-01T00:00:00.000Z","stream":"stdout","content":"hi"}\n',
+        contentType: "application/x-ndjson",
+      },
+    ]);
     expect(plane.listWebhookDeliveries()).toHaveLength(1);
     plane.setWebhookUrl(null);
     expect(plane.listArchives()).toHaveLength(1);

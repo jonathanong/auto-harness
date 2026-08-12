@@ -7,6 +7,8 @@ export function getServiceName(): string {
 }
 
 export { MemorySessionStore } from "./memory-store.ts";
+export { configuredArchiveWriter, S3ArchiveWriter } from "./archive-writer.ts";
+export type { ArchiveWriter } from "./archive-writer.ts";
 export type { StoredSession } from "./memory-store.ts";
 export { createLocalApp, startLocalServer } from "./local-server.ts";
 export { DEFAULT_LOCAL_SCHEDULER_INTERVAL_MS, LocalScheduler } from "./local-scheduler.ts";

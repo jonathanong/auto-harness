@@ -76,7 +76,7 @@ describe("ControlPlane storage write-through paths", () => {
       sessionId: "s1",
       status: "completed",
     });
-    expect(plane.archiveSessionLogs("s1")?.body).toContain("hi");
+    expect((await plane.archiveSessionLogs("s1")).body).toContain("hi");
 
     const repo = plane.createRepository({
       name: "n",

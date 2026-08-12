@@ -56,9 +56,10 @@ graph TB
 - **AWS** authenticates callers, stores sessions, runs the queue, assigns work (label match + round-robin), fans out logs, archives data, evaluates cron.
 - **Agent** maintains workspaces, spawns processes, streams output, holds secrets (git + AI keys).
 
-Today, those control-plane behaviors run in the local API. Durable session-log archival writes a
-JSON object to the DynamoDB Archives table; the S3 bucket exists in the synthesized foundation,
-but no runtime uploads archives to it.
+Today, those control-plane behaviors run in the local API. Durable session-log archival writes
+JSONL through an injected S3 adapter when `ARCHIVE_BUCKET` is configured and retains archive
+metadata in DynamoDB. The private lifecycle-managed bucket exists in the synthesized foundation;
+no account-backed upload or deployment has been run.
 
 Deep dives live in the layer docs above; this page keeps cross-plane flows and design decisions only.
 

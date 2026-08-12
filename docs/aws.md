@@ -430,6 +430,11 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 
 IAM: only archival Lambda role can `s3:PutObject`; optional read role for UI “download archive”.
 
+The API archive boundary writes terminal logs to this key as JSONL when `ARCHIVE_BUCKET` is
+configured. It also retains the archive metadata row in DynamoDB. Uploads use SSE-S3 and reject
+keys outside `sessions/{sessionId}/logs.jsonl`. Local tests inject an in-memory writer and never
+contact AWS.
+
 ---
 
 ## KMS and integrations

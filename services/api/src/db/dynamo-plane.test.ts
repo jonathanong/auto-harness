@@ -44,7 +44,7 @@ describe("DynamoDB Local control plane hydrate", () => {
       timeout: 5,
     });
     expect(created.ok).toBe(true);
-    plane.archiveSessionLogs("sess-plane");
+    await plane.archiveSessionLogs("sess-plane");
     await plane.settleStorage();
     const again = await createControlPlane({
       tablePrefix: ctx.prefix,

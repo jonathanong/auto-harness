@@ -126,7 +126,7 @@ export class ControlPlane extends ControlPlaneManagement {
     return this.state.ackDeadlineMs;
   }
 
-  archiveSessionLogs(sessionId: string): ArchiveObject | null {
+  archiveSessionLogs(sessionId: string): Promise<ArchiveObject> {
     return lifecycle.archiveSessionLogs(this.state, sessionId);
   }
 

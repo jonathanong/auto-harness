@@ -3,7 +3,7 @@ import { isTerminalSessionStatus } from "@auto-harness/shared";
 import type { SessionRecord } from "./db/types.ts";
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistSession, queueWrite, toPublic } from "./control-plane-state.ts";
+import { persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import {
   offlineHostAndRequeue,
@@ -111,38 +111,39 @@ export async function reclaimStaleHostsDurable(
   return reclaimed;
 }
 
-export function archiveSessionLogs(
+export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
-): ArchiveObject | null {
-  const logs = [...(state.logs.get(sessionId) ?? [])];
-  if (logs.length === 0) {
-    const empty: ArchiveObject = {
-      key: `${state.archivePrefix}${sessionId}.json`,
-      body: "[]",
-      contentType: "application/json",
-    };
-    state.archives.set(empty.key, empty);
-    if (state.storage) {
-      queueWrite(state, (storage) => storage!.putArchive(empty));
-    }
-    return empty;
-  }
-  const body = JSON.stringify(logs);
+): Promise<ArchiveObject> {
+  // Wait for any queued per-chunk writes, then archive the authoritative
+  // durable history rather than the bounded process cache.
+  const precedingWrites = [...state.pendingPersists];
+  await Promise.all(precedingWrites);
+  const logs = state.storage
+    ? await state.storage.listLogs(sessionId)
+    : [...(state.logs.get(sessionId) ?? [])];
+  const body = logs
+    .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
+    .join("\n");
   const obj: ArchiveObject = {
-    key: `${state.archivePrefix}${sessionId}.json`,
-    body,
-    contentType: "application/json",
+    key: `${state.archivePrefix}${sessionId}/logs.jsonl`,
+    body: body ? `${body}\n` : "",
+    contentType: "application/x-ndjson",
   };
-  state.archives.set(obj.key, obj);
-  if (state.storage) {
-    queueWrite(state, (storage) => storage!.putArchive(obj));
+  if (state.archiveWriter) {
+    await state.archiveWriter.putArchive(obj);
   }
+  if (state.storage) await state.storage.putArchive(obj);
+  state.archives.set(obj.key, obj);
   return obj;
 }
 
+export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
+  state.pendingPersists.push(archiveSessionLogs(state, sessionId));
+}
+
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveObject | null {
-  const key = `${state.archivePrefix}${sessionId}.json`;
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   if (!state.archives.has(key)) {
     return null;
   }

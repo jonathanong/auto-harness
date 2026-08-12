@@ -89,7 +89,7 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
     sendSessionForbidden(res);
     return true;
   }
-  const archived = plane.archiveSessionLogs(id);
+  const archived = await plane.archiveSessionLogs(id);
   if (
     !(await writeRouteAudit(ctx, {
       action: "session:archive",

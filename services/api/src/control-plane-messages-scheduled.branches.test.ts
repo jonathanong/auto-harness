@@ -38,6 +38,7 @@ function storage(over: Record<string, unknown> = {}) {
     releaseMainCheckoutSession: async () => true,
     finishSession: async () => true,
     releaseCancelledSessionWorktree: async () => true,
+    listLogs: async () => [],
     putArchive: async () => undefined,
     ...over,
   };

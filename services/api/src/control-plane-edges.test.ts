@@ -62,7 +62,7 @@ describe("ControlPlane API edges", () => {
     expect(plane.evaluateCron("2026-01-01T02:00:00.000Z")).toHaveLength(0);
   });
 
-  it("covers agent message errors and pin expiry", () => {
+  it("covers agent message errors and pin expiry", async () => {
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;
@@ -115,7 +115,7 @@ describe("ControlPlane API edges", () => {
       plane.assignQueued();
       expect(plane.getSession(resumed.session.id)?.status).toBe("running");
     }
-    expect(plane.archiveSessionLogs("empty-sess")?.body).toBe("[]");
+    expect((await plane.archiveSessionLogs("empty-sess")).body).toBe("");
     expect(plane.getAckDeadlineMs()).toBeGreaterThan(0);
   });
 });
