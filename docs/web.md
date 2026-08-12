@@ -67,12 +67,13 @@ First-time users or empty views show contextual guidance instead of blank pages:
 
 ### Error & Loading States
 
-| State                         | Behavior                                                                                            |
-| ----------------------------- | --------------------------------------------------------------------------------------------------- |
-| **Loading**                   | Skeleton placeholders for lists and cards. Spinner for form submissions.                            |
-| **API error**                 | Toast notification with error message and retry button. Inline error for form validation.           |
-| **WebSocket disconnected**    | Yellow banner at top: "⚠️ Real-time updates paused — reconnecting..." with manual reconnect link    |
-| **Agent offline mid-session** | Session card shows warning badge: "Agent disconnected — session may be stale". Force-cancel option. |
+| State                         | Behavior                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **Loading**                   | The shared route fallback announces a busy loading region and renders hidden-from-AT skeletons. Forms use pending labels. |
+| **Route error**               | The shared error boundary focuses a generic alert and offers a Retry button without exposing internal error text.         |
+| **API/form error**            | Page and form errors use alert semantics where the state can change in place; validation remains inline.                  |
+| **WebSocket disconnected**    | Yellow banner at top: "⚠️ Real-time updates paused — reconnecting..." with manual reconnect link                          |
+| **Agent offline mid-session** | Session card shows warning badge: "Agent disconnected — session may be stale". Force-cancel option.                       |
 
 ---
 
@@ -424,11 +425,23 @@ separate capabilities and are not enabled by this UI.
 
 ## Keyboard Shortcuts
 
-| Shortcut  | Action                            |
-| --------- | --------------------------------- |
-| `N`       | Open new session form             |
-| `S`       | Focus search / filter             |
-| `Esc`     | Close modal / form                |
-| `J` / `K` | Navigate session list (down / up) |
-| `Enter`   | Open selected session             |
-| `?`       | Show keyboard shortcuts help      |
+The authenticated control-plane shell provides the shortcuts below. They are ignored while focus
+is in an input, textarea, select, combobox, textbox role, or editable element. A visible Shortcuts
+button provides the same help dialog without requiring keyboard discovery. The `G` prefix is
+announced to assistive technology and expires after 1.5 seconds.
+
+| Shortcut | Action              |
+| -------- | ------------------- |
+| `N`      | Open new session    |
+| `?`      | Open shortcut help  |
+| `G D`    | Go to Dashboard     |
+| `G N`    | Go to New session   |
+| `G S`    | Go to Sessions      |
+| `G R`    | Go to Repositories  |
+| `G W`    | Go to Worktrees     |
+| `G P`    | Go to Providers     |
+| `G C`    | Go to Commands      |
+| `G A`    | Go to Schedules     |
+| `G H`    | Go to Hosts         |
+| `G T`    | Go to Settings      |
+| `Esc`    | Close shortcut help |
