@@ -112,7 +112,10 @@ describe("startDaemon runtime wiring", () => {
       await vi.advanceTimersByTimeAsync(20_000);
       expect(errors).toContain("keepalive failed: primitive keepalive");
     } finally {
-      await daemon.stop();
+      // This case deliberately closes the transport before exercising the
+      // keepalive timer. A graceful drain requires a live transport, so use
+      // the loop's direct shutdown path for cleanup.
+      daemon.loop.stop();
       await harness.close();
     }
   });
@@ -129,9 +132,12 @@ async function acceptingServer(): Promise<{
   wss.on("connection", (socket) => {
     socket.on("message", (raw) => {
       const message = JSON.parse(String(raw)) as { type?: string; hostId?: string };
-      if (message.type !== "host:register") return;
-      state.registrations++;
-      socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+      if (message.type === "host:register") {
+        state.registrations++;
+        socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+      } else if (message.type === "host:status") {
+        socket.send(JSON.stringify({ type: "host:draining", hostId: message.hostId }));
+      }
     });
   });
   await new Promise<void>((resolve, reject) => {
