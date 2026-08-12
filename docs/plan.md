@@ -311,8 +311,9 @@ migration marker. **No product-repo automation workflow may cut over before the 
     specific `ref` when the session specifies one** (D6), else the repo's default branch.
   - `command-profiles.ts` — maps a named profile (e.g. `codex-fix`) to a fixed argv template;
     rejects unknown profiles (D4).
-  - Process executor — `child_process.spawn` with `node-pty`, **no `shell: true`**, prompt passed
-    as argv/stdin only (Invariant 8).
+  - Process executor — `child_process.spawn` with separate stdout/stderr pipes, **no
+    `shell: true`**, prompt passed as argv/stdin only (Invariant 8). PTY execution and
+    interactive-terminal semantics remain target work.
   - Session runner — claim worktree → run setup script (ref-aware) → resolve command profile →
     spawn → collect output → release.
   - Session timeout — kill after `timeout` seconds, report `timed_out`.
@@ -332,7 +333,8 @@ migration marker. **No product-repo automation workflow may cut over before the 
 - Full local stack: DynamoDB Local (Docker) + local API server + `services/web` dev server + agent
   — same code as production.
 - **Testing:** vitest across packages; unit tests for session runner, worktree manager, config
-  loader, command-profiles, terminal-hook; mock `child_process.spawn` / `node-pty`;
+  loader, command-profiles, terminal-hook; mock the `child_process.spawn` host boundary (and the
+  `node-pty` boundary when the target PTY path is implemented);
   `modules/shared` type-level assertions.
 
 **Acceptance criteria**
