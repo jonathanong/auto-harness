@@ -5,9 +5,11 @@
 > **Current status:** Auto Harness can create, read, replace, and delete an encrypted, redacted
 > Slack configuration through the admin API and Web UI. A local-only delivery core now formats
 > lifecycle messages and provides a durable, leased outbox with retry, dependency ordering, and
-> stable idempotency keys behind a transport interface. It is not wired to session transitions and
-> deliberately has no network-backed Slack transport, OAuth, inbound verification, or token use.
-> The delivery flow below remains the promised end state.
+> stable idempotency keys behind a transport interface. An opt-in local worker reconciles durable
+> session snapshots into queued, running, and terminal operations, but it starts only when a
+> transport is explicitly injected. Production supplies no transport, so no Slack messages are
+> sent and there is deliberately no Slack HTTP, OAuth, inbound verification, or token use. The
+> network-backed delivery flow below remains the promised end state.
 
 For **fire-and-forget** callers (e.g. GitHub Actions `POST /sessions` then exit), humans do **not** watch the trigger job. They listen via:
 
@@ -216,11 +218,13 @@ The delivery implementation must respect Slack API rate limits and batch updates
 - Status updates are sent immediately (queued → started → completed/failed).
 - If multiple sessions complete in rapid succession, messages are queued and sent with a 1-second delay between each.
 
-The prepared outbox stores one immutable operation ID per lifecycle action. Workers conditionally
-lease due rows, recover expired leases after a restart, retry with bounded exponential backoff, and
-dead-letter exhausted operations. Replies depend on the sent root operation, while the final root
+The prepared outbox stores one immutable operation ID per lifecycle action. The injected-transport
+worker reconciles the current durable session snapshot on every sweep, conditionally leases due
+rows, recovers expired leases after a restart, retries with bounded exponential backoff, and
+dead-letters exhausted operations. Replies depend on the sent root operation, while the final root
 update depends on the terminal reply. A future Slack transport must deduplicate every ambiguous
-retry using the operation ID; activating that transport and runtime wiring is a separate step.
+retry using the operation ID. Implementing and approving that real transport remains a separate
+step; without it, the worker is inactive and makes no network requests.
 
 ### Permissions Required
 

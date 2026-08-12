@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable lease, retry, and idempotency cases share one store harness. */
 import { describe, expect, it, vi } from "vitest";
 
 import type {

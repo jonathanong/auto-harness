@@ -157,7 +157,7 @@ timeout.
 | Agents             | REST `/agents/*`                                   | Connected agents derived from Connections + Worktrees                          |
 | Schedules          | REST `/schedules/*`                                | CRUD + manual trigger                                                          |
 | Integrations       | REST `/integrations/*`                             | Slack config (KMS encrypt/decrypt token)                                       |
-| Notifications      | Future lifecycle worker                            | Claim durable delivery operations and invoke an approved transport             |
+| Notifications      | Local injected-transport worker; AWS adapter target | Reconcile and claim durable lifecycle operations through an approved transport |
 | WS Connect         | `$connect`                                         | Validate token; store connection                                               |
 | WS Disconnect      | `$disconnect`                                      | Cleanup + agent offline handling                                               |
 | WS Message         | `$default`                                         | Agent/client messages; log writes; status updates; subscribe                   |

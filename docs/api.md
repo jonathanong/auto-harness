@@ -313,8 +313,9 @@ stale worker receives `409 CONFLICT`, rather than overwriting another worker.
 All create, update, delete, validation, and storage outcomes are audit events;
 the request body and secret values are never passed to audit metadata.
 
-This configuration-only endpoint does not implement Slack OAuth, incoming
-events, outbound HTTP, or session-thread delivery.
+This configuration endpoint does not implement Slack OAuth, incoming events,
+outbound HTTP, or production session-thread delivery. A local lifecycle worker
+can run only when a transport is explicitly injected; the API supplies none.
 
 ---
 

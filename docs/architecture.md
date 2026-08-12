@@ -185,7 +185,7 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-workt
 | Usage limits: account cooldown + fallback | Detect AI vendor quota/rate-limit text, report `usage_limit`, pause the assigned account globally (5h default/configurable), and route the queued session to the next eligible account or explicit fallback; providerless commands are ungated |
 | Session resume prefers native placement   | Resume by session id → try same agent/worktree + native ref; if unschedulable, clear pins/ref and route fresh through target/fallback order                                                                                                    |
 | Subscriptions via non-interactive CLI     | Cost path is vendor seats/quota, not Agent SDKs / API metering; drive CLIs headlessly ([why.md](why.md), [costs.md](costs.md))                                                                                                                 |
-| Repo harness fire-and-forget              | Callers (e.g. GHA) only `POST /sessions`; GitHub can carry agent-authored feedback today, while Slack session-thread delivery remains a target ([harness.md](harness.md))                                                                      |
+| Repo harness fire-and-forget              | Callers (e.g. GHA) only `POST /sessions`; GitHub carries agent-authored feedback today. Slack lifecycle reconciliation/outbox code exists locally, but production has no outbound transport, so session-thread delivery remains a target ([harness.md](harness.md)) |
 
 ---
 

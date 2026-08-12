@@ -545,8 +545,10 @@ authenticated live-log tailing and Slack configuration. `services/host-pane` on 
 local, per-host debugging tool and is never required for normal management workflows (Invariant
 10). The log viewer is a monospace text renderer, not xterm.js, and the daemon feeds it
 the assigned CLI's merged 120x40 PTY output. Git operations, setup scripts, and terminal hooks
-remain pipe-based. Slack configuration is storage-only and does not send messages. No
-cloud-hosted UI/runtime has been deployed or account-tested.
+remain pipe-based. Slack configuration is storage-only and does not send messages. A local
+session-lifecycle worker and durable outbox can run only with an explicitly injected transport;
+production supplies none, so real Slack delivery remains disabled. No cloud-hosted UI/runtime has
+been deployed or account-tested.
 
 **Migration marker:** UI availability doesn't gate any repo-workflow cutover — CLI/API-driven
 callers don't need it. Useful before wider multi-repo rollout.
