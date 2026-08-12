@@ -492,9 +492,12 @@ older daemons that omit it.
 
 ---
 
-## Auto-update (graceful restart)
+## Auto-update target (graceful restart)
 
-Each agent service supports **auto-update** of the agent binary/package without interrupting in-flight AI CLI work.
+The daemon's drain protocol and signed-manifest orchestration core support the safety invariants below
+without interrupting in-flight AI CLI work. Production manifest fetching, artifact installation, and
+supervisor restart adapters are not wired yet, so the end-to-end auto-update path remains a target;
+operators currently follow [the manual update runbook](deploy-host-daemon.md#update).
 
 ### Goals
 

@@ -13,7 +13,8 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Local daemon (`pnpm local:daemon start`) | **Supported** against local API/WS                                                                            |
 | Production systemd unit                  | **Intended shape** — document and validate per host                                                           |
 | Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)) |
-| Automatic update download / restart      | **Not implemented**; updates use the manual drain procedure below                                             |
+| Signed update orchestration core         | **Implemented and locally tested** behind injected fetch/install/restart boundaries                           |
+| Automatic production download / restart  | **Not wired**; updates use the manual drain procedure below                                                   |
 
 ---
 
@@ -89,8 +90,11 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
 
 Do **not** kill in-flight AI CLIs for routine upgrades.
 
-The intended auto-update feature will orchestrate these same steps, but no updater currently
-downloads code, waits for drain completion, or restarts the service automatically.
+`AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
+durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, atomically activate, and
+request supervisor restart. Concurrent runs collapse into one update. Production fetch/install/
+restart boundaries are intentionally not configured yet, so operators still use the manual steps
+above until those host-mutating adapters are explicitly enabled and validated.
 
 ### Command profiles / repos
 
