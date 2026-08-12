@@ -1,0 +1,155 @@
+import { createServer } from "node:http";
+
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { WebSocketServer } from "ws";
+
+import { emptyDaemonConfig } from "./bootstrap.ts";
+import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { startDaemon } from "./start-daemon.ts";
+
+afterEach(() => vi.useRealTimers());
+
+describe("startDaemon runtime wiring", () => {
+  it("requires a configured WebSocket target", async () => {
+    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "", logLevel: "info" });
+    await expect(startDaemon({ config })).rejects.toThrow("apiUrl (or --ws) is required");
+  });
+
+  it("normalizes an HTTP origin, registers empty inventory, and stops after runUntil", async () => {
+    const harness = await acceptingServer();
+    const lines: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-empty",
+      apiUrl: `http://127.0.0.1:${harness.port}/`,
+      logLevel: "info",
+    });
+    try {
+      const daemon = await startDaemon({
+        config,
+        runUntil: Promise.resolve(),
+        log: (line) => lines.push(line),
+      });
+      expect(lines).toContain(`connected and registered ws://127.0.0.1:${harness.port}/ws`);
+      expect(lines.some((line) => line.includes("no host inventory yet"))).toBe(true);
+      expect(daemon.loop.inflightCount()).toBe(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("polls changed inventory, applies it, and re-registers", async () => {
+    const harness = await acceptingServer();
+    const { config, cleanup } = await makeRepo();
+    const lines: string[] = [];
+    let fetches = 0;
+    try {
+      await startDaemon({
+        config: { ...config, apiUrl: `ws://127.0.0.1:${harness.port}/ws` },
+        identity: {
+          hostId: config.hostId,
+          apiUrl: `http://127.0.0.1:${harness.port}`,
+          logLevel: "info",
+        },
+        inventoryPollMs: 5,
+        runUntil: new Promise((resolve) => setTimeout(resolve, 300)),
+        fetchFn: async () => {
+          fetches++;
+          return Response.json({
+            repositories: config.repositories,
+            commandProfiles: {
+              ...config.commandProfiles,
+              added: { argv: ["true"], appendPrompt: false },
+            },
+          });
+        },
+        log: (line) => lines.push(line),
+      });
+      expect(fetches).toBeGreaterThan(0);
+      expect(harness.registrations).toBeGreaterThanOrEqual(2);
+      expect(lines.some((line) => line.includes("host inventory updated"))).toBe(true);
+      expect(lines.some((line) => line.includes("(1 repo(s))"))).toBe(true);
+    } finally {
+      cleanup();
+      await harness.close();
+    }
+  });
+
+  it("reports WSS connection errors while enforcing the registration deadline", async () => {
+    const errors: string[] = [];
+    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "", logLevel: "info" });
+    await expect(
+      startDaemon({
+        config,
+        wsUrl: "https://127.0.0.1:1",
+        registrationTimeoutMs: 20,
+        error: (line) => errors.push(line),
+      }),
+    ).rejects.toThrow("timed out waiting for WebSocket registration at wss://127.0.0.1:1/ws");
+    expect(errors.some((line) => line.startsWith("ws error:"))).toBe(true);
+  });
+
+  it("reports Error and primitive keepalive failures", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const harness = await acceptingServer();
+    const errors: string[] = [];
+    const config = emptyDaemonConfig({
+      hostId: "host-keepalive",
+      apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
+      logLevel: "info",
+    });
+    const daemon = await startDaemon({ config, error: (line) => errors.push(line) });
+    try {
+      const internals = daemon.loop as unknown as {
+        transport: { close(): void };
+        keepalive(): Promise<void>;
+      };
+      internals.transport.close();
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(errors).toContain("keepalive failed: WebSocket transport closed");
+      internals.keepalive = async () => {
+        throw "primitive keepalive";
+      };
+      await vi.advanceTimersByTimeAsync(20_000);
+      expect(errors).toContain("keepalive failed: primitive keepalive");
+    } finally {
+      await daemon.stop();
+      await harness.close();
+    }
+  });
+});
+
+async function acceptingServer(): Promise<{
+  port: number;
+  registrations: number;
+  close(): Promise<void>;
+}> {
+  const server = createServer();
+  const wss = new WebSocketServer({ server, path: "/ws" });
+  const state = { registrations: 0 };
+  wss.on("connection", (socket) => {
+    socket.on("message", (raw) => {
+      const message = JSON.parse(String(raw)) as { type?: string; hostId?: string };
+      if (message.type !== "host:register") return;
+      state.registrations++;
+      socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.listen(0, "127.0.0.1", resolve);
+    server.on("error", reject);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  return {
+    port: address.port,
+    get registrations() {
+      return state.registrations;
+    },
+    async close() {
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    },
+  };
+}

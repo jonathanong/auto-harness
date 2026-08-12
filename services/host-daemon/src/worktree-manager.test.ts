@@ -107,4 +107,30 @@ describe("WorktreeManager", () => {
     expect(live).toBe(true);
     mgr.releaseMain("repo-1");
   });
+
+  it("tolerates already-removed waiters and forwards a main-checkout signal", async () => {
+    const git = fakeGit();
+    const mgr = new WorktreeManager(config, git);
+    expect(await mgr.acquireMain("repo-1")).toBe(true);
+    const missingQueue = new AbortController();
+    const first = mgr.acquireMain("repo-1", missingQueue.signal);
+    const internals = mgr as unknown as { mainWaiters: Map<string, unknown[]> };
+    internals.mainWaiters.delete("repo-1");
+    missingQueue.abort();
+
+    const missingEntry = new AbortController();
+    const second = mgr.acquireMain("repo-1", missingEntry.signal);
+    internals.mainWaiters.set("repo-1", []);
+    missingEntry.abort();
+    mgr.releaseMain("repo-1");
+    expect(await Promise.race([first, Promise.resolve("pending")])).toBe("pending");
+    expect(await Promise.race([second, Promise.resolve("pending")])).toBe("pending");
+
+    const claimed = mgr.mainClaim("repo-1");
+    const signal = new AbortController().signal;
+    await mgr.prepareMainCheckout(claimed, undefined, signal);
+    await mgr.prepareMainCheckout(claimed, "release", undefined);
+    expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "main", signal });
+    expect(git.prepareMainCheckout).toHaveBeenCalledWith({ cwd: "/repo", ref: "release" });
+  });
 });

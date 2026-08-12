@@ -36,10 +36,35 @@ describe("parseDaemonConfig", () => {
     expect(Object.keys(config.commandProfiles)).toEqual([]);
   });
 
+  it("parses repository and worktree provider-account overrides", () => {
+    const config = parseDaemonConfig({
+      ...valid,
+      repositories: [
+        {
+          ...valid.repositories[0],
+          providerAccountOverrides: { "account-1": { enabled: false } },
+          worktrees: [
+            {
+              ...valid.repositories[0]!.worktrees[0],
+              providerAccountOverrides: { "account-1": { commandId: "command-1" } },
+            },
+          ],
+        },
+      ],
+    });
+    expect(config.repositories[0]?.providerAccountOverrides).toEqual({
+      "account-1": { enabled: false },
+    });
+    expect(config.repositories[0]?.worktrees[0]?.providerAccountOverrides).toEqual({
+      "account-1": { commandId: "command-1" },
+    });
+  });
+
   it("rejects empty repositories", () => {
     expect(() => parseDaemonConfig({ hostId: "x", repositories: [], commandProfiles: {} })).toThrow(
       /repositories/,
     );
+    expect(() => parseDaemonConfig({ hostId: "x" })).toThrow("repositories must be an array");
   });
 
   it("rejects non-object root and bad profiles", () => {

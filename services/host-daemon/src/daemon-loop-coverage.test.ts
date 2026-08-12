@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { HostWireMessage } from "@auto-harness/shared";
 
 import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
-import { makeRepo } from "./daemon-loop-test-helpers.ts";
+import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 type Inflight = {
   controller: AbortController;
@@ -31,6 +31,35 @@ function assign(sessionId: string): Extract<HostWireMessage, { type: "session:as
 }
 
 describe("DaemonLoop coverage guards", () => {
+  it("logs complete scheduler route metadata before executing", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const lines: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({ sendToServer: () => undefined });
+      const loop = new DaemonLoop({ config, transport, onLog: (line) => lines.push(line) });
+      await loop.start();
+      transport.deliver({
+        ...assign("routed"),
+        targetIndex: 0,
+        commandId: "command-1",
+        providerAccountId: "account-1",
+      });
+      transport.deliver({ ...assign("provider-only"), providerAccountId: "account-1" });
+      transport.deliver({ ...assign("command-only"), commandId: "command-1" });
+      await loop.waitForIdle();
+      expect(lines).toContain(
+        "resolved route for routed: target=0 command=command-1 providerAccount=account-1",
+      );
+      expect(lines).toContain(
+        "resolved route for provider-only: target=? providerAccount=account-1",
+      );
+      expect(lines).toContain("resolved route for command-only: target=? command=command-1");
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("handles listener and acknowledgement races without starting duplicate work", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -45,6 +74,23 @@ describe("DaemonLoop coverage guards", () => {
       await new Promise<void>((resolve) => setTimeout(resolve, 10));
       expect(unloggedLoop.inflightCount()).toBe(0);
       unloggedLoop.stop();
+
+      const primitiveLines: string[] = [];
+      const primitiveTransport = createLoopbackTransport({
+        sendToServer: (message) => {
+          if (message.type === "session:ack") throw "primitive offline";
+        },
+      });
+      const primitiveLoop = new DaemonLoop({
+        config,
+        transport: primitiveTransport,
+        onLog: (line) => primitiveLines.push(line),
+      });
+      await primitiveLoop.start();
+      primitiveTransport.deliver(assign("primitive-error"));
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      expect(primitiveLines).toContain("server message failed: primitive offline");
+      primitiveLoop.stop();
 
       const lines: string[] = [];
       let markAcknowledged: (() => void) | undefined;

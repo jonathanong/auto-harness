@@ -67,10 +67,6 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         req: IncomingMessage,
         principal: Principal | null,
       ) => {
-        if (auth?.mode === "required" && !principal) {
-          socket.close(1008, "authentication required");
-          return;
-        }
         let boundHostId: string | null = null;
         let boundConnectionId: string | null = null;
         let windowStartedAt = Date.now();
@@ -105,7 +101,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           if (!result.ok) {
             if (registration && pendingRegistration === registration) pendingRegistration = null;
             if (socket.readyState === socket.OPEN) {
-              socket.send(JSON.stringify({ type: "error", message: result.error ?? "error" }));
+              socket.send(JSON.stringify({ type: "error", message: result.error }));
             }
             return;
           }
@@ -121,7 +117,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             }
             // Do not overwrite a live socket until the control plane accepted the claim.
             boundHostId = msg.hostId;
-            boundConnectionId = result.connectionId ?? null;
+            boundConnectionId = result.connectionId!;
             hostSockets.set(msg.hostId, socket);
             socket.send(
               JSON.stringify({
@@ -152,7 +148,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         // Store a recovered tail so one failed durable operation cannot block later frames.
         let messageTail: Promise<void> = Promise.resolve();
         socket.on("message", (raw) => {
-          if (!accepting || socket.readyState !== socket.OPEN) return;
+          if (!accepting) return;
           const now = Date.now();
           if (now - windowStartedAt >= 1000) {
             windowStartedAt = now;
@@ -192,7 +188,8 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
       };
 
       const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
-        if (new URL(req.url ?? "/", "http://localhost").pathname !== "/ws") {
+        // HTTP upgrade requests always carry their request target.
+        if (new URL(req.url!, "http://localhost").pathname !== "/ws") {
           socket.destroy();
           return;
         }

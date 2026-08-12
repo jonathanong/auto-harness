@@ -72,14 +72,11 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
       }
     })();
     activePoll = poll;
-    void poll.then(
-      () => {
-        if (activePoll === poll) activePoll = undefined;
-      },
-      () => {
-        if (activePoll === poll) activePoll = undefined;
-      },
-    );
+    // The poll body handles all failures and the single-flight guard prevents
+    // replacement, so its successful settlement always owns this slot.
+    void poll.then(() => {
+      activePoll = undefined;
+    });
   }, options.pollMs);
   return async () => {
     stopped = true;

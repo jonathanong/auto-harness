@@ -104,4 +104,29 @@ describe("fetchHostInventory", () => {
       ),
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);
   });
+
+  it("uses the global fetch boundary and rejects a primitive inventory body", async () => {
+    const fetchFn = vi.fn(async () => Response.json("not-an-inventory"));
+    vi.stubGlobal("fetch", fetchFn);
+    try {
+      await expect(
+        fetchHostInventory({ hostId: "a", apiUrl: "http://x", logLevel: "info" }),
+      ).rejects.toThrow("config root must be an object");
+      expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
+        headers: { accept: "application/json" },
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("preserves a non-empty bootstrap error body and omits an absent API key", async () => {
+    const identity = { hostId: "a", apiUrl: "http://x", logLevel: "info" as const };
+    expect(emptyDaemonConfig(identity).apiKey).toBeUndefined();
+    await expect(
+      fetchHostInventory(identity, {
+        fetchFn: async () => new Response("storage unavailable", { status: 503 }),
+      }),
+    ).rejects.toThrow("storage unavailable");
+  });
 });
