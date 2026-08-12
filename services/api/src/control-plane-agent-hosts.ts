@@ -11,15 +11,10 @@ import {
 import { listWorktreesDurable } from "./control-plane-durable-read-runtime.ts";
 import { inventoryReferenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
-function syncWorktreesFromHost(
-  state: ControlPlaneState,
-  host: HostInventoryRecord,
-  persist: boolean,
-): void {
+function syncWorktreesFromHost(state: ControlPlaneState, host: HostInventoryRecord): void {
   const { worktrees, removedIds } = projectHostWorktrees(state, host);
   for (const worktree of worktrees) {
-    if (persist) persistWorktree(state, worktree);
-    else state.worktrees.set(worktree.id, worktree);
+    persistWorktree(state, worktree);
   }
   for (const id of removedIds) state.worktrees.delete(id);
 }
@@ -65,19 +60,15 @@ export function putHostInventory(
   hostId: string,
   body: unknown,
 ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
-  try {
-    const result = prepareHostInventory(state, hostId, body);
-    if (!result.ok) return result;
-    const rec = result.config;
-    state.hostInventories.set(hostId, rec);
-    if (state.storage) {
-      queueWrite(state, (storage) => storage!.putHostInventory({ ...rec }));
-    }
-    syncWorktreesFromHost(state, rec, true);
-    return { ok: true, config: { ...rec } };
-  } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  const result = prepareHostInventory(state, hostId, body);
+  if (!result.ok) return result;
+  const rec = result.config;
+  state.hostInventories.set(hostId, rec);
+  if (state.storage) {
+    queueWrite(state, (storage) => storage!.putHostInventory({ ...rec }));
   }
+  syncWorktreesFromHost(state, rec);
+  return { ok: true, config: { ...rec } };
 }
 
 function prepareHostInventory(

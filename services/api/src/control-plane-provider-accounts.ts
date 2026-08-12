@@ -80,13 +80,14 @@ export function clearProviderAccountUsageLimit(
     usageLimitedUntil: null,
     updatedAt: state.now(),
   };
+  const expectedVersion = existing.version === undefined ? 0 : existing.version;
   state.providerAccounts.set(id, account);
   if (state.storage) {
     queueWrite(state, (storage) =>
       storage!
         .clearProviderAccountUsageLimit({
           id,
-          expectedVersion: existing.version ?? 0,
+          expectedVersion,
           ...(existing.usageLimitedUntil !== undefined
             ? { expectedUsageLimitedUntil: existing.usageLimitedUntil }
             : {}),

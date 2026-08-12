@@ -88,7 +88,9 @@ export function validateCredential(value: string, label: string): void {
 }
 
 function isControlCharacter(value: string): boolean {
-  const code = value.codePointAt(0) ?? 0;
+  // `validateCredential` iterates Unicode code points, so `value` is always a
+  // non-empty character and `codePointAt(0)` cannot be undefined.
+  const code = value.codePointAt(0)!;
   return code < 32 || code === 127;
 }
 
