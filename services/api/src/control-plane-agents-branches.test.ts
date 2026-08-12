@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { drainHostDurable } from "./control-plane-agents.ts";
@@ -141,11 +142,51 @@ describe("agent registration branch boundaries", () => {
     drain.state.worktrees.set("busy", worktree({ id: "busy" }));
     const online: string[] = [];
     drain.state.storage = {
-      getHostLock: async () => null,
-      setWorktreeOnline: async (id: string) => void online.push(id),
+      getHostLock: async () => "drain-owner",
+      markHostDraining: async () => true,
+      setWorktreeOnlineFenced: async (id: string) => (online.push(id), true),
     } as never;
     expect(await drainHostDurable(drain.state, "h")).toEqual({ ok: true, runningSessionIds: [] });
     expect(online).toEqual(["idle"]);
+  });
+
+  it("keeps a reconnecting drain excluded until a fresh registration clears it", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "draining" });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+        draining: true,
+      }),
+    ).toEqual({ ok: true, connectionId: "draining" });
+    expect(plane.isDraining("h")).toBe(true);
+    expect(plane.getWorktree("w")).toMatchObject({ online: false });
+    expect(
+      plane.registerHost({
+        hostId: "h",
+        worktrees: inventory,
+        commandProfiles: [],
+        replaceExisting: true,
+      }),
+    ).toEqual({ ok: true, connectionId: "draining" });
+    expect(plane.isDraining("h")).toBe(false);
+    expect(plane.getWorktree("w")).toMatchObject({ online: true });
+  });
+
+  it("does not locally drain when a durable worktree fence loses its owner", async () => {
+    const plane = new ControlPlane();
+    plane.state.worktrees.set("w", {
+      ...worktree({ status: "idle", currentSessionId: null }),
+    });
+    plane.state.storage = {
+      getHostLock: async () => "owner",
+      markHostDraining: async () => true,
+      setWorktreeOnlineFenced: async () => false,
+    } as never;
+    expect(await drainHostDurable(plane.state, "h")).toEqual({ ok: false, runningSessionIds: [] });
+    expect(plane.isDraining("h")).toBe(false);
+    expect(plane.getWorktree("w")).toMatchObject({ online: true });
   });
 
   it("publishes omitted durable idle inventory even when the process cache is stale", async () => {

@@ -158,7 +158,9 @@ describe("DaemonLoop reconnect", () => {
       expect(sent.filter((message) => message.type === "host:register")).toHaveLength(2);
       expect(sent.at(-1)).toEqual({ type: "host:keepalive", hostId: config.hostId, at: "now" });
       expect(loop.isDraining()).toBe(false);
-      loop.beginDrain();
+      const draining = loop.beginDrain();
+      transport.deliver({ type: "host:draining", hostId: config.hostId });
+      await draining;
       expect(loop.isDraining()).toBe(true);
       await loop.waitForIdle();
       loop.stop();

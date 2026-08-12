@@ -498,8 +498,9 @@ sequenceDiagram
     participant CLI as In-flight CLIs
 
     Updater->>Agent: Update available (or drain + restart requested)
-    Agent->>Agent: Enter draining mode
     Agent->>AWS: host:status { draining: true }
+    AWS-->>Agent: host:draining (durably committed for this connection epoch)
+    Agent->>Agent: Enter draining mode
     Note over Agent,AWS: Reject / ignore new session:assign
     Note over AWS: Scheduler skips this agent’s worktrees
 
@@ -519,8 +520,8 @@ sequenceDiagram
 
 1. **Detect update** — e.g. package updater, `auto-harness-agent update`, or `SIGUSR1` / systemd `ExecReload` mapped to drain-then-restart (not hard kill).
 2. **Enter draining**
-   - Set local flag `draining = true`
-   - Notify control plane: `host:status` (or equivalent) with `draining: true` so idle worktrees are not scheduled
+   - Send `host:status` with `draining: true` and wait for the control plane's durable `host:draining` acknowledgement before setting the local flag or refusing assignments
+   - If the write/acknowledgement cannot complete, do not exit: keep the daemon alive and retry safely. A reconnect registers with `draining: true`, so it cannot briefly restore schedulable capacity while the acknowledgement is retried
    - Stop listening for **new** jobs: do not `session:ack` new assigns; if an assign arrives, reply with a drain nack (or ignore so control plane retries elsewhere after timeout — prefer explicit nack so the session stays queued for other agents)
 3. **Keep running current jobs**
    - Continue log streaming, timeout watches, and cancel handling for sessions already claimed
@@ -531,7 +532,7 @@ sequenceDiagram
 5. **Restart**
    - Exit cleanly (code 0)
    - Supervisor (systemd `Restart=always`, or updater) starts the new version
-   - New process connects, `host:register` with inventory, `draining: false`
+   - New process connects, `host:register` with inventory and no `draining` flag (equivalent to `draining: false`)
 
 ### What auto-update must not do
 

@@ -30,6 +30,7 @@ describe("connection events", () => {
       onError: (error) => calls.push(`error:${String(error)}`),
       abortUnacknowledged: () => calls.push("unacked"),
       abortInflight: () => calls.push("all"),
+      onRegistered: () => calls.push("registered"),
       abortAfterMs: 5,
       timers: globalThis,
     });
@@ -39,6 +40,7 @@ describe("connection events", () => {
     disconnected?.();
     expect(calls).toEqual(["register", "unacked", "unacked"]);
     registered?.();
+    expect(calls).toContain("registered");
     await vi.advanceTimersByTimeAsync(5);
     expect(calls).not.toContain("all");
     disconnected?.();
@@ -51,6 +53,7 @@ describe("connection events", () => {
     registered?.();
     await Promise.resolve();
     expect(calls.filter((call) => call === "register")).toHaveLength(1);
+    expect(calls.filter((call) => call === "registered")).toHaveLength(1);
     disconnected?.();
     await vi.advanceTimersByTimeAsync(5);
     expect(calls).not.toContain("all");

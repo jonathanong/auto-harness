@@ -11,6 +11,8 @@ import { persistSession, queueWrite } from "./control-plane-state.ts";
 import {
   heartbeat,
   heartbeatDurable,
+  drainHost,
+  drainHostDurable,
   registerHost,
   registerHostDurable,
 } from "./control-plane-agents.ts";
@@ -118,6 +120,7 @@ export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[
 export function handleHostMessage(
   state: ControlPlaneState,
   msg: HostToServerMessage,
+  sourceConnectionId?: string,
 ): { ok: boolean; error?: string } {
   switch (msg.type) {
     case "host:register": {
@@ -128,6 +131,7 @@ export function handleHostMessage(
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
         ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+        ...(msg.draining ? { draining: true } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
     }
@@ -182,6 +186,10 @@ export function handleHostMessage(
         ? { ok: true }
         : { ok: false, error: "agent not connected" };
     }
+    case "host:status": {
+      const result = drainHost(state, msg.hostId, sourceConnectionId);
+      return result.ok ? { ok: true } : { ok: false, error: "stale host connection" };
+    }
   }
 }
 
@@ -201,6 +209,8 @@ export async function handleHostMessageDurable(
   connectionId?: string;
   /** Present only after the durable ack transaction committed. */
   sessionAcknowledged?: string;
+  /** Present only after the host's drain flag committed. */
+  hostDraining?: string;
 }> {
   if (msg.type === "host:register") {
     const result = await registerHostDurable(state, {
@@ -210,6 +220,7 @@ export async function handleHostMessageDurable(
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+      ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
     });
     return result.ok
@@ -221,13 +232,13 @@ export async function handleHostMessageDurable(
     // `onHostMessage`. Keeping it out of this result prevents a local WS hub
     // from delivering the same confirmation once through its bridge and once
     // as a direct socket response.
-    return handleHostMessage(state, msg);
+    return handleHostMessage(state, msg, sourceConnectionId);
   }
   const storage = state.storage;
   let fence: { hostId: string; connectionId: string } | undefined;
   if (sourceConnectionId) {
     const hostId =
-      msg.type === "host:keepalive"
+      msg.type === "host:keepalive" || msg.type === "host:status"
         ? msg.hostId
         : (state.sessions.get(msg.sessionId)?.hostId ??
           (await storage.getSession(msg.sessionId))?.hostId);
@@ -240,6 +251,12 @@ export async function handleHostMessageDurable(
     return (await heartbeatDurable(state, msg.hostId, msg.at))
       ? { ok: true }
       : { ok: false, error: "agent not connected" };
+  }
+  if (msg.type === "host:status") {
+    const result = await drainHostDurable(state, msg.hostId, sourceConnectionId);
+    return result.ok
+      ? { ok: true, hostDraining: msg.hostId }
+      : { ok: false, error: "stale host connection" };
   }
   if (msg.type === "session:log") {
     if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {

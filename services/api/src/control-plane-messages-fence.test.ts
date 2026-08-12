@@ -75,6 +75,22 @@ describe("durable host-message fencing", () => {
         "stale",
       ),
     ).toEqual({ ok: false, error: "stale host connection" });
+    let drained = 0;
+    plane.state.storage.markHostDraining = async () => (drained++, true);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "stale",
+      ),
+    ).toEqual({ ok: false, error: "stale host connection" });
+    expect(drained).toBe(0);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "current",
+      ),
+    ).toEqual({ ok: true, hostDraining: "h" });
+    expect(drained).toBe(1);
     expect(
       await plane.handleHostMessageDurable({
         type: "session:ack",
@@ -98,6 +114,25 @@ describe("durable host-message fencing", () => {
         status: "running",
       }),
     ).toEqual({ ok: true });
+  });
+
+  it("enforces the same source fence for an in-memory drain request", async () => {
+    const plane = new ControlPlane();
+    plane.state.hostConnection.set("h", "current");
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "stale",
+      ),
+    ).toEqual({ ok: false, error: "stale host connection" });
+    expect(plane.isDraining("h")).toBe(false);
+    expect(
+      await plane.handleHostMessageDurable(
+        { type: "host:status", hostId: "h", draining: true },
+        "current",
+      ),
+    ).toEqual({ ok: true });
+    expect(plane.isDraining("h")).toBe(true);
   });
 
   it("fences logs and terminal statuses to the current connection", async () => {

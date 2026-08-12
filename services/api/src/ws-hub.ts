@@ -133,6 +133,12 @@ export function createPlaneWsBridge(): {
             // server acknowledgement. This reply is emitted only after the
             // fenced, durable acknowledgement transaction has committed.
             socket.send(JSON.stringify({ type: "session:acknowledged", sessionId: msg.sessionId }));
+          } else if (
+            msg.type === "host:status" &&
+            result.hostDraining === msg.hostId &&
+            socket.readyState === socket.OPEN
+          ) {
+            socket.send(JSON.stringify({ type: "host:draining", hostId: msg.hostId }));
           }
         };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire
@@ -247,7 +253,8 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         (message.runningSessions !== undefined &&
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
-            !message.runningSessions.every((sessionId) => boundedText(sessionId))))
+            !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
+        (message.draining !== undefined && message.draining !== true)
       ) {
         return null;
       }
@@ -291,6 +298,11 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         ? (message as HostToServerMessage)
         : null;
     }
+    if (message.type === "host:status") {
+      return boundedText(message.hostId) && message.draining === true
+        ? (message as HostToServerMessage)
+        : null;
+    }
     return message.type === "host:keepalive" &&
       boundedText(message.hostId) &&
       boundedText(message.at, 128) &&
@@ -323,7 +335,7 @@ function isAllowedMessage(
       (!principal?.boundHostId || principal.boundHostId === msg.hostId)
     );
   if (!hostId) return false;
-  if (msg.type === "host:keepalive") return msg.hostId === hostId;
+  if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
   return Boolean(session && session.hostId === hostId);
 }

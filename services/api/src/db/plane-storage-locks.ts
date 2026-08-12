@@ -21,7 +21,7 @@ import {
  */
 export async function tryAcquireHostLock(
   ctx: PlaneStorageCtx,
-  opts: { hostId: string; connectionId: string; replaceExisting: boolean },
+  opts: { hostId: string; connectionId: string; replaceExisting: boolean; draining?: boolean },
 ): Promise<boolean> {
   if (opts.replaceExisting) {
     await ctx.doc.send(
@@ -30,7 +30,7 @@ export async function tryAcquireHostLock(
         Item: {
           hostId: opts.hostId,
           connectionId: opts.connectionId,
-          draining: false,
+          draining: opts.draining ?? false,
           mainCheckoutLeases: {},
         },
       }),
@@ -44,7 +44,7 @@ export async function tryAcquireHostLock(
         Item: {
           hostId: opts.hostId,
           connectionId: opts.connectionId,
-          draining: false,
+          draining: opts.draining ?? false,
           mainCheckoutLeases: {},
         },
         ConditionExpression: "attribute_not_exists(hostId)",
@@ -72,6 +72,7 @@ export async function tryRegisterHost(
     connection: ConnectionRecord;
     replaceExisting: boolean;
     existingConnectionId?: string;
+    draining?: boolean;
   },
 ): Promise<boolean> {
   try {
@@ -86,11 +87,13 @@ export async function tryRegisterHost(
       ? {
           ":connectionId": opts.connection.connectionId,
           ":existing": existingConnectionId,
+          ":draining": opts.draining ?? false,
           ":false": false,
           ":empty": {},
         }
       : {
           ":connectionId": opts.connection.connectionId,
+          ":draining": opts.draining ?? false,
           ":false": false,
           ":true": true,
           ":empty": {},
@@ -103,7 +106,7 @@ export async function tryRegisterHost(
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
               UpdateExpression:
-                "SET connectionId = :connectionId, draining = :false, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty)",
+                "SET connectionId = :connectionId, draining = :draining, disconnected = :false, mainCheckoutLeases = if_not_exists(mainCheckoutLeases, :empty)",
               ...(opts.replaceExisting
                 ? existingConnectionId
                   ? {
