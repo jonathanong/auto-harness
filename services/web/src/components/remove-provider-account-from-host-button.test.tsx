@@ -76,5 +76,23 @@ describe("RemoveProviderAccountFromHostButton", () => {
       "cannot save",
     );
     view.unmount();
+
+    fetch
+      .mockResolvedValueOnce(json({ repositories: [], providerAccounts: [], commandProfiles: {} }))
+      .mockResolvedValueOnce(new Response(null, { status: 500 }));
+    const fallback = mountForm(
+      <RemoveProviderAccountFromHostButton
+        hostId="host"
+        providerAccountId="account/one"
+        label="Claude"
+      />,
+    );
+    open(fallback);
+    press(field(document.body, "host-provider-account-remove-account/one-confirm-submit"));
+    await act(async () => Promise.resolve());
+    expect(field(document.body, "host-provider-account-remove-account/one-error").textContent).toBe(
+      "request failed while updating host inventory",
+    );
+    fallback.unmount();
   });
 });

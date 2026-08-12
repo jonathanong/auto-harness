@@ -67,5 +67,22 @@ describe("RemoveProviderAccountButton", () => {
       "request failed (500)",
     );
     view.unmount();
+
+    fetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: { message: "account is in use" } }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const detailed = mountForm(
+      <RemoveProviderAccountButton accountId="account" attachedHostCount={0} />,
+    );
+    open(detailed, "account");
+    press(field(document.body, "provider-account-remove-account-confirm-submit"));
+    await act(async () => Promise.resolve());
+    expect(field(document.body, "provider-account-remove-account-error").textContent).toBe(
+      "account is in use",
+    );
+    detailed.unmount();
   });
 });
