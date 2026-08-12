@@ -5,6 +5,7 @@ import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { describeCron } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
 
 export const dynamic = "force-dynamic";
@@ -99,7 +100,15 @@ export default async function SchedulesPage({
                 ) : null}
               </TableCell>
               <TableCell className="text-xs">{s.queueTtlSeconds ?? 691200}s</TableCell>
-              <TableCell className="font-mono text-xs">{s.cron}</TableCell>
+              <TableCell className="text-xs">
+                <span
+                  title={`Cron: ${s.cron}`}
+                  aria-label={`${describeCron(s.cron)}. Cron expression: ${s.cron}`}
+                  data-pw={`schedule-cron-${s.id}`}
+                >
+                  {describeCron(s.cron)}
+                </span>
+              </TableCell>
               <TableCell>
                 <ScheduleEnabledToggle id={s.id} enabled={s.enabled} />
               </TableCell>
