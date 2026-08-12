@@ -4,6 +4,7 @@ import {
   createDynamoClients,
   ensureControlPlaneTables,
   listDynamoTables,
+  normalizeTableNames,
   waitForDynamo,
 } from "./local-bootstrap.ts";
 
@@ -35,10 +36,7 @@ describe("local Dynamo bootstrap", () => {
   });
 
   it("normalizes DynamoDB's optional table list to an empty array", async () => {
-    const noTablesClient = {
-      send: async () => ({}),
-    };
-
-    await expect(listDynamoTables(noTablesClient as never)).resolves.toEqual([]);
+    expect(normalizeTableNames(undefined)).toEqual([]);
+    expect(normalizeTableNames(["Sessions"])).toEqual(["Sessions"]);
   });
 });
