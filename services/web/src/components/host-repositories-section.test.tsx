@@ -51,7 +51,7 @@ describe("HostRepositoriesSection", () => {
     expect(field(view.container, "repo-link-repo-one").textContent).toBe("Catalog one");
     expect(field(view.container, "repo-link-deleted-repo").textContent).toBe("deleted-repo");
     expect(field(view.container, "worktree-row-worktree-one").textContent).toContain("running");
-    expect(field(view.container, "worktree-row-worktree-one").textContent).toContain("true");
+    expect(field(view.container, "worktree-row-worktree-one").textContent).toContain("Online");
     expect(field(view.container, "add-worktree-open-repo-one")).toBeInstanceOf(HTMLButtonElement);
     expect(field(view.container, "repo-remove-repo-one")).toBeInstanceOf(HTMLButtonElement);
     expect(field(view.container, "worktree-remove-worktree-one")).toBeInstanceOf(HTMLButtonElement);

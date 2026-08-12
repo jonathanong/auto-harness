@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { AppShell, StatusBadge, WithTooltip } from "@auto-harness/ui";
+import { AppShell, OnlineStatusBadge, WithTooltip } from "@auto-harness/ui";
 
 const NAV = [
   {
@@ -44,7 +44,7 @@ export function HostShell({
         online === undefined ? null : (
           <WithTooltip tip="Live WebSocket connection to the control plane">
             <span data-pw="host-shell-online">
-              <StatusBadge status={String(online)} />
+              <OnlineStatusBadge online={online} />
             </span>
           </WithTooltip>
         )

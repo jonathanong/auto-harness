@@ -74,6 +74,7 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain("Remove worktree/a");
     expect(rich).toContain("No worktrees under this repository.");
     expect(rich).toContain("host/a");
+    expect(rich).toContain('data-pw="worktree-online-worktree/a">Online');
     expect(rich).toContain('font-mono text-xs">—</td>');
     const plain = render(
       <WorktreesHierarchy

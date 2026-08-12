@@ -25,12 +25,14 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId("host-detail-id")).toHaveText(id);
     await expect(page.getByTestId("host-detail-overview")).toBeVisible();
     await expect(page.getByTestId("host-detail-status")).toBeVisible();
+    await expect(page.getByTestId("host-detail-status")).toHaveText("Offline");
     await expect(page.getByTestId("host-detail-repo-count")).toHaveText("0");
     await expect(page.getByTestId("host-detail-worktree-count")).toHaveText("0");
     await expect(page.getByTestId("host-detail-back")).toHaveAttribute("href", "/hosts");
     await page.goto("/hosts");
     await expect(page.getByTestId("page-hosts")).toBeVisible();
     await expect(page.getByTestId(`host-row-${id}`)).toBeVisible();
+    await expect(page.getByTestId(`host-online-${id}`)).toHaveText("Offline");
     await expect(page.getByTestId(`host-link-${id}`)).toHaveAttribute(
       "href",
       `/hosts/${encodeURIComponent(id)}`,

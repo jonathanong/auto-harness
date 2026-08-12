@@ -7,6 +7,7 @@ import { Button } from "./button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
+import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 import { Textarea } from "./textarea.tsx";
@@ -139,6 +140,10 @@ describe("shared display primitives", () => {
     expect(render(<StatusBadge status="failed" />)).toContain("bg-red-100");
     expect(render(<StatusBadge status="cancelled" />)).toContain("bg-muted");
     expect(render(<StatusBadge status="unknown" />)).toContain("text-foreground");
+    expect(render(<OnlineStatusBadge online pw="host-online-a" />)).toContain(
+      'data-pw="host-online-a">Online',
+    );
+    expect(render(<OnlineStatusBadge online={false} />)).toContain(">Offline</div>");
   });
 
   it("preserves text and link semantics with tooltip guidance", () => {

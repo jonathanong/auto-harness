@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { StatusBadge } from "./status-badge.tsx";
+import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
 export type WorktreeRow = {
@@ -149,7 +150,11 @@ export function WorktreesHierarchy({
                       </TableCell>
                       <TableCell>{wt.status ? <StatusBadge status={wt.status} /> : "—"}</TableCell>
                       <TableCell>
-                        {wt.online === undefined ? "—" : <StatusBadge status={String(wt.online)} />}
+                        {wt.online === undefined ? (
+                          "—"
+                        ) : (
+                          <OnlineStatusBadge online={wt.online} pw={`worktree-online-${wt.id}`} />
+                        )}
                       </TableCell>
                       {showHost ? (
                         <TableCell className="font-mono text-xs">{wt.hostId ?? "—"}</TableCell>
