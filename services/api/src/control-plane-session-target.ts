@@ -17,7 +17,7 @@ type ResolvedSessionRoute = {
   providerAccountId?: string;
   commandId: string;
   resolvedArgv: string[];
-  resumeSpec?: SessionResumeSpec;
+  resumeSpec: SessionResumeSpec;
 };
 
 export function buildProviderCatalog(state: ControlPlaneState): ProviderCatalog {
