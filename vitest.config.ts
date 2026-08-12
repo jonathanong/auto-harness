@@ -39,6 +39,9 @@ export default defineConfig({
         "services/web/src/app/providers/*/page.tsx",
         "services/web/src/app/repositories/page.tsx",
         "services/web/src/app/repositories/*/page.tsx",
+        "services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
+        "services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
+        "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -74,22 +77,15 @@ export default defineConfig({
         "**/create-plane.ts",
         // Only the explicitly included control catalog and host-pane routes
         // above enter this coverage tranche; remaining app routes stay e2e-only.
-        "**/services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
         "**/services/host-pane/src/app/sessions/page.tsx",
-        "**/services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
-        "**/services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
         // The public barrel re-exports the broader UI surface, which is outside this tranche.
         "**/modules/ui/src/index.ts",
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
         "**/services/web/src/lib/attach-local-repo.ts",
-        // Host-pane component coverage and the first route tranche are enabled;
-        // remaining routes and server helpers stay e2e-only.
-        "**/services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
-        "**/services/host-pane/src/app/sessions/page.tsx",
-        "**/services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
-        "**/services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
+        // Host-pane component and explicit route coverage are enabled;
+        // server helpers remain e2e-only.
         "**/services/host-pane/src/lib/**",
         "**/services/host-pane/src/middleware.ts",
         "**/services/host-pane/src/index.ts",
@@ -212,6 +208,9 @@ export default defineConfig({
           functions: 100,
           statements: 100,
         },
+        "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
+        "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
+        "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
       },
       reporter: ["text", "lcov"],
     },
