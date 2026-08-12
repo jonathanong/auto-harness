@@ -9,6 +9,7 @@
         "scripts/phase3-cloud-e2e.mts",
         "scripts/phase2-post-session.mts",
         "scripts/ensure-dynamodb.mts",
+        "scripts/prepare-dynamo-adapters-coverage.mts",
         "scripts/phase3-ws-e2e.mts",
         "scripts/manage-verify.mts",
         "scripts/validate-bind.mts",

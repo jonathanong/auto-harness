@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     testTimeout: 60_000,
+    hookTimeout: 60_000,
     coverage: {
       provider: "v8",
       include: [
@@ -206,7 +207,7 @@ export default defineConfig({
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
       },
-      reporter: ["text", "lcov"],
+      reporter: ["text", "lcov", "json-summary"],
     },
   },
 });
