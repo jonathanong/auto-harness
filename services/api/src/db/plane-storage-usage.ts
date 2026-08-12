@@ -86,6 +86,7 @@ export async function listUsageRecords(
     const result = await ctx.doc.send(
       new QueryCommand({
         TableName: ctx.tables.sessionUsage,
+        ConsistentRead: true,
         KeyConditionExpression: "sessionId = :sessionId",
         ExpressionAttributeValues: { ":sessionId": sessionId },
       }),

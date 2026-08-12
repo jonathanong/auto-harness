@@ -1,4 +1,4 @@
-import { mayAccessRepository } from "./auth-policy.ts";
+import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { aggregateUsage } from "./usage.ts";
@@ -11,7 +11,11 @@ export async function handleUsageRoutes(ctx: RouteCtx): Promise<boolean> {
   if (sessionMatch) {
     try {
       const session = await plane.getSessionDurable(sessionMatch[1]!);
-      if (!session || !mayAccessRepository(ctx.principal, session.repositoryId)) {
+      if (
+        !session ||
+        !mayAccessRepository(ctx.principal, session.repositoryId) ||
+        !mayAccessHost(ctx.principal, session.hostId)
+      ) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "session not found" } });
         return true;
       }

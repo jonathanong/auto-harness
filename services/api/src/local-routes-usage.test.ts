@@ -43,6 +43,38 @@ describe("usage report authorization", () => {
     ).toBe(404);
   });
 
+  it("hides session usage outside a service account's bound host", async () => {
+    const auth = new AuthService({
+      mode: "required",
+      secret: "s".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64url",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({
+      name: "host reader",
+      role: "read-only",
+      boundHostId: "host-1",
+    });
+    const plane = new ControlPlane();
+    plane.state.sessions.set("foreign", {
+      id: "foreign",
+      repositoryId: "repo-1",
+      hostId: "host-2",
+      attemptId: "attempt-1",
+      worktreeId: "worktree-1",
+    } as never);
+    const { handler } = createLocalApp({ plane, authService: auth });
+
+    expect(
+      (
+        await invokeHandler(handler, "GET", "/api/v1/sessions/foreign/usage", undefined, {
+          authorization: `Bearer ${apiKey}`,
+        })
+      ).status,
+    ).toBe(404);
+  });
+
   it("returns session and repository usage scoped by durable route attribution", async () => {
     const plane = new ControlPlane();
     plane.state.sessions.set("session-1", {

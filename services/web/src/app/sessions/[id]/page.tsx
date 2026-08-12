@@ -2,18 +2,11 @@ import Link from "next/link";
 import { SessionActions, SessionDetail, SessionLogs, type SessionSummary } from "@auto-harness/ui";
 
 import { apiGet } from "../../../lib/api.ts";
+import { configuredCost, hasReportedUsage, type UsageAggregate } from "./session-usage-summary.ts";
 
 export const dynamic = "force-dynamic";
 
 type LogEntry = { seq: number; stream: string; content: string; timestamp: string };
-type UsageAggregate = {
-  inputTokens: string;
-  outputTokens: string;
-  totalTokens: string;
-  costMicros: string;
-  currency?: string;
-};
-
 export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
@@ -69,7 +62,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       >
         <div className="mb-4 rounded-md border p-4" data-pw="session-usage-summary">
           <h3 className="text-sm font-medium">Session usage</h3>
-          {usage ? (
+          {hasReportedUsage(usage) ? (
             <dl className="mt-2 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <div>
                 <dt className="text-muted-foreground">Input tokens</dt>
@@ -85,9 +78,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
               </div>
               <div>
                 <dt className="text-muted-foreground">Configured cost</dt>
-                <dd data-pw="session-usage-cost">
-                  {usage.costMicros} {usage.currency ? `${usage.currency} micros` : "micros"}
-                </dd>
+                <dd data-pw="session-usage-cost">{configuredCost(usage)}</dd>
               </div>
             </dl>
           ) : (

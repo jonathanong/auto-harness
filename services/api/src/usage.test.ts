@@ -72,6 +72,25 @@ describe("session usage", () => {
     });
   });
 
+  it("does not treat unpriced usage as an unknown-currency cost", () => {
+    const records = [
+      { ...base, kind: "delta" as const, sequence: 1, inputTokens: "2" },
+      {
+        ...base,
+        attemptId: "a2",
+        kind: "delta" as const,
+        sequence: 1,
+        costMicros: "4",
+        currency: "USD",
+      },
+    ];
+    expect(aggregateUsage(records)).toMatchObject({
+      costMicros: "4",
+      currency: "USD",
+      costMicrosByCurrency: { USD: "4" },
+    });
+  });
+
   it("rejects unbounded, empty, or non-CLI reports", () => {
     expect(validateUsage({ ...base, kind: "delta", sequence: 1, source: "log" })).toBe(false);
     expect(validateUsage({ ...base, kind: "delta", sequence: 1 })).toBe(false);

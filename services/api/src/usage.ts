@@ -121,6 +121,7 @@ export function aggregateUsage(records: UsageRecord[]): UsageAggregate {
   aggregate.sessionCount = bySession.size;
   const byCurrency = new Map<string, string>();
   for (const record of accepted) {
+    if (record.costMicros === undefined) continue;
     const currency = record.currency ?? "UNKNOWN";
     byCurrency.set(currency, add(byCurrency.get(currency) ?? "0", record.costMicros));
   }

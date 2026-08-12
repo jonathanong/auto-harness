@@ -1,5 +1,5 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -69,6 +69,12 @@ describe("Dynamo usage storage", () => {
     expect(await storage.listUsageRecords(record.sessionId)).toEqual([
       expect.objectContaining({ sessionId: record.sessionId, inputTokens: "2" }),
     ]);
+    const query = doc.send;
+    doc.send = (async (command: unknown) => {
+      if (command instanceof QueryCommand) expect(command.input.ConsistentRead).toBe(true);
+      return query.call(doc, command as never);
+    }) as never;
+    await storage.listUsageRecords(record.sessionId);
     expect(await storage.listUsageRecords()).toEqual([
       expect.objectContaining({ sessionId: record.sessionId }),
     ]);
