@@ -1,4 +1,9 @@
-import { isSessionStatus, type SessionStatus } from "@auto-harness/shared";
+import {
+  isSessionSource,
+  isSessionStatus,
+  type SessionSource,
+  type SessionStatus,
+} from "@auto-harness/shared";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -23,6 +28,7 @@ export type ListSessionsPageQuery = {
   sort?: SessionListSort;
   concurrencyId?: string;
   scheduleId?: string;
+  source?: string;
   scope?: SessionListScope;
 };
 
@@ -33,6 +39,7 @@ export type CursorQuery = {
   hostId: string | null;
   concurrencyId: string | null;
   scheduleId: string | null;
+  source: SessionSource | null;
 };
 export type CursorScope = { repositoryIds: string[] | null; hostId: string | null };
 export type SessionCursor = {
@@ -82,12 +89,17 @@ export function normalizeQuery(query: ListSessionsPageQuery): CursorQuery {
   if (status !== null && status !== "all" && !isSessionStatus(status)) {
     throw new InvalidSessionListQueryError("status must be all or a recognized session status");
   }
+  const source = normalizeFilter(query.source, "source");
+  if (source !== null && !isSessionSource(source)) {
+    throw new InvalidSessionListQueryError("source must be a recognized session source");
+  }
   return {
     repositoryId: normalizeFilter(query.repositoryId, "repositoryId"),
     status: status === null || status === "all" ? null : status,
     hostId: normalizeFilter(query.hostId, "hostId"),
     concurrencyId: normalizeFilter(query.concurrencyId, "concurrencyId"),
     scheduleId: normalizeFilter(query.scheduleId, "scheduleId"),
+    source,
   };
 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- URL-backed session filters share one atomic navigation state. */
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
@@ -5,6 +6,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
+import { SessionCatalogFilters } from "./session-catalog-filters.tsx";
 
 const STATUSES = ["all", "queued", "running", "completed", "failed", "cancelled", "timed_out"];
 const SORTS = [
@@ -17,6 +19,8 @@ const SORTS = [
 export type SessionFiltersProps = {
   /** List page these filters live on. Default "/sessions". */
   basePath?: string;
+  repositories?: Array<{ id: string; label: string }>;
+  hosts?: Array<{ id: string; label: string }>;
 };
 
 function buildHref(
@@ -25,6 +29,9 @@ function buildHref(
   q: string,
   concurrencyId: string,
   sort: string,
+  repositoryId: string,
+  hostId: string,
+  source: string,
 ): string {
   const p = new URLSearchParams();
   if (status && status !== "all") {
@@ -39,12 +46,19 @@ function buildHref(
   if (sort && sort !== "latest") {
     p.set("sort", sort);
   }
+  if (repositoryId) p.set("repositoryId", repositoryId);
+  if (hostId) p.set("hostId", hostId);
+  if (source) p.set("source", source);
   const s = p.toString();
   return s ? `${basePath}?${s}` : basePath;
 }
 
 /** URL-backed status/search/sort filters — shared by control plane and host pane session lists. */
-export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) {
+export function SessionFilters({
+  basePath = "/sessions",
+  repositories,
+  hosts,
+}: SessionFiltersProps) {
   const router = useRouter();
   const sp = useSearchParams();
   const [pending, start] = useTransition();
@@ -53,6 +67,9 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const concurrencyId = sp.get("concurrencyId") ?? "";
   const sort = sp.get("sort") ?? "latest";
   const [queryDraft, setQueryDraft] = useState(q);
+  const repositoryId = sp.get("repositoryId") ?? "";
+  const hostId = sp.get("hostId") ?? "";
+  const source = sp.get("source") ?? "";
   const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
   const locallySubmittedQueries = useRef(new Set<string>());
 
@@ -67,7 +84,15 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   }, [concurrencyId]);
 
   const push = useCallback(
-    (next: { status?: string; q?: string; concurrencyId?: string; sort?: string }) => {
+    (next: {
+      status?: string;
+      q?: string;
+      concurrencyId?: string;
+      sort?: string;
+      repositoryId?: string;
+      hostId?: string;
+      source?: string;
+    }) => {
       if (next.q !== undefined && next.q !== q) {
         locallySubmittedQueries.current.add(next.q);
       }
@@ -79,11 +104,14 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
             next.q ?? q,
             next.concurrencyId ?? concurrencyId,
             next.sort ?? sort,
+            next.repositoryId ?? repositoryId,
+            next.hostId ?? hostId,
+            next.source ?? source,
           ),
         );
       });
     },
-    [router, basePath, status, q, concurrencyId, sort],
+    [router, basePath, status, q, concurrencyId, sort, repositoryId, hostId, source],
   );
 
   useEffect(() => {
@@ -117,6 +145,14 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
           ))}
         </select>
       </div>
+      <SessionCatalogFilters
+        repositoryId={repositoryId}
+        hostId={hostId}
+        source={source}
+        repositories={repositories}
+        hosts={hosts}
+        onChange={push}
+      />
       <div className="space-y-1">
         <Label htmlFor="sort" tip="Sort the current session list">
           Sort

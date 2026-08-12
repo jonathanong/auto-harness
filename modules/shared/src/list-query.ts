@@ -8,6 +8,8 @@ export type SessionListQuery = {
   limit: number;
   repositoryId: string;
   scheduleId: string;
+  hostId: string;
+  source: string;
   sort: "latest" | "oldest" | "priority_desc" | "priority_asc";
 };
 
@@ -30,6 +32,8 @@ export function parseSessionListQuery(
     limit: Number.isFinite(limitNum) && limitNum > 0 ? Math.min(limitNum, 100) : 50,
     repositoryId: sp.get("repositoryId") ?? "",
     scheduleId: sp.get("scheduleId") ?? "",
+    hostId: sp.get("hostId") ?? "",
+    source: sp.get("source") ?? "",
     sort,
   };
 }
@@ -51,6 +55,8 @@ export function sessionListHref(state: Partial<SessionListQuery>, basePath = "/s
   if (state.scheduleId) {
     p.set("scheduleId", state.scheduleId);
   }
+  if (state.hostId) p.set("hostId", state.hostId);
+  if (state.source) p.set("source", state.source);
   if (state.sort && state.sort !== "latest") {
     p.set("sort", state.sort);
   }
@@ -79,6 +85,8 @@ export function buildSessionsApiPath(query: SessionListQuery, extra?: { hostId?:
   if (query.scheduleId) {
     p.set("scheduleId", query.scheduleId);
   }
+  if (query.hostId) p.set("hostId", query.hostId);
+  if (query.source) p.set("source", query.source);
   if (query.sort && query.sort !== "latest") {
     p.set("sort", query.sort);
   }

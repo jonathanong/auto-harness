@@ -16,6 +16,8 @@ describe("url-state", () => {
       limit: 50,
       concurrencyId: "",
       repositoryId: "",
+      hostId: "",
+      source: "",
       scheduleId: "",
       sort: "latest",
     });
@@ -29,6 +31,8 @@ describe("url-state", () => {
       limit: 50,
       concurrencyId: "filaments-pr-shepherd-123",
       repositoryId: "",
+      hostId: "",
+      source: "",
       scheduleId: "",
       sort: "latest",
     });

@@ -18,7 +18,14 @@ const state = { sessionCursorSecret: "secret" } as ControlPlaneState;
 const base = {
   version: 1 as const,
   sort: "latest" as const,
-  query: { repositoryId: null, status: null, hostId: null, concurrencyId: null, scheduleId: null },
+  query: {
+    repositoryId: null,
+    status: null,
+    hostId: null,
+    concurrencyId: null,
+    scheduleId: null,
+    source: null,
+  },
   scope: { repositoryIds: null, hostId: null },
 };
 
@@ -41,6 +48,7 @@ describe("session cursor primitives", () => {
       repositoryId: "repo",
     });
     expect(() => normalizeQuery({ status: "bad" })).toThrow(InvalidSessionListQueryError);
+    expect(() => normalizeQuery({ source: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ hostId: "" })).toThrow(InvalidSessionListQueryError);
     expect(normalizeScope({ repositoryIds: ["b", "a", "a"], hostId: "host" })).toEqual({
       repositoryIds: ["a", "b"],
