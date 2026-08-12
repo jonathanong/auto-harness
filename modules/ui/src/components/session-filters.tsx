@@ -121,14 +121,14 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
         </select>
       </div>
       <div className="min-w-[12rem] flex-1 space-y-1">
-        <Label htmlFor="q" tip="Substring match on session id, prompt, or concurrency ID">
+        <Label htmlFor="q" tip="Substring match across fields on the loaded sessions">
           Search
         </Label>
         <Input
           id="q"
           data-pw="session-filter-q"
           defaultValue={q}
-          placeholder="session id, prompt, or concurrency ID…"
+          placeholder="session fields…"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               push({ q: (e.target as HTMLInputElement).value });

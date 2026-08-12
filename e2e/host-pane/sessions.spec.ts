@@ -110,7 +110,8 @@ test.describe("host pane sessions", () => {
           .toBe("running");
 
         detailPage = await page.context().newPage();
-        await detailPage.goto("/sessions");
+        // Host-pane search uses the same projection, including configured route IDs.
+        await detailPage.goto(`/sessions?q=${encodeURIComponent(commandId)}`);
         await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
         const row = detailPage.getByTestId(`session-row-${id}`);
         const createdTime = row.getByTestId(`session-created-${id}`).locator("time");
