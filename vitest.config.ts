@@ -85,11 +85,6 @@ export default defineConfig({
         "**/services/host-pane/src/lib/**",
         "**/services/host-pane/src/middleware.ts",
         "**/services/host-pane/src/index.ts",
-        // Thin HTTP route wiring (exercised by local-server-management tests)
-        "**/local-routes-host-inventory.ts",
-        "**/ws-hub.ts",
-        "**/ws-transport.ts",
-        "**/start-daemon.ts",
         "**/next.config.ts",
         "**/tailwind.config.ts",
       ],
@@ -185,6 +180,11 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "services/host-daemon/src/{bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport}.ts":
+          {
+            100: true,
+          },
+        "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
         "services/host-pane/src/app/layout.tsx": { 100: true },
         "services/host-pane/src/app/page.tsx": { 100: true },
         "services/host-pane/src/app/repositories/page.tsx": { 100: true },

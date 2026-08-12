@@ -92,6 +92,47 @@ describe("claimed session cancellation", () => {
       ),
     ).resolves.toMatchObject({ status: "completed" });
   });
+
+  it("reports timeout when already aborted without setup", async () => {
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        cancellableRunner,
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign(),
+        claimed,
+        AbortSignal.abort(),
+        () => true,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({ status: "timed_out" });
+  });
+
+  it("retains a captured resume reference on a usage-limit outcome", async () => {
+    const logs = [];
+    await expect(
+      runClaimedSession(
+        {
+          async run(options) {
+            options.onChunk({ stream: "stdout", data: "resume: native-1\nusage limit reached" });
+            return { exitCode: 1, timedOut: false, signal: null };
+          },
+        },
+        new LogStreamer("s", (chunk) => logs.push(chunk)),
+        logs,
+        baseAssign({ resumeRefCapture: { stream: "stdout", linePrefix: "resume: " } }),
+        claimed,
+        undefined,
+        () => false,
+        () => 100,
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      cliResumeRef: "native-1",
+    });
+  });
 });
 
 const cancellableRunner: ProcessRunner = {

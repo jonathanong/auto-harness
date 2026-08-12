@@ -17,7 +17,7 @@ type Options = {
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
 };
 
-type InflightWrite = { item: WsBufferItem; target: WebSocket; epoch: number; settled: boolean };
+type InflightWrite = { item: WsBufferItem; target: WebSocket; epoch: number };
 type LossMarker = {
   message: Extract<HostToServerMessage, { type: "session:log" }>;
   count: number;
@@ -103,7 +103,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
   };
 
   const retryLater = (): void => {
-    if (closed || retry) return;
     const wait = delay;
     delay = Math.min(delay * 2, 60_000);
     retry = timers.setTimeout(() => {
@@ -113,8 +112,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
   };
 
   const settleInflight = (entry: InflightWrite, error?: Error): void => {
-    if (entry.settled) return;
-    entry.settled = true;
     if (inflight === entry) inflight = undefined;
     if (entry.item.cancelled()) {
       buffer.complete(entry.item);
@@ -122,17 +119,17 @@ export function createWsTransport(options: Options): DaemonTransport & {
       entry.item.reject(new Error("outbound frame cancelled"));
       return;
     }
-    if (error || closed || entry.epoch !== epoch) {
+    if (error) {
       if (entry.item.message.type === "session:log" && !entry.item.nonDroppable) {
         buffer.complete(entry.item);
         entry.item.dispose();
         // Its attempted write never reached the peer. Count it exactly once.
         recordDroppedLog(entry.item.message);
-        entry.item.reject(error ?? new Error("stale socket write"));
+        entry.item.reject(error);
       } else if (closed) {
         buffer.complete(entry.item);
         entry.item.dispose();
-        entry.item.reject(error ?? new Error("WebSocket transport closed"));
+        entry.item.reject(error);
       } else {
         buffer.putBack(entry.item);
       }
@@ -147,25 +144,19 @@ export function createWsTransport(options: Options): DaemonTransport & {
     if (inflight || !registered || !socket || socket.readyState !== WebSocket.OPEN) return;
     const item = buffer.take();
     if (!item) return;
-    const entry: InflightWrite = { item, target: socket, epoch, settled: false };
+    const entry: InflightWrite = { item, target: socket, epoch };
     inflight = entry;
     void writeWs(entry.target, JSON.stringify(item.message))
       .then(() => {
-        if (inflight !== entry || entry.settled) return;
-        if (closed || entry.epoch !== epoch || socket !== entry.target) {
-          settleInflight(entry, new Error("stale socket write"));
-          return;
-        }
+        if (inflight !== entry) return;
         settleInflight(entry);
         pump();
       })
       .catch((error: Error) => {
-        if (inflight !== entry || entry.settled) return;
+        if (inflight !== entry) return;
         settleInflight(entry, error);
-        if (!closed && entry.epoch === epoch && socket === entry.target) {
-          registered = false;
-          entry.target.close(1011, "write failed");
-        }
+        registered = false;
+        entry.target.close(1011, "write failed");
       });
   };
 
@@ -203,8 +194,8 @@ export function createWsTransport(options: Options): DaemonTransport & {
   };
 
   const refreshSocket = (): void => {
-    const target = socket;
-    if (!target) return;
+    // The caller has already established an open current socket.
+    const target = socket!;
     const mine = epoch;
     disconnected(target, mine, false);
     target.close(1012, "inventory refresh");
@@ -212,7 +203,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
   };
 
   const connect = (): void => {
-    if (closed) return;
     const mine = ++epoch;
     const target = factory(url, init);
     socket = target;
@@ -239,7 +229,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
           if (registerSentEpoch !== mine) return;
           registered = true;
           delay = 1_000;
-          readyResolve?.();
           registeredResolve?.();
           registeredResolve = undefined;
           registeredHandler?.();
@@ -269,6 +258,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
     ready,
     registered: registeredReady,
     async send(message: HostToServerMessage, sendOptions?: SendOptions) {
+      if (closed) throw new Error("WebSocket transport closed");
       if (message.type === "host:register") {
         pendingRegister = message;
         // Never send a second register over one connection: its acknowledgement
@@ -303,7 +293,6 @@ export function createWsTransport(options: Options): DaemonTransport & {
         disconnected(target, epoch, false);
         target.close();
       }
-      if (inflight) settleInflight(inflight, closeError);
       buffer.rejectAll(closeError);
       readyReject?.(closeError);
       registeredReject?.(closeError);
