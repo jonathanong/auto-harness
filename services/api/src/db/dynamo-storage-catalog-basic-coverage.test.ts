@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
+import { acquireDeletionMarker } from "./plane-storage-deletion-markers.ts";
 import {
   catalogItem,
   catalogPageItems,
@@ -57,7 +58,12 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect((await getRepository(ctx, repository.id))?.name).toBe("Changed");
     expect(await getRepository(ctx, "missing")).toBeNull();
     expect((await listRepositories(ctx)).map(({ id }) => id)).toContain(repository.id);
-    await deleteRepository(ctx, repository.id);
+    const deletionAt = "2026-01-01T00:00:00.000Z";
+    await acquireDeletionMarker(ctx, "repository:repository", "owner", deletionAt);
+    await deleteRepository(ctx, repository.id, [
+      { key: "repository:repository", owner: "owner", now: deletionAt },
+    ]);
+    await deleteRepository(ctx, "missing-repository");
     await putArchive(ctx, { key: "archive", body: "[]", contentType: "application/json" });
     expect((await getArchive(ctx, "archive"))?.body).toBe("[]");
     expect(await getArchive(ctx, "missing")).toBeNull();

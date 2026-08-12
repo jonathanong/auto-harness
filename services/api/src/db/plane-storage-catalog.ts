@@ -43,6 +43,10 @@ export function conditionalCatalogWriteOrThrow(err: unknown): false {
   throw err;
 }
 
+export function catalogItem<T>(item: T | undefined): T | null {
+  return item ?? null;
+}
+
 export function catalogPageItems<T>(items: T[] | undefined): T[] {
   return items ?? [];
 }
@@ -159,7 +163,7 @@ export async function queryLogs(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as LogRecord[]));
+    records.push(...catalogPageItems(res.Items as LogRecord[] | undefined));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey && records.length < query.limit);
   return records;
@@ -261,7 +265,7 @@ export async function getSchedule(
       ...(consistentRead ? { ConsistentRead: true } : {}),
     }),
   );
-  return (res.Item as ScheduleRecord | undefined) ?? null;
+  return catalogItem(res.Item as ScheduleRecord | undefined);
 }
 
 export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecord[]> {
@@ -320,7 +324,7 @@ export async function getRepository(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.repositories, Key: { id } }),
   );
-  return (res.Item as RepositoryRecord | undefined) ?? null;
+  return catalogItem(res.Item as RepositoryRecord | undefined);
 }
 
 export async function listRepositories(ctx: PlaneStorageCtx): Promise<RepositoryRecord[]> {
@@ -516,7 +520,7 @@ export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveObject): Prom
 
 export async function getArchive(ctx: PlaneStorageCtx, key: string): Promise<ArchiveObject | null> {
   const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.archives, Key: { key } }));
-  return (res.Item as ArchiveObject | undefined) ?? null;
+  return catalogItem(res.Item as ArchiveObject | undefined);
 }
 
 export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[]> {
@@ -554,7 +558,7 @@ export async function getHostInventory(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }),
   );
-  return (res.Item as HostInventoryRecord | undefined) ?? null;
+  return catalogItem(res.Item as HostInventoryRecord | undefined);
 }
 
 export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInventoryRecord[]> {

@@ -17,6 +17,7 @@ import {
   listProviderAccounts,
   putProviderAccount,
 } from "./plane-storage-provider-accounts.ts";
+import { acquireDeletionMarker } from "./plane-storage-deletion-markers.ts";
 import {
   conditionalProviderWriteOrThrow,
   deleteCommand,
@@ -117,7 +118,12 @@ describe("DynamoDB Local provider catalog adapters", () => {
     expect((await getCommand(ctx, "command"))?.argv).toEqual(["echo"]);
     expect(await getCommand(ctx, "missing")).toBeNull();
     expect((await listCommands(ctx)).map(({ id }) => id)).toContain("command");
-    await deleteCommand(ctx, "command");
+    const deletionAt = "2026-01-01T00:00:00.000Z";
+    await acquireDeletionMarker(ctx, "command:command", "owner", deletionAt);
+    await deleteCommand(ctx, "command", [
+      { key: "command:command", owner: "owner", now: deletionAt },
+    ]);
+    await deleteCommand(ctx, "missing-command");
     expect(await deleteProvider(ctx, "provider")).toBe(true);
     expect(await deleteProvider(ctx, "missing-provider")).toBe(false);
   });

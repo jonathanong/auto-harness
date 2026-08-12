@@ -37,7 +37,14 @@ describe("DynamoPlaneStorageBase", () => {
     expect(await storage.putLogFenced(log, fence)).toBe(true);
     await storage.putLog({ ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000002", seq: 2 });
     expect((await storage.listLogs(log.sessionId)).map(({ seq }) => seq)).toEqual([1, 2]);
+    expect(await storage.queryLogs(log.sessionId, { limit: 10 })).toHaveLength(2);
     await storage.deleteLog(log.sessionId, log.timestampSeq);
+    expect(await storage.listSessionsByRepository("missing-repository")).toEqual([]);
+
+    const markerAt = "2026-01-01T00:00:00.000Z";
+    expect(await storage.acquireDeletionMarker("base-marker", "owner", markerAt)).toBe(true);
+    expect(await storage.renewDeletionMarker("base-marker", "owner", markerAt)).toBe(true);
+    await storage.releaseDeletionMarker("base-marker", "owner");
 
     const account = {
       id: "base-user",
