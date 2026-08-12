@@ -176,7 +176,8 @@ describe("shared detail views", () => {
     expect(linked).toContain('href="/repositories/repo%2Fa"');
     expect(linked).toContain('href="/hosts/host%2Fa"');
     expect(linked).toContain("/repos/a");
-    expect(linked).toContain("fast, linux");
+    expect(linked).toContain("Scheduler label: fast");
+    expect(linked).toContain("Scheduler label: linux");
     expect(linked).toContain('data-pw="worktree-detail-path"');
     expect(linked).toContain('data-pw="worktree-detail-online">Online');
     const plain = render(
@@ -187,7 +188,7 @@ describe("shared detail views", () => {
     expect(plain).toContain("repo/b");
     expect(plain).toContain("Status</dt><dd>—");
     expect(plain).toContain("Online</dt><dd>—");
-    expect(plain).toContain('Labels</dt><dd class="text-sm">—');
+    expect(plain).toContain('data-pw="worktree-labels-worktree/b">—');
     const fallback = render(
       <WorktreeDetailsCard worktree={worktree} repoHrefBase="/repositories" />,
     );
@@ -198,8 +199,7 @@ describe("shared detail views", () => {
       enumerable: true,
       get: () => (++labelsRead === 1 ? ["first-read"] : undefined),
     });
-    expect(render(<WorktreeDetailsCard worktree={changingLabels} />)).toContain(
-      '<dd class="text-sm"></dd>',
-    );
+    expect(render(<WorktreeDetailsCard worktree={changingLabels} />)).toContain("first-read");
+    expect(labelsRead).toBe(1);
   });
 });

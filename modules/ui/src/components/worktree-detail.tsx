@@ -3,8 +3,9 @@ import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
-import { StatusBadge } from "./status-badge.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
+import { StatusBadge } from "./status-badge.tsx";
+import { WorktreeLabels } from "./worktree-labels.tsx";
 import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 
 export type WorktreeDetailProps = {
@@ -123,7 +124,7 @@ export function WorktreeDetailsCard({
           <div className="sm:col-span-2">
             <dt className="text-xs uppercase text-muted-foreground">Labels</dt>
             <dd className="text-sm">
-              {(worktree.labels ?? []).length ? (worktree.labels ?? []).join(", ") : "—"}
+              <WorktreeLabels labels={worktree.labels} worktreeId={worktree.id} />
             </dd>
           </div>
         </dl>
