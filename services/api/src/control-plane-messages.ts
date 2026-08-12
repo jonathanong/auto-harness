@@ -326,7 +326,7 @@ export async function handleHostMessageDurable(
     return { ok: true };
   }
   if (msg.type === "session:status") {
-    return applySessionStatusDurable(state, msg, fence);
+    return applySessionStatusDurable(state, msg, storage, fence);
   }
   return { ok: false, error: "unsupported host message" };
 }
@@ -334,10 +334,9 @@ export async function handleHostMessageDurable(
 async function applySessionStatusDurable(
   state: ControlPlaneState,
   msg: Extract<HostToServerMessage, { type: "session:status" }>,
+  storage: NonNullable<ControlPlaneState["storage"]>,
   fence?: { hostId: string; connectionId: string },
 ): Promise<{ ok: boolean; error?: string }> {
-  const storage = state.storage;
-  if (!storage) return handleHostMessage(state, msg);
   // Do not trust a potentially missing or stale per-process session cache:
   // this node may not be the scheduler that emitted the assignment.
   const session =
@@ -361,10 +360,10 @@ async function applySessionStatusDurable(
       sessionId: session.id,
       worktreeId,
       online: true,
-      ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
-      ...(fence ? { fence } : {}),
+      cliResumeRef: msg.cliResumeRef,
+      fence,
       attemptId: msg.attemptId,
-      ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
+      concurrencyId: session.concurrencyId,
     });
     if (released) {
       const wt = state.worktrees.get(worktreeId);
@@ -401,21 +400,21 @@ async function applySessionStatusDurable(
       expectedStatus: "cancelled",
       queueShard: session.queueShard,
       completedAt: session.completedAt ?? state.now(),
-      ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-      ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
-      ...(msg.errorMessage ? { reason: msg.errorMessage } : {}),
-      ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
-      ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+      exitCode: msg.exitCode,
+      errorCode: msg.errorCode,
+      reason: msg.errorMessage,
+      cliResumeRef: msg.cliResumeRef,
+      concurrencyId: session.concurrencyId,
     });
     if (released) {
       releaseScheduledLeaseLocal(state, session);
       const { mainCheckoutLease: _, ...next } = {
         ...session,
         worktreeId: null,
-        ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
-        ...(msg.errorCode ? { errorCode: msg.errorCode } : {}),
-        ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
-        ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+        exitCode: msg.exitCode,
+        errorCode: msg.errorCode,
+        errorMessage: msg.errorMessage,
+        cliResumeRef: msg.cliResumeRef,
       };
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
@@ -470,7 +469,7 @@ async function applySessionStatusDurable(
           queueShard: session.queueShard,
           now,
           usageLimitedUntil,
-          ...(msg.errorMessage ? { errorMessage: msg.errorMessage } : {}),
+          errorMessage: msg.errorMessage,
         });
         if (!requeued) return { ok: true };
         releaseScheduledLeaseLocal(state, session);

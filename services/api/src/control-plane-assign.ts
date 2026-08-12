@@ -219,7 +219,7 @@ export async function assignQueuedDurable(
           const cleared = await state.storage.clearResumePin({
             sessionId: session.id,
             pinnedHostId: session.pinnedHostId,
-            ...(session.pinExpiresAt !== undefined ? { pinExpiresAt: session.pinExpiresAt } : {}),
+            pinExpiresAt: session.pinExpiresAt,
           });
           if (!cleared) continue;
           clearResumePin(session);
@@ -242,7 +242,7 @@ export async function assignQueuedDurable(
             const cleared = await state.storage.clearResumePin({
               sessionId: session.id,
               pinnedHostId: session.pinnedHostId,
-              ...(session.pinExpiresAt !== undefined ? { pinExpiresAt: session.pinExpiresAt } : {}),
+              pinExpiresAt: session.pinExpiresAt,
             });
             if (!cleared) continue;
             clearResumePin(session);
@@ -272,7 +272,7 @@ export async function assignQueuedDurable(
             connectionId,
             now: nowIso,
             resolvedArgv: route.resolvedArgv,
-            ...(route.resumeSpec ? { resumeSpec: route.resumeSpec } : {}),
+            resumeSpec: route.resumeSpec,
             resolvedRoute: {
               targetIndex: route.targetIndex,
               commandId: route.commandId,
@@ -296,7 +296,7 @@ export async function assignQueuedDurable(
             hostId: candidate.hostId,
             startedAt: nowIso,
             resolvedArgv: route.resolvedArgv,
-            ...(resumeSpec !== undefined ? { resumeSpec } : {}),
+            resumeSpec,
             resolvedRoute: {
               targetIndex: route.targetIndex,
               commandId: route.commandId,

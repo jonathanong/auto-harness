@@ -108,7 +108,7 @@ export async function assignScheduledQueuedDurable(
               connectionId,
               now,
               resolvedArgv: target.resolvedArgv,
-              ...(target.resumeSpec ? { resumeSpec: target.resumeSpec } : {}),
+              resumeSpec: target.resumeSpec,
               resolvedRoute: {
                 targetIndex: target.targetIndex,
                 commandId: target.commandId,

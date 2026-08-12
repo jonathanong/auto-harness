@@ -23,8 +23,7 @@ export function listSessionTargets(state: ControlPlaneState): SessionTarget[] {
         .filter((account) => account.providerId === providerId)
         .some((account) => accountCanRunOnWorktree(state, catalog, account.id, worktree, now)),
     );
-  const providerCommandAvailable = (providerId: string, commandId: string): boolean =>
-    (state.commands.get(commandId)?.argv.length ?? 0) > 0 &&
+  const providerCommandAvailable = (providerId: string): boolean =>
     [...state.worktrees.values()].some((worktree) =>
       [...state.providerAccounts.values()]
         .filter((account) => account.providerId === providerId)
@@ -47,7 +46,7 @@ export function listSessionTargets(state: ControlPlaneState): SessionTarget[] {
     available:
       command.providerId === null
         ? standaloneAvailable
-        : providerCommandAvailable(command.providerId, command.id),
+        : command.argv.length > 0 && providerCommandAvailable(command.providerId),
   }));
   return [...providers, ...commands].toSorted((a, b) => a.label.localeCompare(b.label));
 }
@@ -75,8 +74,6 @@ function accountCanRunOnWorktree(
   const host = state.hostInventories.get(worktree.hostId);
   const repository = host?.repositories.find((item) => item.id === worktree.repositoryId);
   const hostWorktree = repository?.worktrees.find((item) => item.id === worktree.id);
-  if (!resolveProviderAccountEnabled(providerAccountId, hostWorktree, repository, host))
-    return false;
   const commandId = resolveProviderAccountCommandId(
     providerAccountId,
     hostWorktree,

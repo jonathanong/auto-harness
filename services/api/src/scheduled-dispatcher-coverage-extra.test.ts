@@ -131,6 +131,20 @@ describe("scheduled dispatcher coverage edges", () => {
       commandProfiles: [],
       capabilities: ["scheduled-main-checkout"],
     });
+    plane.state.sessions.set(
+      "previous",
+      scheduled({
+        id: "previous",
+        status: "completed",
+        hostId: "host",
+        startedAt: "2025-12-31T23:00:00.000Z",
+        completedAt: NOW,
+      }),
+    );
+    plane.state.sessions.set(
+      "legacy",
+      scheduled({ id: "legacy", status: "completed", hostId: "host", completedAt: NOW }),
+    );
     plane.putSchedule({
       id: "schedule",
       repositoryId: "repo",

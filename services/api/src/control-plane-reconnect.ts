@@ -95,11 +95,11 @@ export async function reconcileHostRunningSessions(
           reason: "daemon did not report session after reconnect; requeued",
           forceOffline: false,
           expectedHostId: hostId,
-          ...(connectionId ? { nextConnectionId: connectionId } : {}),
+          nextConnectionId: connectionId!,
           ...(session.assignmentConnectionId
             ? { expectedConnectionId: session.assignmentConnectionId }
             : {}),
-          ...(connectionId ? { fence: { hostId, connectionId } } : {}),
+          fence: { hostId, connectionId: connectionId! },
         })
       ) {
         state.sessions.set(
