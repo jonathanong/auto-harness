@@ -8,13 +8,17 @@ import { apiBase } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
 import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
+import type { SessionCloneDraft } from "../session-clone-draft.ts";
+import { SessionCreateDetailFields } from "./session-create-detail-fields.tsx";
 
 export function CreateSessionForm({
   targets,
   availableLabels = [],
+  initialValues,
 }: {
   targets: SessionTarget[];
   availableLabels?: string[];
+  initialValues?: SessionCloneDraft | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -92,75 +96,37 @@ export function CreateSessionForm({
           id="repositoryId"
           name="repositoryId"
           required
-          defaultValue="demo"
+          defaultValue={initialValues?.repositoryId ?? "demo"}
           data-pw="create-session-repository-id"
         />
       </div>
-      <SessionPriorityLabelFields availableLabels={availableLabels} />
+      <SessionPriorityLabelFields
+        availableLabels={availableLabels}
+        initialPriority={initialValues?.priority}
+        initialRequiredLabels={initialValues?.requiredLabels}
+      />
       <div className="space-y-1">
-        <SessionRoutingFields targets={targets} prefix="create-session" />
+        <SessionRoutingFields
+          targets={targets}
+          prefix="create-session"
+          initialTarget={initialValues?.target}
+          initialFallbacks={initialValues?.fallbacks}
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="prompt" tip="Prompt text passed to the resolved command">
           Prompt
         </Label>
-        <Textarea id="prompt" name="prompt" required rows={4} data-pw="create-session-prompt" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="timeout" tip="Max runtime in seconds before the session is timed out">
-            Timeout (s)
-          </Label>
-          <Input
-            id="timeout"
-            name="timeout"
-            type="number"
-            defaultValue={600}
-            min={1}
-            data-pw="create-session-timeout"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
-            Git ref
-          </Label>
-          <Input id="ref" name="ref" placeholder="main" data-pw="create-session-ref" />
-        </div>
-      </div>
-      <div className="space-y-1">
-        <Label
-          htmlFor="queueTtlSeconds"
-          tip="Absolute maximum time a queued session may wait; it is not reset by retries"
-        >
-          Queue TTL (s)
-        </Label>
-        <Input
-          id="queueTtlSeconds"
-          name="queueTtlSeconds"
-          type="number"
-          defaultValue={691200}
-          min={1}
-          data-pw="create-session-queue-ttl"
+        <Textarea
+          id="prompt"
+          name="prompt"
+          required
+          rows={4}
+          defaultValue={initialValues?.prompt}
+          data-pw="create-session-prompt"
         />
       </div>
-      <div className="space-y-1">
-        <Label
-          htmlFor="concurrencyId"
-          tip="Optional stable ID that prevents duplicate queued or running work"
-        >
-          Concurrency ID
-        </Label>
-        <Input
-          id="concurrencyId"
-          name="concurrencyId"
-          placeholder="filaments-pr-shepherd-123"
-          data-pw="create-session-concurrency-id"
-        />
-        <p className="text-xs text-muted-foreground">
-          Repeated requests with this ID reuse the active session; a new one can be queued after it
-          finishes.
-        </p>
-      </div>
+      <SessionCreateDetailFields initialValues={initialValues} />
       {error ? (
         <p className="text-sm text-red-700" data-pw="create-session-error">
           {error}

@@ -14,6 +14,8 @@ export type SessionActionsProps = {
   status: string;
   /** Where a successful resume navigates (a new session id is appended). Default "/sessions". */
   detailHrefBase?: string;
+  /** Control-plane-only New Session URL used to edit replayable fields before creating a clone. */
+  cloneEditHref?: string;
 };
 
 /** Cancel/resume/archive — pure REST against the same-origin `/api/v1` proxy, no app wiring needed. */
@@ -21,6 +23,7 @@ export function SessionActions({
   sessionId,
   status,
   detailHrefBase = "/sessions",
+  cloneEditHref,
 }: SessionActionsProps) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -92,6 +95,20 @@ export function SessionActions({
                 {pending && action === "clone" ? "…" : "Re-run"}
               </Button>
             </WithTooltip>
+            {cloneEditHref ? (
+              <WithTooltip tip="Open a new session form with replayable inputs copied from this session">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  data-pw="session-clone-edit"
+                  onClick={() => router.push(cloneEditHref)}
+                >
+                  Clone &amp; Edit
+                </Button>
+              </WithTooltip>
+            ) : null}
           </>
         ) : null}
         <WithTooltip tip="Move current logs to durable archive storage">

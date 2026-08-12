@@ -155,6 +155,28 @@ describe("SessionActions", () => {
     view.unmount();
   });
 
+  it("opens Clone & Edit without creating a session", () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const view = mount(
+      <SessionActions
+        sessionId="old"
+        status="completed"
+        cloneEditHref="/sessions/new?cloneFrom=old"
+      />,
+      router,
+    );
+    const cloneEdit = view.container.querySelector(
+      '[data-pw="session-clone-edit"]',
+    ) as HTMLButtonElement;
+    expect(cloneEdit.textContent).toBe("Clone & Edit");
+    act(() => cloneEdit.click());
+    expect(router.push).toHaveBeenCalledWith("/sessions/new?cloneFrom=old");
+    expect(fetchMock).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
   it("omits cancel and resume for unrelated statuses", () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     const view = mount(<SessionActions sessionId="sess" status="unknown" />, router);

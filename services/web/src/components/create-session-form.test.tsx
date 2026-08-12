@@ -104,4 +104,48 @@ describe("CreateSessionForm", () => {
     expect(field<HTMLButtonElement>(empty.container, "create-session-submit").disabled).toBe(true);
     empty.unmount();
   });
+
+  it("submits editable cloned inputs without inheriting concurrency", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "edited-clone" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(
+      <CreateSessionForm
+        targets={[...targets, { kind: "provider" as const, id: "fallback", label: "Fallback" }]}
+        availableLabels={["gpu"]}
+        initialValues={{
+          repositoryId: "source-repository",
+          prompt: "source prompt",
+          target: { providerId: "p/1" },
+          fallbacks: [{ providerId: "fallback" }],
+          queueTtlSeconds: 90,
+          timeout: 0.5,
+          priority: -20,
+          requiredLabels: ["gpu"],
+          ref: "source/ref",
+        }}
+      />,
+    );
+    expect(field<HTMLInputElement>(view.container, "create-session-concurrency-id").value).toBe("");
+    expect(field<HTMLInputElement>(view.container, "create-session-label-gpu").checked).toBe(true);
+    const priority = field<HTMLInputElement>(view.container, "create-session-priority");
+    expect(priority.min).toBe("-20");
+    expect(priority.max).toBe("100");
+    expect(field(view.container, "create-session-priority-value").textContent).toBe("-20 (low)");
+    expect(field<HTMLInputElement>(view.container, "create-session-timeout").step).toBe("any");
+    submit(field(view.container, "form-create-session"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      repositoryId: "source-repository",
+      prompt: "source prompt",
+      target: { providerId: "p/1" },
+      fallbacks: [{ providerId: "fallback" }],
+      queueTtlSeconds: 90,
+      timeout: 0.5,
+      priority: -20,
+      requiredLabels: ["gpu"],
+      ref: "source/ref",
+      source: "ui",
+    });
+    view.unmount();
+  });
 });
