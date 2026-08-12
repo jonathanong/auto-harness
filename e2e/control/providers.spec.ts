@@ -125,4 +125,50 @@ test.describe("control plane providers", () => {
     await page.goto("/providers/does-not-exist-xyz");
     await expect(page.getByTestId("page-provider-detail-not-found")).toBeVisible();
   });
+
+  test("failed account removal stays open, reports the API error, and can be retried", async ({
+    page,
+    request,
+  }) => {
+    const name = `pw-remove-error-${test.info().parallelIndex}-${Date.now()}`;
+    const provider = await (
+      await request.post("http://127.0.0.1:7430/api/v1/providers", { data: { name } })
+    ).json();
+    const account = await (
+      await request.post("http://127.0.0.1:7430/api/v1/provider-accounts", {
+        data: { providerId: provider.id, label: `${name}@example.com` },
+      })
+    ).json();
+    let failOnce = true;
+    await page.route(`**/api/v1/provider-accounts/${account.id}`, async (route) => {
+      if (failOnce) {
+        failOnce = false;
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: { message: "account is still attached" } }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto(`/providers/${provider.id}`);
+    await page.getByTestId(`provider-account-remove-${account.id}`).click();
+    await page.getByTestId(`provider-account-remove-${account.id}-confirm-submit`).click();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-confirm`)).toBeVisible();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-error`)).toHaveText(
+      "account is still attached",
+    );
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-confirm`)).toBeHidden();
+    await page.getByTestId(`provider-account-remove-${account.id}`).click();
+    await expect(page.getByTestId(`provider-account-remove-${account.id}-error`)).toBeHidden();
+
+    await page.getByTestId(`provider-account-remove-${account.id}-confirm-submit`).click();
+    await expect(page.getByTestId(`provider-account-row-${account.id}`)).toBeHidden({
+      timeout: 15_000,
+    });
+  });
 });

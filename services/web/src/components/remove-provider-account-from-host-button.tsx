@@ -25,7 +25,7 @@ export function RemoveProviderAccountFromHostButton({
         const next = detachProviderAccountFromHost(current, providerAccountId);
         const r = await putInventory(hostId, next);
         if (!r.ok) {
-          return;
+          return { ok: false, error: r.error || "request failed while updating host inventory" };
         }
         router.refresh();
       }}

@@ -5,6 +5,11 @@ import { ConfirmButton } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 
+async function errorMessage(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+  return body?.error?.message ?? `request failed (${res.status})`;
+}
+
 export function RemoveProviderAccountButton({
   accountId,
   attachedHostCount,
@@ -29,7 +34,7 @@ export function RemoveProviderAccountButton({
           { method: "DELETE" },
         );
         if (!res.ok) {
-          return;
+          return { ok: false, error: await errorMessage(res) };
         }
         router.refresh();
       }}

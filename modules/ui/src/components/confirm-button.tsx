@@ -19,7 +19,8 @@ export type ConfirmButtonProps = {
   confirmDescription?: string;
   confirmLabel?: string;
   tip?: string;
-  onConfirm: () => Promise<void>;
+  /** Returning a failure keeps the dialog open and displays the message for retry. */
+  onConfirm: () => Promise<void | { ok: false; error: string }>;
   pw?: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
@@ -41,6 +42,11 @@ export function ConfirmButton({
 }: ConfirmButtonProps) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const close = () => {
+    setOpen(false);
+    setError(null);
+  };
 
   const trigger = (
     <Button type="button" variant={variant} size={size} disabled={disabled} data-pw={pw}>
@@ -49,7 +55,13 @@ export function ConfirmButton({
   );
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) close();
+        else setOpen(true);
+      }}
+    >
       <DialogTrigger asChild>
         {tip ? <WithTooltip tip={tip}>{trigger}</WithTooltip> : trigger}
       </DialogTrigger>
@@ -58,8 +70,13 @@ export function ConfirmButton({
           <DialogTitle>{confirmTitle}</DialogTitle>
           {confirmDescription ? <DialogDescription>{confirmDescription}</DialogDescription> : null}
         </DialogHeader>
+        {error ? (
+          <p className="text-sm text-red-700" data-pw={pw ? `${pw}-error` : "confirm-error"}>
+            {error}
+          </p>
+        ) : null}
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>
+          <Button type="button" variant="outline" size="sm" onClick={close}>
             Cancel
           </Button>
           <Button
@@ -70,8 +87,19 @@ export function ConfirmButton({
             data-pw={pw ? `${pw}-confirm-submit` : undefined}
             onClick={() => {
               start(async () => {
-                await onConfirm();
-                setOpen(false);
+                setError(null);
+                try {
+                  const result = await onConfirm();
+                  if (result && !result.ok) {
+                    setError(result.error);
+                    return;
+                  }
+                  setOpen(false);
+                } catch (cause) {
+                  setError(
+                    cause instanceof Error && cause.message ? cause.message : "request failed",
+                  );
+                }
               });
             }}
           >
