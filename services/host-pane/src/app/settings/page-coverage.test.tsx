@@ -3,12 +3,12 @@ import {
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@auto-harness/ui";
 
+import { setApiTransportForTests } from "../../lib/api.ts";
 import SettingsPage from "./page.tsx";
 
-const originalFetch = globalThis.fetch;
 const originalHostId = process.env.HARNESS_HOST_ID;
 const router: AppRouterInstance = {
   back() {},
@@ -20,7 +20,7 @@ const router: AppRouterInstance = {
 };
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
+  setApiTransportForTests(undefined);
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
 });
@@ -28,7 +28,7 @@ afterEach(() => {
 describe("host-pane settings route", () => {
   it("renders provider-account names and a host inventory with its optional log level", async () => {
     process.env.HARNESS_HOST_ID = "host-a";
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    setApiTransportForTests(async (input) => {
       const url = String(input);
       if (url.endsWith("/inventory")) {
         return Response.json({
@@ -55,7 +55,7 @@ describe("host-pane settings route", () => {
   });
 
   it("keeps raw inventory settings usable when the catalog requests fail", async () => {
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    setApiTransportForTests(async (input) => {
       if (String(input).endsWith("/inventory")) return Response.json({});
       throw new Error("catalog unavailable");
     });
@@ -67,7 +67,7 @@ describe("host-pane settings route", () => {
   });
 
   it("uses empty catalog collections when successful responses omit their items", async () => {
-    vi.stubGlobal("fetch", async () => Response.json({}));
+    setApiTransportForTests(async () => Response.json({}));
 
     expect(render(await SettingsPage())).toContain("No provider accounts attached to this host.");
   });

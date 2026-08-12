@@ -1,13 +1,13 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { setApiTransportForTests } from "../../lib/api.ts";
 import RepositoriesPage from "./page.tsx";
 
-const originalFetch = globalThis.fetch;
 const originalHostId = process.env.HARNESS_HOST_ID;
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
+  setApiTransportForTests(undefined);
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
 });
@@ -15,7 +15,7 @@ afterEach(() => {
 describe("host-pane repositories route", () => {
   it("renders catalog names and live worktree state from its external API requests", async () => {
     process.env.HARNESS_HOST_ID = "host-a";
-    vi.stubGlobal("fetch", async (input: string | URL | Request) => {
+    setApiTransportForTests(async (input) => {
       const url = String(input);
       if (url.endsWith("/inventory")) {
         return Response.json({
@@ -50,7 +50,7 @@ describe("host-pane repositories route", () => {
   });
 
   it("renders the empty inventory state when API requests fail", async () => {
-    vi.stubGlobal("fetch", async () => {
+    setApiTransportForTests(async () => {
       throw new Error("offline");
     });
 

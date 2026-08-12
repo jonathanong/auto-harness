@@ -3,11 +3,19 @@ import { LOCAL_HOST_ID } from "@auto-harness/shared";
 import { headers } from "next/headers";
 import { apiBase } from "@auto-harness/shared";
 
-export { apiBase };
+type ApiTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const defaultTransport: ApiTransport = (input, init) => fetch(input, init);
+let transport = defaultTransport;
+
+/** Inject an in-memory transport for route tests without replacing global fetch. */
+export function setApiTransportForTests(next: ApiTransport | undefined): void {
+  transport = next ?? defaultTransport;
+}
 
 export async function apiGet<T>(path: string): Promise<T> {
   const forwarded = await incomingAuthHeaders();
-  const res = await fetch(`${apiBase()}${path}`, {
+  const res = await transport(`${apiBase()}${path}`, {
     cache: "no-store",
     ...(forwarded ? { headers: forwarded } : {}),
   });

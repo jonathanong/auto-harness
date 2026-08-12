@@ -1,14 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { setApiTransportForTests } from "../lib/api.ts";
 import RootLayout from "./layout.tsx";
 import HostHomePage from "./page.tsx";
 
-const originalFetch = globalThis.fetch;
 const originalHostId = process.env.HARNESS_HOST_ID;
 
 afterEach(() => {
-  globalThis.fetch = originalFetch;
+  setApiTransportForTests(undefined);
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
 });
@@ -16,7 +16,7 @@ afterEach(() => {
 describe("host-pane root routes", () => {
   it("renders the shell with the matching host's live status", async () => {
     process.env.HARNESS_HOST_ID = "host-a";
-    vi.stubGlobal("fetch", async () =>
+    setApiTransportForTests(async () =>
       Response.json({
         items: [
           { hostId: "other", online: false },
@@ -34,10 +34,10 @@ describe("host-pane root routes", () => {
 
   it("renders without a status badge when the host request is empty or unavailable", async () => {
     process.env.HARNESS_HOST_ID = "host-b";
-    vi.stubGlobal("fetch", async () => Response.json({}));
+    setApiTransportForTests(async () => Response.json({}));
     const emptyMarkup = renderToStaticMarkup(await RootLayout({ children: "Empty list" }));
 
-    vi.stubGlobal("fetch", async () => {
+    setApiTransportForTests(async () => {
       throw new Error("control plane unavailable");
     });
     const errorMarkup = renderToStaticMarkup(await RootLayout({ children: "Unavailable" }));
