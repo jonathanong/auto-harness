@@ -55,7 +55,7 @@ describe("shared display primitives", () => {
         );
         expect(markup).toContain("<button");
         expect(markup).toContain('type="submit"');
-        expect(markup).toContain("disabled");
+        expect(markup).toContain('disabled=""');
         expect(markup).toContain(`aria-label="${variant}-${size}"`);
       }
     }
