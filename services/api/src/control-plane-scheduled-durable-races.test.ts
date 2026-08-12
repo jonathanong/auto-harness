@@ -189,6 +189,86 @@ describe("scheduled main-checkout DynamoDB races", () => {
     expect((await ctx.storage.getSession("session-terminal-new"))?.status).toBe("running");
   });
 
+  it("keeps an acknowledged scheduled lease when a stale deadline worker tries to requeue it", async () => {
+    if (!ctx.available || !ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    await ctx.storage.clearAll();
+    await putCommand();
+    const hostId = "host-ack-deadline";
+    const repositoryId = "repo-ack-deadline";
+    const connectionId = "connection-ack-deadline";
+    await register(connectionId, hostId, [{ id: repositoryId, path: "/repo-ack-deadline" }]);
+    await ctx.storage.putSession(session("session-ack-deadline", repositoryId));
+
+    const assigner = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => NOW,
+      shardCount: 1,
+      ackDeadlineMs: 1,
+    });
+    await assigner.plane.hydrateFromStorage();
+    expect(await assigner.plane.assignScheduledQueuedDurable()).toHaveLength(1);
+    const assigned = await ctx.storage.getSession("session-ack-deadline");
+    expect(assigned).toMatchObject({
+      status: "running",
+      hostId,
+      assignmentConnectionId: connectionId,
+      mainCheckoutLease: true,
+    });
+    expect(assigned?.ackReceivedAt).toBeUndefined();
+
+    // This is a separate API process. Its first deadline pass captures the
+    // still-unacknowledged durable assignment in its local pending-ack cache.
+    const staleDeadlineWorker = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => NOW,
+      shardCount: 1,
+      ackDeadlineMs: 1,
+    });
+    await staleDeadlineWorker.plane.hydrateFromStorage();
+    expect(await staleDeadlineWorker.plane.enforceAckDeadlinesDurable(Date.parse(NOW))).toEqual([]);
+
+    // A different API node durably accepts the agent ACK after the stale node
+    // has populated that cache, but before it attempts its expired release.
+    const acknowledger = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => NOW,
+      shardCount: 1,
+    });
+    await acknowledger.plane.hydrateFromStorage();
+    expect(
+      await acknowledger.plane.handleHostMessageDurable(
+        {
+          type: "session:ack",
+          sessionId: assigned!.id,
+          worktreeId: null,
+          attemptId: assigned!.attemptId!,
+        },
+        connectionId,
+      ),
+    ).toMatchObject({ ok: true, sessionAcknowledged: assigned!.id });
+
+    expect(await staleDeadlineWorker.plane.enforceAckDeadlinesDurable(Date.parse(NOW) + 2)).toEqual(
+      [],
+    );
+    expect(await ctx.storage.getSession(assigned!.id)).toMatchObject({
+      status: "running",
+      ackReceivedAt: NOW,
+      hostId,
+      assignmentConnectionId: connectionId,
+      mainCheckoutLease: true,
+    });
+    expect(await ctx.storage.getMainCheckoutLease(hostId, repositoryId)).toEqual({
+      sessionId: assigned!.id,
+      connectionId,
+    });
+  });
+
   it("rejects a stale capability snapshot in the assignment transaction", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
     const repositoryId = "repo-capability";

@@ -188,6 +188,7 @@ export class DynamoPlaneStorageBase {
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
     concurrencyId?: string;
+    requireUnacknowledged?: boolean;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }

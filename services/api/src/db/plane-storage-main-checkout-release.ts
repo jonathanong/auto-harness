@@ -20,6 +20,9 @@ type ReleaseMainCheckoutOptions = {
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
   concurrencyId?: string;
+  /** Used by the assignment ACK deadline only: do not release a run whose
+   * acknowledgement committed after this scheduler read its local cache. */
+  requireUnacknowledged?: boolean;
 };
 
 export async function releaseMainCheckoutSession(
@@ -52,7 +55,8 @@ export async function releaseMainCheckoutSession(
               UpdateExpression: updateExpression(opts, isQueued),
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
-                (opts.attemptId ? " AND attemptId = :attemptId" : ""),
+                (opts.attemptId ? " AND attemptId = :attemptId" : "") +
+                (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : ""),
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: expressionValues(opts),
             },
