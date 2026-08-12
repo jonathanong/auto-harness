@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
 import { Button, type ButtonProps } from "./button.tsx";
+import type { RequestFunction } from "./request-types.ts";
 import { WithTooltip } from "./tooltip.tsx";
 
 const DEFAULT_DRAIN_TIP =
@@ -16,6 +17,8 @@ export type DrainButtonProps = {
   size?: ButtonProps["size"];
   tip?: string;
   pw?: string;
+  /** Request boundary; injectable for consumers that provide an in-memory transport. */
+  request?: RequestFunction;
 };
 
 /** Drain a host — pure REST against the same-origin `/api/v1` proxy, no app wiring needed. */
@@ -26,6 +29,7 @@ export function DrainButton({
   size = "default",
   tip = DEFAULT_DRAIN_TIP,
   pw,
+  request = fetch,
 }: DrainButtonProps) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -39,7 +43,7 @@ export function DrainButton({
         data-pw={pw}
         onClick={() => {
           start(async () => {
-            await fetch("/api/v1/hosts/drain", {
+            await request("/api/v1/hosts/drain", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ hostId }),

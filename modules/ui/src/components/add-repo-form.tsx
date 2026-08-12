@@ -18,12 +18,15 @@ export function AddRepoForm({
   inventory,
   catalog,
   browseEndpoint,
+  writeInventory = putInventory,
 }: {
   hostId: string;
   inventory: HostInventory;
   catalog: RepoCatalogEntry[];
   /** Filesystem browse endpoint for the path field (host pane only). */
   browseEndpoint?: string | undefined;
+  /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
+  writeInventory?: typeof putInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -55,7 +58,7 @@ export function AddRepoForm({
         }
         start(async () => {
           const next = upsertHostRepository(inventory, { id, path, defaultBranch });
-          const r = await putInventory(hostId, next);
+          const r = await writeInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
             return;
