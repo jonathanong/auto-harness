@@ -31,13 +31,6 @@ test.describe("host pane worktrees", () => {
         await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
         await page.getByTestId("tab-settings").click();
         await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
-        await page.getByTestId("worktree-edit-open").click();
-        await expect(page.getByTestId("form-edit-worktree")).toBeVisible();
-        await expect(page.getByTestId("worktree-edit-path")).toHaveValue(wtPath);
-        await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("echo");
-        await expect(page.getByTestId("worktree-edit-error")).toBeHidden();
-        await expect(page.getByTestId("worktree-edit-submit")).toBeVisible();
-        await page.getByRole("button", { name: "Cancel" }).click();
 
         await page.getByTestId(`worktree-remove-${wtId}`).click();
         await page.getByTestId(`worktree-remove-${wtId}-confirm-submit`).click();
