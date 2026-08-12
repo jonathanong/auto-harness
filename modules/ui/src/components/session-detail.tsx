@@ -27,6 +27,15 @@ export type SessionDetailProps = {
   worktreeHrefBase?: string;
 };
 
+function SessionDetailValue({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div>
+      <dt className="text-xs uppercase text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{value ?? "—"}</dd>
+    </div>
+  );
+}
+
 /** Shared session detail view — reused by the host pane and control page. */
 export function SessionDetail({
   session: s,
@@ -126,9 +135,12 @@ export function SessionDetail({
                 )}
               </dd>
             </div>
+            <SessionDetailValue label="Source" value={s.source} />
             <div>
-              <dt className="text-xs uppercase text-muted-foreground">Source</dt>
-              <dd className="text-sm">{s.source ?? "—"}</dd>
+              <dt className="text-xs uppercase text-muted-foreground">Priority</dt>
+              <dd className="text-sm" data-pw="session-detail-priority">
+                {s.priority ?? "—"}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Concurrency ID</dt>
@@ -141,22 +153,10 @@ export function SessionDetail({
               ackReceivedAt={s.ackReceivedAt}
               timeout={s.timeout}
             />
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Created</dt>
-              <dd className="text-sm">{s.createdAt ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Started</dt>
-              <dd className="text-sm">{s.startedAt ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Completed</dt>
-              <dd className="text-sm">{s.completedAt ?? "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Exit code</dt>
-              <dd className="text-sm">{s.exitCode ?? "—"}</dd>
-            </div>
+            <SessionDetailValue label="Created" value={s.createdAt} />
+            <SessionDetailValue label="Started" value={s.startedAt} />
+            <SessionDetailValue label="Completed" value={s.completedAt} />
+            <SessionDetailValue label="Exit code" value={s.exitCode} />
           </dl>
           <div>
             <dt className="text-xs uppercase text-muted-foreground">Prompt</dt>

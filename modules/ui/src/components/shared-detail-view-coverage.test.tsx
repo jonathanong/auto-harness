@@ -81,6 +81,7 @@ describe("shared detail views", () => {
           completedAt: "completed",
           exitCode: 0,
           prompt: "Ship it",
+          priority: 0,
           resolvedArgv: ["agent", "run"],
           errorCode: "E_RETRY",
           errorMessage: "Retrying",
@@ -102,6 +103,7 @@ describe("shared detail views", () => {
     expect(linked).toContain('href="/worktrees/worktree%2Fa"');
     expect(linked).toContain('data-pw="session-detail-worktree"');
     expect(linked).toContain("30s");
+    expect(linked).toContain('data-pw="session-detail-priority">0');
     expect(linked).toContain("agent run");
     expect(linked).toContain('aria-label="Session logs"');
     expect(linked).toContain("Cancel");
@@ -121,6 +123,7 @@ describe("shared detail views", () => {
     expect(plain).toContain("repo/b");
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
+    expect(plain).toContain('data-pw="session-detail-priority">—');
     expect(plain).toContain('Timeout</dt><dd class="text-sm" data-pw="session-detail-timeout">—');
     const absent = render(
       <SessionDetail session={{ id: "session/c", status: "queued" }} breadcrumbs={[]} />,
