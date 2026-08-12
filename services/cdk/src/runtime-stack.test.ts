@@ -51,17 +51,21 @@ describe("AutoHarnessRuntimeStack", () => {
     for (const integration of integrations) {
       expect(JSON.stringify(integration.Properties?.IntegrationUri)).toContain(":lambda:");
     }
-    template.hasResourceProperties("AWS::IAM::Policy", {
-      PolicyDocument: {
-        Statement: Match.arrayWith([
-          Match.objectLike({
-            Action: "execute-api:ManageConnections",
-            Effect: "Allow",
-            Resource: Match.anyValue(),
-          }),
-        ]),
+    template.resourcePropertiesCountIs(
+      "AWS::IAM::Policy",
+      {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: "execute-api:ManageConnections",
+              Effect: "Allow",
+              Resource: Match.anyValue(),
+            }),
+          ]),
+        },
       },
-    });
+      2,
+    );
     template.hasResourceProperties("AWS::KMS::Key", {
       EnableKeyRotation: true,
     });

@@ -142,24 +142,24 @@ export class AutoHarnessRuntimeStack extends Stack {
     ]);
     websocketFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     restFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
-    websocketFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["execute-api:ManageConnections"],
-        resources: [
-          Fn.join("", [
-            "arn:",
-            Aws.PARTITION,
-            ":execute-api:",
-            Aws.REGION,
-            ":",
-            Aws.ACCOUNT_ID,
-            ":",
-            websocketApi.ref,
-            "/prod/POST/@connections/*",
-          ]),
-        ],
-      }),
-    );
+    const manageConnections = new iam.PolicyStatement({
+      actions: ["execute-api:ManageConnections"],
+      resources: [
+        Fn.join("", [
+          "arn:",
+          Aws.PARTITION,
+          ":execute-api:",
+          Aws.REGION,
+          ":",
+          Aws.ACCOUNT_ID,
+          ":",
+          websocketApi.ref,
+          "/prod/POST/@connections/*",
+        ]),
+      ],
+    });
+    websocketFunction.addToRolePolicy(manageConnections);
+    restFunction.addToRolePolicy(manageConnections);
 
     const restApiUrl = new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
     const websocketUrl = new CfnOutput(this, "WebSocketUrl", {
