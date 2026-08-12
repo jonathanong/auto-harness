@@ -58,6 +58,7 @@ export type ControlPlaneOptions = {
   providerIdFactory?: () => string;
   providerAccountIdFactory?: () => string;
   commandIdFactory?: () => string;
+  auditIdFactory?: () => string;
   shardCount?: number;
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;

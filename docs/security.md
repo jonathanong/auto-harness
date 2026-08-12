@@ -66,15 +66,33 @@ Rate limit headers are returned on all REST responses:
 
 ## Audit logging
 
-All mutating operations are logged in DynamoDB:
+All authentication outcomes and mutating control-plane operations are recorded
+in the append-only DynamoDB `AuditLogs` table. This includes REST management,
+sessions, schedules, scheduler actions, host inventory/configuration, and
+catalog changes. There is no update or delete API for audit records.
 
-| Field        | Description                             |
-| ------------ | --------------------------------------- |
-| `timestamp`  | ISO 8601 timestamp                      |
-| `userId`     | Service account or admin ID             |
-| `action`     | e.g. `session:create`, `account:delete` |
-| `resourceId` | ID of the affected resource             |
-| `metadata`   | Additional context (IP, user agent)     |
+| Field             | Description                                                                |
+| ----------------- | -------------------------------------------------------------------------- |
+| `id`              | Immutable event identifier                                                 |
+| `createdAt`       | ISO 8601 event time                                                        |
+| `actor`           | Principal `id`, `kind`, and `role`; scheduler/cron uses the `system` actor |
+| `action`          | e.g. `session:create`, `schedule:trigger`, `provider-account:delete`       |
+| `resourceType/id` | Target object, rather than an inferred request URL                         |
+| `repositoryId`    | Repository scope when the action has one                                   |
+| `outcome`         | `success`, `denied`, or `failed`                                           |
+| `metadata`        | Bounded flat operational fields only                                       |
+
+Metadata is capped and drops values whose field names indicate passwords,
+tokens, secrets, prompts, log content, cookies, authorization headers, or API
+keys. Never pass request bodies or raw integration configuration to the audit
+writer.
+
+The control plane writes the audit event before acknowledging a durable
+mutation. Existing state operations cannot all participate in a single DynamoDB
+transaction, so an audit append failure causes a 500 response even if the
+domain mutation was already committed. This fail-closed acknowledgement makes
+the exceptional state observable and recoverable rather than silently reporting
+an unaudited success.
 
 ## VPS hardening recommendations
 

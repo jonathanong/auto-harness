@@ -1,11 +1,11 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
 import { cancelSession } from "./control-plane-lifecycle.ts";
+import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
-import { getSessionDurable } from "./control-plane-durable-read-runtime.ts";
 
 /** Persist a queued cancellation and its lock release as one durable transition. */
 export async function cancelSessionDurable(

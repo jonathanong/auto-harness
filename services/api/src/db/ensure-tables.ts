@@ -205,5 +205,18 @@ export async function ensureControlPlaneTables(opts: {
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
   });
 
+  await createIfMissing(ddb, {
+    TableName: names.auditLogs,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "scope", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "timestampId", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [
+      { AttributeName: "scope", KeyType: KeyType.HASH },
+      { AttributeName: "timestampId", KeyType: KeyType.RANGE },
+    ],
+  });
+
   return names;
 }

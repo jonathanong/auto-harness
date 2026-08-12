@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- repository and schedule scope gates share one route module. */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
+import { writeRouteAudit } from "./local-audit.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -53,12 +54,39 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           : {}),
       });
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:create",
+            resourceType: "repository",
+            resourceId: "new",
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "repository:create",
+          resourceType: "repository",
+          resourceId: result.repository.id,
+          repositoryId: result.repository.id,
+        }))
+      )
+        return true;
       send(res, 201, result.repository);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "repository:create",
+          resourceType: "repository",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
@@ -81,6 +109,16 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     if (method === "PUT" || method === "PATCH") {
       if (!scoped(ctx, id)) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:update",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+            outcome: "denied",
+          }))
+        )
+          return true;
         hidden(res);
         return true;
       }
@@ -104,24 +142,73 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
             : {}),
         });
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "repository:update",
+              resourceType: "repository",
+              resourceId: id,
+              repositoryId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:update",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+          }))
+        )
+          return true;
         send(res, 200, result.repository);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:update",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
     }
     if (method === "DELETE") {
       if (!scoped(ctx, id)) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:delete",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+            outcome: "denied",
+          }))
+        )
+          return true;
         hidden(res);
         return true;
       }
       try {
         const result = await plane.deleteRepositoryDurable(id);
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "repository:delete",
+              resourceType: "repository",
+              resourceId: id,
+              repositoryId: id,
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, result.conflict ? 409 : 404, {
             error: {
               code: result.conflict ? "CONFLICT" : "NOT_FOUND",
@@ -131,9 +218,28 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
           });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:delete",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+          }))
+        )
+          return true;
         send(res, 204, null);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "repository:delete",
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
@@ -194,6 +300,16 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         return true;
       }
       if (!scoped(ctx, body.repositoryId)) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:create",
+            resourceType: "schedule",
+            resourceId: "new",
+            repositoryId: body.repositoryId,
+            outcome: "denied",
+          }))
+        )
+          return true;
         hidden(res);
         return true;
       }
@@ -221,25 +337,73 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.id === "string" ? { id: body.id } : {}),
       });
       if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:create",
+            resourceType: "schedule",
+            resourceId: "new",
+            repositoryId: body.repositoryId,
+            outcome: "failed",
+          }))
+        )
+          return true;
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
         return true;
       }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:create",
+          resourceType: "schedule",
+          resourceId: result.schedule.id,
+          repositoryId: result.schedule.repositoryId,
+        }))
+      )
+        return true;
       send(res, 201, result.schedule);
       return true;
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:create",
+          resourceType: "schedule",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
   }
   const schedTrigger = /^\/api\/v1\/schedules\/([^/]+)\/trigger$/.exec(url.pathname);
   if (method === "POST" && schedTrigger) {
+    let triggerExisting: Awaited<ReturnType<typeof plane.getScheduleDurable>>;
     try {
-      const existing = await plane.getScheduleDurable(schedTrigger[1]!);
-      if (existing && !scoped(ctx, existing.repositoryId)) {
+      triggerExisting = await plane.getScheduleDurable(schedTrigger[1]!);
+      if (triggerExisting && !scoped(ctx, triggerExisting.repositoryId)) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:trigger",
+            resourceType: "schedule",
+            resourceId: schedTrigger[1]!,
+            repositoryId: triggerExisting.repositoryId,
+            outcome: "denied",
+          }))
+        )
+          return true;
         hidden(res);
         return true;
       }
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:trigger",
+          resourceType: "schedule",
+          resourceId: schedTrigger[1]!,
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
@@ -247,18 +411,58 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       result = await plane.triggerScheduleDurable(schedTrigger[1]!, new Date().toISOString());
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:trigger",
+          resourceType: "schedule",
+          resourceId: schedTrigger[1]!,
+          ...(triggerExisting?.repositoryId ? { repositoryId: triggerExisting.repositoryId } : {}),
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
       return true;
     }
     if (!result.ok) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:trigger",
+          resourceType: "schedule",
+          resourceId: schedTrigger[1]!,
+          ...(triggerExisting?.repositoryId ? { repositoryId: triggerExisting.repositoryId } : {}),
+          outcome: "failed",
+        }))
+      )
+        return true;
       const mapped = scheduleTriggerError(result.error);
       send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
       return true;
     }
     if (!scoped(ctx, result.session.repositoryId)) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "schedule:trigger",
+          resourceType: "schedule",
+          resourceId: schedTrigger[1]!,
+          repositoryId: result.session.repositoryId,
+          outcome: "denied",
+        }))
+      )
+        return true;
       hidden(res);
       return true;
     }
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: "schedule:trigger",
+        resourceType: "schedule",
+        resourceId: schedTrigger[1]!,
+        repositoryId: result.session.repositoryId,
+        metadata: { created: result.created, sessionId: result.session.id },
+      }))
+    )
+      return true;
     send(res, result.created ? 201 : 200, { ...result.session, created: result.created });
     return true;
   }
@@ -273,6 +477,16 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     if (existing && !scoped(ctx, existing.repositoryId)) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: `schedule:${method === "DELETE" ? "delete" : "update"}`,
+          resourceType: "schedule",
+          resourceId: id,
+          repositoryId: existing.repositoryId,
+          outcome: "denied",
+        }))
+      )
+        return true;
       hidden(res);
       return true;
     }
@@ -338,12 +552,41 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         });
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "schedule:update",
+              resourceType: "schedule",
+              resourceId: id,
+              ...(existing?.repositoryId ? { repositoryId: existing.repositoryId } : {}),
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:update",
+            resourceType: "schedule",
+            resourceId: id,
+            repositoryId: result.schedule.repositoryId,
+          }))
+        )
+          return true;
         send(res, 200, result.schedule);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:update",
+            resourceType: "schedule",
+            resourceId: id,
+            ...(existing?.repositoryId ? { repositoryId: existing.repositoryId } : {}),
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }
@@ -352,12 +595,41 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       try {
         const result = await plane.deleteScheduleDurable(id);
         if (!result.ok) {
+          if (
+            !(await writeRouteAudit(ctx, {
+              action: "schedule:delete",
+              resourceType: "schedule",
+              resourceId: id,
+              ...(existing?.repositoryId ? { repositoryId: existing.repositoryId } : {}),
+              outcome: "failed",
+            }))
+          )
+            return true;
           send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
           return true;
         }
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:delete",
+            resourceType: "schedule",
+            resourceId: id,
+            ...(existing?.repositoryId ? { repositoryId: existing.repositoryId } : {}),
+          }))
+        )
+          return true;
         send(res, 204, null);
         return true;
       } catch {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "schedule:delete",
+            resourceType: "schedule",
+            resourceId: id,
+            ...(existing?.repositoryId ? { repositoryId: existing.repositoryId } : {}),
+            outcome: "failed",
+          }))
+        )
+          return true;
         sendInternalError(res);
         return true;
       }

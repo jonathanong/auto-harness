@@ -27,6 +27,9 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
   storage.getProviderAccount ??= async (id: string) => copy(state.providerAccounts.get(id));
   storage.listHostInventories ??= async () => list(state.hostInventories);
   storage.getHostInventory ??= async (id: string) => copy(state.hostInventories.get(id));
+  storage.putAuditLog ??= async () => undefined;
+  storage.listAuditLogs ??= async () => ({ items: [] });
+  storage.listAllAuditLogs ??= async () => [];
 }
 
 /** Install a partial storage double together with all typed durable reads. */

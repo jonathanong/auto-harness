@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one durable storage fake keeps restart assertions cohesive. */
 import { describe, expect, it } from "vitest";
 
 import type {
@@ -24,6 +25,9 @@ function catalogStorage() {
   const worktrees = new Map<string, import("./db/types.ts").WorktreeRecord>();
 
   return {
+    putAuditLog: async () => undefined,
+    listAuditLogs: async () => ({ items: [] }),
+    listAllAuditLogs: async () => [],
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
     getRepository: async (id: string) => get(repositories, id),
     listRepositories: async () => [...repositories.values()].map((record) => ({ ...record })),

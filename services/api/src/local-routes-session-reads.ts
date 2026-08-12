@@ -134,18 +134,6 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
     return true;
   }
 
-  const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
-  if (method === "POST" && archiveMatch) {
-    const id = archiveMatch[1]!;
-    const session = plane.getSession(id);
-    if (session && !canAccess(ctx, session.repositoryId)) {
-      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-      return true;
-    }
-    send(res, 200, plane.archiveSessionLogs(id));
-    return true;
-  }
-
   const sessionMatch = /^\/api\/v1\/sessions\/([^/]+)$/.exec(url.pathname);
   if (method !== "GET" || !sessionMatch) return false;
   try {

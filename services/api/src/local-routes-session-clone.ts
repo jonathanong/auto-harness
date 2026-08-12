@@ -1,5 +1,6 @@
 import { mayAccessRepository } from "./auth-policy.ts";
-import { readJson, send, type RouteCtx } from "./local-http.ts";
+import { writeRouteAudit } from "./local-audit.ts";
+import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 
 const CLONE_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
 
@@ -39,6 +40,16 @@ function parseCloneBody(
   };
 }
 
+async function respondAfterCloneAudit(
+  ctx: RouteCtx,
+  event: Parameters<typeof writeRouteAudit>[1],
+  respond: () => void,
+): Promise<boolean> {
+  if (!(await writeRouteAudit(ctx, event))) return true;
+  respond();
+  return true;
+}
+
 export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
   const match = /^\/api\/v1\/sessions\/([^/]+)\/clone$/.exec(url.pathname);
@@ -48,24 +59,71 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
   try {
     source = await plane.getSessionDurable(sourceId);
   } catch {
-    send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
-    return true;
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        outcome: "failed",
+      },
+      () => sendInternalError(res),
+    );
   }
-  if (!source || (ctx.principal && !mayAccessRepository(ctx.principal, source.repositoryId))) {
-    send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
-    return true;
+  if (!source) {
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        outcome: "failed",
+      },
+      () => send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } }),
+    );
+  }
+  if (ctx.principal && !mayAccessRepository(ctx.principal, source.repositoryId)) {
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        repositoryId: source.repositoryId,
+        outcome: "denied",
+      },
+      () => send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } }),
+    );
   }
 
   let parsed: Awaited<ReturnType<typeof parseCloneBody>>;
   try {
     parsed = parseCloneBody(await readJson(req));
   } catch {
-    send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
-    return true;
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        repositoryId: source.repositoryId,
+        outcome: "failed",
+      },
+      () => send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } }),
+    );
   }
   if (!parsed.ok) {
-    send(res, 400, { error: { code: "VALIDATION_ERROR", message: parsed.error } });
-    return true;
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        repositoryId: source.repositoryId,
+        outcome: "failed",
+      },
+      () => send(res, 400, { error: { code: "VALIDATION_ERROR", message: parsed.error } }),
+    );
   }
 
   try {
@@ -76,14 +134,43 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
       ...(ctx.principal ? { createdBy: ctx.principal.id } : {}),
     });
     if (!result.ok) {
-      send(res, result.code === "CONFLICT" ? 409 : 400, {
-        error: { code: result.code ?? "CLONE_ERROR", message: result.error },
-      });
-      return true;
+      return respondAfterCloneAudit(
+        ctx,
+        {
+          action: "session:clone",
+          resourceType: "session",
+          resourceId: sourceId,
+          repositoryId: source.repositoryId,
+          outcome: "failed",
+        },
+        () =>
+          send(res, result.code === "CONFLICT" ? 409 : 400, {
+            error: { code: result.code ?? "CLONE_ERROR", message: result.error },
+          }),
+      );
     }
-    send(res, 201, { ...result.session, created: true });
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: result.session.id,
+        repositoryId: result.session.repositoryId,
+        metadata: { sourceId },
+      },
+      () => send(res, 201, { ...result.session, created: true }),
+    );
   } catch {
-    send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        repositoryId: source.repositoryId,
+        outcome: "failed",
+      },
+      () => sendInternalError(res),
+    );
   }
-  return true;
 }

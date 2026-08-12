@@ -8,9 +8,16 @@ const unavailable = async () => {
   throw new Error("storage unavailable");
 };
 
+const auditStorage = {
+  putAuditLog: async () => undefined,
+  listAuditLogs: async () => ({ items: [] }),
+  listAllAuditLogs: async () => [],
+};
+
 function unavailablePlane(): ControlPlane {
   return new ControlPlane({
     storage: {
+      ...auditStorage,
       getCommand: unavailable,
       getHostInventory: unavailable,
       getProvider: unavailable,
@@ -85,6 +92,7 @@ describe("durable route storage errors", () => {
   it("returns a structured error when a resume’s durable create fails", async () => {
     const plane = new ControlPlane({
       storage: {
+        ...auditStorage,
         getSession: async () => ({ ...terminalSession }),
         createSession: unavailable,
       } as never,
@@ -97,7 +105,9 @@ describe("durable route storage errors", () => {
   });
 
   it("returns the durable not-found result for a missing command", async () => {
-    const plane = new ControlPlane({ storage: { getCommand: async () => null } as never });
+    const plane = new ControlPlane({
+      storage: { ...auditStorage, getCommand: async () => null } as never,
+    });
     const { handler } = createLocalApp({ plane });
 
     const response = await invokeHandler(handler, "GET", "/api/v1/commands/missing");
@@ -109,6 +119,7 @@ describe("durable route storage errors", () => {
     let reads = 0;
     const plane = new ControlPlane({
       storage: {
+        ...auditStorage,
         getCommand: async () => {
           reads++;
           return null;
@@ -126,6 +137,7 @@ describe("durable route storage errors", () => {
   it("preserves durable resume outcomes", async () => {
     const unresumable = new ControlPlane({
       storage: {
+        ...auditStorage,
         getSession: async () => ({ ...terminalSession, status: "queued" as const }),
       } as never,
     });
@@ -139,6 +151,7 @@ describe("durable route storage errors", () => {
 
     const scheduled = new ControlPlane({
       storage: {
+        ...auditStorage,
         getSession: async () => ({ ...terminalSession, type: "scheduled" as const }),
       } as never,
     });
@@ -153,6 +166,7 @@ describe("durable route storage errors", () => {
     for (const created of [true, false]) {
       const plane = new ControlPlane({
         storage: {
+          ...auditStorage,
           getSession: async () => ({ ...terminalSession }),
           createSession: async (session: typeof terminalSession) => ({ created, session }),
         } as never,
