@@ -60,9 +60,12 @@ describe("shared data display composites", () => {
   });
 
   it("renders execution argv, errors, and resume fallback notices by presence", () => {
-    expect(render(<SessionExecutionSummary resolvedArgv={[]} />)).not.toContain("Resolved argv");
+    expect(render(<SessionExecutionSummary status="queued" resolvedArgv={[]} />)).not.toContain(
+      "Resolved argv",
+    );
     const markup = render(
       <SessionExecutionSummary
+        status="failed"
         resolvedArgv={["run", "--fast"]}
         errorCode="E_RUN"
         errorMessage="Could not run"
@@ -74,8 +77,31 @@ describe("shared data display composites", () => {
     expect(markup).toContain("E_RUN:");
     expect(markup).toContain("Could not run");
     expect(markup).toContain("Resumed from old-session.");
-    expect(render(<SessionExecutionSummary errorMessage="Failed" />)).toContain(">Failed</p>");
-    expect(render(<SessionExecutionSummary resumeFallback />)).toContain("fresh attempt");
+    expect(render(<SessionExecutionSummary status="failed" errorMessage="Failed" />)).toContain(
+      ">Failed</p>",
+    );
+    const codeOnly = render(<SessionExecutionSummary status="failed" errorCode="queue_expired" />);
+    expect(codeOnly).toContain('role="alert"');
+    expect(codeOnly).toContain("queue_expired");
+    expect(codeOnly).toContain("Session ended with this error code.");
+    expect(
+      render(<SessionExecutionSummary status="queued" errorCode="usage_limit" />),
+    ).not.toContain("session-detail-error");
+    expect(
+      render(
+        <SessionExecutionSummary
+          status="queued"
+          errorCode="usage_limit"
+          errorMessage="Provider limit; retry pending"
+        />,
+      ),
+    ).toContain('role="status"');
+    expect(render(<SessionExecutionSummary status="completed" />)).not.toContain(
+      "session-detail-error",
+    );
+    expect(render(<SessionExecutionSummary status="queued" resumeFallback />)).toContain(
+      "fresh attempt",
+    );
   });
 
   it("renders route labels, fallback sources, and resolution precedence", () => {

@@ -183,6 +183,7 @@ export function SessionDetail({
             </pre>
           </section>
           <SessionExecutionSummary
+            status={s.status}
             resolvedArgv={s.resolvedArgv}
             errorCode={s.errorCode}
             errorMessage={s.errorMessage}
