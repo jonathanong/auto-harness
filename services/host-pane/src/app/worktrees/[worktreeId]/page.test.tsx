@@ -34,6 +34,14 @@ describe("worktree detail route", () => {
     );
     expect(settings).toContain("Repository path");
     expect(settings).toContain("/repositories/repo%2Fone?tab=worktrees");
+    const sessions = await renderRoute(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt/one" }),
+        searchParams: Promise.resolve({ tab: "sessions" }),
+      }),
+    );
+    expect(sessions).toContain("included");
+    expect(sessions).not.toContain("excluded");
     setApiReplies({
       "/api/v1/hosts/host%2Fone/inventory": inventory,
       "/api/v1/worktrees": {},

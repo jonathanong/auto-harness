@@ -38,6 +38,15 @@ describe("repository detail route", () => {
     expect(markup).toContain('data-pw="add-worktree-open-repo/one"');
     expect(markup).toContain("/repositories/repo%2Fone?tab=worktrees");
     expect(markup).toContain('data-pw="worktree-link-wt/one"');
+
+    const sessions = await renderRoute(
+      RepositoryDetailPage({
+        params: Promise.resolve({ id: "repo/one" }),
+        searchParams: Promise.resolve({ tab: "sessions" }),
+      }),
+    );
+    expect(sessions).toContain("included");
+    expect(sessions).not.toContain("excluded");
   });
 
   it("keeps repository sessions empty after fetch errors and handles a missing repository", async () => {
