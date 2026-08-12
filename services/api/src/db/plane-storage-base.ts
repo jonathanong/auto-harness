@@ -455,6 +455,7 @@ export class DynamoPlaneStorageBase {
     connection: ConnectionRecord;
     replaceExisting: boolean;
     existingConnectionId?: string;
+    consumePendingConnection?: boolean;
   }): Promise<boolean> {
     return locks.tryRegisterHost(this.ctx, opts);
   }

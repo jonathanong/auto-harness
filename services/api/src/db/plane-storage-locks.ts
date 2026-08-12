@@ -85,6 +85,7 @@ export async function tryRegisterHost(
     connection: ConnectionRecord;
     replaceExisting: boolean;
     existingConnectionId?: string;
+    consumePendingConnection?: boolean;
     draining?: boolean;
   },
 ): Promise<boolean> {
@@ -144,7 +145,18 @@ export async function tryRegisterHost(
             Put: {
               TableName: ctx.tables.connections,
               Item: { ...opts.connection },
-              ConditionExpression: "attribute_not_exists(connectionId)",
+              ConditionExpression: opts.consumePendingConnection
+                ? "attribute_not_exists(connectionId) OR (connectionId = :pendingConnectionId AND hostId = :pendingHostId AND registered = :false)"
+                : "attribute_not_exists(connectionId)",
+              ...(opts.consumePendingConnection
+                ? {
+                    ExpressionAttributeValues: {
+                      ":false": false,
+                      ":pendingConnectionId": opts.connection.connectionId,
+                      ":pendingHostId": opts.hostId,
+                    },
+                  }
+                : {}),
             },
           },
           ...(existingConnectionId

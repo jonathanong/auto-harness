@@ -9,7 +9,7 @@ export type HttpApiEvent = {
   isBase64Encoded?: boolean;
   rawPath?: string;
   rawQueryString?: string;
-  requestContext?: { http?: { method?: string } };
+  requestContext?: { http?: { method?: string; sourceIp?: string } };
 };
 
 export type HttpApiResponse = {
@@ -40,6 +40,9 @@ export function requestForLambdaEvent(event: HttpApiEvent): import("node:http").
   request.method = event.requestContext?.http?.method ?? "GET";
   request.url = `${event.rawPath ?? "/"}${event.rawQueryString ? `?${event.rawQueryString}` : ""}`;
   request.headers = eventHeaders(event);
+  Object.defineProperty(request, "socket", {
+    value: { remoteAddress: event.requestContext?.http?.sourceIp ?? "0.0.0.0" },
+  });
   return request;
 }
 

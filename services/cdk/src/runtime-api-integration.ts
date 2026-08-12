@@ -16,6 +16,7 @@ export function addLambdaIntegration(
     integrationMethod: "POST",
     integrationType: "AWS_PROXY",
     integrationUri: Stack.of(scope).formatArn({
+      account: "lambda",
       arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
       resource: "path/2015-03-31/functions",
       resourceName: `${handler.functionArn}/invocations`,

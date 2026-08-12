@@ -12,17 +12,19 @@ describe("Lambda HTTP adapter", () => {
       management: { send: async () => ({}) },
     });
 
-    await expect(
-      runtime.rest({
-        body: Buffer.from("ignored").toString("base64"),
-        cookies: ["one=1", "two=2"],
-        headers: { "X-Test": "yes", ignored: undefined },
-        isBase64Encoded: true,
-        rawPath: "/health",
-        rawQueryString: "verbose=1",
-        requestContext: { http: { method: "GET" } },
-      }),
-    ).resolves.toMatchObject({
+    const event = {
+      body: Buffer.from("ignored").toString("base64"),
+      cookies: ["one=1", "two=2"],
+      headers: { "X-Test": "yes", ignored: undefined },
+      isBase64Encoded: true,
+      rawPath: "/health",
+      rawQueryString: "verbose=1",
+      requestContext: { http: { method: "GET", sourceIp: "203.0.113.7" } },
+    };
+    const request = requestForLambdaEvent(event);
+    expect(request.headers).toEqual({ "x-test": "yes", cookie: "one=1; two=2" });
+    expect(request.socket.remoteAddress).toBe("203.0.113.7");
+    await expect(runtime.rest(event)).resolves.toMatchObject({
       statusCode: 200,
       body: '{"ok":true}',
       headers: { "content-type": "application/json" },
@@ -46,6 +48,7 @@ describe("Lambda HTTP adapter", () => {
       headers: { vary: "origin,authorization" },
     });
     expect(requestForLambdaEvent({ rawQueryString: "only=query" }).url).toBe("/?only=query");
+    expect(requestForLambdaEvent({}).socket.remoteAddress).toBe("0.0.0.0");
     const scalarCookie = createLambdaResponseCapture();
     scalarCookie.response.setHeader("set-cookie", "one=1");
     expect(scalarCookie.result().cookies).toEqual(["one=1"]);

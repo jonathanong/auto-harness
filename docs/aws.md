@@ -92,6 +92,8 @@ The CDK app emits a persistence foundation and a separately deployable runtime
 stack. The runtime contains HTTP/WebSocket API Gateway APIs and two bundled
 Lambda adapters. It intentionally contains no EventBridge rule or cron Lambda,
 and this repository does not expose a deploy command.
+The handler inventory below also includes planned handlers that are not
+provisioned by the current runtime stack.
 
 Foundation stack outputs:
 
@@ -147,21 +149,21 @@ timeout.
 
 ### Handler inventory
 
-| Group         | Triggers                                           | Responsibility                                                                 |
-| ------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Auth          | REST `/auth/*`                                     | Login/logout, users, service accounts, password change, `/auth/me`             |
-| Sessions      | REST `/sessions/*`                                 | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler |
-| Repositories  | REST `/repositories/*`                             | CRUD repos                                                                     |
-| Worktrees     | REST `/worktrees/*`                                | Read models (written by agents)                                                |
-| Agents        | REST `/agents/*`                                   | Connected agents derived from Connections + Worktrees                          |
-| Schedules     | REST `/schedules/*`                                | CRUD + manual trigger                                                          |
-| Integrations  | REST `/integrations/*`                             | Slack config (KMS encrypt/decrypt token)                                       |
-| WS Connect    | `$connect`                                         | Validate token; store connection                                               |
-| WS Disconnect | `$disconnect`                                      | Cleanup + agent offline handling                                               |
-| WS Message    | `$default`                                         | Agent/client messages; log writes; status updates; subscribe                   |
-| Cron          | EventBridge rate(1 minute)                         | Due schedules → sessions; stale-session sweep                                  |
-| Scheduler     | Invoked in-process or as shared service from above | Match queue → worktrees; `session:assign`                                      |
-| Archival      | On session terminal status (async invoke optional) | DynamoDB SessionLogs → S3 JSONL                                                |
+| Group              | Triggers                                           | Responsibility                                                                 |
+| ------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Auth               | REST `/auth/*`                                     | Login/logout, users, service accounts, password change, `/auth/me`             |
+| Sessions           | REST `/sessions/*`                                 | Create, list, get, cancel, clone, **resume**, logs; enqueue + invoke scheduler |
+| Repositories       | REST `/repositories/*`                             | CRUD repos                                                                     |
+| Worktrees          | REST `/worktrees/*`                                | Read models (written by agents)                                                |
+| Agents             | REST `/agents/*`                                   | Connected agents derived from Connections + Worktrees                          |
+| Schedules          | REST `/schedules/*`                                | CRUD + manual trigger                                                          |
+| Integrations       | REST `/integrations/*`                             | Slack config (KMS encrypt/decrypt token)                                       |
+| WS Connect         | `$connect`                                         | Validate token; store connection                                               |
+| WS Disconnect      | `$disconnect`                                      | Cleanup + agent offline handling                                               |
+| WS Message         | `$default`                                         | Agent/client messages; log writes; status updates; subscribe                   |
+| Cron (planned)     | EventBridge rate(1 minute)                         | Due schedules → sessions; stale-session sweep                                  |
+| Scheduler          | Invoked in-process or as shared service from above | Match queue → worktrees; `session:assign`                                      |
+| Archival (planned) | On session terminal status (async invoke optional) | DynamoDB SessionLogs → S3 JSONL                                                |
 
 Handlers share:
 

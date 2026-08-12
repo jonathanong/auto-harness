@@ -15,29 +15,119 @@ function hostPrincipal(hostId = "host-1") {
 }
 
 function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hostPrincipal()) {
-  const plane = new ControlPlane();
   const connections = new Map<string, Record<string, unknown>>();
+  const sessions = new Map<string, Record<string, unknown>>();
+  const hostLocks = new Map<string, string>();
+  const deletedConnections: string[] = [];
+  const registrations: Array<Record<string, unknown>> = [];
   const storage = {
-    deleteConnection: vi.fn(async (id: string) => void connections.delete(id)),
-    getConnection: vi.fn(async (id: string) => connections.get(id) ?? null),
-    putConnection: vi.fn(async (connection: Record<string, unknown>) => {
+    async acknowledgeSession() {
+      return true;
+    },
+    async deleteConnection(id: string) {
+      deletedConnections.push(id);
+      connections.delete(id);
+    },
+    async getConnection(id: string) {
+      return connections.get(id) ?? null;
+    },
+    async getHostLock(hostId: string) {
+      return hostLocks.get(hostId) ?? null;
+    },
+    async getSession(id: string) {
+      return sessions.get(id) ?? null;
+    },
+    async getWorktree() {
+      return null;
+    },
+    async listWorktreesByHost() {
+      return [];
+    },
+    async markHostDraining(hostId: string, connectionId: string) {
+      return hostLocks.get(hostId) === connectionId;
+    },
+    async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
-    }),
+    },
+    async putHostInventory() {},
+    async putWorktreeFenced() {
+      return true;
+    },
+    async releaseHostConnection(hostId: string, connectionId: string) {
+      if (hostLocks.get(hostId) !== connectionId) return false;
+      hostLocks.delete(hostId);
+      connections.delete(connectionId);
+      return true;
+    },
+    async setWorktreeOnlineFenced() {
+      return true;
+    },
+    async tryRegisterHost(input: Record<string, unknown>) {
+      registrations.push(input);
+      const connection = input.connection as Record<string, unknown>;
+      const connectionId = String(connection.connectionId);
+      const hostId = String(input.hostId);
+      const pending = connections.get(connectionId);
+      if (
+        input.consumePendingConnection === true &&
+        (!pending ||
+          pending.registered !== false ||
+          pending.connectionId !== connectionId ||
+          pending.hostId !== hostId)
+      )
+        return false;
+      const owner = hostLocks.get(hostId);
+      if (owner && input.replaceExisting !== true) return false;
+      if (owner && owner !== connectionId) connections.delete(owner);
+      connections.set(connectionId, connection);
+      hostLocks.set(hostId, connectionId);
+      return true;
+    },
   };
+  const plane = new ControlPlane({
+    attemptIdFactory: () => "attempt-1",
+    connectionIdFactory: () => "gateway-1",
+    now: () => "2026-08-12T00:00:00.000Z",
+    storage: storage as never,
+  });
   const auth = { authenticate: vi.fn(async () => principal) };
   const management = { send: vi.fn(async () => ({})) };
   return {
     auth,
     connections,
+    deletedConnections,
+    hostLocks,
     management,
     plane,
+    registrations,
     runtime: createLambdaRuntime({
       auth: auth as never,
       created: { plane, storage } as never,
       management,
     }),
+    sessions,
     storage,
   };
+}
+
+async function registerGatewayHost(
+  fixture: ReturnType<typeof runtimeFixture>,
+  connectionId = "gateway-1",
+) {
+  const runtime = await fixture.runtime;
+  await runtime.websocket({
+    requestContext: { connectionId, routeKey: "$connect" },
+  });
+  await runtime.websocket({
+    body: JSON.stringify({
+      type: "host:register",
+      hostId: "host-1",
+      worktrees: [],
+      commandProfiles: [],
+    }),
+    requestContext: { connectionId, routeKey: "$default" },
+  });
+  return runtime;
 }
 
 describe("Lambda runtime adapters", () => {
@@ -103,7 +193,9 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 200 });
-    expect(fixture.plane.state.hostConnection.get("host-1")).toBe("gateway-1");
+    expect(fixture.plane.getHostConnectionId("host-1")).toBe("gateway-1");
+    expect(fixture.registrations[0]).toMatchObject({ consumePendingConnection: true });
+    expect(fixture.connections.get("gateway-1")?.registered).toBeUndefined();
     expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toEqual({
       type: "host:registered",
       hostId: "host-1",
@@ -132,20 +224,29 @@ describe("Lambda runtime adapters", () => {
 
   it("awaits direct durable confirmations before completing an invocation", async () => {
     const fixture = runtimeFixture();
-    fixture.connections.set("gateway-1", {
-      connectionId: "gateway-1",
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
+    fixture.sessions.set("session-1", {
+      id: "session-1",
+      repositoryId: "repository-1",
+      prompt: "test",
+      target: "default",
+      fallbacks: [],
+      targetLabels: ["default"],
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "2026-08-12T00:00:00.000Z",
       hostId: "host-1",
-      registered: true,
+      worktreeId: null,
+      attemptId: "attempt-1",
     });
-    fixture.plane.state.hostConnection.set("host-1", "gateway-1");
-    vi.spyOn(fixture.plane, "handleHostMessageDurable")
-      .mockResolvedValueOnce({ ok: true, sessionAcknowledged: "session-1" })
-      .mockResolvedValueOnce({ ok: true, hostDraining: "host-1" });
     let release: (() => void) | undefined;
     fixture.management.send.mockImplementationOnce(
       () => new Promise<void>((resolve) => (release = resolve)),
     );
-    const runtime = await fixture.runtime;
     let settled = false;
     const acknowledgement = runtime
       .websocket({
@@ -176,10 +277,9 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "gateway-1", routeKey: "$default" },
       }),
     ).resolves.toEqual({ statusCode: 200 });
-    expect(JSON.parse(String(fixture.management.send.mock.calls[1]?.[0].input.Data))).toEqual({
-      type: "host:draining",
-      hostId: "host-1",
-    });
+    expect(
+      fixture.management.send.mock.calls.map((call) => JSON.parse(String(call[0].input.Data))),
+    ).toContainEqual({ type: "host:draining", hostId: "host-1" });
   });
 
   it("rejects unauthenticated sockets and cleans pending or registered disconnects", async () => {
@@ -205,7 +305,7 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "pending", routeKey: "$disconnect" },
       }),
     ).resolves.toEqual({ statusCode: 200 });
-    expect(fixture.storage.deleteConnection).toHaveBeenCalledWith("pending");
+    expect(fixture.deletedConnections).toContain("pending");
     await expect(
       runtime.websocket({
         requestContext: { connectionId: "missing", routeKey: "$disconnect" },
@@ -230,29 +330,33 @@ describe("Lambda runtime adapters", () => {
 
   it("posts through the management API and prunes gone connections", async () => {
     const fixture = runtimeFixture();
-    await fixture.runtime;
-    fixture.plane.state.hostConnection.set("host-1", "gateway-1");
-    fixture.plane.state.connections.set("gateway-1", {
-      connectionId: "gateway-1",
-      type: "host",
-      hostId: "host-1",
-      connectedAt: "2026-08-12T00:00:00.000Z",
-      lastHeartbeatAt: "2026-08-12T00:00:00.000Z",
-      commandProfiles: [],
-    });
+    const runtime = await registerGatewayHost(fixture);
+    fixture.management.send.mockClear();
 
-    fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
+    fixture.plane.drainHost("host-1");
     await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledTimes(1));
     fixture.management.send.mockRejectedValueOnce({ name: "GoneException" });
-    fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
-    await vi.waitFor(() => expect(fixture.plane.state.hostConnection.has("host-1")).toBe(false));
-    fixture.plane.state.onHostMessage?.("missing", { type: "host:drain" });
+    fixture.plane.drainHost("host-1");
+    await vi.waitFor(() => expect(fixture.plane.getHostConnectionId("host-1")).toBeUndefined());
+    fixture.plane.drainHost("missing");
 
-    fixture.plane.state.hostConnection.set("host-1", "gateway-2");
+    await runtime.websocket({
+      requestContext: { connectionId: "gateway-2", routeKey: "$connect" },
+    });
+    await runtime.websocket({
+      body: JSON.stringify({
+        type: "host:register",
+        hostId: "host-1",
+        worktrees: [],
+        commandProfiles: [],
+      }),
+      requestContext: { connectionId: "gateway-2", routeKey: "$default" },
+    });
+    fixture.management.send.mockClear();
     const error = new Error("management unavailable");
     fixture.management.send.mockRejectedValueOnce(error);
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    fixture.plane.state.onHostMessage?.("host-1", { type: "host:drain" });
+    fixture.plane.drainHost("host-1");
     await vi.waitFor(() =>
       expect(consoleError).toHaveBeenCalledWith(
         "failed to deliver API Gateway WebSocket message",
@@ -265,21 +369,24 @@ describe("Lambda runtime adapters", () => {
   it("requires the management endpoint only when constructing its AWS client", async () => {
     const fixture = runtimeFixture();
     const previous = process.env.WS_API_ENDPOINT;
-    delete process.env.WS_API_ENDPOINT;
-    await expect(
-      createLambdaRuntime({
-        auth: fixture.auth as never,
-        created: { plane: fixture.plane, storage: fixture.storage } as never,
-      }),
-    ).rejects.toThrow("WS_API_ENDPOINT is required");
-    process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
-    await expect(
-      createLambdaRuntime({
-        auth: fixture.auth as never,
-        created: { plane: fixture.plane, storage: fixture.storage } as never,
-      }),
-    ).resolves.toBeDefined();
-    if (previous === undefined) delete process.env.WS_API_ENDPOINT;
-    else process.env.WS_API_ENDPOINT = previous;
+    try {
+      delete process.env.WS_API_ENDPOINT;
+      await expect(
+        createLambdaRuntime({
+          auth: fixture.auth as never,
+          created: { plane: fixture.plane, storage: fixture.storage } as never,
+        }),
+      ).rejects.toThrow("WS_API_ENDPOINT is required");
+      process.env.WS_API_ENDPOINT = "https://example.execute-api.us-east-1.amazonaws.com/prod";
+      await expect(
+        createLambdaRuntime({
+          auth: fixture.auth as never,
+          created: { plane: fixture.plane, storage: fixture.storage } as never,
+        }),
+      ).resolves.toBeDefined();
+    } finally {
+      if (previous === undefined) delete process.env.WS_API_ENDPOINT;
+      else process.env.WS_API_ENDPOINT = previous;
+    }
   });
 });

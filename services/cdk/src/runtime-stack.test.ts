@@ -46,6 +46,11 @@ describe("AutoHarnessRuntimeStack", () => {
       },
       2,
     );
+    const integrations = Object.values(template.findResources("AWS::ApiGatewayV2::Integration"));
+    expect(integrations).toHaveLength(2);
+    for (const integration of integrations) {
+      expect(JSON.stringify(integration.Properties?.IntegrationUri)).toContain(":lambda:");
+    }
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {
         Statement: Match.arrayWith([

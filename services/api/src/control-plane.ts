@@ -1,8 +1,11 @@
+import type { HostToServerMessage } from "@auto-harness/shared";
+
 import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import { ControlPlaneManagement } from "./control-plane-management-ext.ts";
 import * as agents from "./control-plane-agents.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
+import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as scheduledAssign from "./control-plane-scheduled-assign.ts";
 import * as clone from "./control-plane-session-clone.ts";
@@ -24,6 +27,15 @@ export type {
  * Working-set Maps are a process cache; durable truth is DynamoDB when `storage` is set.
  */
 export class ControlPlane extends ControlPlaneManagement {
+  /** Return the process-cache connection used for immediate host delivery. */
+  getHostConnectionId(hostId: string): string | undefined {
+    return this.state.hostConnection.get(hostId);
+  }
+
+  handlePendingHostMessageDurable(msg: HostToServerMessage, connectionId: string) {
+    return messages.handleHostMessageDurable(this.state, msg, connectionId, true, true);
+  }
+
   cloneSession(
     sessionId: string,
     opts: clone.CloneOptions = {},

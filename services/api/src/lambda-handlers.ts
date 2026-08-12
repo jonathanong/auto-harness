@@ -71,7 +71,7 @@ async function postToHost(
   hostId: string,
   message: HostWireMessage,
 ): Promise<void> {
-  const connectionId = plane.state.hostConnection.get(hostId);
+  const connectionId = plane.getHostConnectionId(hostId);
   if (!connectionId) return;
   try {
     await management.send(
@@ -170,14 +170,14 @@ export async function createLambdaRuntime(
         const message = parseHostMessage(event.body ?? "");
         if (!message || !validHostMessage(message, authenticated.hostId))
           return { statusCode: 403 };
-        if (message.type === "host:register" && authenticated.registered === false) {
-          await created.storage.deleteConnection(connectionId);
-        }
-        const result = await created.plane.handleHostMessageDurable(
-          message,
-          connectionId,
-          message.type === "host:register",
-        );
+        const result =
+          message.type === "host:register" && authenticated.registered === false
+            ? await created.plane.handlePendingHostMessageDurable(message, connectionId)
+            : await created.plane.handleHostMessageDurable(
+                message,
+                connectionId,
+                message.type === "host:register",
+              );
         if (result.ok && message.type === "host:register") {
           trackDelivery(message.hostId, {
             type: "host:registered",

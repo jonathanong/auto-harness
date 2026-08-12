@@ -261,6 +261,8 @@ export function registerHost(
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
     connectionId?: string;
+    /** Atomically promote an authenticated transport-owned pending row. */
+    consumePendingConnection?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
@@ -390,6 +392,8 @@ export async function registerHostDurable(
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
     connectionId?: string;
+    /** Atomically promote an authenticated transport-owned pending row. */
+    consumePendingConnection?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
   if (!state.storage) {
@@ -432,6 +436,7 @@ export async function registerHostDurable(
     connection: conn,
     replaceExisting: opts.replaceExisting === true,
     ...(existing ? { existingConnectionId: existing } : {}),
+    consumePendingConnection: opts.consumePendingConnection === true,
     draining: opts.draining,
   });
   if (!won) {

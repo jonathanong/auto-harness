@@ -212,6 +212,7 @@ export async function handleHostMessageDurable(
   msg: HostToServerMessage,
   sourceConnectionId?: string,
   replaceExisting = false,
+  consumePendingConnection = false,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -232,6 +233,7 @@ export async function handleHostMessageDurable(
       ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
+      ...(consumePendingConnection ? { consumePendingConnection: true } : {}),
     });
     return result.ok
       ? { ok: true, connectionId: result.connectionId }
