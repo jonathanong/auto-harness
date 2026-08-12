@@ -15,6 +15,8 @@ export default defineConfig({
         // Session and schedule forms are exercised in happy-dom with real React
         // and Next contexts. App routes and the remaining app-owned components stay e2e-only.
         "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select}.tsx",
+        "modules/ui/src/lib/utils.ts",
+        "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -50,7 +52,8 @@ export default defineConfig({
         "**/create-plane.ts",
         // Next.js app routers and app-owned components remain e2e-only.
         "**/app/**",
-        "**/modules/ui/**",
+        // The public barrel re-exports the broader UI surface, which is outside this tranche.
+        "**/modules/ui/src/index.ts",
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
@@ -71,6 +74,13 @@ export default defineConfig({
         functions: 100,
         statements: 98,
         "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
+        "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx}":
           {
             lines: 100,
             branches: 100,

@@ -27,6 +27,10 @@ export type ConfirmButtonProps = {
   disabled?: boolean;
 };
 
+function errorPw(pw: string | undefined) {
+  return pw ? pw + "-error" : "confirm-error";
+}
+
 /** A destructive-action button that requires an explicit confirm step in a modal. */
 export function ConfirmButton({
   triggerLabel,
@@ -71,7 +75,7 @@ export function ConfirmButton({
           {confirmDescription ? <DialogDescription>{confirmDescription}</DialogDescription> : null}
         </DialogHeader>
         {error ? (
-          <p className="text-sm text-red-700" data-pw={pw ? `${pw}-error` : "confirm-error"}>
+          <p className="text-sm text-red-700" data-pw={errorPw(pw)}>
             {error}
           </p>
         ) : null}
