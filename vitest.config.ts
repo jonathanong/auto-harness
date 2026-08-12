@@ -25,6 +25,8 @@ export default defineConfig({
         "modules/ui/src/components/{session-actions,session-filters,session-logs}.tsx",
         // Host settings forms are exercised in happy-dom with real React and Next contexts.
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
+        // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
+        "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -130,6 +132,13 @@ export default defineConfig({
           statements: 100,
         },
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
+        "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":
           {
             lines: 100,
             branches: 100,

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import type { RequestFunction } from "./request-types.ts";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -16,9 +17,11 @@ export function DeleteCommandButton({
   /** Name of the provider this command is the default for, if any — the backend refuses the
    * delete while this holds, so the UI disables up front rather than surfacing a 409. */
   defaultForProviderName,
+  request = fetch,
 }: {
   commandId: string;
   defaultForProviderName?: string;
+  request?: RequestFunction;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -70,7 +73,7 @@ export function DeleteCommandButton({
           onClick={() => {
             setError(null);
             start(async () => {
-              const res = await fetch(
+              const res = await request(
                 `${apiBase()}/api/v1/commands/${encodeURIComponent(commandId)}`,
                 { method: "DELETE" },
               );

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import type { RequestFunction } from "./request-types.ts";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -15,10 +16,12 @@ export function DeleteProviderButton({
   providerId,
   accountCount,
   commandCount,
+  request = fetch,
 }: {
   providerId: string;
   accountCount: number;
   commandCount: number;
+  request?: RequestFunction;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -70,7 +73,7 @@ export function DeleteProviderButton({
           onClick={() => {
             setError(null);
             start(async () => {
-              const res = await fetch(
+              const res = await request(
                 `${apiBase()}/api/v1/providers/${encodeURIComponent(providerId)}`,
                 { method: "DELETE" },
               );

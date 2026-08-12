@@ -5,13 +5,16 @@ import { useState, useTransition } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import type { RequestFunction } from "./request-types.ts";
 
 export function DeleteRepoButton({
   repositoryId,
   attachedHostCount,
+  request = fetch,
 }: {
   repositoryId: string;
   attachedHostCount: number;
+  request?: RequestFunction;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -58,7 +61,7 @@ export function DeleteRepoButton({
             onClick={() => {
               setError(null);
               start(async () => {
-                const res = await fetch(
+                const res = await request(
                   `${apiBase()}/api/v1/repositories/${encodeURIComponent(repositoryId)}`,
                   { method: "DELETE" },
                 );
