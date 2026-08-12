@@ -29,6 +29,7 @@ export default defineConfig({
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx",
+        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -70,7 +71,12 @@ export default defineConfig({
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
         "**/services/web/src/lib/attach-local-repo.ts",
-        "**/services/host-pane/**",
+        // Host-pane component coverage is intentionally enabled for the four
+        // user-facing components above; routes and server helpers remain e2e-only.
+        "**/services/host-pane/src/app/**",
+        "**/services/host-pane/src/lib/**",
+        "**/services/host-pane/src/middleware.ts",
+        "**/services/host-pane/src/index.ts",
         // Thin HTTP route wiring (exercised by local-server-management tests)
         "**/local-routes-host-inventory.ts",
         "**/ws-hub.ts",
@@ -160,6 +166,13 @@ export default defineConfig({
           functions: 100,
           statements: 100,
         },
+        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
       },
       reporter: ["text", "lcov"],
     },

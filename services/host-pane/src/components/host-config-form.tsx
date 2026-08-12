@@ -5,8 +5,17 @@ import { useState, useTransition } from "react";
 import { Button, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import type { RequestFunction } from "./request-types.ts";
 
-export function HostConfigForm({ hostId, initialJson }: { hostId: string; initialJson: string }) {
+export function HostConfigForm({
+  hostId,
+  initialJson,
+  request = fetch,
+}: {
+  hostId: string;
+  initialJson: string;
+  request?: RequestFunction;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +38,7 @@ export function HostConfigForm({ hostId, initialJson }: { hostId: string; initia
           return;
         }
         start(async () => {
-          const res = await fetch(
+          const res = await request(
             `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
             {
               method: "PUT",
