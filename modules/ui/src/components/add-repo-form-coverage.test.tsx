@@ -4,15 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AddRepoForm } from "./add-repo-form.tsx";
-import {
-  input,
-  inventory,
-  mount,
-  reset,
-  response,
-  router,
-  submit,
-} from "./action-form-test-helpers.ts";
+import { input, inventory, mount, reset, router, submit } from "./action-form-test-helpers.ts";
 
 afterEach(reset);
 
@@ -51,15 +43,15 @@ describe("AddRepoForm", () => {
   });
 
   it("handles pending, success defaults, and write errors", async () => {
-    let release!: (value: ReturnType<typeof response>) => void;
-    const fetch = vi.fn(() => new Promise<ReturnType<typeof response>>((done) => (release = done)));
-    vi.stubGlobal("fetch", fetch);
+    let release!: (value: { ok: true }) => void;
+    const writeInventory = vi.fn(() => new Promise<{ ok: true }>((done) => (release = done)));
     const view = mount(
       <AddRepoForm
         hostId="host-1"
         inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
         browseEndpoint="/browse"
+        writeInventory={writeInventory}
       />,
     );
     input(
@@ -71,11 +63,11 @@ describe("AddRepoForm", () => {
     expect(view.container.querySelector('[data-pw="add-repo-submit"]')?.textContent).toBe(
       "Attaching…",
     );
-    release(response(true));
+    release({ ok: true });
     await act(async () => {
       await Promise.resolve();
     });
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body)).repositories[0]).toMatchObject({
+    expect(writeInventory.mock.calls[0]?.[1].repositories[0]).toMatchObject({
       defaultBranch: "main",
       path: "/src/repo",
     });
@@ -89,6 +81,7 @@ describe("AddRepoForm", () => {
         hostId="host-1"
         inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
+        writeInventory={writeInventory}
       />,
     );
     input(
@@ -98,7 +91,7 @@ describe("AddRepoForm", () => {
     (
       missing.container.querySelector('[data-pw="add-repo-branch"]') as HTMLInputElement
     ).removeAttribute("name");
-    fetch.mockResolvedValueOnce(response(true));
+    writeInventory.mockResolvedValueOnce({ ok: true });
     await submit(missing.container.querySelector("form") as HTMLFormElement);
     missing.unmount();
 
@@ -107,13 +100,14 @@ describe("AddRepoForm", () => {
         hostId="host-1"
         inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
+        writeInventory={writeInventory}
       />,
     );
     input(
       failed.container.querySelector('[data-pw="add-repo-path"]') as HTMLInputElement,
       "/src/repo",
     );
-    fetch.mockResolvedValueOnce(response(false, "unavailable"));
+    writeInventory.mockResolvedValueOnce({ ok: false, error: "unavailable" });
     await submit(failed.container.querySelector("form") as HTMLFormElement);
     expect(failed.container.querySelector('[data-pw="add-repo-error"]')?.textContent).toBe(
       "unavailable",

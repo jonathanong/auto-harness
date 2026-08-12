@@ -23,6 +23,7 @@ export function AddWorktreeForm({
   repo,
   repoName,
   browseEndpoint,
+  writeInventory = putInventory,
 }: {
   hostId: string;
   inventory: HostInventory;
@@ -30,6 +31,8 @@ export function AddWorktreeForm({
   repoName: string;
   /** Filesystem browse endpoint for the path field (host pane only). */
   browseEndpoint?: string | undefined;
+  /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
+  writeInventory?: typeof putInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -79,7 +82,7 @@ export function AddWorktreeForm({
                 .map((s) => s.trim())
                 .filter(Boolean),
             });
-            const r = await putInventory(hostId, next);
+            const r = await writeInventory(hostId, next);
             if (!r.ok) {
               setError(r.error);
               return;

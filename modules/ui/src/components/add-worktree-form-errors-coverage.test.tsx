@@ -4,15 +4,7 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
-import {
-  input,
-  inventory,
-  mount,
-  repo,
-  reset,
-  response,
-  submit,
-} from "./action-form-test-helpers.ts";
+import { input, inventory, mount, repo, reset, submit } from "./action-form-test-helpers.ts";
 
 afterEach(reset);
 
@@ -58,19 +50,19 @@ describe("AddWorktreeForm errors", () => {
   });
 
   it("reports rejected writes and thrown errors", async () => {
-    const fetch = vi.fn();
-    vi.stubGlobal("fetch", fetch);
+    const writeInventory = vi.fn();
     const rejected = mount(
       <AddWorktreeForm
         hostId="host-1"
         inventory={{ ...inventory, repositories: [repo] }}
         repo={repo}
         repoName="Repo"
+        writeInventory={writeInventory}
       />,
     );
     const rejectedForm = open(rejected);
     fill(rejected);
-    fetch.mockResolvedValueOnce(response(false, "denied"));
+    writeInventory.mockResolvedValueOnce({ ok: false, error: "denied" });
     await submit(rejectedForm);
     expect(rejected.container.textContent).toContain("denied");
 
@@ -88,11 +80,12 @@ describe("AddWorktreeForm errors", () => {
         inventory={{ ...inventory, repositories: [repo] }}
         repo={repo}
         repoName="Repo"
+        writeInventory={writeInventory}
       />,
     );
     const offlineForm = open(offline);
     fill(offline);
-    fetch.mockRejectedValueOnce("offline");
+    writeInventory.mockRejectedValueOnce("offline");
     await submit(offlineForm);
     expect(offline.container.textContent).toContain("offline");
   });

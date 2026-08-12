@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Input, type InputProps } from "./input.tsx";
+import type { RequestFunction } from "./request-types.ts";
 
 export type PathInputProps = InputProps & {
   /**
@@ -12,10 +13,18 @@ export type PathInputProps = InputProps & {
    * and gets a plain `Input` back.
    */
   browseEndpoint?: string | undefined;
+  /** Request boundary; injectable for consumers that provide an in-memory transport. */
+  request?: RequestFunction;
 };
 
 /** A path `Input` with optional filesystem-backed autocomplete via a `<datalist>`. */
-export function PathInput({ browseEndpoint, id, onChange, ...props }: PathInputProps) {
+export function PathInput({
+  browseEndpoint,
+  id,
+  onChange,
+  request = fetch,
+  ...props
+}: PathInputProps) {
   const [query, setQuery] = useState(String(props.defaultValue ?? props.value ?? ""));
   const [options, setOptions] = useState<string[]>([]);
   const listId = browseEndpoint ? `${id ?? "path-input"}-suggestions` : undefined;
@@ -26,7 +35,7 @@ export function PathInput({ browseEndpoint, id, onChange, ...props }: PathInputP
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      fetch(`${browseEndpoint}?path=${encodeURIComponent(query)}`, { signal: controller.signal })
+      request(`${browseEndpoint}?path=${encodeURIComponent(query)}`, { signal: controller.signal })
         .then((r) => (r.ok ? (r.json() as Promise<{ items?: string[] }>) : { items: [] }))
         .then((data) => setOptions(data.items ?? []))
         .catch(() => {
@@ -37,7 +46,7 @@ export function PathInput({ browseEndpoint, id, onChange, ...props }: PathInputP
       clearTimeout(timer);
       controller.abort();
     };
-  }, [browseEndpoint, query]);
+  }, [browseEndpoint, query, request]);
 
   return (
     <>

@@ -11,6 +11,7 @@ import { type HostInventory, type HostRepository } from "@auto-harness/shared";
 import { TooltipProvider } from "./tooltip.tsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+const mountedRoots = new Set<() => void>();
 export const router = {
   back: vi.fn(),
   forward: vi.fn(),
@@ -45,7 +46,12 @@ export function mount(node: React.ReactNode) {
       ),
     ),
   );
-  return { container, unmount: () => act(() => root.unmount()) };
+  const unmount = () => {
+    if (!mountedRoots.delete(unmount)) return;
+    act(() => root.unmount());
+  };
+  mountedRoots.add(unmount);
+  return { container, unmount };
 }
 
 export function response(ok: boolean, body: unknown = "write failed") {
@@ -67,8 +73,9 @@ export async function submit(form: HTMLFormElement) {
 }
 
 export function reset() {
+  for (const unmount of mountedRoots) unmount();
   document.body.replaceChildren();
   router.refresh.mockReset();
   router.push.mockReset();
-  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 }

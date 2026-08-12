@@ -9,11 +9,15 @@ export function RemoveRepoButton({
   hostId,
   repositoryId,
   redirectTo,
+  readInventory = getInventory,
+  writeInventory = putInventory,
 }: {
   hostId: string;
   repositoryId: string;
   /** Navigate here after a successful removal instead of refreshing in place (e.g. the detail page). */
   redirectTo?: string;
+  readInventory?: typeof getInventory;
+  writeInventory?: typeof putInventory;
 }) {
   const router = useRouter();
   return (
@@ -23,9 +27,9 @@ export function RemoveRepoButton({
       confirmDescription="Removes it and its worktrees from host inventory. Does not delete disk files."
       pw={`repo-remove-${repositoryId}`}
       onConfirm={async () => {
-        const current = await getInventory(hostId);
+        const current = await readInventory(hostId);
         const next = removeHostRepository(current, repositoryId);
-        const r = await putInventory(hostId, next);
+        const r = await writeInventory(hostId, next);
         if (!r.ok) {
           return;
         }

@@ -10,7 +10,6 @@ import {
   mount,
   repo,
   reset,
-  response,
   router,
   submit,
 } from "./action-form-test-helpers.ts";
@@ -19,15 +18,15 @@ afterEach(reset);
 
 describe("AddWorktreeForm success flow", () => {
   it("opens, cancels, suggests paths, saves labels, and exposes pending state", async () => {
-    let release!: (value: ReturnType<typeof response>) => void;
-    const fetch = vi.fn(() => new Promise<ReturnType<typeof response>>((done) => (release = done)));
-    vi.stubGlobal("fetch", fetch);
+    let release!: (value: { ok: true }) => void;
+    const writeInventory = vi.fn(() => new Promise<{ ok: true }>((done) => (release = done)));
     const view = mount(
       <AddWorktreeForm
         hostId="host-1"
         inventory={{ ...inventory, repositories: [repo] }}
         repo={repo}
         repoName="Repo"
+        writeInventory={writeInventory}
       />,
     );
     act(() =>
@@ -71,7 +70,7 @@ describe("AddWorktreeForm success flow", () => {
     expect(
       view.container.querySelector('[data-pw="add-worktree-submit-repo-1"]')?.textContent,
     ).toBe("Saving…");
-    release(response(true));
+    release({ ok: true });
     await act(async () => {
       await Promise.resolve();
     });
