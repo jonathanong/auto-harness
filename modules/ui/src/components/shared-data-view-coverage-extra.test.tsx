@@ -84,6 +84,24 @@ describe("shared sessions table and tabs", () => {
       "Nothing here",
     );
     expect(render(<SessionsTable items={[{ id: "dash", status: "unknown" }]} />)).toContain("—");
+
+    const searchable = [
+      {
+        id: "searchable",
+        status: "queued",
+        prompt: "Deploy the service",
+        concurrencyId: "release",
+        targetLabel: null,
+        targetLabels: ["primary", "backup"],
+      },
+      { id: "without-labels", status: "queued", prompt: null },
+    ];
+    expect(render(<SessionsTable items={searchable} search="  BACKUP  " />)).toContain(
+      'data-pw="session-row-searchable"',
+    );
+    expect(render(<SessionsTable items={searchable} search="missing" />)).not.toContain(
+      'data-pw="session-row-searchable"',
+    );
   });
 
   it("links valid, fallback, and empty tab selections to their expected routes", () => {
