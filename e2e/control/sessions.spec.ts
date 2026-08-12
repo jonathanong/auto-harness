@@ -177,6 +177,11 @@ test.describe("control plane sessions", () => {
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
         );
+        await expect(page.getByTestId("session-detail-prompt-content")).toHaveText(prompt);
+        await expect(page.getByTestId("session-detail-prompt-content")).toHaveAttribute(
+          "tabindex",
+          "0",
+        );
         await expect(page.getByTestId("create-session-error")).toHaveCount(0);
 
         // Client search includes configured fallback route fields that are not in the prompt.

@@ -177,7 +177,7 @@ The header displays session metadata:
 
 ### Prompt
 
-The initial prompt is displayed in a highlighted, read-only block below the header. The full prompt text is shown — not truncated. For long prompts, the block is scrollable.
+The initial prompt is displayed in a highlighted, read-only block below the header. The full prompt text is shown — not truncated. For long prompts, the bounded block is scrollable and keyboard-focusable so keyboard users can inspect all of its content.
 
 ```
 ┌─ Prompt ─────────────────────────────────────────────────────┐

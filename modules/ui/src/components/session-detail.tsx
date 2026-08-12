@@ -158,10 +158,21 @@ export function SessionDetail({
             <SessionDetailValue label="Completed" value={s.completedAt} />
             <SessionDetailValue label="Exit code" value={s.exitCode} />
           </dl>
-          <div>
-            <dt className="text-xs uppercase text-muted-foreground">Prompt</dt>
-            <dd className="whitespace-pre-wrap break-words text-sm">{s.prompt ?? "—"}</dd>
-          </div>
+          <section aria-labelledby="session-detail-prompt-heading" data-pw="session-detail-prompt">
+            <h3
+              id="session-detail-prompt-heading"
+              className="text-xs uppercase text-muted-foreground"
+            >
+              Prompt
+            </h3>
+            <pre
+              className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted/50 p-4 font-sans text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              data-pw="session-detail-prompt-content"
+              tabIndex={0}
+            >
+              {s.prompt ?? "—"}
+            </pre>
+          </section>
           <SessionExecutionSummary
             resolvedArgv={s.resolvedArgv}
             errorCode={s.errorCode}
