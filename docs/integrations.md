@@ -254,10 +254,39 @@ examples: [harness.md](harness.md).
 
 ### Custom Webhooks (Outbound)
 
-**Target only:** optional machine-to-machine callbacks if something other than Slack must react to
-terminal status. The current API can record a configured URL and a would-be delivery in
-in-process state, but it does not make an outbound HTTP request. Webhooks are **not required** for
-the GHA fire-and-forget + Slack pattern.
+**Prepared foundation, not a runtime integration:** optional machine-to-machine callbacks remain a
+target if something other than Slack must react to terminal status. The current control-plane
+precursor can record a configured URL and a would-be delivery in process. Separately, the durable
+foundation provides a `WebhookDeliveries` outbox with idempotent event creation, bounded due-row
+queries, exact lease fences, retry exhaustion, and a dead-letter state. Nothing writes lifecycle
+events into that table or performs an outbound request yet. Webhooks are **not required** for the
+GHA fire-and-forget + Slack pattern.
+
+Durable rows contain only a versioned configuration reference and this stable, secret-safe event
+envelope:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "whe_<stable digest>",
+  "type": "session.terminal",
+  "occurredAt": "2026-08-12T20:00:00.000Z",
+  "subject": { "type": "session", "id": "sess_123" },
+  "data": {
+    "repositoryId": "repo_123",
+    "attemptId": "attempt_123",
+    "status": "completed"
+  }
+}
+```
+
+The outbox deliberately does not persist an endpoint, signing secret, request headers, prompt,
+logs, metadata, response body, or free-form failure text. A future configuration feature must
+resolve the exact `configurationId` + `configurationVersion` only after a worker owns a live lease.
+Configuration CRUD, HTTP transport, signing, endpoint validation, and lifecycle enqueue wiring are
+not part of the prepared foundation.
+
+The eventual configuration shape remains target-only:
 
 ```json
 {

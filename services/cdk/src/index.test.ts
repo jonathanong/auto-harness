@@ -25,6 +25,7 @@ describe("CDK table catalog", () => {
       "SessionUsageKinds",
       "Integrations",
       "NotificationDeliveries",
+      "WebhookDeliveries",
     ]);
     expect(DYNAMO_TABLES.find((table) => table.name === "Worktrees")?.gsis).toEqual([
       {
@@ -59,6 +60,16 @@ describe("CDK table catalog", () => {
           name: "status-nextAttemptAt",
           partitionKey: { name: "status" },
           sortKey: { name: "nextAttemptAt" },
+        },
+      ],
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "WebhookDeliveries")).toMatchObject({
+      partitionKey: { name: "id" },
+      gsis: [
+        {
+          name: "state-dueAt",
+          partitionKey: { name: "state", type: "S" },
+          sortKey: { name: "dueAt", type: "S" },
         },
       ],
     });

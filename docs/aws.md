@@ -218,6 +218,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | Commands               | `id`              | —              | —                       | Command catalog                     |
 | Integrations           | `id`              | —              | —                       | Encrypted integration configuration |
 | NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox      |
+| WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry   |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 

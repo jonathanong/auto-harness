@@ -25,6 +25,7 @@ export type DynamoTableNames = {
   sessionUsageKinds: string;
   integrations: string;
   notificationDeliveries: string;
+  webhookDeliveries: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -50,6 +51,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     sessionUsageKinds: `${p}-SessionUsageKinds`,
     integrations: `${p}-Integrations`,
     notificationDeliveries: `${p}-NotificationDeliveries`,
+    webhookDeliveries: `${p}-WebhookDeliveries`,
   };
 }
 

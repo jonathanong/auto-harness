@@ -133,6 +133,17 @@ export const DYNAMO_TABLES: TableDef[] = [
       },
     ],
   },
+  {
+    name: "WebhookDeliveries",
+    partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "state-dueAt",
+        partitionKey: { name: "state", type: "S" },
+        sortKey: { name: "dueAt", type: "S" },
+      },
+    ],
+  },
 ];
 
 export const S3_ARCHIVE_BUCKET = {

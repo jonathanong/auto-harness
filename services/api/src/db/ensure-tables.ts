@@ -16,6 +16,7 @@ import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
+import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
@@ -221,6 +222,7 @@ export async function ensureControlPlaneTables(opts: {
   await enableRateLimitTtl(ddb, names.rateLimits);
   await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
   await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
+  await createIfMissing(ddb, webhookDeliveriesTableDefinition(names.webhookDeliveries));
 
   await createIfMissing(ddb, {
     TableName: names.sessionUsage,

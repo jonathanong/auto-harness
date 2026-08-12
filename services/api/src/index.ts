@@ -33,4 +33,17 @@ export {
 export { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 export { DynamoPlaneStorage } from "./db/plane-storage.ts";
 export type { SessionRecord, WorktreeRecord } from "./db/types.ts";
+export {
+  createWebhookDelivery,
+  DEFAULT_WEBHOOK_MAX_ATTEMPTS,
+  MAX_WEBHOOK_ATTEMPTS,
+  MAX_WEBHOOK_DUE_QUERY,
+} from "./webhook-outbox.ts";
+export type {
+  DurableWebhookDelivery,
+  WebhookDestinationRef,
+  WebhookEnqueueInput,
+  WebhookEvent,
+  WebhookFailureCode,
+} from "./webhook-outbox.ts";
 export { main as apiCliMain } from "./cli.ts";
