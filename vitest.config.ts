@@ -43,6 +43,8 @@ export default defineConfig({
         "services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
+        // Shared, framework-independent display primitives are covered by server renders.
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -124,6 +126,10 @@ export default defineConfig({
             branches: 100,
             functions: 100,
             statements: 100,
+          },
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx":
+          {
+            100: true,
           },
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx":
           {
