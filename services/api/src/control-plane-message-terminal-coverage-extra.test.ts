@@ -56,7 +56,12 @@ const message = (extra: Record<string, unknown> = {}) => ({
 describe("durable terminal message residual coverage", () => {
   it("releases a cancelled scheduled attempt with default completion metadata", async () => {
     const state = createControlPlaneState({ now: () => NOW });
-    const session = row({ status: "cancelled" });
+    const session = row({
+      status: "cancelled",
+      errorCode: "cancelled",
+      errorMessage: "cancelled by operator",
+      cliResumeRef: "resume-existing",
+    });
     state.sessions.set("s", session);
     let input: Record<string, unknown> = {};
     setDurableReadStorage(state, {
@@ -68,6 +73,11 @@ describe("durable terminal message residual coverage", () => {
     await handleHostMessageDurable(state, message({ status: "completed", errorCode: undefined }));
     expect(input.completedAt).toBe(NOW);
     expect(state.sessions.get("s")?.mainCheckoutLease).toBeUndefined();
+    expect(state.sessions.get("s")).toMatchObject({
+      errorCode: "cancelled",
+      errorMessage: "cancelled by operator",
+      cliResumeRef: "resume-existing",
+    });
   });
 
   it("leaves a missing-account attempt untouched when its release loses", async () => {

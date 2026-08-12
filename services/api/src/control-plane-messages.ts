@@ -411,10 +411,10 @@ async function applySessionStatusDurable(
       const { mainCheckoutLease: _, ...next } = {
         ...session,
         worktreeId: null,
-        exitCode: msg.exitCode,
-        errorCode: msg.errorCode,
-        errorMessage: msg.errorMessage,
-        cliResumeRef: msg.cliResumeRef,
+        ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
+        ...(msg.errorCode !== undefined ? { errorCode: msg.errorCode } : {}),
+        ...(msg.errorMessage !== undefined ? { errorMessage: msg.errorMessage } : {}),
+        ...(msg.cliResumeRef !== undefined ? { cliResumeRef: msg.cliResumeRef } : {}),
       };
       delete next.assignmentConnectionId;
       delete next.assignmentSentAt;
