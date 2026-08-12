@@ -80,6 +80,13 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx}":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
       },
       reporter: ["text", "lcov"],
     },

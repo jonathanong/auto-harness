@@ -95,6 +95,7 @@ describe("interactive shared UI primitives", () => {
             triggerLabel="Remove host"
             confirmTitle="Remove this host?"
             tip="Permanently remove the host"
+            disabled
             onConfirm={confirmed}
           />
         </TooltipProvider>,
@@ -137,6 +138,48 @@ describe("interactive shared UI primitives", () => {
     });
     expect(document.body.querySelector('[role="dialog"]')).toBeNull();
     view.unmount();
+  });
+
+  it("keeps confirmation open and reports failed or rejected actions", async () => {
+    const attempts = [
+      async () => ({ ok: false as const, error: "host is busy" }),
+      async () => Promise.reject(new Error("service unavailable")),
+      async () => Promise.reject(new Error()),
+      async () => Promise.reject("offline"),
+    ];
+    const expected = ["host is busy", "service unavailable", "request failed", "request failed"];
+
+    for (const [index, onConfirm] of attempts.entries()) {
+      const pw = index === 0 ? undefined : "failed-confirm";
+      const view = mount(
+        <ConfirmButton
+          triggerLabel="Remove host"
+          confirmTitle="Remove this host?"
+          onConfirm={onConfirm}
+          pw={pw}
+        />,
+      );
+      act(() => (view.container.querySelector("button") as HTMLButtonElement).click());
+      const dialog = document.body.querySelector(
+        `[data-pw="${pw ? `${pw}-confirm` : "confirm-dialog"}"]`,
+      ) as HTMLElement;
+      const submit = [...dialog.querySelectorAll("button")].find(
+        (button) => button.textContent === "Remove",
+      );
+      await act(async () => {
+        submit?.click();
+        await Promise.resolve();
+      });
+      expect(
+        dialog.querySelector(`[data-pw="${pw ? `${pw}-error` : "confirm-error"}"]`)?.textContent,
+      ).toBe(expected[index]);
+      expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+      act(() => {
+        (dialog.querySelector('[data-pw="dialog-close"]') as HTMLButtonElement).click();
+      });
+      expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+      view.unmount();
+    }
   });
 
   it("renders cursor links and disabled boundaries with accessible names", () => {
