@@ -112,6 +112,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   hydrateScheduledState(state, sessions);
   for (const worktree of worktrees) state.worktrees.set(worktree.id, worktree);
   for (const record of connections) {
+    if (record.registered === false) continue;
     const connection = { ...record, capabilities: normalizeHostCapabilities(record.capabilities) };
     state.connections.set(connection.connectionId, connection);
     state.hostConnection.set(connection.hostId, connection.connectionId);

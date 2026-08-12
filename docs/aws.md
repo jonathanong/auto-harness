@@ -82,16 +82,16 @@ graph TB
 services/cdk/
 └── src/
     ├── cli.ts                  # CDK app; reads documented CDK context
-    ├── foundation-stack.ts      # DynamoDB, archive S3, and unassigned IAM policies
+    ├── foundation-stack.ts      # DynamoDB, archive S3, and bounded IAM policies
+    ├── runtime-stack.ts         # HTTP/WS API Gateway, Lambda, integration KMS key
     ├── tables.ts                # durable-table catalog shared by synthesis metadata
     └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
 
-The current stack is a **synthesizable persistence foundation**, not the full
-control plane shown in the architecture diagram. It intentionally creates no
-Lambda, API Gateway, WebSocket, or EventBridge resources. The two managed
-policies are unassigned, narrow foundations for future API and archival
-runtimes; adding a principal remains a later change.
+The CDK app emits a persistence foundation and a separately deployable runtime
+stack. The runtime contains HTTP/WebSocket API Gateway APIs and two bundled
+Lambda adapters. It intentionally contains no EventBridge rule or cron Lambda,
+and this repository does not expose a deploy command.
 
 Foundation stack outputs:
 
@@ -125,7 +125,9 @@ Route groups map 1:1 to handler modules under `services/api/src/handlers/rest/`.
   - **Agent** — first app message `host:register`
   - **UI client** — first app message `client:register`
 
-Keepalive: server `ping` every ~30s; agent/client `pong`. API Gateway idle timeout is respected via this heartbeat.
+Keepalive is agent-initiated because Lambda has no persistent process timer.
+Each daemon sends periodic `host:keepalive` activity before API Gateway's idle
+timeout.
 
 **Outbound push:** Lambda uses API Gateway Management API (`postToConnection`) with the stored `connectionId` from DynamoDB.
 
@@ -137,7 +139,7 @@ Keepalive: server `ping` every ~30s; agent/client `pong`. API Gateway idle timeo
 
 | Setting     | Recommendation                                                              |
 | ----------- | --------------------------------------------------------------------------- |
-| Runtime     | Node.js 20.x                                                                |
+| Runtime     | Node.js 22.x                                                                |
 | Memory      | 256 MB (most handlers); raise only if profiling shows need                  |
 | Timeout     | REST 10–15s; WS message 15–30s; cron 60s; archival 5 min if batched         |
 | Bundling    | esbuild via CDK (one artifact per logical handler group or a shared router) |

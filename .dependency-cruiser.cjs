@@ -33,10 +33,10 @@ module.exports = {
   ],
   options: {
     doNotFollow: {
-      path: "node_modules|\\.next",
+      path: "node_modules|\\.next|cdk\\.out",
     },
     exclude: {
-      path: "node_modules|\\.next|next-env\\.d\\.ts",
+      path: "node_modules|\\.next|cdk\\.out|next-env\\.d\\.ts",
     },
     tsPreCompilationDeps: true,
     tsConfig: {

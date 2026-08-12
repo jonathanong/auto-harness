@@ -1,6 +1,7 @@
 import { App, RemovalPolicy } from "aws-cdk-lib";
 
 import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
+import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 
 function contextString(app: App, key: string): string | undefined {
   const value = app.node.tryGetContext(key);
@@ -14,13 +15,20 @@ function removalPolicy(value: string | undefined): RemovalPolicy {
 }
 
 const app = new App();
+const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
 const stack = new AutoHarnessFoundationStack(
   app,
   contextString(app, "stackName") ?? "AutoHarnessFoundation",
   {
     archiveBucketName: contextString(app, "archiveBucketName"),
     dataRemovalPolicy: removalPolicy(contextString(app, "removalPolicy")),
-    tablePrefix: contextString(app, "tablePrefix"),
+    tablePrefix,
   },
 );
 void stack;
+const runtime = new AutoHarnessRuntimeStack(
+  app,
+  contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
+  { foundation: stack.resources, tablePrefix },
+);
+runtime.addStackDependency(stack);

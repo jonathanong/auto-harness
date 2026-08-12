@@ -10,6 +10,8 @@ export type CreateControlPlaneOptions = ControlPlaneOptions &
     tablePrefix?: string;
     /** Skip CreateTable (tables already ensured). */
     skipEnsureTables?: boolean;
+    /** Use AWS's regional DynamoDB endpoint and credential provider chain. */
+    aws?: boolean;
   };
 
 /**
@@ -20,7 +22,11 @@ export async function createControlPlane(
   options: CreateControlPlaneOptions = {},
 ): Promise<{ plane: ControlPlane; storage: DynamoPlaneStorage }> {
   const { client, doc } = createDynamoClients({
-    ...(options.endpoint !== undefined ? { endpoint: options.endpoint } : {}),
+    ...(options.endpoint !== undefined
+      ? { endpoint: options.endpoint }
+      : options.aws
+        ? { endpoint: null }
+        : {}),
     ...(options.region !== undefined ? { region: options.region } : {}),
   });
   const prefix = options.tablePrefix ?? process.env.HARNESS_DDB_PREFIX ?? "AutoHarness";

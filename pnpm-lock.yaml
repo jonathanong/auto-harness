@@ -23,6 +23,9 @@ importers:
       dependency-cruiser:
         specifier: ^16.10.2
         version: 16.10.4
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
       happy-dom:
         specifier: 20.8.9
         version: 20.8.9
@@ -93,6 +96,9 @@ importers:
       '@auto-harness/shared':
         specifier: workspace:*
         version: link:../../modules/shared
+      '@aws-sdk/client-apigatewaymanagementapi':
+        specifier: ^3.1108.0
+        version: 3.1108.0
       '@aws-sdk/client-dynamodb':
         specifier: ^3.1101.0
         version: 3.1101.0
@@ -296,6 +302,10 @@ packages:
     bundledDependencies:
       - jsonschema
       - semver
+
+  '@aws-sdk/client-apigatewaymanagementapi@3.1108.0':
+    resolution: {integrity: sha512-kPue1gSnNTLhSEuA3xSghK0k7owr+aVavYdPqBqmZ8l7Q9yRHUxgHcgSQh4IlazQy9swd2kCxLk9naZmEMHkJw==}
+    engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-dynamodb@3.1101.0':
     resolution: {integrity: sha512-3tlBfiRdksyqFggcMsN3AOA9uaqEbt5OK6Ym0MfUxKqLIOwdAlfCKL2GvE8qC0xa2dwPegIDs+grTRpBtzNILQ==}
@@ -2997,6 +3007,17 @@ snapshots:
   '@aws-cdk/asset-node-proxy-agent-v6@2.1.2': {}
 
   '@aws-cdk/cloud-assembly-schema@54.17.0': {}
+
+  '@aws-sdk/client-apigatewaymanagementapi@3.1108.0':
+    dependencies:
+      '@aws-sdk/core': 3.977.7
+      '@aws-sdk/credential-provider-node': 3.972.79
+      '@aws-sdk/types': 3.974.3
+      '@smithy/core': 3.31.1
+      '@smithy/fetch-http-handler': 5.6.13
+      '@smithy/node-http-handler': 4.9.13
+      '@smithy/types': 4.16.1
+      tslib: 2.8.1
 
   '@aws-sdk/client-dynamodb@3.1101.0':
     dependencies:

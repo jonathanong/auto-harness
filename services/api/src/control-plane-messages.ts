@@ -231,6 +231,7 @@ export async function handleHostMessageDurable(
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
       ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
+      ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
     });
     return result.ok
       ? { ok: true, connectionId: result.connectionId }
