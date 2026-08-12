@@ -37,8 +37,16 @@ describe("loadHostIdentity", () => {
 
 describe("loadDaemonConfig", () => {
   it("uses process.env when the env option is omitted", async () => {
-    const config = await loadDaemonConfig({ inline: valid });
-    expect(config.hostId).toBe("local-1");
+    vi.stubEnv("HARNESS_HOST_ID", "from-process-env");
+    vi.stubEnv("HARNESS_API_URL", "");
+    vi.stubEnv("HARNESS_API_KEY", "");
+    vi.stubEnv("HARNESS_LOG_LEVEL", "");
+    try {
+      const config = await loadDaemonConfig({ inline: valid });
+      expect(config.hostId).toBe("from-process-env");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("applies env overrides on inline config", async () => {
