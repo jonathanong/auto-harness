@@ -246,6 +246,85 @@ describe("createPlaneWsBridge message ordering", () => {
     );
   });
 
+  it("drains an incumbent log batch before replacing its host lease", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 0 });
+    const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage, shardCount: 1 });
+    plane.state.sessions.set("reconnect-session", { hostId: "reconnect-host" } as never);
+    const opened = await registeredSocket(bridge, plane, "reconnect-host");
+    const incumbentConnectionId = plane.state.hostConnection.get("reconnect-host")!;
+    let releaseWrite: () => void;
+    const writeBlocked = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let writeStarted: () => void;
+    const writeStartedPromise = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const committed: number[][] = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "reconnect-host" }),
+      getHostLock: async () => incumbentConnectionId,
+      putLogsFenced: async (records: Array<{ seq: number }>) => {
+        writeStarted();
+        await writeBlocked;
+        committed.push(records.map(({ seq }) => seq));
+        return true;
+      },
+      deleteLog: async () => {},
+    } as never;
+    const originalHandle = plane.handleHostMessageDurable.bind(plane);
+    plane.disconnectHostDurable = async () => [];
+    let replacementStarted: () => void;
+    const replacementStartedPromise = new Promise<void>((resolve) => {
+      replacementStarted = resolve;
+    });
+    plane.handleHostMessageDurable = async (message, ...args) => {
+      if (message.type !== "host:register") return originalHandle(message, ...args);
+      replacementStarted();
+      plane.state.hostConnection.set(message.hostId, "replacement-connection");
+      return { ok: true, connectionId: "replacement-connection" };
+    };
+
+    opened.ws.send(wireLog("reconnect-session", 7));
+    await writeStartedPromise;
+    const address = opened.server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const replacement = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+    const replacementRegistered = new Promise<void>((resolve, reject) => {
+      replacement.on("open", () =>
+        replacement.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "reconnect-host",
+            worktrees: [],
+            commandProfiles: [],
+          }),
+        ),
+      );
+      replacement.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type === "host:registered") resolve();
+      });
+      replacement.on("error", reject);
+    });
+
+    expect(
+      await Promise.race([
+        replacementStartedPromise.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50)),
+      ]),
+    ).toBe(false);
+    releaseWrite!();
+    await replacementRegistered;
+
+    expect(committed).toEqual([[7]]);
+    expect(plane.state.hostConnection.get("reconnect-host")).toBe("replacement-connection");
+    replacement.close();
+    opened.hub.close();
+    await new Promise<void>((resolve, reject) =>
+      opened.server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
   it("processes messages after a durable registration in wire order", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage, shardCount: 1 });

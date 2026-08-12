@@ -43,6 +43,7 @@ type WsBridgeOptions = {
 };
 
 type HostSocketMap = Map<string, WebSocket>;
+type HostDrainMap = Map<string, { socket: WebSocket; drain: () => Promise<void> }>;
 
 export function createWsDelivery(
   hostSockets: Map<string, WebSocket>,
@@ -60,6 +61,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
   attach(server: HttpServer, plane: ControlPlane, auth?: AuthService): WsHub;
 } {
   const hostSockets: HostSocketMap = new Map();
+  const hostDrains: HostDrainMap = new Map();
   const onHostMessage = createWsDelivery(hostSockets);
   return {
     hostSockets,
@@ -78,6 +80,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         let messageCount = 0;
         let accepting = true;
         let pendingRegistration: { hostId: string; closed: boolean } | null = null;
+        let drainForReplacement: () => Promise<void>;
 
         const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
           if (!accepting) return;
@@ -98,6 +101,8 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           const registration =
             msg.type === "host:register" ? { hostId: msg.hostId, closed: false } : null;
           if (registration) pendingRegistration = registration;
+          const incumbent = registration ? hostDrains.get(registration.hostId) : undefined;
+          if (incumbent && incumbent.socket !== socket) await incumbent.drain();
           const result = await plane.handleHostMessageDurable(
             msg,
             boundConnectionId ?? undefined,
@@ -124,6 +129,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             boundHostId = msg.hostId;
             boundConnectionId = result.connectionId!;
             hostSockets.set(msg.hostId, socket);
+            hostDrains.set(msg.hostId, { socket, drain: drainForReplacement });
             socket.send(
               JSON.stringify({
                 type: "host:registered",
@@ -204,6 +210,12 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             logBatchTimer = setTimeout(flushLogBatch, options.logBatchDelayMs ?? 5);
           }
         };
+        drainForReplacement = async () => {
+          accepting = false;
+          flushLogBatch();
+          await messageTail;
+          if (socket.readyState === socket.OPEN) socket.close(1008, "host reconnected");
+        };
         socket.on("message", (raw) => {
           if (!accepting) return;
           const now = Date.now();
@@ -242,6 +254,9 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           accepting = false;
           flushLogBatch();
           if (pendingRegistration) pendingRegistration.closed = true;
+          if (boundHostId && hostDrains.get(boundHostId)?.socket === socket) {
+            hostDrains.delete(boundHostId);
+          }
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
             if (boundConnectionId) {
@@ -281,6 +296,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           server.off("upgrade", onUpgrade);
           for (const sock of hostSockets.values()) sock.close();
           hostSockets.clear();
+          hostDrains.clear();
           wss.close();
         },
       };
