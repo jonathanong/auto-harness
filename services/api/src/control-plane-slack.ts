@@ -19,7 +19,7 @@ export type SlackConfigInput = {
   notifications?: SlackNotifications;
 };
 
-export type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
+type SlackConfigFailure = { ok: false; error: string; conflict?: true; unavailable?: true };
 
 export function getSlackIntegration(state: ControlPlaneState): PublicSlackIntegration | null {
   return state.slackIntegration ? toPublicSlackIntegration(state.slackIntegration) : null;
