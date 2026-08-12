@@ -45,6 +45,8 @@ test.describe("control plane sessions", () => {
     await page.getByTestId("session-filter-status").selectOption("queued");
     await expect(page).toHaveURL(/status=queued/);
     await expect(page).toHaveURL(/sort=priority_asc/);
+    await page.getByTestId("session-filter-q").fill("debounced prompt");
+    await expect(page).toHaveURL(/q=debounced\+prompt/);
   });
 
   test("sessions list exposes a retryable API error without an empty table", async ({ page }) => {
