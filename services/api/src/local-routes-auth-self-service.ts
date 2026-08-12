@@ -27,6 +27,18 @@ export async function handleSelfServiceAuthRoutes(
     send(res, 200, ctx.principal);
     return true;
   }
+  if (method === "POST" && url.pathname === "/api/v1/auth/viewer-ticket") {
+    if (!ctx.principal) {
+      if (auth.mode === "disabled") {
+        send(res, 200, { ticket: null });
+        return true;
+      }
+      send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
+      return true;
+    }
+    send(res, 200, { ticket: auth.issueViewerTicket(ctx.principal) });
+    return true;
+  }
   if (method !== "PUT" || url.pathname !== "/api/v1/auth/password") return false;
   if (!ctx.principal) {
     send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });

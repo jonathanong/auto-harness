@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { handleAuthRoutes } from "./local-routes-auth.ts";
+import { handleSelfServiceAuthRoutes } from "./local-routes-auth-self-service.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
@@ -23,6 +24,18 @@ describe("self-service authentication routes", () => {
     expect(
       (await invokeHandler(handler, "GET", "/api/v1/auth/me", undefined, session)).json,
     ).toMatchObject(user);
+    const viewerTicket = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/auth/viewer-ticket",
+      undefined,
+      session,
+    );
+    expect(viewerTicket.status).toBe(200);
+    expect(
+      auth.authenticateViewerTicket((viewerTicket.json as { ticket: string }).ticket),
+    ).toMatchObject(user);
+    expect((await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket")).status).toBe(401);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/me")).status).toBe(401);
     expect(
       (await invokeHandler(handler, "PUT", "/api/v1/auth/password", {}, session)).json,
@@ -158,8 +171,36 @@ describe("self-service authentication routes", () => {
       ).json,
     ).toMatchObject(user);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/me")).status).toBe(401);
+    expect((await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket")).json).toEqual({
+      ticket: null,
+    });
     expect((await invokeHandler(handler, "PUT", "/api/v1/auth/password", {})).status).toBe(401);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/unknown")).status).toBe(404);
+  });
+
+  it("rejects a ticket request without a principal when called outside the server guard", async () => {
+    const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
+    let status = 0;
+    const result = await handleSelfServiceAuthRoutes({
+      auth,
+      plane: new ControlPlane(),
+      req: {} as never,
+      res: {
+        setHeader() {
+          /* response header */
+        },
+        writeHead(code: number) {
+          status = code;
+        },
+        end() {
+          /* response body */
+        },
+      } as never,
+      url: new URL("http://localhost/api/v1/auth/viewer-ticket"),
+      method: "POST",
+    });
+    expect(result).toBe(true);
+    expect(status).toBe(401);
   });
 
   it("uses a safe validation message when a request stream rejects with a non-Error", async () => {

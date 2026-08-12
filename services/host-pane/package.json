@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node ../../scripts/validate-bind.mts HARNESS_HOST_PANE_HOST && next dev --hostname ${HARNESS_HOST_PANE_HOST:-127.0.0.1} --port 7422",
     "build": "next build",
-    "build:e2e": "HARNESS_E2E=1 HARNESS_API_HTTP=http://127.0.0.1:7430 next build",
+    "build:e2e": "HARNESS_E2E=1 HARNESS_API_HTTP=${HARNESS_API_HTTP:-http://127.0.0.1:7430} next build",
     "start": "node ../../scripts/validate-bind.mts HARNESS_HOST_PANE_HOST && next start --hostname ${HARNESS_HOST_PANE_HOST:-127.0.0.1} --port 7422",
     "start:e2e": "HARNESS_E2E=1 HARNESS_API_HTTP=http://127.0.0.1:7430 next start --port 7432"
   },

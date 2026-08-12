@@ -1,6 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const requiredAuthE2e = process.env.HARNESS_E2E_AUTH === "1";
+const controlOnly = process.env.HARNESS_E2E_CONTROL_ONLY === "1";
+const portOffset = parsePortOffset(process.env.HARNESS_E2E_PORT_OFFSET);
+const apiPort = 7430 + portOffset;
+const controlPort = 7431 + portOffset;
+const hostPanePort = 7432 + portOffset;
+const dynamoPort = 7433 + portOffset;
+const dynamoEndpoint = process.env.HARNESS_E2E_DDB_ENDPOINT ?? `http://127.0.0.1:${dynamoPort}`;
+const apiUrl = `http://127.0.0.1:${apiPort}`;
 
 /**
  * Playwright E2E — see docs/e2e.md.
@@ -27,7 +35,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   use: {
-    baseURL: "http://127.0.0.1:7431",
+    baseURL: `http://127.0.0.1:${controlPort}`,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     /** Use data-pw instead of data-testid */
@@ -39,7 +47,7 @@ export default defineConfig({
       testMatch: "e2e/control/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: "http://127.0.0.1:7431",
+        baseURL: `http://127.0.0.1:${controlPort}`,
       },
     },
     {
@@ -47,7 +55,7 @@ export default defineConfig({
       testMatch: "e2e/host-pane/**/*.spec.ts",
       use: {
         ...devices["Desktop Chrome"],
-        baseURL: "http://127.0.0.1:7432",
+        baseURL: `http://127.0.0.1:${hostPanePort}`,
       },
     },
     // Real claude/codex sessions — needs local credentials, never runs in CI. Registered
@@ -60,7 +68,7 @@ export default defineConfig({
             testMatch: "e2e/real-cli/**/*.spec.ts",
             use: {
               ...devices["Desktop Chrome"],
-              baseURL: "http://127.0.0.1:7431",
+              baseURL: `http://127.0.0.1:${controlPort}`,
             },
           },
         ]
@@ -69,8 +77,10 @@ export default defineConfig({
   webServer: [
     {
       name: "api",
-      command: "pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e",
-      url: "http://127.0.0.1:7430/health",
+      command: process.env.HARNESS_E2E_DDB_ENDPOINT
+        ? `HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node scripts/ensure-dynamodb.mts && HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node services/api/src/cli.ts serve --port ${apiPort}`
+        : "pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e",
+      url: `${apiUrl}/health`,
       reuseExistingServer: false,
       timeout: 180_000,
       stdout: "pipe",
@@ -79,19 +89,19 @@ export default defineConfig({
     {
       name: "control-web",
       // Expect `pnpm build:web:e2e` (or test:e2e) already ran — production server only.
-      command: "pnpm local:web:start:e2e",
-      url: "http://127.0.0.1:7431",
+      command: `HARNESS_E2E=1 HARNESS_API_HTTP=${apiUrl} pnpm --filter @auto-harness/web exec next start --port ${controlPort}`,
+      url: `http://127.0.0.1:${controlPort}`,
       reuseExistingServer: false,
       timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",
     },
-    ...(!requiredAuthE2e
+    ...(!requiredAuthE2e && !controlOnly
       ? [
           {
             name: "host-pane",
-            command: "pnpm local:host-pane:start:e2e",
-            url: "http://127.0.0.1:7432",
+            command: `HARNESS_E2E=1 HARNESS_API_HTTP=${apiUrl} pnpm --filter @auto-harness/host-pane exec next start --port ${hostPanePort}`,
+            url: `http://127.0.0.1:${hostPanePort}`,
             reuseExistingServer: false,
             timeout: 60_000,
             stdout: "pipe",
@@ -101,3 +111,12 @@ export default defineConfig({
       : []),
   ],
 });
+
+function parsePortOffset(value: string | undefined): number {
+  if (value === undefined || value === "") return 0;
+  const offset = Number(value);
+  if (!Number.isInteger(offset) || offset < 0 || offset > 50_000) {
+    throw new Error("HARNESS_E2E_PORT_OFFSET must be an integer from 0 through 50000");
+  }
+  return offset;
+}

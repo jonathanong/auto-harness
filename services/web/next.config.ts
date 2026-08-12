@@ -9,6 +9,11 @@ const apiUpstream = (
   .replace(/\/ws$/, "");
 
 const nextConfig: NextConfig = {
+  env: {
+    NEXT_PUBLIC_HARNESS_VIEWER_WS_URL:
+      process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL ??
+      apiUpstream.replace(/^http/, "ws") + "/ws/viewer",
+  },
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
     externalDir: true,

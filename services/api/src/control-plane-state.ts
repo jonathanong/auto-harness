@@ -90,6 +90,8 @@ export type ControlPlaneState = {
   sessionCursorSecret: string;
   webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
+  /** Called only after a log is durable (or committed in the in-memory plane). */
+  onLogCommitted: ((record: LogRecord) => void) | undefined;
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
@@ -150,6 +152,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       randomBytes(32).toString("base64url"),
     webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,
+    onLogCommitted: undefined,
   };
 }
 export function queueWrite(

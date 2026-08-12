@@ -187,10 +187,10 @@ Below the prompt, a terminal-like log viewer displays session output. This is th
 
 **Behavior:**
 
-1. **On page load** — fetches historical logs via `GET /sessions/:id/logs` and renders them in the terminal
-2. **For running sessions** — opens a WebSocket connection and subscribes to `session:subscribe`. The server replays the last 100 buffered lines, then streams new output in real-time.
-3. **For completed sessions** — displays the full log history (read-only, no WebSocket needed)
-4. **Stream tabs** — toggle between `stdout`, `stderr`, `system`, or `all` (interleaved, default)
+1. **On page load** — fetches bounded historical logs via `GET /sessions/:id/logs` and renders them in the terminal.
+2. **Live tail** — obtains a short-lived viewer ticket through the authenticated web origin, then opens the read-only API `/ws/viewer` socket and subscribes with `session:subscribe`. It resumes from the last `timestampSeq` after reconnect, deduplicates replay, orders entries by cursor, and retains at most 1,000 live entries.
+3. **Lifecycle and errors** — shows `Connecting`, `Live — <status>`, `Reconnecting`, or an explicit unavailable/paused error. The connection retries with capped exponential backoff.
+4. **On leave** — sends `session:unsubscribe` before closing the browser socket.
 
 **Terminal controls:**
 

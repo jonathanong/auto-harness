@@ -143,6 +143,23 @@ export async function queryLogs(
   sessionId: string,
   query: LogQuery,
 ): Promise<LogRecord[]> {
+  if (query.after) {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessionLogs,
+        KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
+        ExpressionAttributeValues: {
+          ":sessionId": sessionId,
+          ":after": query.after,
+          ...(query.stream ? { ":stream": query.stream } : {}),
+        },
+        ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
+        ScanIndexForward: true,
+        Limit: query.limit,
+      }),
+    );
+    return catalogPageItems(res.Items as LogRecord[] | undefined);
+  }
   const records: LogRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {

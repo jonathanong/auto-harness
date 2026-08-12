@@ -22,6 +22,7 @@ import {
 export type AuthMode = "disabled" | "required";
 const COOKIE = "auto_harness_session";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const VIEWER_TICKET_MS = 60 * 1000;
 // Keep password verification work comparable for unknown usernames.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("auto-harness-dummy-password", 12);
 
@@ -265,7 +266,24 @@ export class AuthService {
     res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
   }
 
-  private verifySession(token: string): Principal | null {
+  /** Short-lived browser-to-API WebSocket credential; never stored in JavaScript cookies. */
+  issueViewerTicket(principal: Principal): string {
+    const header = { alg: "HS256", typ: "JWT" };
+    const payload = {
+      ...principal,
+      audience: "viewer",
+      exp: Math.floor((Date.now() + VIEWER_TICKET_MS) / 1000),
+    };
+    const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
+    const signature = createHmac("sha256", this.secret).update(unsigned).digest("base64url");
+    return `${unsigned}.${signature}`;
+  }
+
+  authenticateViewerTicket(token: string): Principal | null {
+    return this.verifySession(token, "viewer");
+  }
+
+  private verifySession(token: string, audience?: "viewer"): Principal | null {
     const parts = token.split(".");
     if (parts.length !== 3 || !this.secret) return null;
     const [header, payload, signature] = parts as [string, string, string];
@@ -279,7 +297,7 @@ export class AuthService {
     )
       return null;
     const parsedHeader = parseB64urlJson<{ alg?: unknown; typ?: unknown }>(header);
-    const value = parseB64urlJson<Principal & { exp?: unknown }>(payload);
+    const value = parseB64urlJson<Principal & { exp?: unknown; audience?: unknown }>(payload);
     const role = value && asRole(value.role);
     if (
       !parsedHeader ||
@@ -295,8 +313,9 @@ export class AuthService {
       return null;
     if (value.kind !== "admin" && value.kind !== "user" && value.kind !== "service-account")
       return null;
+    if (audience ? value.audience !== audience : value.audience !== undefined) return null;
     const current = this.findCurrentPrincipal(value);
-    const { exp: _exp, ...claims } = value;
+    const { exp: _exp, audience: _audience, ...claims } = value;
     if (!current || !samePrincipalClaims(current, claims)) return null;
     return current;
   }
