@@ -123,6 +123,15 @@ describe("createPlaneWsBridge", () => {
         },
       }),
     ).toMatchObject({ type: "session:usage", attemptId: "attempt-1" });
+    expect(
+      parseHostMessage({
+        type: "session:usage",
+        sessionId: "s",
+        worktreeId: "wt-1",
+        attemptId: "attempt-1",
+        usage: { kind: "delta", sequence: 1, source: "cli" },
+      }),
+    ).toBe(null);
   });
 
   it("registers an agent, delivers session:assign, then confirms its in-memory ACK once", async () => {
