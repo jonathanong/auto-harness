@@ -1,6 +1,5 @@
 "use client";
 
-import { SessionLogs } from "@auto-harness/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -12,6 +11,7 @@ import {
   viewerTicket,
   type LiveLogEntry,
 } from "../lib/live-session-logs.ts";
+import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 
 type ConnectionState = "connecting" | "live" | "reconnecting" | "error";
 
@@ -140,7 +140,7 @@ export function SessionLiveLogs({
           {error}
         </p>
       ) : null}
-      <SessionLogs items={items} />
+      <SessionTerminalViewer sessionId={sessionId} items={items} />
     </div>
   );
 }

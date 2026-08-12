@@ -187,13 +187,11 @@ The initial prompt is displayed in a highlighted, read-only block below the head
 
 Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
 
-**Current implementation:** a read-only, monospace React log renders timestamp, stream, and
-content as text. It live-tails over the viewer WebSocket, but it is not xterm.js, does not emulate
-ANSI cursor behavior, and is not an interactive terminal. The host daemon currently captures
-the assigned CLI's merged PTY stream; git, setup, and hook output remains pipe-based.
-
-**Target:** use [xterm.js](https://xtermjs.org/) to render the PTY-backed output so ANSI colors, cursor
-movement, progress bars, and interactive output from AI CLIs render faithfully.
+**Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer renders the assigned
+CLI's merged PTY-backed log chunks, including ANSI colors and cursor control sequences, and
+live-tails over the viewer WebSocket. Search, selectable text, scrollback, font sizing, fullscreen,
+and `.txt` download controls are available. The viewer remains deliberately non-interactive: it
+does not send browser input to the running process. Git, setup, and hook output remains pipe-based.
 
 **Behavior:**
 
@@ -202,7 +200,7 @@ movement, progress bars, and interactive output from AI CLIs render faithfully.
 3. **Lifecycle and errors** — shows `Connecting`, `Live — <status>`, `Reconnecting`, or an explicit unavailable/paused error. The connection retries with capped exponential backoff.
 4. **On leave** — sends `session:unsubscribe` before closing the browser socket.
 
-**Target terminal controls (not implemented by the current text viewer):**
+**Terminal controls:**
 
 | Control    | Function                                                                                                          |
 | ---------- | ----------------------------------------------------------------------------------------------------------------- |

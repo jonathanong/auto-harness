@@ -66,14 +66,49 @@ test.describe("live session logs", () => {
       await page.goto(`/sessions/${session.id}`);
       expect((await ticketResponse).status()).toBe(200);
       await expect(page.getByTestId("session-logs-live-tail")).toBeVisible();
+      await expect(page.getByTestId("session-terminal-controls")).toBeVisible();
+      await expect(page.getByTestId("session-logs-empty")).toHaveCount(0);
       await expect(page.getByTestId("session-logs-live-error")).toHaveCount(0);
       await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — running");
-      await expect(page.getByTestId("session-logs")).toContainText(
+      await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "history from the real host socket",
       );
+      await expect(page.getByTestId("session-logs").locator(".xterm-screen")).toBeVisible();
 
-      host.socket.send(logFrame(session.id, "live browser tail", 2));
-      await expect(page.getByTestId("session-logs")).toContainText("live browser tail");
+      host.socket.send(logFrame(session.id, "\u001b[31mANSI red output\u001b[0m", 2));
+      await expect(page.getByTestId("session-terminal-transcript")).toContainText(
+        "ANSI red output",
+      );
+      host.socket.send(logFrame(session.id, "live browser tail", 3));
+      await expect(page.getByTestId("session-terminal-transcript")).toContainText(
+        "live browser tail",
+      );
+
+      await page.getByTestId("session-logs").click();
+      await page.keyboard.press("Control+f");
+      await expect(page.getByTestId("session-terminal-search")).toBeFocused();
+      await page.getByTestId("session-terminal-search").fill("ANSI red output");
+      await page.getByTestId("session-terminal-search-next").click();
+      await expect(page.getByTestId("session-terminal-search-result")).toHaveText("Match found");
+      await page.getByTestId("session-terminal-search-previous").click();
+
+      await expect(page.getByTestId("session-terminal-font-size")).toHaveText("13px");
+      await page.getByTestId("session-terminal-font-increase").click();
+      await expect(page.getByTestId("session-terminal-font-size")).toHaveText("14px");
+      await page.getByTestId("session-terminal-font-decrease").click();
+      await expect(page.getByTestId("session-terminal-font-size")).toHaveText("13px");
+      await page.getByTestId("session-terminal-fullscreen").click();
+      await expect(page.getByTestId("session-terminal")).toHaveAttribute("data-fullscreen", "true");
+      await page.getByTestId("session-terminal-fullscreen").click();
+      await expect(page.getByTestId("session-terminal")).toHaveAttribute(
+        "data-fullscreen",
+        "false",
+      );
+
+      const download = page.waitForEvent("download");
+      await page.getByTestId("session-terminal-download").click();
+      expect((await download).suggestedFilename()).toBe(`${session.id}.txt`);
+
       host.socket.send(
         JSON.stringify({
           type: "session:status",
@@ -143,7 +178,7 @@ function logFrame(sessionId: string, content: string, seq: number): string {
     type: "session:log",
     sessionId,
     stream: "stdout",
-    content,
+    content: `${content}\r\n`,
     timestamp: new Date().toISOString(),
     seq,
   });
