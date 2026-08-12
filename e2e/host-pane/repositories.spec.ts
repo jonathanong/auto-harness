@@ -41,6 +41,7 @@ test.describe("host pane repositories", () => {
       try {
         await attachRepoViaUi(page, { name, path: `/tmp/${id}` });
         await expect(page).toHaveURL(new RegExp(`/repositories/${id}$`));
+        await expect(page.getByTestId("page-repository-detail")).toBeVisible();
 
         await page.getByTestId("tab-worktrees").click();
         await expect(page.getByText("No worktrees under this repository.")).toBeVisible();

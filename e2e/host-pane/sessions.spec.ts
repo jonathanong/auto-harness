@@ -72,11 +72,17 @@ test.describe("host pane sessions", () => {
         await page.getByTestId(`session-link-${id}`).click();
 
         await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));
+        await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-id")).toHaveText(id);
         await expect(page.getByTestId("session-detail-status")).toBeVisible();
       } finally {
         await removeHostRepo(request, repoId);
       }
     });
+  });
+
+  test("unknown session id shows a not-found state", async ({ page }) => {
+    await page.goto("/sessions/does-not-exist-xyz");
+    await expect(page.getByTestId("page-session-detail-not-found")).toBeVisible();
   });
 });

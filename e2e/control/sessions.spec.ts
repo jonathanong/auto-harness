@@ -15,10 +15,16 @@ test.describe("control plane sessions", () => {
   test("new session form is present", async ({ page }) => {
     await page.goto("/sessions/new");
     await expect(page.getByTestId("page-session-new")).toBeVisible();
+    await expect(page.getByTestId("session-new-heading")).toHaveText("New session");
     await expect(page.getByTestId("form-create-session")).toBeVisible();
     await expect(page.getByTestId("create-session-repository-id")).toBeVisible();
     await expect(page.getByTestId("create-session-prompt")).toBeVisible();
+    await expect(page.getByTestId("create-session-timeout")).toBeVisible();
+    await expect(page.getByTestId("create-session-ref")).toBeVisible();
+    await expect(page.getByTestId("create-session-queue-ttl")).toBeVisible();
+    await expect(page.getByTestId("create-session-routing")).toBeVisible();
     await expect(page.getByTestId("create-session-concurrency-id")).toBeVisible();
+    await expect(page.getByTestId("create-session-error")).toBeHidden();
     await expect(page.getByTestId("create-session-submit")).toBeVisible();
   });
 
@@ -108,6 +114,7 @@ test.describe("control plane sessions", () => {
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
         );
+        await expect(page.getByTestId("create-session-error")).toHaveCount(0);
 
         // Queued sessions can be cancelled; cancelling unlocks resume.
         await page.getByTestId("session-cancel").click();

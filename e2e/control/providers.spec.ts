@@ -1,5 +1,25 @@
 import { test, expect } from "@playwright/test";
 
+async function pauseProviderAccount(accountId: string): Promise<void> {
+  const response = await fetch("http://127.0.0.1:7433", {
+    method: "POST",
+    headers: {
+      authorization:
+        "AWS4-HMAC-SHA256 Credential=local/20260812/local/dynamodb/aws4_request, SignedHeaders=host;x-amz-date;x-amz-target, Signature=00",
+      "content-type": "application/x-amz-json-1.0",
+      "x-amz-date": "20260812T000000Z",
+      "x-amz-target": "DynamoDB_20120810.UpdateItem",
+    },
+    body: JSON.stringify({
+      TableName: "AutoHarness-ProviderAccounts",
+      Key: { id: { S: accountId } },
+      UpdateExpression: "SET usageLimitedUntil = :until",
+      ExpressionAttributeValues: { ":until": { S: "2099-01-01T00:00:00.000Z" } },
+    }),
+  });
+  expect(response.ok, await response.text()).toBe(true);
+}
+
 test.describe("control plane providers", () => {
   test("providers page loads with add-provider dialog closed", async ({ page }) => {
     await page.goto("/providers");
@@ -18,6 +38,7 @@ test.describe("control plane providers", () => {
     await page.goto("/providers");
     await page.getByTestId("add-provider-open").click();
     await expect(page.getByTestId("form-provider-catalog")).toBeVisible();
+    await expect(page.getByTestId("provider-catalog-error")).toBeHidden();
     await page.getByTestId("provider-catalog-name").fill(name);
     await page.getByTestId("provider-catalog-command-name").fill(commandName);
     await page.getByTestId("provider-catalog-argv").fill("claude\n-p");
@@ -33,6 +54,7 @@ test.describe("control plane providers", () => {
     const providerId = new URL(page.url()).pathname.split("/").pop()!;
 
     await expect(page.getByTestId("form-add-provider-account")).toBeVisible();
+    await expect(page.getByTestId("provider-account-error")).toBeHidden();
     await page.getByTestId("provider-account-label").fill(`${name}@example.com`);
     await page.getByTestId("provider-account-cooldown-seconds").fill("1234");
     await page.getByTestId("provider-account-submit").click();
@@ -44,6 +66,16 @@ test.describe("control plane providers", () => {
       "",
     );
     await expect(page.getByTestId(`provider-account-cooldown-${accountId}`)).toContainText("1234s");
+    await pauseProviderAccount(accountId);
+    await page.reload();
+    await expect(page.getByTestId(`provider-account-cooldown-clear-${accountId}`)).toBeVisible();
+    await expect(
+      page.getByTestId(`provider-account-cooldown-clear-error-${accountId}`),
+    ).toBeHidden();
+    await page.getByTestId(`provider-account-cooldown-clear-${accountId}`).click();
+    await expect(page.getByTestId(`provider-account-cooldown-clear-${accountId}`)).toHaveCount(0, {
+      timeout: 15_000,
+    });
     await page.getByTestId(`provider-account-cooldown-edit-${accountId}`).click();
     await page.getByTestId(`provider-account-cooldown-input-${accountId}`).fill("4321");
     await page
@@ -58,6 +90,7 @@ test.describe("control plane providers", () => {
     await page.getByTestId("tab-commands").click();
     await expect(page.getByTestId("provider-commands-tab")).toBeVisible();
     await expect(page.getByTestId("form-provider-default-command")).toBeVisible();
+    await expect(page.getByTestId("provider-default-command-error")).toBeHidden();
     await expect(page.getByTestId("provider-default-command-select")).toHaveValue(/.+/);
     await expect(page.getByRole("cell", { name: commandName })).toBeVisible();
     const commandRow = page.locator('[data-pw^="provider-command-row-"]').first();
@@ -78,6 +111,7 @@ test.describe("control plane providers", () => {
     const renamed = `${name}-renamed`;
     await page.getByTestId("edit-provider-open").click();
     await expect(page.getByTestId("form-edit-provider")).toBeVisible();
+    await expect(page.getByTestId("edit-provider-error")).toBeHidden();
     await page.getByTestId("edit-provider-name").fill(renamed);
     await page.getByTestId("edit-provider-submit").click();
     await expect(page.getByTestId("provider-detail-id")).toHaveText(renamed, { timeout: 15_000 });
@@ -117,6 +151,7 @@ test.describe("control plane providers", () => {
     await expect(page.getByTestId("delete-provider-open")).toBeEnabled({ timeout: 15_000 });
     await page.getByTestId("delete-provider-open").click();
     await expect(page.getByTestId("delete-provider-confirm")).toBeVisible();
+    await expect(page.getByTestId("delete-provider-error")).toBeHidden();
     await page.getByTestId("delete-provider-confirm-submit").click();
     await expect(page).toHaveURL(/\/providers$/, { timeout: 15_000 });
   });

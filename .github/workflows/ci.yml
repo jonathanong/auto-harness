@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   ci:
-    name: lint · test · knip · depcruise · links
+    name: lint · test · knip · depcruise · links · data-pw
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -58,6 +58,9 @@ jobs:
 
       - name: Dependency cruiser
         run: pnpm depcruise
+
+      - name: Playwright selector coverage
+        run: pnpm check:data-pw
 
       - name: Install lychee
         uses: lycheeverse/lychee-action@v2

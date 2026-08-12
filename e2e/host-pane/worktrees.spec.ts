@@ -27,6 +27,7 @@ test.describe("host pane worktrees", () => {
         await page.getByTestId(`worktree-link-${wtId}`).click();
 
         await expect(page).toHaveURL(new RegExp(`/worktrees/${wtId}$`));
+        await expect(page.getByTestId("page-worktree-detail")).toBeVisible();
         await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
         await page.getByTestId("tab-settings").click();
         await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
@@ -41,5 +42,10 @@ test.describe("host pane worktrees", () => {
         await removeHostRepo(request, repoId);
       }
     });
+  });
+
+  test("unknown worktree id shows a not-found state", async ({ page }) => {
+    await page.goto("/worktrees/does-not-exist-xyz");
+    await expect(page.getByTestId("page-worktree-detail-not-found")).toBeVisible();
   });
 });
