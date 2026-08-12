@@ -7,9 +7,9 @@ import { field, json, mountForm, router, setValue, submit } from "./form-test-he
 import { CreateSessionForm } from "./create-session-form.tsx";
 
 const targets = [{ kind: "provider" as const, id: "p/1", label: "Claude" }];
+const repositories = [{ id: "repo-1", name: "repo-one" }];
 
 function fill(view: ReturnType<typeof mountForm>) {
-  setValue(field(view.container, "create-session-repository-id"), "repo-1");
   setValue(field(view.container, "create-session-prompt"), "Fix the tests");
   setValue(field(view.container, "create-session-ref"), "feature/ref");
   setValue(field(view.container, "create-session-concurrency-id"), "  run-1  ");
@@ -21,7 +21,11 @@ describe("CreateSessionForm", () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "session/1" }));
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(
-      <CreateSessionForm targets={targets} availableLabels={["codex", "gpu"]} />,
+      <CreateSessionForm
+        targets={targets}
+        repositories={repositories}
+        availableLabels={["codex", "gpu"]}
+      />,
     );
     const form = field<HTMLFormElement>(view.container, "form-create-session");
     expect(form.checkValidity()).toBe(false);
@@ -52,7 +56,7 @@ describe("CreateSessionForm", () => {
   it("offers documented timeout presets and retains a valid custom seconds value", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "session/timeout" }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<CreateSessionForm targets={targets} />);
+    const view = mountForm(<CreateSessionForm targets={targets} repositories={repositories} />);
     fill(view);
     const form = field<HTMLFormElement>(view.container, "form-create-session");
     const preset = field<HTMLSelectElement>(view.container, "create-session-timeout");
@@ -92,7 +96,7 @@ describe("CreateSessionForm", () => {
       .fn()
       .mockResolvedValueOnce(json({ created: false, activeSessionId: "active/1", id: "ignored" }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<CreateSessionForm targets={targets} />);
+    const view = mountForm(<CreateSessionForm targets={targets} repositories={repositories} />);
     fill(view);
     submit(field(view.container, "form-create-session"));
     await act(async () => Promise.resolve());
@@ -128,7 +132,7 @@ describe("CreateSessionForm", () => {
       "fetch",
       vi.fn(() => new Promise<Response>((resolve) => (finish = resolve))),
     );
-    const view = mountForm(<CreateSessionForm targets={targets} />);
+    const view = mountForm(<CreateSessionForm targets={targets} repositories={repositories} />);
     fill(view);
     submit(field(view.container, "form-create-session"));
     expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(true);
@@ -140,9 +144,18 @@ describe("CreateSessionForm", () => {
     expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(false);
     view.unmount();
 
-    const empty = mountForm(<CreateSessionForm targets={[]} />);
+    const empty = mountForm(<CreateSessionForm targets={targets} repositories={[]} />);
     expect(field<HTMLButtonElement>(empty.container, "create-session-submit").disabled).toBe(true);
+    expect(field<HTMLSelectElement>(empty.container, "create-session-repository-id").value).toBe(
+      "",
+    );
     empty.unmount();
+
+    const noTargets = mountForm(<CreateSessionForm targets={[]} repositories={repositories} />);
+    expect(field<HTMLButtonElement>(noTargets.container, "create-session-submit").disabled).toBe(
+      true,
+    );
+    noTargets.unmount();
   });
 
   it("submits editable cloned inputs without inheriting concurrency", async () => {
@@ -151,6 +164,7 @@ describe("CreateSessionForm", () => {
     const view = mountForm(
       <CreateSessionForm
         targets={[...targets, { kind: "provider" as const, id: "fallback", label: "Fallback" }]}
+        repositories={[{ id: "source-repository", name: "source-repository" }]}
         availableLabels={["gpu"]}
         initialValues={{
           repositoryId: "source-repository",

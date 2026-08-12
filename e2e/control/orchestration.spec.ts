@@ -41,11 +41,16 @@ test.describe("real orchestration", () => {
       await git(repo, ["commit", "-m", "init"]);
       await git(repo, ["branch", "-M", "main"]);
 
+      const repository = await request.post(`${API}/api/v1/repositories`, {
+        data: { name: repoId, url: repo, defaultBranch: "main" },
+      });
+      expect(repository.ok()).toBe(true);
+      const repositoryId = ((await repository.json()) as { id: string }).id;
       await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
         data: {
           repositories: [
             {
-              id: repoId,
+              id: repositoryId,
               path: repo,
               defaultBranch: "main",
               worktrees: [{ id: wtId, name: wtId, path: wt, labels: ["echo"] }],
@@ -82,7 +87,7 @@ test.describe("real orchestration", () => {
       await expect(page.getByTestId("create-session-target")).toBeEnabled({
         timeout: 15_000,
       });
-      await page.getByTestId("create-session-repository-id").fill(repoId);
+      await page.getByTestId("create-session-repository-id").selectOption(repositoryId);
       await page.getByTestId("create-session-target").selectOption({ label: commandName });
       await page.getByTestId("create-session-prompt").fill("unused");
       await page.getByTestId("create-session-timeout").selectOption("custom");

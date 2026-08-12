@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
@@ -14,10 +14,12 @@ import { SessionCreateDetailFields } from "./session-create-detail-fields.tsx";
 
 export function CreateSessionForm({
   targets,
+  repositories,
   availableLabels = [],
   initialValues,
 }: {
   targets: SessionTarget[];
+  repositories: Array<{ id: string; name: string }>;
   availableLabels?: string[];
   initialValues?: SessionCloneDraft | null;
 }) {
@@ -95,13 +97,21 @@ export function CreateSessionForm({
         >
           Repository id
         </Label>
-        <Input
+        <select
           id="repositoryId"
           name="repositoryId"
           required
-          defaultValue={initialValues?.repositoryId ?? "demo"}
           data-pw="create-session-repository-id"
-        />
+          defaultValue={initialValues?.repositoryId ?? repositories[0]?.id ?? ""}
+          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+        >
+          {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
+          {repositories.map((repository) => (
+            <option key={repository.id} value={repository.id}>
+              {repository.name}
+            </option>
+          ))}
+        </select>
       </div>
       <SessionPriorityLabelFields
         availableLabels={availableLabels}
@@ -125,14 +135,16 @@ export function CreateSessionForm({
       ) : null}
       <WithTooltip
         tip={
-          targets.length === 0
-            ? "Add a provider or command first"
-            : "Queue a session for assignment to an online agent worktree"
+          repositories.length === 0
+            ? "Add a repository first"
+            : targets.length === 0
+              ? "Add a provider or command first"
+              : "Queue a session for assignment to an online agent worktree"
         }
       >
         <Button
           type="submit"
-          disabled={pending || targets.length === 0}
+          disabled={pending || targets.length === 0 || repositories.length === 0}
           data-pw="create-session-submit"
         >
           {pending ? "Creating…" : "Create session"}

@@ -10,11 +10,16 @@ test("creates and lists a prioritized, label-constrained session", async ({ page
   let socket: WebSocket | undefined;
 
   try {
+    const repository = await request.post(`${API}/api/v1/repositories`, {
+      data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
+    });
+    expect(repository.ok()).toBe(true);
+    const repositoryId = ((await repository.json()) as { id: string }).id;
     const inventory = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {
-            id: repoId,
+            id: repositoryId,
             path: `/tmp/${repoId}`,
             defaultBranch: "main",
             worktrees: [
@@ -31,7 +36,7 @@ test("creates and lists a prioritized, label-constrained session", async ({ page
       },
     });
     expect(inventory.ok()).toBe(true);
-    socket = await connectHost(hostId, repoId, worktreeId);
+    socket = await connectHost(hostId, repositoryId, worktreeId);
     const command = await request.post(`${API}/api/v1/commands`, {
       data: {
         name: `pw-label-command-${suffix}`,
@@ -44,7 +49,7 @@ test("creates and lists a prioritized, label-constrained session", async ({ page
     const commandId = ((await command.json()) as { id: string }).id;
 
     await page.goto("/sessions/new");
-    await page.getByTestId("create-session-repository-id").fill(repoId);
+    await page.getByTestId("create-session-repository-id").selectOption(repositoryId);
     await page.getByTestId("create-session-target").selectOption(`command:${commandId}`);
     await page.getByTestId("create-session-prompt").fill("run urgent labeled work");
     await page.getByTestId("create-session-priority").fill("83");

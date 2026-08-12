@@ -11,6 +11,12 @@ describe("new session route", () => {
       "/api/v1/session-targets": {
         items: [{ kind: "command", id: "command-1", label: "Run" }],
       },
+      "/api/v1/repositories": {
+        items: [
+          { id: "repo-z", name: "zeta" },
+          { id: "repo-a", name: "alpha" },
+        ],
+      },
       "/api/v1/worktrees": {
         items: [
           { online: true, labels: ["gpu", "", "codex", "gpu"] },
@@ -26,18 +32,24 @@ describe("new session route", () => {
     expect(html.indexOf("create-session-label-codex")).toBeLessThan(
       html.indexOf("create-session-label-gpu"),
     );
+    expect(html.indexOf(">alpha</option>")).toBeLessThan(html.indexOf(">zeta</option>"));
   });
 
   it("keeps the form useful and reports each option endpoint failure", async () => {
     stubApi({
       "/api/v1/session-targets": "__throw_string__",
+      "/api/v1/repositories": "__throw_string__",
       "/api/v1/worktrees": "__throw_string__",
     });
     let html = await renderPage(NewSessionPage(blankSearchParams));
-    expect(html).toContain("targets: offline; labels: offline");
+    expect(html).toContain("targets: offline; repositories: offline; labels: offline");
     expect(html).toContain('data-pw="create-session-labels-empty"');
 
-    stubApi({ "/api/v1/session-targets": {}, "/api/v1/worktrees": {} });
+    stubApi({
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
+      "/api/v1/worktrees": {},
+    });
     html = await renderPage(NewSessionPage(blankSearchParams));
     expect(html).toContain('data-pw="form-create-session"');
   });
@@ -47,6 +59,7 @@ describe("new session route", () => {
       "/api/v1/session-targets": {
         items: [{ kind: "provider", id: "provider", label: "Provider" }],
       },
+      "/api/v1/repositories": { items: [] },
       "/api/v1/worktrees": { items: [{ online: true, labels: ["online"] }] },
       "/api/v1/sessions/source%2Fsession": {
         repositoryId: "source-repository",
@@ -80,15 +93,20 @@ describe("new session route", () => {
   });
 
   it("does not fetch an invalid id and keeps a failed clone source generic", async () => {
-    let fetch = stubApi({ "/api/v1/session-targets": {}, "/api/v1/worktrees": {} });
+    let fetch = stubApi({
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
+      "/api/v1/worktrees": {},
+    });
     let html = await renderPage(
       NewSessionPage({ searchParams: Promise.resolve({ cloneFrom: ["one", "two"] }) }),
     );
     expect(html).toContain("clone source: invalid id");
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
 
     fetch = stubApi({
       "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
       "/api/v1/worktrees": {},
       "/api/v1/sessions/missing": new Error("private detail"),
     });
@@ -97,6 +115,17 @@ describe("new session route", () => {
     );
     expect(html).toContain("clone source: session could not be loaded");
     expect(html).not.toContain("private detail");
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(4);
+
+    stubApi({
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
+      "/api/v1/worktrees": {},
+      "/api/v1/sessions/incomplete": { repositoryId: "repo", target: { commandId: "cmd" } },
+    });
+    html = await renderPage(
+      NewSessionPage({ searchParams: Promise.resolve({ cloneFrom: "incomplete" }) }),
+    );
+    expect(html).toContain("clone source: session inputs are unavailable");
   });
 });
