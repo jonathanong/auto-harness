@@ -140,6 +140,13 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("page-session-detail")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
+        await expect(
+          detailPage.getByTestId("session-detail-created").locator("time"),
+        ).toHaveAttribute("datetime");
+        await expect(
+          detailPage.getByTestId("session-detail-started").locator("time"),
+        ).toHaveAttribute("datetime");
+        await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
         await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
         const promptContent = detailPage.getByTestId("session-detail-prompt-content");

@@ -7,6 +7,7 @@ import { StatusBadge } from "./status-badge.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
+import { SessionDetailTiming } from "./session-detail-timing.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
 
@@ -153,9 +154,12 @@ export function SessionDetail({
               ackReceivedAt={s.ackReceivedAt}
               timeout={s.timeout}
             />
-            <SessionDetailValue label="Created" value={s.createdAt} />
-            <SessionDetailValue label="Started" value={s.startedAt} />
-            <SessionDetailValue label="Completed" value={s.completedAt} />
+            <SessionDetailTiming
+              createdAt={s.createdAt}
+              startedAt={s.startedAt}
+              completedAt={s.completedAt}
+              status={s.status}
+            />
             <SessionDetailValue label="Exit code" value={s.exitCode} />
           </dl>
           <section aria-labelledby="session-detail-prompt-heading" data-pw="session-detail-prompt">

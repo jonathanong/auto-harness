@@ -105,6 +105,16 @@ test.describe("real orchestration", () => {
       // The UI has no client-side polling — reload once to prove it reflects the real result.
       await page.reload();
       await expect(page.getByTestId("session-detail-status")).toContainText("completed");
+      await expect(page.getByTestId("session-detail-created").locator("time")).toHaveAttribute(
+        "datetime",
+      );
+      await expect(page.getByTestId("session-detail-started").locator("time")).toHaveAttribute(
+        "datetime",
+      );
+      await expect(page.getByTestId("session-detail-completed").locator("time")).toHaveAttribute(
+        "datetime",
+      );
+      await expect(page.getByTestId("session-detail-duration")).toContainText(/\d+s/);
 
       const logsRes = await request.get(`${API}/api/v1/sessions/${sessionId}/logs`);
       const { items } = (await logsRes.json()) as {
