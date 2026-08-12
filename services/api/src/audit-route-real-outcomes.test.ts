@@ -87,6 +87,10 @@ describe("audited real route outcomes", () => {
 
     for (const [method, path, body, status, action, outcome] of routes) {
       const plane = auditFixture();
+      if (method === "DELETE" && path === "/api/v1/repositories/repository-a") {
+        plane.state.schedules.clear();
+        plane.state.sessions.clear();
+      }
       const response = await invokeHandler(
         createLocalApp({ plane, authMode: "disabled" }).handler,
         method,
