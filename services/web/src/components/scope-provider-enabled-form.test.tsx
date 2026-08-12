@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  createApiFake,
+  field,
+  json,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { ScopeProviderEnabledForm } from "./scope-provider-enabled-form.tsx";
 
 const inventory = {
@@ -14,15 +22,14 @@ const inventory = {
 
 describe("ScopeProviderEnabledForm", () => {
   it("shows inherit, enabled, and disabled states and saves each selection", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }))
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const api = createApiFake(
+      json(inventory),
+      new Response(null, { status: 204 }),
+      json(inventory),
+      new Response(null, { status: 204 }),
+      json(inventory),
+      new Response(null, { status: 204 }),
+    );
     const view = mountForm(
       <ScopeProviderEnabledForm
         hostId="host/one"
@@ -50,14 +57,14 @@ describe("ScopeProviderEnabledForm", () => {
     setValue(select, "");
     submit(field(view.container, "scope-provider-enabled-form-account/one"));
     await act(async () => Promise.resolve());
-    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+    expect(api.requests[1]?.[1]).toMatchObject({
       method: "PUT",
       body: expect.stringContaining('"enabled":true'),
     });
-    expect(fetch.mock.calls[3]?.[1]).toMatchObject({
+    expect(api.requests[3]?.[1]).toMatchObject({
       body: expect.stringContaining('"enabled":false'),
     });
-    expect(fetch.mock.calls[5]?.[1]).toMatchObject({
+    expect(api.requests[5]?.[1]).toMatchObject({
       body: expect.not.stringContaining("enabled"),
     });
     expect(router.refresh).toHaveBeenCalledTimes(3);
@@ -66,11 +73,8 @@ describe("ScopeProviderEnabledForm", () => {
 
   it("uses its explicit disabled default and shows a failed pending save", async () => {
     let finish!: (response: Response) => void;
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
-    vi.stubGlobal("fetch", fetch);
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const api = createApiFake(json(inventory), pending);
     const view = mountForm(
       <ScopeProviderEnabledForm
         hostId="host"
@@ -94,15 +98,11 @@ describe("ScopeProviderEnabledForm", () => {
     expect(field(view.container, "scope-provider-enabled-error-account/one").textContent).toBe(
       "cannot disable",
     );
-    const retry = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", retry);
+    api.enqueue(json(inventory), new Response(null, { status: 204 }));
     field(view.container, "scope-provider-enabled-select-account/one").remove();
     submit(form);
     await act(async () => Promise.resolve());
-    expect(retry.mock.calls[1]?.[1]).toMatchObject({
+    expect(api.requests[3]?.[1]).toMatchObject({
       body: expect.not.stringContaining("enabled"),
     });
     view.unmount();

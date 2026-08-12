@@ -45,10 +45,27 @@ export function setValue(
   value: string,
 ) {
   act(() => {
-    element.value = value;
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+    if (!descriptor?.set) throw new Error("missing native value setter");
+    descriptor.set.call(element, value);
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
   });
+}
+
+type ApiReply = Response | Promise<Response> | (() => Response | Promise<Response>);
+
+export function createApiFake(...replies: ApiReply[]) {
+  const requests: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+  const queue = [...replies];
+  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push([input, init]);
+    const reply = queue.shift();
+    if (!reply) throw new Error(`unexpected request: ${String(input)}`);
+    return typeof reply === "function" ? reply() : reply;
+  };
+  vi.stubGlobal("fetch", fetch);
+  return { requests, enqueue: (...next: ApiReply[]) => queue.push(...next) };
 }
 
 export function submit(form: HTMLFormElement) {

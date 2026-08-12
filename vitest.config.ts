@@ -67,6 +67,13 @@ export default defineConfig({
         branches: 97,
         functions: 100,
         statements: 98,
+        "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
       },
       reporter: ["text", "lcov"],
     },

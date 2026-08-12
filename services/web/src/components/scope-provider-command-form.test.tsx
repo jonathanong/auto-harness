@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  createApiFake,
+  field,
+  json,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { ScopeProviderCommandForm } from "./scope-provider-command-form.tsx";
 
 const inventory = {
@@ -17,11 +25,7 @@ const commands = [
 
 describe("ScopeProviderCommandForm", () => {
   it("selects and saves a provider command", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const api = createApiFake(json(inventory), new Response(null, { status: 204 }));
     const view = mountForm(
       <ScopeProviderCommandForm
         hostId="host/one"
@@ -39,7 +43,7 @@ describe("ScopeProviderCommandForm", () => {
     setValue(select, "command/one");
     submit(field(view.container, "scope-provider-command-form-account/one"));
     await act(async () => Promise.resolve());
-    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+    expect(api.requests[1]?.[1]).toMatchObject({
       body: expect.stringContaining('"commandId":"command/one"'),
     });
     expect(router.refresh).toHaveBeenCalledOnce();
@@ -48,11 +52,8 @@ describe("ScopeProviderCommandForm", () => {
 
   it("inherits from an existing override and reports a failed pending save", async () => {
     let finish!: (response: Response) => void;
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockImplementationOnce(() => new Promise<Response>((resolve) => (finish = resolve)));
-    vi.stubGlobal("fetch", fetch);
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const api = createApiFake(json(inventory), pending);
     const view = mountForm(
       <ScopeProviderCommandForm
         hostId="host"
@@ -79,18 +80,14 @@ describe("ScopeProviderCommandForm", () => {
     expect(field(view.container, "scope-provider-command-error-account/one").textContent).toBe(
       "command unavailable",
     );
-    expect(fetch.mock.calls[1]?.[1]).toMatchObject({
+    expect(api.requests[1]?.[1]).toMatchObject({
       body: expect.not.stringContaining("commandId"),
     });
-    const retry = vi
-      .fn()
-      .mockResolvedValueOnce(json(inventory))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", retry);
+    api.enqueue(json(inventory), new Response(null, { status: 204 }));
     select.remove();
     submit(form);
     await act(async () => Promise.resolve());
-    expect(retry.mock.calls[1]?.[1]).toMatchObject({
+    expect(api.requests[3]?.[1]).toMatchObject({
       body: expect.not.stringContaining("commandId"),
     });
     view.unmount();

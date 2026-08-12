@@ -1,9 +1,17 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  createApiFake,
+  field,
+  json,
+  mountForm,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { ProviderDefaultCommandForm } from "./provider-default-command-form.tsx";
 
 const commands = [
@@ -13,8 +21,7 @@ const commands = [
 
 describe("ProviderDefaultCommandForm", () => {
   it("renders the default selection and saves a command", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const api = createApiFake(new Response(null, { status: 204 }));
     const view = mountForm(
       <ProviderDefaultCommandForm
         providerId="provider/one"
@@ -28,21 +35,21 @@ describe("ProviderDefaultCommandForm", () => {
     setValue(select, "command/one");
     submit(field(view.container, "form-provider-default-command"));
     await act(async () => Promise.resolve());
-    expect(fetch).toHaveBeenCalledWith(
+    expect(api.requests[0]).toEqual([
       "/api/v1/providers/provider%2Fone",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ defaultCommandId: "command/one" }),
       }),
-    );
+    ]);
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
 
   it("clears the default and reports parsed or fallback errors while pending", async () => {
     let finish!: (response: Response) => void;
-    const fetch = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
-    vi.stubGlobal("fetch", fetch);
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const api = createApiFake(pending);
     const view = mountForm(
       <ProviderDefaultCommandForm providerId="p" defaultCommandId={null} commands={[]} />,
     );
@@ -59,24 +66,23 @@ describe("ProviderDefaultCommandForm", () => {
     expect(field(view.container, "provider-default-command-error").textContent).toBe(
       "invalid command",
     );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("bad", { status: 503 })));
+    api.enqueue(new Response("bad", { status: 503 }));
     submit(form);
     await act(async () => Promise.resolve());
     expect(field(view.container, "provider-default-command-error").textContent).toBe(
       "request failed (503)",
     );
-    const fallbackFetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fallbackFetch);
+    api.enqueue(new Response(null, { status: 204 }));
     field(view.container, "provider-default-command-select").remove();
     submit(form);
     await act(async () => Promise.resolve());
-    expect(fallbackFetch).toHaveBeenCalledWith(
+    expect(api.requests[2]).toEqual([
       "/api/v1/providers/p",
       expect.objectContaining({
         method: "PATCH",
         body: JSON.stringify({ defaultCommandId: null }),
       }),
-    );
+    ]);
     view.unmount();
   });
 });
