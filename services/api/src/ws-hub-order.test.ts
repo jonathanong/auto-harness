@@ -146,6 +146,8 @@ describe("createPlaneWsBridge message ordering", () => {
     });
     opened.ws.send(wireLog("closing-session"));
     await writeStarted;
+    const late: unknown[] = [];
+    opened.ws.on("message", (raw) => late.push(JSON.parse(String(raw))));
     const closed = new Promise<void>((resolve) => opened.ws.on("close", () => resolve()));
     opened.ws.close();
     await closed;
@@ -154,6 +156,7 @@ describe("createPlaneWsBridge message ordering", () => {
     // disconnect path after that pending durable write settles.
     plane.state.storage = undefined;
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(late).toEqual([]);
     opened.hub.close();
     await new Promise<void>((resolve, reject) =>
       opened.server.close((error) => (error ? reject(error) : resolve())),
