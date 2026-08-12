@@ -16,6 +16,7 @@ import {
 import { SlackConfiguredState } from "./slack-configured-state.tsx";
 import { SlackDeleteSection } from "./slack-delete-section.tsx";
 import { SlackSettingsFields } from "./slack-settings-fields.tsx";
+import { apiFetch } from "../lib/client-api.ts";
 
 export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegration }) {
   const router = useRouter();
@@ -35,7 +36,7 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
 
   async function save(form: HTMLFormElement, values: SlackFormValues): Promise<void> {
     try {
-      const response = await fetch("/api/v1/integrations/slack", {
+      const response = await apiFetch("/api/v1/integrations/slack", {
         method: configured ? "PUT" : "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(buildSlackConfigBody(values)),
@@ -155,7 +156,7 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
               setError(null);
               setSuccess(null);
               try {
-                const response = await fetch("/api/v1/integrations/slack", {
+                const response = await apiFetch("/api/v1/integrations/slack", {
                   method: "DELETE",
                   cache: "no-store",
                 });
