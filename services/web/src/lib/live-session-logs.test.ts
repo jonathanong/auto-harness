@@ -64,7 +64,7 @@ describe("live session log state", () => {
     globalThis.fetch = async () => new Response(null, { status: 401 });
     await expect(viewerTicket()).rejects.toThrow("viewer ticket unavailable");
     globalThis.fetch = async () => new Response(JSON.stringify({ ticket: null }), { status: 200 });
-    await expect(viewerTicket()).rejects.toThrow("viewer ticket malformed");
+    await expect(viewerTicket()).resolves.toBeUndefined();
     globalThis.fetch = original;
   });
 

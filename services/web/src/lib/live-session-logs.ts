@@ -54,7 +54,7 @@ export function validLiveLog(value: unknown): value is LiveLogEntry {
   );
 }
 
-export async function viewerTicket(timeoutMs = 10_000): Promise<string> {
+export async function viewerTicket(timeoutMs = 10_000): Promise<string | undefined> {
   const response = await fetch("/api/v1/auth/viewer-ticket", {
     method: "POST",
     credentials: "same-origin",
@@ -62,8 +62,7 @@ export async function viewerTicket(timeoutMs = 10_000): Promise<string> {
   });
   if (!response.ok) throw new Error("viewer ticket unavailable");
   const body = (await response.json()) as { ticket?: unknown };
-  if (typeof body.ticket !== "string") throw new Error("viewer ticket malformed");
-  return body.ticket;
+  return typeof body.ticket === "string" ? body.ticket : undefined;
 }
 
 export function viewerWebSocketUrl(ticket?: string): string {
