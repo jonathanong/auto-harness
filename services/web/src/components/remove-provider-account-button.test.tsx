@@ -50,7 +50,7 @@ describe("RemoveProviderAccountButton", () => {
     view.unmount();
   });
 
-  it("closes the confirmation without refreshing after a failed deletion", async () => {
+  it("keeps the confirmation open with an error after a failed deletion", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(
@@ -62,7 +62,10 @@ describe("RemoveProviderAccountButton", () => {
     expect(router.refresh).not.toHaveBeenCalled();
     expect(
       document.body.querySelector('[data-pw="provider-account-remove-account-confirm"]'),
-    ).toBeNull();
+    ).not.toBeNull();
+    expect(field(document.body, "provider-account-remove-account-error").textContent).toBe(
+      "request failed (500)",
+    );
     view.unmount();
   });
 });
