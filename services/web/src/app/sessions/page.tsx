@@ -1,8 +1,9 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { buildSessionsApiPath } from "@auto-harness/shared";
-import { CursorPagination, SessionFilters, SessionsTable, WithTooltip } from "@auto-harness/ui";
+import { SessionFilters, WithTooltip } from "@auto-harness/ui";
 
+import { SessionsLive } from "../../components/sessions-live.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseSessionListState, sessionListHref } from "../../lib/url-state.ts";
 
@@ -38,10 +39,9 @@ export default async function SessionsPage({
   let items: Session[] = [];
   let nextCursor: string | null = null;
   let error: string | null = null;
+  const path = buildSessionsApiPath(filters);
   try {
-    const data = await apiGet<{ items: Session[]; nextCursor: string | null }>(
-      buildSessionsApiPath(filters),
-    );
+    const data = await apiGet<{ items: Session[]; nextCursor: string | null }>(path);
     items = data.items ?? [];
     nextCursor = data.nextCursor ?? null;
   } catch (e) {
@@ -70,9 +70,14 @@ export default async function SessionsPage({
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
         <SessionFilters />
       </Suspense>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} showHost hrefBase="/sessions" search={filters.q} />
-      <CursorPagination nextHref={nextHref} prevHref={prevHref} />
+      <SessionsLive
+        initialItems={items}
+        initialError={error}
+        path={path}
+        nextHref={nextHref}
+        prevHref={prevHref}
+        search={filters.q}
+      />
     </div>
   );
 }

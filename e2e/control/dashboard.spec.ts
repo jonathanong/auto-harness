@@ -13,7 +13,53 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("stat-queued-value")).toBeVisible();
     await expect(page.getByTestId("stat-hosts-online")).toBeVisible();
     await expect(page.getByTestId("stat-hosts-online-value")).toBeVisible();
-    await expect(page.getByTestId("dashboard-api-error")).toBeHidden();
+    await expect(page.getByTestId("stat-worktree-utilization-value")).toBeVisible();
+    await expect(page.getByTestId("live-updates-active")).toBeVisible();
+    await expect(page.getByTestId("dashboard-no-online-hosts")).toBeVisible();
+    await expect(page.getByTestId("dashboard-recent-sessions")).toBeVisible();
+  });
+
+  test("refreshes dashboard and session list from bounded production polling", async ({ page }) => {
+    await page.goto("/");
+    await page.route("**/api/v1/sessions", async (route) => {
+      await route.fulfill({ json: { items: [{ id: "live-dashboard", status: "running" }] } });
+    });
+    await page.route("**/api/v1/hosts", async (route) => {
+      await route.fulfill({ json: { items: [{ hostId: "live-host", online: true }] } });
+    });
+    await page.route("**/api/v1/worktrees", async (route) => {
+      await route.fulfill({ json: { items: [{ id: "busy", status: "busy", online: true }] } });
+    });
+    await expect(page.getByTestId("stat-running-value")).toHaveText("1", { timeout: 10_000 });
+    await expect(page.getByTestId("stat-worktree-utilization-value")).toHaveText("1/1 busy");
+
+    await page.goto("/sessions");
+    await page.route("**/api/v1/sessions**", async (route) => {
+      await route.fulfill({
+        json: { items: [{ id: "live-list", status: "queued" }], nextCursor: null },
+      });
+    });
+    await expect(page.getByTestId("session-row-live-list")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("sessions-live-active")).toBeVisible();
+  });
+
+  test("keeps the last snapshot visible when live updates pause", async ({ page }) => {
+    await page.route("**/api/v1/sessions**", async (route) => {
+      await route.fulfill({ status: 503, json: { error: "offline" } });
+    });
+    await page.route("**/api/v1/hosts", async (route) => {
+      await route.fulfill({ status: 503, json: { error: "offline" } });
+    });
+    await page.route("**/api/v1/worktrees", async (route) => {
+      await route.fulfill({ status: 503, json: { error: "offline" } });
+    });
+
+    await page.goto("/");
+    await expect(page.getByTestId("live-updates-paused")).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("dashboard-stats")).toBeVisible();
+
+    await page.goto("/sessions");
+    await expect(page.getByTestId("sessions-live-error")).toBeVisible({ timeout: 10_000 });
   });
 
   test("nav links are present", async ({ page }) => {
