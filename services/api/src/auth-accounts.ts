@@ -6,7 +6,7 @@ import type { AuthAccountRecord } from "./db/plane-storage.ts";
 import type { Principal, Role } from "./auth-types.ts";
 
 export type User = Principal & { passwordHash: string };
-export type ServiceAccount = Principal & { keyHash: string; name: string };
+export type ServiceAccount = Principal & { keyHash: string; name: string; createdAt: string };
 export type AuthStorage = {
   listAuthAccounts(): Promise<AuthAccountRecord[]>;
   getAuthAccount?(id: string): Promise<AuthAccountRecord | null>;
@@ -98,9 +98,10 @@ export async function createServiceAccount(
   input: { name: string; role: Role; allowedRepositoryIds?: string[]; boundHostId?: string },
   accounts: Map<string, ServiceAccount>,
   storage?: AuthStorage,
-): Promise<{ account: Principal & { name: string }; apiKey: string }> {
+): Promise<{ account: Principal & { name: string; createdAt: string }; apiKey: string }> {
   validateCredential(input.name, "name");
   const apiKey = `hns_${randomBytes(36).toString("base64url")}`;
+  const createdAt = new Date().toISOString();
   const account: ServiceAccount = {
     id: `service:${randomBytes(12).toString("hex")}`,
     username: input.name,
@@ -108,6 +109,7 @@ export async function createServiceAccount(
     role: input.role,
     kind: "service-account",
     keyHash: hashApiKey(apiKey),
+    createdAt,
     ...(input.allowedRepositoryIds?.length
       ? { allowedRepositoryIds: [...input.allowedRepositoryIds] }
       : {}),
@@ -115,7 +117,10 @@ export async function createServiceAccount(
   };
   if (storage) await storage.putAuthAccount(toRecord(account));
   accounts.set(account.id, account);
-  return { account: { ...publicPrincipal(account), name: account.name }, apiKey };
+  return {
+    account: { ...publicPrincipal(account), name: account.name, createdAt: account.createdAt },
+    apiKey,
+  };
 }
 
 function toRecord(value: User | ServiceAccount, createdAt?: string): AuthAccountRecord {
@@ -130,7 +135,7 @@ function toRecord(value: User | ServiceAccount, createdAt?: string): AuthAccount
     role: value.role,
     ...(value.allowedRepositoryIds ? { allowedRepositoryIds: value.allowedRepositoryIds } : {}),
     ...(value.boundHostId ? { boundHostId: value.boundHostId } : {}),
-    createdAt: createdAt ?? at,
+    createdAt: createdAt ?? (value.kind === "service-account" ? value.createdAt : undefined) ?? at,
     updatedAt: at,
   };
 }
@@ -155,6 +160,7 @@ function toServiceAccount(record: AuthAccountRecord): ServiceAccount {
     role: record.role,
     kind: "service-account",
     keyHash: record.apiKeyHash!,
+    createdAt: record.createdAt,
     ...(record.allowedRepositoryIds ? { allowedRepositoryIds: record.allowedRepositoryIds } : {}),
     ...(record.boundHostId ? { boundHostId: record.boundHostId } : {}),
   };

@@ -80,6 +80,7 @@ test.describe("control plane required authentication", () => {
       ]);
       await page.goto("/settings");
       await expect(page).toHaveURL(/\/login\?returnTo=%2Fsettings$/);
+      await expect(page.getByTestId("service-accounts-card")).toHaveCount(0);
     } finally {
       await request.delete(`${apiUrl}/auth/users/${encodeURIComponent(username)}`, {
         headers: { authorization: `Basic ${basic}` },
