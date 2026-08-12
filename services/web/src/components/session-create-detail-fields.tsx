@@ -1,6 +1,7 @@
 import { Input, Label } from "@auto-harness/ui";
 
 import type { SessionCloneDraft } from "../session-clone-draft.ts";
+import { SessionTimeoutField } from "./session-timeout-field.tsx";
 
 export function SessionCreateDetailFields({
   initialValues,
@@ -10,19 +11,7 @@ export function SessionCreateDetailFields({
   return (
     <>
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <Label htmlFor="timeout" tip="Max runtime in seconds before the session is timed out">
-            Timeout (s)
-          </Label>
-          <Input
-            id="timeout"
-            name="timeout"
-            type="number"
-            defaultValue={initialValues?.timeout ?? 600}
-            step="any"
-            data-pw="create-session-timeout"
-          />
-        </div>
+        <SessionTimeoutField initialSeconds={initialValues?.timeout} />
         <div className="space-y-1">
           <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
             Git ref
