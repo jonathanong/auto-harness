@@ -48,6 +48,7 @@ export default async function RepositoriesPage() {
     repositoryName: r.name,
     repoHrefBase: "/repositories",
     repoPath: r.url,
+    defaultBranch: r.defaultBranch ?? "main",
     worktrees: worktreesByRepo.get(r.id) ?? [],
   }));
 

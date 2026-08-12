@@ -319,7 +319,7 @@ Displays all configured schedules in a table:
 
 ### Repository List
 
-Table of configured repositories:
+Expandable hierarchy of configured repositories and their worktrees. Each repository header shows:
 
 | Column         | Description                   |
 | -------------- | ----------------------------- |
