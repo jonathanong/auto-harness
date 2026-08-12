@@ -294,6 +294,8 @@ test.describe("control plane sessions", () => {
       await page.goto(`/sessions/${sessionId}`);
       await expect(page.getByTestId("session-usage-summary")).toBeVisible();
       await expect(page.getByTestId("session-usage-input")).toHaveText("12");
+      await expect(page.getByTestId("session-usage-output")).toHaveText("0");
+      await expect(page.getByTestId("session-usage-total")).toHaveText("0");
       await expect(page.getByTestId("session-usage-cost")).toHaveText("24 USD micros");
     } finally {
       await page
