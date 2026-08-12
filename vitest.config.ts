@@ -68,7 +68,6 @@ export default defineConfig({
         "**/db/plane-storage-provider-accounts.ts",
         "**/db/plane-storage-reconnect-rollback.ts",
         "**/db/plane-storage-reconnect.ts",
-        "**/db/plane-storage-sessions.ts",
         "**/create-plane.ts",
         // Only the explicitly included control catalog and host-pane routes
         // above enter this coverage tranche; remaining app routes stay e2e-only.
@@ -206,6 +205,7 @@ export default defineConfig({
         "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
+        "services/api/src/db/plane-storage-sessions.ts": { 100: true },
       },
       reporter: ["text", "lcov", "json-summary"],
     },
