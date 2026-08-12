@@ -23,7 +23,13 @@ export async function getMainCheckoutLease(
   const lease = (result.Item?.mainCheckoutLeases as Record<string, unknown> | undefined)?.[
     repositoryId
   ];
-  return lease && typeof lease === "object"
-    ? (lease as { sessionId: string; connectionId: string })
-    : null;
+  if (
+    !lease ||
+    typeof lease !== "object" ||
+    typeof (lease as { sessionId?: unknown }).sessionId !== "string" ||
+    typeof (lease as { connectionId?: unknown }).connectionId !== "string"
+  ) {
+    return null;
+  }
+  return lease as { sessionId: string; connectionId: string };
 }
