@@ -190,9 +190,9 @@ Below the prompt, a terminal-like log viewer displays session output. This is th
 **Current implementation:** a read-only, monospace React log renders timestamp, stream, and
 content as text. It live-tails over the viewer WebSocket, but it is not xterm.js, does not emulate
 ANSI cursor behavior, and is not an interactive terminal. The host daemon currently captures
-separate stdout/stderr pipes rather than a PTY.
+the assigned CLI's merged PTY stream; git, setup, and hook output remains pipe-based.
 
-**Target:** use [xterm.js](https://xtermjs.org/) with PTY-backed output so ANSI colors, cursor
+**Target:** use [xterm.js](https://xtermjs.org/) to render the PTY-backed output so ANSI colors, cursor
 movement, progress bars, and interactive output from AI CLIs render faithfully.
 
 **Behavior:**

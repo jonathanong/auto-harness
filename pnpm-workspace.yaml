@@ -1,7 +1,11 @@
 packages:
-  - "modules/*"
-  - "services/*"
+  - modules/*
+  - services/*
 
 onlyBuiltDependencies:
   - "@ast-grep/cli"
+  - node-pty
   - no-mistakes
+
+patchedDependencies:
+  node-pty@1.1.0: patches/node-pty@1.1.0.patch

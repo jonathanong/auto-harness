@@ -66,15 +66,15 @@ Deep dives live in the layer docs above; this page keeps cross-plane flows and d
 
 ## Layer Map
 
-| Topic                  | AWS layer                                                                                      | Agent layer                                                                        |
-| ---------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [auth.md](auth.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [local-development.md](local-development.md)) |
-| Session queue / assign | Scheduler + round-robin                                                                        | Accepts `session:assign` only                                                      |
-| Worktrees              | DynamoDB inventory + online flags                                                              | Create/claim/release on disk                                                       |
-| Logs                   | Current: SessionLogs + UI fan-out + DynamoDB Archives; target: S3 archival                     | Current: capture pipes and send each `session:log`; target: PTY + batching         |
-| Schedules              | EventBridge cron → sessions                                                                    | Main-checkout lock + run command                                                   |
-| Secrets                | No repo/AI secrets                                                                             | `.env`, SSH, vendor keys                                                           |
-| UI                     | Hosted clients → REST/WS                                                                       | —                                                                                  |
+| Topic                  | AWS layer                                                                                      | Agent layer                                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [auth.md](auth.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [local-development.md](local-development.md))           |
+| Session queue / assign | Scheduler + round-robin                                                                        | Accepts `session:assign` only                                                                |
+| Worktrees              | DynamoDB inventory + online flags                                                              | Create/claim/release on disk                                                                 |
+| Logs                   | Current: SessionLogs + UI fan-out + DynamoDB Archives; target: S3 archival                     | Current: assigned-command PTY + pipe-based setup/hooks, each `session:log`; target: batching |
+| Schedules              | EventBridge cron → sessions                                                                    | Main-checkout lock + run command                                                             |
+| Secrets                | No repo/AI secrets                                                                             | `.env`, SSH, vendor keys                                                                     |
+| UI                     | Hosted clients → REST/WS                                                                       | —                                                                                            |
 
 Web UI feature surface: [web.md](web.md).
 
@@ -174,7 +174,7 @@ Details: [aws.md — Cron](aws.md#cron-evaluator), [host-daemon.md — Non-workt
 | Labels on worktrees                       | Route Codex vs Claude (etc.) like Actions runners                                                                                                                                                                                              |
 | Match then round-robin                    | Filter repo/labels/online idle worktrees, then least-recently-assigned                                                                                                                                                                         |
 | No Docker wrapping the agent              | Trusted host; Docker optional inside repos                                                                                                                                                                                                     |
-| PTY (`node-pty`) — target                 | AI CLIs often need a TTY; the current runner uses separate stdout/stderr pipes                                                                                                                                                                 |
+| PTY (`node-pty`) — current                | Assigned AI CLIs run in a fixed 120x40 terminal; git, setup scripts, and hooks remain pipe-based                                                                                                                                               |
 | Prompt as argv/stdin, not shell string    | Avoid injection from untrusted prompts                                                                                                                                                                                                         |
 | Priority queue + FIFO ties                | CI fixes can preempt batch work                                                                                                                                                                                                                |
 | DynamoDB on-demand                        | Bursty session traffic                                                                                                                                                                                                                         |

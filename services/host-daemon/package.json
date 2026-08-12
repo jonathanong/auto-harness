@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
+    "node-pty": "^1.1.0",
     "ws": "^8.21.1"
   },
   "devDependencies": {

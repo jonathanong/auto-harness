@@ -311,9 +311,9 @@ migration marker. **No product-repo automation workflow may cut over before the 
     specific `ref` when the session specifies one** (D6), else the repo's default branch.
   - `command-profiles.ts` — maps a named profile (e.g. `codex-fix`) to a fixed argv template;
     rejects unknown profiles (D4).
-  - Process executor — `child_process.spawn` with separate stdout/stderr pipes, **no
-    `shell: true`**, prompt passed as argv/stdin only (Invariant 8). PTY execution and
-    interactive-terminal semantics remain target work.
+  - Process executor — assigned AI CLIs use `node-pty` at 120x40; git, setup scripts, and
+    terminal hooks use `child_process.spawn` with separate stdout/stderr pipes. Both paths use
+    argv arrays with **no `shell: true`**; prompt is passed as argv/stdin only (Invariant 8).
   - Session runner — claim worktree → run setup script (ref-aware) → resolve command profile →
     spawn → collect output → release.
   - Session timeout — kill after `timeout` seconds, report `timed_out`.
@@ -357,9 +357,10 @@ migration marker. **No product-repo automation workflow may cut over before the 
 `pnpm check`, `pnpm local:e2e`, `pnpm local:cli-e2e` (documented CLI + `ref: main` while primary
 tree is on `main`), and `pnpm local:api-smoke`.
 
-The current executor uses `child_process.spawn` with separate stdout/stderr pipes. The PTY
-deliverable remains open; neither `node-pty` execution nor interactive terminal semantics should
-be inferred from this phase's local-exit status.
+The current assigned-command executor uses a 120x40 `node-pty` terminal and preserves the
+SIGTERM → SIGKILL process-group lifecycle for timeout and cancellation. Setup scripts, terminal
+hooks, and git operations remain pipe-based. This provides TTY compatibility for non-interactive
+CLI modes; it does not add an interactive user-input channel.
 
 **Deviations (intentional, Phase 1 only):**
 

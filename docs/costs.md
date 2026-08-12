@@ -36,8 +36,8 @@ Because subscriptions do not support Agent SDKs for this automation path:
 
 1. Install the vendor **CLI** on the agent host and authenticate under the **subscription** account/profile.
 2. Sessions invoke that CLI in **non-interactive** form (e.g. print/quiet flags, prompt as argv).
-   The current runner captures stdout/stderr pipes; PTY support for tools that require a TTY is
-   part of the target design, not the shipped runner.
+   The assigned CLI runner captures a merged PTY stream so tools that require a TTY can still use
+   their non-interactive command modes.
 3. Auto Harness never calls a vendor Agent SDK over the public API as the default integration.
 
 That is a **product constraint**, not an implementation preference: it is how you attach factory automation to subscription capacity.

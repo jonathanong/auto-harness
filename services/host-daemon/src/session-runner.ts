@@ -10,7 +10,10 @@ export type { SessionRunResult } from "./session-outcome.ts";
 
 export type SessionRunnerDeps = {
   worktrees: WorktreeManager;
+  /** Pipe-based runner for git, setup scripts, and terminal hooks. */
   processRunner: ProcessRunner;
+  /** PTY-backed runner for the assigned AI CLI; defaults to processRunner for injected tests. */
+  commandRunner?: ProcessRunner;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
 };
@@ -175,6 +178,7 @@ export class SessionRunner {
         signal,
         () => expired,
         () => Math.max(1, deadlineMs - Date.now()),
+        this.deps.commandRunner ?? this.deps.processRunner,
       );
     } finally {
       clearTimeout(timeoutTimer);

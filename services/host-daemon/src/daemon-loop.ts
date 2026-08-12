@@ -4,6 +4,7 @@ import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
 import { SpawnProcessRunner } from "./executor.ts";
+import { PtyProcessRunner } from "./pty-runner.ts";
 import { createGitClient } from "./git.ts";
 import { configureConnectionEvents } from "./daemon-connection-events.ts";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
@@ -18,6 +19,7 @@ export type DaemonLoopOptions = {
   config: DaemonConfig;
   transport: DaemonTransport;
   processRunner?: ProcessRunner;
+  commandRunner?: ProcessRunner;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -70,11 +72,14 @@ export class DaemonLoop {
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
+    const commandRunner =
+      options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
     const git = createGitClient(processRunner);
     this.worktrees = new WorktreeManager(options.config, git);
     this.runner = new SessionRunner({
       worktrees: this.worktrees,
       processRunner,
+      commandRunner,
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });
