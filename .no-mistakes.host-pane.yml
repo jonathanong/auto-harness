@@ -16,9 +16,14 @@ tests:
     frontendRoot: services/host-pane/src/app
     selectorRoots:
       - services/host-pane/src
+    selectorExclude:
+      - "**/*.test.ts"
+      - "**/*.test.tsx"
     selectors:
       testIds:
         - data-pw
+      componentTestIds:
+        dataPw: data-pw
 
 rules:
   - rule: playwright-unique-test-ids
