@@ -72,9 +72,9 @@ describe("RemoveProviderAccountFromHostButton", () => {
     expect(
       document.body.querySelector('[data-pw="host-provider-account-remove-account/one-confirm"]'),
     ).not.toBeNull();
-    expect(
-      field(document.body, "host-provider-account-remove-account/one-error").textContent,
-    ).toBe("cannot save");
+    expect(field(document.body, "host-provider-account-remove-account/one-error").textContent).toBe(
+      "cannot save",
+    );
     view.unmount();
   });
 });
