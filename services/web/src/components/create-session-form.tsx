@@ -6,9 +6,16 @@ import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-ha
 
 import { apiBase } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
+import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 
-export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
+export function CreateSessionForm({
+  targets,
+  availableLabels = [],
+}: {
+  targets: SessionTarget[];
+  availableLabels?: string[];
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +36,11 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
           fallbacks,
           queueTtlSeconds: Number(fd.get("queueTtlSeconds") ?? 691200),
           timeout: Number(fd.get("timeout") ?? 600),
+          priority: Number(fd.get("priority") ?? 0),
+          requiredLabels: fd.getAll("requiredLabels").map(String),
           ref: String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
+          source: "ui",
         };
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/sessions`, {
@@ -86,6 +96,7 @@ export function CreateSessionForm({ targets }: { targets: SessionTarget[] }) {
           data-pw="create-session-repository-id"
         />
       </div>
+      <SessionPriorityLabelFields availableLabels={availableLabels} />
       <div className="space-y-1">
         <SessionRoutingFields targets={targets} prefix="create-session" />
       </div>

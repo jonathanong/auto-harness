@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { Badge } from "./badge.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
@@ -26,6 +27,8 @@ export type SessionRow = {
     worktreeId?: string | null;
   } | null;
   source?: string | null;
+  priority?: number | null;
+  requiredLabels?: string[] | null;
   concurrencyId?: string | null;
   hostId?: string | null;
   createdAt?: string | null;
@@ -59,12 +62,13 @@ export function SessionsTable({
           session.concurrencyId,
           session.targetLabel,
           ...(session.targetLabels ?? []),
+          ...(session.requiredLabels ?? []),
         ]
           .filter((value): value is string => Boolean(value))
           .some((value) => value.toLowerCase().includes(needle)),
       )
     : items;
-  const cols = showHost ? 7 : 6;
+  const cols = showHost ? 10 : 9;
   return (
     <Table data-pw="sessions-table">
       <TableHeader>
@@ -76,6 +80,8 @@ export function SessionsTable({
           <TableHead>Queue expiry</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
+          <TableHead>Priority</TableHead>
+          <TableHead>Labels</TableHead>
           <TableHead>Concurrency ID</TableHead>
         </TableRow>
       </TableHeader>
@@ -137,6 +143,20 @@ export function SessionsTable({
             <TableCell className="whitespace-nowrap text-xs">{s.queueExpiresAt ?? "—"}</TableCell>
             <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
+            <TableCell data-pw={`session-priority-${s.id}`}>{s.priority ?? 0}</TableCell>
+            <TableCell data-pw={`session-labels-${s.id}`}>
+              {s.requiredLabels?.length ? (
+                <div className="flex max-w-xs flex-wrap gap-1">
+                  {s.requiredLabels.map((label) => (
+                    <Badge key={label} variant="outline">
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-xs text-muted-foreground">Any</span>
+              )}
+            </TableCell>
             <TableCell className="max-w-xs truncate font-mono text-xs">
               {s.concurrencyId ?? "—"}
             </TableCell>

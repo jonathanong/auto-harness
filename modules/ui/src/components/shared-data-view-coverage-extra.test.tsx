@@ -30,6 +30,8 @@ describe("shared sessions table and tabs", () => {
             queueExpiresAt: "later",
             prompt: "Prompt",
             source: "api",
+            priority: 42,
+            requiredLabels: ["codex", "gpu"],
             concurrencyId: "group",
           },
         ]}
@@ -40,6 +42,9 @@ describe("shared sessions table and tabs", () => {
     expect(row).toContain("+2 fallbacks");
     expect(row).toContain("target 1: account / command / route-host");
     expect(row).toContain("Prompt");
+    expect(row).toContain('data-pw="session-priority-a/b">42');
+    expect(row).toContain('data-pw="session-labels-a/b"');
+    expect(row).toContain("codex");
     const fallback = render(
       <SessionsTable
         items={[
@@ -93,6 +98,7 @@ describe("shared sessions table and tabs", () => {
         concurrencyId: "release",
         targetLabel: null,
         targetLabels: ["primary", "backup"],
+        requiredLabels: ["gpu"],
       },
       { id: "without-labels", status: "queued", prompt: null },
     ];
@@ -100,6 +106,9 @@ describe("shared sessions table and tabs", () => {
       'data-pw="session-row-searchable"',
     );
     expect(render(<SessionsTable items={searchable} search="missing" />)).not.toContain(
+      'data-pw="session-row-searchable"',
+    );
+    expect(render(<SessionsTable items={searchable} search="gpu" />)).toContain(
       'data-pw="session-row-searchable"',
     );
   });

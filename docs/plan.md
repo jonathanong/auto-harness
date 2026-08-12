@@ -507,8 +507,9 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
   [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and signed
   cursors; search remains client-side over the current page.
 
-**Status:** `pnpm local:web` serves create-session UI (ref + agent profile dropdown only; D4).
-`createSessionFromUi` hits the real API. Full Next.js dashboard deferred; create path is shippable.
+**Status:** `pnpm local:web` serves the API-backed create-session UI with target/fallback routing,
+ref, concurrency identity, priority, and label constraints populated from online worktrees. Full
+Next.js dashboard deferred; create path is shippable.
 
 **Migration marker:** UI availability doesn't gate any repo-workflow cutover — CLI/API-driven
 callers don't need it. Useful before wider multi-repo rollout.

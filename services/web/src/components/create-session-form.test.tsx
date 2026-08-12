@@ -13,16 +13,20 @@ function fill(view: ReturnType<typeof mountForm>) {
   setValue(field(view.container, "create-session-prompt"), "Fix the tests");
   setValue(field(view.container, "create-session-ref"), "feature/ref");
   setValue(field(view.container, "create-session-concurrency-id"), "  run-1  ");
+  setValue(field(view.container, "create-session-priority"), "80");
 }
 
 describe("CreateSessionForm", () => {
   it("validates required fields and navigates after queueing a session", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "session/1" }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<CreateSessionForm targets={targets} />);
+    const view = mountForm(
+      <CreateSessionForm targets={targets} availableLabels={["codex", "gpu"]} />,
+    );
     const form = field<HTMLFormElement>(view.container, "form-create-session");
     expect(form.checkValidity()).toBe(false);
     fill(view);
+    field<HTMLInputElement>(view.container, "create-session-label-gpu").click();
     expect(form.checkValidity()).toBe(true);
     submit(form);
     await act(async () => Promise.resolve());
@@ -33,8 +37,11 @@ describe("CreateSessionForm", () => {
       fallbacks: [],
       queueTtlSeconds: 691200,
       timeout: 600,
+      priority: 80,
+      requiredLabels: ["gpu"],
       ref: "feature/ref",
       concurrencyId: "run-1",
+      source: "ui",
     });
     expect(router.push).toHaveBeenCalledWith("/sessions/session%2F1?toast=Session+queued.");
     expect(router.refresh).toHaveBeenCalledOnce();

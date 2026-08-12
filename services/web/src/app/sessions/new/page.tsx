@@ -6,13 +6,24 @@ export const dynamic = "force-dynamic";
 
 export default async function NewSessionPage() {
   let targets: SessionTarget[] = [];
-  let error: string | null = null;
-  try {
-    const data = await apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets");
-    targets = data.items ?? [];
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
-  }
+  let availableLabels: string[] = [];
+  const errors: string[] = [];
+  const [targetResult, worktreeResult] = await Promise.allSettled([
+    apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
+    apiGet<{ items: Array<{ online?: boolean; labels?: string[] }> }>("/api/v1/worktrees"),
+  ]);
+  if (targetResult.status === "fulfilled") targets = targetResult.value.items ?? [];
+  else errors.push(`targets: ${String(targetResult.reason)}`);
+  if (worktreeResult.status === "fulfilled") {
+    availableLabels = [
+      ...new Set(
+        (worktreeResult.value.items ?? [])
+          .filter((worktree) => worktree.online === true)
+          .flatMap((worktree) => worktree.labels ?? [])
+          .filter(Boolean),
+      ),
+    ].toSorted();
+  } else errors.push(`labels: ${String(worktreeResult.reason)}`);
 
   return (
     <div className="mx-auto max-w-lg space-y-4" data-pw="page-session-new">
@@ -23,8 +34,10 @@ export default async function NewSessionPage() {
         Choose a provider pool or named command, with optional ordered fallbacks. Free-form shell is
         rejected.
       </p>
-      {error ? <p className="text-sm text-red-700">Could not load targets: {error}</p> : null}
-      <CreateSessionForm targets={targets} />
+      {errors.length > 0 ? (
+        <p className="text-sm text-red-700">Could not load session options: {errors.join("; ")}</p>
+      ) : null}
+      <CreateSessionForm targets={targets} availableLabels={availableLabels} />
     </div>
   );
 }
