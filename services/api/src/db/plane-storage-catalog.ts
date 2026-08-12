@@ -114,6 +114,10 @@ export async function putLogsFenced(
   fence: { hostId: string; connectionId: string },
 ): Promise<boolean> {
   if (records.length === 0) return true;
+  const uniqueRecords = new Map<string, LogRecord>();
+  for (const record of records) {
+    uniqueRecords.set(JSON.stringify([record.sessionId, record.timestampSeq]), record);
+  }
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -126,7 +130,7 @@ export async function putLogsFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
-          ...records.map((record) => ({
+          ...[...uniqueRecords.values()].map((record) => ({
             Put: { TableName: ctx.tables.sessionLogs, Item: { ...record } },
           })),
         ],
