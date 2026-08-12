@@ -18,7 +18,8 @@ export function ChangePasswordForm() {
         event.preventDefault();
         setError(null);
         setSuccess(false);
-        const form = new FormData(event.currentTarget);
+        const formElement = event.currentTarget;
+        const form = new FormData(formElement);
         const currentPassword = String(form.get("currentPassword") ?? "");
         const newPassword = String(form.get("newPassword") ?? "");
         start(async () => {
@@ -38,7 +39,7 @@ export function ChangePasswordForm() {
             setError(payload?.error?.message ?? "Unable to change password.");
             return;
           }
-          event.currentTarget.reset();
+          formElement.reset();
           setSuccess(true);
         });
       }}
