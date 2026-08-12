@@ -236,7 +236,7 @@ function targetKey(target: TargetRef): string {
 }
 
 /**
- * Build SessionLog sort key: `<ISO-timestamp>#<zero-padded-seq>`.
+ * Build SessionLog sort key: `<canonical-ISO-timestamp>#<zero-padded-seq>`.
  * Seq is assigned by the agent (docs/plan.md Invariant 5).
  */
 export function formatLogSortKey(timestampIso: string, seq: number): string {
@@ -246,5 +246,9 @@ export function formatLogSortKey(timestampIso: string, seq: number): string {
   if (!Number.isInteger(seq) || seq < 0) {
     throw new Error("seq must be a non-negative integer");
   }
-  return `${timestampIso}#${String(seq).padStart(10, "0")}`;
+  const timestampMs = Date.parse(timestampIso);
+  const canonicalTimestamp = Number.isNaN(timestampMs)
+    ? timestampIso
+    : new Date(timestampMs).toISOString();
+  return `${canonicalTimestamp}#${String(seq).padStart(10, "0")}`;
 }

@@ -15,6 +15,7 @@ import {
   isConditionalTransactionFailureAt,
   type HostInventoryRecord,
   type ArchiveObject,
+  type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
@@ -99,6 +100,43 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
     records.push(...((res.Items ?? []) as LogRecord[]));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey && Object.keys(startKey).length > 0);
+  return records;
+}
+
+/**
+ * Bounded durable history query for the REST endpoint. A `since` key range
+ * lets DynamoDB skip older history; stream is not indexed, so it is applied
+ * as a Dynamo filter while pagination continues until enough matching rows
+ * are collected. Full unbounded reads remain available only for hydration.
+ */
+export async function queryLogs(
+  ctx: PlaneStorageCtx,
+  sessionId: string,
+  query: LogQuery,
+): Promise<LogRecord[]> {
+  const records: LogRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessionLogs,
+        KeyConditionExpression: query.since
+          ? "sessionId = :s AND timestampSeq > :since"
+          : "sessionId = :s",
+        ExpressionAttributeValues: {
+          ":s": sessionId,
+          ...(query.since ? { ":since": `${query.since}\uffff` } : {}),
+          ...(query.stream ? { ":stream": query.stream } : {}),
+        },
+        ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
+        ScanIndexForward: true,
+        Limit: query.limit - records.length,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...((res.Items ?? []) as LogRecord[]));
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey && records.length < query.limit);
   return records;
 }
 

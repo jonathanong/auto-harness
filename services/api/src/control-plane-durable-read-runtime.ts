@@ -1,7 +1,8 @@
-import type { LogRecord } from "./control-plane-types.ts";
+import type { LogQuery, LogRecord } from "./control-plane-types.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { selectLogs } from "./log-query.ts";
 import {
   listHostInventoriesDurable,
   refreshTargetCatalogDurable,
@@ -50,16 +51,22 @@ export async function listQueuedSessionsDurable(
 export async function getLogsDurable(
   state: ControlPlaneState,
   sessionId: string,
+  query?: LogQuery,
 ): Promise<LogRecord[]> {
-  if (!state.storage) return [...(state.logs.get(sessionId) ?? [])];
-  const logs = (await state.storage.listLogs(sessionId)).toSorted((a, b) =>
-    a.timestampSeq.localeCompare(b.timestampSeq),
-  );
-  state.logs.set(
-    sessionId,
-    logs.map((log) => ({ ...log })),
-  );
-  return logs;
+  if (!state.storage) {
+    const logs = [...(state.logs.get(sessionId) ?? [])];
+    return query ? selectLogs(logs, query) : logs;
+  }
+  const logs = (
+    await (query ? state.storage.queryLogs(sessionId, query) : state.storage.listLogs(sessionId))
+  ).toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq));
+  // A bounded request must not replace the cache with a partial history.
+  if (!query)
+    state.logs.set(
+      sessionId,
+      logs.map((log) => ({ ...log })),
+    );
+  return logs.map((log) => ({ ...log }));
 }
 
 export async function listWorktreesDurable(state: ControlPlaneState): Promise<WorktreeRecord[]> {

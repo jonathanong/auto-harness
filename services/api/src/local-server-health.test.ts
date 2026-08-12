@@ -72,7 +72,7 @@ describe("createLocalApp health and sessions", () => {
     expect((await invoke("GET", "/api/v1/sessions?limit=not-a-number")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/sessions?limit=5&hostId=host&q=prompt")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/sessions/missing")).status).toBe(404);
-    expect((await invoke("GET", "/api/v1/sessions/missing/logs")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions/missing/logs")).status).toBe(404);
     expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(200);
     expect((await invoke("POST", "/api/v1/sessions/missing/cancel")).status).toBe(404);
     expect((await invoke("POST", "/api/v1/sessions/missing/resume")).status).toBe(404);

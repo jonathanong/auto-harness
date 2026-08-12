@@ -10,6 +10,7 @@ import {
   type ArchiveObject,
   type ConnectionRecord,
   type AuthAccountRecord,
+  type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
@@ -491,6 +492,10 @@ export class DynamoPlaneStorageBase {
 
   listLogs(sessionId: string): Promise<LogRecord[]> {
     return catalog.listLogs(this.ctx, sessionId);
+  }
+
+  queryLogs(sessionId: string, query: LogQuery): Promise<LogRecord[]> {
+    return catalog.queryLogs(this.ctx, sessionId, query);
   }
 
   putSchedule(
