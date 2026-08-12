@@ -28,6 +28,7 @@ export default defineConfig({
         // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
+        "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -153,6 +154,12 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
       },
       reporter: ["text", "lcov"],
     },
