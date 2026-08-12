@@ -141,6 +141,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       "/prod",
     ]);
     websocketFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
+    restFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     websocketFunction.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["execute-api:ManageConnections"],

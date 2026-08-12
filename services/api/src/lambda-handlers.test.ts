@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Lambda ingress fencing and delivery lifecycle share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -103,6 +104,82 @@ describe("Lambda runtime adapters", () => {
       }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(fixture.plane.state.hostConnection.get("host-1")).toBe("gateway-1");
+    expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toEqual({
+      type: "host:registered",
+      hostId: "host-1",
+      connectionId: "gateway-1",
+    });
+  });
+
+  it("refreshes durable authentication before accepting a new socket", async () => {
+    const fixture = runtimeFixture();
+    const refreshAuth = vi.fn(async () => undefined);
+    const runtime = await createLambdaRuntime({
+      auth: fixture.auth as never,
+      created: { plane: fixture.plane, storage: fixture.storage } as never,
+      management: fixture.management,
+      refreshAuth,
+    });
+
+    await runtime.websocket({
+      requestContext: { connectionId: "fresh", routeKey: "$connect" },
+    });
+    expect(refreshAuth).toHaveBeenCalledOnce();
+    expect(refreshAuth.mock.invocationCallOrder[0]).toBeLessThan(
+      fixture.auth.authenticate.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it("awaits direct durable confirmations before completing an invocation", async () => {
+    const fixture = runtimeFixture();
+    fixture.connections.set("gateway-1", {
+      connectionId: "gateway-1",
+      hostId: "host-1",
+      registered: true,
+    });
+    fixture.plane.state.hostConnection.set("host-1", "gateway-1");
+    vi.spyOn(fixture.plane, "handleHostMessageDurable")
+      .mockResolvedValueOnce({ ok: true, sessionAcknowledged: "session-1" })
+      .mockResolvedValueOnce({ ok: true, hostDraining: "host-1" });
+    let release: (() => void) | undefined;
+    fixture.management.send.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (release = resolve)),
+    );
+    const runtime = await fixture.runtime;
+    let settled = false;
+    const acknowledgement = runtime
+      .websocket({
+        body: JSON.stringify({
+          type: "session:ack",
+          sessionId: "session-1",
+          worktreeId: null,
+          attemptId: "attempt-1",
+        }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      })
+      .then((result) => {
+        settled = true;
+        return result;
+      });
+    await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledOnce());
+    expect(settled).toBe(false);
+    release!();
+    await expect(acknowledgement).resolves.toEqual({ statusCode: 200 });
+    expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toEqual({
+      type: "session:acknowledged",
+      sessionId: "session-1",
+    });
+
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "host:status", hostId: "host-1", draining: true }),
+        requestContext: { connectionId: "gateway-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(JSON.parse(String(fixture.management.send.mock.calls[1]?.[0].input.Data))).toEqual({
+      type: "host:draining",
+      hostId: "host-1",
+    });
   });
 
   it("rejects unauthenticated sockets and cleans pending or registered disconnects", async () => {

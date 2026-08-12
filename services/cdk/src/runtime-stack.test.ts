@@ -33,6 +33,19 @@ describe("AutoHarnessRuntimeStack", () => {
       Runtime: "nodejs22.x",
       Timeout: 30,
     });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({ WS_API_ENDPOINT: Match.anyValue() }),
+      },
+      Handler: "index.rest",
+    });
+    template.resourcePropertiesCountIs(
+      "AWS::ApiGatewayV2::Integration",
+      {
+        IntegrationMethod: "POST",
+      },
+      2,
+    );
     template.hasResourceProperties("AWS::IAM::Policy", {
       PolicyDocument: {
         Statement: Match.arrayWith([

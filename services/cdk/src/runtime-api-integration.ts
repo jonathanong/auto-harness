@@ -13,6 +13,7 @@ export function addLambdaIntegration(
 ): apigatewayv2.CfnIntegration {
   const integration = new apigatewayv2.CfnIntegration(scope, `${id}Integration`, {
     apiId: api.ref,
+    integrationMethod: "POST",
     integrationType: "AWS_PROXY",
     integrationUri: Stack.of(scope).formatArn({
       arnFormat: ArnFormat.SLASH_RESOURCE_NAME,
