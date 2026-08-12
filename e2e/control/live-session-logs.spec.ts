@@ -64,6 +64,8 @@ test.describe("live session logs", () => {
       );
       await page.goto(`/sessions/${session.id}`);
       expect((await ticketResponse).status()).toBe(200);
+      await expect(page.getByTestId("session-logs-live-tail")).toBeVisible();
+      await expect(page.getByTestId("session-logs-live-error")).toHaveCount(0);
       await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — running");
       await expect(page.getByTestId("session-logs")).toContainText(
         "history from the real host socket",
