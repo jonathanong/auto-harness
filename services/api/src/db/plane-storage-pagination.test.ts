@@ -12,7 +12,6 @@ import { listCommands, listProviders } from "./plane-storage-catalog-providers.t
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
 import { listSessionsByStatus, listWorktreesForRepo } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
-
 describe("DynamoDB storage pagination", () => {
   it("exhausts every internal scan and query page", async () => {
     const pages: Record<string, Array<Record<string, unknown>[]>> = {
@@ -104,7 +103,6 @@ describe("DynamoDB storage pagination", () => {
       expect(secondPage.input.ExclusiveStartKey).toEqual({ tableName: firstPage.input.TableName });
     }
   });
-
   it("uses a bounded, ordered Dynamo query and continues sparse stream-filter pages", async () => {
     const send = vi
       .fn()

@@ -500,6 +500,9 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
 
 - Creating a session from the UI with a `ref` produces a session that checks out that ref.
 - The command dropdown only offers profiles the target agent actually has configured.
+- `GET /sessions` uses the repository/principal-scoped, filter-first cursor contract documented in
+  [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and signed
+  cursors; search remains client-side over the current page.
 
 **Status:** `pnpm local:web` serves create-session UI (ref + agent profile dropdown only; D4).
 `createSessionFromUi` hits the real API. Full Next.js dashboard deferred; create path is shippable.

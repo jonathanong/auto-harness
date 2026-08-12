@@ -69,7 +69,7 @@ export default async function SessionsPage({
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable items={items} showHost hrefBase="/sessions" />
+      <SessionsTable items={items} showHost hrefBase="/sessions" search={filters.q} />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );

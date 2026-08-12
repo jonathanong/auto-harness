@@ -31,15 +31,16 @@ CloudFormation shape only.
 
 ## Secrets and config (never commit)
 
-| Variable                 | Purpose                                                     |
-| ------------------------ | ----------------------------------------------------------- |
-| `HARNESS_ADMINS`         | Base64 JSON `[{ "username", "password" }]` bootstrap admins |
-| `HARNESS_SESSION_SECRET` | JWT signing for UI session cookies                          |
-| `WEB_ORIGIN`             | CORS allow-list for the web UI origin                       |
-| Table names / prefix     | From stack (see [aws.md](aws.md) env table)                 |
-| `ARCHIVE_BUCKET`         | S3 archive bucket                                           |
-| `WS_API_ENDPOINT`        | API Gateway Management API for `postToConnection`           |
-| `KMS_KEY_ID`             | Optional — Slack / integration secrets                      |
+| Variable                 | Purpose                                                             |
+| ------------------------ | ------------------------------------------------------------------- |
+| `HARNESS_ADMINS`         | Base64 JSON `[{ "username", "password" }]` bootstrap admins         |
+| `HARNESS_SESSION_SECRET` | JWT signing for UI session cookies                                  |
+| `HARNESS_CURSOR_SECRET`  | Stable HMAC key for session-list cursors (same on every API worker) |
+| `WEB_ORIGIN`             | CORS allow-list for the web UI origin                               |
+| Table names / prefix     | From stack (see [aws.md](aws.md) env table)                         |
+| `ARCHIVE_BUCKET`         | S3 archive bucket                                                   |
+| `WS_API_ENDPOINT`        | API Gateway Management API for `postToConnection`                   |
+| `KMS_KEY_ID`             | Optional — Slack / integration secrets                              |
 
 **Rotation:** change secret in the secret store / stack parameter → redeploy or update function configuration → verify login/WS. Admin bootstrap rotation requires redeploy of the Lambda env that holds `HARNESS_ADMINS` ([auth.md](auth.md)).
 

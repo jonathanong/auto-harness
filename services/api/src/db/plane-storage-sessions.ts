@@ -28,6 +28,7 @@ import {
 } from "./plane-storage-deletion-markers.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
+const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
 
 class SessionIdCollisionError extends Error {
   constructor(sessionId: string) {
@@ -263,6 +264,70 @@ export async function listAllSessions(
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey && Object.keys(startKey).length > 0);
   return items.map(itemToSession);
+}
+
+/** Query the repository access path; callers apply the remaining filters locally. */
+export async function listSessionsByRepository(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+): Promise<SessionRecord[]> {
+  try {
+    const records: SessionRecord[] = [];
+    let startKey: Record<string, unknown> | undefined;
+    do {
+      const res = await ctx.doc.send(
+        new QueryCommand({
+          TableName: ctx.tables.sessions,
+          IndexName: SESSIONS_REPOSITORY_INDEX,
+          KeyConditionExpression: "repositoryId = :repositoryId",
+          ExpressionAttributeValues: { ":repositoryId": repositoryId },
+          ScanIndexForward: true,
+          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+        }),
+      );
+      records.push(
+        ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
+      );
+      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey && Object.keys(startKey).length > 0);
+    return records;
+  } catch (error) {
+    if (!isRepositoryIndexUnavailable(error)) throw error;
+    return listSessionsByRepositoryScan(ctx, repositoryId);
+  }
+}
+
+function isRepositoryIndexUnavailable(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ValidationException"
+  );
+}
+
+/** Compatibility path while an existing table's new GSI is being created. */
+async function listSessionsByRepositoryScan(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+): Promise<SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.sessions,
+        FilterExpression: "repositoryId = :repositoryId",
+        ExpressionAttributeValues: { ":repositoryId": repositoryId },
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(
+      ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
+    );
+    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey && Object.keys(startKey).length > 0);
+  return records;
 }
 
 export async function listSessionsByStatus(

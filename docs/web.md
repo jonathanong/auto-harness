@@ -106,9 +106,9 @@ The active sort is indicated by an arrow icon on the column header. Clicking the
 
 ### Search
 
-A search bar above the filter chips provides full-text search across session prompts. Type to search (debounced 300ms), results update in real-time. Uses the `search` query parameter on `GET /sessions`.
+A search bar above the filter chips searches the sessions already loaded on the current page. Type to search (debounced 300ms), results update in real-time; it is not sent as an API query or backed by DynamoDB full-text search.
 
-Example: searching "date parser" finds all sessions whose prompt contains those words.
+Example: searching "date parser" filters the current page's session prompts for those words.
 
 ### Filtering
 
@@ -122,7 +122,7 @@ Filters are displayed as dropdowns/chips below the search bar. Multiple filters 
 | **Concurrency ID** | Exact active-run identity (when present); duplicate creates link to the existing session | Inspect dedupe/concurrency behavior                  |
 | **Agent**          | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
 
-Filters and search persist in the URL query string (e.g. `?search=date+parser&status=failed&repo=repo-abc`) so filtered views can be shared or bookmarked.
+Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the current page and is never sent to `GET /sessions`.
 
 ### Pagination
 

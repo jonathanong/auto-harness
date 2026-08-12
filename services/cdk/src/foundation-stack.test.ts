@@ -28,7 +28,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-Sessions",
-      GlobalSecondaryIndexes: [
+      GlobalSecondaryIndexes: Match.arrayWith([
         {
           IndexName: "statusShard-createdAt",
           KeySchema: [
@@ -37,7 +37,15 @@ describe("AutoHarnessFoundationStack", () => {
           ],
           Projection: { ProjectionType: "ALL" },
         },
-      ],
+        {
+          IndexName: "repositoryId-createdAt",
+          KeySchema: [
+            { AttributeName: "repositoryId", KeyType: "HASH" },
+            { AttributeName: "createdAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ]),
     });
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       TableName: "AutoHarness-AuditLogs",

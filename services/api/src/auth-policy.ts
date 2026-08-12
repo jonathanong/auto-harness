@@ -44,7 +44,7 @@ export function mayAccessRepository(
 /** A host-bound service account may only inspect or operate its own host. */
 export function mayAccessHost(
   principal: Principal | undefined,
-  hostId: string | undefined,
+  hostId: string | null | undefined,
 ): boolean {
   return !principal?.boundHostId || principal.boundHostId === hostId;
 }
