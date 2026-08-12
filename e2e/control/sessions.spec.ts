@@ -26,7 +26,6 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("create-session-priority")).toHaveValue("0");
     await expect(page.getByTestId("create-session-priority-value")).toHaveText("0 (low)");
     await expect(page.getByTestId("create-session-labels")).toBeVisible();
-    await expect(page.getByTestId("create-session-labels-empty")).toBeVisible();
     await expect(page.getByTestId("create-session-queue-ttl")).toBeVisible();
     await expect(page.getByTestId("create-session-routing")).toBeVisible();
     await expect(page.getByTestId("create-session-concurrency-id")).toBeVisible();

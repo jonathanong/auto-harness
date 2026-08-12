@@ -50,6 +50,7 @@ test("creates and lists a prioritized, label-constrained session", async ({ page
     await page.getByTestId("create-session-priority").fill("83");
     await expect(page.getByTestId("create-session-priority-value")).toHaveText("83 (critical)");
     await expect(page.getByTestId("create-session-labels")).toBeVisible();
+    await expect(page.getByTestId("create-session-labels-empty")).toHaveCount(0);
     await page.getByText("codex", { exact: true }).click();
     await page.getByText("gpu", { exact: true }).click();
     await expect(page.getByTestId("create-session-label-codex")).toBeChecked();
