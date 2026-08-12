@@ -188,11 +188,13 @@ test.describe("control plane sessions", () => {
         await page.goto(`/sessions/${encodeURIComponent(createdSessionId)}`);
 
         // Queued sessions can be cancelled; cancelling unlocks resume.
+        await expect(page.getByTestId("session-cancel")).toHaveText("Cancel session");
+        await expect(page.getByTestId("session-cancel")).toHaveAttribute("aria-busy", "false");
         await page.getByTestId("session-cancel").click();
         await expect(page.getByTestId("session-detail-status")).toContainText("cancelled", {
           timeout: 15_000,
         });
-        await expect(page.getByTestId("session-resume")).toBeVisible();
+        await expect(page.getByTestId("session-resume")).toHaveText("Resume");
 
         // Lists show one safe-text line by default and disclose the full prompt on demand.
         const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");

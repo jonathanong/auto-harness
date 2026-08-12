@@ -89,10 +89,11 @@ export function SessionActions({
               size="sm"
               variant="outline"
               disabled={pending}
+              aria-busy={pending && action === "cancel"}
               data-pw="session-cancel"
               onClick={() => void run("cancel", "cancel")}
             >
-              {pending && action === "cancel" ? "…" : "Cancel"}
+              {pending && action === "cancel" ? "Cancelling…" : "Cancel session"}
             </Button>
           </WithTooltip>
         ) : null}
@@ -104,10 +105,11 @@ export function SessionActions({
                 size="sm"
                 variant="outline"
                 disabled={pending}
+                aria-busy={pending && action === "resume"}
                 data-pw="session-resume"
                 onClick={() => void run("resume", "resume")}
               >
-                {pending && action === "resume" ? "…" : "Resume"}
+                {pending && action === "resume" ? "Resuming…" : "Resume"}
               </Button>
             </WithTooltip>
             <WithTooltip tip="Create a clean independent rerun of this session">
@@ -116,10 +118,11 @@ export function SessionActions({
                 size="sm"
                 variant="outline"
                 disabled={pending}
+                aria-busy={pending && action === "clone"}
                 data-pw="session-clone"
                 onClick={() => void run("clone", "clone")}
               >
-                {pending && action === "clone" ? "…" : "Re-run"}
+                {pending && action === "clone" ? "Re-running…" : "Re-run"}
               </Button>
             </WithTooltip>
             {cloneEditHref ? (
@@ -144,10 +147,11 @@ export function SessionActions({
             size="sm"
             variant="outline"
             disabled={pending}
+            aria-busy={pending && action === "archive"}
             data-pw="session-archive"
             onClick={() => void run("archive", "archive")}
           >
-            {pending && action === "archive" ? "…" : "Archive logs"}
+            {pending && action === "archive" ? "Archiving…" : "Archive logs"}
           </Button>
         </WithTooltip>
       </div>
