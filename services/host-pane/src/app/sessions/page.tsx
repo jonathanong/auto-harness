@@ -14,6 +14,9 @@ type Session = {
   targetLabel?: string;
   source?: string;
   hostId?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 };
 
 export default async function SessionsPage({

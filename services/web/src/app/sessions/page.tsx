@@ -21,6 +21,9 @@ type Session = {
   requiredLabels?: string[];
   hostId?: string | null;
   concurrencyId?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 };
 
 export default async function SessionsPage({

@@ -159,6 +159,11 @@ test.describe("control plane sessions", () => {
         const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");
         await page.goto(`/sessions?q=${encodeURIComponent(sessionId)}`);
         const row = page.getByTestId(`session-row-${sessionId}`);
+        const created = row.getByTestId(`session-created-${sessionId}`).locator("time");
+        await expect(created).toBeVisible();
+        await expect(created).toHaveAttribute("title", /^\d{4}-\d\d-\d\dT.*Z$/);
+        await expect(created.locator(".sr-only")).toHaveText(/^Created \d{4}-/);
+        await expect(row.getByTestId(`session-duration-${sessionId}`)).toHaveText("—");
         const promptText = row.getByTestId("session-prompt");
         const promptToggle = row.getByTestId("session-prompt-toggle");
         await expect(promptText).toHaveText(`hello-${id}`);

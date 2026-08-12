@@ -113,6 +113,15 @@ test.describe("host pane sessions", () => {
         await detailPage.goto("/sessions");
         await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
         const row = detailPage.getByTestId(`session-row-${id}`);
+        const createdTime = row.getByTestId(`session-created-${id}`).locator("time");
+        const durationTime = row.getByTestId(`session-duration-${id}`).locator("time");
+        await expect(createdTime).toHaveAttribute("title", /^\d{4}-\d\d-\d\dT.*Z$/);
+        await expect(createdTime.locator(".sr-only")).toHaveText(/^Created \d{4}-/);
+        await expect(durationTime.locator(".sr-only")).toHaveText("Elapsed duration:");
+        const durationValue = durationTime.locator("span").last();
+        await expect(durationValue).toHaveText(/^\d+s$/);
+        const initialDuration = await durationValue.textContent();
+        await expect.poll(() => durationValue.textContent()).not.toBe(initialDuration);
         await expect(row.getByTestId("session-prompt")).toHaveText(`hello-${wtId}`);
         await row.getByTestId("session-prompt-toggle").click();
         await expect(row.getByTestId("session-prompt")).toHaveText(
