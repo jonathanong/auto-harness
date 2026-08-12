@@ -24,10 +24,21 @@ export async function enableRateLimitTtl(client: DynamoDBClient, name: string): 
   if (["ENABLED", "ENABLING"].includes(current.TimeToLiveDescription?.TimeToLiveStatus ?? "")) {
     return;
   }
-  await client.send(
-    new UpdateTimeToLiveCommand({
-      TableName: name,
-      TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
-    }),
-  );
+  try {
+    await client.send(
+      new UpdateTimeToLiveCommand({
+        TableName: name,
+        TimeToLiveSpecification: { AttributeName: "expiresAt", Enabled: true },
+      }),
+    );
+  } catch (error) {
+    if (
+      (error as { name?: unknown }).name === "ValidationException" &&
+      error instanceof Error &&
+      error.message.includes("TimeToLive is already enabled")
+    ) {
+      return;
+    }
+    throw error;
+  }
 }

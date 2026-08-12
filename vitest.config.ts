@@ -54,10 +54,9 @@ export default defineConfig({
         "**/providers.ts",
         "**/daemon-transport.ts",
         "**/cli.ts",
-        // DynamoDB Local SDK wiring — covered by dynamo.test.ts integration, not line-perfect unit coverage
-        "**/db/dynamo.ts",
-        "**/db/ensure-tables.ts",
-        "**/db/plane-storage.ts",
+        // Follow-up DynamoDB storage-adapter coverage tranches retain the split
+        // implementations. The core client/table/bootstrap adapter is covered here
+        // with real-Dynamo integration tests.
         "**/db/plane-storage-auth.ts",
         "**/db/plane-storage-base.ts",
         "**/db/plane-storage-catalog-providers.ts",
@@ -73,7 +72,6 @@ export default defineConfig({
         "**/db/plane-storage-reconnect-rollback.ts",
         "**/db/plane-storage-reconnect.ts",
         "**/db/plane-storage-sessions.ts",
-        "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
         // Only the explicitly included control catalog and host-pane routes
         // above enter this coverage tranche; remaining app routes stay e2e-only.

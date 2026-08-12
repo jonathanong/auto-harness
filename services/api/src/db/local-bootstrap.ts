@@ -22,6 +22,20 @@ export async function waitForDynamo(maxMs = 30_000): Promise<void> {
 }
 
 export async function listDynamoTables(client: DynamoDBClient): Promise<string[]> {
-  const listed = await client.send(new ListTablesCommand({}));
-  return listed.TableNames ?? [];
+  const names: string[] = [];
+  let exclusiveStartTableName: string | undefined;
+
+  do {
+    const listed = await client.send(
+      new ListTablesCommand({ ExclusiveStartTableName: exclusiveStartTableName }),
+    );
+    names.push(...normalizeTableNames(listed.TableNames));
+    exclusiveStartTableName = listed.LastEvaluatedTableName;
+  } while (exclusiveStartTableName);
+
+  return names;
+}
+
+export function normalizeTableNames(names: string[] | undefined): string[] {
+  return names ?? [];
 }
