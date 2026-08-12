@@ -51,7 +51,7 @@ export default async function DashboardPage() {
         </div>
         <TipLink
           href="/sessions/new"
-          tip="Create a one-off session for a repository and command profile"
+          tip="Create a one-off session for a repository with a Provider or Command target"
           pw="dashboard-new-session"
           className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground"
         >

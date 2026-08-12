@@ -76,7 +76,7 @@ export default async function HostsPage({
         <p className="text-sm text-muted-foreground">
           Add a host slot (host inventory), then run the daemon with that{" "}
           <code className="font-mono">HARNESS_HOST_ID</code>. Click a host below to attach
-          repositories, manage worktrees, and configure command profiles.
+          repositories, manage worktrees, and configure Provider accounts.
         </p>
       </div>
 
