@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
 import { DeleteProviderButton } from "./delete-provider-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {
@@ -28,7 +28,8 @@ describe("DeleteProviderButton", () => {
 
   it("confirms a successful deletion with a pending label and supports cancel", async () => {
     let finish!: (response: Response) => void;
-    const request = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const { request, requests } = createRequestFake(pending);
     const view = mountForm(
       <DeleteProviderButton
         providerId="provider/1"
@@ -42,6 +43,9 @@ describe("DeleteProviderButton", () => {
     expect(confirm().disabled).toBe(true);
     expect(confirm().textContent).toBe("Deleting…");
     await act(async () => finish(new Response(null, { status: 204 })));
+    expect(requests).toEqual([
+      ["/api/v1/providers/provider%2F1", expect.objectContaining({ method: "DELETE" })],
+    ]);
     expect(router.push).toHaveBeenCalledWith("/providers");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -63,11 +67,9 @@ describe("DeleteProviderButton", () => {
   });
 
   it("renders parsed API errors and status fallbacks", async () => {
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ error: { message: "provider is busy" } }), { status: 409 }),
-      );
+    const { request, enqueue } = createRequestFake(
+      new Response(JSON.stringify({ error: { message: "provider is busy" } }), { status: 409 }),
+    );
     const parsedView = mountForm(
       <DeleteProviderButton
         providerId="provider/1"
@@ -82,7 +84,7 @@ describe("DeleteProviderButton", () => {
     expect(field(document, "delete-provider-error").textContent).toBe("provider is busy");
     parsedView.unmount();
 
-    request.mockResolvedValueOnce(new Response("not json", { status: 502 }));
+    enqueue(new Response("not json", { status: 502 }));
     const fallbackView = mountForm(
       <DeleteProviderButton
         providerId="provider/2"

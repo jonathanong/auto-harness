@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
 import { DeleteRepoButton } from "./delete-repo-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {
@@ -32,7 +32,8 @@ describe("DeleteRepoButton", () => {
 
   it("confirms a successful deletion with pending state and navigates", async () => {
     let finish!: (response: Response) => void;
-    const request = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const { request, requests } = createRequestFake(pending);
     const view = mountForm(
       <DeleteRepoButton repositoryId="repo/1" attachedHostCount={0} request={request} />,
     );
@@ -41,15 +42,18 @@ describe("DeleteRepoButton", () => {
     expect(confirm().disabled).toBe(true);
     expect(confirm().textContent).toBe("Deleting…");
     await act(async () => finish(new Response(null, { status: 204 })));
+    expect(requests).toEqual([
+      ["/api/v1/repositories/repo%2F1", expect.objectContaining({ method: "DELETE" })],
+    ]);
     expect(router.push).toHaveBeenCalledWith("/repositories");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
 
   it("shows a response body when deletion fails and supports cancel", async () => {
-    const request = vi
-      .fn()
-      .mockResolvedValue(new Response("repository has attachments", { status: 409 }));
+    const { request } = createRequestFake(
+      new Response("repository has attachments", { status: 409 }),
+    );
     const view = mountForm(
       <DeleteRepoButton repositoryId="repo/1" attachedHostCount={1} request={request} />,
     );

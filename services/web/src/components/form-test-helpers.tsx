@@ -61,17 +61,22 @@ export function setValue(
 
 type ApiReply = Response | Promise<Response> | (() => Response | Promise<Response>);
 
-export function createApiFake(...replies: ApiReply[]) {
+export function createRequestFake(...replies: ApiReply[]) {
   const requests: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
   const queue = [...replies];
-  const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const request = async (input: RequestInfo | URL, init?: RequestInit) => {
     requests.push([input, init]);
     const reply = queue.shift();
     if (!reply) throw new Error(`unexpected request: ${String(input)}`);
     return typeof reply === "function" ? reply() : reply;
   };
-  vi.stubGlobal("fetch", fetch);
-  return { requests, enqueue: (...next: ApiReply[]) => queue.push(...next) };
+  return { request, requests, enqueue: (...next: ApiReply[]) => queue.push(...next) };
+}
+
+export function createApiFake(...replies: ApiReply[]) {
+  const fake = createRequestFake(...replies);
+  vi.stubGlobal("fetch", fake.request);
+  return fake;
 }
 
 export function submit(form: HTMLFormElement) {

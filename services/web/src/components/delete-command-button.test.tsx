@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
 import { DeleteCommandButton } from "./delete-command-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {
@@ -27,7 +27,8 @@ describe("DeleteCommandButton", () => {
 
   it("confirms a successful deletion, shows pending state, and supports cancel", async () => {
     let finish!: (response: Response) => void;
-    const request = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
+    const pending = new Promise<Response>((resolve) => (finish = resolve));
+    const { request, requests } = createRequestFake(pending);
     const view = mountForm(<DeleteCommandButton commandId="command/1" request={request} />);
     open(view);
     expect(field(document, "delete-command-confirm").textContent).toContain(
@@ -37,6 +38,9 @@ describe("DeleteCommandButton", () => {
     expect(confirm().disabled).toBe(true);
     expect(confirm().textContent).toBe("Deleting…");
     await act(async () => finish(new Response(null, { status: 204 })));
+    expect(requests).toEqual([
+      ["/api/v1/commands/command%2F1", expect.objectContaining({ method: "DELETE" })],
+    ]);
     expect(router.push).toHaveBeenCalledWith("/commands");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -51,7 +55,7 @@ describe("DeleteCommandButton", () => {
   });
 
   it("renders API messages and status fallbacks", async () => {
-    const request = vi.fn().mockResolvedValueOnce(
+    const { request, enqueue } = createRequestFake(
       new Response(JSON.stringify({ error: { message: "command is in use" } }), {
         status: 409,
       }),
@@ -63,7 +67,7 @@ describe("DeleteCommandButton", () => {
     expect(field(document, "delete-command-error").textContent).toBe("command is in use");
     parsedView.unmount();
 
-    request.mockResolvedValueOnce(new Response("not json", { status: 503 }));
+    enqueue(new Response("not json", { status: 503 }));
     const fallbackView = mountForm(<DeleteCommandButton commandId="command/2" request={request} />);
     open(fallbackView);
     press(confirm());
