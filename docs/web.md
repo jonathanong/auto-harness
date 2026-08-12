@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, worktrees, schedules, hosts (agents), and the Providers/Commands catalog. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
+Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
 ## Authentication
 
@@ -372,6 +372,25 @@ Edit name/argv/append-prompt/provider inline. Delete is disabled while the comma
 ---
 
 ## Settings
+
+Authenticated users retain access to the control-plane Settings page, account
+details, password controls, and the Settings nav item. Only the Slack panel is
+restricted to an unscoped admin; it renders an accessible permission error for a
+valid but unauthorized account. Missing authentication redirects to `/login`
+with only a relative, validated `returnTo` path.
+
+### Slack configuration
+
+Settings displays only redacted Slack state: whether each secret is configured,
+the default channel, enabled state, and notification toggles. Bot tokens and
+signing secrets are write-only password inputs with no initial value and are
+cleared after successful create or complete replacement. Replacement always
+requires the bot token again; the UI cannot recover or preserve a prior secret.
+
+The page supports create, complete replacement, and explicitly confirmed
+delete. A persistent warning explains that configuration alone does not send
+Slack messages; OAuth, delivery, inbound verification, and session threads are
+separate capabilities and are not enabled by this UI.
 
 ### Service Accounts
 

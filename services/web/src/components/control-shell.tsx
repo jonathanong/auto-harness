@@ -64,7 +64,7 @@ const NAV = [
     href: "/settings",
     label: "Settings",
     pw: "nav-settings",
-    tip: "View your account and change your password",
+    tip: "View your account, change your password, and manage admin-only Slack configuration",
   },
 ];
 
