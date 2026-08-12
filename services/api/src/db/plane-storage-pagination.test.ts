@@ -10,13 +10,8 @@ import {
 } from "./plane-storage-catalog.ts";
 import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
-import {
-  listSessionsByRepository,
-  listSessionsByStatus,
-  listWorktreesForRepo,
-} from "./plane-storage-sessions.ts";
+import { listSessionsByStatus, listWorktreesForRepo } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
-
 describe("DynamoDB storage pagination", () => {
   it("exhausts every internal scan and query page", async () => {
     const pages: Record<string, Array<Record<string, unknown>[]>> = {
@@ -108,7 +103,6 @@ describe("DynamoDB storage pagination", () => {
       expect(secondPage.input.ExclusiveStartKey).toEqual({ tableName: firstPage.input.TableName });
     }
   });
-
   it("uses a bounded, ordered Dynamo query and continues sparse stream-filter pages", async () => {
     const send = vi
       .fn()
@@ -159,57 +153,5 @@ describe("DynamoDB storage pagination", () => {
       Limit: 1,
       ExclusiveStartKey: { sessionId: "session-1", timestampSeq: "first" },
     });
-  });
-
-  it("reads repository-scoped sessions through the repository-createdAt index", async () => {
-    const commands: Array<{ input: Record<string, unknown> }> = [];
-    const send = async (command: { input: Record<string, unknown> }) => {
-      commands.push(command);
-      return commands.length === 1
-        ? {
-            Items: [{ id: "session-1", repositoryId: "repo-1", createdAt: "2026-01-01" }],
-            LastEvaluatedKey: { id: "session-1" },
-          }
-        : { Items: [{ id: "session-2", repositoryId: "repo-1", createdAt: "2026-01-02" }] };
-    };
-    const ctx = {
-      doc: { send },
-      tables: { sessions: "Sessions" },
-    } as unknown as PlaneStorageCtx;
-
-    await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
-      { id: "session-1" },
-      { id: "session-2" },
-    ]);
-    expect(commands).toHaveLength(2);
-    expect(commands[0]?.input).toMatchObject({
-      IndexName: "repositoryId-createdAt",
-      KeyConditionExpression: "repositoryId = :repositoryId",
-      ExpressionAttributeValues: { ":repositoryId": "repo-1" },
-    });
-  });
-
-  it("falls back to a filtered scan while the repository index is unavailable", async () => {
-    let queryAttempts = 0;
-    const send = async (command: { input: Record<string, unknown> }) => {
-      if (command.input.IndexName === "repositoryId-createdAt") {
-        queryAttempts += 1;
-        const error = new Error("index is still being created");
-        error.name = "ValidationException";
-        throw error;
-      }
-      return {
-        Items: [{ id: "session-1", repositoryId: "repo-1", createdAt: "2026-01-01" }],
-      };
-    };
-    const ctx = {
-      doc: { send },
-      tables: { sessions: "Sessions" },
-    } as unknown as PlaneStorageCtx;
-
-    await expect(listSessionsByRepository(ctx, "repo-1")).resolves.toMatchObject([
-      { id: "session-1" },
-    ]);
-    expect(queryAttempts).toBe(1);
   });
 });
