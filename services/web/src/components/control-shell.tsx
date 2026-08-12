@@ -3,6 +3,8 @@
 import { usePathname } from "next/navigation";
 import { AppShell } from "@auto-harness/ui";
 
+import { LogoutButton } from "./logout-button.tsx";
+
 const NAV = [
   {
     href: "/",
@@ -58,10 +60,17 @@ const NAV = [
     pw: "nav-hosts",
     tip: "Add host slots, view online/offline fleet, drain hosts",
   },
+  {
+    href: "/settings",
+    label: "Settings",
+    pw: "nav-settings",
+    tip: "View your account and change your password",
+  },
 ];
 
 export function ControlShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "/";
+  if (pathname === "/login") return <>{children}</>;
   return (
     <AppShell
       pw="control-shell"
@@ -69,6 +78,7 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       titleTip="Org-wide control plane: sessions, schedules, catalog, and host fleet"
       subtitle="Org-wide sessions, schedules, and host fleet"
       subtitleTip="Hosts self-register over the API/WebSocket; configure host paths on the host pane"
+      titleBadge={<LogoutButton />}
       nav={NAV}
       pathname={pathname}
     >

@@ -1,18 +1,12 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
-
-import { type AuthService, type Role } from "./auth.ts";
+import { type Role } from "./auth.ts";
 import { validateCredential } from "./auth-accounts.ts";
-import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send, sendInternalError } from "./local-http.ts";
+import {
+  handleSelfServiceAuthRoutes,
+  type SelfServiceAuthRouteContext,
+} from "./local-routes-auth-self-service.ts";
 
-type AuthRouteContext = {
-  auth: AuthService;
-  plane: ControlPlane;
-  req: IncomingMessage;
-  res: ServerResponse;
-  url: URL;
-  method: string;
-};
+type AuthRouteContext = SelfServiceAuthRouteContext;
 
 /** Login/logout and admin-only durable account-management routes. */
 export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> {
@@ -56,6 +50,7 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
     send(res, 204, null);
     return true;
   }
+  if (await handleSelfServiceAuthRoutes(ctx)) return true;
   if (url.pathname === "/api/v1/auth/users") {
     if (method === "GET") {
       send(res, 200, { items: auth.listUsers() });

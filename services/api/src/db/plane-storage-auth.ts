@@ -4,6 +4,7 @@ import {
   PutCommand,
   QueryCommand,
   ScanCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 import type { AuthAccountRecord, PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -22,8 +23,44 @@ export async function getAuthAccount(
   ctx: PlaneStorageCtx,
   id: string,
 ): Promise<AuthAccountRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.users, Key: { id } }));
+  const res = await ctx.doc.send(
+    new GetCommand({ TableName: ctx.tables.users, Key: { id }, ConsistentRead: true }),
+  );
   return (res.Item as AuthAccountRecord | undefined) ?? null;
+}
+
+/** Replace only a user password hash; do not recreate an account after deletion. */
+export async function updateAuthAccountPassword(
+  ctx: PlaneStorageCtx,
+  id: string,
+  expectedPasswordHash: string,
+  passwordHash: string,
+  updatedAt: string,
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.users,
+        Key: { id },
+        UpdateExpression: "SET passwordHash = :passwordHash, updatedAt = :updatedAt",
+        ConditionExpression:
+          "attribute_exists(id) AND #kind = :kind AND passwordHash = :expectedPasswordHash",
+        ExpressionAttributeNames: { "#kind": "kind" },
+        ExpressionAttributeValues: {
+          ":passwordHash": passwordHash,
+          ":expectedPasswordHash": expectedPasswordHash,
+          ":updatedAt": updatedAt,
+          ":kind": "user",
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "name" in error) {
+      if ((error as { name?: unknown }).name === "ConditionalCheckFailedException") return false;
+    }
+    throw error;
+  }
 }
 
 export async function getAuthAccountByUsername(

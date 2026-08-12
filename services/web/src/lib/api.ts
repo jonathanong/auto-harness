@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { apiBase } from "@auto-harness/shared";
 
 export class ApiError extends Error {
@@ -17,6 +18,7 @@ export async function apiGet<T>(path: string): Promise<T> {
     cache: "no-store",
     ...(forwarded ? { headers: forwarded } : {}),
   });
+  if (res.status === 401 && process.env.HARNESS_AUTH_MODE === "required") redirect("/login");
   if (!res.ok) throw new ApiError(path, res.status);
   return (await res.json()) as T;
 }

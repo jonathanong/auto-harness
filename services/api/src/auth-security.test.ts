@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { AuthService, authModeFromEnv, type Principal } from "./auth.ts";
 import { createServiceAccount as createAccount } from "./auth-accounts.ts";
 import { authorize, mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import type { AuthAccountRecord } from "./db/plane-storage.ts";
 
 function admins(entries: Array<{ username: string; password: string }>): string {
   return Buffer.from(JSON.stringify(entries)).toString("base64url");
@@ -206,6 +207,146 @@ describe("control-plane authentication security", () => {
     await expect(auth.createServiceAccount({ name: "", role: "operator" })).rejects.toThrow();
     await auth.deleteUser("alice");
     expect(await auth.authenticate(request({ cookie }))).toBeNull();
+  });
+
+  it("changes only user passwords after checking the current password and durable write", async () => {
+    const updates: Array<{
+      id: string;
+      expectedPasswordHash: string;
+      passwordHash: string;
+      updatedAt: string;
+    }> = [];
+    const storage = {
+      listAuthAccounts: async () => [],
+      putAuthAccount: async () => undefined,
+      updateAuthAccountPassword: async (
+        id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        updatedAt: string,
+      ) => {
+        updates.push({ id, expectedPasswordHash, passwordHash, updatedAt });
+        return true;
+      },
+      deleteAuthAccount: async () => undefined,
+    };
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    });
+    const user = await auth.createUser({ username: "alice", password: "before", role: "operator" });
+    expect(await auth.changePassword(user, "wrong", "after", storage)).toBe(
+      "invalid-current-password",
+    );
+    expect(updates).toEqual([]);
+    expect(await auth.changePassword(user, "before", "", storage)).toBe("invalid-new-password");
+    expect(await auth.changePassword(user, "before", "after", storage)).toBe("changed");
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toMatchObject({ id: "user:alice", updatedAt: expect.any(String) });
+    expect(updates[0]?.expectedPasswordHash).not.toBe("before");
+    expect(updates[0]?.passwordHash).not.toBe("after");
+    expect(await auth.authenticatePassword("alice", "before")).toBeNull();
+    expect(await auth.authenticatePassword("alice", "after")).toMatchObject(user);
+    expect(await auth.changePassword(admin, "root", "after", storage)).toBe("unsupported-account");
+    expect(await auth.changePassword({ ...user, id: "user:gone" }, "after", "later", storage)).toBe(
+      "missing-account",
+    );
+    storage.updateAuthAccountPassword = async () => false;
+    expect(await auth.changePassword(user, "after", "later", storage)).toBe("missing-account");
+    expect(await auth.authenticatePassword("alice", "after")).toMatchObject(user);
+    expect(
+      await auth.changePassword(user, "after", "later", {
+        listAuthAccounts: async () => [],
+        putAuthAccount: async () => undefined,
+        deleteAuthAccount: async () => undefined,
+      }),
+    ).toBe("storage-unavailable");
+  });
+
+  it("uses a compare-and-swap password write so only one concurrent change succeeds", async () => {
+    let persistedHash: string | undefined;
+    const storage = {
+      listAuthAccounts: async () => [],
+      putAuthAccount: async () => undefined,
+      updateAuthAccountPassword: async (
+        _id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        _updatedAt: string,
+      ) => {
+        if (persistedHash === undefined) persistedHash = expectedPasswordHash;
+        if (persistedHash !== expectedPasswordHash) return false;
+        persistedHash = passwordHash;
+        return true;
+      },
+      deleteAuthAccount: async () => undefined,
+    };
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    });
+    const user = await auth.createUser({ username: "alice", password: "before", role: "operator" });
+
+    const results = await Promise.all([
+      auth.changePassword(user, "before", "after-one", storage),
+      auth.changePassword(user, "before", "after-two", storage),
+    ]);
+
+    expect(results.filter((result) => result === "changed")).toHaveLength(1);
+    expect(results.filter((result) => result === "missing-account")).toHaveLength(1);
+    expect(await auth.authenticatePassword("alice", "before")).toBeNull();
+    expect(
+      Boolean(await auth.authenticatePassword("alice", "after-one")) !==
+        Boolean(await auth.authenticatePassword("alice", "after-two")),
+    ).toBe(true);
+  });
+
+  it("reads durable password hashes on every worker after rotation or deletion", async () => {
+    let record: AuthAccountRecord | null = null;
+    const storage = {
+      listAuthAccounts: async () => (record ? [{ ...record }] : []),
+      getAuthAccount: async (id: string) => (record?.id === id ? { ...record } : null),
+      getAuthAccountByUsername: async (username: string) =>
+        record?.username === username ? { ...record } : null,
+      putAuthAccount: async (value: AuthAccountRecord) => {
+        record = { ...value };
+      },
+      updateAuthAccountPassword: async (
+        id: string,
+        expectedPasswordHash: string,
+        passwordHash: string,
+        updatedAt: string,
+      ) => {
+        if (record?.id !== id || record.passwordHash !== expectedPasswordHash) return false;
+        record = { ...record, passwordHash, updatedAt };
+        return true;
+      },
+      deleteAuthAccount: async () => {
+        record = null;
+      },
+    };
+    const options = {
+      mode: "required" as const,
+      secret: "a".repeat(32),
+      admins: admins([{ username: "root", password: "root" }]),
+    };
+    const first = new AuthService(options);
+    await first.hydrate(storage);
+    const user = await first.createUser(
+      { username: "alice", password: "before", role: "operator" },
+      storage,
+    );
+    const second = new AuthService(options);
+    await second.hydrate(storage);
+
+    expect(await second.authenticatePassword("alice", "before")).toMatchObject(user);
+    expect(await first.changePassword(user, "before", "after")).toBe("changed");
+    expect(await second.authenticatePassword("alice", "before")).toBeNull();
+    expect(await second.authenticatePassword("alice", "after")).toMatchObject(user);
+    record = null;
+    expect(await second.authenticatePassword("alice", "after")).toBeNull();
   });
 
   it("checks roles, repository scopes, and host bindings centrally", () => {
