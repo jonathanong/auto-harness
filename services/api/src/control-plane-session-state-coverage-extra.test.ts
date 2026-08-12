@@ -53,7 +53,7 @@ describe("session state-machine residual coverage", () => {
 
     await expect(cancelSessionDurable(state, "s")).resolves.toEqual({
       ok: false,
-      error: "running session is missing its assignment fence",
+      error: "session changed before cancellation",
     });
   });
 

@@ -98,5 +98,14 @@ describe("DynamoPlaneStorageBase", () => {
         previousConnectionId: "previous",
       }),
     ).toBe(false);
+    expect(
+      await storage.skipScheduleForActiveConcurrency({
+        scheduleId: "missing",
+        expectedNextRunAt: "t",
+        newNextRunAt: "later",
+        concurrencyId: "concurrency",
+        sessionId: "session",
+      }),
+    ).toBe(false);
   });
 });
