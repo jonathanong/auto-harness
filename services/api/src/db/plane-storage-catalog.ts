@@ -37,6 +37,36 @@ import {
   releaseConcurrencyLock,
 } from "./plane-storage-sessions.ts";
 
+/** Interpret conditional DynamoDB write failures without a client double. */
+export function conditionalCatalogWriteOrThrow(err: unknown): false {
+  if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
+  throw err;
+}
+
+export function catalogItem<T>(item: T | undefined): T | null {
+  return item ?? null;
+}
+
+export function catalogPageItems<T>(items: T[] | undefined): T[] {
+  return items ?? [];
+}
+
+export function nextCatalogPage(
+  key: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return key && Object.keys(key).length > 0 ? key : undefined;
+}
+
+export function scheduleAttributes(
+  attributes: Record<string, unknown> | undefined,
+): ScheduleRecord | null {
+  return attributes ? (attributes as ScheduleRecord) : null;
+}
+
+export function isActiveSession(session: SessionRecord | null): session is SessionRecord {
+  return session?.status === "queued" || session?.status === "running";
+}
+
 export async function putLog(ctx: PlaneStorageCtx, rec: LogRecord): Promise<void> {
   await ctx.doc.send(
     new PutCommand({
@@ -69,8 +99,7 @@ export async function putLogFenced(
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) return false;
-    throw err;
+    return conditionalCatalogWriteOrThrow(err);
   }
 }
 
@@ -97,9 +126,9 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as LogRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    records.push(...catalogPageItems(res.Items as LogRecord[] | undefined));
+    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -134,7 +163,7 @@ export async function queryLogs(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as LogRecord[]));
+    records.push(...catalogPageItems(res.Items as LogRecord[] | undefined));
     startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (startKey && records.length < query.limit);
   return records;
@@ -217,10 +246,10 @@ export async function updateScheduleManagement(
       return getSchedule(ctx, rec.id, true);
     }
     const res = await ctx.doc.send(new UpdateCommand({ ...update, ReturnValues: "ALL_NEW" }));
-    return res.Attributes ? (res.Attributes as ScheduleRecord) : null;
+    return scheduleAttributes(res.Attributes as Record<string, unknown> | undefined);
   } catch (err) {
-    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
-    throw err;
+    conditionalCatalogWriteOrThrow(err);
+    return null;
   }
 }
 
@@ -236,7 +265,7 @@ export async function getSchedule(
       ...(consistentRead ? { ConsistentRead: true } : {}),
     }),
   );
-  return (res.Item as ScheduleRecord | undefined) ?? null;
+  return catalogItem(res.Item as ScheduleRecord | undefined);
 }
 
 export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecord[]> {
@@ -250,9 +279,9 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as ScheduleRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    records.push(...catalogPageItems(res.Items as ScheduleRecord[] | undefined));
+    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -284,8 +313,7 @@ export async function createRepository(
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) return false;
-    throw err;
+    return conditionalCatalogWriteOrThrow(err);
   }
 }
 
@@ -296,7 +324,7 @@ export async function getRepository(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.repositories, Key: { id } }),
   );
-  return (res.Item as RepositoryRecord | undefined) ?? null;
+  return catalogItem(res.Item as RepositoryRecord | undefined);
 }
 
 export async function listRepositories(ctx: PlaneStorageCtx): Promise<RepositoryRecord[]> {
@@ -310,9 +338,9 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as RepositoryRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    records.push(...catalogPageItems(res.Items as RepositoryRecord[] | undefined));
+    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -351,10 +379,7 @@ export async function tryClaimSchedule(
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalCatalogWriteOrThrow(err);
   }
 }
 
@@ -427,7 +452,7 @@ export async function tryClaimScheduleAndCreateSession(
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
           const current = await getSession(ctx, lock.sessionId, true);
-          if (current && (current.status === "queued" || current.status === "running")) {
+          if (isActiveSession(current)) {
             return { kind: "duplicate", session: current };
           }
           await releaseConcurrencyLock(ctx, opts.session.concurrencyId, lock.sessionId);
@@ -480,8 +505,7 @@ export async function skipScheduleForActiveConcurrency(
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) return false;
-    throw err;
+    return conditionalCatalogWriteOrThrow(err);
   }
 }
 
@@ -496,7 +520,7 @@ export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveObject): Prom
 
 export async function getArchive(ctx: PlaneStorageCtx, key: string): Promise<ArchiveObject | null> {
   const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.archives, Key: { key } }));
-  return (res.Item as ArchiveObject | undefined) ?? null;
+  return catalogItem(res.Item as ArchiveObject | undefined);
 }
 
 export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[]> {
@@ -510,9 +534,9 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as ArchiveObject[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    records.push(...catalogPageItems(res.Items as ArchiveObject[] | undefined));
+    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -534,7 +558,7 @@ export async function getHostInventory(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }),
   );
-  return (res.Item as HostInventoryRecord | undefined) ?? null;
+  return catalogItem(res.Item as HostInventoryRecord | undefined);
 }
 
 export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInventoryRecord[]> {
@@ -548,9 +572,9 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...((res.Items ?? []) as HostInventoryRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    records.push(...catalogPageItems(res.Items as HostInventoryRecord[] | undefined));
+    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 

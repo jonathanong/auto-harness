@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
     testTimeout: 60_000,
+    hookTimeout: 60_000,
     coverage: {
       provider: "v8",
       include: [
@@ -58,12 +59,8 @@ export default defineConfig({
         // implementations. The core client/table/bootstrap adapter is covered here
         // with real-Dynamo integration tests.
         "**/db/plane-storage-auth.ts",
-        "**/db/plane-storage-base.ts",
-        "**/db/plane-storage-catalog-providers.ts",
-        "**/db/plane-storage-catalog.ts",
         "**/db/plane-storage-clear.ts",
         "**/db/plane-storage-deletion-markers.ts",
-        "**/db/plane-storage-locks.ts",
         "**/db/plane-storage-main-checkout-read.ts",
         "**/db/plane-storage-main-checkout-reconnect.ts",
         "**/db/plane-storage-main-checkout.ts",
@@ -210,7 +207,7 @@ export default defineConfig({
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
       },
-      reporter: ["text", "lcov"],
+      reporter: ["text", "lcov", "json-summary"],
     },
   },
 });

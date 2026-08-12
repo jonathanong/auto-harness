@@ -101,8 +101,9 @@ export async function renewDeletionMarker(
       new UpdateCommand({
         TableName: ctx.tables.concurrencyLocks,
         Key: { concurrencyId: `${PREFIX}${key}` },
-        UpdateExpression: "SET expiresAt = :expiresAt, ttl = :ttl",
+        UpdateExpression: "SET expiresAt = :expiresAt, #ttl = :ttl",
         ConditionExpression: "deletionOwner = :owner AND expiresAt > :now",
+        ExpressionAttributeNames: { "#ttl": "ttl" },
         ExpressionAttributeValues: {
           ":owner": owner,
           ":now": now,

@@ -15,6 +15,22 @@ import {
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 
+/** Interpret DynamoDB conditional failures while preserving all other errors. */
+export function conditionalHostWriteOrThrow(err: unknown): false {
+  if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
+  throw err;
+}
+
+export function connectionPageItems(items: ConnectionRecord[] | undefined): ConnectionRecord[] {
+  return items ?? [];
+}
+
+export function nextConnectionPage(
+  key: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return key && Object.keys(key).length > 0 ? key : undefined;
+}
+
 /**
  * Conditional agent lock (Invariant 3).
  * Returns false if hostId already locked and replace is false.
@@ -52,10 +68,7 @@ export async function tryAcquireHostLock(
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -149,10 +162,7 @@ export async function tryRegisterHost(
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -185,10 +195,7 @@ export async function releaseHostConnection(
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -223,10 +230,7 @@ export async function heartbeatConnection(
     );
     return true;
   } catch (err) {
-    if (isConditionalTransactionFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -251,10 +255,7 @@ export async function markHostDraining(
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) {
-      return false;
-    }
-    throw err;
+    return conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -273,10 +274,7 @@ export async function releaseHostLock(
       }),
     );
   } catch (err) {
-    if (isConditionalFailed(err)) {
-      return;
-    }
-    throw err;
+    conditionalHostWriteOrThrow(err);
   }
 }
 
@@ -330,8 +328,8 @@ export async function listConnections(ctx: PlaneStorageCtx): Promise<ConnectionR
         ConsistentRead: true,
       }),
     );
-    items.push(...((res.Items ?? []) as ConnectionRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    items.push(...connectionPageItems(res.Items as ConnectionRecord[] | undefined));
+    startKey = nextConnectionPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return items;
 }

@@ -50,6 +50,9 @@ jobs:
       - name: Test with coverage
         run: pnpm test
 
+      - name: Verify exact Dynamo adapter coverage
+        run: pnpm check:coverage:dynamo-adapters
+
       - name: Knip
         run: pnpm knip
 
