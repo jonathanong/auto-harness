@@ -1,6 +1,7 @@
 import { type Role } from "./auth.ts";
 import { validateCredential } from "./auth-accounts.ts";
 import { readJson, send, sendInternalError } from "./local-http.ts";
+import { errorMessage } from "./local-route-errors.ts";
 import {
   handleSelfServiceAuthRoutes,
   type SelfServiceAuthRouteContext,
@@ -82,7 +83,7 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: errorMessage(error, "invalid account"),
           },
         });
         return true;
@@ -152,7 +153,7 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
         send(res, 400, {
           error: {
             code: "VALIDATION_ERROR",
-            message: error instanceof Error ? error.message : "invalid account",
+            message: errorMessage(error, "invalid account"),
           },
         });
         return true;
