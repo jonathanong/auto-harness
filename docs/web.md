@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, worktrees, schedules, hosts (agents), the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
+Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
 
 ## Authentication
 
