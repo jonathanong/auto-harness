@@ -56,7 +56,7 @@ describe("SessionFilters", () => {
   it("reads URL state and pushes each filter, including clearing values", () => {
     const router = { push: vi.fn() };
     const view = mount("status=running&q=needle&concurrencyId=old", router);
-    const status = view.container.querySelector(
+    let status = view.container.querySelector(
       '[data-pw="session-filter-status"]',
     ) as HTMLSelectElement;
     const sort = view.container.querySelector(
@@ -77,18 +77,30 @@ describe("SessionFilters", () => {
     expect(router.push).toHaveBeenLastCalledWith(
       "/runs?status=running&q=needle&concurrencyId=old&sort=priority_desc",
     );
+    view.render("status=running&q=needle&concurrencyId=old&sort=priority_desc");
+    status = view.container.querySelector('[data-pw="session-filter-status"]') as HTMLSelectElement;
 
     act(() => {
       status.value = "failed";
       status.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    expect(router.push).toHaveBeenLastCalledWith("/runs?status=failed&q=needle&concurrencyId=old");
+    expect(router.push).toHaveBeenLastCalledWith(
+      "/runs?status=failed&q=needle&concurrencyId=old&sort=priority_desc",
+    );
+    view.render("status=failed&q=needle&concurrencyId=old&sort=priority_desc");
+    const currentQ = view.container.querySelector(
+      '[data-pw="session-filter-q"]',
+    ) as HTMLInputElement;
 
-    q.value = "next";
-    keyDown(q, "Escape");
-    expect(router.push).toHaveBeenLastCalledWith("/runs?status=failed&q=needle&concurrencyId=old");
-    keyDown(q, "Enter");
-    expect(router.push).toHaveBeenLastCalledWith("/runs?status=running&q=next&concurrencyId=old");
+    currentQ.value = "next";
+    keyDown(currentQ, "Escape");
+    expect(router.push).toHaveBeenLastCalledWith(
+      "/runs?status=failed&q=needle&concurrencyId=old&sort=priority_desc",
+    );
+    keyDown(currentQ, "Enter");
+    expect(router.push).toHaveBeenLastCalledWith(
+      "/runs?status=failed&q=next&concurrencyId=old&sort=priority_desc",
+    );
 
     view.unmount();
     const cleared = mount("status=running&q=needle&concurrencyId=old", router);
@@ -102,6 +114,7 @@ describe("SessionFilters", () => {
       clearedQ.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
     });
     expect(router.push).toHaveBeenLastCalledWith("/runs?status=running&concurrencyId=old");
+    cleared.render("status=running&concurrencyId=old");
 
     const concurrency = cleared.container.querySelector(
       '[data-pw="session-filter-concurrency-id"]',
@@ -109,14 +122,10 @@ describe("SessionFilters", () => {
     setInputValue(concurrency, "new id");
     expect(concurrency.value).toBe("new id");
     keyDown(concurrency, "Enter");
-    expect(router.push).toHaveBeenLastCalledWith(
-      "/runs?status=running&q=needle&concurrencyId=new+id",
-    );
+    expect(router.push).toHaveBeenLastCalledWith("/runs?status=running&concurrencyId=new+id");
     act(() => concurrency.focus());
     act(() => concurrency.blur());
-    expect(router.push).toHaveBeenLastCalledWith(
-      "/runs?status=running&q=needle&concurrencyId=new+id",
-    );
+    expect(router.push).toHaveBeenLastCalledWith("/runs?status=running&concurrencyId=new+id");
     cleared.unmount();
   });
 
