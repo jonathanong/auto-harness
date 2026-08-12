@@ -1,7 +1,7 @@
 import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
 import type { RepoCatalogEntry } from "@auto-harness/ui";
 
-import { apiBase, apiGet } from "./api.ts";
+import { apiGet } from "./api.ts";
 
 type LiveWorktree = { status?: string; online?: boolean };
 
@@ -45,13 +45,9 @@ export async function loadRepoNamesById(): Promise<Record<string, string>> {
 
 export async function loadHostInventory(hostId: string): Promise<HostInventory> {
   try {
-    const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      return emptyHostInventory();
-    }
-    const cfg = (await res.json()) as Record<string, unknown>;
+    const cfg = await apiGet<Record<string, unknown>>(
+      `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+    );
     return {
       repositories: Array.isArray(cfg.repositories)
         ? (cfg.repositories as HostInventory["repositories"])

@@ -1,6 +1,8 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Next preserves JSX for its own compiler; direct server-component tests need
+  // Vite to use the same automatic React runtime.
   esbuild: { jsx: "automatic" },
   test: {
     include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
@@ -30,6 +32,7 @@ export default defineConfig({
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx",
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",
+        "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -63,17 +66,25 @@ export default defineConfig({
         "**/db/plane-storage-sessions.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
-        // Next.js app routers and app-owned components remain e2e-only.
-        "**/app/**",
+        // The control-plane app router remains e2e-only. This host-pane route
+        // tranche is covered directly; its remaining app routes stay e2e-only.
+        "**/services/web/src/app/**",
+        "**/services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
+        "**/services/host-pane/src/app/sessions/page.tsx",
+        "**/services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
+        "**/services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
         // The public barrel re-exports the broader UI surface, which is outside this tranche.
         "**/modules/ui/src/index.ts",
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
         "**/services/web/src/lib/attach-local-repo.ts",
-        // Host-pane component coverage is intentionally enabled for the four
-        // user-facing components above; routes and server helpers remain e2e-only.
-        "**/services/host-pane/src/app/**",
+        // Host-pane component coverage and the first route tranche are enabled;
+        // remaining routes and server helpers stay e2e-only.
+        "**/services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
+        "**/services/host-pane/src/app/sessions/page.tsx",
+        "**/services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
+        "**/services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
         "**/services/host-pane/src/lib/**",
         "**/services/host-pane/src/middleware.ts",
         "**/services/host-pane/src/index.ts",
@@ -173,6 +184,11 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "services/host-pane/src/app/layout.tsx": { 100: true },
+        "services/host-pane/src/app/page.tsx": { 100: true },
+        "services/host-pane/src/app/repositories/page.tsx": { 100: true },
+        "services/host-pane/src/app/settings/page.tsx": { 100: true },
+        "services/host-pane/src/app/api/browse/route.ts": { 100: true },
       },
       reporter: ["text", "lcov"],
     },
