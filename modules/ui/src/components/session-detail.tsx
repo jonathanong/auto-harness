@@ -6,6 +6,7 @@ import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
+import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
 
 export type SessionSummary = {
   id: string;
@@ -74,8 +75,14 @@ export function SessionDetail({
     <div className="space-y-6" data-pw="session-detail">
       <DetailHeader
         breadcrumbs={breadcrumbs}
-        title={<span className="font-mono">{s.id}</span>}
-        titlePw="session-detail-id"
+        title={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span className="font-mono" data-pw="session-detail-id">
+              {s.id}
+            </span>
+            <SessionIdCopyButton sessionId={s.id} />
+          </span>
+        }
         actions={actions}
       />
 
