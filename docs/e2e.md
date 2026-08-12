@@ -72,6 +72,11 @@ earlier run or a stale build. This is deliberate, not just a CI/local parity nic
 stale leftover process (mismatched `.next` build vs. a since-rebuilt one) has caused real,
 confusing failures here before.
 
+`local:api:e2e` disables the production rate limiter. Parallel browser workers deliberately
+share one loopback source address and exercise far more requests than one real actor, so a shared
+source budget would make unrelated UI scenarios interfere with one another. Rate-limit behavior,
+including durable shared counters, is covered by the focused API/WebSocket/DynamoDB test suites.
+
 **Note:** The agent **daemon** (`pnpm local:daemon start`) is **not** started by Playwright as a
 `webServer`. Most tests that need profiles seed host config + `host:register` via REST, against
 the e2e API (`:7430`), rather than running a real daemon. The one exception is
