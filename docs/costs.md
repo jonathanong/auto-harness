@@ -46,50 +46,49 @@ That is a **product constraint**, not an implementation preference: it is how yo
 
 Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs scale with usage but stay negligible next to **subscription seats**, **plan quotas**, and **VPS** capacity. The control plane should not be the line item you worry about.
 
-## Estimated Monthly Costs (AWS only)
+## AWS cost model (not yet estimated)
 
-These are **planning estimates for the target AWS deployment**, based on **100 sessions/day,
-2 connected agents, 1 developer using the UI**. The repository has not deployed or
-account-tested the AWS runtime, and the log-volume assumptions below have not been calibrated
-against a representative long-running CLI transcript. They are not a measured bill or a current
-production cost claim.
+The repository has not deployed or account-tested the AWS runtime. A credible monthly estimate
+requires a representative long-running CLI transcript; log chunks affect WebSocket messages,
+Lambda invocations, DynamoDB writes, archive bytes, and CloudWatch volume at once. Those inputs
+have not been measured, so there is no supported aggregate monthly-cost estimate yet.
 
 Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
 pages for the deployment region before approving a budget.
 
-| Service                   | Usage                                    | Unit Price                     | Monthly Cost  |
-| ------------------------- | ---------------------------------------- | ------------------------------ | ------------- |
-| **Lambda**                | ~50K invocations, avg 200ms @ 256MB      | $0.20/1M req + $0.0000166/GB-s | **~$0.15**    |
-| **API Gateway REST**      | ~30K requests                            | $3.50/1M                       | **~$0.11**    |
-| **API Gateway WebSocket** | 2 agents × 43K conn-min + ~500K messages | $0.25/1M min + $1.00/1M msg    | **~$0.52**    |
-| **DynamoDB on-demand**    | ~200K writes + ~300K reads               | $1.25/1M write, $0.25/1M read  | **~$0.33**    |
-| **DynamoDB storage**      | <1 GB (active data before archival)      | $0.25/GB                       | **~$0.25**    |
-| **S3**                    | ~5 GB archived logs                      | $0.023/GB + minimal requests   | **~$0.12**    |
-| **CloudWatch Events**     | 1 cron trigger/min = 43K/month           | Included                       | **$0.00**     |
-| **CloudWatch Logs**       | Lambda logs, ~1 GB                       | $0.50/GB ingestion             | **~$0.50**    |
-|                           |                                          | **Total**                      | **~$2/month** |
+| Service                   | Base input                                   | Workload-sensitive input                               |
+| ------------------------- | -------------------------------------------- | ------------------------------------------------------ |
+| **Lambda**                | Memory and duration per handler              | REST requests + every WebSocket/log message            |
+| **API Gateway REST**      | API calls made by clients                    | Session/UI polling pattern                             |
+| **API Gateway WebSocket** | Connected-agent/viewer minutes and keepalive | Log chunks, status messages, reconnects, subscriptions |
+| **DynamoDB on-demand**    | Session/status/catalog operations            | One current write per log chunk + reads                |
+| **DynamoDB storage**      | Durable catalog/session rows                 | Log retention and archive-row size                     |
+| **S3 (target)**           | Archive PUT/GET count                        | Compressed archive bytes and lifecycle class           |
+| **EventBridge (target)**  | Cron evaluation frequency                    | Number of schedules                                    |
+| **CloudWatch (target)**   | Runtime log retention                        | Actual emitted runtime-log bytes                       |
 
-## Scale Estimates
+## Inputs required before a scale estimate
 
-| Scale       | Sessions/day | Agents | WebSocket Messages/mo | DynamoDB Writes/mo | Est. Monthly |
-| ----------- | ------------ | ------ | --------------------- | ------------------ | ------------ |
-| Solo dev    | 10           | 1      | ~100K                 | ~60K               | **<$1**      |
-| Small team  | 100          | 2–3    | ~500K                 | ~200K              | **~$2**      |
-| Active team | 500          | 5      | ~2.5M                 | ~1M                | **~$8**      |
-| Heavy use   | 2,000        | 10     | ~10M                  | ~4M                | **~$25**     |
-| Enterprise  | 10,000       | 50     | ~50M                  | ~20M               | **~$100**    |
+- sessions per day and connected-agent/viewer minutes
+- distribution of log chunks and bytes per session from real supported CLIs
+- handler invocation duration and memory in a deployed account
+- read patterns from real UI/API usage
+- effective retention, compression, and S3 lifecycle behavior after those paths exist
+
+Publish solo/team/enterprise totals only after these inputs are measured; scaling session count
+alone cannot estimate the dominant log-driven costs.
 
 ## Cost by Component
 
 ### Lambda
 
-Lambda is the cheapest component. Each API request or WebSocket message triggers a short invocation (~200ms).
+In the target runtime, each API request or WebSocket message triggers an invocation. Duration and
+memory must be measured after deployment.
 
 - **Invocation cost**: $0.20 per 1M requests
 - **Duration cost**: $0.0000166 per GB-second
-- A typical invocation (256MB, 200ms) costs **$0.0000008** — less than a millionth of a dollar
-
-At 100 sessions/day, Lambda costs are under $0.20/month.
+- Multiply the measured request/message count by the measured duration and configured memory; do
+  not assume a fixed 200 ms handler time.
 
 ### API Gateway
 
@@ -106,8 +105,8 @@ Two API types with separate pricing:
 - $0.25 per million connection minutes
 - $1.00 per million messages
 - Each agent maintains 1 persistent connection (~43,000 minutes/month)
-- Messages: pings every 30s (~86K/agent/month) + log chunks (~50 per session × 3K sessions/month = 150K) + status updates
-- Total: **~$0.52**
+- Messages include keepalives, every current log chunk, status updates, subscriptions, and
+  reconnect traffic. Measure that total; the former 50-chunk/session assumption is invalid.
 
 ### DynamoDB
 
@@ -126,7 +125,8 @@ Per session, approximate DynamoDB operations:
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
-At 100 sessions/day: ~200K writes + ~300K reads = **~$0.33**
+Do not aggregate these into a monthly DynamoDB figure until chunk counts and real read behavior
+are measured.
 
 #### SessionLogs Cost Control
 
@@ -169,34 +169,22 @@ current archive objects are rows in the DynamoDB Archives table.
 - **Storage**: $0.023 per GB/month (Standard), $0.0125 (Infrequent Access), $0.004 (Glacier)
 - **Requests**: $0.005 per 1K PUT, $0.0004 per 1K GET
 
-With lifecycle policies:
-
-- Logs move to Infrequent Access after 30 days
-- Logs move to Glacier after 90 days
-- Assuming ~50 KB per session log, 3K sessions/month = ~150 MB/month of new data
-- After a year: ~1.8 GB, mostly in Glacier = **pennies**
+The target lifecycle policy moves objects to Infrequent Access after 30 days and Glacier after 90
+days. Estimate storage only from measured archive bytes and expected retention; the former 50 KB
+per-session assumption is unsupported.
 
 ### CloudWatch
 
 - **Events**: The 1-minute cron trigger for schedule evaluation is included free
-- **Logs**: Lambda automatically logs to CloudWatch. At $0.50/GB ingestion, typical usage generates ~1 GB/month = **$0.50**
+- **Logs**: Lambda runtime output is ingested by CloudWatch; measure emitted bytes rather than
+  assuming 1 GB/month
 - **Tip**: Set log retention to 7–14 days to avoid storage accumulation
 
 ## AWS Free Tier
 
-For new AWS accounts, the first 12 months of free tier covers most of the auto harness infrastructure:
-
-| Service               | Free Tier Allowance           | Auto-Harness Usage (small team) | Covered?   |
-| --------------------- | ----------------------------- | ------------------------------- | ---------- |
-| Lambda                | 1M requests + 400K GB-s/month | ~50K requests                   | ✓          |
-| DynamoDB              | 25 GB storage + 25 WCU/RCU    | <1 GB, on-demand                | ✓          |
-| S3                    | 5 GB storage                  | <5 GB first year                | ✓          |
-| API Gateway REST      | 1M calls/month (first 12 mo)  | ~30K calls                      | ✓          |
-| API Gateway WebSocket | Not included in free tier     | ~500K messages                  | ✗ (~$0.50) |
-| CloudWatch Logs       | 5 GB ingestion                | ~1 GB                           | ✓          |
-
-**Modeled effective cost with free tier: ~$0.50/month** (just the WebSocket messages), subject to
-the unvalidated workload assumptions above.
+Free-tier terms vary by account age, service, and current AWS policy. Verify the applicable terms,
+then compare them with the measured inputs above. The repository has no evidence for a current
+"covered" total.
 
 ## VPS Costs
 
@@ -220,7 +208,7 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 | **Vendor subscriptions** | Seats / team plans for Codex, Claude Code, etc. | Shared with interactive human use. Automation **consumes plan quota**, it does not invent a separate API SKU.                                                               |
 | **Plan usage limits**    | Soft/hard caps, rate limits                     | Hit → `usage_limit`; pause that Provider Account globally for its configurable cooldown (5h default), then use account/fallback routing. Providerless commands are ungated. |
 | **VPS / runner hosts**   | Fixed monthly instance cost                     | Where CLIs run; see table above. More worktrees ⇒ more RAM/CPU, not more AWS API cost.                                                                                      |
-| **Auto Harness on AWS**  | ~$1–$25/mo for most teams                       | Queue, API, logs only.                                                                                                                                                      |
+| **Auto Harness on AWS**  | Not yet measured                                | Queue, API, and logs; log volume is the dominant unknown.                                                                                                                   |
 
 ### Why we do _not_ lead with API unit economics
 
@@ -233,8 +221,8 @@ Under the intended model, the dominant costs are **outside** the Auto Harness AW
 
 If you deliberately point a CLI at **API keys**, treat that as a separate budget (true pay-per-session variance). Default docs and capacity planning assume **subscription authentication on the agent host**.
 
-**Target AWS infrastructure should be a rounding error next to seats and machines.** The ~$2
-small-team figure is a design estimate, not an observed bill.
+**Target AWS infrastructure should be a rounding error next to seats and machines.** Verify that
+goal with deployed measurements before presenting a dollar estimate.
 
 ## Cost Optimization Tips
 
