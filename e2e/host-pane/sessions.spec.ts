@@ -192,11 +192,9 @@ test.describe("host pane sessions", () => {
             return ((await current.json()) as { status: string }).status;
           })
           .toBe("failed");
-        await detailPage.goto("/sessions");
-        await expect(detailPage.getByTestId(`session-status-reason-${id}`)).toHaveText(
+        await expect(detailPage.getByTestId("session-detail-status-reason")).toHaveText(
           "Queue expired",
         );
-        await expect(detailPage.getByTestId(`session-status-${id}`)).toContainText("failed");
       } finally {
         await detailPage?.close();
         await page

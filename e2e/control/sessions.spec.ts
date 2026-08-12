@@ -251,6 +251,8 @@ test.describe("control plane sessions", () => {
         const expiredReason = page.getByTestId(`session-status-reason-${expiringId}`);
         await expect(expiredReason).toHaveText("Queue expired");
         await expect(page.getByTestId(`session-status-${expiringId}`)).toContainText("failed");
+        await page.getByTestId(`session-link-${expiringId}`).click();
+        await expect(page.getByTestId("session-detail-status-reason")).toHaveText("Queue expired");
       } finally {
         await removeHostRepo(request, repoId);
       }
