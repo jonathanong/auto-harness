@@ -20,6 +20,7 @@ type Subscription = {
   after?: string;
   status: string;
   replaying: boolean;
+  pending: LogRecord[];
 };
 
 export type ViewerWsHub = {
@@ -56,7 +57,9 @@ export function attachViewerWsHub(
   const publish = (record: LogRecord): void => {
     for (const [socket, requested] of subscriptions) {
       const subscription = requested.get(record.sessionId);
-      if (subscription) sendRecord(socket, subscription, record);
+      if (!subscription) continue;
+      if (subscription.replaying) subscription.pending.push(record);
+      else sendRecord(socket, subscription, record);
     }
   };
   const previousOnLogCommitted = plane.state.onLogCommitted;
@@ -80,6 +83,11 @@ export function attachViewerWsHub(
         if (records.length < TAIL_PAGE_SIZE) break;
       }
     } finally {
+      for (const record of subscription.pending
+        .splice(0)
+        .toSorted((a, b) => a.timestampSeq.localeCompare(b.timestampSeq))) {
+        sendRecord(socket, subscription, record);
+      }
       subscription.replaying = false;
     }
   };
@@ -155,6 +163,7 @@ export function attachViewerWsHub(
             repositoryId: session.repositoryId,
             status: session.status,
             replaying: false,
+            pending: [],
             ...(message.after ? { after: message.after } : {}),
           };
           requested.set(message.sessionId, subscription);

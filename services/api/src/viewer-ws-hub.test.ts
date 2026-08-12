@@ -235,6 +235,58 @@ describe("browser session log websocket", () => {
     await close(server);
   });
 
+  it("delivers replay records before live commits that arrive during the durable query", async () => {
+    const auth = authService();
+    const principal = await auth.createUser({
+      username: "viewer",
+      password: "viewer-password",
+      role: "read-only",
+    });
+    const plane = planeWithSessions();
+    const session = plane.state.sessions.get("session-a")!;
+    let releaseReplay!: () => void;
+    let markReplayStarted!: () => void;
+    const replayStarted = new Promise<void>((resolve) => (markReplayStarted = resolve));
+    const replayGate = new Promise<void>((resolve) => (releaseReplay = resolve));
+    plane.state.storage = {
+      getSession: async () => session,
+      queryLogs: async () => {
+        markReplayStarted();
+        await replayGate;
+        return [log(1)];
+      },
+    } as never;
+    const server = createServer();
+    const hub = attachViewerWsHub(server, plane, auth, { pollMs: 60_000 });
+    await listen(server);
+
+    const received = new Promise<string[]>((resolve, reject) => {
+      const records: string[] = [];
+      const ws = new WebSocket(wsUrl(server), {
+        headers: { cookie: issuedCookie(auth, principal) },
+      });
+      ws.on("open", () =>
+        ws.send(JSON.stringify({ type: "session:subscribe", sessionId: "session-a" })),
+      );
+      ws.on("message", (raw) => {
+        const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
+        if (message.type === "session:log") records.push(message.timestampSeq!);
+        if (message.type === "session:subscribed") {
+          ws.once("close", () => resolve(records));
+          ws.close();
+        }
+      });
+      ws.on("error", reject);
+    });
+    await replayStarted;
+    plane.state.onLogCommitted?.(log(2));
+    releaseReplay();
+
+    await expect(received).resolves.toEqual([log(1).timestampSeq, log(2).timestampSeq]);
+    hub.close();
+    await close(server);
+  });
+
   it("closes a subscription when its durable session disappears", async () => {
     const auth = authService();
     const principal = await auth.createUser({
