@@ -137,6 +137,36 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
           "remaining",
         );
+
+        await page.evaluate(
+          ({ sessionId, attemptId, worktreeId }) => {
+            const socket = (globalThis as typeof globalThis & { timeoutSocket?: WebSocket })
+              .timeoutSocket;
+            if (!socket) throw new Error("host socket missing");
+            socket.send(
+              JSON.stringify({
+                type: "session:status",
+                sessionId,
+                attemptId,
+                worktreeId,
+                status: "failed",
+                errorCode: "queue_expired",
+              }),
+            );
+          },
+          { sessionId: id, attemptId: assignment.attemptId, worktreeId: assignment.worktreeId },
+        );
+        await expect
+          .poll(async () => {
+            const current = await request.get(`${API}/api/v1/sessions/${id}`);
+            return ((await current.json()) as { status: string }).status;
+          })
+          .toBe("failed");
+        await detailPage.goto("/sessions");
+        await expect(detailPage.getByTestId(`session-status-reason-${id}`)).toHaveText(
+          "Queue expired",
+        );
+        await expect(detailPage.getByTestId(`session-status-${id}`)).toContainText("failed");
       } finally {
         await detailPage?.close();
         await page

@@ -179,6 +179,25 @@ test.describe("control plane sessions", () => {
         await expect(row.locator("strong")).toHaveCount(0);
         await promptToggle.click();
         await expect(promptText).toHaveText(`hello-${id}`);
+
+        const expiring = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+          data: {
+            repositoryId: repoId,
+            prompt: `expire-${id}`,
+            target: { commandId },
+            timeout: 30,
+            queueTtlSeconds: 1,
+            requiredLabels: ["no-matching-worktree"],
+          },
+        });
+        expect(expiring.ok()).toBe(true);
+        const { id: expiringId } = (await expiring.json()) as { id: string };
+        await page.waitForTimeout(1_100);
+        await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign");
+        await page.goto(`/sessions?q=${encodeURIComponent(expiringId)}`);
+        const expiredReason = page.getByTestId(`session-status-reason-${expiringId}`);
+        await expect(expiredReason).toHaveText("Queue expired");
+        await expect(page.getByTestId(`session-status-${expiringId}`)).toContainText("failed");
       } finally {
         await removeHostRepo(request, repoId);
       }
