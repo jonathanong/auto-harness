@@ -12,6 +12,7 @@ import { createSession, getSession, resumeSession } from "./control-plane-sessio
 import { isCreateSessionConflict } from "./db/plane-storage-sessions.ts";
 import { getSessionDurable as getSessionRecordDurable } from "./control-plane-durable-read-runtime.ts";
 import { refreshTargetCatalogDurable } from "./control-plane-durable-read-catalog.ts";
+import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 /** Durable REST create path: DynamoDB owns the concurrency-id compare-and-create. */
 export async function createSessionDurable(
@@ -27,7 +28,8 @@ export async function createSessionDurable(
   if (!prepared.ok) return prepared;
   let result;
   try {
-    result = await state.storage.createSession(buildSessionRecord(state, prepared));
+    const session = buildSessionRecord(state, prepared);
+    result = await state.storage.createSession(session, referenceMarkers(state.now(), session));
   } catch (err) {
     if (isCreateSessionConflict(err)) {
       return {
@@ -58,7 +60,10 @@ export async function resumeSessionDurable(
   // storage transaction below is the only concurrency authority.
   let result;
   try {
-    result = await state.storage.createSession(prepared.session);
+    result = await state.storage.createSession(
+      prepared.session,
+      referenceMarkers(state.now(), prepared.session),
+    );
   } catch (err) {
     if (isCreateSessionConflict(err)) {
       return { ok: false, error: "session creation conflicted; retry the request" };
@@ -113,7 +118,10 @@ export async function cloneSessionDurable(
     return { ok: true, session: toPublic(state, prepared.session), created: true };
   }
   try {
-    const result = await state.storage.createSession(prepared.session);
+    const result = await state.storage.createSession(
+      prepared.session,
+      referenceMarkers(state.now(), prepared.session),
+    );
     state.sessions.set(result.session.id, { ...result.session });
     // A clone never supplies a concurrency id, so a successful durable create
     // must always be a new session. Keep this guard in case a custom storage

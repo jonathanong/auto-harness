@@ -360,7 +360,9 @@ describe("control-plane native resume", () => {
       timeout: 30,
     });
     expect(created.ok).toBe(true);
-    expect(plane.deleteCommand("cmd").ok).toBe(true);
+    // This is an externally-corrupted catalog row, not a supported delete:
+    // delete guards intentionally reject removal while the session is queued.
+    plane.state.commands.delete("cmd");
     expect(plane.assignQueued()).toEqual([]);
   });
 });

@@ -22,6 +22,7 @@ import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
 import * as mainCheckout from "./plane-storage-main-checkout.ts";
+import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -39,8 +40,11 @@ export class DynamoPlaneStorageBase {
     return sessions.putSession(this.ctx, session);
   }
 
-  createSession(session: SessionRecord): Promise<sessions.CreateSessionResult> {
-    return sessions.createSession(this.ctx, session);
+  createSession(
+    session: SessionRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<sessions.CreateSessionResult> {
+    return sessions.createSession(this.ctx, session, markers);
   }
 
   releaseConcurrencyLock(concurrencyId: string, sessionId: string): Promise<void> {
@@ -51,8 +55,8 @@ export class DynamoPlaneStorageBase {
     return sessions.getSession(this.ctx, id, consistentRead);
   }
 
-  listAllSessions(): Promise<SessionRecord[]> {
-    return sessions.listAllSessions(this.ctx);
+  listAllSessions(consistentRead = false): Promise<SessionRecord[]> {
+    return sessions.listAllSessions(this.ctx, consistentRead);
   }
 
   async listSessionsByHost(hostId: string): Promise<SessionRecord[]> {
@@ -84,8 +88,8 @@ export class DynamoPlaneStorageBase {
     return sessions.getWorktree(this.ctx, id);
   }
 
-  listAllWorktrees(): Promise<WorktreeRecord[]> {
-    return sessions.listAllWorktrees(this.ctx);
+  listAllWorktrees(consistentRead = false): Promise<WorktreeRecord[]> {
+    return sessions.listAllWorktrees(this.ctx, consistentRead);
   }
 
   async listWorktreesByHost(hostId: string): Promise<WorktreeRecord[]> {
@@ -489,15 +493,31 @@ export class DynamoPlaneStorageBase {
     return catalog.listLogs(this.ctx, sessionId);
   }
 
-  putSchedule(rec: ScheduleRecord): Promise<void> {
-    return catalog.putSchedule(this.ctx, rec);
+  putSchedule(
+    rec: ScheduleRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putSchedule(this.ctx, rec, markers);
+  }
+
+  acquireDeletionMarker(key: string, owner: string, now: string): Promise<boolean> {
+    return deletionMarkers.acquireDeletionMarker(this.ctx, key, owner, now);
+  }
+
+  releaseDeletionMarker(key: string, owner: string): Promise<void> {
+    return deletionMarkers.releaseDeletionMarker(this.ctx, key, owner);
+  }
+
+  renewDeletionMarker(key: string, owner: string, now: string): Promise<boolean> {
+    return deletionMarkers.renewDeletionMarker(this.ctx, key, owner, now);
   }
 
   updateScheduleManagement(
     rec: ScheduleRecord,
     expectedNextRunAt: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
   ): Promise<ScheduleRecord | null> {
-    return catalog.updateScheduleManagement(this.ctx, rec, expectedNextRunAt);
+    return catalog.updateScheduleManagement(this.ctx, rec, expectedNextRunAt, markers);
   }
 
   getSchedule(id: string): Promise<ScheduleRecord | null> {
@@ -528,8 +548,11 @@ export class DynamoPlaneStorageBase {
     return catalog.listRepositories(this.ctx);
   }
 
-  deleteRepository(id: string): Promise<void> {
-    return catalog.deleteRepository(this.ctx, id);
+  deleteRepository(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<void> {
+    return catalog.deleteRepository(this.ctx, id, markers);
   }
 
   tryClaimSchedule(
@@ -579,8 +602,11 @@ export class DynamoPlaneStorageBase {
     return catalog.listArchives(this.ctx);
   }
 
-  putHostInventory(rec: HostInventoryRecord): Promise<void> {
-    return catalog.putHostInventory(this.ctx, rec);
+  putHostInventory(
+    rec: HostInventoryRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putHostInventory(this.ctx, rec, markers);
   }
 
   getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {

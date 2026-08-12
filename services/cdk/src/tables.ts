@@ -51,6 +51,7 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "ConcurrencyLocks",
     partitionKey: { name: "concurrencyId", type: "S" },
+    ttlAttribute: "ttl",
   },
   {
     name: "SessionLogs",

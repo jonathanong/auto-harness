@@ -288,7 +288,9 @@ Update a repository. **Admin only.**
 
 #### `DELETE /repositories/:id`
 
-Delete a repository. **Admin only.** Fails if there are active sessions for this repository.
+Delete a repository. **Admin only.** Deletion returns `409 CONFLICT` while a schedule,
+queued/running session, worktree, or host inventory still references it. The error includes the
+blocking `{ kind, id, status? }` dependencies; deletion never cascades.
 
 ---
 
@@ -774,7 +776,9 @@ Create a provider. **Does not** create its default command — the control-plane
 
 #### `GET /providers`, `GET /providers/:id`, `PATCH /providers/:id`, `DELETE /providers/:id`
 
-Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommandId: null` clears it). `DELETE` fails `409` while any Provider Account or Command still references this provider — detach/reassign or delete those first.
+Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommandId: null` clears it).
+`DELETE` fails `409` while an account, command, schedule, or queued/running session references the
+provider. The response identifies every live dependency; deletion never cascades.
 
 #### `POST /provider-accounts`
 
@@ -784,7 +788,7 @@ Standard CRUD. `PATCH` body: `{ "name"?, "defaultCommandId"? }` (`defaultCommand
 
 #### `GET /provider-accounts`, `GET /provider-accounts/:id`, `PATCH /provider-accounts/:id`, `DELETE /provider-accounts/:id`
 
-Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours), and responses include `usageLimitedUntil`, `lastUsageLimitedAt`, and `lastAssignedAt`. Deleting an account does **not** detach it from any host that still lists it — that attachment becomes an orphaned reference (soft, no cascade delete). `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
+Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000`, 5 hours), and responses include `usageLimitedUntil`, `lastUsageLimitedAt`, and `lastAssignedAt`. `DELETE` fails `409` while host inventory or a queued/running session references the account; deletion never cascades. `DELETE /provider-accounts/:id/usage-limit` clears an active cooldown and triggers scheduling.
 
 #### `POST /commands`
 
@@ -794,7 +798,7 @@ Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000
 
 #### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
 
-Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is any provider's `defaultCommandId`.
+Standard CRUD. `providerId` is a **soft** foreign key — the UI filters/suggests by it, but a mismatched value is never hard-blocked. `DELETE` fails `409` while the command is a provider default, inventory override, schedule target, or queued/running session target. The response identifies live dependencies; deletion never cascades.
 
 #### `GET /session-targets`
 

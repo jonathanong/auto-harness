@@ -90,6 +90,49 @@ describe("DynamoDB Local provider catalog storage", () => {
     expect(loser.getProviderAccount("acct-fence")).toEqual(durable);
   });
 
+  it("rejects a stale account delete after its deletion lease has been taken over", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    const storage = ctx.storage;
+    const acquiredAt = "2026-01-01T00:00:00.000Z";
+    const afterExpiry = "2026-01-01T00:00:31.000Z";
+    await storage.putProvider({
+      id: "prov-lease",
+      name: "lease",
+      defaultCommandId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    await storage.putProviderAccount({
+      id: "acct-lease",
+      providerId: "prov-lease",
+      label: "lease@example.com",
+      usageLimitCooldownSeconds: 60,
+      usageLimitedUntil: null,
+      lastUsageLimitedAt: null,
+      lastAssignedAt: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    expect(
+      await storage.acquireDeletionMarker("provider-account:acct-lease", "first", acquiredAt),
+    ).toBe(true);
+    expect(
+      await storage.acquireDeletionMarker("provider-account:acct-lease", "second", afterExpiry),
+    ).toBe(true);
+
+    expect(
+      await storage.deleteProviderAccount("acct-lease", [
+        { key: "provider-account:acct-lease", owner: "first", now: afterExpiry },
+      ]),
+    ).toBe(false);
+    expect(await storage.getProviderAccount("acct-lease")).not.toBeNull();
+    expect(
+      await storage.deleteProviderAccount("acct-lease", [
+        { key: "provider-account:acct-lease", owner: "second", now: afterExpiry },
+      ]),
+    ).toBe(true);
+  });
+
   it("keeps provider references valid while account creation races provider deletion", async () => {
     if (!ctx.available || !ctx.storage) return;
     const storage = ctx.storage;

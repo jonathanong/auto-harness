@@ -3,12 +3,10 @@ import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 import type { ProviderRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import {
-  getProviderDurable,
-  listCommandsDurable,
-  listProviderAccountsDurable,
-  listProvidersDurable,
-} from "./control-plane-durable-read-catalog.ts";
+import { listProvidersDurable } from "./control-plane-durable-read-catalog.ts";
+import { markersFor } from "./control-plane-delete-reference-markers.ts";
+
+export { deleteProvider, deleteProviderDurable } from "./control-plane-provider-delete.ts";
 
 function findProviderByName(
   state: ControlPlaneState,
@@ -73,7 +71,13 @@ export async function createProviderDurable(
   await listProvidersDurable(state);
   const result = prepareCreateProvider(state, input);
   if (!result.ok) return result;
-  await state.storage.putProvider({ ...result.provider });
+  await state.storage.putProvider(
+    { ...result.provider },
+    markersFor(state.now(), [
+      `provider:${result.provider.id}`,
+      ...(result.provider.defaultCommandId ? [`command:${result.provider.defaultCommandId}`] : []),
+    ]),
+  );
   state.providers.set(result.provider.id, result.provider);
   return { ok: true, provider: { ...result.provider } };
 }
@@ -139,76 +143,13 @@ export async function updateProviderDurable(
   await listProvidersDurable(state);
   const result = prepareUpdateProvider(state, id, patch);
   if (!result.ok) return result;
-  await state.storage.putProvider({ ...result.provider });
+  await state.storage.putProvider(
+    { ...result.provider },
+    markersFor(state.now(), [
+      `provider:${id}`,
+      ...(result.provider.defaultCommandId ? [`command:${result.provider.defaultCommandId}`] : []),
+    ]),
+  );
   state.providers.set(id, result.provider);
   return { ok: true, provider: { ...result.provider } };
-}
-
-export function deleteProvider(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.providers.has(id)) {
-    return { ok: false, error: "provider not found" };
-  }
-  for (const a of state.providerAccounts.values()) {
-    if (a.providerId === id) {
-      return { ok: false, error: "provider has attached accounts — remove them first" };
-    }
-  }
-  for (const c of state.commands.values()) {
-    if (c.providerId === id) {
-      return { ok: false, error: "provider has commands — remove or reassign them first" };
-    }
-  }
-  state.providers.delete(id);
-  if (state.storage) {
-    queueWrite(
-      state,
-      state.storage.deleteProvider(id).then(async (deleted) => {
-        if (deleted) return;
-        const authoritative = await state.storage?.getProvider(id);
-        if (authoritative) state.providers.set(id, authoritative);
-      }),
-    );
-  }
-  return { ok: true };
-}
-
-/** Delete durable state before dropping the cached provider. */
-export async function deleteProviderDurable(
-  state: ControlPlaneState,
-  id: string,
-): Promise<ReturnType<typeof deleteProvider>> {
-  if (!state.storage) return deleteProvider(state, id);
-  await Promise.all([
-    getProviderDurable(state, id),
-    listProviderAccountsDurable(state),
-    listCommandsDurable(state),
-  ]);
-  const result = canDeleteProvider(state, id);
-  if (!result.ok) return result;
-  await state.storage.deleteProvider(id);
-  state.providers.delete(id);
-  return { ok: true };
-}
-
-function canDeleteProvider(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.providers.has(id)) {
-    return { ok: false, error: "provider not found" };
-  }
-  for (const a of state.providerAccounts.values()) {
-    if (a.providerId === id) {
-      return { ok: false, error: "provider has attached accounts — remove them first" };
-    }
-  }
-  for (const c of state.commands.values()) {
-    if (c.providerId === id) {
-      return { ok: false, error: "provider has commands — remove or reassign them first" };
-    }
-  }
-  return { ok: true };
 }

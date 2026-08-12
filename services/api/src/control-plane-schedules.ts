@@ -1,5 +1,6 @@
 import {
   isActiveSessionStatus,
+  isReservedConcurrencyId,
   isValidScheduledBranchRef,
   isValidUtcTimestamp,
   nextCronOccurrence,
@@ -14,6 +15,7 @@ import {
   getScheduleDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 export {
   evaluateCron,
@@ -62,6 +64,9 @@ function preparePutSchedule(
   if (input.ref !== undefined && !isValidScheduledBranchRef(input.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
   }
+  if (input.concurrencyId !== undefined && isReservedConcurrencyId(input.concurrencyId.trim())) {
+    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
+  }
   if (input.nextRunAt !== undefined && !isValidUtcTimestamp(input.nextRunAt)) {
     return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
   }
@@ -103,7 +108,10 @@ export async function putScheduleDurable(
   await refreshTargetCatalogDurable(state);
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
-  await state.storage.putSchedule({ ...result.schedule });
+  await state.storage.putSchedule(
+    { ...result.schedule },
+    referenceMarkers(state.now(), result.schedule),
+  );
   state.schedules.set(result.schedule.id, result.schedule);
   return { ok: true, schedule: { ...result.schedule } };
 }
@@ -157,6 +165,9 @@ export function prepareUpdateSchedule(
   }
   if (patch.ref !== undefined && !isValidScheduledBranchRef(patch.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
+  }
+  if (patch.concurrencyId !== undefined && isReservedConcurrencyId(patch.concurrencyId.trim())) {
+    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
   const routing = validateTargetRouting({
     target: patch.target ?? existing.target,

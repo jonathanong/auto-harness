@@ -13,6 +13,12 @@ import {
   getProviderAccountDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import {
+  deleteConflict,
+  dependenciesForAccount,
+  refreshDeleteReferences,
+} from "./control-plane-delete-guards.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 
 export { clearProviderAccountUsageLimitDurable } from "./control-plane-provider-accounts.ts";
 
@@ -79,14 +85,23 @@ export async function deleteProviderAccountDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteProviderAccount>> {
   if (!state.storage) return deleteProviderAccount(state, id);
-  if (!(await getProviderAccountDurable(state, id))) {
-    return { ok: false, error: "provider account not found" };
-  }
-  if (!(await state.storage.deleteProviderAccount(id))) {
-    const authoritative = await state.storage.getProviderAccount(id);
-    if (authoritative) state.providerAccounts.set(id, authoritative);
-    return { ok: false, error: "provider account changed concurrently" };
-  }
-  state.providerAccounts.delete(id);
-  return { ok: true };
+  await getProviderAccountDurable(state, id);
+  if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
+  return withDeletionMarkers(state, [`provider-account:${id}`], async (owner) => {
+    const refs = await refreshDeleteReferences(state);
+    if (!state.providerAccounts.has(id)) return { ok: false, error: "provider account not found" };
+    const result = deleteConflict("provider account", dependenciesForAccount(refs, id));
+    if (!result.ok) return result;
+    if (
+      !(await state.storage!.deleteProviderAccount(id, [
+        { key: `provider-account:${id}`, owner, now: state.now() },
+      ]))
+    ) {
+      const authoritative = await state.storage!.getProviderAccount(id);
+      if (authoritative) state.providerAccounts.set(id, authoritative);
+      return { ok: false, error: "provider account changed concurrently", conflict: true };
+    }
+    state.providerAccounts.delete(id);
+    return { ok: true };
+  });
 }

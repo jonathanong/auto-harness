@@ -1,0 +1,157 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
+
+describe("catalog deletion markers", () => {
+  it("is a no-op without durable marker support", async () => {
+    const state = createControlPlaneState();
+    await expect(
+      withDeletionMarkers(state, ["repository:repo"], async () => ({ ok: true })),
+    ).resolves.toEqual({ ok: true });
+    state.storage = {} as never;
+    await expect(
+      withDeletionMarkers(state, ["repository:repo"], async () => ({ ok: true })),
+    ).resolves.toEqual({ ok: true });
+  });
+
+  it("releases acquired keys and returns a retryable conflict for a busy marker", async () => {
+    const released: string[] = [];
+    const state = createControlPlaneState({ now: () => "now" });
+    state.storage = {
+      acquireDeletionMarker: async (key: string) => key !== "repository:busy",
+      releaseDeletionMarker: async (key: string) => {
+        released.push(key);
+      },
+    } as never;
+    await expect(
+      withDeletionMarkers(state, ["repository:busy"], async () => ({ ok: true })),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+    await expect(
+      withDeletionMarkers(state, ["command:c", "repository:r", "command:c"], async () => ({
+        ok: true,
+      })),
+    ).resolves.toEqual({ ok: true });
+    expect(released).toEqual(["command:c", "repository:r"]);
+  });
+
+  it("releases a partial acquisition when a later sorted marker is busy", async () => {
+    const released: string[] = [];
+    const state = createControlPlaneState();
+    state.storage = {
+      acquireDeletionMarker: async (key: string) => key !== "repository:r",
+      releaseDeletionMarker: async (key: string) => {
+        released.push(key);
+      },
+    } as never;
+    await expect(
+      withDeletionMarkers(state, ["repository:r", "command:c"], async () => ({ ok: true })),
+    ).resolves.toMatchObject({ ok: false, conflict: true });
+    expect(released).toEqual(["command:c"]);
+  });
+
+  it("renews every owned marker until the operation completes", async () => {
+    vi.useFakeTimers();
+    try {
+      const renewed: string[] = [];
+      const owners = new Map<string, string>();
+      const released: Array<{ key: string; owner: string }> = [];
+      const state = createControlPlaneState();
+      state.storage = {
+        acquireDeletionMarker: async (key: string, owner: string) => {
+          owners.set(key, owner);
+          return true;
+        },
+        renewDeletionMarker: async (key: string) => {
+          renewed.push(key);
+          return true;
+        },
+        releaseDeletionMarker: async (key: string, owner: string) => {
+          released.push({ key, owner });
+        },
+      } as never;
+      let finish: (() => void) | undefined;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const operation = withDeletionMarkers(state, ["repository:r", "command:c"], async () => {
+        await done;
+        return { ok: true };
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(renewed).toEqual(["command:c", "repository:r"]);
+      finish!();
+      await expect(operation).resolves.toEqual({ ok: true });
+      expect(released.map(({ key }) => key)).toEqual(["command:c", "repository:r"]);
+      expect(released[0]?.owner).toBe(owners.get("command:c"));
+      expect(released[1]?.owner).toBe(owners.get("repository:r"));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("releases ownership when the guarded delete itself rejects", async () => {
+    const released: string[] = [];
+    const state = createControlPlaneState();
+    state.storage = {
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async (key: string) => void released.push(key),
+    } as never;
+    await expect(
+      withDeletionMarkers(state, ["repository:r", "command:c"], async () => {
+        throw new Error("delete failed");
+      }),
+    ).rejects.toThrow("delete failed");
+    expect(released).toEqual(["command:c", "repository:r"]);
+  });
+
+  it("reports a lost renewal lease and ignores best-effort release failures", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createControlPlaneState();
+      state.storage = {
+        acquireDeletionMarker: async () => true,
+        renewDeletionMarker: async () => false,
+        releaseDeletionMarker: async () => Promise.reject(new Error("release failed")),
+      } as never;
+      let finish: (() => void) | undefined;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const operation = withDeletionMarkers(state, ["command:c"], async () => {
+        await done;
+        return { ok: true };
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      finish!();
+      await expect(operation).resolves.toMatchObject({ ok: false, conflict: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("contains rejected renewal requests without hiding the completed delete", async () => {
+    vi.useFakeTimers();
+    try {
+      const state = createControlPlaneState();
+      state.storage = {
+        acquireDeletionMarker: async () => true,
+        renewDeletionMarker: async () => Promise.reject(new Error("renewal failed")),
+        releaseDeletionMarker: async () => {},
+      } as never;
+      let finish: (() => void) | undefined;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      const operation = withDeletionMarkers(state, ["command:c"], async () => {
+        await done;
+        return { ok: true };
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+      finish!();
+      await expect(operation).resolves.toMatchObject({ ok: false, conflict: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

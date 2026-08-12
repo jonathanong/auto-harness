@@ -218,6 +218,9 @@ describe("validateCreateSessionInput", () => {
 
   it("rejects bad concurrencyId and metadata", () => {
     expect(validateCreateSessionInput({ ...base, concurrencyId: "" }).ok).toBe(false);
+    expect(
+      validateCreateSessionInput({ ...base, concurrencyId: "catalog-delete:repository:repo" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
     expect(validateCreateSessionInput({ ...base, metadata: [] }).ok).toBe(false);
   });
 });

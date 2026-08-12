@@ -3,10 +3,7 @@ import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
-import {
-  getRepositoryDurable,
-  listRepositoriesDurable,
-} from "./control-plane-durable-read-catalog.ts";
+import { listRepositoriesDurable } from "./control-plane-durable-read-catalog.ts";
 
 function findRepositoryByName(
   state: ControlPlaneState,
@@ -20,6 +17,8 @@ function findRepositoryByName(
   }
   return undefined;
 }
+
+export { deleteRepository, deleteRepositoryDurable } from "./control-plane-repository-delete.ts";
 
 export function createRepository(
   state: ControlPlaneState,
@@ -189,30 +188,4 @@ export async function updateRepositoryDurable(
   await state.storage.putRepository({ ...result.repository });
   state.repositories.set(id, result.repository);
   return { ok: true, repository: { ...result.repository } };
-}
-
-export function deleteRepository(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
-  if (!state.repositories.has(id)) {
-    return { ok: false, error: "repository not found" };
-  }
-  state.repositories.delete(id);
-  if (state.storage) {
-    queueWrite(state, state.storage.deleteRepository(id));
-  }
-  return { ok: true };
-}
-
-/** Delete durable state before dropping the cached repository. */
-export async function deleteRepositoryDurable(
-  state: ControlPlaneState,
-  id: string,
-): Promise<ReturnType<typeof deleteRepository>> {
-  if (!state.storage) return deleteRepository(state, id);
-  if (!(await getRepositoryDurable(state, id))) return { ok: false, error: "repository not found" };
-  await state.storage.deleteRepository(id);
-  state.repositories.delete(id);
-  return { ok: true };
 }

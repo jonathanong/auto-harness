@@ -5,6 +5,12 @@ import {
   prepareCreateProviderAccount,
   prepareUpdateProviderAccount,
 } from "./control-plane-provider-accounts-prepare.ts";
+import {
+  deleteConflict,
+  dependenciesForAccount,
+  referencesFromState,
+  type DeleteResult,
+} from "./control-plane-delete-guards.ts";
 
 export function createProviderAccount(
   state: ControlPlaneState,
@@ -137,13 +143,15 @@ export async function clearProviderAccountUsageLimitDurable(
   return { ok: true, account: { ...account } };
 }
 
-export function deleteProviderAccount(
-  state: ControlPlaneState,
-  id: string,
-): { ok: true } | { ok: false; error: string } {
+export function deleteProviderAccount(state: ControlPlaneState, id: string): DeleteResult {
   if (!state.providerAccounts.has(id)) {
     return { ok: false, error: "provider account not found" };
   }
+  const result = deleteConflict(
+    "provider account",
+    dependenciesForAccount(referencesFromState(state), id),
+  );
+  if (!result.ok) return result;
   state.providerAccounts.delete(id);
   if (state.storage) {
     queueWrite(state, state.storage.deleteProviderAccount(id));

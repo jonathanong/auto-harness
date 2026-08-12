@@ -4,6 +4,7 @@ import {
   getScheduleDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 /** Persist a schedule update before replacing the cache entry. */
 export async function updateScheduleDurable(
@@ -22,6 +23,7 @@ export async function updateScheduleDurable(
     const saved = await state.storage.updateScheduleManagement(
       { ...result.schedule },
       existing.nextRunAt,
+      referenceMarkers(state.now(), result.schedule),
     );
     if (saved) {
       state.schedules.set(id, saved);

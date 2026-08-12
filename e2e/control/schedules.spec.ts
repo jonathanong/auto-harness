@@ -43,6 +43,7 @@ test.describe("control plane schedules", () => {
     await page.getByTestId("edit-schedule-cron").fill("30 * * * *");
     await page.getByTestId("edit-schedule-ref").fill("main");
     await page.getByTestId("edit-schedule-submit").click();
+    await expect(page.getByTestId("edit-schedule-submit")).toBeEnabled();
     await expect(page.getByTestId("edit-schedule-error")).toBeHidden();
     const detailScheduleId = detailUrl.split("/").pop()!;
     const updated = await request.get(`http://127.0.0.1:7430/api/v1/schedules/${detailScheduleId}`);

@@ -23,8 +23,11 @@ export type {
  * Conditional writes implement exclusive claim and agent register uniqueness.
  */
 export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
-  putProvider(rec: ProviderRecord): Promise<void> {
-    return catalog.putProvider(this.ctx, rec);
+  putProvider(
+    rec: ProviderRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putProvider(this.ctx, rec, markers);
   }
 
   getProvider(id: string): Promise<ProviderRecord | null> {
@@ -35,8 +38,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listProviders(this.ctx);
   }
 
-  deleteProvider(id: string): Promise<boolean> {
-    return catalog.deleteProvider(this.ctx, id);
+  deleteProvider(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return catalog.deleteProvider(this.ctx, id, markers);
   }
 
   putProviderAccount(rec: ProviderAccountRecord): Promise<boolean> {
@@ -75,12 +81,18 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return providerAccounts.listProviderAccounts(this.ctx);
   }
 
-  deleteProviderAccount(id: string): Promise<boolean> {
-    return providerAccounts.deleteProviderAccount(this.ctx, id);
+  deleteProviderAccount(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<boolean> {
+    return providerAccounts.deleteProviderAccount(this.ctx, id, markers);
   }
 
-  putCommand(rec: CommandRecord): Promise<void> {
-    return catalog.putCommand(this.ctx, rec);
+  putCommand(
+    rec: CommandRecord,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
+  ): Promise<void> {
+    return catalog.putCommand(this.ctx, rec, markers);
   }
 
   getCommand(id: string): Promise<CommandRecord | null> {
@@ -91,8 +103,11 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     return catalog.listCommands(this.ctx);
   }
 
-  deleteCommand(id: string): Promise<void> {
-    return catalog.deleteCommand(this.ctx, id);
+  deleteCommand(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<void> {
+    return catalog.deleteCommand(this.ctx, id, markers);
   }
 
   clearAll(): Promise<void> {

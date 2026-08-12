@@ -109,9 +109,15 @@ export async function handleCommandRoutes(ctx: RouteCtx): Promise<boolean> {
       try {
         const result = await plane.deleteCommandDurable(id);
         if (!result.ok) {
-          const status = plane.getCommand(id) ? 409 : 404;
+          const status = result.conflict ? 409 : 404;
           const code = status === 409 ? "CONFLICT" : "NOT_FOUND";
-          send(res, status, { error: { code, message: result.error } });
+          send(res, status, {
+            error: {
+              code,
+              message: result.error,
+              ...(result.dependencies ? { dependencies: result.dependencies } : {}),
+            },
+          });
           return true;
         }
         send(res, 204, null);

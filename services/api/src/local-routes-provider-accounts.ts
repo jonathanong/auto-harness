@@ -112,7 +112,13 @@ export async function handleProviderAccountRoutes(ctx: RouteCtx): Promise<boolea
       try {
         const result = await plane.deleteProviderAccountDurable(id);
         if (!result.ok) {
-          send(res, 404, { error: { code: "NOT_FOUND", message: result.error } });
+          send(res, result.conflict ? 409 : 404, {
+            error: {
+              code: result.conflict ? "CONFLICT" : "NOT_FOUND",
+              message: result.error,
+              ...(result.dependencies ? { dependencies: result.dependencies } : {}),
+            },
+          });
           return true;
         }
         send(res, 204, null);

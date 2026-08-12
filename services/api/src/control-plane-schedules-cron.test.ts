@@ -4,6 +4,31 @@ import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("schedule UTC cron validation", () => {
+  it("rejects an internal deletion lease as a schedule concurrency id", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    seedBaseCommand(plane);
+    expect(
+      plane.putSchedule({
+        repositoryId: "repo",
+        name: "reserved-lock",
+        target: { commandId: "cmd-base" },
+        cron: "* * * * *",
+        timeout: 1,
+        concurrencyId: "catalog-delete:repository:repo",
+      }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo",
+      name: "valid-lock",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 1,
+    });
+    expect(
+      plane.updateSchedule(schedule.id, { concurrencyId: "catalog-delete:command:cmd-base" }),
+    ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+  });
+
   it("rejects invalid server clocks, supplied cursors, and cron updates without changing a schedule", () => {
     let now = "2026-01-01T00:00:00.000Z";
     const plane = new ControlPlane({ now: () => now, scheduleIdFactory: () => "schedule-1" });

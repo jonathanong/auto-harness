@@ -8,13 +8,24 @@ import {
 
 import {
   isConditionalFailed,
+  isConditionalTransactionFailed,
   type CommandRecord,
   type PlaneStorageCtx,
   type ProviderRecord,
 } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
+import {
+  guardedWrite,
+  ownedDelete,
+  type DeletionMarker,
+  type OwnedDeletionMarker,
+} from "./plane-storage-deletion-markers.ts";
 
-export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Promise<void> {
+export async function putProvider(
+  ctx: PlaneStorageCtx,
+  rec: ProviderRecord,
+  markers?: readonly DeletionMarker[],
+): Promise<void> {
   // Older callers constructed provider records before timestamps became
   // mandatory. The document client drops undefined expression values, so
   // include timestamp clauses only when the caller supplied them.
@@ -35,15 +46,16 @@ export async function putProvider(ctx: PlaneStorageCtx, rec: ProviderRecord): Pr
     timestampUpdates.push("updatedAt = :updatedAt");
     values[":updatedAt"] = rec.updatedAt;
   }
-  await ctx.doc.send(
-    new UpdateCommand({
-      TableName: ctx.tables.providers,
-      Key: { id: rec.id },
-      UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
-      ExpressionAttributeNames: { "#name": "name" },
-      ExpressionAttributeValues: values,
-    }),
-  );
+  const update = {
+    TableName: ctx.tables.providers,
+    Key: { id: rec.id },
+    UpdateExpression: `SET #name = :name, accountCount = if_not_exists(accountCount, :zero)${timestampUpdates.length ? `, ${timestampUpdates.join(", ")}` : ""}`,
+    ExpressionAttributeNames: { "#name": "name" },
+    ExpressionAttributeValues: values,
+  };
+  await guardedWrite(ctx, markers, { Update: update }, async () => {
+    await ctx.doc.send(new UpdateCommand(update));
+  });
 }
 
 export async function getProvider(
@@ -60,8 +72,8 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
-        TableName: ctx.tables.providers,
         ConsistentRead: true,
+        TableName: ctx.tables.providers,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -71,26 +83,37 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
   return records;
 }
 
-export async function deleteProvider(ctx: PlaneStorageCtx, id: string): Promise<boolean> {
+export async function deleteProvider(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<boolean> {
   if (!(await ensureProviderAccountCount(ctx, id))) return false;
   try {
-    await ctx.doc.send(
-      new DeleteCommand({
-        TableName: ctx.tables.providers,
-        Key: { id },
-        ConditionExpression: "attribute_not_exists(accountCount) OR accountCount = :zero",
-        ExpressionAttributeValues: { ":zero": 0 },
-      }),
-    );
+    const deletion = {
+      TableName: ctx.tables.providers,
+      Key: { id },
+      ConditionExpression: "attribute_not_exists(accountCount) OR accountCount = :zero",
+      ExpressionAttributeValues: { ":zero": 0 },
+    };
+    if (markers?.length) await ownedDelete(ctx, markers, { Delete: deletion });
+    else await ctx.doc.send(new DeleteCommand(deletion));
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) return false;
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }
 
-export async function putCommand(ctx: PlaneStorageCtx, rec: CommandRecord): Promise<void> {
-  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.commands, Item: { ...rec } }));
+export async function putCommand(
+  ctx: PlaneStorageCtx,
+  rec: CommandRecord,
+  markers?: readonly DeletionMarker[],
+): Promise<void> {
+  const write = { Put: { TableName: ctx.tables.commands, Item: { ...rec } } };
+  await guardedWrite(ctx, markers, write, async () => {
+    await ctx.doc.send(new PutCommand(write.Put));
+  });
 }
 
 export async function getCommand(ctx: PlaneStorageCtx, id: string): Promise<CommandRecord | null> {
@@ -104,8 +127,8 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
-        TableName: ctx.tables.commands,
         ConsistentRead: true,
+        TableName: ctx.tables.commands,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -115,6 +138,12 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
   return records;
 }
 
-export async function deleteCommand(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.commands, Key: { id } }));
+export async function deleteCommand(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<void> {
+  const write = { Delete: { TableName: ctx.tables.commands, Key: { id } } };
+  if (markers?.length) return ownedDelete(ctx, markers, write);
+  await ctx.doc.send(new DeleteCommand(write.Delete));
 }

@@ -20,6 +20,14 @@ import {
   type RepositoryRecord,
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
+import {
+  guardedWrite,
+  markerConditions,
+  ownedDelete,
+  withMarkerTable,
+  type DeletionMarker,
+  type OwnedDeletionMarker,
+} from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
@@ -94,13 +102,15 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
   return records;
 }
 
-export async function putSchedule(ctx: PlaneStorageCtx, rec: ScheduleRecord): Promise<void> {
-  await ctx.doc.send(
-    new PutCommand({
-      TableName: ctx.tables.schedules,
-      Item: { ...rec },
-    }),
-  );
+export async function putSchedule(
+  ctx: PlaneStorageCtx,
+  rec: ScheduleRecord,
+  markers?: readonly DeletionMarker[],
+): Promise<void> {
+  const write = { Put: { TableName: ctx.tables.schedules, Item: { ...rec } } };
+  await guardedWrite(ctx, markers, write, async () => {
+    await ctx.doc.send(new PutCommand(write.Put));
+  });
 }
 
 /**
@@ -113,6 +123,7 @@ export async function updateScheduleManagement(
   ctx: PlaneStorageCtx,
   rec: ScheduleRecord,
   expectedNextRunAt: string,
+  markers?: readonly DeletionMarker[],
 ): Promise<ScheduleRecord | null> {
   try {
     const set = [
@@ -133,35 +144,44 @@ export async function updateScheduleManagement(
     else set.push("#ref = :ref");
     if (rec.concurrencyId === undefined) remove.push("concurrencyId");
     else set.push("concurrencyId = :concurrencyId");
-    const res = await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.schedules,
-        Key: { id: rec.id },
-        UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
-        ConditionExpression: "attribute_exists(id) AND nextRunAt = :expectedNextRunAt",
-        ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
-        ExpressionAttributeValues: {
-          ":repositoryId": rec.repositoryId,
-          ":name": rec.name,
-          ":target": rec.target,
-          ":fallbacks": rec.fallbacks,
-          ":targetLabels": rec.targetLabels,
-          ":cron": rec.cron,
-          ":enabled": rec.enabled,
-          ":timeout": rec.timeout,
-          ":queueTtlSeconds": rec.queueTtlSeconds,
-          ":nextRunAt": rec.nextRunAt,
-          ":expectedNextRunAt": expectedNextRunAt,
-          ":createdAt": rec.createdAt,
-          ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
-          ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
-        },
-        ReturnValues: "ALL_NEW",
-      }),
-    );
+    const update = {
+      TableName: ctx.tables.schedules,
+      Key: { id: rec.id },
+      UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
+      ConditionExpression: "attribute_exists(id) AND nextRunAt = :expectedNextRunAt",
+      ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
+      ExpressionAttributeValues: {
+        ":repositoryId": rec.repositoryId,
+        ":name": rec.name,
+        ":target": rec.target,
+        ":fallbacks": rec.fallbacks,
+        ":targetLabels": rec.targetLabels,
+        ":cron": rec.cron,
+        ":enabled": rec.enabled,
+        ":timeout": rec.timeout,
+        ":queueTtlSeconds": rec.queueTtlSeconds,
+        ":nextRunAt": rec.nextRunAt,
+        ":expectedNextRunAt": expectedNextRunAt,
+        ":createdAt": rec.createdAt,
+        ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
+        ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
+      },
+    };
+    if (markers?.length) {
+      await ctx.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            ...withMarkerTable(ctx, markerConditions([...markers])),
+            { Update: update },
+          ],
+        }),
+      );
+      return getSchedule(ctx, rec.id, true);
+    }
+    const res = await ctx.doc.send(new UpdateCommand({ ...update, ReturnValues: "ALL_NEW" }));
     return res.Attributes ? (res.Attributes as ScheduleRecord) : null;
   } catch (err) {
-    if (isConditionalFailed(err)) return null;
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
     throw err;
   }
 }
@@ -169,8 +189,15 @@ export async function updateScheduleManagement(
 export async function getSchedule(
   ctx: PlaneStorageCtx,
   id: string,
+  consistentRead = false,
 ): Promise<ScheduleRecord | null> {
-  const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.schedules, Key: { id } }));
+  const res = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.schedules,
+      Key: { id },
+      ...(consistentRead ? { ConsistentRead: true } : {}),
+    }),
+  );
   return (res.Item as ScheduleRecord | undefined) ?? null;
 }
 
@@ -180,6 +207,7 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.schedules,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -239,6 +267,7 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.repositories,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -249,8 +278,14 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   return records;
 }
 
-export async function deleteRepository(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.repositories, Key: { id } }));
+export async function deleteRepository(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<void> {
+  const write = { Delete: { TableName: ctx.tables.repositories, Key: { id } } };
+  if (markers?.length) return ownedDelete(ctx, markers, write);
+  await ctx.doc.send(new DeleteCommand(write.Delete));
 }
 
 /** Conditional nextRunAt advance (Invariant 4). */
@@ -432,6 +467,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.archives,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
@@ -445,13 +481,12 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
 export async function putHostInventory(
   ctx: PlaneStorageCtx,
   rec: HostInventoryRecord,
+  markers?: readonly DeletionMarker[],
 ): Promise<void> {
-  await ctx.doc.send(
-    new PutCommand({
-      TableName: ctx.tables.hostInventories,
-      Item: { ...rec },
-    }),
-  );
+  const write = { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } };
+  await guardedWrite(ctx, markers, write, async () => {
+    await ctx.doc.send(new PutCommand(write.Put));
+  });
 }
 
 export async function getHostInventory(
@@ -470,6 +505,7 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
+        ConsistentRead: true,
         TableName: ctx.tables.hostInventories,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
