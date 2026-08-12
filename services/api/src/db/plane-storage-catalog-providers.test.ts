@@ -1,10 +1,39 @@
-import { GetCommand, TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { deleteProvider } from "./plane-storage-catalog-providers.ts";
+import { deleteProvider, putProvider } from "./plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("provider catalog deletion storage", () => {
+  it("stores configured usage rates and removes them when omitted", async () => {
+    const commands: UpdateCommand[] = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(UpdateCommand);
+          commands.push(command as UpdateCommand);
+          return {};
+        },
+      } as never,
+      tables: { providers: "Providers" } as never,
+    };
+
+    await putProvider(ctx, {
+      id: "provider",
+      name: "Provider",
+      usageRates: { inputUsdPerMillion: "1.25" },
+    });
+    await putProvider(ctx, { id: "provider", name: "Provider" });
+
+    expect(commands[0]?.input).toMatchObject({
+      UpdateExpression: expect.stringContaining("usageRates = :usageRates"),
+      ExpressionAttributeValues: {
+        ":usageRates": { inputUsdPerMillion: "1.25" },
+      },
+    });
+    expect(commands[1]?.input.UpdateExpression).toContain("REMOVE usageRates");
+  });
+
   it("turns a stale owned-deletion transaction into a retryable false result", async () => {
     const ctx: PlaneStorageCtx = {
       doc: {

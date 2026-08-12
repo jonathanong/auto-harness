@@ -13,12 +13,20 @@ describe("ControlPlane provider CRUD", () => {
     expect(plane.createProvider({ name: "" }).ok).toBe(false);
     expect(plane.createProvider({ name: "Claude" }).ok).toBe(false); // not a slug
 
-    const claude = plane.createProvider({ name: "claude" });
+    const claude = plane.createProvider({
+      name: "claude",
+      usageRates: { currency: "USD", inputTokenMicros: "2" },
+    });
     expect(claude.ok).toBe(true);
     if (!claude.ok) {
       throw new Error("unreachable");
     }
-    expect(claude.provider).toMatchObject({ id: "prov-1", name: "claude", defaultCommandId: null });
+    expect(claude.provider).toMatchObject({
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: null,
+      usageRates: { currency: "USD", inputTokenMicros: "2" },
+    });
 
     expect(plane.createProvider({ name: "claude" }).ok).toBe(false); // duplicate name
     expect(plane.createProvider({ id: "prov-1", name: "codex" }).ok).toBe(false); // duplicate id
@@ -40,6 +48,9 @@ describe("ControlPlane provider CRUD", () => {
     if (updated.ok) {
       expect(updated.provider).toMatchObject({ name: "claude2", defaultCommandId: "cmd-2" });
     }
+    expect(plane.updateProvider("prov-1", { usageRates: { currency: "usd" } }).ok).toBe(false);
+    expect(plane.updateProvider("prov-1", { usageRates: null }).ok).toBe(true);
+    expect(plane.getProvider("prov-1")).not.toHaveProperty("usageRates");
 
     expect(plane.deleteProvider("missing").ok).toBe(false);
     expect(plane.deleteProvider("prov-1").ok).toBe(true);

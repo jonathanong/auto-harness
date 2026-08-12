@@ -1,5 +1,14 @@
 # Cost Breakdown
 
+## Session usage reporting
+
+Auto Harness is not a billing system. It can retain provider-neutral usage emitted by a CLI and
+display operator-supplied rates as integer micros for operational reporting. It does not fetch
+vendor pricing, infer usage from prompts/logs, or charge accounts. Reports are attributed to the
+session, repository, provider, Provider Account, and Command and are available through scoped API
+queries. Cost values remain strings to avoid floating-point rounding; mixed currencies are grouped
+separately.
+
 ## Why cost looks like this
 
 Auto Harness is built to run coding agents on **vendor subscription plans** (ChatGPT/Codex Plus–style seats, Claude Pro/Team CLI access, etc.)—**not** as a first-class **API / pay-per-token** agent platform.

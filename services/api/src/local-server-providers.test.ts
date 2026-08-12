@@ -24,9 +24,17 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     const prov = await invoke("POST", "/api/v1/providers", {
       name: "claude",
       defaultCommandId: null,
+      usageRates: { currency: "USD", inputTokenMicros: "2" },
     });
     expect(prov.status).toBe(201);
-    expect(prov.json).toMatchObject({ id: "prov-1", name: "claude" });
+    expect(prov.json).toMatchObject({
+      id: "prov-1",
+      name: "claude",
+      usageRates: { currency: "USD", inputTokenMicros: "2" },
+    });
+    expect(
+      (await invoke("POST", "/api/v1/providers", { name: "invalid-rate", usageRates: {} })).status,
+    ).toBe(400);
     expect((await invoke("GET", "/api/v1/providers")).json).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ id: "prov-1" })]),
     });
@@ -37,6 +45,16 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     expect(
       (await invoke("PUT", "/api/v1/providers/prov-1", { name: "claude2" })).json,
     ).toMatchObject({ name: "claude2" });
+    expect(
+      (
+        await invoke("PATCH", "/api/v1/providers/prov-1", {
+          usageRates: { currency: "USD", outputTokenMicros: "3" },
+        })
+      ).json,
+    ).toMatchObject({ usageRates: { currency: "USD", outputTokenMicros: "3" } });
+    expect(
+      (await invoke("PATCH", "/api/v1/providers/prov-1", { usageRates: null })).json,
+    ).not.toHaveProperty("usageRates");
     expect((await invoke("PUT", "/api/v1/providers/missing", { name: "x" })).status).toBe(404);
 
     expect((await invoke("POST", "/api/v1/provider-accounts", {})).status).toBe(400);

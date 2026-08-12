@@ -1,3 +1,5 @@
+import type { UsageRates } from "./usage.ts";
+
 /** Global catalogs: AI CLI vendors, accounts of them, and named command invocations. */
 
 export type Provider = {
@@ -8,6 +10,8 @@ export type Provider = {
   defaultCommandId: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Optional operator-supplied rates; Auto Harness never fetches vendor prices. */
+  usageRates?: UsageRates;
 };
 
 export type ProviderAccount = {

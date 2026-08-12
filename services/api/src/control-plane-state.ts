@@ -30,6 +30,7 @@ import type {
   WebhookDelivery,
 } from "./control-plane-types.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
+import type { UsageRecord } from "./usage.ts";
 
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
@@ -55,6 +56,7 @@ export type ControlPlaneState = {
   commands: Map<string, CommandRecord>;
   /** Append-only audit records hydrated for local/in-memory reads. */
   auditLogs: Map<string, AuditLogRecord>;
+  usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveObject>;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
@@ -107,6 +109,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     providerAccounts: new Map(),
     commands: new Map(),
     auditLogs: new Map(),
+    usageRecords: new Map(),
     archives: new Map(),
     webhookDeliveries: [],
     pendingAcks: new Map(),

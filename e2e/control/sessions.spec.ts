@@ -1,3 +1,4 @@
+/* eslint-disable max-lines, no-shadow -- the end-to-end WebSocket reporting flow stays in one auditable scenario. */
 import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
@@ -126,6 +127,198 @@ test.describe("control plane sessions", () => {
         await removeHostRepo(request, repoId);
       }
     });
+  });
+
+  test("session detail reports CLI usage and configured cost", async ({ page, request }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const hostId = `pw-usage-host-${suffix}`;
+    const repoId = `pw-usage-repo-${suffix}`;
+    const worktreeId = `pw-usage-worktree-${suffix}`;
+    const providerName = `pw-usage-provider-${suffix}`;
+    let providerId: string | undefined;
+    let accountId: string | undefined;
+    let commandId: string | undefined;
+
+    try {
+      const provider = await request.post("http://127.0.0.1:7430/api/v1/providers", {
+        data: {
+          name: providerName,
+          usageRates: { currency: "USD", inputTokenMicros: "2" },
+        },
+      });
+      expect(provider.ok()).toBe(true);
+      providerId = ((await provider.json()) as { id: string }).id;
+
+      const account = await request.post("http://127.0.0.1:7430/api/v1/provider-accounts", {
+        data: { providerId, label: `${providerName}@example.com` },
+      });
+      expect(account.ok()).toBe(true);
+      accountId = ((await account.json()) as { id: string }).id;
+
+      const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+        data: { name: `${providerName}-command`, argv: ["echo"], providerId },
+      });
+      expect(command.ok()).toBe(true);
+      commandId = ((await command.json()) as { id: string }).id;
+
+      const inventory = await request.put(
+        `http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`,
+        {
+          data: {
+            repositories: [
+              {
+                id: repoId,
+                path: "/tmp/pw-usage",
+                defaultBranch: "main",
+                worktrees: [
+                  {
+                    id: worktreeId,
+                    name: worktreeId,
+                    path: "/tmp/pw-usage/worktree",
+                    labels: [],
+                  },
+                ],
+              },
+            ],
+            providerAccounts: [{ providerAccountId: accountId }],
+            commandProfiles: {},
+          },
+        },
+      );
+      expect(inventory.ok()).toBe(true);
+
+      // Connect from the control-plane origin (rather than an opaque blank-page
+      // origin) to exercise the same browser WebSocket policy as the real UI.
+      await page.goto("/sessions");
+      await page.evaluate(
+        ({ hostId, repoId, worktreeId }) =>
+          new Promise<void>((resolve, reject) => {
+            const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+            const timeout = setTimeout(
+              () => reject(new Error("host registration timed out")),
+              10_000,
+            );
+            socket.addEventListener("message", (event) => {
+              const message = JSON.parse(String(event.data)) as { type?: string; message?: string };
+              if (message.type === "host:registered") {
+                clearTimeout(timeout);
+                (globalThis as typeof globalThis & { usageSocket?: WebSocket }).usageSocket =
+                  socket;
+                resolve();
+              }
+              if (message.type === "error") {
+                clearTimeout(timeout);
+                reject(new Error(message.message));
+              }
+            });
+            socket.addEventListener("error", () => {
+              clearTimeout(timeout);
+              reject(new Error("host WebSocket failed"));
+            });
+            socket.addEventListener("open", () => {
+              socket.send(
+                JSON.stringify({
+                  type: "host:register",
+                  hostId,
+                  worktrees: [
+                    {
+                      id: worktreeId,
+                      name: worktreeId,
+                      repositoryId: repoId,
+                      path: "/tmp/pw-usage/worktree",
+                      labels: [],
+                    },
+                  ],
+                  commandProfiles: [],
+                }),
+              );
+            });
+          }),
+        { hostId, repoId, worktreeId },
+      );
+
+      const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+        data: { repositoryId: repoId, prompt: "report usage", target: { commandId }, timeout: 30 },
+      });
+      expect(created.status()).toBe(201);
+      const sessionId = ((await created.json()) as { id: string }).id;
+      expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+
+      const assigned = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+      expect(assigned.ok()).toBe(true);
+      const session = (await assigned.json()) as { attemptId: string; worktreeId: string };
+      await page.evaluate(
+        ({ sessionId, attemptId, worktreeId }) => {
+          const socket = (globalThis as typeof globalThis & { usageSocket?: WebSocket })
+            .usageSocket;
+          if (!socket) throw new Error("host socket missing");
+          socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+          socket.send(
+            JSON.stringify({
+              type: "session:usage",
+              sessionId,
+              attemptId,
+              worktreeId,
+              usage: {
+                kind: "delta",
+                sequence: 1,
+                inputTokens: "12",
+                source: "cli",
+                observedAt: "2026-01-01T00:00:00.000Z",
+              },
+            }),
+          );
+          socket.send(
+            JSON.stringify({
+              type: "session:status",
+              sessionId,
+              attemptId,
+              worktreeId,
+              status: "completed",
+            }),
+          );
+        },
+        { sessionId, attemptId: session.attemptId, worktreeId: session.worktreeId },
+      );
+
+      await expect
+        .poll(async () => {
+          const usage = await request.get(
+            `http://127.0.0.1:7430/api/v1/sessions/${sessionId}/usage`,
+          );
+          return ((await usage.json()) as { aggregate: { inputTokens: string } }).aggregate
+            .inputTokens;
+        })
+        .toBe("12");
+
+      await page.goto(`/sessions/${sessionId}`);
+      await expect(page.getByTestId("session-usage-summary")).toBeVisible();
+      await expect(page.getByTestId("session-usage-input")).toHaveText("12");
+      await expect(page.getByTestId("session-usage-output")).toHaveText("0");
+      await expect(page.getByTestId("session-usage-total")).toHaveText("0");
+      await expect(page.getByTestId("session-usage-cost")).toHaveText("24 USD micros");
+    } finally {
+      await page
+        .evaluate(() => {
+          (globalThis as typeof globalThis & { usageSocket?: WebSocket }).usageSocket?.close();
+        })
+        .catch(() => undefined);
+      await request
+        .delete(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`)
+        .catch(() => undefined);
+      if (commandId)
+        await request
+          .delete(`http://127.0.0.1:7430/api/v1/commands/${commandId}`)
+          .catch(() => undefined);
+      if (accountId)
+        await request
+          .delete(`http://127.0.0.1:7430/api/v1/provider-accounts/${accountId}`)
+          .catch(() => undefined);
+      if (providerId)
+        await request
+          .delete(`http://127.0.0.1:7430/api/v1/providers/${providerId}`)
+          .catch(() => undefined);
+    }
   });
 
   test("filters sessions by exact concurrency ID", async ({ page }) => {

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 
 import { createChildEnv } from "./child-env.ts";
+import type { SessionUsage } from "@auto-harness/shared";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
 const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
@@ -41,6 +42,8 @@ export type ProcessResult = {
   timedOut: boolean;
   cancelled?: boolean;
   signal: NodeJS.Signals | null;
+  /** Supplied by a provider-aware CLI adapter; never inferred from output. */
+  usage?: SessionUsage;
 };
 
 /**

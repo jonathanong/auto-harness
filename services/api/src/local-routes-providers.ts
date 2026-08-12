@@ -1,5 +1,7 @@
+/* eslint-disable max-lines */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { writeRouteAudit } from "./local-audit.ts";
+import { validateUsageRates } from "@auto-harness/shared";
 
 function providerUpdateError(error: string): { status: number; code: string } {
   if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
@@ -29,11 +31,27 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
       send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
       return true;
     }
+    if (body.usageRates !== undefined && !validateUsageRates(body.usageRates)) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "provider:create",
+          resourceType: "provider",
+          resourceId: "new",
+          outcome: "failed",
+        }))
+      )
+        return true;
+      send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid usageRates" } });
+      return true;
+    }
     try {
       const result = await plane.createProviderDurable({
         name: String(body.name ?? ""),
         ...(typeof body.defaultCommandId === "string" || body.defaultCommandId === null
           ? { defaultCommandId: body.defaultCommandId }
+          : {}),
+        ...(body.usageRates !== undefined && validateUsageRates(body.usageRates)
+          ? { usageRates: body.usageRates }
           : {}),
       });
       if (!result.ok) {
@@ -97,11 +115,31 @@ export async function handleProviderRoutes(ctx: RouteCtx): Promise<boolean> {
         send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
         return true;
       }
+      if (
+        body.usageRates !== undefined &&
+        body.usageRates !== null &&
+        !validateUsageRates(body.usageRates)
+      ) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: "provider:update",
+            resourceType: "provider",
+            resourceId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid usageRates" } });
+        return true;
+      }
       try {
         const result = await plane.updateProviderDurable(id, {
           ...(typeof body.name === "string" ? { name: body.name } : {}),
           ...(typeof body.defaultCommandId === "string" || body.defaultCommandId === null
             ? { defaultCommandId: body.defaultCommandId }
+            : {}),
+          ...(body.usageRates === null || validateUsageRates(body.usageRates)
+            ? { usageRates: body.usageRates }
             : {}),
         });
         if (!result.ok) {
