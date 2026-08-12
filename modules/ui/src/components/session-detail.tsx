@@ -7,6 +7,7 @@ import { StatusBadge } from "./status-badge.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
+import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
 
 export type SessionSummary = {
   id: string;
@@ -166,10 +167,7 @@ export function SessionDetail({
                 {s.concurrencyId ?? "—"}
               </dd>
             </div>
-            <div>
-              <dt className="text-xs uppercase text-muted-foreground">Timeout</dt>
-              <dd className="text-sm">{s.timeout != null ? `${s.timeout}s` : "—"}</dd>
-            </div>
+            <SessionTimeoutDetail status={s.status} startedAt={s.startedAt} timeout={s.timeout} />
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Created</dt>
               <dd className="text-sm">{s.createdAt ?? "—"}</dd>

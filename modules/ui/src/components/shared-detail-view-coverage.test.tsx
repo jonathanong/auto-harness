@@ -120,7 +120,7 @@ describe("shared detail views", () => {
     expect(plain).toContain("repo/b");
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
-    expect(plain).toContain('Timeout</dt><dd class="text-sm">—');
+    expect(plain).toContain('Timeout</dt><dd class="text-sm" data-pw="session-detail-timeout">—');
     const absent = render(
       <SessionDetail session={{ id: "session/c", status: "queued" }} breadcrumbs={[]} />,
     );

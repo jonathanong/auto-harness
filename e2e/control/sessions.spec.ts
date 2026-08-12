@@ -419,6 +419,33 @@ test.describe("control plane sessions", () => {
             .usageSocket;
           if (!socket) throw new Error("host socket missing");
           socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+        },
+        { sessionId, attemptId: session.attemptId, worktreeId: session.worktreeId },
+      );
+      await expect
+        .poll(async () => {
+          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          return ((await response.json()) as { status: string }).status;
+        })
+        .toBe("running");
+
+      // Keep the host socket alive in this page while a second production page verifies the timer.
+      const detailPage = await page.context().newPage();
+      await detailPage.goto(`/sessions/${sessionId}`);
+      const timeoutProgress = detailPage.getByTestId("session-timeout-progress");
+      await expect(timeoutProgress).toBeVisible();
+      await expect(timeoutProgress.getByRole("progressbar")).toHaveAttribute(
+        "aria-valuetext",
+        / remaining$/,
+      );
+      await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText("remaining");
+      await detailPage.close();
+
+      await page.evaluate(
+        ({ sessionId, attemptId, worktreeId }) => {
+          const socket = (globalThis as typeof globalThis & { usageSocket?: WebSocket })
+            .usageSocket;
+          if (!socket) throw new Error("host socket missing");
           socket.send(
             JSON.stringify({
               type: "session:usage",
