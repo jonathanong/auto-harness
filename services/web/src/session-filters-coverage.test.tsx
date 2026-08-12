@@ -59,6 +59,9 @@ describe("SessionFilters", () => {
     const status = view.container.querySelector(
       '[data-pw="session-filter-status"]',
     ) as HTMLSelectElement;
+    const sort = view.container.querySelector(
+      '[data-pw="session-filter-sort"]',
+    ) as HTMLSelectElement;
     const q = view.container.querySelector('[data-pw="session-filter-q"]') as HTMLInputElement;
     const initialConcurrency = view.container.querySelector(
       '[data-pw="session-filter-concurrency-id"]',
@@ -66,6 +69,14 @@ describe("SessionFilters", () => {
     expect(status.value).toBe("running");
     expect(q.value).toBe("needle");
     expect(initialConcurrency.value).toBe("old");
+
+    act(() => {
+      sort.value = "priority_desc";
+      sort.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(router.push).toHaveBeenLastCalledWith(
+      "/runs?status=running&q=needle&concurrencyId=old&sort=priority_desc",
+    );
 
     act(() => {
       status.value = "failed";
