@@ -33,6 +33,12 @@ export default defineConfig({
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx",
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",
         "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
+        "services/web/src/app/commands/page.tsx",
+        "services/web/src/app/commands/*/page.tsx",
+        "services/web/src/app/providers/page.tsx",
+        "services/web/src/app/providers/*/page.tsx",
+        "services/web/src/app/repositories/page.tsx",
+        "services/web/src/app/repositories/*/page.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -66,9 +72,8 @@ export default defineConfig({
         "**/db/plane-storage-sessions.ts",
         "**/db/local-bootstrap.ts",
         "**/create-plane.ts",
-        // The control-plane app router remains e2e-only. This host-pane route
-        // tranche is covered directly; its remaining app routes stay e2e-only.
-        "**/services/web/src/app/**",
+        // Only the explicitly included control catalog and host-pane routes
+        // above enter this coverage tranche; remaining app routes stay e2e-only.
         "**/services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
         "**/services/host-pane/src/app/sessions/page.tsx",
         "**/services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
@@ -189,6 +194,24 @@ export default defineConfig({
         "services/host-pane/src/app/repositories/page.tsx": { 100: true },
         "services/host-pane/src/app/settings/page.tsx": { 100: true },
         "services/host-pane/src/app/api/browse/route.ts": { 100: true },
+        "services/web/src/app/commands/**/page.tsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
+        "services/web/src/app/providers/**/page.tsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
+        "services/web/src/app/repositories/**/page.tsx": {
+          lines: 100,
+          branches: 100,
+          functions: 100,
+          statements: 100,
+        },
       },
       reporter: ["text", "lcov"],
     },
