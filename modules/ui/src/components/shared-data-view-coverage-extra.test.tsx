@@ -90,6 +90,36 @@ describe("shared sessions table and tabs", () => {
     );
     expect(render(<SessionsTable items={[{ id: "dash", status: "unknown" }]} />)).toContain("—");
 
+    const priorityDescending = render(
+      <SessionsTable
+        items={[]}
+        sort="priority_desc"
+        prioritySortHref="/sessions?sort=priority_asc"
+      />,
+    );
+    expect(priorityDescending).toContain('aria-sort="descending"');
+    expect(priorityDescending).toContain('href="/sessions?sort=priority_asc"');
+    expect(priorityDescending).toContain('aria-label="Sort by priority, low to high"');
+    expect(priorityDescending).toContain('data-pw="session-sort-priority"');
+    expect(priorityDescending).toContain("↓");
+
+    const priorityAscending = render(
+      <SessionsTable
+        items={[]}
+        sort="priority_asc"
+        prioritySortHref="/sessions?sort=priority_desc"
+      />,
+    );
+    expect(priorityAscending).toContain('aria-sort="ascending"');
+    expect(priorityAscending).toContain('aria-label="Sort by priority, high to low"');
+    expect(priorityAscending).toContain("↑");
+
+    const latest = render(
+      <SessionsTable items={[]} sort="latest" prioritySortHref="/sessions?sort=priority_desc" />,
+    );
+    expect(latest).not.toContain("aria-sort");
+    expect(latest).toContain("↕");
+
     const searchable = [
       {
         id: "searchable",

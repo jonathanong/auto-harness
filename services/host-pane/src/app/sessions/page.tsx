@@ -52,6 +52,14 @@ export default async function SessionsPage({
     ? sessionListHref({ ...filters, cursor: nextCursor }, "/sessions")
     : null;
   const prevHref = filters.cursor ? sessionListHref({ ...filters, cursor: "" }, "/sessions") : null;
+  const prioritySortHref = sessionListHref(
+    {
+      ...filters,
+      cursor: "",
+      sort: filters.sort === "priority_desc" ? "priority_asc" : "priority_desc",
+    },
+    "/sessions",
+  );
 
   return (
     <div className="space-y-4" data-pw="page-sessions">
@@ -72,6 +80,8 @@ export default async function SessionsPage({
         hrefBase="/sessions"
         emptyMessage="No sessions for this agent."
         search={filters.q}
+        sort={filters.sort}
+        prioritySortHref={prioritySortHref}
       />
       <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
