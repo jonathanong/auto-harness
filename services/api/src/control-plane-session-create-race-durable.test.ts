@@ -91,4 +91,45 @@ describe("durable session create races", () => {
       code: "CONFLICT",
     });
   });
+
+  it("validates and preserves priority and required labels across a durable restart", async () => {
+    if (!ctx.available || !ctx.storage) return;
+    await ctx.storage.putCommand({
+      id: "cmd-priority-labels",
+      name: "priority labels",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const options = {
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    };
+    const { plane } = await createControlPlane({
+      ...options,
+      idFactory: () => "priority-label-session",
+    });
+    await expect(
+      plane.createSessionDurable({
+        repositoryId: "repo-priority-labels",
+        prompt: "urgent gpu work",
+        target: { commandId: "cmd-priority-labels" },
+        timeout: 30,
+        priority: 87,
+        requiredLabels: ["codex", "gpu"],
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      session: { priority: 87, requiredLabels: ["codex", "gpu"] },
+    });
+
+    const restarted = await createControlPlane(options);
+    await expect(
+      restarted.plane.getSessionDurable("priority-label-session"),
+    ).resolves.toMatchObject({ priority: 87, requiredLabels: ["codex", "gpu"] });
+  });
 });

@@ -15,6 +15,8 @@ type Session = {
   prompt?: string;
   targetLabel?: string;
   source?: string;
+  priority?: number;
+  requiredLabels?: string[];
   hostId?: string | null;
   concurrencyId?: string | null;
 };
