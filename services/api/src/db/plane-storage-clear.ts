@@ -10,10 +10,14 @@ import {
 } from "./plane-storage-catalog.ts";
 import { listCommands, listProviders } from "./plane-storage-catalog-providers.ts";
 import { listProviderAccounts } from "./plane-storage-provider-accounts.ts";
+import { deleteAuthAccount, listAuthAccounts } from "./plane-storage-auth.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
+  for (const account of await listAuthAccounts(ctx)) {
+    await deleteAuthAccount(ctx, account.id);
+  }
   for (const session of await listAllSessions(ctx)) {
     await ctx.doc.send(
       new DeleteCommand({ TableName: ctx.tables.sessions, Key: { id: session.id } }),
