@@ -373,11 +373,11 @@ Edit name/argv/append-prompt/provider inline. Delete is disabled while the comma
 
 ## Settings
 
-The control-plane Settings page is restricted to an unscoped admin. The Slack
-capability probe hides the Settings nav item for `401` or `403`; direct access
-renders an accessible permission error for a valid but unauthorized account.
-Missing authentication redirects to `/login` with only a relative, validated
-`returnTo` path.
+Authenticated users retain access to the control-plane Settings page, account
+details, password controls, and the Settings nav item. Only the Slack panel is
+restricted to an unscoped admin; it renders an accessible permission error for a
+valid but unauthorized account. Missing authentication redirects to `/login`
+with only a relative, validated `returnTo` path.
 
 ### Slack configuration
 
