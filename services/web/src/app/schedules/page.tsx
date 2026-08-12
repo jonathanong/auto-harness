@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
+import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { describeCron } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
@@ -144,16 +145,25 @@ export default async function SchedulesPage({
               </TableCell>
             </TableRow>
           ))}
-          {items.length === 0 ? (
+          {items.length === 0 && !error ? (
             <TableRow>
-              <TableCell colSpan={10} className="text-muted-foreground">
-                No schedules configured.
+              <TableCell colSpan={11} className="text-muted-foreground">
+                <PrimaryEmptyState title="No schedules configured." pw="schedules-empty">
+                  <p>Create a recurring task with a repository, target, and cron schedule.</p>
+                  <Link
+                    href="#schedule-create"
+                    className="font-medium text-primary hover:underline"
+                    data-pw="schedules-empty-create"
+                  >
+                    Create one →
+                  </Link>
+                </PrimaryEmptyState>
               </TableCell>
             </TableRow>
           ) : null}
         </TableBody>
       </Table>
-      <div>
+      <div id="schedule-create">
         <h3 className="mb-2 text-lg font-medium">
           {editing ? `Edit ${editing.name}` : "Add schedule"}
         </h3>

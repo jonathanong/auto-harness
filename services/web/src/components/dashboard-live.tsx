@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, StatusBadge, TipText } from "@auto-harness/ui";
 
 import { apiFetch } from "../lib/client-api.ts";
+import { DashboardEmptyStates } from "./dashboard-empty-states.tsx";
 
 export type DashboardSession = { id: string; status: string; prompt?: string };
 export type DashboardHost = { hostId: string; online: boolean };
@@ -103,18 +104,10 @@ export function DashboardLive({
         </p>
       )}
 
-      {snapshot.hosts.length === 0 || metrics.onlineHosts === 0 ? (
-        <p
-          className="rounded-md border border-yellow-500/50 bg-yellow-50 p-3 text-sm"
-          data-pw="dashboard-no-online-hosts"
-        >
-          No hosts connected.{" "}
-          <Link className="font-medium underline" href="/hosts">
-            Set up a host
-          </Link>
-          .
-        </p>
-      ) : null}
+      <DashboardEmptyStates
+        showSessions={!error && snapshot.sessions.length === 0}
+        showAgents={!error && (snapshot.hosts.length === 0 || metrics.onlineHosts === 0)}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-pw="dashboard-stats">
         <MetricCard
@@ -163,9 +156,7 @@ export function DashboardLive({
             </div>
           ))}
           {snapshot.sessions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              Get started: add a repository, connect a host, then create your first session.
-            </p>
+            <p className="text-sm text-muted-foreground">No recent sessions.</p>
           ) : null}
         </CardContent>
       </Card>
