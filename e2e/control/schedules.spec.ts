@@ -5,7 +5,7 @@ test.describe("control plane schedules", () => {
     const repoId = `pw-sched-repo-${test.info().parallelIndex}-${Date.now()}`;
     const name = `pw-sched-${test.info().parallelIndex}-${Date.now()}`;
     const commandName = `echo-prompt-${test.info().parallelIndex}-${Date.now()}`;
-    await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+    await request.post("/api/v1/repositories", {
       data: {
         id: repoId,
         name: repoId,
@@ -13,7 +13,7 @@ test.describe("control plane schedules", () => {
         defaultBranch: "main",
       },
     });
-    const commandResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+    const commandResponse = await request.post("/api/v1/commands", {
       data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },
     });
     const commandId = ((await commandResponse.json()) as { id: string }).id;
@@ -49,7 +49,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("edit-schedule-submit")).toBeEnabled();
     await expect(page.getByTestId("edit-schedule-error")).toBeHidden();
     const detailScheduleId = detailUrl.split("/").pop()!;
-    const updated = await request.get(`http://127.0.0.1:7430/api/v1/schedules/${detailScheduleId}`);
+    const updated = await request.get(`/api/v1/schedules/${detailScheduleId}`);
     expect(await updated.json()).toMatchObject({
       cron: "30 * * * *",
       nextRunAt: expect.stringMatching(/:30:00\.000Z$/),
@@ -75,6 +75,17 @@ test.describe("control plane schedules", () => {
     await expect(row).toContainText("1234s");
     const scheduleId = (await row.getAttribute("data-pw"))!.replace("schedule-row-", "");
     await expect(page.getByTestId(`schedule-route-${scheduleId}`)).toBeVisible();
+    const enabled = page.getByTestId(`schedule-enabled-${scheduleId}`);
+    await expect(enabled).toHaveAttribute("role", "switch");
+    await expect(enabled).toHaveAttribute("aria-checked", "true");
+    await enabled.click();
+    await expect(page.getByTestId(`schedule-enabled-${scheduleId}`)).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(await (await request.get(`/api/v1/schedules/${scheduleId}`)).json()).toMatchObject({
+      enabled: false,
+    });
     await page.getByTestId(`schedule-edit-${scheduleId}`).click();
     await expect(page.getByTestId(`form-edit-schedule-${scheduleId}`)).toBeVisible();
     await page.getByTestId("schedule-queue-ttl").fill("4321");
