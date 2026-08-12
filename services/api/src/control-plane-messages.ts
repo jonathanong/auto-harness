@@ -73,13 +73,15 @@ export function appendLog(
   };
   const { retained, evicted } = retainLogs(state, rec);
   state.logs.set(opts.sessionId, retained);
-  state.onLogCommitted?.(rec);
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.putLog(rec));
+    queueWrite(state, async (storage) => {
+      await storage!.putLog(rec);
+      state.onLogCommitted?.(rec);
+    });
     for (const removed of evicted) {
       queueWrite(state, (storage) => storage!.deleteLog(removed.sessionId, removed.timestampSeq));
     }
-  }
+  } else state.onLogCommitted?.(rec);
   return rec;
 }
 

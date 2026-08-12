@@ -15,7 +15,7 @@ test.describe("live session logs", () => {
     let host: Awaited<ReturnType<typeof connectHost>> | undefined;
 
     try {
-      await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
+      const inventory = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
         data: {
           repositories: [
             {
@@ -30,6 +30,7 @@ test.describe("live session logs", () => {
           commandProfiles: {},
         },
       });
+      expect(inventory.ok()).toBe(true);
       host = await connectHost(hostId, repoId, worktreeId);
       const commandResponse = await request.post(`${API}/api/v1/commands`, {
         data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },

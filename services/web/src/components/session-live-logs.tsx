@@ -1,7 +1,7 @@
 "use client";
 
 import { SessionLogs } from "@auto-harness/ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   lastLiveCursor,
@@ -24,7 +24,7 @@ export function SessionLiveLogs({
   initialItems: LiveLogEntry[];
   initialStatus: string;
 }) {
-  const initialLogs = mergeInitialLiveLogs(initialItems);
+  const initialLogs = useMemo(() => mergeInitialLiveLogs(initialItems), [initialItems]);
   const [items, setItems] = useState(initialLogs);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [sessionStatus, setSessionStatus] = useState(initialStatus);

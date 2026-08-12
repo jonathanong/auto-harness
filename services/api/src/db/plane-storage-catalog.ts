@@ -148,7 +148,12 @@ export async function queryLogs(
       new QueryCommand({
         TableName: ctx.tables.sessionLogs,
         KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
-        ExpressionAttributeValues: { ":sessionId": sessionId, ":after": query.after },
+        ExpressionAttributeValues: {
+          ":sessionId": sessionId,
+          ":after": query.after,
+          ...(query.stream ? { ":stream": query.stream } : {}),
+        },
+        ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
         ScanIndexForward: true,
         Limit: query.limit,
       }),

@@ -6,7 +6,7 @@ export type LiveLogEntry = {
   timestamp: string;
 };
 
-const MAX_LIVE_LOG_ENTRIES = 1_000;
+export const MAX_LIVE_LOG_ENTRIES = 1_000;
 
 /** Merge REST history and replayed tail records without retaining an unbounded terminal. */
 export function mergeLiveLogs(
@@ -15,6 +15,10 @@ export function mergeLiveLogs(
   maxEntries = MAX_LIVE_LOG_ENTRIES,
 ): LiveLogEntry[] {
   if (!validLiveLog(incoming)) return current;
+  const last = current.at(-1);
+  if (!last || incoming.timestampSeq > last.timestampSeq) {
+    return [...current, incoming].slice(-maxEntries);
+  }
   const byCursor = new Map(current.map((entry) => [entry.timestampSeq, entry]));
   byCursor.set(incoming.timestampSeq, incoming);
   return [...byCursor.values()]
@@ -23,7 +27,12 @@ export function mergeLiveLogs(
 }
 
 export function mergeInitialLiveLogs(items: LiveLogEntry[]): LiveLogEntry[] {
-  return items.reduce((current, item) => mergeLiveLogs(current, item), [] as LiveLogEntry[]);
+  const byCursor = new Map(
+    items.filter(validLiveLog).map((entry) => [entry.timestampSeq, entry] as const),
+  );
+  return [...byCursor.values()]
+    .toSorted((left, right) => left.timestampSeq.localeCompare(right.timestampSeq))
+    .slice(-MAX_LIVE_LOG_ENTRIES);
 }
 
 export function lastLiveCursor(entries: LiveLogEntry[]): string | undefined {
@@ -45,14 +54,16 @@ export function validLiveLog(value: unknown): value is LiveLogEntry {
   );
 }
 
-export async function viewerTicket(): Promise<string | undefined> {
+export async function viewerTicket(timeoutMs = 10_000): Promise<string> {
   const response = await fetch("/api/v1/auth/viewer-ticket", {
     method: "POST",
     credentials: "same-origin",
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) throw new Error("viewer ticket unavailable");
   const body = (await response.json()) as { ticket?: unknown };
-  return typeof body.ticket === "string" ? body.ticket : undefined;
+  if (typeof body.ticket !== "string") throw new Error("viewer ticket malformed");
+  return body.ticket;
 }
 
 export function viewerWebSocketUrl(ticket?: string): string {

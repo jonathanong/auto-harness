@@ -67,7 +67,7 @@ secrets, prompts, or session-log content.
 
 `401` if missing/invalid; `403` if role insufficient.
 
-#### `POST /auth/viewer-ticket`
+### `POST /auth/viewer-ticket`
 
 Issue a short-lived, single-purpose browser WebSocket credential from the authenticated session cookie. The browser presents it only as the `ticket` query parameter on `/ws/viewer`; service-account credentials are never accepted by that read-only socket.
 

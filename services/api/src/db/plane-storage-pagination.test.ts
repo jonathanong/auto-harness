@@ -103,13 +103,22 @@ describe("DynamoDB storage pagination", () => {
       expect(secondPage.input.ExclusiveStartKey).toEqual({ tableName: firstPage.input.TableName });
     }
     await expect(
-      queryLogs(ctx, "session-1", { after: "cursor", limit: 25 }),
+      queryLogs(ctx, "session-1", { after: "cursor", stream: "stderr", limit: 25 }),
     ).resolves.toMatchObject([{ seq: 1 }]);
     expect(commands[20]?.input).toMatchObject({
       KeyConditionExpression: "sessionId = :sessionId AND timestampSeq > :after",
-      ExpressionAttributeValues: { ":sessionId": "session-1", ":after": "cursor" },
+      ExpressionAttributeValues: {
+        ":sessionId": "session-1",
+        ":after": "cursor",
+        ":stream": "stderr",
+      },
+      FilterExpression: "stream = :stream",
       Limit: 25,
     });
+    await expect(queryLogs(ctx, "session-1", { after: "cursor", limit: 1 })).resolves.toHaveLength(
+      1,
+    );
+    expect(commands[21]?.input.FilterExpression).toBeUndefined();
   });
   it("uses a bounded, ordered Dynamo query and continues sparse stream-filter pages", async () => {
     const send = vi

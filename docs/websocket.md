@@ -130,7 +130,7 @@ assignment.
 
 | Type                  | Payload                              |
 | --------------------- | ------------------------------------ |
-| `session:subscribe`   | `{ sessionId }`                      |
+| `session:subscribe`   | `{ sessionId, after? }`              |
 | `session:unsubscribe` | `{ sessionId }` — sent on page leave |
 
 ### Server → client
@@ -141,7 +141,6 @@ assignment.
 | `session:status`     | `{ sessionId, status, exitCode? }`                      |
 | `session:subscribed` | `{ sessionId, cursor, status }` after replay            |
 | `session:error`      | `{ sessionId, code }` (`NOT_FOUND` never reveals scope) |
-| `host:status`        | `{ hostId, status }` online/offline                     |
 
 ---
 

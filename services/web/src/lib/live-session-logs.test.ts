@@ -22,6 +22,7 @@ describe("live session log state", () => {
     const second = { ...first, timestampSeq: "2026-08-10T12:00:01.000Z#0000000002", seq: 2 };
     const third = { ...first, timestampSeq: "2026-08-10T12:00:02.000Z#0000000003", seq: 3 };
     let entries = mergeInitialLiveLogs([second, first, second]);
+    expect(mergeLiveLogs([], first)).toEqual([first]);
     entries = mergeLiveLogs(entries, third, 2);
 
     expect(entries.map((entry) => entry.seq)).toEqual([2, 3]);
@@ -63,7 +64,7 @@ describe("live session log state", () => {
     globalThis.fetch = async () => new Response(null, { status: 401 });
     await expect(viewerTicket()).rejects.toThrow("viewer ticket unavailable");
     globalThis.fetch = async () => new Response(JSON.stringify({ ticket: null }), { status: 200 });
-    await expect(viewerTicket()).resolves.toBeUndefined();
+    await expect(viewerTicket()).rejects.toThrow("viewer ticket malformed");
     globalThis.fetch = original;
   });
 

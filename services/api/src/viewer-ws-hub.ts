@@ -99,25 +99,30 @@ export function attachViewerWsHub(
     try {
       for (const [socket, requested] of subscriptions) {
         for (const subscription of requested.values()) {
-          const session = await loadSession(plane, subscription.sessionId);
-          if (!session || session.repositoryId !== subscription.repositoryId) {
-            socket.close(1008, "session unavailable");
-            continue;
-          }
-          if (session.status !== subscription.status) {
-            subscription.status = session.status;
+          try {
+            const session = await loadSession(plane, subscription.sessionId);
+            if (!session || session.repositoryId !== subscription.repositoryId) {
+              socket.close(1008, "session unavailable");
+              continue;
+            }
+            if (session.status !== subscription.status) {
+              subscription.status = session.status;
+              send(socket, {
+                type: "session:status",
+                sessionId: subscription.sessionId,
+                status: session.status,
+              });
+            }
+            await drain(socket, subscription);
+          } catch {
             send(socket, {
-              type: "session:status",
+              type: "session:error",
+              code: "TEMPORARY_FAILURE",
               sessionId: subscription.sessionId,
-              status: session.status,
             });
           }
-          await drain(socket, subscription);
         }
       }
-    } catch {
-      for (const socket of subscriptions.keys())
-        send(socket, { type: "session:error", code: "TEMPORARY_FAILURE" });
     } finally {
       polling = false;
     }
