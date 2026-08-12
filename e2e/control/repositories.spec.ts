@@ -76,6 +76,8 @@ test.describe("control plane repositories", () => {
     try {
       await page.goto("/repositories");
       await expect(page.getByTestId("form-attach-local-repo")).toBeVisible();
+      await page.getByTestId("attach-repo-agent-id").selectOption(hostId);
+      await page.getByTestId("attach-repo-catalog-id").selectOption(repoId);
       await expect(page.getByTestId("attach-repo-agent-id")).toHaveValue(hostId);
       await expect(page.getByTestId("attach-repo-catalog-id")).toHaveValue(repoId);
       await expect(page.getByTestId("attach-repo-path")).toBeVisible();
