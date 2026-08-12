@@ -51,7 +51,7 @@ describe("startDaemon runtime wiring", () => {
           logLevel: "info",
         },
         inventoryPollMs: 5,
-        runUntil: new Promise((resolve) => setTimeout(resolve, 300)),
+        runUntil: waitFor(() => harness.registrations >= 2),
         fetchFn: async () => {
           fetches++;
           return Response.json({
@@ -120,6 +120,14 @@ describe("startDaemon runtime wiring", () => {
     }
   });
 });
+
+async function waitFor(predicate: () => boolean): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) throw new Error("timed out waiting for runtime condition");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 async function acceptingServer(): Promise<{
   port: number;

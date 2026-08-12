@@ -48,18 +48,40 @@ describe("WebSocket hub connection guards", () => {
   });
 
   it("expires the rate window and then enforces its message cap", async () => {
-    const harness = await startHarness(new ControlPlane());
+    const rateEvents: Array<{ limit: number }> = [];
+    const harness = await startHarness(new ControlPlane(), false, 1, rateEvents);
     try {
       const socket = await open(`${harness.origin}/ws`);
       socket.send(JSON.stringify(register("host-rate")));
       await waitForMessage(socket, "host:registered");
       await new Promise((resolve) => setTimeout(resolve, 1_010));
-      for (let index = 0; index < 102; index++) {
+      for (let index = 0; index < 5; index++) {
         socket.send(JSON.stringify(keepalive("host-rate")));
       }
       expect(await waitForClose(socket)).toBe(1008);
+      expect(rateEvents).toContainEqual(expect.objectContaining({ limit: 1 }));
     } finally {
       await harness.close();
+    }
+
+    const defaultRateEvents: Array<{ limit: number }> = [];
+    const defaultHarness = await startHarness(
+      new ControlPlane(),
+      false,
+      undefined,
+      defaultRateEvents,
+    );
+    try {
+      const socket = await open(`${defaultHarness.origin}/ws`);
+      socket.send(JSON.stringify(register("host-default-rate")));
+      await waitForMessage(socket, "host:registered");
+      for (let index = 0; index < 102; index++) {
+        socket.send(JSON.stringify(keepalive("host-default-rate")));
+      }
+      expect(await waitForClose(socket)).toBe(1008);
+      expect(defaultRateEvents).toContainEqual(expect.objectContaining({ limit: 100 }));
+    } finally {
+      await defaultHarness.close();
     }
   });
 
@@ -131,6 +153,8 @@ function keepalive(hostId: string) {
 async function startHarness(
   plane: ControlPlane,
   usePublicAttach = false,
+  maxMessagesPerSecond?: number,
+  rateEvents?: Array<{ limit: number }>,
 ): Promise<{
   origin: string;
   hub: WsHub;
@@ -139,7 +163,12 @@ async function startHarness(
   const server = createServer();
   const hub = usePublicAttach
     ? attachHostWsHub(server, plane)
-    : createPlaneWsBridge().attach(server, plane);
+    : createPlaneWsBridge({
+        ...(maxMessagesPerSecond === undefined ? {} : { maxMessagesPerSecond }),
+        ...(rateEvents
+          ? { onRateLimitEvent: (event) => rateEvents.push({ limit: event.limit }) }
+          : {}),
+      }).attach(server, plane);
   await new Promise<void>((resolve, reject) => {
     server.listen(0, "127.0.0.1", resolve);
     server.on("error", reject);

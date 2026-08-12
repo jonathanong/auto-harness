@@ -138,4 +138,46 @@ describe("DaemonLoop coverage guards", () => {
       cleanup();
     }
   });
+
+  it("logs primitive drain retry failures and cancels the scheduled retry on stop", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      for (const failure of [new Error("error offline"), "primitive offline"]) {
+        const failureMessage = failure instanceof Error ? failure.message : failure;
+        let retry: (() => void) | undefined;
+        let cleared = false;
+        const lines: string[] = [];
+        const transport = createLoopbackTransport({
+          sendToServer: (message) => {
+            if (message.type === "host:status") throw failure;
+          },
+        });
+        const loop = new DaemonLoop({
+          config,
+          transport,
+          onLog: (line) => lines.push(line),
+          timers: {
+            setTimeout: (callback) => {
+              retry = callback;
+              return 1 as never;
+            },
+            clearTimeout: () => {
+              cleared = true;
+            },
+          },
+        });
+        await loop.start();
+        void loop.beginDrain();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(lines).toContain(`drain notification failed: ${failureMessage}`);
+        retry?.();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(lines).toContain(`drain notification retry failed: ${failureMessage}`);
+        loop.stop();
+        expect(cleared).toBe(true);
+      }
+    } finally {
+      cleanup();
+    }
+  });
 });
