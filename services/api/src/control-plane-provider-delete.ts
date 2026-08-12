@@ -19,11 +19,10 @@ export function deleteProvider(state: ControlPlaneState, id: string): DeleteResu
   if (!result.ok) return result;
   state.providers.delete(id);
   if (state.storage) {
-    queueWrite(
-      state,
-      state.storage.deleteProvider(id).then(async (deleted) => {
+    queueWrite(state, (storage) =>
+      storage!.deleteProvider(id).then(async (deleted) => {
         if (deleted) return;
-        const authoritative = await state.storage?.getProvider(id);
+        const authoritative = await storage?.getProvider(id);
         if (authoritative) state.providers.set(id, authoritative);
       }),
     );

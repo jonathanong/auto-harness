@@ -49,7 +49,7 @@ export function putSchedule(
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   state.schedules.set(result.schedule.id, result.schedule);
-  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...result.schedule }));
+  if (state.storage) queueWrite(state, (storage) => storage!.putSchedule({ ...result.schedule }));
   return { ok: true, schedule: { ...result.schedule } };
 }
 
@@ -141,7 +141,7 @@ export function updateSchedule(
   const result = prepareUpdateSchedule(state, id, patch);
   if (!result.ok) return result;
   state.schedules.set(id, result.schedule);
-  if (state.storage) queueWrite(state, state.storage.putSchedule({ ...result.schedule }));
+  if (state.storage) queueWrite(state, (storage) => storage!.putSchedule({ ...result.schedule }));
   return { ok: true, schedule: { ...result.schedule } };
 }
 
@@ -198,7 +198,7 @@ export function deleteSchedule(
 ): { ok: true } | { ok: false; error: string } {
   if (!state.schedules.has(id)) return { ok: false, error: "schedule not found" };
   state.schedules.delete(id);
-  if (state.storage) queueWrite(state, state.storage.deleteSchedule(id));
+  if (state.storage) queueWrite(state, (storage) => storage!.deleteSchedule(id));
   return { ok: true };
 }
 

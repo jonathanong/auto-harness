@@ -35,9 +35,8 @@ export function tryClaimWorktree(
   // conditional UpdateItem is available on storage for multi-writer deployments.
   persistWorktree(state, { ...wt });
   if (state.storage) {
-    queueWrite(
-      state,
-      state.storage.tryClaimWorktree({ worktreeId, sessionId, now }).then(() => {
+    queueWrite(state, (storage) =>
+      storage!.tryClaimWorktree({ worktreeId, sessionId, now }).then(() => {
         /* claim written */
       }),
     );

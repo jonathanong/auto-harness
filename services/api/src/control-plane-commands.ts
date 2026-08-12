@@ -30,7 +30,7 @@ export function createCommand(
   if (!result.ok) return result;
   state.commands.set(result.command.id, result.command);
   if (state.storage) {
-    queueWrite(state, state.storage.putCommand({ ...result.command }));
+    queueWrite(state, (storage) => storage!.putCommand({ ...result.command }));
   }
   return { ok: true, command: { ...result.command } };
 }
@@ -115,7 +115,7 @@ export function updateCommand(
   if (!result.ok) return result;
   state.commands.set(id, result.command);
   if (state.storage) {
-    queueWrite(state, state.storage.putCommand({ ...result.command }));
+    queueWrite(state, (storage) => storage!.putCommand({ ...result.command }));
   }
   return { ok: true, command: { ...result.command } };
 }

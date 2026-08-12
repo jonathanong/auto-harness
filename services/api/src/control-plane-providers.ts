@@ -29,7 +29,7 @@ export function createProvider(
   if (!result.ok) return result;
   state.providers.set(result.provider.id, result.provider);
   if (state.storage) {
-    queueWrite(state, state.storage.putProvider({ ...result.provider }));
+    queueWrite(state, (storage) => storage!.putProvider({ ...result.provider }));
   }
   return { ok: true, provider: { ...result.provider } };
 }
@@ -102,7 +102,7 @@ export function updateProvider(
   if (!result.ok) return result;
   state.providers.set(id, result.provider);
   if (state.storage) {
-    queueWrite(state, state.storage.putProvider({ ...result.provider }));
+    queueWrite(state, (storage) => storage!.putProvider({ ...result.provider }));
   }
   return { ok: true, provider: { ...result.provider } };
 }

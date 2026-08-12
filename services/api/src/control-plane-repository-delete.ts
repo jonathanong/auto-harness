@@ -14,7 +14,7 @@ export function deleteRepository(state: ControlPlaneState, id: string): DeleteRe
   const result = canDeleteRepository(state, id, referencesFromState(state));
   if (!result.ok) return result;
   state.repositories.delete(id);
-  if (state.storage) queueWrite(state, state.storage.deleteRepository(id));
+  if (state.storage) queueWrite(state, (storage) => storage!.deleteRepository(id));
   return { ok: true };
 }
 

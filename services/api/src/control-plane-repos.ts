@@ -35,7 +35,7 @@ export function createRepository(
   if (!result.ok) return result;
   state.repositories.set(result.repository.id, result.repository);
   if (state.storage) {
-    queueWrite(state, state.storage.putRepository({ ...result.repository }));
+    queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
   }
   return { ok: true, repository: { ...result.repository } };
 }
@@ -133,7 +133,7 @@ export function updateRepository(
   if (!result.ok) return result;
   state.repositories.set(id, result.repository);
   if (state.storage) {
-    queueWrite(state, state.storage.putRepository({ ...result.repository }));
+    queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
   }
   return { ok: true, repository: { ...result.repository } };
 }

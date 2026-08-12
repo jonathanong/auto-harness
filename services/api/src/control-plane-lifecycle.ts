@@ -124,7 +124,7 @@ export function archiveSessionLogs(
     };
     state.archives.set(empty.key, empty);
     if (state.storage) {
-      queueWrite(state, state.storage.putArchive(empty));
+      queueWrite(state, (storage) => storage!.putArchive(empty));
     }
     return empty;
   }
@@ -136,7 +136,7 @@ export function archiveSessionLogs(
   };
   state.archives.set(obj.key, obj);
   if (state.storage) {
-    queueWrite(state, state.storage.putArchive(obj));
+    queueWrite(state, (storage) => storage!.putArchive(obj));
   }
   return obj;
 }
