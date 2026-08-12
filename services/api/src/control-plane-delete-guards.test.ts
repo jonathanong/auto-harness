@@ -56,7 +56,7 @@ describe("catalog delete references", () => {
     expect(dependenciesForCommand(refs, "command")).toEqual(
       expect.arrayContaining([
         { kind: "schedule", id: "schedule" },
-        { kind: "host-inventory", id: "host" },
+        { kind: "host-inventory", id: "host", scope: "host", hostId: "host" },
       ]),
     );
     expect(dependenciesForAccount(refs, "account")).toEqual([
@@ -149,7 +149,7 @@ describe("catalog delete references", () => {
     expect(
       inventoryReferenceMarkers("now", {
         hostId: "host",
-        repositories: [{ id: "repo", worktrees: [{}] }],
+        repositories: [{ id: "repo", worktrees: [{ id: "worktree" }] }],
         providerAccounts: [{ providerAccountId: "account" }],
       }),
     ).toEqual([

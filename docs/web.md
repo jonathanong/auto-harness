@@ -382,7 +382,7 @@ Table: name, argv, owning provider (or "—" for standalone), append-prompt flag
 
 ### Command Detail
 
-Edit name/argv/append-prompt/provider inline. Delete is disabled while the command is some provider's default command (the one guard the backend enforces today — a "referenced by a scope override" guard is not yet implemented server-side).
+Edit name/argv/append-prompt/provider inline. Delete is disabled while the command is some provider's default command. The API also rejects deletion with `409 Conflict` while the command is referenced by a host, repository, or worktree Provider Account command override; the confirmation control announces the precise blocking scope so the override can be cleared first.
 
 ---
 

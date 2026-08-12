@@ -60,7 +60,7 @@ export function DeleteCommandButton({
     >
       <p className="text-sm text-red-700">Permanently remove this command from the catalog.</p>
       {error ? (
-        <p className="text-sm text-red-700" data-pw="delete-command-error">
+        <p className="text-sm text-red-700" role="alert" data-pw="delete-command-error">
           {error}
         </p>
       ) : null}
