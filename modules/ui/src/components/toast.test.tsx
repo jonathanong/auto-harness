@@ -80,6 +80,9 @@ describe("shared Toast", () => {
     await act(async () => Promise.resolve());
     expect(navigation.replace).toHaveBeenLastCalledWith("/sessions", { scroll: false });
     expect(withToast("/sessions?filter=active", "Done")).toBe("/sessions?filter=active&toast=Done");
+    expect(withToast("/sessions?toast=Old&filter=active", "Done")).toBe(
+      "/sessions?toast=Done&filter=active",
+    );
     view.unmount();
   });
 });
