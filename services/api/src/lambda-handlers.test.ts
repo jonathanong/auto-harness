@@ -313,12 +313,20 @@ describe("Lambda runtime adapters", () => {
     ).resolves.toEqual({ statusCode: 200 });
   });
 
-  it("lazily creates one shared runtime for both exported handler shapes", async () => {
+  it("lazily creates one shared runtime for all exported handler shapes", async () => {
+    const cron = vi.fn(async () => ({
+      ackDeadlinesEnforced: 0,
+      queuedAssigned: 0,
+      scheduledAssigned: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
+    }));
     const rest = vi.fn(async () => ({ statusCode: 204 }));
     const websocket = vi.fn(async () => ({ statusCode: 200 }));
-    const create = vi.fn(async () => ({ rest, websocket }));
+    const create = vi.fn(async () => ({ cron, rest, websocket }));
     const handlers = createLambdaHandlers(create);
 
+    await expect(handlers.cron()).resolves.toMatchObject({ schedulesFired: 0 });
     await expect(handlers.rest({})).resolves.toEqual({ statusCode: 204 });
     await expect(
       handlers.websocket({
@@ -326,6 +334,40 @@ describe("Lambda runtime adapters", () => {
       }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a complete durable scheduler sweep and reports its work", async () => {
+    const fixture = runtimeFixture();
+    const order: string[] = [];
+    vi.spyOn(fixture.plane, "evaluateCronDurable").mockImplementation(async () => {
+      order.push("cron");
+      return [{ id: "scheduled-1" }] as never;
+    });
+    vi.spyOn(fixture.plane, "enforceAckDeadlinesDurable").mockImplementation(async () => {
+      order.push("ack");
+      return ["session-1"];
+    });
+    vi.spyOn(fixture.plane, "reclaimStaleHostsDurable").mockImplementation(async () => {
+      order.push("stale");
+      return ["host-1", "host-2"];
+    });
+    vi.spyOn(fixture.plane, "assignQueuedDurable").mockImplementation(async () => {
+      order.push("queued");
+      return [{ session: {}, worktree: {} }] as never;
+    });
+    vi.spyOn(fixture.plane, "assignScheduledQueuedDurable").mockImplementation(async () => {
+      order.push("scheduled");
+      return [{ session: {}, hostId: "host-1", worktreeId: null }] as never;
+    });
+
+    await expect((await fixture.runtime).cron()).resolves.toEqual({
+      ackDeadlinesEnforced: 1,
+      queuedAssigned: 1,
+      scheduledAssigned: 1,
+      schedulesFired: 1,
+      staleHostsReclaimed: 2,
+    });
+    expect(order).toEqual(["cron", "ack", "stale", "queued", "scheduled"]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {

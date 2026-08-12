@@ -83,17 +83,15 @@ services/cdk/
 └── src/
     ├── cli.ts                  # CDK app; reads documented CDK context
     ├── foundation-stack.ts      # DynamoDB, archive S3, and bounded IAM policies
-    ├── runtime-stack.ts         # HTTP/WS API Gateway, Lambda, integration KMS key
+    ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, EventBridge cron, integration KMS key
     ├── tables.ts                # durable-table catalog shared by synthesis metadata
     └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
 
 The CDK app emits a persistence foundation and a separately deployable runtime
-stack. The runtime contains HTTP/WebSocket API Gateway APIs and two bundled
-Lambda adapters. It intentionally contains no EventBridge rule or cron Lambda,
-and this repository does not expose a deploy command.
-The handler inventory below also includes planned handlers that are not
-provisioned by the current runtime stack.
+stack. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
+Lambda adapters, and a one-minute EventBridge scheduler rule. This repository
+does not expose a deploy command.
 
 Foundation stack outputs:
 
@@ -161,7 +159,7 @@ timeout.
 | WS Connect         | `$connect`                                         | Validate token; store connection                                               |
 | WS Disconnect      | `$disconnect`                                      | Cleanup + agent offline handling                                               |
 | WS Message         | `$default`                                         | Agent/client messages; log writes; status updates; subscribe                   |
-| Cron (planned)     | EventBridge rate(1 minute)                         | Due schedules → sessions; stale-session sweep                                  |
+| Cron               | EventBridge rate(1 minute)                         | Due schedules → sessions; stale-host/ack sweeps; queued assignment             |
 | Scheduler          | Invoked in-process or as shared service from above | Match queue → worktrees; `session:assign`                                      |
 | Archival (planned) | On session terminal status (async invoke optional) | DynamoDB SessionLogs → S3 JSONL                                                |
 
@@ -180,16 +178,17 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Environment variables (Lambda)
 
-| Variable                         | Required  | Purpose                                        |
-| -------------------------------- | --------- | ---------------------------------------------- |
-| `HARNESS_ADMINS`                 | ✓         | Base64 JSON admin bootstrap list               |
-| `HARNESS_SESSION_SECRET`         | ✓         | JWT signing for UI session cookies             |
-| `TABLE_*` or single table prefix | ✓         | DynamoDB table names (from CDK)                |
-| `ARCHIVE_BUCKET`                 | ✓         | S3 bucket name                                 |
-| `WEB_ORIGIN`                     | ✓         | CORS allow-list origin                         |
-| `WS_API_ENDPOINT`                | ✓         | Management API endpoint for `postToConnection` |
-| `KMS_KEY_ID`                     | for Slack | Encrypt integration secrets                    |
-| `AWS_REGION`                     | auto      | Region                                         |
+| Variable                         | Required  | Purpose                                         |
+| -------------------------------- | --------- | ----------------------------------------------- |
+| `HARNESS_ADMINS`                 | ✓         | Base64 JSON admin bootstrap list                |
+| `HARNESS_SESSION_SECRET`         | ✓         | JWT signing for UI session cookies              |
+| `HARNESS_CURSOR_SECRET`          | ✓         | Shared HMAC key for stable session-list cursors |
+| `TABLE_*` or single table prefix | ✓         | DynamoDB table names (from CDK)                 |
+| `ARCHIVE_BUCKET`                 | ✓         | S3 bucket name                                  |
+| `WEB_ORIGIN`                     | ✓         | CORS allow-list origin                          |
+| `WS_API_ENDPOINT`                | ✓         | Management API endpoint for `postToConnection`  |
+| `KMS_KEY_ID`                     | for Slack | Encrypt integration secrets                     |
+| `AWS_REGION`                     | auto      | Region                                          |
 
 ---
 

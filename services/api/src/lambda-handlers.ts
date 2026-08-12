@@ -1,4 +1,4 @@
-/* eslint-disable max-lines -- REST and WebSocket Lambda invocation lifecycles share one runtime. */
+/* eslint-disable max-lines -- REST, WebSocket, and cron Lambda lifecycles share one runtime. */
 import {
   ApiGatewayManagementApiClient,
   GoneException,
@@ -32,8 +32,17 @@ type PlaneBundle = Awaited<ReturnType<typeof createControlPlane>>;
 type ManagementClient = Pick<ApiGatewayManagementApiClient, "send">;
 
 export type LambdaRuntime = {
+  cron: () => Promise<CronResult>;
   rest: (event: HttpApiEvent) => Promise<HttpApiResponse>;
   websocket: (event: WebSocketEvent) => Promise<{ statusCode: number }>;
+};
+
+export type CronResult = {
+  ackDeadlinesEnforced: number;
+  queuedAssigned: number;
+  scheduledAssigned: number;
+  schedulesFired: number;
+  staleHostsReclaimed: number;
 };
 
 export type LambdaRuntimeDependencies = {
@@ -130,6 +139,22 @@ export async function createLambdaRuntime(
   const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
 
   return {
+    async cron() {
+      return runInvocation(async () => {
+        const schedulesFired = await created.plane.evaluateCronDurable();
+        const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
+        const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
+        const queuedAssigned = await created.plane.assignQueuedDurable();
+        const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
+        return {
+          ackDeadlinesEnforced: ackDeadlinesEnforced.length,
+          queuedAssigned: queuedAssigned.length,
+          scheduledAssigned: scheduledAssigned.length,
+          schedulesFired: schedulesFired.length,
+          staleHostsReclaimed: staleHostsReclaimed.length,
+        };
+      });
+    },
     async rest(event) {
       return runInvocation(async () => {
         const capture = createLambdaResponseCapture();
@@ -216,6 +241,9 @@ export function createLambdaHandlers(
     return runtime;
   };
   return {
+    async cron() {
+      return (await getRuntime()).cron();
+    },
     async rest(event) {
       return (await getRuntime()).rest(event);
     },
@@ -225,4 +253,4 @@ export function createLambdaHandlers(
   };
 }
 
-export const { rest, websocket } = createLambdaHandlers();
+export const { cron, rest, websocket } = createLambdaHandlers();
