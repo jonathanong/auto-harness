@@ -11,6 +11,7 @@ import { SessionDetailTiming } from "./session-detail-timing.tsx";
 import { SessionSourceBadge } from "./session-source-badge.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
 import type { SessionSummary } from "./session-detail-types.ts";
+import { SessionExitCode } from "./session-exit-code.tsx";
 
 export type { SessionSummary } from "./session-detail-types.ts";
 
@@ -166,7 +167,12 @@ export function SessionDetail({
               completedAt={s.completedAt}
               status={s.status}
             />
-            <SessionDetailValue label="Exit code" value={s.exitCode} />
+            <div>
+              <dt className="text-xs uppercase text-muted-foreground">Exit code</dt>
+              <dd className="text-sm">
+                <SessionExitCode exitCode={s.exitCode} />
+              </dd>
+            </div>
           </dl>
           <section aria-labelledby="session-detail-prompt-heading" data-pw="session-detail-prompt">
             <h3

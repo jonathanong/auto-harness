@@ -115,6 +115,11 @@ test.describe("real orchestration", () => {
         "datetime",
       );
       await expect(page.getByTestId("session-detail-duration")).toContainText(/\d+s/);
+      await expect(page.getByTestId("session-detail-exit-code")).toHaveText("0");
+      await expect(page.getByTestId("session-detail-exit-code")).toHaveAttribute(
+        "aria-label",
+        "Exit code 0, success",
+      );
 
       const logsRes = await request.get(`${API}/api/v1/sessions/${sessionId}/logs`);
       const { items } = (await logsRes.json()) as {
