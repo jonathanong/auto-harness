@@ -7,7 +7,7 @@ import { mountForm, press, router } from "./form-test-helpers.tsx";
 import { ScheduleTriggerButton } from "./schedule-trigger-button.tsx";
 
 function trigger(view: ReturnType<typeof mountForm>) {
-  const button = view.container.querySelector("button");
+  const button = view.container.querySelector<HTMLButtonElement>('[data-pw="schedule-run-now"]');
   if (!button) throw new Error("missing trigger button");
   return button;
 }
@@ -21,6 +21,8 @@ describe("ScheduleTriggerButton", () => {
       );
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<ScheduleTriggerButton id="schedule/1" />);
+    expect(trigger(view).textContent).toBe("Run now");
+    expect(trigger(view).getAttribute("aria-busy")).toBe("false");
     press(trigger(view));
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith("/api/v1/schedules/schedule%2F1/trigger", {
@@ -73,7 +75,8 @@ describe("ScheduleTriggerButton", () => {
     const view = mountForm(<ScheduleTriggerButton id="schedule/1" />);
     press(trigger(view));
     expect(trigger(view).disabled).toBe(true);
-    expect(trigger(view).textContent).toBe("…");
+    expect(trigger(view).textContent).toBe("Running…");
+    expect(trigger(view).getAttribute("aria-busy")).toBe("true");
     await act(async () => finish(new Response("failed", { status: 500 })));
     expect(router.push).toHaveBeenLastCalledWith(
       "/schedules/schedule%2F1?toast=Could+not+run+schedule.",

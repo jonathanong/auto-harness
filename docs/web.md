@@ -298,8 +298,8 @@ Displays all configured schedules in a table:
 - Edit schedule fields (name, target, cron, enabled)
 - Run history — list of past sessions created by this schedule, filtered by persisted `scheduleId`
   provenance rather than a concurrency ID that may be shared with other task sources
-- "Run Now" button — manually triggers via `POST /schedules/:id/trigger`, then redirects to the created session
-- A duplicate "Run Now" returns the existing active session (`200`, `created: false`) rather than queuing another run
+- "Run now" button — manually runs the schedule via `POST /schedules/:id/trigger`, shows "Running…" while pending, then redirects to the created session
+- A duplicate "Run now" returns the existing active session (`200`, `created: false`) rather than queuing another run
 
 ### Create/Edit Schedule Form
 

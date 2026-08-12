@@ -1,6 +1,31 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("control plane schedules", () => {
+  test("schedule detail uses the documented Run now action", async ({ page, request }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const command = await request.post("/api/v1/commands", {
+      data: { name: `pw-run-now-command-${suffix}`, argv: ["echo"], providerId: null },
+    });
+    expect(command.ok()).toBe(true);
+    const commandId = ((await command.json()) as { id: string }).id;
+    const schedule = await request.post("/api/v1/schedules", {
+      data: {
+        repositoryId: `pw-run-now-repo-${suffix}`,
+        name: `pw-run-now-${suffix}`,
+        target: { commandId },
+        cron: "0 * * * *",
+        timeout: 60,
+      },
+    });
+    expect(schedule.ok()).toBe(true);
+    const scheduleId = ((await schedule.json()) as { id: string }).id;
+
+    await page.goto(`/schedules/${scheduleId}`);
+    const runNow = page.getByTestId("schedule-run-now");
+    await expect(runNow).toHaveText("Run now");
+    await expect(runNow).toHaveAttribute("aria-busy", "false");
+  });
+
   test("schedules page and create form", async ({ page, request }) => {
     const repoId = `pw-sched-repo-${test.info().parallelIndex}-${Date.now()}`;
     const name = `pw-sched-${test.info().parallelIndex}-${Date.now()}`;
@@ -58,7 +83,8 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("edit-schedule-cron")).toHaveValue("30 * * * *");
     await expect(page.getByTestId("edit-schedule-ref")).toHaveValue("main");
 
-    await page.getByRole("button", { name: "Trigger" }).click();
+    await expect(page.getByTestId("schedule-run-now")).toHaveText("Run now");
+    await page.getByTestId("schedule-run-now").click();
     await expect(page).toHaveURL(/\/sessions\/[^/?]+/);
     await page.goto(detailUrl);
     await expect(page.getByTestId("schedule-detail-active-session")).toBeVisible();
