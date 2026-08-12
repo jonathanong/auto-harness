@@ -72,6 +72,10 @@ export function submit(form: HTMLFormElement) {
   act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
 }
 
+export function press(element: HTMLElement) {
+  act(() => element.click());
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
