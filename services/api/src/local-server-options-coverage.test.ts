@@ -22,16 +22,14 @@ it("forwards host messages to both the callback and websocket bridge", async () 
 });
 
 it("uses the default public URL when constructing a Dynamo-backed plane", async () => {
+  const server = await startLocalServer({
+    port: 19_000 + Math.floor(Math.random() * 1_000),
+    useDynamo: true,
+    enableWs: false,
+  });
   try {
-    const server = await startLocalServer({
-      port: 19_000 + Math.floor(Math.random() * 1_000),
-      useDynamo: true,
-      enableWs: false,
-    });
+    expect(server.plane.state.publicBaseUrl).toBe("http://localhost:7421");
+  } finally {
     await server.close();
-  } catch {
-    // DynamoDB Local is optional in unit-only runs; the dedicated Dynamo gate
-    // exercises the successful construction path.
-    expect(true).toBe(true);
   }
 });
