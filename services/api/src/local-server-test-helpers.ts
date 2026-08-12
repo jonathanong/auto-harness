@@ -5,7 +5,12 @@ export async function invokeHandler(
   path: string,
   body?: unknown,
   headers: Record<string, string> = {},
-): Promise<{ status: number; json: unknown; raw: string }> {
+): Promise<{
+  status: number;
+  json: unknown;
+  raw: string;
+  headers: ReadonlyMap<string, string | number | string[]>;
+}> {
   const chunks: Buffer[] = [];
   let statusCode = 0;
   const req = {
@@ -49,7 +54,7 @@ export async function invokeHandler(
       json = raw;
     }
   }
-  return { status: statusCode, raw, json };
+  return { status: statusCode, raw, json, headers: responseHeaders };
 }
 
 export async function invokeBadJson(

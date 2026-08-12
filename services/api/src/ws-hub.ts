@@ -14,6 +14,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
+import type { RateLimitEvent } from "./rate-limit.ts";
 
 const MAX_WS_FRAME_BYTES = 128 * 1024;
 const MAX_WS_MESSAGES_PER_SECOND = 100;
@@ -32,6 +33,11 @@ export type WsHub = {
   close(): void;
 };
 
+type WsBridgeOptions = {
+  maxMessagesPerSecond?: number;
+  onRateLimitEvent?: (event: RateLimitEvent) => void;
+};
+
 type HostSocketMap = Map<string, WebSocket>;
 
 export function createWsDelivery(
@@ -44,7 +50,7 @@ export function createWsDelivery(
 }
 
 /** Local WebSocket hub with the same identity/ownership boundaries as API Gateway. */
-export function createPlaneWsBridge(): {
+export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
   hostSockets: HostSocketMap;
   onHostMessage: (hostId: string, msg: HostWireMessage) => void;
   attach(server: HttpServer, plane: ControlPlane, auth?: AuthService): WsHub;
@@ -152,7 +158,13 @@ export function createPlaneWsBridge(): {
             windowStartedAt = now;
             messageCount = 0;
           }
-          if (++messageCount > MAX_WS_MESSAGES_PER_SECOND) {
+          if (++messageCount > (options.maxMessagesPerSecond ?? MAX_WS_MESSAGES_PER_SECOND)) {
+            options.onRateLimitEvent?.({
+              outcome: "denied",
+              bucket: "host",
+              limit: options.maxMessagesPerSecond ?? MAX_WS_MESSAGES_PER_SECOND,
+              actorKey: "websocket-connection",
+            });
             accepting = false;
             socket.close(1008, "message rate exceeded");
             return;

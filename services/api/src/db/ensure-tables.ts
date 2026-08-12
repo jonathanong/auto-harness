@@ -10,6 +10,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
+import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
@@ -25,12 +26,8 @@ async function createIfMissing(
   client: DynamoDBClient,
   input: ConstructorParameters<typeof CreateTableCommand>[0],
 ): Promise<void> {
-  if (!input?.TableName) {
-    return;
-  }
-  if (await tableExists(client, input.TableName)) {
-    return;
-  }
+  if (!input?.TableName) return;
+  if (await tableExists(client, input.TableName)) return;
   try {
     await client.send(new CreateTableCommand(input));
   } catch (err) {
@@ -51,7 +48,6 @@ export async function ensureControlPlaneTables(opts: {
 }): Promise<DynamoTableNames> {
   const names = tableNames(opts.prefix ?? process.env.HARNESS_DDB_PREFIX ?? "AutoHarness");
   const ddb = opts.client;
-
   await createIfMissing(ddb, {
     TableName: names.users,
     BillingMode: BillingMode.PAY_PER_REQUEST,
@@ -217,6 +213,9 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "timestampId", KeyType: KeyType.RANGE },
     ],
   });
+
+  await createIfMissing(ddb, rateLimitTableDefinition(names.rateLimits));
+  await enableRateLimitTtl(ddb, names.rateLimits);
 
   return names;
 }

@@ -75,7 +75,7 @@ All errors return a consistent JSON body:
 | 403    | `FORBIDDEN`        | Insufficient role permissions           |
 | 404    | `NOT_FOUND`        | Resource not found                      |
 | 409    | `CONFLICT`         | Resource conflict (e.g. duplicate name) |
-| 429    | `RATE_LIMITED`     | Too many requests                       |
+| 429    | `RATE_LIMITED`     | Too many requests; see `Retry-After`    |
 | 500    | `INTERNAL_ERROR`   | Unexpected server error                 |
 
 Rate limit headers on all responses:
@@ -83,6 +83,12 @@ Rate limit headers on all responses:
 - `X-RateLimit-Limit`
 - `X-RateLimit-Remaining`
 - `X-RateLimit-Reset`
+
+When a bucket is exhausted, the response is `429` with
+`{"error":{"code":"RATE_LIMITED","message":"too many requests"}}` and a
+`Retry-After` header containing the number of seconds until the fixed window
+resets. A temporary failure reaching durable rate-limit storage is `503`
+`RATE_LIMIT_UNAVAILABLE` under the default fail-closed policy.
 
 ---
 

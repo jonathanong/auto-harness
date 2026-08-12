@@ -17,6 +17,14 @@ import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-rep
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { MemorySessionStore } from "./memory-store.ts";
+import { enforceRateLimit } from "./local-rate-limit.ts";
+import {
+  classifyRateLimitBucket,
+  MemoryRateLimiter,
+  mergeRateLimitConfig,
+  rateLimitConfigFromEnv,
+  type RateLimitConfig,
+} from "./rate-limit.ts";
 
 export function createLocalApp(options: LocalServerOptions = {}): {
   store: MemorySessionStore;
@@ -29,6 +37,15 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     options.store?.plane ??
     new ControlPlane({ publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421" });
   const store = options.store ?? new MemorySessionStore({ plane });
+  const envRateLimitConfig = rateLimitConfigFromEnv();
+  const config: RateLimitConfig = mergeRateLimitConfig({
+    ...envRateLimitConfig,
+    ...options.rateLimitConfig,
+    limits: { ...envRateLimitConfig.limits, ...options.rateLimitConfig?.limits },
+  });
+  const memoryLimiter = new MemoryRateLimiter(config.maxEntries);
+  const now = options.rateLimitNow ?? (() => Date.now());
+  const trustProxy = options.trustProxy ?? process.env.HARNESS_TRUST_PROXY === "true";
   const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (applyLocalCors(req, res)) return;
     const url = new URL(req.url ?? "/", "http://localhost");
@@ -36,12 +53,62 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     const ctx: import("./local-http.ts").RouteCtx = { plane, req, res, url, method };
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
     const authRoute = url.pathname.startsWith("/api/v1/auth/");
+    const loginRoute = method === "POST" && url.pathname === "/api/v1/auth/login";
     const sessionRoute =
-      url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout";
+      method === "POST" &&
+      (url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout");
     const selfServiceAuthRoute =
       url.pathname === "/api/v1/auth/me" || url.pathname === "/api/v1/auth/password";
+    if (loginRoute) {
+      const limited = await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        principal: undefined,
+        bucket: "login",
+        trustProxy,
+      });
+      if (limited) return;
+    } else if (sessionRoute) {
+      const limited = await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        principal: undefined,
+        bucket: "mutation",
+        trustProxy,
+      });
+      if (limited) return;
+    }
     if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (auth.mode === "required") {
+      const limited = await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        principal: undefined,
+        bucket: "login",
+        trustProxy,
+      });
+      if (limited) return;
       const principal = await auth.authenticate(req);
       if (!principal)
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
@@ -53,6 +120,24 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     } else if (selfServiceAuthRoute) {
       const principal = await auth.authenticate(req);
       if (principal) ctx.principal = principal;
+    }
+    const bucket = classifyRateLimitBucket(method, url.pathname);
+    if (bucket) {
+      const limited = await enforceRateLimit({
+        config,
+        memoryLimiter,
+        now,
+        options,
+        plane,
+        req,
+        res,
+        method,
+        pathname: url.pathname,
+        principal: ctx.principal,
+        bucket,
+        trustProxy,
+      });
+      if (limited) return;
     }
     if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (await handleAuditLogRoutes(ctx)) return;

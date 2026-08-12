@@ -90,7 +90,11 @@ describe("scoped control-plane REST resources", () => {
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
-    const { handler } = createLocalApp({ plane, authService: auth });
+    const { handler } = createLocalApp({
+      plane,
+      authService: auth,
+      rateLimitConfig: { enabled: false },
+    });
     const invoke = (method: string, path: string, body?: unknown, key = apiKey) =>
       invokeHandler(handler, method, path, body, { authorization: `Bearer ${key}` });
 
