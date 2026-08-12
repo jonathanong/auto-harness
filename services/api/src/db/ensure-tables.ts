@@ -2,6 +2,7 @@
 import {
   BillingMode,
   CreateTableCommand,
+  type CreateTableCommandInput,
   DescribeTableCommand,
   type DynamoDBClient,
   KeyType,
@@ -11,12 +12,9 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
+import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
-
-type NamedCreateTableInput = ConstructorParameters<typeof CreateTableCommand>[0] & {
-  TableName: string;
-};
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
   try {
@@ -29,7 +27,7 @@ async function tableExists(client: DynamoDBClient, name: string): Promise<boolea
 
 async function createIfMissing(
   client: DynamoDBClient,
-  input: NamedCreateTableInput,
+  input: CreateTableCommandInput & { TableName: string },
 ): Promise<void> {
   if (await tableExists(client, input.TableName)) return;
   try {
@@ -220,6 +218,7 @@ export async function ensureControlPlaneTables(opts: {
 
   await createIfMissing(ddb, rateLimitTableDefinition(names.rateLimits));
   await enableRateLimitTtl(ddb, names.rateLimits);
+  await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
 
   await createIfMissing(ddb, {
     TableName: names.sessionUsage,
@@ -242,6 +241,5 @@ export async function ensureControlPlaneTables(opts: {
     ],
     KeySchema: [{ AttributeName: "sessionAttempt", KeyType: KeyType.HASH }],
   });
-
   return names;
 }

@@ -23,6 +23,7 @@ export type DynamoTableNames = {
   rateLimits: string;
   sessionUsage: string;
   sessionUsageKinds: string;
+  integrations: string;
 };
 
 export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
@@ -46,6 +47,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     rateLimits: `${p}-RateLimits`,
     sessionUsage: `${p}-SessionUsage`,
     sessionUsageKinds: `${p}-SessionUsageKinds`,
+    integrations: `${p}-Integrations`,
   };
 }
 

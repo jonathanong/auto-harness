@@ -18,6 +18,7 @@ import type {
 } from "./control-plane-types.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
+import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 
 type HydratableState = {
   storage: DynamoPlaneStorage | undefined;
@@ -32,6 +33,7 @@ type HydratableState = {
   providers: Map<string, ProviderRecord>;
   providerAccounts: Map<string, ProviderAccountRecord>;
   commands: Map<string, CommandRecord>;
+  slackIntegration: SlackIntegrationRecord | undefined;
   auditLogs: Map<string, AuditLogRecord>;
   usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveObject>;
@@ -63,6 +65,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     archives,
     auditLogs,
     usageRecords,
+    slackIntegration,
   ] = await Promise.all([
     state.storage.listAllSessions(),
     state.storage.listAllWorktrees(),
@@ -76,6 +79,9 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
     state.storage.listArchives(),
     state.storage.listAllAuditLogs(),
     listUsageRecords,
+    "getSlackIntegration" in state.storage
+      ? state.storage.getSlackIntegration()
+      : Promise.resolve(null),
   ]);
   const logs = new Map<string, LogRecord[]>();
   for (const session of sessions) {
@@ -97,6 +103,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   state.providers.clear();
   state.providerAccounts.clear();
   state.commands.clear();
+  state.slackIntegration = undefined;
   state.auditLogs.clear();
   state.usageRecords.clear();
   state.archives.clear();
@@ -125,6 +132,7 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   for (const record of providers) state.providers.set(record.id, record);
   for (const record of accounts) state.providerAccounts.set(record.id, record);
   for (const record of commands) state.commands.set(record.id, record);
+  state.slackIntegration = slackIntegration ?? undefined;
   for (const record of auditLogs) state.auditLogs.set(record.id, record);
   for (const record of usageRecords) {
     state.usageRecords.set(`${record.sessionId}\0${record.attemptId}\0${record.sequence}`, record);

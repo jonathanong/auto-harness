@@ -4,6 +4,10 @@ import type { Principal } from "./auth.ts";
 export function authorize(principal: Principal, method: string, pathname: string): boolean {
   const scopedAdmin =
     principal.role === "admin" && (!!principal.allowedRepositoryIds || !!principal.boundHostId);
+  // Global integration credentials are not available to repository/host-scoped admins.
+  if (pathname === "/api/v1/integrations/slack") {
+    return principal.role === "admin" && !scopedAdmin;
+  }
   if (principal.role === "admin" && !scopedAdmin) return true;
   if (pathname.startsWith("/api/v1/auth/")) return false;
   if (method === "DELETE" && /^\/api\/v1\/schedules\/[^/]+$/.test(pathname)) {

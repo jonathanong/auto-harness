@@ -17,6 +17,7 @@ import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-rep
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { handleUsageRoutes } from "./local-routes-usage.ts";
+import { handleSlackIntegrationRoutes } from "./local-routes-slack-integration.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { enforceRateLimit } from "./local-rate-limit.ts";
 import {
@@ -153,6 +154,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleProviderRoutes(ctx)) return;
     if (await handleProviderAccountRoutes(ctx)) return;
     if (await handleCommandRoutes(ctx)) return;
+    if (await handleSlackIntegrationRoutes(ctx)) return;
     if (await handleSessionTargetRoutes(ctx)) return;
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
   };
