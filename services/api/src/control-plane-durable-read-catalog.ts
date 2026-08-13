@@ -122,13 +122,22 @@ export const getHostInventoryDurable = (state: ControlPlaneState, hostId: string
     (storage, id) => storage.getHostInventory(id),
     hostId,
   );
-export const listHostInventoriesDurable = (state: ControlPlaneState) =>
-  list<HostInventoryRecord>(
-    state,
-    state.hostInventories,
-    (storage) => storage.listHostInventories(),
-    (record) => record.hostId,
-  );
+export async function listHostInventoriesDurable(
+  state: ControlPlaneState,
+): Promise<HostInventoryRecord[]> {
+  if (!state.storage) {
+    return [...state.hostInventories.values()].map((record) => ({ ...record }));
+  }
+  // A scan that started before a concurrent durable PUT can finish afterward and
+  // otherwise erase the newer cache entry. Retry against storage after mutations.
+  for (;;) {
+    const revision = state.hostInventoryRevision;
+    const records = await state.storage.listHostInventories();
+    if (revision === state.hostInventoryRevision) {
+      return replace(state.hostInventories, records, (record) => record.hostId);
+    }
+  }
+}
 
 /** Refresh only the catalog tables used by target resolution, never the whole control plane. */
 export async function refreshTargetCatalogDurable(state: ControlPlaneState): Promise<void> {

@@ -87,6 +87,7 @@ describe("shared path and destructive action controls", () => {
       "/api/v1/hosts/drain",
       expect.objectContaining({ method: "POST" }),
     );
+    expect(view.container.querySelector("button")?.disabled).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
   });
 

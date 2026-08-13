@@ -18,20 +18,23 @@ test.describe("control plane hosts", () => {
     await page.goto("/hosts");
     await page.getByTestId("add-host-id").fill(id);
     await page.getByTestId("add-host-submit").click();
-    await expect(page.getByTestId("add-host-ok")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("add-host-error")).toBeHidden();
-    await expect(page.getByTestId(`host-row-${id}`)).toBeVisible({ timeout: 15_000 });
-
-    await page.getByTestId(`host-link-${id}`).click();
-    await expect(page).toHaveURL(new RegExp(`/hosts/${id}$`));
+    await expect(page).toHaveURL((url) => url.pathname === `/hosts/${id}`);
+    await expect(page.getByTestId("toast")).toContainText(`Host slot ${id} created.`);
+    await expect(page.getByTestId("add-host-error")).toHaveCount(0);
     await expect(page.getByTestId("page-host-detail")).toBeVisible();
     await expect(page.getByTestId("host-detail-id")).toHaveText(id);
     await expect(page.getByTestId("host-detail-overview")).toBeVisible();
     await expect(page.getByTestId("host-detail-status")).toBeVisible();
     await expect(page.getByTestId("host-detail-repo-count")).toHaveText("0");
     await expect(page.getByTestId("host-detail-worktree-count")).toHaveText("0");
-    await page.getByTestId("host-detail-back").click();
+    await expect(page.getByTestId("host-detail-back")).toHaveAttribute("href", "/hosts");
+    await page.goto("/hosts");
     await expect(page.getByTestId("page-hosts")).toBeVisible();
+    await expect(page.getByTestId(`host-row-${id}`)).toBeVisible();
+    await expect(page.getByTestId(`host-link-${id}`)).toHaveAttribute(
+      "href",
+      `/hosts/${encodeURIComponent(id)}`,
+    );
 
     // Drain is a no-op-safe REST call for an offline slot — just confirm it round-trips.
     await page.getByTestId(`host-drain-${id}`).click();

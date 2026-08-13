@@ -57,6 +57,7 @@ describe("AttachLocalRepoForm", () => {
     expect(router.push).toHaveBeenCalledWith(
       "/repositories/repo-1?toast=Attached+Catalog+on+host+host%2Ftwo+with+no+worktrees.",
     );
+    expect(field<HTMLButtonElement>(view.container, "attach-repo-submit").disabled).toBe(false);
     view.unmount();
   });
 
@@ -96,6 +97,7 @@ describe("AttachLocalRepoForm", () => {
     expect(field<HTMLButtonElement>(view.container, "attach-repo-submit").disabled).toBe(true);
     await act(async () => finish(new Response("cannot attach", { status: 500 })));
     expect(field(view.container, "attach-repo-error").textContent).toBe("cannot attach");
+    expect(field<HTMLButtonElement>(view.container, "attach-repo-submit").disabled).toBe(false);
     view.unmount();
   });
 

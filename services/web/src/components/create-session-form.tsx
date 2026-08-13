@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
@@ -21,7 +21,7 @@ export function CreateSessionForm({
   initialValues?: SessionCloneDraft | null;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -46,7 +46,8 @@ export function CreateSessionForm({
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
           source: "ui",
         };
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const res = await fetch(`${apiBase()}/api/v1/sessions`, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -55,6 +56,7 @@ export function CreateSessionForm({
           const text = await res.text();
           if (!res.ok) {
             setError(text);
+            setPending(false);
             return;
           }
           let id = "";
@@ -76,13 +78,13 @@ export function CreateSessionForm({
           const message = created
             ? "Session queued."
             : "A session with this concurrency ID is already active; showing it instead.";
+          setPending(false);
           router.push(
             targetId
               ? withToast(`/sessions/${encodeURIComponent(targetId)}`, message)
               : withToast("/sessions", message),
           );
-          router.refresh();
-        });
+        })();
       }}
     >
       <div className="space-y-1">

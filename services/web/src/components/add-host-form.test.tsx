@@ -63,6 +63,10 @@ describe("AddHostForm", () => {
       providerAccounts: [],
     });
     expect(field(view.container, "add-host-ok").textContent).toContain("created");
+    expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(true);
+    expect(router.replace).toHaveBeenCalledWith(
+      "/hosts/new-host?toast=Host+slot+new-host+created.",
+    );
     view.unmount();
   });
 });
