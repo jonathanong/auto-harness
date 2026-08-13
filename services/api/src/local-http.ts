@@ -9,6 +9,8 @@ import type { AuthService } from "./auth.ts";
 import type { Principal } from "./auth.ts";
 import type { LocalSchedulerOptions } from "./local-scheduler.ts";
 import type { RateLimitConfigOverrides, RateLimitEvent } from "./rate-limit.ts";
+import type { SlackTransport } from "./slack-delivery-types.ts";
+import type { SlackLifecycleWorkerOptions } from "./slack-worker.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -42,6 +44,12 @@ export type LocalServerOptions = {
   onRateLimitEvent?: (event: RateLimitEvent) => void;
   /** Per-connection WebSocket messages per second. */
   wsRateLimitPerSecond?: number;
+  /**
+   * Optional outbound boundary. No Slack transport is supplied by production code;
+   * tests or a future approved adapter must inject one explicitly.
+   */
+  slackTransport?: SlackTransport;
+  slackWorker?: SlackLifecycleWorkerOptions;
 };
 
 export type RouteCtx = {

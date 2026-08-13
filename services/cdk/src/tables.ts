@@ -122,6 +122,17 @@ export const DYNAMO_TABLES: TableDef[] = [
     name: "Integrations",
     partitionKey: { name: "id", type: "S" },
   },
+  {
+    name: "NotificationDeliveries",
+    partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "status-nextAttemptAt",
+        partitionKey: { name: "status", type: "S" },
+        sortKey: { name: "nextAttemptAt", type: "S" },
+      },
+    ],
+  },
 ];
 
 export const S3_ARCHIVE_BUCKET = {

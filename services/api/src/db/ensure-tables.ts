@@ -13,6 +13,7 @@ import {
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
+import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
 
@@ -219,6 +220,7 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, rateLimitTableDefinition(names.rateLimits));
   await enableRateLimitTtl(ddb, names.rateLimits);
   await createIfMissing(ddb, integrationsTableDefinition(names.integrations));
+  await createIfMissing(ddb, notificationDeliveriesTableDefinition(names.notificationDeliveries));
 
   await createIfMissing(ddb, {
     TableName: names.sessionUsage,

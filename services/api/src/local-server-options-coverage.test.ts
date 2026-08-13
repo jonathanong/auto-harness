@@ -16,6 +16,7 @@ it("forwards host messages to both the callback and websocket bridge", async () 
     plane.registerHost({ hostId: "host", worktrees: [], commandProfiles: [] });
     plane.drainHost("host");
     expect(messages).toEqual([{ type: "host:drain" }]);
+    expect(server.slackWorker).toBeUndefined();
   } finally {
     await server.close();
   }

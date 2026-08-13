@@ -16,7 +16,7 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 19);
+    template.resourceCountIs("AWS::DynamoDB::Table", 20);
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
       TableName: "AutoHarness-SessionLogs",
@@ -74,6 +74,21 @@ describe("AutoHarnessFoundationStack", () => {
       BillingMode: "PAY_PER_REQUEST",
       TableName: "AutoHarness-Integrations",
       KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      TableName: "AutoHarness-NotificationDeliveries",
+      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: [
+        {
+          IndexName: "status-nextAttemptAt",
+          KeySchema: [
+            { AttributeName: "status", KeyType: "HASH" },
+            { AttributeName: "nextAttemptAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ],
     });
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketEncryption: {
@@ -160,7 +175,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(21);
+    ).toHaveLength(22);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",
@@ -174,11 +189,11 @@ describe("AutoHarnessFoundationStack", () => {
   });
 
   it("accepts the longest safe table prefix and rejects the next character", () => {
-    const longestSafePrefix = "a".repeat(237);
+    const longestSafePrefix = "a".repeat(232);
 
     foundationTemplate({ tablePrefix: longestSafePrefix }).hasResourceProperties(
       "AWS::DynamoDB::Table",
-      { TableName: `${longestSafePrefix}-SessionUsageKinds` },
+      { TableName: `${longestSafePrefix}-NotificationDeliveries` },
     );
     expect(() => foundationTemplate({ tablePrefix: `${longestSafePrefix}a` })).toThrow(
       "tablePrefix is too long",

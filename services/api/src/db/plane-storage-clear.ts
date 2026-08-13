@@ -17,6 +17,7 @@ import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
+  await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);
   }
@@ -156,4 +157,19 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
     } while (startKey);
   }
+}
+
+async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: string): Promise<void> {
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({ TableName: tableName, ExclusiveStartKey: startKey }),
+    );
+    for (const item of result.Items ?? []) {
+      await ctx.doc.send(
+        new DeleteCommand({ TableName: tableName, Key: { [keyName]: item[keyName] } }),
+      );
+    }
+    startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (startKey);
 }
