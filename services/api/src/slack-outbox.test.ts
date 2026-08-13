@@ -171,6 +171,57 @@ describe("Slack durable outbox", () => {
     ).toBe("deferred");
   });
 
+  it("dead-letters operations whose dependency cannot be delivered", async () => {
+    const store = new MemoryStore();
+    const deadRoot = { ...record("root"), status: "dead" as const };
+    store.items.set(deadRoot.id, deadRoot);
+    store.items.set("reply", {
+      ...record("reply", "post-reply"),
+      dependsOnId: deadRoot.id,
+      threadRootId: deadRoot.id,
+    });
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn() },
+        {
+          now: () => now,
+          leaseToken: () => "lease",
+        },
+      ),
+    ).toBe("dead");
+    expect(store.items.get("reply")).toMatchObject({
+      status: "dead",
+      attempts: 0,
+      lastError: "dependency root is dead",
+    });
+
+    const sentDependency = {
+      ...record("sent"),
+      status: "sent" as const,
+      remoteChannel: "C123",
+      remoteMessageTs: "ts-sent",
+    };
+    store.items.set(sentDependency.id, sentDependency);
+    store.items.set("dead-thread", { ...record("dead-thread"), status: "dead" });
+    store.items.set("update", {
+      ...record("update", "update-root"),
+      dependsOnId: sentDependency.id,
+      threadRootId: "dead-thread",
+    });
+    expect(
+      await processSlackOutboxOnce(
+        store,
+        { deliver: vi.fn() },
+        {
+          now: () => now,
+          leaseToken: () => "lease-2",
+        },
+      ),
+    ).toBe("dead");
+    expect(store.items.get("update")?.status).toBe("dead");
+  });
+
   it("retries transport errors and dead-letters at the attempt ceiling", async () => {
     const store = new MemoryStore();
     await store.enqueue({ ...record("root"), maxAttempts: 2 });

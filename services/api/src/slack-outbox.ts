@@ -44,16 +44,17 @@ export async function processSlackOutboxOnce(
 
   const dependencies = await resolveDependencies(store, claimed);
   if (!dependencies.ready) {
+    const dead = dependencies.dead;
     await store.reschedule({
       id: claimed.id,
       leaseToken,
-      status: "pending",
+      status: dead ? "dead" : "pending",
       attempts: claimed.attempts,
       nextAttemptAt: addMs(current, options.dependencyDelayMs ?? 1_000),
       error: dependencies.error,
       now: current,
     });
-    return "deferred";
+    return dead ? "dead" : "deferred";
   }
 
   try {
@@ -84,7 +85,7 @@ export async function processSlackOutboxOnce(
 
 type ResolvedDependencies =
   | { ready: true; root: SlackDeliveryRecord | null }
-  | { ready: false; error: string };
+  | { ready: false; dead: boolean; error: string };
 
 async function resolveDependencies(
   store: SlackOutboxStore,
@@ -92,14 +93,20 @@ async function resolveDependencies(
 ): Promise<ResolvedDependencies> {
   if (record.dependsOnId) {
     const dependency = await store.get(record.dependsOnId);
+    if (dependency?.status === "dead") {
+      return { ready: false, dead: true, error: `dependency ${record.dependsOnId} is dead` };
+    }
     if (dependency?.status !== "sent") {
-      return { ready: false, error: `waiting for ${record.dependsOnId}` };
+      return { ready: false, dead: false, error: `waiting for ${record.dependsOnId}` };
     }
   }
   if (!record.threadRootId) return { ready: true, root: null };
   const root = await store.get(record.threadRootId);
+  if (root?.status === "dead") {
+    return { ready: false, dead: true, error: `dependency ${record.threadRootId} is dead` };
+  }
   if (root?.status !== "sent" || !root.remoteMessageTs || !root.remoteChannel) {
-    return { ready: false, error: `waiting for ${record.threadRootId}` };
+    return { ready: false, dead: false, error: `waiting for ${record.threadRootId}` };
   }
   return { ready: true, root };
 }

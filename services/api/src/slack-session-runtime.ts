@@ -1,5 +1,3 @@
-import type { SessionStatus } from "@auto-harness/shared";
-
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SlackNotifications } from "./slack-integration-types.ts";
@@ -80,7 +78,7 @@ export function slackSessionSnapshot(
 
 function impliedEvents(session: SlackSessionSnapshot): SlackLifecycleEvent[] {
   const events: SlackLifecycleEvent[] = ["session_created"];
-  if (session.startedAt || session.status === "running" || isTerminal(session.status)) {
+  if (session.startedAt || session.status === "running") {
     events.push("session_started");
   }
   if (session.status === "completed") events.push("session_completed");
@@ -89,15 +87,6 @@ function impliedEvents(session: SlackSessionSnapshot): SlackLifecycleEvent[] {
     events.push("session_failed");
   }
   return events;
-}
-
-function isTerminal(status: SessionStatus): boolean {
-  return (
-    status === "completed" ||
-    status === "failed" ||
-    status === "timed_out" ||
-    status === "cancelled"
-  );
 }
 
 function stringMetadata(

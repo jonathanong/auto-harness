@@ -186,6 +186,7 @@ describe("Slack session lifecycle reconciliation", () => {
       expect([...store.items.keys()]).toContain(
         `slack:session-1:${status === "cancelled" ? "session_cancelled" : "session_failed"}:reply`,
       );
+      expect([...store.items.keys()]).not.toContain("slack:session-1:session_started:reply");
     }
     const store = new InsertStore();
     const snapshot = slackSessionSnapshot(state(), session());

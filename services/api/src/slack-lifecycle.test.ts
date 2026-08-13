@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- lifecycle planning and formatting variants share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { DEFAULT_SLACK_NOTIFICATIONS } from "./slack-integration-types.ts";
@@ -95,6 +96,45 @@ describe("Slack lifecycle planning", () => {
         }),
       ).toEqual([]);
     }
+
+    const withoutCreated = {
+      ...DEFAULT_SLACK_NOTIFICATIONS,
+      onSessionCreated: false,
+    };
+    const started = planSlackLifecycle({
+      event: "session_started",
+      session: { ...base, status: "running" },
+      channel: "C123",
+      notifications: withoutCreated,
+      now: base.createdAt,
+    });
+    expect(started).toHaveLength(1);
+    expect(started[0]).toMatchObject({ event: "session_started", operation: "post-root" });
+    expect(started[0].text).toContain("Session started");
+
+    const terminalOnly = planSlackLifecycle({
+      event: "session_failed",
+      session: { ...base, status: "failed" },
+      channel: "C123",
+      notifications: { ...withoutCreated, onSessionStarted: false },
+      now: base.createdAt,
+    });
+    expect(terminalOnly).toHaveLength(1);
+    expect(terminalOnly[0]).toMatchObject({ event: "session_failed", operation: "post-root" });
+    expect(terminalOnly[0].text).toContain("Session failed");
+
+    const startedThenTerminal = planSlackLifecycle({
+      event: "session_completed",
+      session: { ...base, status: "completed", startedAt: base.createdAt },
+      channel: "C123",
+      notifications: withoutCreated,
+      now: base.createdAt,
+    });
+    expect(startedThenTerminal.map(({ event, operation }) => ({ event, operation }))).toEqual([
+      { event: "session_started", operation: "post-root" },
+      { event: "session_completed", operation: "post-reply" },
+      { event: "session_completed", operation: "update-root" },
+    ]);
   });
 });
 

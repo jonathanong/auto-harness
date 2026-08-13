@@ -42,14 +42,18 @@ export function planSlackLifecycle(input: {
     createdAt: input.now,
     updatedAt: input.now,
   };
+  const rootEvent = rootEventFor(input);
   const root: SlackDeliveryRecord = {
     ...base,
     id: rootId,
-    event: "session_created",
+    event: rootEvent,
     operation: "post-root",
-    text: formatSlackLifecycleMessage("session_created", input.session),
+    text:
+      rootEvent === input.event && isTerminalEvent(rootEvent)
+        ? formatSlackFinalRoot(input.session)
+        : formatSlackLifecycleMessage(rootEvent, input.session),
   };
-  if (input.event === "session_created") return [root];
+  if (rootEvent === input.event) return [root];
 
   const replyId = `slack:${input.session.id}:${input.event}:reply`;
   const reply: SlackDeliveryRecord = {
@@ -75,6 +79,24 @@ export function planSlackLifecycle(input: {
       dependsOnId: replyId,
     },
   ];
+}
+
+function rootEventFor(input: {
+  event: SlackLifecycleEvent;
+  session: SlackSessionSnapshot;
+  notifications: SlackNotifications;
+}): SlackLifecycleEvent {
+  if (input.notifications.onSessionCreated) return "session_created";
+  if (input.event !== "session_created" && input.notifications.onSessionStarted) {
+    if (input.event === "session_started" || input.session.startedAt) return "session_started";
+  }
+  return input.event;
+}
+
+function isTerminalEvent(event: SlackLifecycleEvent): boolean {
+  return (
+    event === "session_completed" || event === "session_cancelled" || event === "session_failed"
+  );
 }
 
 function enabled(event: SlackLifecycleEvent, notifications: SlackNotifications): boolean {
