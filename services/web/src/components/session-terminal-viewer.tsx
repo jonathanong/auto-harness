@@ -28,7 +28,7 @@ export function SessionTerminalViewer({
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState("Search logs");
 
-  const { fit, runtimeRef } = useSessionTerminal(hostRef, text, fontSize);
+  const { fit, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -38,23 +38,6 @@ export function SessionTerminalViewer({
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, [fit]);
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      const shortcut = terminalShortcut(event);
-      if (!shortcut) return;
-      event.preventDefault();
-      if (shortcut === "search") searchInputRef.current?.focus();
-      if (shortcut === "font-increase") {
-        setFontSize((current) => adjustedTerminalFontSize(current, 1));
-      }
-      if (shortcut === "font-decrease") {
-        setFontSize((current) => adjustedTerminalFontSize(current, -1));
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   const search = (direction: "next" | "previous") => {
     const found =
