@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import "@auto-harness/ui/globals.css";
+import "@xterm/xterm/css/xterm.css";
 import { Toast } from "@auto-harness/ui";
 
 import { ControlShell } from "../components/control-shell.tsx";
