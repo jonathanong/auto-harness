@@ -60,7 +60,10 @@ export async function enqueueWebhookDelivery(
     );
     return { created: true, delivery: record };
   } catch (error) {
-    if (isConditionalFailed(error)) return { created: false, delivery: record };
+    if (isConditionalFailed(error)) {
+      const existing = await getWebhookDelivery(ctx, record.id);
+      if (existing) return { created: false, delivery: existing };
+    }
     throw error;
   }
 }

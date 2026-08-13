@@ -46,6 +46,12 @@ describe("DynamoDB webhook outbox", () => {
       leaseId: "lease-1",
     });
     expect(
+      await ctx.storage.enqueueWebhookDelivery({
+        ...enqueueInput("retry", 1),
+        occurredAt: t1,
+      }),
+    ).toEqual({ created: false, delivery: claimed1 });
+    expect(
       await ctx.storage.claimWebhookDelivery({
         id: first.delivery.id,
         owner: "worker-2",
