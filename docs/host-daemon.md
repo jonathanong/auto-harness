@@ -243,8 +243,10 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 
 The assigned command runs in a single `node-pty` terminal (`xterm-256color`,
 120 columns by 40 rows). Its merged terminal stream is reported as `stdout`,
-including ANSI control sequences exactly as the CLI emits them. Git operations,
-trusted setup scripts, and terminal hooks retain separate pipe-based execution;
+including ANSI control sequences exactly as the CLI emits them. Resume-reference
+capture treats configured stdout/stderr policies as matching this merged stream,
+so opaque references remain captured and redacted. Git operations, trusted setup
+scripts, and terminal hooks retain separate pipe-based execution;
 this keeps PTY behavior confined to the CLI that needs a terminal. On POSIX,
 cancel and timeout signal the PTY process group so helper descendants receive
 the same SIGTERM → SIGKILL lifecycle.

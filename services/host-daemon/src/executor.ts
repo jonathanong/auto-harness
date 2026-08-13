@@ -51,6 +51,8 @@ export type ProcessResult = {
  * Tests inject fakes; only this boundary may be mocked for CLI tools.
  */
 export interface ProcessRunner {
+  /** Set when stdout and stderr share one terminal byte stream. */
+  readonly outputStreams?: "merged";
   run(options: RunProcessOptions): Promise<ProcessResult>;
 }
 

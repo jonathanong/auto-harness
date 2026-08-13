@@ -44,6 +44,7 @@ function emitPtyChunk(options: RunProcessOptions, value: string): void {
  * processes intentionally remain on {@link SpawnProcessRunner}.
  */
 export class PtyProcessRunner implements ProcessRunner {
+  readonly outputStreams = "merged" as const;
   private readonly kill: typeof process.kill;
   private readonly platform: NodeJS.Platform;
   private readonly spawn: PtySpawn;

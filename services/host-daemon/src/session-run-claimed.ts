@@ -96,7 +96,11 @@ async function runProcessAndFinish(
 ): Promise<SessionRunResult> {
   streamer.write("system", `Spawning: ${argv[0]} (${Math.max(0, argv.length - 1)} arguments)`);
   let combined = "";
-  const resumeRef = new ResumeRefCaptureReader(assign.resumeRefCapture);
+  const capturePolicy =
+    commandRunner.outputStreams === "merged" && assign.resumeRefCapture
+      ? { ...assign.resumeRefCapture, stream: "either" as const }
+      : assign.resumeRefCapture;
+  const resumeRef = new ResumeRefCaptureReader(capturePolicy);
   const result = await commandRunner.run({
     argv,
     cwd: claimed.cwd,
