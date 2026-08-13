@@ -67,4 +67,32 @@ describe("DashboardLive", () => {
     expect(field(view.container, "stat-queued-value").textContent).toBe("1");
     expect(field(view.container, "live-updates-active")).toBeTruthy();
   });
+
+  it("does not overlap slow dashboard polls", async () => {
+    vi.useFakeTimers();
+    let resolveSessions!: (response: Response) => void;
+    const sessions = new Promise<Response>((resolve) => {
+      resolveSessions = resolve;
+    });
+    const request = createRequestFake(
+      sessions,
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [] }),
+      json({ items: [] }),
+    );
+    vi.stubGlobal("fetch", request.request);
+    mountForm(<DashboardLive initial={{ sessions: [], hosts: [], worktrees: [] }} pollMs={10} />);
+
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    await act(async () => vi.advanceTimersByTimeAsync(30));
+    expect(request.requests).toHaveLength(3);
+    await act(async () => {
+      resolveSessions(json({ items: [] }));
+      await sessions;
+    });
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(request.requests).toHaveLength(6);
+  });
 });

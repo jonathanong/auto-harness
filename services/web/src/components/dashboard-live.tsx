@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle, StatusBadge, TipText } from "@auto-harness/ui";
 
@@ -36,7 +36,10 @@ export function DashboardLive({
 }: DashboardLiveProps) {
   const [snapshot, setSnapshot] = useState(initial);
   const [error, setError] = useState<string | null>(initialError);
+  const refreshing = useRef(false);
   const refresh = useCallback(async () => {
+    if (refreshing.current) return;
+    refreshing.current = true;
     try {
       const [sessions, hosts, worktrees] = await Promise.all([
         getItems<DashboardSession>("/api/v1/sessions"),
@@ -47,12 +50,23 @@ export function DashboardLive({
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      refreshing.current = false;
     }
   }, []);
 
   useEffect(() => {
-    const timer = setInterval(() => void refresh(), pollMs);
-    return () => clearInterval(timer);
+    let active = true;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      await refresh();
+      if (active) timer = setTimeout(() => void poll(), pollMs);
+    };
+    timer = setTimeout(() => void poll(), pollMs);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
   }, [pollMs, refresh]);
 
   const metrics = useMemo(() => {

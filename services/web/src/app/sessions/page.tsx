@@ -5,7 +5,7 @@ import { SessionFilters, WithTooltip } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
 import { apiGet } from "../../lib/api.ts";
-import { parseSessionListState, sessionListHref } from "../../lib/url-state.ts";
+import { parseSessionListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -48,10 +48,6 @@ export default async function SessionsPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const nextHref = nextCursor ? sessionListHref({ ...filters, cursor: nextCursor }) : null;
-  // Previous page is not encoded in cursor chain; only "first page" via clearing cursor.
-  const prevHref = filters.cursor ? sessionListHref({ ...filters, cursor: "" }) : null;
-
   return (
     <div className="space-y-4" data-pw="page-sessions">
       <div className="flex items-center justify-between">
@@ -73,10 +69,9 @@ export default async function SessionsPage({
       <SessionsLive
         initialItems={items}
         initialError={error}
+        initialNextCursor={nextCursor}
+        listState={filters}
         path={path}
-        nextHref={nextHref}
-        prevHref={prevHref}
-        search={filters.q}
       />
     </div>
   );
