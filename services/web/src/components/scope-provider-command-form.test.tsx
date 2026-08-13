@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createApiFake,
@@ -90,6 +90,29 @@ describe("ScopeProviderCommandForm", () => {
     expect(api.requests[3]?.[1]).toMatchObject({
       body: expect.not.stringContaining("commandId"),
     });
+    view.unmount();
+  });
+
+  it("recovers when reading the inventory rejects", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("inventory unavailable"));
+    const view = mountForm(
+      <ScopeProviderCommandForm
+        hostId="host"
+        scope={{ repositoryId: "repo/one" }}
+        providerAccountId="account/one"
+        currentOverride={undefined}
+        providerCommands={[...commands]}
+      />,
+    );
+    submit(field(view.container, "scope-provider-command-form-account/one"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "scope-provider-command-error-account/one").textContent).toBe(
+      "inventory unavailable",
+    );
+    expect(
+      field<HTMLButtonElement>(view.container, "scope-provider-command-submit-account/one")
+        .disabled,
+    ).toBe(false);
     view.unmount();
   });
 });

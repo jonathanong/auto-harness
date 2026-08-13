@@ -41,16 +41,20 @@ export function ScopeProviderEnabledForm({
         const enabled = value === "" ? undefined : value === "true";
         setPending(true);
         void (async () => {
-          const current = await getInventory(hostId);
-          const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
-          const r = await putInventory(hostId, next);
-          if (!r.ok) {
-            setError(r.error);
+          try {
+            const current = await getInventory(hostId);
+            const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
+            const r = await putInventory(hostId, next);
+            if (!r.ok) {
+              setError(r.error);
+              return;
+            }
+            router.refresh();
+          } catch (cause) {
+            setError(String(cause));
+          } finally {
             setPending(false);
-            return;
           }
-          setPending(false);
-          router.refresh();
         })();
       }}
     >

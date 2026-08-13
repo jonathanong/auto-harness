@@ -41,21 +41,25 @@ export function ScopeProviderCommandForm({
         const value = String(fd.get("commandId") ?? "");
         setPending(true);
         void (async () => {
-          const current = await getInventory(hostId);
-          const next = setScopeProviderCommand(
-            current,
-            scope,
-            providerAccountId,
-            value || undefined,
-          );
-          const r = await putInventory(hostId, next);
-          if (!r.ok) {
-            setError(r.error);
+          try {
+            const current = await getInventory(hostId);
+            const next = setScopeProviderCommand(
+              current,
+              scope,
+              providerAccountId,
+              value || undefined,
+            );
+            const r = await putInventory(hostId, next);
+            if (!r.ok) {
+              setError(r.error);
+              return;
+            }
+            router.refresh();
+          } catch (cause) {
+            setError(String(cause));
+          } finally {
             setPending(false);
-            return;
           }
-          setPending(false);
-          router.refresh();
         })();
       }}
     >
