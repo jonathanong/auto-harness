@@ -40,6 +40,21 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getWorktree() {
       return null;
     },
+    async listCommands() {
+      return [];
+    },
+    async listConnections() {
+      return [...connections.values()];
+    },
+    async listHostInventories() {
+      return [];
+    },
+    async listProviderAccounts() {
+      return [];
+    },
+    async listProviders() {
+      return [];
+    },
     async listWorktreesByHost() {
       return [];
     },
@@ -339,6 +354,9 @@ describe("Lambda runtime adapters", () => {
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     const fixture = runtimeFixture();
     const order: string[] = [];
+    const refreshSchedulerReadModelDurable = fixture.plane.refreshSchedulerReadModelDurable.bind(
+      fixture.plane,
+    );
     vi.spyOn(fixture.plane, "evaluateCronDurable").mockImplementation(async () => {
       order.push("cron");
       return [{ id: "scheduled-1" }] as never;
@@ -346,6 +364,10 @@ describe("Lambda runtime adapters", () => {
     vi.spyOn(fixture.plane, "enforceAckDeadlinesDurable").mockImplementation(async () => {
       order.push("ack");
       return ["session-1"];
+    });
+    vi.spyOn(fixture.plane, "refreshSchedulerReadModelDurable").mockImplementation(async () => {
+      order.push("refresh");
+      await refreshSchedulerReadModelDurable();
     });
     vi.spyOn(fixture.plane, "reclaimStaleHostsDurable").mockImplementation(async () => {
       order.push("stale");
@@ -367,7 +389,7 @@ describe("Lambda runtime adapters", () => {
       schedulesFired: 1,
       staleHostsReclaimed: 2,
     });
-    expect(order).toEqual(["cron", "ack", "stale", "queued", "scheduled"]);
+    expect(order).toEqual(["cron", "ack", "refresh", "stale", "queued", "scheduled"]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {

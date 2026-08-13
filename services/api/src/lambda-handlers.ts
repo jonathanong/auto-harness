@@ -143,6 +143,7 @@ export async function createLambdaRuntime(
       return runInvocation(async () => {
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
+        await created.plane.refreshSchedulerReadModelDurable();
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();

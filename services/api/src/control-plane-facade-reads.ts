@@ -12,6 +12,10 @@ import * as usage from "./control-plane-usage.ts";
 
 /** Durable read-through facade kept separate from mutation-heavy base methods. */
 export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
+  async refreshSchedulerReadModelDurable(): Promise<void> {
+    await durableRuntime.refreshSchedulerReadModel(this.state);
+  }
+
   async listWorktreesDurable(): Promise<WorktreeRecord[]> {
     return durableRuntime.listWorktreesDurable(this.state);
   }
