@@ -382,7 +382,8 @@ be inferred from this phase's local-exit status.
     the **`timestampSeq`** sort key for SessionLogs.
   - SessionLogs TTL (7 days).
   - S3 archive bucket, API Gateway (REST + WS), Lambda functions + IAM roles.
-  - CloudWatch Events rule (1-minute) for cron evaluation.
+  - CloudWatch Events rule (1-minute) for cron evaluation (**planned; not provisioned by the
+    current runtime stack**).
 - `services/api` REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD.
   - Sessions: create (**`ref`, `commandProfile`, `concurrencyId`, `metadata`
@@ -425,11 +426,12 @@ be inferred from this phase's local-exit status.
 **Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
 session create with `ref`/`commandProfile`/`concurrencyId`/`metadata`/`url`.
-CDK on `main` synthesizes the persistence foundation only. It does not include a deploy command,
-live REST/WebSocket runtime, or account-backed smoke test. The synthesized SessionLogs table
-enables the `ttl` attribute, but runtime log records do not populate it and local table creation
-does not configure TTL, so current logs do not expire through TTL. The current archive path writes
-the DynamoDB Archives table rather than S3. The local store is DynamoDB Local via
+CDK table definitions plus synthesizable HTTP/WebSocket Lambda runtime resources live in
+`services/cdk`; EventBridge rules and a cron Lambda remain planned and are not part of the current
+runtime stack. There is no deploy command or account-backed smoke test. The synthesized SessionLogs
+table enables the `ttl` attribute, but runtime log records do not populate it and local table
+creation does not configure TTL, so current logs do not expire through TTL. The current archive
+path writes the DynamoDB Archives table rather than S3. The local store is DynamoDB Local via
 `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.

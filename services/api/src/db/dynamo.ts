@@ -52,7 +52,8 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
 }
 
 export type CreateDynamoClientOptions = {
-  endpoint?: string;
+  /** DynamoDB endpoint. `null` selects the AWS regional endpoint. */
+  endpoint?: string | null;
   region?: string;
 };
 
@@ -67,15 +68,21 @@ type DynamoClients = {
  */
 export function createDynamoClients(options: CreateDynamoClientOptions = {}): DynamoClients {
   const endpoint =
-    options.endpoint ?? process.env.HARNESS_DDB_ENDPOINT ?? DEFAULT_DYNAMODB_ENDPOINT;
+    options.endpoint === null
+      ? undefined
+      : (options.endpoint ?? process.env.HARNESS_DDB_ENDPOINT ?? DEFAULT_DYNAMODB_ENDPOINT);
   const region = options.region ?? process.env.AWS_REGION ?? "us-east-1";
   const client = new DynamoDBClient({
     region,
-    endpoint,
-    credentials: {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
-    },
+    ...(endpoint ? { endpoint } : {}),
+    ...(endpoint
+      ? {
+          credentials: {
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "local",
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "local",
+          },
+        }
+      : {}),
   });
   const doc = DynamoDBDocumentClient.from(client, {
     marshallOptions: { removeUndefinedValues: true },

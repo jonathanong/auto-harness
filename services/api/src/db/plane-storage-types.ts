@@ -54,6 +54,8 @@ export type ConnectionRecord = {
   repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
+  /** False only for an authenticated API Gateway socket awaiting host:register. */
+  registered?: false;
 };
 
 export type ScheduleRecord = {

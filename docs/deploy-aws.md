@@ -1,8 +1,9 @@
 # Deploy — AWS control plane
 
-**Foundation available.** `services/cdk` can synthesize DynamoDB tables, the S3
-log-archive bucket, and unassigned least-privilege IAM policies. API Gateway,
-Lambda, WebSocket, EventBridge, and runtime deployment are still design work.
+**Runtime infrastructure available for synthesis.** `services/cdk` synthesizes
+the persistence foundation plus HTTP/WebSocket API Gateway and bundled Lambda
+adapters. EventBridge/cron and an account-backed deployment proof remain future
+work; this repository deliberately provides no deploy command.
 Architecture: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
@@ -14,7 +15,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 | Item                         | Status                                                            |
 | ---------------------------- | ----------------------------------------------------------------- |
 | Design / data model          | Documented in [aws.md](aws.md)                                    |
-| CDK package (`services/cdk`) | Synthesizable persistence foundation                              |
+| CDK package (`services/cdk`) | Synthesizable persistence + REST/WebSocket runtime stacks         |
 | Runtime deployment           | Not implemented; there is deliberately no package `deploy` script |
 
 Do not treat a successful synth as an AWS deployment claim. It validates the
@@ -47,21 +48,25 @@ CloudFormation shape only.
 
 ---
 
-## Synthesize the foundation
+## Synthesize the control plane
 
 ```bash
 pnpm install
 pnpm --filter @auto-harness/cdk synth
 ```
 
-The default stack is `AutoHarnessFoundation`, creates tables named
-`AutoHarness-*`, and retains all data resources on replacement and deletion.
+The app emits `AutoHarnessFoundation` and `AutoHarnessRuntime`. The foundation
+creates tables named `AutoHarness-*` and retains data resources on replacement
+and deletion. The runtime creates two Node.js 22 Lambdas, HTTP and WebSocket
+API Gateway APIs, and a rotating KMS key for integration secrets. Lambda code
+is bundled locally with esbuild during synthesis.
 Use CDK context to create a deliberately named disposable environment:
 
 ```bash
 pnpm --filter @auto-harness/cdk synth -- \
   -c tablePrefix=Review20 \
   -c archiveBucketName=review-20-cdk-foundation-archives \
+  -c runtimeStackName=Review20Runtime \
   -c removalPolicy=destroy
 ```
 
@@ -78,25 +83,23 @@ enable CDK `autoDeleteObjects`, because that feature adds a custom-resource
 Lambda and would exceed this stack's no-runtime-resources boundary. Do not
 choose `destroy` for data that must survive a stack replacement.
 
-### Foundation outputs
+### Stack parameters and outputs
+
+Deployment tooling must supply the runtime stack's no-echo `HarnessAdmins` and
+`HarnessSessionSecret` parameters and exact `WebOrigin`. Do not store their
+values in CDK context or source control.
 
 | Output                                                      | Consumer                                          |
 | ----------------------------------------------------------- | ------------------------------------------------- |
 | `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration |
 | `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
 | `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
+| `RestApiUrl`, `WebSocketUrl`, `IntegrationKeyArn`           | Runtime clients and integration encryption        |
 
-There is no `RestApiUrl`, `WebSocketUrl`, or `Region` output yet because those
-runtime resources are outside this foundation.
-
----
-
-## Future deployment boundary
-
-Before adding deployment, introduce the runtime resources and deployment
-runbook together: bootstrap requirements, an explicit deploy command, runtime
-roles, endpoint outputs, and an account-backed smoke test. This foundation does
-not authorize or imply any of those operations.
+Synth output is not a deployment claim. Before adding a repository deploy path,
+add bootstrap/account requirements, explicit deploy and rollback commands, and
+an account-backed REST/WebSocket smoke test. EventBridge cron resources are not
+part of the current runtime stack.
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance

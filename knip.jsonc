@@ -52,5 +52,13 @@
   },
   "ignore": ["**/*-test-helpers.ts", "**/.next/**", "**/next-env.d.ts", "**/next.config.ts"],
   "ignoreBinaries": ["lychee", "playwright"],
-  "ignoreDependencies": ["autoprefixer", "postcss", "tailwindcss", "next", "react", "react-dom"],
+  "ignoreDependencies": [
+    "autoprefixer",
+    "esbuild",
+    "postcss",
+    "tailwindcss",
+    "next",
+    "react",
+    "react-dom",
+  ],
 }

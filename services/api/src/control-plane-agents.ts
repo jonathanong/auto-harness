@@ -259,6 +259,10 @@ export function registerHost(
     runningSessions?: string[];
     draining?: true;
     replaceExisting?: boolean;
+    /** Transport-owned id (for example API Gateway's connection id). */
+    connectionId?: string;
+    /** Atomically promote an authenticated transport-owned pending row. */
+    consumePendingConnection?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
@@ -280,7 +284,7 @@ export function registerHost(
     state.hostConnection.delete(opts.hostId);
   }
 
-  const connectionId = state.connectionIdFactory();
+  const connectionId = opts.connectionId ?? state.connectionIdFactory();
   const at = state.now();
   const previousInventory = state.hostInventories.get(opts.hostId);
   const registeredRepositories = resolveRegisteredRepositories(
@@ -386,6 +390,10 @@ export async function registerHostDurable(
     runningSessions?: string[];
     draining?: true;
     replaceExisting?: boolean;
+    /** Transport-owned id (for example API Gateway's connection id). */
+    connectionId?: string;
+    /** Atomically promote an authenticated transport-owned pending row. */
+    consumePendingConnection?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
   if (!state.storage) {
@@ -405,7 +413,7 @@ export async function registerHostDurable(
   if (existing && !opts.replaceExisting) {
     return { ok: false, error: `hostId ${opts.hostId} already has an active connection` };
   }
-  const connectionId = state.connectionIdFactory();
+  const connectionId = opts.connectionId ?? state.connectionIdFactory();
   const at = state.now();
   const previousInventory = state.hostInventories.get(opts.hostId);
   const registeredRepositories = resolveRegisteredRepositories(
@@ -428,6 +436,7 @@ export async function registerHostDurable(
     connection: conn,
     replaceExisting: opts.replaceExisting === true,
     ...(existing ? { existingConnectionId: existing } : {}),
+    consumePendingConnection: opts.consumePendingConnection === true,
     draining: opts.draining,
   });
   if (!won) {
