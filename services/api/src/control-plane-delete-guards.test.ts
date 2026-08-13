@@ -56,7 +56,13 @@ describe("catalog delete references", () => {
     expect(dependenciesForCommand(refs, "command")).toEqual(
       expect.arrayContaining([
         { kind: "schedule", id: "schedule" },
-        { kind: "host-inventory", id: "host", scope: "host", hostId: "host" },
+        {
+          kind: "host-inventory",
+          id: "host",
+          scope: "host",
+          hostId: "host",
+          providerAccountId: "account",
+        },
       ]),
     );
     expect(dependenciesForAccount(refs, "account")).toEqual([

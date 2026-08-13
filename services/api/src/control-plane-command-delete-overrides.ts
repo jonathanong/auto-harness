@@ -8,7 +8,7 @@ type CommandOverrideInventory = ReadonlyArray<{
       providerAccountOverrides?: Record<string, { commandId?: string }>;
     }>;
   }>;
-  providerAccounts: Array<{ commandId?: string }>;
+  providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
 }>;
 
 type DependencyLabelInput = {
@@ -19,6 +19,7 @@ type DependencyLabelInput = {
   hostId?: string;
   repositoryId?: string;
   worktreeId?: string;
+  providerAccountId?: string;
 };
 
 export function commandOverrideDependencies(
@@ -32,28 +33,38 @@ export function commandOverrideDependencies(
     hostId: string;
     repositoryId?: string;
     worktreeId?: string;
+    providerAccountId: string;
   }> = [];
   for (const inventory of inventories) {
-    if (inventory.providerAccounts.some((account) => account.commandId === commandId)) {
+    for (const account of inventory.providerAccounts) {
+      if (account.commandId !== commandId) continue;
       dependencies.push({
         kind: "host-inventory",
         id: inventory.hostId,
         scope: "host",
         hostId: inventory.hostId,
+        providerAccountId: account.providerAccountId,
       });
     }
     for (const repository of inventory.repositories) {
-      if (hasOverride(repository.providerAccountOverrides, commandId)) {
+      for (const providerAccountId of matchingOverrides(
+        repository.providerAccountOverrides,
+        commandId,
+      )) {
         dependencies.push({
           kind: "host-inventory",
           id: inventory.hostId,
           scope: "repository",
           hostId: inventory.hostId,
           repositoryId: repository.id,
+          providerAccountId,
         });
       }
       for (const worktree of repository.worktrees) {
-        if (hasOverride(worktree.providerAccountOverrides, commandId)) {
+        for (const providerAccountId of matchingOverrides(
+          worktree.providerAccountOverrides,
+          commandId,
+        )) {
           dependencies.push({
             kind: "host-inventory",
             id: inventory.hostId,
@@ -61,6 +72,7 @@ export function commandOverrideDependencies(
             hostId: inventory.hostId,
             repositoryId: repository.id,
             worktreeId: worktree.id,
+            providerAccountId,
           });
         }
       }
@@ -70,19 +82,24 @@ export function commandOverrideDependencies(
 }
 
 export function deleteDependencyLabel(dependency: DependencyLabelInput): string {
-  if (dependency.scope === "host") return `host ${dependency.hostId} command override`;
+  const account = dependency.providerAccountId
+    ? ` (provider account ${dependency.providerAccountId})`
+    : "";
+  if (dependency.scope === "host") return `host ${dependency.hostId} command override${account}`;
   if (dependency.scope === "repository") {
-    return `repository ${dependency.repositoryId} command override on host ${dependency.hostId}`;
+    return `repository ${dependency.repositoryId} command override on host ${dependency.hostId}${account}`;
   }
   if (dependency.scope === "worktree") {
-    return `worktree ${dependency.worktreeId} command override on host ${dependency.hostId}`;
+    return `worktree ${dependency.worktreeId} command override on host ${dependency.hostId}${account}`;
   }
   return `${dependency.kind} ${dependency.id}${dependency.status ? ` (${dependency.status})` : ""}`;
 }
 
-function hasOverride(
+function matchingOverrides(
   overrides: Record<string, { commandId?: string }> | undefined,
   commandId: string,
-): boolean {
-  return Object.values(overrides ?? {}).some((override) => override.commandId === commandId);
+): string[] {
+  return Object.entries(overrides ?? {})
+    .filter(([, override]) => override.commandId === commandId)
+    .map(([providerAccountId]) => providerAccountId);
 }

@@ -61,6 +61,7 @@ describe("durable command deletion scope guards", () => {
           id: "scope-host",
           scope: "host",
           hostId: "scope-host",
+          providerAccountId: "scope-account",
         },
       ],
       error: expect.stringContaining("host scope-host command override"),
@@ -77,6 +78,7 @@ describe("durable command deletion scope guards", () => {
           scope: "repository",
           hostId: "scope-host",
           repositoryId: "scope-repository",
+          providerAccountId: "scope-account",
         },
       ],
       error: expect.stringContaining(
@@ -96,6 +98,7 @@ describe("durable command deletion scope guards", () => {
           hostId: "scope-host",
           repositoryId: "scope-repository",
           worktreeId: "scope-worktree",
+          providerAccountId: "scope-account",
         },
       ],
       error: expect.stringContaining("worktree scope-worktree command override on host scope-host"),

@@ -25,6 +25,7 @@ export type DeleteDependency = {
   hostId?: string;
   repositoryId?: string;
   worktreeId?: string;
+  providerAccountId?: string;
 };
 
 export type DeleteResult =
@@ -177,7 +178,7 @@ const referencesCommand = (target: TargetRef, fallbacks: TargetRef[], id: string
 const unique = (dependencies: DeleteDependency[]) => [
   ...new Map(
     dependencies.map((dependency) => [
-      `${dependency.kind}:${dependency.id}:${dependency.scope ?? ""}:${dependency.hostId ?? ""}:${dependency.repositoryId ?? ""}:${dependency.worktreeId ?? ""}`,
+      `${dependency.kind}:${dependency.id}:${dependency.scope ?? ""}:${dependency.hostId ?? ""}:${dependency.repositoryId ?? ""}:${dependency.worktreeId ?? ""}:${dependency.providerAccountId ?? ""}`,
       dependency,
     ]),
   ).values(),
