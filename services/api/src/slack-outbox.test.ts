@@ -86,6 +86,17 @@ class MemoryStore implements SlackOutboxStore {
 }
 
 describe("Slack durable outbox", () => {
+  it("uses runtime clock and lease-token defaults when options are omitted", async () => {
+    const store = new MemoryStore();
+    await store.enqueue(record("root-defaults"));
+    const deliver = vi.fn().mockResolvedValue({ channel: "C123", messageTs: "ts-defaults" });
+
+    expect(await processSlackOutboxOnce(store, { deliver })).toBe("sent");
+    expect(deliver).toHaveBeenCalledWith(
+      expect.objectContaining({ idempotencyKey: "root-defaults", channel: "C123" }),
+    );
+  });
+
   it("enqueues stable IDs idempotently and delivers an ordered thread", async () => {
     const store = new MemoryStore();
     const root = record("root");
