@@ -233,10 +233,10 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
 
 1. Each log item written with `ttl` = now + **7 days** (epoch seconds). DynamoDB TTL deletes expired items at no charge.
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
-   archive policy. A terminal-session archival worker is not part of this stack yet.
-   When that worker lands, it should:
+   archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
+   write policy; terminal-session processing:
    - Query all SessionLogs for `sessionId`
-   - Write `s3://…/sessions/{sessionId}/logs.jsonl`
+   - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed state
    - Prefer **leaving DynamoDB rows for TTL** (no bulk delete cost) unless storage pressure requires explicit delete after successful S3 put
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
    parameters. Archived-object retrieval is not part of the foundation or its
@@ -433,7 +433,8 @@ IAM: only archival Lambda role can `s3:PutObject`; optional read role for UI “
 The API archive boundary writes terminal logs to this key as JSONL when `ARCHIVE_BUCKET` is
 configured. It also retains the archive metadata row in DynamoDB. Uploads use SSE-S3 and reject
 keys outside `sessions/{sessionId}/logs.jsonl`. Local tests inject an in-memory writer and never
-contact AWS.
+contact AWS. The DynamoDB row is bounded pointer/state metadata, never a duplicate log body. A
+pending row survives an interrupted S3 PUT so the same idempotent object key can be retried.
 
 ---
 

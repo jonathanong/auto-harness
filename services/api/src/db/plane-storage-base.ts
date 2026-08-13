@@ -7,7 +7,7 @@ import type { DynamoTableNames } from "./dynamo.ts";
 import type { SessionRecord, UsageRecord, WorktreeRecord } from "./types.ts";
 import {
   type HostInventoryRecord,
-  type ArchiveObject,
+  type ArchiveMetadata,
   type ConnectionRecord,
   type AuthAccountRecord,
   type LogQuery,
@@ -620,15 +620,15 @@ export class DynamoPlaneStorageBase {
     return catalog.skipScheduleForActiveConcurrency(this.ctx, opts);
   }
 
-  putArchive(obj: ArchiveObject): Promise<void> {
+  putArchive(obj: ArchiveMetadata): Promise<void> {
     return catalog.putArchive(this.ctx, obj);
   }
 
-  getArchive(key: string): Promise<ArchiveObject | null> {
+  getArchive(key: string): Promise<ArchiveMetadata | null> {
     return catalog.getArchive(this.ctx, key);
   }
 
-  listArchives(): Promise<ArchiveObject[]> {
+  listArchives(): Promise<ArchiveMetadata[]> {
     return catalog.listArchives(this.ctx);
   }
 

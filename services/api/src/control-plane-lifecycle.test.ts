@@ -167,7 +167,11 @@ describe("ControlPlane lifecycle", () => {
       status: "completed",
     });
     await plane.settleStorage();
-    expect(plane.getArchive("sess-1")?.body).toContain("hi");
+    expect(plane.getArchive("sess-1")).toMatchObject({
+      bodyBytes: expect.any(Number),
+      status: "complete",
+      objectStored: true,
+    });
     expect(uploaded).toEqual([
       {
         key: "sessions/sess-1/logs.jsonl",
@@ -175,6 +179,7 @@ describe("ControlPlane lifecycle", () => {
         contentType: "application/x-ndjson",
       },
     ]);
+    expect(plane.getArchive("sess-1")?.bodyBytes).toBe(Buffer.byteLength(uploaded[0]!.body));
     expect(plane.listWebhookDeliveries()).toHaveLength(1);
     plane.setWebhookUrl(null);
     expect(plane.listArchives()).toHaveLength(1);

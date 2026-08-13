@@ -64,6 +64,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     });
 
     const commonEnvironment = {
+      ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
       HARNESS_ADMINS: admins.valueAsString,
       HARNESS_CURSOR_SECRET: cursorSecret.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
@@ -98,12 +99,16 @@ export class AutoHarnessRuntimeStack extends Stack {
       "ImportedApiDataAccessPolicy",
       props.foundation.apiDataAccessPolicy.managedPolicyArn,
     );
-    restFunction.role!.addManagedPolicy(apiDataAccessPolicy);
-    websocketFunction.role!.addManagedPolicy(apiDataAccessPolicy);
-    cronFunction.role!.addManagedPolicy(apiDataAccessPolicy);
-    integrationKey.grantEncryptDecrypt(restFunction);
-    integrationKey.grantEncryptDecrypt(websocketFunction);
-    integrationKey.grantEncryptDecrypt(cronFunction);
+    const archiveDataAccessPolicy = iam.ManagedPolicy.fromManagedPolicyArn(
+      this,
+      "ImportedArchiveDataAccessPolicy",
+      props.foundation.archiveDataAccessPolicy.managedPolicyArn,
+    );
+    for (const fn of [restFunction, websocketFunction, cronFunction]) {
+      fn.role!.addManagedPolicy(apiDataAccessPolicy);
+      fn.role!.addManagedPolicy(archiveDataAccessPolicy);
+      integrationKey.grantEncryptDecrypt(fn);
+    }
 
     const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {
       name: `${this.stackName}-http`,
@@ -187,16 +192,13 @@ export class AutoHarnessRuntimeStack extends Stack {
     });
     cronRule.addTarget(new targets.LambdaFunction(cronFunction));
 
-    const restApiUrl = new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
-    const websocketUrl = new CfnOutput(this, "WebSocketUrl", {
+    void new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
+    void new CfnOutput(this, "WebSocketUrl", {
       value: Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]),
     });
-    const integrationKeyArn = new CfnOutput(this, "IntegrationKeyArn", {
+    void new CfnOutput(this, "IntegrationKeyArn", {
       value: integrationKey.keyArn,
     });
-    void restApiUrl;
-    void websocketUrl;
-    void integrationKeyArn;
 
     this.resources = {
       cronFunction,

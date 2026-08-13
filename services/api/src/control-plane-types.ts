@@ -34,6 +34,16 @@ export type ArchiveObject = {
   contentType: string;
 };
 
+/** Bounded durable pointer/state; archive bodies are never duplicated into DynamoDB. */
+export type ArchiveMetadata = {
+  key: string;
+  contentType: string;
+  bodyBytes: number;
+  status: "pending" | "complete";
+  objectStored: boolean;
+  updatedAt: string;
+};
+
 export type WebhookDelivery = {
   url: string;
   sessionId: string;

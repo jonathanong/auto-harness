@@ -22,7 +22,7 @@ import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateFromStorage } from "./control-plane-hydrate.ts";
 import type {
-  ArchiveObject,
+  ArchiveMetadata,
   ConnectionRecord,
   ControlPlaneOptions,
   LogRecord,
@@ -65,7 +65,7 @@ export type ControlPlaneState = {
   /** Append-only audit records hydrated for local/in-memory reads. */
   auditLogs: Map<string, AuditLogRecord>;
   usageRecords: Map<string, UsageRecord>;
-  archives: Map<string, ArchiveObject>;
+  archives: Map<string, ArchiveMetadata>;
   archiveWriter: ArchiveWriter | undefined;
   webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;

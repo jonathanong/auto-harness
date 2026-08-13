@@ -11,7 +11,7 @@ import type {
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { hydrateScheduledState } from "./control-plane-hydrate-scheduled.ts";
 import type {
-  ArchiveObject,
+  ArchiveMetadata,
   ConnectionRecord,
   LogRecord,
   ScheduleRecord,
@@ -36,7 +36,7 @@ type HydratableState = {
   slackIntegration: SlackIntegrationRecord | undefined;
   auditLogs: Map<string, AuditLogRecord>;
   usageRecords: Map<string, UsageRecord>;
-  archives: Map<string, ArchiveObject>;
+  archives: Map<string, ArchiveMetadata>;
   pendingAcks: { clear(): void };
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
   drainingHosts: Set<string>;

@@ -58,8 +58,10 @@ graph TB
 
 Today, those control-plane behaviors run in the local API. Durable session-log archival writes
 JSONL through an injected S3 adapter when `ARCHIVE_BUCKET` is configured and retains archive
-metadata in DynamoDB. The private lifecycle-managed bucket exists in the synthesized foundation;
-no account-backed upload or deployment has been run.
+metadata in DynamoDB. That metadata contains only bounded pointer/retry state, never the log body;
+pending uploads are retried idempotently at the same object key. The private lifecycle-managed
+bucket and write-only runtime policy synthesize locally; no account-backed upload or deployment has
+been run.
 
 Deep dives live in the layer docs above; this page keeps cross-plane flows and design decisions only.
 

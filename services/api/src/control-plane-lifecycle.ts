@@ -1,7 +1,7 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
-import type { ArchiveObject, PublicSession, WebhookDelivery } from "./control-plane-types.ts";
+import type { PublicSession, WebhookDelivery } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
@@ -10,6 +10,14 @@ import {
   offlineHostAndRequeueDurable,
   releaseWorktree,
 } from "./control-plane-worktrees.ts";
+
+export {
+  archiveSessionLogs,
+  getArchive,
+  listArchives,
+  queueSessionArchive,
+  retrySessionArchiveIfNeeded,
+} from "./control-plane-archive.ts";
 
 /**
  * Heartbeat-based stale reclaim (Phase 3): free worktrees of agents whose
@@ -109,49 +117,6 @@ export async function reclaimStaleHostsDurable(
     state.disconnectedHosts.delete(hostId);
   }
   return reclaimed;
-}
-
-export async function archiveSessionLogs(
-  state: ControlPlaneState,
-  sessionId: string,
-): Promise<ArchiveObject> {
-  // Wait for any queued per-chunk writes, then archive the authoritative
-  // durable history rather than the bounded process cache.
-  const precedingWrites = [...state.pendingPersists];
-  await Promise.all(precedingWrites);
-  const logs = state.storage
-    ? await state.storage.listLogs(sessionId)
-    : [...(state.logs.get(sessionId) ?? [])];
-  const body = logs
-    .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
-    .join("\n");
-  const obj: ArchiveObject = {
-    key: `${state.archivePrefix}${sessionId}/logs.jsonl`,
-    body: body ? `${body}\n` : "",
-    contentType: "application/x-ndjson",
-  };
-  if (state.archiveWriter) {
-    await state.archiveWriter.putArchive(obj);
-  }
-  if (state.storage) await state.storage.putArchive(obj);
-  state.archives.set(obj.key, obj);
-  return obj;
-}
-
-export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
-  state.pendingPersists.push(archiveSessionLogs(state, sessionId));
-}
-
-export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveObject | null {
-  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
-  if (!state.archives.has(key)) {
-    return null;
-  }
-  return state.archives.get(key)!;
-}
-
-export function listArchives(state: ControlPlaneState): ArchiveObject[] {
-  return [...state.archives.values()];
 }
 
 export function maybeDeliverWebhook(state: ControlPlaneState, session: SessionRecord): void {

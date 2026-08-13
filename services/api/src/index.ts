@@ -16,6 +16,7 @@ export type { LocalSchedulerOptions } from "./local-scheduler.ts";
 export { createPlaneWsBridge, attachHostWsHub, createWsDelivery } from "./ws-hub.ts";
 export { ControlPlane } from "./control-plane.ts";
 export type {
+  ArchiveMetadata,
   ArchiveObject,
   ConnectionRecord,
   ControlPlaneOptions,

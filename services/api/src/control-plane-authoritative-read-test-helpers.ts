@@ -5,7 +5,12 @@ import type {
   ProviderRecord,
   RepositoryRecord,
 } from "./db/plane-storage.ts";
-import type { ArchiveObject, LogQuery, LogRecord, ScheduleRecord } from "./control-plane-types.ts";
+import type {
+  ArchiveMetadata,
+  LogQuery,
+  LogRecord,
+  ScheduleRecord,
+} from "./control-plane-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { selectLogs } from "./log-query.ts";
 
@@ -29,7 +34,7 @@ export function createAuthoritativeReadStorage() {
   const sessions = new Map<string, SessionRecord>();
   const logs = new Map<string, LogRecord[]>();
   const worktrees = new Map<string, WorktreeRecord>();
-  const archives = new Map<string, ArchiveObject>();
+  const archives = new Map<string, ArchiveMetadata>();
   const storage = {
     putAuditLog: async () => undefined,
     listAuditLogs: async () => ({ items: [] }),
@@ -78,7 +83,8 @@ export function createAuthoritativeReadStorage() {
     listWorktreesForRepo: async (id: string) =>
       list(worktrees).filter((record) => record.repositoryId === id),
     listConnections: async () => [],
-    putArchive: async (record: ArchiveObject) => archives.set(record.key, { ...record }),
+    putArchive: async (record: ArchiveMetadata) => archives.set(record.key, { ...record }),
+    getArchive: async (key: string) => copy(archives, key),
     listArchives: async () => list(archives),
     tryClaimScheduleAndCreateSession: async ({
       scheduleId,

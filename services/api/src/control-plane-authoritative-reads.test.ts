@@ -125,7 +125,10 @@ describe("authoritative durable reads", () => {
       ),
     ).toEqual(["first"]);
     expect(restarted.getWorktree("worktree")?.path).toBe("/worktree");
-    expect(restarted.getArchive("session")?.body).toContain("first");
+    expect(restarted.getArchive("session")).toMatchObject({
+      status: "complete",
+      objectStored: false,
+    });
     expect((await reader.updateRepositoryDurable("repository", { name: "renamed" })).ok).toBe(true);
     expect((await writer.getRepositoryDurable("repository"))?.name).toBe("renamed");
     expect((await reader.deleteHostInventoryDurable("host")).ok).toBe(true);

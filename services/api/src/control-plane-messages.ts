@@ -18,6 +18,7 @@ import {
 } from "./control-plane-agents.ts";
 import {
   archiveSessionLogs,
+  retrySessionArchiveIfNeeded,
   maybeDeliverWebhook,
   queueSessionArchive,
 } from "./control-plane-lifecycle.ts";
@@ -442,10 +443,13 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  const terminal = isTerminalSessionStatus(msg.status);
+  if (terminal && isTerminalSessionStatus(session.status)) {
+    await retrySessionArchiveIfNeeded(state, session.id);
+  }
   if (session.worktreeId !== msg.worktreeId || session.attemptId !== msg.attemptId) {
     return { ok: true };
   }
-  const terminal = isTerminalSessionStatus(msg.status);
   if (!terminal) {
     return { ok: true };
   }
