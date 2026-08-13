@@ -23,6 +23,7 @@ export async function runClaimedSession(
   signal: AbortSignal | undefined,
   timedOut: () => boolean,
   remainingMs: () => number,
+  commandRunner: ProcessRunner = processRunner,
 ): Promise<SessionRunResult> {
   const setupFail = await runSetupIfNeeded(
     processRunner,
@@ -69,6 +70,7 @@ export async function runClaimedSession(
 
   return await runProcessAndFinish(
     processRunner,
+    commandRunner,
     streamer,
     logs,
     assign,
@@ -82,6 +84,7 @@ export async function runClaimedSession(
 
 async function runProcessAndFinish(
   processRunner: ProcessRunner,
+  commandRunner: ProcessRunner,
   streamer: LogStreamer,
   logs: SessionLogChunk[],
   assign: SessionAssign,
@@ -93,8 +96,12 @@ async function runProcessAndFinish(
 ): Promise<SessionRunResult> {
   streamer.write("system", `Spawning: ${argv[0]} (${Math.max(0, argv.length - 1)} arguments)`);
   let combined = "";
-  const resumeRef = new ResumeRefCaptureReader(assign.resumeRefCapture);
-  const result = await processRunner.run({
+  const capturePolicy =
+    commandRunner.outputStreams === "merged" && assign.resumeRefCapture
+      ? { ...assign.resumeRefCapture, stream: "either" as const }
+      : assign.resumeRefCapture;
+  const resumeRef = new ResumeRefCaptureReader(capturePolicy);
+  const result = await commandRunner.run({
     argv,
     cwd: claimed.cwd,
     timeoutMs: remainingMs(),

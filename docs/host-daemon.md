@@ -25,15 +25,15 @@ optional operator configuration and are never fetched from a vendor.
 
 The agent owns:
 
-| Concern                   | Implementation                                                    |
-| ------------------------- | ----------------------------------------------------------------- |
-| Outbound control channel  | Persistent WebSocket client to the control plane                  |
-| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)          |
-| Process execution         | `node-pty` / `child_process` for setup scripts and AI CLIs        |
-| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions               |
-| Live output               | Buffered stdout/stderr/system log streaming                       |
-| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS) |
-| Inventory reporting       | Worktree list + status on register and on change                  |
+| Concern                   | Implementation                                                       |
+| ------------------------- | -------------------------------------------------------------------- |
+| Outbound control channel  | Persistent WebSocket client to the control plane                     |
+| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)             |
+| Process execution         | `node-pty` for assigned AI CLIs; `child_process` for git/setup/hooks |
+| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions                  |
+| Live output               | Buffered stdout/stderr/system log streaming                          |
+| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS)    |
+| Inventory reporting       | Worktree list + status on register and on change                     |
 
 The agent **does not** implement the global queue, multi-agent round-robin, or durable session storage. Those live in the [AWS layer](aws.md).
 
@@ -240,6 +240,16 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts.                                                                                                  |
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                              |
 | Cancel            | `session:cancel` aborts setup or the primary command through the same SIGTERM → 5s → SIGKILL chain; report exactly one `cancelled` terminal status.                                                                                                                                                                                       |
+
+The assigned command runs in a single `node-pty` terminal (`xterm-256color`,
+120 columns by 40 rows). Its merged terminal stream is reported as `stdout`,
+including ANSI control sequences exactly as the CLI emits them. Resume-reference
+capture treats configured stdout/stderr policies as matching this merged stream,
+so opaque references remain captured and redacted. Git operations, trusted setup
+scripts, and terminal hooks retain separate pipe-based execution;
+this keeps PTY behavior confined to the CLI that needs a terminal. On POSIX,
+cancel and timeout signal the PTY process group so helper descendants receive
+the same SIGTERM → SIGKILL lifecycle.
 
 Example (illustrative):
 

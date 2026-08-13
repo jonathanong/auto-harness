@@ -1,0 +1,15 @@
+diff --git a/scripts/prebuild.js b/scripts/prebuild.js
+index 17f1d980e62e017d77058627a7a15c4c29f9470c..20ec2ff843eb901885f45f55901ba5975c37e68e 100644
+--- a/scripts/prebuild.js	
++++ b/scripts/prebuild.js	
+@@ -31,4 +31,10 @@ if (!fs.existsSync(PREBUILD_DIR)) {
+   process.exit(1);
+ }
+ 
++// Package archives can lose the executable bit on the Unix spawn helper.
++// node-pty invokes this file directly, so restore the required mode here.
++if (process.platform !== 'win32') {
++  fs.chmodSync(path.join(PREBUILD_DIR, 'spawn-helper'), 0o755);
++}
++
+ process.exit(0);

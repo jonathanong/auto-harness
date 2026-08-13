@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  node-pty@1.1.0:
+    hash: 25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1
+    path: patches/node-pty@1.1.0.patch
+
 importers:
 
   .:
@@ -137,6 +142,9 @@ importers:
       '@auto-harness/shared':
         specifier: workspace:*
         version: link:../../modules/shared
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0(patch_hash=25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1)
       ws:
         specifier: ^8.21.1
         version: 8.21.1
@@ -2384,6 +2392,12 @@ packages:
   no-mistakes@0.41.0:
     resolution: {integrity: sha512-gmunFTWnrjohoqGrAg/0OORFFhjf152CklpqgnI9fwy/WfSa9dVkPLDSpoa0Ie8swR/Ms5KFRLUSNy6HWCDbbA==}
     hasBin: true
+
+  node-addon-api@7.1.1:
+    resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
+
+  node-pty@1.1.0:
+    resolution: {integrity: sha512-20JqtutY6JPXTUnL0ij1uad7Qe1baT46lyolh2sSENDd4sTzKZ4nmAFkeAARDKwmlLjPx6XKRlwRUxwjOy+lUg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -4857,6 +4871,12 @@ snapshots:
       - babel-plugin-macros
 
   no-mistakes@0.41.0: {}
+
+  node-addon-api@7.1.1: {}
+
+  node-pty@1.1.0(patch_hash=25f292c9ae1b25cc6512790567d7d32fd25ddf49ae66ac31b1da94ab378680a1):
+    dependencies:
+      node-addon-api: 7.1.1
 
   node-releases@2.0.51: {}
 

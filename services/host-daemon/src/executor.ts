@@ -5,9 +5,9 @@ import { createChildEnv } from "./child-env.ts";
 import type { SessionUsage } from "@auto-harness/shared";
 
 const DEFAULT_TERMINATION_GRACE_MS = 5_000;
-const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
+export const MAX_OUTPUT_CHUNK_BYTES = 32 * 1024;
 
-function truncateUtf8(data: string, maxBytes: number): string {
+export function truncateUtf8(data: string, maxBytes: number): string {
   if (Buffer.byteLength(data, "utf8") <= maxBytes) return data;
   let bytes = 0;
   let result = "";
@@ -51,11 +51,13 @@ export type ProcessResult = {
  * Tests inject fakes; only this boundary may be mocked for CLI tools.
  */
 export interface ProcessRunner {
+  /** Set when stdout and stderr share one terminal byte stream. */
+  readonly outputStreams?: "merged";
   run(options: RunProcessOptions): Promise<ProcessResult>;
 }
 
 /** Node often reports ENOENT for a missing cwd as well as a missing binary. */
-function formatSpawnEnoent(command: string, cwd: string): string {
+export function formatSpawnEnoent(command: string, cwd: string): string {
   if (!existsSync(cwd)) {
     return (
       `Cannot run ${command}: working directory does not exist: ${cwd}. ` +

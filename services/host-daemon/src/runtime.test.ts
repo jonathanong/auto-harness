@@ -63,8 +63,44 @@ describe("runtime helpers", () => {
       },
       (l) => lines.push(l),
       runner,
+      runner,
     );
     expect(result.status).toBe("completed");
     expect(lines.length).toBeGreaterThan(0);
+  });
+
+  it("uses the command runner only for the assigned CLI", async () => {
+    const systemCalls: string[][] = [];
+    const commandCalls: string[][] = [];
+    const systemRunner: ProcessRunner = {
+      async run(options) {
+        systemCalls.push(options.argv);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const commandRunner: ProcessRunner = {
+      async run(options) {
+        commandCalls.push(options.argv);
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+
+    await runAssignedSession(
+      config,
+      {
+        sessionId: "pty",
+        repositoryId: "repo-1",
+        prompt: "literal",
+        resolvedArgv: ["tool", "literal"],
+        timeout: 10,
+        worktreeId: "wt-1",
+      },
+      () => undefined,
+      systemRunner,
+      commandRunner,
+    );
+
+    expect(systemCalls.every((argv) => argv[0] === "git")).toBe(true);
+    expect(commandCalls).toEqual([["tool", "literal"]]);
   });
 });
