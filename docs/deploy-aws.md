@@ -1,9 +1,9 @@
 # Deploy — AWS control plane
 
 **Runtime infrastructure available for synthesis.** `services/cdk` synthesizes
-the persistence foundation plus HTTP/WebSocket API Gateway and bundled Lambda
-adapters. EventBridge/cron and an account-backed deployment proof remain future
-work; this repository deliberately provides no deploy command.
+the persistence foundation plus HTTP/WebSocket API Gateway, bundled Lambda
+adapters, and an EventBridge-triggered cron Lambda. An account-backed deployment
+proof remains future work; this repository deliberately provides no deploy command.
 Architecture: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
@@ -57,8 +57,9 @@ pnpm --filter @auto-harness/cdk synth
 
 The app emits `AutoHarnessFoundation` and `AutoHarnessRuntime`. The foundation
 creates tables named `AutoHarness-*` and retains data resources on replacement
-and deletion. The runtime creates two Node.js 22 Lambdas, HTTP and WebSocket
-API Gateway APIs, and a rotating KMS key for integration secrets. Lambda code
+and deletion. The runtime creates three Node.js 22 Lambdas, HTTP and WebSocket
+API Gateway APIs, a one-minute EventBridge rule, and a rotating KMS key for
+integration secrets. Lambda code
 is bundled locally with esbuild during synthesis.
 Use CDK context to create a deliberately named disposable environment:
 
@@ -85,8 +86,8 @@ choose `destroy` for data that must survive a stack replacement.
 
 ### Stack parameters and outputs
 
-Deployment tooling must supply the runtime stack's no-echo `HarnessAdmins` and
-`HarnessSessionSecret` parameters and exact `WebOrigin`. Do not store their
+Deployment tooling must supply the runtime stack's no-echo `HarnessAdmins`,
+`HarnessSessionSecret`, and `HarnessCursorSecret` parameters and exact `WebOrigin`. Do not store their
 values in CDK context or source control.
 
 | Output                                                      | Consumer                                          |
@@ -98,8 +99,7 @@ values in CDK context or source control.
 
 Synth output is not a deployment claim. Before adding a repository deploy path,
 add bootstrap/account requirements, explicit deploy and rollback commands, and
-an account-backed REST/WebSocket smoke test. EventBridge cron resources are not
-part of the current runtime stack.
+an account-backed REST/WebSocket/cron smoke test.
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance

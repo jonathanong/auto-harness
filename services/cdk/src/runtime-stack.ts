@@ -2,6 +2,8 @@ import { fileURLToPath } from "node:url";
 
 import { Aws, CfnOutput, CfnParameter, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -17,6 +19,8 @@ export type RuntimeStackProps = StackProps & {
 };
 
 export type RuntimeResources = {
+  cronFunction: nodejs.NodejsFunction;
+  cronRule: events.Rule;
   httpApi: apigatewayv2.CfnApi;
   integrationKey: kms.Key;
   restFunction: nodejs.NodejsFunction;
@@ -44,6 +48,12 @@ export class AutoHarnessRuntimeStack extends Stack {
       noEcho: true,
       type: "String",
     });
+    const cursorSecret = new CfnParameter(this, "HarnessCursorSecret", {
+      description: "Stable HMAC secret for paginated session cursors.",
+      minLength: 32,
+      noEcho: true,
+      type: "String",
+    });
     const webOrigin = new CfnParameter(this, "WebOrigin", {
       description: "Exact browser origin allowed by control-plane CORS.",
       type: "String",
@@ -55,6 +65,7 @@ export class AutoHarnessRuntimeStack extends Stack {
 
     const commonEnvironment = {
       HARNESS_ADMINS: admins.valueAsString,
+      HARNESS_CURSOR_SECRET: cursorSecret.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
       HARNESS_SESSION_SECRET: sessionSecret.valueAsString,
       KMS_KEY_ID: integrationKey.keyArn,
@@ -77,6 +88,11 @@ export class AutoHarnessRuntimeStack extends Stack {
       handler: "websocket",
       timeout: Duration.seconds(30),
     });
+    const cronFunction = new nodejs.NodejsFunction(this, "CronFunction", {
+      ...functionProps,
+      handler: "cron",
+      timeout: Duration.seconds(60),
+    });
     const apiDataAccessPolicy = iam.ManagedPolicy.fromManagedPolicyArn(
       this,
       "ImportedApiDataAccessPolicy",
@@ -84,8 +100,10 @@ export class AutoHarnessRuntimeStack extends Stack {
     );
     restFunction.role!.addManagedPolicy(apiDataAccessPolicy);
     websocketFunction.role!.addManagedPolicy(apiDataAccessPolicy);
+    cronFunction.role!.addManagedPolicy(apiDataAccessPolicy);
     integrationKey.grantEncryptDecrypt(restFunction);
     integrationKey.grantEncryptDecrypt(websocketFunction);
+    integrationKey.grantEncryptDecrypt(cronFunction);
 
     const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {
       name: `${this.stackName}-http`,
@@ -142,6 +160,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     ]);
     websocketFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     restFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
+    cronFunction.addEnvironment("WS_API_ENDPOINT", websocketManagementEndpoint);
     const manageConnections = new iam.PolicyStatement({
       actions: ["execute-api:ManageConnections"],
       resources: [
@@ -160,6 +179,13 @@ export class AutoHarnessRuntimeStack extends Stack {
     });
     websocketFunction.addToRolePolicy(manageConnections);
     restFunction.addToRolePolicy(manageConnections);
+    cronFunction.addToRolePolicy(manageConnections);
+
+    const cronRule = new events.Rule(this, "CronRule", {
+      description: "Runs durable Auto Harness scheduling and recovery once per minute.",
+      schedule: events.Schedule.rate(Duration.minutes(1)),
+    });
+    cronRule.addTarget(new targets.LambdaFunction(cronFunction));
 
     const restApiUrl = new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
     const websocketUrl = new CfnOutput(this, "WebSocketUrl", {
@@ -173,6 +199,8 @@ export class AutoHarnessRuntimeStack extends Stack {
     void integrationKeyArn;
 
     this.resources = {
+      cronFunction,
+      cronRule,
       httpApi,
       integrationKey,
       restFunction,

@@ -6,7 +6,7 @@ import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 
 describe("AutoHarnessRuntimeStack", () => {
-  it("synthesizes bounded REST and WebSocket Lambda infrastructure", () => {
+  it("synthesizes bounded REST, WebSocket, and scheduled Lambda infrastructure", () => {
     const app = new App();
     const foundation = new AutoHarnessFoundationStack(app, "Foundation", {
       tablePrefix: "ReviewRuntime",
@@ -17,7 +17,8 @@ describe("AutoHarnessRuntimeStack", () => {
     });
     const template = Template.fromStack(runtime);
 
-    template.resourceCountIs("AWS::Lambda::Function", 2);
+    template.resourceCountIs("AWS::Lambda::Function", 3);
+    template.resourceCountIs("AWS::Events::Rule", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 2);
     template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
     template.resourceCountIs("AWS::ApiGatewayV2::Stage", 2);
@@ -32,6 +33,28 @@ describe("AutoHarnessRuntimeStack", () => {
       Handler: "index.websocket",
       Runtime: "nodejs22.x",
       Timeout: 30,
+    });
+    template.hasResourceProperties("AWS::Lambda::Function", {
+      Environment: {
+        Variables: Match.objectLike({
+          HARNESS_CURSOR_SECRET: { Ref: "HarnessCursorSecret" },
+          WS_API_ENDPOINT: Match.anyValue(),
+        }),
+      },
+      Handler: "index.cron",
+      Runtime: "nodejs22.x",
+      Timeout: 60,
+    });
+    template.hasResourceProperties("AWS::Events::Rule", {
+      ScheduleExpression: "rate(1 minute)",
+      State: "ENABLED",
+      Targets: Match.arrayWith([Match.objectLike({ Arn: Match.anyValue(), Id: Match.anyValue() })]),
+    });
+    template.hasResourceProperties("AWS::Lambda::Permission", {
+      Action: "lambda:InvokeFunction",
+      FunctionName: Match.anyValue(),
+      Principal: "events.amazonaws.com",
+      SourceArn: Match.anyValue(),
     });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
@@ -51,6 +74,12 @@ describe("AutoHarnessRuntimeStack", () => {
     for (const integration of integrations) {
       expect(JSON.stringify(integration.Properties?.IntegrationUri)).toContain(":lambda:");
     }
+    const functions = Object.values(template.findResources("AWS::Lambda::Function"));
+    for (const fn of functions) {
+      expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET).toEqual({
+        Ref: "HarnessCursorSecret",
+      });
+    }
     template.resourcePropertiesCountIs(
       "AWS::IAM::Policy",
       {
@@ -64,7 +93,7 @@ describe("AutoHarnessRuntimeStack", () => {
           ]),
         },
       },
-      2,
+      3,
     );
     template.hasResourceProperties("AWS::KMS::Key", {
       EnableKeyRotation: true,
@@ -72,7 +101,12 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasOutput("RestApiUrl", {});
     template.hasOutput("WebSocketUrl", {});
     expect(Object.keys(template.toJSON().Parameters)).toEqual(
-      expect.arrayContaining(["HarnessAdmins", "HarnessSessionSecret", "WebOrigin"]),
+      expect.arrayContaining([
+        "HarnessAdmins",
+        "HarnessCursorSecret",
+        "HarnessSessionSecret",
+        "WebOrigin",
+      ]),
     );
   });
 });
