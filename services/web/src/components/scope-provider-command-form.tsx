@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import {
   getInventory,
@@ -27,7 +27,7 @@ export function ScopeProviderCommandForm({
   providerCommands: Command[];
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -39,7 +39,8 @@ export function ScopeProviderCommandForm({
         setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const current = await getInventory(hostId);
           const next = setScopeProviderCommand(
             current,
@@ -50,10 +51,12 @@ export function ScopeProviderCommandForm({
           const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
+            setPending(false);
             return;
           }
+          setPending(false);
           router.refresh();
-        });
+        })();
       }}
     >
       <select

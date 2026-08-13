@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import {
   getInventory,
@@ -26,7 +26,7 @@ export function ScopeProviderEnabledForm({
   inheritedLabel: string;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -39,16 +39,19 @@ export function ScopeProviderEnabledForm({
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("enabled") ?? "");
         const enabled = value === "" ? undefined : value === "true";
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const current = await getInventory(hostId);
           const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
           const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
+            setPending(false);
             return;
           }
+          setPending(false);
           router.refresh();
-        });
+        })();
       }}
     >
       <select

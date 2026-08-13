@@ -142,13 +142,17 @@ describe("durable runtime read-through", () => {
   });
 
   it("replaces stale runtime rows from targeted durable reads", async () => {
+    const worktreeReadModes: boolean[] = [];
     const state = createControlPlaneState({
       storage: {
         getSession: async () => null,
         listAllSessions: async () => [],
         listSessionsByStatus: async () => [],
         listLogs: async () => [],
-        listAllWorktrees: async () => [worktree],
+        listAllWorktrees: async (consistentRead = false) => {
+          worktreeReadModes.push(consistentRead);
+          return [worktree];
+        },
         listWorktreesForRepo: async () => [worktree],
         listCommands: async () => [],
         listProviders: async () => [],
@@ -176,6 +180,7 @@ describe("durable runtime read-through", () => {
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([]);
     await expect(getLogsDurable(state, session.id)).resolves.toEqual([]);
     await expect(listWorktreesDurable(state)).resolves.toEqual([worktree]);
+    expect(worktreeReadModes).toEqual([true]);
     await expect(listWorktreesForRepositoryDurable(state, "repository")).resolves.toEqual([
       worktree,
     ]);

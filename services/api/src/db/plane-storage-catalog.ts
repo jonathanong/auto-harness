@@ -612,7 +612,11 @@ export async function getHostInventory(
   hostId: string,
 ): Promise<HostInventoryRecord | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.hostInventories, Key: { hostId } }),
+    new GetCommand({
+      TableName: ctx.tables.hostInventories,
+      Key: { hostId },
+      ConsistentRead: true,
+    }),
   );
   return catalogItem(res.Item as HostInventoryRecord | undefined);
 }

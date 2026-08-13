@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import { getInventory, putInventory, setHostProviderAccountCommand } from "@auto-harness/shared";
 import type { Command } from "@auto-harness/shared";
@@ -19,7 +19,7 @@ export function HostProviderAccountCommandForm({
   providerCommands: Command[];
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -31,7 +31,8 @@ export function HostProviderAccountCommandForm({
         setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const current = await getInventory(hostId);
           const next = setHostProviderAccountCommand(
             current,
@@ -41,10 +42,12 @@ export function HostProviderAccountCommandForm({
           const r = await putInventory(hostId, next);
           if (!r.ok) {
             setError(r.error);
+            setPending(false);
             return;
           }
+          setPending(false);
           router.refresh();
-        });
+        })();
       }}
     >
       <select

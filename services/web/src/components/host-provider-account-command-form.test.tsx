@@ -36,6 +36,10 @@ describe("HostProviderAccountCommandForm", () => {
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
       providerAccounts: [{ providerAccountId: "account", commandId: "command-1" }],
     });
+    expect(
+      field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
+        .disabled,
+    ).toBe(false);
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
