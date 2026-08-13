@@ -115,7 +115,11 @@ export class AgentUpdater {
 
   private transition(state: UpdateState): UpdateState {
     this.state = state;
-    this.options.onState?.(this.getState());
+    try {
+      this.options.onState?.(this.getState());
+    } catch {
+      // State observers are best-effort telemetry and must not control the update sequence.
+    }
     return this.getState();
   }
 }
