@@ -28,6 +28,9 @@ describe("ScheduleEnabledToggle", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ enabled: false }),
     });
+    expect(toggle(view).getAttribute("aria-checked")).toBe("false");
+    expect(toggle(view).getAttribute("aria-label")).toBe("Enable schedule");
+    expect(toggle(view).textContent).toContain("Disabled");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
@@ -64,6 +67,19 @@ describe("ScheduleEnabledToggle", () => {
     expect(router.push).toHaveBeenCalledWith(
       "/schedules?toast=Could+not+disable+schedule.+Try+again.",
     );
+    view.unmount();
+  });
+
+  it("reports a rejected request and leaves the current state unchanged", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("offline")));
+    const view = mountForm(<ScheduleEnabledToggle id="schedule/1" enabled={false} />);
+    press(toggle(view));
+    await act(async () => Promise.resolve());
+    expect(toggle(view).getAttribute("aria-checked")).toBe("false");
+    expect(router.push).toHaveBeenCalledWith(
+      "/schedules?toast=Could+not+enable+schedule.+Try+again.",
+    );
+    expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
   });
 });
