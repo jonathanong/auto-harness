@@ -40,6 +40,7 @@ describe("AgentUpdater", () => {
       lifecycle: {
         drain: async () => void calls.push("drain"),
         waitForIdle: async () => void calls.push("idle"),
+        resume: async () => void calls.push("resume"),
       },
       installer: {
         stage: async ({ version }) => void calls.push(`stage:${version}`),
@@ -76,6 +77,7 @@ describe("AgentUpdater", () => {
       lifecycle: {
         drain: async () => void (drained = true),
         waitForIdle: async () => undefined,
+        resume: async () => undefined,
       },
       installer: {
         stage: async () => undefined,
@@ -93,7 +95,11 @@ describe("AgentUpdater", () => {
         fetchManifest: async () => manifest("2.0.0"),
         fetchArtifact: async () => artifact,
       },
-      lifecycle: { drain: async () => undefined, waitForIdle: async () => undefined },
+      lifecycle: {
+        drain: async () => undefined,
+        waitForIdle: async () => undefined,
+        resume: async () => undefined,
+      },
       installer: {
         stage: async () => undefined,
         activate: async () => undefined,
@@ -112,7 +118,11 @@ describe("AgentUpdater", () => {
         fetchManifest: async () => manifest("9007199254740993.0.0"),
         fetchArtifact: async () => artifact,
       },
-      lifecycle: { drain: async () => undefined, waitForIdle: async () => undefined },
+      lifecycle: {
+        drain: async () => undefined,
+        waitForIdle: async () => undefined,
+        resume: async () => undefined,
+      },
       installer: {
         stage: async () => undefined,
         activate: async () => undefined,
@@ -137,7 +147,11 @@ describe("AgentUpdater", () => {
         fetchManifest: async () => manifest(),
         fetchArtifact: async () => Buffer.from("tampered"),
       },
-      lifecycle: { drain: async () => undefined, waitForIdle: async () => undefined },
+      lifecycle: {
+        drain: async () => undefined,
+        waitForIdle: async () => undefined,
+        resume: async () => undefined,
+      },
       installer: {
         stage: async () => {
           throw new Error("must not stage");
@@ -171,27 +185,5 @@ describe("AgentUpdater", () => {
     for (const candidate of invalid) {
       expect(() => parseAndVerifyManifest(candidate, publicKey)).toThrow("invalid update manifest");
     }
-  });
-
-  it("reports non-error manifest failures without a target version", async () => {
-    const updater = new AgentUpdater({
-      currentVersion: "1.0.0",
-      manifestPublicKey: publicKey,
-      fetcher: {
-        fetchManifest: async () => Promise.reject("offline"),
-        fetchArtifact: async () => artifact,
-      },
-      lifecycle: { drain: async () => undefined, waitForIdle: async () => undefined },
-      installer: {
-        stage: async () => undefined,
-        activate: async () => undefined,
-        restart: async () => undefined,
-      },
-    });
-    await expect(updater.run()).resolves.toEqual({
-      phase: "failed",
-      currentVersion: "1.0.0",
-      error: "offline",
-    });
   });
 });

@@ -91,7 +91,7 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
 Do **not** kill in-flight AI CLIs for routine upgrades.
 
 `AgentUpdater` implements the ordered state machine for a signed Ed25519 manifest: compare version,
-durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, atomically activate, and
+durably drain, wait for idle, fetch and SHA-256 verify the artifact, stage, request activation, and
 request supervisor restart. Concurrent runs collapse into one update. Production fetch/install/
 restart boundaries are intentionally not configured yet, so operators still use the manual steps
 above until those host-mutating adapters are explicitly enabled and validated.

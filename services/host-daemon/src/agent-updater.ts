@@ -16,6 +16,7 @@ export type UpdateInstaller = {
 export type UpdateLifecycle = {
   drain(): Promise<void>;
   waitForIdle(): Promise<void>;
+  resume(): Promise<void>;
 };
 
 export type UpdateFetcher = {
@@ -65,6 +66,8 @@ export class AgentUpdater {
 
   private async runOnce(): Promise<UpdateState> {
     let targetVersion: string | undefined;
+    let drained = false;
+    let activationAttempted = false;
     const currentVersion = this.state.currentVersion;
     try {
       const manifest = parseAndVerifyManifest(
@@ -81,6 +84,7 @@ export class AgentUpdater {
         targetVersion,
       });
       await this.options.lifecycle.drain();
+      drained = true;
       await this.options.lifecycle.waitForIdle();
       this.transition({
         phase: "downloading",
@@ -95,6 +99,7 @@ export class AgentUpdater {
         currentVersion,
         targetVersion,
       });
+      activationAttempted = true;
       await this.options.installer.activate(targetVersion);
       this.transition({
         phase: "restarting",
@@ -104,11 +109,19 @@ export class AgentUpdater {
       await this.options.installer.restart();
       return this.transition({ phase: "complete", currentVersion: targetVersion });
     } catch (error) {
+      let failure = error instanceof Error ? error.message : String(error);
+      if (drained && !activationAttempted) {
+        try {
+          await this.options.lifecycle.resume();
+        } catch (resumeError) {
+          failure += `; resume failed: ${resumeError instanceof Error ? resumeError.message : String(resumeError)}`;
+        }
+      }
       return this.transition({
         phase: "failed",
         currentVersion,
         ...(targetVersion ? { targetVersion } : {}),
-        error: error instanceof Error ? error.message : String(error),
+        error: failure,
       });
     }
   }
