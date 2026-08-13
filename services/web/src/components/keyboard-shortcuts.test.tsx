@@ -54,6 +54,19 @@ describe("global keyboard shortcuts", () => {
     vi.useRealTimers();
   });
 
+  it("clears a pending prefix when the visible help dialog opens", () => {
+    vi.useFakeTimers();
+    const view = mountForm(<ControlShell>Dashboard</ControlShell>);
+    key(document, "g");
+    expect(field(view.container, "shortcut-sequence-status").textContent).toContain("choose");
+    act(() => field<HTMLButtonElement>(view.container, "keyboard-shortcuts-trigger").click());
+    expect(field(view.container, "shortcut-sequence-status").textContent).toBe("");
+    key(document, "Escape");
+    key(document, "s");
+    expect(router.push).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
   it("opens help from the question mark and ignores commands while it is open", () => {
     const view = mountForm(<ControlShell>Dashboard</ControlShell>);
     key(document, "/", { shiftKey: true });

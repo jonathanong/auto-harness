@@ -96,6 +96,10 @@ export function KeyboardShortcuts() {
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
+        if (prefixTimer.current) clearTimeout(prefixTimer.current);
+        prefixTimer.current = undefined;
+        waitingRef.current = false;
+        setWaitingForDestination(false);
         setOpen(nextOpen);
         if (!nextOpen) queueMicrotask(() => triggerRef.current?.focus());
       }}
