@@ -43,3 +43,12 @@ export { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 export type { DaemonLoopOptions, DaemonTransport } from "./daemon-loop.ts";
 export { createWsTransport } from "./ws-transport.ts";
 export { startDaemon } from "./start-daemon.ts";
+export { AgentUpdater, canonicalManifest, parseAndVerifyManifest } from "./agent-updater.ts";
+export type {
+  AgentUpdaterOptions,
+  UpdateFetcher,
+  UpdateInstaller,
+  UpdateLifecycle,
+  UpdateManifest,
+  UpdateState,
+} from "./agent-updater.ts";

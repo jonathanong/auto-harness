@@ -579,9 +579,11 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
 DynamoDB Archives table, not S3. Webhook "deliveries" are recorded in in-process state, and a
 separate durable outbox foundation provides secret-safe rows, bounded leases/retries, and
 dead-letter state. No lifecycle path enqueues that outbox and no outbound HTTP/configuration
-runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments
-without killing in-flight CLIs, but an operator must still wait, install, and restart manually;
-there is no automatic updater. Slack config CRUD exists, while OAuth, delivery, inbound
+runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments without killing
+in-flight CLIs. The signed-manifest updater core sequences drain, idle, checksum
+verification, staging, activation, and restart through injected boundaries, but production
+download/install/supervisor adapters remain unwired, so operators still execute that path
+manually. Slack config CRUD exists, while OAuth, delivery, inbound
 verification, and session-thread lifecycle do not.
 
 **Migration marker:** none of this gates any product-repo automation workflow.

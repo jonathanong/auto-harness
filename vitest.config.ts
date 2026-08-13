@@ -182,7 +182,7 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
-        "services/host-daemon/src/{bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport}.ts":
+        "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport}.ts":
           {
             100: true,
           },
