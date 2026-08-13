@@ -63,7 +63,13 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       <SessionDetail
         session={session}
         breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: session.id }]}
-        actions={<SessionActions sessionId={session.id} status={session.status} />}
+        actions={
+          <SessionActions
+            sessionId={session.id}
+            status={session.status}
+            cloneEditHref={`/sessions/new?cloneFrom=${encodeURIComponent(session.id)}`}
+          />
+        }
         repoHrefBase="/repositories"
         hostHrefBase="/hosts"
         worktreeHrefBase="/worktrees"

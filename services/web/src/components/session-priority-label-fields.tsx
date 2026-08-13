@@ -10,8 +10,17 @@ function priorityBand(priority: number): string {
   return "low";
 }
 
-export function SessionPriorityLabelFields({ availableLabels }: { availableLabels: string[] }) {
-  const [priority, setPriority] = useState(0);
+export function SessionPriorityLabelFields({
+  availableLabels,
+  initialPriority = 0,
+  initialRequiredLabels = [],
+}: {
+  availableLabels: string[];
+  initialPriority?: number;
+  initialRequiredLabels?: string[];
+}) {
+  const [priority, setPriority] = useState(initialPriority);
+  const required = new Set(initialRequiredLabels);
 
   return (
     <div className="space-y-4" data-pw="create-session-scheduling-fields">
@@ -23,8 +32,8 @@ export function SessionPriorityLabelFields({ availableLabels }: { availableLabel
           id="priority"
           name="priority"
           type="range"
-          min={0}
-          max={100}
+          min={Math.min(0, initialPriority)}
+          max={Math.max(100, initialPriority)}
           step={1}
           value={priority}
           onChange={(event) => setPriority(Number(event.currentTarget.value))}
@@ -51,6 +60,7 @@ export function SessionPriorityLabelFields({ availableLabels }: { availableLabel
                   type="checkbox"
                   name="requiredLabels"
                   value={label}
+                  defaultChecked={required.has(label)}
                   className="sr-only"
                   data-pw={`create-session-label-${label}`}
                 />
