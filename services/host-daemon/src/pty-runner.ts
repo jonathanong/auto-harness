@@ -86,7 +86,6 @@ export class PtyProcessRunner implements ProcessRunner {
       let cancelled = false;
       let closed = false;
       let stopping = false;
-      let escalation: ReturnType<typeof setTimeout> | undefined;
 
       const signalProcess = (signal: NodeJS.Signals): void => {
         if (this.platform !== "win32") {
@@ -110,9 +109,8 @@ export class PtyProcessRunner implements ProcessRunner {
         timedOut = reason === "timeout";
         cancelled = reason === "cancel";
         signalProcess("SIGTERM");
-        escalation = setTimeout(() => {
+        setTimeout(() => {
           signalProcess("SIGKILL");
-          escalation = undefined;
         }, options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS);
       };
 
@@ -123,7 +121,6 @@ export class PtyProcessRunner implements ProcessRunner {
       terminal.onExit((event) => {
         closed = true;
         clearTimeout(timer);
-        if (escalation && !stopping) clearTimeout(escalation);
         options.signal?.removeEventListener("abort", onAbort);
         dataSubscription.dispose();
         const signal = signalName(event.signal);
