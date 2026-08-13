@@ -49,7 +49,9 @@ The dashboard is the landing page and shows a high-level overview:
 - **Worktree utilization** — busy vs idle across all agents
 - **New Session** button — opens the session creation form
 
-The dashboard auto-refreshes via WebSocket. Agent and session status changes appear in real-time without page reload.
+The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five seconds. Agent,
+session, and utilization changes appear without a page reload; a paused banner retains the last
+successful snapshot when polling fails and offers an immediate retry.
 
 ### Empty States
 
@@ -134,12 +136,16 @@ Sessions are paginated with cursor-based pagination. The list shows 50 sessions 
 
 ### Real-Time Updates
 
-The session list is live. When connected via WebSocket:
+The session list refreshes its current bounded API page every five seconds:
 
-- New sessions appear at the top of the list automatically
-- Status badges update in real-time (e.g. `queued` → `running` → `completed`)
-- Running session durations tick live
-- No manual refresh needed
+- New sessions appear at the top of the first page automatically
+- Status badges and host assignment update in place
+- Active filters, cursor bounds, and client-side search remain applied
+- A request failure keeps the last successful rows and exposes a retry action
+
+The detail log stream continues to use the viewer WebSocket. List and dashboard polling is
+deliberately bounded to their existing REST page sizes rather than opening fleet-wide viewer
+subscriptions.
 
 ---
 
