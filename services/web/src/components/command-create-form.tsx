@@ -1,11 +1,11 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 import type { Provider } from "@auto-harness/shared";
 
 import { apiBase } from "@auto-harness/shared";
+import { navigateBrowser } from "../lib/browser-navigation.ts";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -15,6 +15,7 @@ async function errorMessage(res: Response): Promise<string> {
 export function CommandCreateForm({
   providers,
   fixedProviderId,
+  navigate = navigateBrowser,
 }: {
   /** Full provider list for the "(none — standalone)" picker. Omit when fixedProviderId is set. */
   providers?: Provider[];
@@ -23,9 +24,9 @@ export function CommandCreateForm({
    * where the association should not be editable away and the operator stays to set it as
    * default next. */
   fixedProviderId?: string;
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -44,7 +45,8 @@ export function CommandCreateForm({
           .filter(Boolean);
         const appendPrompt = fd.get("appendPrompt") === "on";
         const providerId = fixedProviderId ?? (String(fd.get("providerId") ?? "") || null);
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const res = await fetch(`${apiBase()}/api/v1/commands`, {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -52,16 +54,19 @@ export function CommandCreateForm({
           });
           if (!res.ok) {
             setError(await errorMessage(res));
+            setPending(false);
             return;
           }
           if (fixedProviderId) {
             form.reset();
-            router.refresh();
+            setPending(false);
+            navigate(`${location.pathname}${location.search}`);
             return;
           }
           const created = (await res.json()) as { id: string };
-          router.push(withToast(`/commands/${created.id}`, "Command created."));
-        });
+          setPending(false);
+          navigate(withToast(`/commands/${created.id}`, "Command created."));
+        })();
       }}
     >
       <div className="space-y-1">

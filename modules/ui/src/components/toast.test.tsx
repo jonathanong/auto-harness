@@ -14,19 +14,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Toast, withToast } from "./toast.tsx";
 
-const replace = vi.fn();
 const router = {
   back: vi.fn(),
   forward: vi.fn(),
   refresh: vi.fn(),
   push: vi.fn(),
-  replace,
+  replace: vi.fn(),
   prefetch: vi.fn(),
 } satisfies AppRouterInstance;
 const navigation = {
   pathname: "/sessions",
   searchParams: new URLSearchParams(),
-  replace,
   router,
 };
 
@@ -59,7 +57,8 @@ function withNavigation(node: React.ReactNode) {
 afterEach(() => {
   document.body.replaceChildren();
   navigation.searchParams = new URLSearchParams();
-  navigation.replace.mockReset();
+  router.replace.mockReset();
+  history.replaceState(null, "", "/");
   vi.useRealTimers();
 });
 
@@ -72,13 +71,15 @@ describe("shared Toast", () => {
     view.rerender(withNavigation(<Toast />));
     await act(async () => Promise.resolve());
     expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Created session");
-    expect(navigation.replace).toHaveBeenCalledWith("/sessions?filter=active", { scroll: false });
+    expect(location.pathname).toBe("/sessions");
+    expect(location.search).toBe("?filter=active");
     await act(async () => vi.advanceTimersByTimeAsync(4000));
     expect(view.container.querySelector('[role="status"]')).toBeNull();
     navigation.searchParams = new URLSearchParams("toast=Solo");
     view.rerender(withNavigation(<Toast />));
     await act(async () => Promise.resolve());
-    expect(navigation.replace).toHaveBeenLastCalledWith("/sessions", { scroll: false });
+    expect(location.pathname).toBe("/sessions");
+    expect(location.search).toBe("");
     expect(withToast("/sessions?filter=active", "Done")).toBe("/sessions?filter=active&toast=Done");
     expect(withToast("/sessions?toast=Old&filter=active", "Done")).toBe(
       "/sessions?toast=Done&filter=active",

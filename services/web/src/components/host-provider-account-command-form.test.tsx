@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import { field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
 import { HostProviderAccountCommandForm } from "./host-provider-account-command-form.tsx";
 
 const commands = [
@@ -17,6 +17,7 @@ const inventory = {
 
 describe("HostProviderAccountCommandForm", () => {
   it("saves the selected host-level command override", async () => {
+    const navigate = vi.fn();
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(json(inventory))
@@ -28,6 +29,7 @@ describe("HostProviderAccountCommandForm", () => {
         providerAccountId="account"
         currentCommandId={undefined}
         providerCommands={commands}
+        navigate={navigate}
       />,
     );
     setValue(field(view.container, "host-provider-account-command-select-account"), "command-1");
@@ -40,7 +42,7 @@ describe("HostProviderAccountCommandForm", () => {
       field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
         .disabled,
     ).toBe(false);
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/");
     view.unmount();
   });
 

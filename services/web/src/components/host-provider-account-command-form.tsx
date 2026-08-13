@@ -1,24 +1,26 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import { getInventory, putInventory, setHostProviderAccountCommand } from "@auto-harness/shared";
 import type { Command } from "@auto-harness/shared";
+
+import { navigateBrowser } from "../lib/browser-navigation.ts";
 
 export function HostProviderAccountCommandForm({
   hostId,
   providerAccountId,
   currentCommandId,
   providerCommands,
+  navigate = navigateBrowser,
 }: {
   hostId: string;
   providerAccountId: string;
   currentCommandId: string | undefined;
   /** This account's provider's own commands — the sensible choices for a host-level override. */
   providerCommands: Command[];
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +47,8 @@ export function HostProviderAccountCommandForm({
               setError(r.error);
               return;
             }
-            router.refresh();
+            setPending(false);
+            navigate(`${location.pathname}${location.search}`);
           } catch (cause) {
             setError(String(cause));
           } finally {

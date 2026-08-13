@@ -3,15 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createApiFake,
-  field,
-  json,
-  mountForm,
-  router,
-  setValue,
-  submit,
-} from "./form-test-helpers.tsx";
+import { createApiFake, field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
 import { ScopeProviderEnabledForm } from "./scope-provider-enabled-form.tsx";
 
 const inventory = {
@@ -22,6 +14,7 @@ const inventory = {
 
 describe("ScopeProviderEnabledForm", () => {
   it("shows inherit, enabled, and disabled states and saves each selection", async () => {
+    const navigate = vi.fn();
     const api = createApiFake(
       json(inventory),
       new Response(null, { status: 204 }),
@@ -37,6 +30,7 @@ describe("ScopeProviderEnabledForm", () => {
         providerAccountId="account/one"
         currentOverride={undefined}
         inheritedLabel="host"
+        navigate={navigate}
       />,
     );
     const select = field<HTMLSelectElement>(
@@ -67,7 +61,7 @@ describe("ScopeProviderEnabledForm", () => {
     expect(api.requests[5]?.[1]).toMatchObject({
       body: expect.not.stringContaining("enabled"),
     });
-    expect(router.refresh).toHaveBeenCalledTimes(3);
+    expect(navigate).toHaveBeenCalledTimes(3);
     view.unmount();
   });
 
@@ -98,7 +92,7 @@ describe("ScopeProviderEnabledForm", () => {
     expect(field(view.container, "scope-provider-enabled-error-account/one").textContent).toBe(
       "cannot disable",
     );
-    api.enqueue(json(inventory), new Response(null, { status: 204 }));
+    api.enqueue(json(inventory), new Response("retry failed", { status: 422 }));
     field(view.container, "scope-provider-enabled-select-account/one").remove();
     submit(form);
     await act(async () => Promise.resolve());

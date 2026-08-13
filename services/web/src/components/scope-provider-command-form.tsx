@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import {
@@ -11,12 +10,15 @@ import {
   type ProviderAccountScope,
 } from "@auto-harness/shared";
 
+import { navigateBrowser } from "../lib/browser-navigation.ts";
+
 export function ScopeProviderCommandForm({
   hostId,
   scope,
   providerAccountId,
   currentOverride,
   providerCommands,
+  navigate = navigateBrowser,
 }: {
   hostId: string;
   scope: ProviderAccountScope;
@@ -25,8 +27,8 @@ export function ScopeProviderCommandForm({
   currentOverride: string | undefined;
   /** This account's provider's own commands — the sensible choices for an override here. */
   providerCommands: Command[];
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +56,8 @@ export function ScopeProviderCommandForm({
               setError(r.error);
               return;
             }
-            router.refresh();
+            setPending(false);
+            navigate(`${location.pathname}${location.search}`);
           } catch (cause) {
             setError(String(cause));
           } finally {
