@@ -27,6 +27,7 @@ import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
 import { ingestUsage, ingestUsageDurable } from "./control-plane-usage.ts";
 
 const MAX_LOG_CHUNK_BYTES = 32 * 1024;
+export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
@@ -120,6 +121,66 @@ export async function appendLogDurable(
 
 export function getLogs(state: ControlPlaneState, sessionId: string): LogRecord[] {
   return [...(state.logs.get(sessionId) ?? [])];
+}
+
+type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
+
+/**
+ * Commit adjacent WebSocket log frames in one bounded, connection-fenced
+ * transaction. Records keep their agent-assigned sort keys and are published
+ * to readers only after the whole transaction succeeds.
+ */
+export async function handleHostLogBatchDurable(
+  state: ControlPlaneState,
+  messages: readonly LogMessage[],
+  sourceConnectionId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (messages.length === 0 || messages.length > MAX_DURABLE_LOG_BATCH_SIZE) {
+    return { ok: false, error: "invalid log batch size" };
+  }
+  if (!state.storage) {
+    for (const message of messages) {
+      const result = handleHostMessage(state, message, sourceConnectionId);
+      if (!result.ok) return result;
+    }
+    return { ok: true };
+  }
+  const storage = state.storage;
+  let hostId: string | undefined;
+  for (const message of messages) {
+    if (Buffer.byteLength(message.content) > MAX_LOG_CHUNK_BYTES) {
+      return { ok: false, error: "log chunk exceeds 32 KiB" };
+    }
+    const session =
+      state.sessions.get(message.sessionId) ?? (await storage.getSession(message.sessionId));
+    if (!session?.hostId || (hostId !== undefined && session.hostId !== hostId)) {
+      return { ok: false, error: "stale host connection" };
+    }
+    hostId = session.hostId;
+  }
+  if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
+    return { ok: false, error: "stale host connection" };
+  }
+  const records = messages.map((message) => ({
+    sessionId: message.sessionId,
+    stream: message.stream,
+    content: message.content,
+    timestamp: message.timestamp,
+    seq: message.seq,
+    timestampSeq: formatLogSortKey(message.timestamp, message.seq),
+  }));
+  if (!(await storage.putLogsFenced(records, { hostId, connectionId: sourceConnectionId }))) {
+    return { ok: false, error: "stale host connection" };
+  }
+  for (const record of records) {
+    const { retained, evicted } = retainLogs(state, record);
+    for (const removed of evicted) {
+      await storage.deleteLog(removed.sessionId, removed.timestampSeq);
+    }
+    state.logs.set(record.sessionId, retained);
+    state.onLogCommitted?.(record);
+  }
+  return { ok: true };
 }
 
 export function handleHostMessage(

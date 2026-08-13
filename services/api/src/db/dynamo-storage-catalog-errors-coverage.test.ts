@@ -6,6 +6,7 @@ import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   createRepository,
   putLogFenced,
+  putLogsFenced,
   skipScheduleForActiveConcurrency,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
@@ -31,6 +32,12 @@ describe("DynamoDB Local catalog transport failures", () => {
     const unavailableCtx = { doc: unavailable.doc, tables };
     await expect(
       putLogFenced(unavailableCtx, {} as never, { hostId: "host", connectionId: "connection" }),
+    ).rejects.toThrow();
+    await expect(
+      putLogsFenced(unavailableCtx, [{} as never], {
+        hostId: "host",
+        connectionId: "connection",
+      }),
     ).rejects.toThrow();
     await expect(
       createRepository(unavailableCtx, {

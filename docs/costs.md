@@ -120,8 +120,9 @@ Per session, approximate DynamoDB operations:
 
 - Create session: 1 write
 - Status updates (queued → running → completed): 3 writes
-- Log entries: currently one write (or fenced transaction) per received chunk; chunk count must be
-  measured from the chosen CLI and workload
+- Log entries: one item write per received chunk, with up to 25 adjacent local WebSocket chunks
+  coalesced into each connection-fenced transaction; chunk count must be measured from the chosen
+  CLI and workload
 - Scheduler queries: ~5 reads
 - UI/API reads: ~10 reads
 
@@ -132,33 +133,33 @@ are measured.
 
 SessionLogs is the highest-volume table. A chatty AI agent can produce hundreds of stdout chunks per session. Without mitigation, this is the most expensive DynamoDB component.
 
-**Current implementation:** every accepted `session:log` chunk is persisted individually with a
-`PutItem`-shaped write (or a fenced transaction containing that put). SessionLogs records do not
-carry a `ttl`; local table creation does not configure TTL, while the synthesized AWS table's TTL
-setting has nothing to expire without that attribute. On terminal status, the API serializes logs
-into the DynamoDB Archives table; it does not upload to S3. Consequently, the totals above and the
-optimized comparison below must be recalculated before an AWS launch.
+**Current implementation:** local WebSocket ingress coalesces up to 25 adjacent `session:log`
+chunks in one connection-fenced transaction, flushing before any later control/status frame and
+before disconnect. This reduces API calls and fence checks, not billed item writes; DynamoDB
+capacity is charged per item and transactional items use transactional capacity pricing.
+SessionLogs records do not carry a `ttl`; local table creation does not configure TTL, while the
+synthesized AWS table's TTL setting has nothing to expire without that attribute. On terminal
+status, the API serializes logs into the DynamoDB Archives table; it does not upload to S3.
 
 **Target mitigation strategies:**
 
 | Strategy          | Impact                                                                                                     |
 | ----------------- | ---------------------------------------------------------------------------------------------------------- |
-| **Batching**      | Buffer log chunks and write via `BatchWriteItem` (up to 25 items per call), reducing write API calls.      |
 | **DynamoDB TTL**  | Add a `ttl` attribute and enable table TTL so expired log entries are deleted without application deletes. |
 | **S3 archival**   | Upload completed logs to S3 as one archive object, then leave DynamoDB entries to expire via TTL.          |
 | **Rate limiting** | Bound the agent's WebSocket log-message rate so a chatty CLI cannot flood the control plane.               |
 
 **Cost comparison:**
 
-| Approach                                  | Writes/session                  | Monthly cost (100 sessions/day) |
-| ----------------------------------------- | ------------------------------- | ------------------------------- |
-| Current (1 write per received chunk)      | workload-dependent              | Not yet measured                |
-| Target batched example (500 chunks, 25×)  | ~20 batch requests              | Recalculate before launch       |
-| Target batching + TTL (no manual deletes) | ~20 batches, 0 explicit deletes | Recalculate before launch       |
+| Approach                                       | Writes/session                       | Monthly cost (100 sessions/day) |
+| ---------------------------------------------- | ------------------------------------ | ------------------------------- |
+| Current fenced batching                        | workload-dependent item writes       | Not yet measured                |
+| Example (500 chunks, full 25-item batches)     | 500 items in ~20 transaction calls   | Recalculate before launch       |
+| Target batching + TTL (no explicit log delete) | same item writes, 0 explicit deletes | Recalculate before launch       |
 
 Do not use the former ~50-chunk or $0.23/month assumptions for capacity planning. Measure a real
-transcript, then account for actual item sizes, batch behavior, retries, API Gateway frames, and
-retention.
+transcript, then account for actual item sizes, transactional pricing, retries, API Gateway
+frames, and retention.
 
 ### S3
 

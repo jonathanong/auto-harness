@@ -36,8 +36,32 @@ describe("DynamoPlaneStorageBase", () => {
     expect(await storage.tryAcquireHostLock({ ...fence, replaceExisting: false })).toBe(true);
     expect(await storage.putLogFenced(log, fence)).toBe(true);
     await storage.putLog({ ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000002", seq: 2 });
-    expect((await storage.listLogs(log.sessionId)).map(({ seq }) => seq)).toEqual([1, 2]);
-    expect(await storage.queryLogs(log.sessionId, { limit: 10 })).toHaveLength(2);
+    const batch = Array.from({ length: 25 }, (_, index) => {
+      const seq = index + 3;
+      return {
+        ...log,
+        timestampSeq: `2026-01-01T00:00:00.000Z#${String(seq).padStart(10, "0")}`,
+        seq,
+      };
+    });
+    expect(await storage.putLogsFenced([], fence)).toBe(true);
+    expect(
+      await storage.putLogsFenced(
+        [...batch, { ...batch.at(-1)!, content: "replayed duplicate" }],
+        fence,
+      ),
+    ).toBe(true);
+    expect(
+      await storage.putLogsFenced(
+        [{ ...log, timestampSeq: "2026-01-01T00:00:00.000Z#0000000028", seq: 28 }],
+        { ...fence, connectionId: "stale" },
+      ),
+    ).toBe(false);
+    expect((await storage.listLogs(log.sessionId)).map(({ seq }) => seq)).toEqual(
+      Array.from({ length: 27 }, (_, index) => index + 1),
+    );
+    expect((await storage.listLogs(log.sessionId)).at(-1)?.content).toBe("replayed duplicate");
+    expect(await storage.queryLogs(log.sessionId, { limit: 10 })).toHaveLength(10);
     await storage.deleteLog(log.sessionId, log.timestampSeq);
     expect(await storage.listSessionsByRepository("missing-repository")).toEqual([]);
 

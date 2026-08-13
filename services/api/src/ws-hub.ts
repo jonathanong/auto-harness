@@ -14,6 +14,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
+import { handleHostLogBatchDurable, MAX_DURABLE_LOG_BATCH_SIZE } from "./control-plane-messages.ts";
 import type { RateLimitEvent } from "./rate-limit.ts";
 import { validateUsage } from "./usage.ts";
 
@@ -37,9 +38,12 @@ export type WsHub = {
 type WsBridgeOptions = {
   maxMessagesPerSecond?: number;
   onRateLimitEvent?: (event: RateLimitEvent) => void;
+  /** Short bounded window for coalescing adjacent log frames. */
+  logBatchDelayMs?: number;
 };
 
 type HostSocketMap = Map<string, WebSocket>;
+type HostDrainMap = Map<string, { socket: WebSocket; drain: () => Promise<void> }>;
 
 export function createWsDelivery(
   hostSockets: Map<string, WebSocket>,
@@ -57,6 +61,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
   attach(server: HttpServer, plane: ControlPlane, auth?: AuthService): WsHub;
 } {
   const hostSockets: HostSocketMap = new Map();
+  const hostDrains: HostDrainMap = new Map();
   const onHostMessage = createWsDelivery(hostSockets);
   return {
     hostSockets,
@@ -68,12 +73,14 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
         req: IncomingMessage,
         principal: Principal | null,
       ) => {
+        const authRequired = auth?.mode === "required";
         let boundHostId: string | null = null;
         let boundConnectionId: string | null = null;
         let windowStartedAt = Date.now();
         let messageCount = 0;
         let accepting = true;
         let pendingRegistration: { hostId: string; closed: boolean } | null = null;
+        let drainForReplacement: () => Promise<void>;
 
         const handleMessage = async (msg: HostToServerMessage): Promise<void> => {
           if (!accepting) return;
@@ -86,7 +93,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.close(1008, "stale host connection");
             return;
           }
-          if (!isAllowedMessage(plane, msg, boundHostId, principal, auth?.mode === "required")) {
+          if (!isAllowedMessage(plane, msg, boundHostId, principal, authRequired)) {
             accepting = false;
             socket.close(1008, "message not authorized");
             return;
@@ -94,6 +101,8 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           const registration =
             msg.type === "host:register" ? { hostId: msg.hostId, closed: false } : null;
           if (registration) pendingRegistration = registration;
+          const incumbent = registration ? hostDrains.get(registration.hostId) : undefined;
+          if (incumbent && incumbent.socket !== socket) await incumbent.drain();
           const result = await plane.handleHostMessageDurable(
             msg,
             boundConnectionId ?? undefined,
@@ -120,6 +129,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             boundHostId = msg.hostId;
             boundConnectionId = result.connectionId!;
             hostSockets.set(msg.hostId, socket);
+            hostDrains.set(msg.hostId, { socket, drain: drainForReplacement });
             socket.send(
               JSON.stringify({
                 type: "host:registered",
@@ -144,10 +154,68 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.send(JSON.stringify({ type: "host:draining", hostId: msg.hostId }));
           }
         };
+        type LogMessage = Extract<HostToServerMessage, { type: "session:log" }>;
+        const handleLogBatch = async (batch: readonly LogMessage[]): Promise<void> => {
+          if (
+            boundHostId &&
+            boundConnectionId &&
+            plane.state.hostConnection.get(boundHostId) !== boundConnectionId
+          ) {
+            accepting = false;
+            socket.close(1008, "stale host connection");
+            return;
+          }
+          const allowed: LogMessage[] = [];
+          for (const message of batch) {
+            if (!isAllowedMessage(plane, message, boundHostId, principal, authRequired)) {
+              accepting = false;
+              socket.close(1008, "message not authorized");
+              break;
+            }
+            allowed.push(message);
+          }
+          if (allowed.length === 0) return;
+          // A message cannot pass isAllowedMessage before registration binds
+          // both values for this socket.
+          const result = await handleHostLogBatchDurable(plane.state, allowed, boundConnectionId!);
+          if (!result.ok && socket.readyState === socket.OPEN) {
+            socket.send(JSON.stringify({ type: "error", message: result.error }));
+          }
+        };
         // The ws EventEmitter does not await async listeners. Keep host messages in wire
         // order so a keepalive or status cannot race an in-flight durable registration.
         // Store a recovered tail so one failed durable operation cannot block later frames.
         let messageTail: Promise<void> = Promise.resolve();
+        let pendingLogs: LogMessage[] = [];
+        let logBatchTimer: ReturnType<typeof setTimeout> | undefined;
+        const queueWork = (work: () => Promise<void>): void => {
+          messageTail = messageTail.then(work).catch(() => {
+            accepting = false;
+            socket.close(1011, "message handling failed");
+          });
+        };
+        const flushLogBatch = (): void => {
+          if (logBatchTimer) clearTimeout(logBatchTimer);
+          logBatchTimer = undefined;
+          if (pendingLogs.length === 0) return;
+          const batch = pendingLogs;
+          pendingLogs = [];
+          queueWork(() => handleLogBatch(batch));
+        };
+        const queueLog = (message: LogMessage): void => {
+          pendingLogs.push(message);
+          if (pendingLogs.length >= MAX_DURABLE_LOG_BATCH_SIZE) {
+            flushLogBatch();
+          } else if (!logBatchTimer) {
+            logBatchTimer = setTimeout(flushLogBatch, options.logBatchDelayMs ?? 5);
+          }
+        };
+        drainForReplacement = async () => {
+          accepting = false;
+          flushLogBatch();
+          await messageTail;
+          if (socket.readyState === socket.OPEN) socket.close(1008, "host reconnected");
+        };
         socket.on("message", (raw) => {
           if (!accepting) return;
           const now = Date.now();
@@ -162,28 +230,41 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
               limit: options.maxMessagesPerSecond ?? MAX_WS_MESSAGES_PER_SECOND,
               actorKey: "websocket-connection",
             });
+            flushLogBatch();
             accepting = false;
             socket.close(1008, "message rate exceeded");
             return;
           }
           const msg = parseHostMessage(raw);
           if (!msg) {
+            flushLogBatch();
             accepting = false;
             socket.close(1008, "invalid message");
             return;
           }
-          messageTail = messageTail
-            .then(() => handleMessage(msg))
-            .catch(() => {
-              accepting = false;
-              socket.close(1011, "message handling failed");
-            });
+          if (msg.type === "session:log") {
+            queueLog(msg);
+          } else {
+            // A terminal/control frame may not overtake preceding logs.
+            flushLogBatch();
+            queueWork(() => handleMessage(msg));
+          }
         });
         socket.on("close", () => {
+          accepting = false;
+          flushLogBatch();
           if (pendingRegistration) pendingRegistration.closed = true;
+          if (boundHostId && hostDrains.get(boundHostId)?.socket === socket) {
+            hostDrains.delete(boundHostId);
+          }
           if (boundHostId && hostSockets.get(boundHostId) === socket) {
             hostSockets.delete(boundHostId);
-            if (boundConnectionId) void plane.disconnectHostDurable(boundConnectionId);
+            if (boundConnectionId) {
+              const connectionId = boundConnectionId;
+              // Keep the durable lease alive until every already-accepted log
+              // has either committed or failed its connection-fenced batch.
+              void messageTail.then(() => plane.disconnectHostDurable(connectionId));
+            }
           }
         });
       };
@@ -215,6 +296,7 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           server.off("upgrade", onUpgrade);
           for (const sock of hostSockets.values()) sock.close();
           hostSockets.clear();
+          hostDrains.clear();
           wss.close();
         },
       };

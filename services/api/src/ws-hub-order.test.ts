@@ -7,7 +7,327 @@ import WebSocket from "ws";
 import { ControlPlane } from "./control-plane.ts";
 import { createPlaneWsBridge } from "./ws-hub.ts";
 
+async function registeredSocket(
+  bridge: ReturnType<typeof createPlaneWsBridge>,
+  plane: ControlPlane,
+  hostId: string,
+): Promise<{
+  ws: WebSocket;
+  hub: ReturnType<typeof bridge.attach>;
+  server: ReturnType<typeof createServer>;
+}> {
+  const server = createServer();
+  const hub = bridge.attach(server, plane);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("no port");
+  const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+  await new Promise<void>((resolve, reject) => {
+    ws.on("open", () =>
+      ws.send(
+        JSON.stringify({ type: "host:register", hostId, worktrees: [], commandProfiles: [] }),
+      ),
+    );
+    const onMessage = (raw: WebSocket.RawData) => {
+      if (JSON.parse(String(raw)).type !== "host:registered") return;
+      ws.off("message", onMessage);
+      resolve();
+    };
+    ws.on("message", onMessage);
+    ws.on("error", reject);
+  });
+  return { ws, hub, server };
+}
+
+async function closeHub(
+  ws: WebSocket,
+  hub: ReturnType<ReturnType<typeof createPlaneWsBridge>["attach"]>,
+  server: ReturnType<typeof createServer>,
+): Promise<void> {
+  ws.close();
+  hub.close();
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+const wireLog = (sessionId: string, seq = 1) =>
+  JSON.stringify({
+    type: "session:log",
+    sessionId,
+    stream: "stdout",
+    content: "line",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    seq,
+  });
+
 describe("createPlaneWsBridge message ordering", () => {
+  it("reports a fenced batch rejection after the default coalescing window", async () => {
+    const bridge = createPlaneWsBridge();
+    const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage });
+    plane.state.sessions.set("rejected-session", { hostId: "rejected-host" } as never);
+    const opened = await registeredSocket(bridge, plane, "rejected-host");
+    const connectionId = plane.state.hostConnection.get("rejected-host")!;
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "rejected-host" }),
+      getHostLock: async () => connectionId,
+      putLogsFenced: async () => false,
+      releaseHostConnection: async () => true,
+    } as never;
+    const error = new Promise<{ type: string; message: string }>((resolve) => {
+      opened.ws.on("message", (raw) => {
+        const value = JSON.parse(String(raw));
+        if (value.type === "error") resolve(value);
+      });
+    });
+    opened.ws.send(wireLog("rejected-session"));
+    await expect(error).resolves.toEqual({ type: "error", message: "stale host connection" });
+    await closeHub(opened.ws, opened.hub, opened.server);
+  });
+
+  it("closes unauthorized and stale sockets before committing their log batch", async () => {
+    for (const mode of ["unauthorized-empty", "unauthorized-mixed", "stale"] as const) {
+      const unauthorized = mode.startsWith("unauthorized");
+      const bridge = createPlaneWsBridge({
+        logBatchDelayMs: unauthorized ? 60_000 : 0,
+      });
+      const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage });
+      plane.state.sessions.set(`${mode}-allowed`, { hostId: `${mode}-host` } as never);
+      plane.state.sessions.set(`${mode}-session`, {
+        hostId: unauthorized ? "another-host" : `${mode}-host`,
+      } as never);
+      const opened = await registeredSocket(bridge, plane, `${mode}-host`);
+      if (mode === "stale") {
+        plane.state.hostConnection.set(`${mode}-host`, "replacement-connection");
+      }
+      const closed = new Promise<{ code: number; reason: string }>((resolve) => {
+        opened.ws.on("close", (code, reason) => resolve({ code, reason: String(reason) }));
+      });
+      if (mode === "unauthorized-mixed") opened.ws.send(wireLog(`${mode}-allowed`, 0));
+      opened.ws.send(wireLog(`${mode}-session`, 1));
+      if (unauthorized) {
+        opened.ws.send(
+          JSON.stringify({
+            type: "host:keepalive",
+            hostId: `${mode}-host`,
+            at: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+      }
+      await expect(closed).resolves.toEqual({
+        code: 1008,
+        reason: unauthorized ? "message not authorized" : "stale host connection",
+      });
+      opened.hub.close();
+      await new Promise<void>((resolve, reject) =>
+        opened.server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
+  it("does not write an error frame after a closing socket rejects a batch", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 0 });
+    const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage });
+    plane.state.sessions.set("closing-session", { hostId: "closing-host" } as never);
+    const opened = await registeredSocket(bridge, plane, "closing-host");
+    const connectionId = plane.state.hostConnection.get("closing-host")!;
+    let resolveWrite: ((accepted: boolean) => void) | undefined;
+    const writeStarted = new Promise<void>((resolve) => {
+      plane.state.storage = {
+        getSession: async () => ({ hostId: "closing-host" }),
+        getHostLock: async () => connectionId,
+        putLogsFenced: async () =>
+          new Promise<boolean>((finish) => {
+            resolveWrite = finish;
+            resolve();
+          }),
+        releaseHostConnection: async () => true,
+      } as never;
+    });
+    opened.ws.send(wireLog("closing-session"));
+    await writeStarted;
+    const late: unknown[] = [];
+    opened.ws.on("message", (raw) => late.push(JSON.parse(String(raw))));
+    const closed = new Promise<void>((resolve) => opened.ws.on("close", () => resolve()));
+    opened.ws.close();
+    await closed;
+    resolveWrite!(false);
+    // The assertion targets the closed-socket response branch; use the local
+    // disconnect path after that pending durable write settles.
+    plane.state.storage = undefined;
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(late).toEqual([]);
+    opened.hub.close();
+    await new Promise<void>((resolve, reject) =>
+      opened.server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("batches adjacent log frames without letting a control frame overtake them", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 60_000 });
+    const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage, shardCount: 1 });
+    plane.state.sessions.set("batched-session", { hostId: "batched-host" } as never);
+    const originalHandle = plane.handleHostMessageDurable.bind(plane);
+    const observed: Array<string | number[]> = [];
+    plane.handleHostMessageDurable = async (message, ...args) => {
+      if (message.type === "host:register") return originalHandle(message, ...args);
+      observed.push(message.type);
+      return { ok: true };
+    };
+
+    const server = createServer();
+    const hub = bridge.attach(server, plane);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () =>
+        ws.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "batched-host",
+            worktrees: [],
+            commandProfiles: [],
+          }),
+        ),
+      );
+      ws.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type !== "host:registered") return;
+        const connectionId = plane.state.hostConnection.get("batched-host")!;
+        plane.state.storage = {
+          getSession: async () => ({ hostId: "batched-host" }),
+          getHostLock: async () => connectionId,
+          putLogsFenced: async (records: Array<{ seq: number }>) => {
+            observed.push(records.map(({ seq }) => seq));
+            return true;
+          },
+          deleteLog: async () => {},
+          heartbeatConnection: async () => {
+            observed.push("host:keepalive");
+            return true;
+          },
+        } as never;
+        for (let seq = 0; seq < 30; seq++) {
+          ws.send(
+            JSON.stringify({
+              type: "session:log",
+              sessionId: "batched-session",
+              stream: "stdout",
+              content: String(seq),
+              timestamp: "2026-01-01T00:00:00.000Z",
+              seq,
+            }),
+          );
+        }
+        ws.send(
+          JSON.stringify({
+            type: "host:keepalive",
+            hostId: "batched-host",
+            at: "2026-01-01T00:00:00.000Z",
+          }),
+        );
+      });
+      const poll = setInterval(() => {
+        if (observed.includes("host:keepalive")) {
+          clearInterval(poll);
+          resolve();
+        }
+      }, 1);
+      ws.on("error", reject);
+    });
+
+    expect(observed).toEqual([
+      Array.from({ length: 25 }, (_, seq) => seq),
+      Array.from({ length: 5 }, (_, index) => index + 25),
+      "host:keepalive",
+    ]);
+    ws.close();
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("drains an incumbent log batch before replacing its host lease", async () => {
+    const bridge = createPlaneWsBridge({ logBatchDelayMs: 0 });
+    const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage, shardCount: 1 });
+    plane.state.sessions.set("reconnect-session", { hostId: "reconnect-host" } as never);
+    const opened = await registeredSocket(bridge, plane, "reconnect-host");
+    const incumbentConnectionId = plane.state.hostConnection.get("reconnect-host")!;
+    let releaseWrite: () => void;
+    const writeBlocked = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let writeStarted: () => void;
+    const writeStartedPromise = new Promise<void>((resolve) => {
+      writeStarted = resolve;
+    });
+    const committed: number[][] = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "reconnect-host" }),
+      getHostLock: async () => incumbentConnectionId,
+      putLogsFenced: async (records: Array<{ seq: number }>) => {
+        writeStarted();
+        await writeBlocked;
+        committed.push(records.map(({ seq }) => seq));
+        return true;
+      },
+      deleteLog: async () => {},
+    } as never;
+    const originalHandle = plane.handleHostMessageDurable.bind(plane);
+    plane.disconnectHostDurable = async () => [];
+    let replacementStarted: () => void;
+    const replacementStartedPromise = new Promise<void>((resolve) => {
+      replacementStarted = resolve;
+    });
+    plane.handleHostMessageDurable = async (message, ...args) => {
+      if (message.type !== "host:register") return originalHandle(message, ...args);
+      replacementStarted();
+      plane.state.hostConnection.set(message.hostId, "replacement-connection");
+      return { ok: true, connectionId: "replacement-connection" };
+    };
+
+    opened.ws.send(wireLog("reconnect-session", 7));
+    await writeStartedPromise;
+    const address = opened.server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+    const replacement = new WebSocket(`ws://127.0.0.1:${address.port}/ws`);
+    const replacementRegistered = new Promise<void>((resolve, reject) => {
+      replacement.on("open", () =>
+        replacement.send(
+          JSON.stringify({
+            type: "host:register",
+            hostId: "reconnect-host",
+            worktrees: [],
+            commandProfiles: [],
+          }),
+        ),
+      );
+      replacement.on("message", (raw) => {
+        if (JSON.parse(String(raw)).type === "host:registered") resolve();
+      });
+      replacement.on("error", reject);
+    });
+
+    expect(
+      await Promise.race([
+        replacementStartedPromise.then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 50)),
+      ]),
+    ).toBe(false);
+    releaseWrite!();
+    await replacementRegistered;
+
+    expect(committed).toEqual([[7]]);
+    expect(plane.state.hostConnection.get("reconnect-host")).toBe("replacement-connection");
+    replacement.close();
+    opened.hub.close();
+    await new Promise<void>((resolve, reject) =>
+      opened.server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
   it("processes messages after a durable registration in wire order", async () => {
     const bridge = createPlaneWsBridge();
     const plane = new ControlPlane({ onHostMessage: bridge.onHostMessage, shardCount: 1 });
