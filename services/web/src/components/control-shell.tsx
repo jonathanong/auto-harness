@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { AppShell } from "@auto-harness/ui";
 
 import { LogoutButton } from "./logout-button.tsx";
+import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
 
 const NAV = [
   {
@@ -78,7 +79,12 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       titleTip="Org-wide control plane: sessions, schedules, catalog, and host fleet"
       subtitle="Org-wide sessions, schedules, and host fleet"
       subtitleTip="Hosts self-register over the API/WebSocket; configure host paths on the host pane"
-      titleBadge={<LogoutButton />}
+      titleBadge={
+        <div className="flex items-center gap-1">
+          <KeyboardShortcuts />
+          <LogoutButton />
+        </div>
+      }
       nav={NAV}
       pathname={pathname}
     >
