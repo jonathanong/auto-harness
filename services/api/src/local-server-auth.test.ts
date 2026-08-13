@@ -64,7 +64,7 @@ describe("createLocalApp authentication routes", () => {
     });
     expect(account.status).toBe(201);
     expect(account.json).toMatchObject({
-      account: { name: "agent-a" },
+      account: { name: "agent-a", createdAt: expect.any(String) },
       apiKey: expect.any(String),
     });
     const scopedAccount = await invoke("POST", "/api/v1/auth/service-accounts", {
@@ -74,7 +74,9 @@ describe("createLocalApp authentication routes", () => {
     });
     expect(scopedAccount.status).toBe(201);
     expect((await invoke("GET", "/api/v1/auth/service-accounts")).json).toMatchObject({
-      items: expect.arrayContaining([expect.objectContaining({ name: "agent-a" })]),
+      items: expect.arrayContaining([
+        expect.objectContaining({ name: "agent-a", createdAt: expect.any(String) }),
+      ]),
     });
     const accountId = (account.json as { account: { id: string } }).account.id;
     const scopedId = (scopedAccount.json as { account: { id: string } }).account.id;

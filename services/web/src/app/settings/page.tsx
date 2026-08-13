@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@auto-harness/ui";
 
 import { ChangePasswordForm } from "../../components/change-password-form.tsx";
+import { ServiceAccountSettings } from "../../components/service-account-settings.tsx";
 import { SettingsPageClient } from "../../components/settings-page-client.tsx";
 import { apiGet } from "../../lib/api.ts";
 
@@ -8,6 +9,8 @@ type Principal = {
   username: string;
   role: "admin" | "operator" | "read-only";
   kind: "admin" | "user" | "service-account";
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
 };
 
 export const dynamic = "force-dynamic";
@@ -18,7 +21,7 @@ export default async function SettingsPage() {
       ? await apiGet<Principal>("/api/v1/auth/me")
       : undefined;
   return (
-    <div className="mx-auto max-w-lg space-y-6" data-pw="page-settings">
+    <div className="mx-auto max-w-5xl space-y-6" data-pw="page-settings">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight" data-pw="settings-heading">
           Settings
@@ -66,6 +69,14 @@ export default async function SettingsPage() {
           </Card>
         )
       ) : null}
+      <ServiceAccountSettings
+        canManage={
+          !principal ||
+          (principal.role === "admin" &&
+            !principal.allowedRepositoryIds?.length &&
+            !principal.boundHostId)
+        }
+      />
       <SettingsPageClient />
     </div>
   );

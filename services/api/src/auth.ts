@@ -171,15 +171,16 @@ export class AuthService {
       boundHostId?: string;
     },
     storage?: AuthStorage,
-  ): Promise<{ account: Principal & { name: string }; apiKey: string }> {
+  ): Promise<{ account: Principal & { name: string; createdAt: string }; apiKey: string }> {
     if (!input.name) throw new Error("name is required");
     return createServiceAccount(input, this.serviceAccounts, storage);
   }
 
-  listServiceAccounts(): Array<Principal & { name: string }> {
+  listServiceAccounts(): Array<Principal & { name: string; createdAt: string }> {
     return [...this.serviceAccounts.values()].map((account) => ({
       ...publicPrincipal(account),
       name: account.name,
+      createdAt: account.createdAt,
     }));
   }
 

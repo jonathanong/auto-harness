@@ -247,12 +247,16 @@ Create a service account. **Admin only.**
 
 ```json
 {
-  "id": "sa-a1b2c3d4",
-  "name": "ci-frontend",
-  "role": "operator",
-  "allowedRepositories": ["repo-abc"],
-  "apiKey": "hns_k8f2m9x...",
-  "createdAt": "2026-08-01T00:00:00Z"
+  "account": {
+    "id": "service:a1b2c3d4",
+    "name": "ci-frontend",
+    "username": "ci-frontend",
+    "kind": "service-account",
+    "role": "operator",
+    "allowedRepositoryIds": ["repo-abc"],
+    "createdAt": "2026-08-01T00:00:00Z"
+  },
+  "apiKey": "hns_k8f2m9x..."
 }
 ```
 
@@ -268,10 +272,12 @@ List all service accounts. **Admin only.**
 {
   "items": [
     {
-      "id": "sa-a1b2c3d4",
+      "id": "service:a1b2c3d4",
       "name": "ci-frontend",
+      "username": "ci-frontend",
+      "kind": "service-account",
       "role": "operator",
-      "allowedRepositories": ["repo-abc"],
+      "allowedRepositoryIds": ["repo-abc"],
       "createdAt": "2026-08-01T00:00:00Z"
     }
   ]

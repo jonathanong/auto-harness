@@ -408,6 +408,8 @@ separate capabilities and are not enabled by this UI.
 - Create new service account — name, role dropdown (`read-only`, `operator`, `admin`), repository scope
 - API key shown once in a modal after creation with copy button
 - Delete service account with confirmation
+- Rotate by creating an overlapping replacement with identical role/scope, showing its key once,
+  and keeping the old key active until the admin confirms every consumer has been updated
 
 ### Connected Agents
 
