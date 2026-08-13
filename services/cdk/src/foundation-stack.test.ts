@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one synthesized foundation template covers the complete resource catalog. */
 import { App, RemovalPolicy } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
@@ -16,7 +17,7 @@ describe("AutoHarnessFoundationStack", () => {
   it("synthesizes every current durable table, archive bucket, outputs, and only foundation resources", () => {
     const template = foundationTemplate();
 
-    template.resourceCountIs("AWS::DynamoDB::Table", 20);
+    template.resourceCountIs("AWS::DynamoDB::Table", 21);
     template.hasResourceProperties("AWS::DynamoDB::Table", {
       BillingMode: "PAY_PER_REQUEST",
       TableName: "AutoHarness-SessionLogs",
@@ -89,6 +90,21 @@ describe("AutoHarnessFoundationStack", () => {
           Projection: { ProjectionType: "ALL" },
         },
       ],
+    });
+    template.hasResourceProperties("AWS::DynamoDB::Table", {
+      BillingMode: "PAY_PER_REQUEST",
+      TableName: "AutoHarness-WebhookDeliveries",
+      KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+      GlobalSecondaryIndexes: Match.arrayWith([
+        {
+          IndexName: "state-dueAt",
+          KeySchema: [
+            { AttributeName: "state", KeyType: "HASH" },
+            { AttributeName: "dueAt", KeyType: "RANGE" },
+          ],
+          Projection: { ProjectionType: "ALL" },
+        },
+      ]),
     });
     template.hasResourceProperties("AWS::S3::Bucket", {
       BucketEncryption: {
@@ -175,7 +191,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(22);
+    ).toHaveLength(23);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",

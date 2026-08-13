@@ -21,6 +21,7 @@ describe("DynamoDB Local clients", () => {
   it("exports client helpers and table naming", () => {
     expect(statusShardAttr("queued", 2)).toBe("queued#2");
     expect(tableNames("AH").sessions).toBe("AH-Sessions");
+    expect(tableNames("AH").webhookDeliveries).toBe("AH-WebhookDeliveries");
     expect(tableNames("").sessions).toContain("Sessions");
     expect(tableNames("A H/!").sessions).toBe("AH-Sessions");
     expect(DEFAULT_DYNAMODB_ENDPOINT).toContain("7423");
@@ -83,6 +84,10 @@ describe("DynamoDB Local clients", () => {
     );
     const users = await client.send(new DescribeTableCommand({ TableName: a.users }));
     expect(users.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("username");
+    const webhooks = await client.send(
+      new DescribeTableCommand({ TableName: a.webhookDeliveries }),
+    );
+    expect(webhooks.Table?.GlobalSecondaryIndexes?.[0]?.IndexName).toBe("state-dueAt");
   });
 
   it("is safe when independent processes provision the same fresh table prefix", async () => {

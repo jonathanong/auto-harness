@@ -10,6 +10,8 @@ import * as audit from "./plane-storage-audit.ts";
 import * as rateLimits from "./plane-storage-rate-limits.ts";
 import * as integrations from "./plane-storage-integrations.ts";
 import * as notificationDeliveries from "./plane-storage-notification-deliveries.ts";
+import * as webhookOutbox from "./plane-storage-webhook-outbox.ts";
+import * as webhookSettlement from "./plane-storage-webhook-settlement.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import { clearAll as clearAllStorage } from "./plane-storage-clear.ts";
 
@@ -54,6 +56,50 @@ export class DynamoPlaneStorage extends DynamoPlaneStorageBase {
     input: Parameters<import("../slack-delivery-types.ts").SlackOutboxStore["reschedule"]>[0],
   ) {
     return notificationDeliveries.reschedule(this.ctx, input);
+  }
+
+  enqueueWebhookDelivery(input: import("../webhook-outbox.ts").WebhookEnqueueInput): Promise<{
+    created: boolean;
+    delivery: import("../webhook-outbox.ts").DurableWebhookDelivery;
+  }> {
+    return webhookOutbox.enqueueWebhookDelivery(this.ctx, input);
+  }
+
+  getWebhookDelivery(
+    id: string,
+  ): Promise<import("../webhook-outbox.ts").DurableWebhookDelivery | null> {
+    return webhookOutbox.getWebhookDelivery(this.ctx, id);
+  }
+
+  listDueWebhookDeliveries(input: {
+    state: "pending" | "leased";
+    now: string;
+    limit: number;
+  }): Promise<import("../webhook-outbox.ts").DurableWebhookDelivery[]> {
+    return webhookOutbox.listDueWebhookDeliveries(this.ctx, input);
+  }
+
+  claimWebhookDelivery(
+    input: webhookOutbox.WebhookLeaseInput,
+  ): Promise<import("../webhook-outbox.ts").DurableWebhookDelivery | null> {
+    return webhookOutbox.claimWebhookDelivery(this.ctx, input);
+  }
+
+  completeWebhookDelivery(input: webhookOutbox.WebhookLeaseFence): Promise<boolean> {
+    return webhookSettlement.completeWebhookDelivery(this.ctx, input);
+  }
+
+  failWebhookDelivery(
+    input: webhookOutbox.WebhookLeaseFence & {
+      failureCode: import("../webhook-outbox.ts").WebhookFailureCode;
+      nextAttemptAt: string;
+    },
+  ): Promise<"pending" | "dead" | null> {
+    return webhookSettlement.failWebhookDelivery(this.ctx, input);
+  }
+
+  deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean> {
+    return webhookSettlement.deadLetterExhaustedWebhookDelivery(this.ctx, input);
   }
 
   getSlackIntegration(): Promise<

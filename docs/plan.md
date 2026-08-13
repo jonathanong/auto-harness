@@ -575,9 +575,11 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   bounded secret-safe metadata, and fail-closed acknowledgement if an audit
   append cannot persist).
 
-**Status (precursor behavior only):** `archiveSessionLogs` serializes logs into the DynamoDB
-Archives table, not S3. Webhook "deliveries" are recorded in in-process state but do not
-perform an outbound HTTP request. `drainHost` + `DaemonLoop.beginDrain` stop new assignments
+**Status (precursor/foundation behavior only):** `archiveSessionLogs` serializes logs into the
+DynamoDB Archives table, not S3. Webhook "deliveries" are recorded in in-process state, and a
+separate durable outbox foundation provides secret-safe rows, bounded leases/retries, and
+dead-letter state. No lifecycle path enqueues that outbox and no outbound HTTP/configuration
+runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments
 without killing in-flight CLIs, but an operator must still wait, install, and restart manually;
 there is no automatic updater. Slack config CRUD exists, while OAuth, delivery, inbound
 verification, and session-thread lifecycle do not.
