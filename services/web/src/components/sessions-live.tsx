@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sessionListHref, type SessionListQuery } from "@auto-harness/shared";
-import { CursorPagination, SessionsTable, type SessionRow } from "@auto-harness/ui";
+import { CursorPagination, SessionsTable, TipLink, type SessionRow } from "@auto-harness/ui";
 
 import { apiFetch } from "../lib/client-api.ts";
+import { PrimaryEmptyState } from "./primary-empty-state.tsx";
 
 export function SessionsLive({
   initialItems,
@@ -71,6 +72,15 @@ export function SessionsLive({
 
   const nextHref = nextCursor ? sessionListHref({ ...listState, cursor: nextCursor }) : null;
   const prevHref = listState.cursor ? sessionListHref({ ...listState, cursor: "" }) : null;
+  const narrowed = Boolean(
+    listState.q ||
+    listState.concurrencyId ||
+    listState.cursor ||
+    listState.repositoryId ||
+    listState.scheduleId ||
+    listState.status !== "all",
+  );
+  const showFirstSession = !error && items.length === 0 && !narrowed;
 
   return (
     <div className="space-y-3">
@@ -94,14 +104,30 @@ export function SessionsLive({
           Live updates active
         </p>
       )}
-      <SessionsTable
-        items={items}
-        showHost
-        hrefBase="/sessions"
-        search={listState.q}
-        emptyMessage="No sessions yet. Create your first session."
-      />
-      <CursorPagination nextHref={nextHref} prevHref={prevHref} />
+      {showFirstSession ? (
+        <PrimaryEmptyState title="No sessions yet." pw="sessions-empty">
+          <p>Queue a one-off task to start using Auto Harness.</p>
+          <TipLink
+            href="/sessions/new"
+            tip="Create a one-off session"
+            pw="sessions-empty-create"
+            className="font-medium text-primary hover:underline"
+          >
+            Create your first session →
+          </TipLink>
+        </PrimaryEmptyState>
+      ) : (
+        <>
+          <SessionsTable
+            items={items}
+            showHost
+            hrefBase="/sessions"
+            search={listState.q}
+            emptyMessage={narrowed ? "No sessions match filters." : "No sessions yet."}
+          />
+          <CursorPagination nextHref={nextHref} prevHref={prevHref} />
+        </>
+      )}
     </div>
   );
 }

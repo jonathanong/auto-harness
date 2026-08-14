@@ -57,13 +57,13 @@ successful snapshot when polling fails and offers an immediate retry.
 
 First-time users or empty views show contextual guidance instead of blank pages:
 
-| View                    | Empty State Message                                                                                     |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| Dashboard (no sessions) | "Get started: 1. Add a repository, 2. Connect an agent, 3. Create your first session" with action links |
-| Dashboard (no agents)   | "⚠️ No agents connected. Set up a VPS agent →" with link to [agent docs](host-daemon.md)                |
-| Session list            | "No sessions yet. Create your first session →" with button                                              |
-| Repository list         | "No repositories configured. Add one →" with button                                                     |
-| Schedule list           | "No schedules configured. Create one →" with button                                                     |
+| View                    | Empty State Message                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- |
+| Dashboard (no sessions) | "Get started: 1. Add a repository, 2. Connect a host, 3. Create your first session" with action links |
+| Dashboard (no hosts)    | "No hosts connected. Set up a VPS host →" with link to the Hosts setup view                           |
+| Session list            | "No sessions yet. Create your first session →" with button                                            |
+| Repository list         | "No repositories configured. Add one →" with button                                                   |
+| Schedule list           | "No schedules configured. Create one →" with button                                                   |
 
 ### Error & Loading States
 

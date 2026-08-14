@@ -19,5 +19,17 @@ describe("AddRepoDialog", () => {
     press(field<HTMLButtonElement>(document, "dialog-close"));
     expect(document.querySelector('[data-pw="add-repo-dialog"]')).toBeNull();
     view.unmount();
+
+    const custom = mountForm(
+      <AddRepoDialog
+        triggerLabel="Add one"
+        triggerPw="custom-repo-open"
+        dialogPw="custom-repo-dialog"
+      />,
+    );
+    expect(field(custom.container, "custom-repo-open").textContent).toBe("Add one");
+    press(field<HTMLButtonElement>(custom.container, "custom-repo-open"));
+    expect(field(document, "custom-repo-dialog")).not.toBeNull();
+    custom.unmount();
   });
 });

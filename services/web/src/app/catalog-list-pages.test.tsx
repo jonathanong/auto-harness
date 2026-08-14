@@ -155,7 +155,8 @@ describe("control catalog list routes", () => {
       "/api/v1/worktrees": {},
     });
     let html = await renderPage(RepositoriesPage());
-    expect(html).toContain("No repositories registered yet.");
+    expect(html).toContain("No repositories configured");
+    expect(html).toContain('data-pw="repositories-empty-add"');
     stubApi({
       "/api/v1/repositories": "__throw_string__",
       "/api/v1/hosts": jsonResponse({}, 502),
