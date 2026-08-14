@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 
+import { RepositoryUrlCopy } from "./repository-url-copy.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
@@ -24,6 +25,8 @@ export type WorktreeRepoGroup = {
   defaultBranch?: string;
   /** Optional host path for the repo root. */
   repoPath?: string;
+  /** Catalog Git URL; unlike a host path, this is rendered with an exact copy control. */
+  repoUrl?: string;
   /** When set, the repo name links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
   repoHrefBase?: string;
   worktrees: WorktreeRow[];
@@ -92,7 +95,9 @@ export function WorktreesHierarchy({
                     (g.repositoryName ?? g.repositoryId)
                   )}
                 </h3>
-                {g.repoPath ? (
+                {g.repoUrl ? (
+                  <RepositoryUrlCopy repositoryId={g.repositoryId} url={g.repoUrl} />
+                ) : g.repoPath ? (
                   <p className="break-all font-mono text-xs text-muted-foreground">{g.repoPath}</p>
                 ) : null}
                 {g.defaultBranch ? (

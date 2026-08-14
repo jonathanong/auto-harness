@@ -1,18 +1,32 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("control plane repositories", () => {
-  test("repository hierarchy shows the catalog default branch", async ({ page, request }) => {
+  test("repository hierarchy shows the branch and copies the exact Git URL", async ({
+    page,
+    request,
+    context,
+  }) => {
     const name = `pw-repo-branch-${test.info().parallelIndex}-${Date.now()}`;
+    const url = `https://git.example.test/${name}/a-very-long-repository-name.git`;
     const response = await request.post("/api/v1/repositories", {
-      data: { name, url: `/tmp/${name}`, defaultBranch: "trunk" },
+      data: { name, url, defaultBranch: "trunk" },
     });
     expect(response.ok()).toBe(true);
     const repositoryId = ((await response.json()) as { id: string }).id;
 
     try {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
       await page.goto("/repositories");
       const branch = page.getByTestId(`repo-default-branch-${repositoryId}`);
       await expect(branch).toHaveText("Default branch: trunk");
+      await expect(page.getByTestId(`repository-url-${repositoryId}`)).toHaveText(url);
+      await expect(page.getByTestId(`repository-url-${repositoryId}`)).toHaveAttribute(
+        "title",
+        url,
+      );
+      await page.getByTestId(`repository-url-copy-${repositoryId}`).click();
+      await expect(page.getByTestId(`repository-url-copy-${repositoryId}`)).toHaveText("Copied");
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url);
     } finally {
       await request.delete(`/api/v1/repositories/${repositoryId}`);
     }

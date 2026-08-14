@@ -54,7 +54,7 @@ describe("shared worktree hierarchy", () => {
           {
             repositoryId: "repo/a",
             repositoryName: "Repository A",
-            repoPath: "/repos/a",
+            repoUrl: "https://git.example.test/repos/a.git",
             repoHrefBase: "/repositories",
             defaultBranch: "trunk",
             worktrees: [worktree, changingLabels],
@@ -67,6 +67,8 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain('href="/repositories/repo%2Fa"');
     expect(rich).toContain('href="/repositories/repo%2Fempty"');
     expect(rich).toContain('href="/worktrees/worktree%2Fa"');
+    expect(rich).toContain('data-pw="repository-url-repo/a"');
+    expect(rich).toContain("https://git.example.test/repos/a.git");
     expect(rich).toContain('data-pw="repo-default-branch-repo/a"');
     expect(rich).toContain("Default branch:");
     expect(rich).toContain(">trunk</code>");
@@ -76,6 +78,13 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain("host/a");
     expect(rich).toContain('data-pw="worktree-online-worktree/a">Online');
     expect(rich).toContain('font-mono text-xs">—</td>');
+    const hostPath = render(
+      <WorktreesHierarchy
+        groups={[{ repositoryId: "repo/host", repoPath: "/repos/host", worktrees: [] }]}
+      />,
+    );
+    expect(hostPath).toContain("/repos/host");
+    expect(hostPath).not.toContain("repository-url-copy");
     const plain = render(
       <WorktreesHierarchy
         groups={[
