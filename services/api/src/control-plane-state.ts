@@ -108,8 +108,7 @@ export type ControlPlaneState = {
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
   if (
     options.archiveWriter &&
-    options.archivePrefix &&
-    options.archivePrefix !== DEFAULT_ARCHIVE_PREFIX
+    (options.archivePrefix ?? DEFAULT_ARCHIVE_PREFIX) !== DEFAULT_ARCHIVE_PREFIX
   ) {
     throw new Error(`Archive writers require the ${DEFAULT_ARCHIVE_PREFIX} key prefix`);
   }
