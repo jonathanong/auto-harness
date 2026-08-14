@@ -49,6 +49,44 @@ describe("CreateSessionForm", () => {
     view.unmount();
   });
 
+  it("offers documented timeout presets and retains a valid custom seconds value", async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ id: "session/timeout" }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<CreateSessionForm targets={targets} />);
+    fill(view);
+    const form = field<HTMLFormElement>(view.container, "form-create-session");
+    const preset = field<HTMLSelectElement>(view.container, "create-session-timeout");
+    let custom = field<HTMLInputElement>(view.container, "create-session-timeout-custom");
+
+    expect([...preset.options].map(({ value, text }) => [value, text])).toEqual([
+      ["300", "5 minutes"],
+      ["900", "15 minutes"],
+      ["1800", "30 minutes"],
+      ["3600", "1 hour"],
+      ["custom", "Custom"],
+    ]);
+    expect(preset.labels?.[0]?.textContent).toBe("Duration");
+    expect(custom.labels?.[0]?.textContent).toBe("Custom timeout (seconds)");
+    expect(preset.getAttribute("aria-describedby")).toBe("timeout-help");
+    expect(new FormData(form).get("timeout")).toBe("600");
+
+    setValue(custom, "0");
+    expect(form.checkValidity()).toBe(false);
+    setValue(custom, "45.5");
+    expect(form.checkValidity()).toBe(true);
+    setValue(preset, "3600");
+    expect(view.container.querySelector('[data-pw="create-session-timeout-custom"]')).toBeNull();
+    expect(new FormData(form).get("timeout")).toBe("3600");
+    setValue(preset, "custom");
+    custom = field(view.container, "create-session-timeout-custom");
+    expect(custom.value).toBe("45.5");
+
+    submit(form);
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ timeout: 45.5 });
+    view.unmount();
+  });
+
   it("shows duplicate routing and handles a successful non-JSON response", async () => {
     const fetch = vi
       .fn()
@@ -133,8 +171,13 @@ describe("CreateSessionForm", () => {
     expect(priority.min).toBe("-20");
     expect(priority.max).toBe("100");
     expect(field(view.container, "create-session-priority-value").textContent).toBe("-20 (low)");
-    expect(field<HTMLInputElement>(view.container, "create-session-timeout").step).toBe("any");
-    submit(field(view.container, "form-create-session"));
+    expect(field<HTMLSelectElement>(view.container, "create-session-timeout").value).toBe("custom");
+    expect(field<HTMLInputElement>(view.container, "create-session-timeout-custom").value).toBe(
+      "0.5",
+    );
+    const form = field<HTMLFormElement>(view.container, "form-create-session");
+    expect(form.checkValidity()).toBe(true);
+    submit(form);
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       repositoryId: "source-repository",

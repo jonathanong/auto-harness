@@ -85,7 +85,8 @@ test.describe("real orchestration", () => {
       await page.getByTestId("create-session-repository-id").fill(repoId);
       await page.getByTestId("create-session-target").selectOption({ label: commandName });
       await page.getByTestId("create-session-prompt").fill("unused");
-      await page.getByTestId("create-session-timeout").fill("30");
+      await page.getByTestId("create-session-timeout").selectOption("custom");
+      await page.getByTestId("create-session-timeout-custom").fill("30");
       await page.getByTestId("create-session-submit").click();
 
       await expect(page.getByTestId("page-session-detail")).toBeVisible({ timeout: 15_000 });

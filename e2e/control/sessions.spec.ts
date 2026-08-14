@@ -20,7 +20,10 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("form-create-session")).toBeVisible();
     await expect(page.getByTestId("create-session-repository-id")).toBeVisible();
     await expect(page.getByTestId("create-session-prompt")).toBeVisible();
+    await expect(page.getByTestId("create-session-timeout-control")).toBeVisible();
     await expect(page.getByTestId("create-session-timeout")).toBeVisible();
+    await expect(page.getByTestId("create-session-timeout")).toHaveValue("custom");
+    await expect(page.getByTestId("create-session-timeout-custom")).toHaveValue("600");
     await expect(page.getByTestId("create-session-ref")).toBeVisible();
     await expect(page.getByTestId("create-session-scheduling-fields")).toBeVisible();
     await expect(page.getByTestId("create-session-priority")).toHaveValue("0");
@@ -101,7 +104,8 @@ test.describe("control plane sessions", () => {
         await page.getByTestId("create-session-fallback-remove-1").click();
         await expect(page.getByTestId("create-session-fallback-select-1")).toHaveCount(0);
         await page.getByTestId("create-session-prompt").fill(`hello-${id}`);
-        await page.getByTestId("create-session-timeout").fill("30");
+        await page.getByTestId("create-session-timeout").selectOption("1800");
+        await expect(page.getByTestId("create-session-timeout-custom")).toHaveCount(0);
         const createRequest = page.waitForRequest(
           (req) => req.url().endsWith("/api/v1/sessions") && req.method() === "POST",
         );
@@ -110,6 +114,7 @@ test.describe("control plane sessions", () => {
         expect((await createRequest).postDataJSON()).toMatchObject({
           target: expect.objectContaining({ commandId: expect.any(String) }),
           fallbacks: [expect.objectContaining({ commandId: expect.any(String) })],
+          timeout: 1800,
         });
 
         // Lands on the new session's own detail page, not just the list.

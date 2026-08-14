@@ -65,7 +65,8 @@ test("opens Clone & Edit without creating and submits only replayable source inp
     `command:${fallback.id}`,
   );
   await expect(page.getByTestId("create-session-queue-ttl")).toHaveValue("321");
-  await expect(page.getByTestId("create-session-timeout")).toHaveValue("123");
+  await expect(page.getByTestId("create-session-timeout")).toHaveValue("custom");
+  await expect(page.getByTestId("create-session-timeout-custom")).toHaveValue("123");
   await expect(page.getByTestId("create-session-priority")).toHaveValue("67");
   await expect(page.getByTestId("create-session-label-clone-label")).toBeChecked();
   await expect(page.getByTestId("create-session-ref")).toHaveValue("feature/clone-edit");
