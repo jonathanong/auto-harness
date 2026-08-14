@@ -20,7 +20,7 @@ export default defineConfig({
         "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,schedule-enabled-toggle,create-session-form,session-routing-fields,session-target-select}.tsx",
         "modules/ui/src/lib/utils.ts",
         "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
-        "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,session-execution-summary.tsx,session-priority-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}",
+        "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-priority-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}",
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
         // Shared repository, session, and worktree detail views.
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
@@ -96,7 +96,7 @@ export default defineConfig({
         branches: 97,
         functions: 100,
         statements: 98,
-        "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,session-execution-summary.tsx,session-priority-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}":
+        "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-priority-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}":
           {
             lines: 100,
             branches: 100,
