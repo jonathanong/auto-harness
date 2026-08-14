@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
@@ -54,14 +54,23 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const sort = sp.get("sort") ?? "latest";
   const [queryDraft, setQueryDraft] = useState(q);
   const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
+  const locallySubmittedQueries = useRef(new Set<string>());
 
   useEffect(() => {
+    if (locallySubmittedQueries.current.delete(q)) return;
+    locallySubmittedQueries.current.clear();
     setQueryDraft(q);
+  }, [q]);
+
+  useEffect(() => {
     setConcurrencyDraft(concurrencyId);
-  }, [concurrencyId, q]);
+  }, [concurrencyId]);
 
   const push = useCallback(
     (next: { status?: string; q?: string; concurrencyId?: string; sort?: string }) => {
+      if (next.q !== undefined && next.q !== q) {
+        locallySubmittedQueries.current.add(next.q);
+      }
       start(() => {
         router.push(
           buildHref(

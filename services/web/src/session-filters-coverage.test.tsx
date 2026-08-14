@@ -184,4 +184,28 @@ describe("SessionFilters", () => {
     expect(q.value).toBe("second");
     view.unmount();
   });
+
+  it("preserves newer filter drafts when an older query navigation resolves", () => {
+    vi.useFakeTimers();
+    const router = { push: vi.fn() };
+    const view = mount("", router);
+    const q = view.container.querySelector('[data-pw="session-filter-q"]') as HTMLInputElement;
+    const concurrency = view.container.querySelector(
+      '[data-pw="session-filter-concurrency-id"]',
+    ) as HTMLInputElement;
+
+    setInputValue(q, "first");
+    act(() => vi.advanceTimersByTime(300));
+    expect(router.push).toHaveBeenLastCalledWith("/runs?q=first");
+
+    setInputValue(q, "newer");
+    setInputValue(concurrency, "in progress");
+    view.render("q=first");
+    expect(q.value).toBe("newer");
+    expect(concurrency.value).toBe("in progress");
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(router.push).toHaveBeenLastCalledWith("/runs?q=newer");
+    view.unmount();
+  });
 });
