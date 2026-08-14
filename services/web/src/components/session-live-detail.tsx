@@ -3,6 +3,8 @@
 import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
 import { type ReactNode, useEffect, useState } from "react";
 
+import { apiFetch } from "../lib/client-api.ts";
+
 type Host = { hostId: string; online: boolean };
 
 const SESSION_STATE_POLL_MS = 5_000;
@@ -13,7 +15,7 @@ export function assignedHostIsOffline(session: SessionSummary, hosts: Host[]): b
 }
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { cache: "no-store" });
+  const response = await apiFetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`GET ${path} failed`);
   return (await response.json()) as T;
 }
@@ -48,6 +50,7 @@ export function SessionLiveDetail({
 
   useEffect(() => {
     let active = true;
+    let timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
         const next = await fetchSessionLiveState(initialSession.id);
@@ -59,11 +62,14 @@ export function SessionLiveDetail({
         if (active) setRefreshFailed(true);
       }
     };
-    void refresh();
-    const timer = setInterval(() => void refresh(), SESSION_STATE_POLL_MS);
+    const poll = async () => {
+      await refresh();
+      if (active) timer = setTimeout(() => void poll(), SESSION_STATE_POLL_MS);
+    };
+    void poll();
     return () => {
       active = false;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [initialSession.id]);
 

@@ -66,8 +66,12 @@ describe("session live detail", () => {
     });
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/v1/sessions/session%2Fone", {
       cache: "no-store",
+      credentials: "same-origin",
     });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/hosts", { cache: "no-store" });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/v1/hosts", {
+      cache: "no-store",
+      credentials: "same-origin",
+    });
     await expect(fetchSessionLiveState("session/one")).resolves.toMatchObject({
       session: { status: "cancelled" },
       hosts: [],
@@ -133,5 +137,17 @@ describe("session live detail", () => {
     view.unmount();
     resolve(response(true, { ...running, status: "completed" }));
     await Promise.resolve();
+  });
+
+  it("waits for an in-flight refresh before scheduling the next poll", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => undefined)),
+    );
+    const view = mount(<SessionLiveDetail initialSession={running} initialHosts={[]} />);
+    await act(async () => vi.advanceTimersByTimeAsync(15_000));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    view.unmount();
   });
 });
