@@ -8,6 +8,14 @@ type SessionQueueDeadlineProps = {
   initialNow?: number;
 };
 
+const CANONICAL_UTC_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+function parseCanonicalDeadline(value?: string | null): number {
+  if (!value || !CANONICAL_UTC_TIMESTAMP.test(value)) return Number.NaN;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value ? parsed : Number.NaN;
+}
+
 function formatRemaining(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
   const days = Math.floor(totalSeconds / 86_400);
@@ -27,7 +35,7 @@ export function SessionQueueDeadline({
   queueExpiresAt,
   initialNow,
 }: SessionQueueDeadlineProps) {
-  const expiresAt = queueExpiresAt ? Date.parse(queueExpiresAt) : Number.NaN;
+  const expiresAt = parseCanonicalDeadline(queueExpiresAt);
   const active = status === "queued" && Number.isFinite(expiresAt);
   const [now, setNow] = useState<number | null>(initialNow ?? null);
 

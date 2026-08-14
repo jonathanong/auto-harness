@@ -62,6 +62,7 @@ describe("host session live detail", () => {
   });
 
   it("refreshes a queued detail to terminal state and removes its deadline", async () => {
+    vi.useFakeTimers();
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(response(true, { ...queued, status: "completed" })),
@@ -82,6 +83,7 @@ describe("host session live detail", () => {
     });
     expect(view.container.querySelector('[data-pw="session-detail-queue-deadline"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).not.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
     view.unmount();
   });
 
@@ -100,7 +102,7 @@ describe("host session live detail", () => {
     view.unmount();
   });
 
-  it("does not update or schedule after unmounting during a refresh", async () => {
+  it("does not update after unmounting during a successful refresh", async () => {
     let resolve!: (value: ReturnType<typeof response>) => void;
     vi.stubGlobal(
       "fetch",
@@ -110,5 +112,25 @@ describe("host session live detail", () => {
     view.unmount();
     resolve(response(true, { ...queued, status: "running" }));
     await Promise.resolve();
+  });
+
+  it("does not update or schedule after unmounting during a failed refresh", async () => {
+    vi.useFakeTimers();
+    let reject!: (reason: Error) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        () =>
+          new Promise<ReturnType<typeof response>>((_done, fail) => {
+            reject = fail;
+          }),
+      ),
+    );
+    const view = mount(<SessionLiveDetail initialSession={queued} />);
+    view.unmount();
+    reject(new Error("refresh failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

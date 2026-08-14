@@ -48,6 +48,8 @@ describe("SessionQueueDeadline", () => {
     ["running", "2026-08-14T12:01:00.000Z"],
     ["queued", null],
     ["queued", "not-a-date"],
+    ["queued", "2026-08-14"],
+    ["queued", "2026-02-30T12:00:00.000Z"],
   ])("stays hidden for status %s and deadline %s", (status, queueExpiresAt) => {
     expect(render({ status, queueExpiresAt }).textContent).toBe("");
   });

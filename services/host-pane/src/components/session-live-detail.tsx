@@ -1,6 +1,7 @@
 "use client";
 
 import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
+import { isTerminalSessionStatus } from "@auto-harness/shared";
 import { type ReactNode, useEffect, useState } from "react";
 
 const SESSION_STATE_POLL_MS = 5_000;
@@ -32,6 +33,7 @@ export function SessionLiveDetail({
         if (!active) return;
         setSession(next);
         setRefreshFailed(false);
+        if (isTerminalSessionStatus(next.status)) return;
       } catch {
         if (active) setRefreshFailed(true);
       }
