@@ -21,25 +21,27 @@ afterEach(() => {
 
 describe("session timeout progress", () => {
   it("derives bounded progress and formats remaining time", () => {
-    expect(timeoutProgress({ status: "queued", startedAt: "now", timeout: 30 }, NOW)).toBeNull();
+    expect(
+      timeoutProgress({ status: "queued", ackReceivedAt: "now", timeout: 30 }, NOW),
+    ).toBeNull();
     expect(timeoutProgress({ status: "running", timeout: 30 }, NOW)).toBeNull();
     expect(
-      timeoutProgress({ status: "running", startedAt: "2026-08-12T12:00:00.000Z" }, NOW),
+      timeoutProgress({ status: "running", ackReceivedAt: "2026-08-12T12:00:00.000Z" }, NOW),
     ).toBeNull();
     expect(
       timeoutProgress(
-        { status: "running", startedAt: "2026-08-12T12:00:00.000Z", timeout: 0 },
+        { status: "running", ackReceivedAt: "2026-08-12T12:00:00.000Z", timeout: 0 },
         NOW,
       ),
     ).toBeNull();
     expect(
-      timeoutProgress({ status: "running", startedAt: "invalid", timeout: 30 }, NOW),
+      timeoutProgress({ status: "running", ackReceivedAt: "invalid", timeout: 30 }, NOW),
     ).toBeNull();
     expect(
       timeoutProgress(
         {
           status: "running",
-          startedAt: "2026-08-12T12:00:00.000Z",
+          ackReceivedAt: "2026-08-12T12:00:00.000Z",
           timeout: Number.NaN,
         },
         NOW,
@@ -47,7 +49,7 @@ describe("session timeout progress", () => {
     ).toBeNull();
     expect(
       timeoutProgress(
-        { status: "running", startedAt: "2026-08-12T11:59:30.000Z", timeout: 120 },
+        { status: "running", ackReceivedAt: "2026-08-12T11:59:30.000Z", timeout: 120 },
         NOW,
       ),
     ).toEqual({
@@ -58,13 +60,13 @@ describe("session timeout progress", () => {
     });
     expect(
       timeoutProgress(
-        { status: "running", startedAt: "2026-08-12T12:00:30.000Z", timeout: 120 },
+        { status: "running", ackReceivedAt: "2026-08-12T12:00:30.000Z", timeout: 120 },
         NOW,
       ),
     ).toMatchObject({ elapsedSeconds: 0, remainingSeconds: 120 });
     expect(
       timeoutProgress(
-        { status: "running", startedAt: "2026-08-12T11:00:00.000Z", timeout: 120 },
+        { status: "running", ackReceivedAt: "2026-08-12T11:00:00.000Z", timeout: 120 },
         NOW,
       ),
     ).toMatchObject({ elapsedSeconds: 120, remainingSeconds: 0, elapsedPercent: 100 });
@@ -84,7 +86,7 @@ describe("session timeout progress", () => {
       root.render(
         <SessionTimeoutProgress
           status="running"
-          startedAt="2026-08-12T11:59:30.000Z"
+          ackReceivedAt="2026-08-12T11:59:30.000Z"
           timeout={120}
         />,
       ),
@@ -103,20 +105,35 @@ describe("session timeout progress", () => {
     expect(progress.getAttribute("aria-valuenow")).toBe("31");
     expect(progress.getAttribute("aria-valuetext")).toBe("1m 29s remaining");
 
+    act(() => vi.advanceTimersByTime(89_000));
+    expect(container.querySelector('[role="progressbar"]')).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+
     act(() => root.render(<SessionTimeoutProgress status="completed" timeout={120} />));
     expect(container.querySelector('[role="progressbar"]')).toBeNull();
     expect(vi.getTimerCount()).toBe(0);
     act(() => root.unmount());
   });
 
-  it("renders no progress when a running session has an invalid start time", () => {
+  it("renders no progress for invalid or already-expired acknowledgement deadlines", () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
     act(() =>
-      root.render(<SessionTimeoutProgress status="running" startedAt="invalid" timeout={30} />),
+      root.render(<SessionTimeoutProgress status="running" ackReceivedAt="invalid" timeout={30} />),
+    );
+    expect(container.textContent).toBe("");
+    expect(vi.getTimerCount()).toBe(0);
+    act(() =>
+      root.render(
+        <SessionTimeoutProgress
+          status="running"
+          ackReceivedAt="2026-08-12T11:59:00.000Z"
+          timeout={30}
+        />,
+      ),
     );
     expect(container.textContent).toBe("");
     expect(vi.getTimerCount()).toBe(0);

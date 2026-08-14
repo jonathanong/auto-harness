@@ -39,6 +39,7 @@ export type SessionSummary = {
   concurrencyId?: string | null;
   ref?: string | null;
   timeout?: number | null;
+  ackReceivedAt?: string | null;
   createdAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -167,7 +168,11 @@ export function SessionDetail({
                 {s.concurrencyId ?? "—"}
               </dd>
             </div>
-            <SessionTimeoutDetail status={s.status} startedAt={s.startedAt} timeout={s.timeout} />
+            <SessionTimeoutDetail
+              status={s.status}
+              ackReceivedAt={s.ackReceivedAt}
+              timeout={s.timeout}
+            />
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Created</dt>
               <dd className="text-sm">{s.createdAt ?? "—"}</dd>

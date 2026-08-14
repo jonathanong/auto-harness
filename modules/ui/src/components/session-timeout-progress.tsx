@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type SessionTimeoutProgressProps = {
   status: string;
-  startedAt?: string | null;
+  ackReceivedAt?: string | null;
   timeout?: number | null;
 };
 
@@ -17,13 +17,13 @@ type TimeoutProgress = {
 
 /** Derive a bounded running-session deadline without inventing server state. */
 export function timeoutProgress(
-  { status, startedAt, timeout }: SessionTimeoutProgressProps,
+  { status, ackReceivedAt, timeout }: SessionTimeoutProgressProps,
   nowMs: number,
 ): TimeoutProgress | null {
-  if (status !== "running" || !startedAt || timeout == null || timeout <= 0) return null;
-  const startedMs = Date.parse(startedAt);
-  if (!Number.isFinite(startedMs) || !Number.isFinite(timeout)) return null;
-  const elapsedSeconds = Math.min(timeout, Math.max(0, (nowMs - startedMs) / 1_000));
+  if (status !== "running" || !ackReceivedAt || timeout == null || timeout <= 0) return null;
+  const acknowledgedMs = Date.parse(ackReceivedAt);
+  if (!Number.isFinite(acknowledgedMs) || !Number.isFinite(timeout)) return null;
+  const elapsedSeconds = Math.min(timeout, Math.max(0, (nowMs - acknowledgedMs) / 1_000));
   const remainingSeconds = Math.max(0, timeout - elapsedSeconds);
   return {
     elapsedSeconds,
@@ -48,21 +48,28 @@ export function SessionTimeoutProgress(props: SessionTimeoutProgressProps) {
   const [nowMs, setNowMs] = useState<number | null>(null);
   const active =
     props.status === "running" &&
-    Boolean(props.startedAt) &&
+    Boolean(props.ackReceivedAt) &&
     props.timeout != null &&
     props.timeout > 0 &&
     Number.isFinite(props.timeout) &&
-    Number.isFinite(Date.parse(props.startedAt as string));
+    Number.isFinite(Date.parse(props.ackReceivedAt as string));
 
   useEffect(() => {
     if (!active) return;
-    setNowMs(Date.now());
-    const interval = setInterval(() => setNowMs(Date.now()), 1_000);
+    const deadlineMs = Date.parse(props.ackReceivedAt as string) + props.timeout! * 1_000;
+    const initialNow = Date.now();
+    setNowMs(initialNow);
+    if (initialNow >= deadlineMs) return;
+    const interval = setInterval(() => {
+      const nextNow = Date.now();
+      setNowMs(nextNow);
+      if (nextNow >= deadlineMs) clearInterval(interval);
+    }, 1_000);
     return () => clearInterval(interval);
-  }, [active]);
+  }, [active, props.ackReceivedAt, props.timeout]);
 
   const progress = nowMs == null ? null : timeoutProgress(props, nowMs);
-  if (!progress) return null;
+  if (!progress || progress.remainingSeconds <= 0) return null;
   const remaining = formatRemainingTime(progress.remainingSeconds);
 
   return (
