@@ -10,12 +10,14 @@ export function ScheduleTriggerButton({ id }: { id: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   return (
-    <WithTooltip tip="Fire this schedule once now (creates a session immediately)">
+    <WithTooltip tip="Run this schedule once now (creates a session immediately)">
       <Button
         type="button"
         size="sm"
         variant="outline"
         disabled={pending}
+        aria-busy={pending}
+        data-pw="schedule-run-now"
         onClick={() => {
           start(async () => {
             const res = await fetch(
@@ -48,7 +50,7 @@ export function ScheduleTriggerButton({ id }: { id: string }) {
           });
         }}
       >
-        {pending ? "…" : "Trigger"}
+        {pending ? "Running…" : "Run now"}
       </Button>
     </WithTooltip>
   );
