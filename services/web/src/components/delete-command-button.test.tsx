@@ -66,7 +66,9 @@ describe("DeleteCommandButton", () => {
     open(parsedView);
     press(confirm());
     await act(async () => Promise.resolve());
-    expect(field(document, "delete-command-error").textContent).toBe("command is in use");
+    const conflict = field(document, "delete-command-error");
+    expect(conflict.textContent).toBe("command is in use");
+    expect(conflict.getAttribute("role")).toBe("alert");
     parsedView.unmount();
 
     enqueue(new Response("not json", { status: 503 }));

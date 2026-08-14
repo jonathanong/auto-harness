@@ -872,6 +872,8 @@ Get agent details including worktrees and current sessions.
 
 Three global catalogs are available to session/schedule target chains instead of a free-form command string (D4). A **Command** is a name + fixed `argv` + `appendPrompt`, optionally owned by a **Provider** (`providerId: null` = standalone providerless pure CLI, runs ungated on any worktree). A **Provider** (e.g. `claude`, `codex`) has a `defaultCommandId`. A **Provider Account** is a specific account of a Provider, attached to one or more hosts. Provider targets draw from the provider's healthy attached account pool; provider-owned explicit Commands use that command exactly while still drawing from its provider pool. The control plane resolves the route at assignment time, not create time (see [websocket.md](websocket.md) `session:assign`).
 
+Deleting a Command returns `409 Conflict` while it is a Provider default or is selected by any host-, repository-, or worktree-level Provider Account command override. Conflict responses include each blocking Provider Account ID and exact override scope; clear or replace every reference before retrying deletion.
+
 All CRUD below is **operator or admin**, and control-plane-only — there's no host-pane equivalent.
 
 #### `POST /providers`

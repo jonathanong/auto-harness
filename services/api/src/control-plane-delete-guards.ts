@@ -4,6 +4,10 @@ import { isActiveSessionStatus } from "@auto-harness/shared";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { CommandRecord, ProviderAccountRecord, ProviderRecord } from "./db/plane-storage.ts";
+import {
+  commandOverrideDependencies,
+  deleteDependencyLabel,
+} from "./control-plane-command-delete-overrides.ts";
 
 export type DeleteDependency = {
   kind:
@@ -16,6 +20,12 @@ export type DeleteDependency = {
     | "host-inventory";
   id: string;
   status?: string;
+  /** Precise location when a host inventory's provider-account command override owns the ref. */
+  scope?: "host" | "repository" | "worktree";
+  hostId?: string;
+  repositoryId?: string;
+  worktreeId?: string;
+  providerAccountId?: string;
 };
 
 export type DeleteResult =
@@ -36,7 +46,10 @@ export type DeleteReferences = {
     repositories: Array<{
       id: string;
       providerAccountOverrides?: Record<string, { commandId?: string }>;
-      worktrees: Array<{ providerAccountOverrides?: Record<string, { commandId?: string }> }>;
+      worktrees: Array<{
+        id: string;
+        providerAccountOverrides?: Record<string, { commandId?: string }>;
+      }>;
     }>;
     providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   }>;
@@ -110,22 +123,7 @@ export function dependenciesForCommand(refs: DeleteReferences, id: string): Dele
   const dependencies: DeleteDependency[] = [];
   for (const provider of refs.providers)
     if (provider.defaultCommandId === id) dependencies.push({ kind: "provider", id: provider.id });
-  for (const inventory of refs.inventories) {
-    const attached =
-      inventory.providerAccounts.some((account) => account.commandId === id) ||
-      inventory.repositories.some(
-        (repository) =>
-          Object.values(repository.providerAccountOverrides ?? {}).some(
-            (override) => override.commandId === id,
-          ) ||
-          repository.worktrees.some((worktree) =>
-            Object.values(worktree.providerAccountOverrides ?? {}).some(
-              (override) => override.commandId === id,
-            ),
-          ),
-      );
-    if (attached) dependencies.push({ kind: "host-inventory", id: inventory.hostId });
-  }
+  dependencies.push(...commandOverrideDependencies(refs.inventories, id));
   for (const schedule of refs.schedules)
     if (referencesCommand(schedule.target, schedule.fallbacks, id))
       dependencies.push({ kind: "schedule", id: schedule.id });
@@ -162,7 +160,7 @@ export function deleteConflict(subject: string, dependencies: DeleteDependency[]
     ok: false,
     conflict: true,
     dependencies,
-    error: `cannot delete ${subject}; referenced by ${dependencies.map((dependency) => `${dependency.kind} ${dependency.id}${dependency.status ? ` (${dependency.status})` : ""}`).join(", ")}`,
+    error: `cannot delete ${subject}; referenced by ${dependencies.map(deleteDependencyLabel).join(", ")}`,
   };
 }
 
@@ -179,6 +177,9 @@ const referencesCommand = (target: TargetRef, fallbacks: TargetRef[], id: string
   [target, ...fallbacks].some((route) => "commandId" in route && route.commandId === id);
 const unique = (dependencies: DeleteDependency[]) => [
   ...new Map(
-    dependencies.map((dependency) => [`${dependency.kind}:${dependency.id}`, dependency]),
+    dependencies.map((dependency) => [
+      `${dependency.kind}:${dependency.id}:${dependency.scope ?? ""}:${dependency.hostId ?? ""}:${dependency.repositoryId ?? ""}:${dependency.worktreeId ?? ""}:${dependency.providerAccountId ?? ""}`,
+      dependency,
+    ]),
   ).values(),
 ];

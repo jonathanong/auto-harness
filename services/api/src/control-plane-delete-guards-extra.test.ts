@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -49,7 +50,12 @@ const refs: DeleteReferences = {
         {
           id: "repository",
           providerAccountOverrides: { account: { commandId: "command" } },
-          worktrees: [{ providerAccountOverrides: { account: { commandId: "command" } } }],
+          worktrees: [
+            {
+              id: "worktree",
+              providerAccountOverrides: { account: { commandId: "command" } },
+            },
+          ],
         },
       ],
       providerAccounts: [],
@@ -97,7 +103,23 @@ describe("catalog delete references in every route shape", () => {
     expect(dependenciesForCommand(refs, "command")).toEqual(
       expect.arrayContaining([
         { kind: "provider", id: "provider" },
-        { kind: "host-inventory", id: "host" },
+        {
+          kind: "host-inventory",
+          id: "host",
+          scope: "repository",
+          hostId: "host",
+          repositoryId: "repository",
+          providerAccountId: "account",
+        },
+        {
+          kind: "host-inventory",
+          id: "host",
+          scope: "worktree",
+          hostId: "host",
+          repositoryId: "repository",
+          worktreeId: "worktree",
+          providerAccountId: "account",
+        },
         { kind: "schedule", id: "schedule" },
         { kind: "session", id: "running", status: "running" },
       ]),
@@ -120,7 +142,7 @@ describe("catalog delete references in every route shape", () => {
           inventories: [
             {
               hostId: "host",
-              repositories: [{ id: "repository", worktrees: [{}] }],
+              repositories: [{ id: "repository", worktrees: [{ id: "worktree" }] }],
               providerAccounts: [],
             },
           ],
@@ -191,6 +213,41 @@ describe("catalog delete references in every route shape", () => {
     expect(dependenciesForCommand(mixed, "command")).toContainEqual({
       kind: "host-inventory",
       id: "direct-host",
+      scope: "host",
+      hostId: "direct-host",
+      providerAccountId: "account",
     });
+  });
+
+  it("keeps provider accounts distinct when the same scope contains duplicate command overrides", () => {
+    const dependencies = dependenciesForCommand(
+      {
+        ...refs,
+        schedules: [],
+        sessions: [],
+        providers: [],
+        inventories: [
+          {
+            hostId: "host",
+            repositories: [
+              {
+                id: "repository",
+                providerAccountOverrides: {
+                  "account-a": { commandId: "command" },
+                  "account-b": { commandId: "command" },
+                },
+                worktrees: [],
+              },
+            ],
+            providerAccounts: [],
+          },
+        ],
+      },
+      "command",
+    );
+    expect(dependencies).toEqual([
+      expect.objectContaining({ providerAccountId: "account-a" }),
+      expect.objectContaining({ providerAccountId: "account-b" }),
+    ]);
   });
 });
