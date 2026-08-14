@@ -24,6 +24,7 @@ type Session = {
   createdAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  errorCode?: string | null;
 };
 
 export default async function SessionsPage({

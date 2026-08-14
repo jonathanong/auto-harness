@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
-import { StatusBadge } from "./status-badge.tsx";
+import { SessionStatusCell } from "./session-status-cell.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
 export type SessionRow = {
@@ -36,6 +36,7 @@ export type SessionRow = {
   createdAt?: string | null;
   startedAt?: string | null;
   completedAt?: string | null;
+  errorCode?: string | null;
 };
 
 export type SessionsTableProps = {
@@ -109,7 +110,7 @@ export function SessionsTable({
               )}
             </TableCell>
             <TableCell>
-              <StatusBadge status={s.status} />
+              <SessionStatusCell status={s.status} errorCode={s.errorCode} sessionId={s.id} />
             </TableCell>
             {showHost ? (
               <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>
