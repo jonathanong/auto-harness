@@ -98,6 +98,8 @@ describe("shared detail views", () => {
       </SessionDetail>,
     );
     expect(linked).toContain('data-pw="session-detail-status"');
+    expect(linked).toContain('data-pw="session-detail-source"');
+    expect(linked).toContain('data-pw="session-source-api"');
     expect(linked).toContain('href="/repositories/repo%2Fa"');
     expect(linked).toContain('href="/hosts/host%2Fa"');
     expect(linked).toContain('href="/worktrees/worktree%2Fa"');
@@ -124,6 +126,7 @@ describe("shared detail views", () => {
       />,
     );
     expect(plain).toContain("repo/b");
+    expect(plain).toContain('data-pw="session-source-unknown"');
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
     expect(plain).toContain('data-pw="session-detail-priority">—');

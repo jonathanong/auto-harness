@@ -215,6 +215,10 @@ Use **`page.getByTestId("…")`**, which targets `data-pw="…"` in the DOM.
 The control-plane nav also includes `nav-settings`; it remains visible to
 authenticated non-admin users even when the Slack panel returns `403`.
 
+Session origin badges use `session-source-api`, `session-source-ui`,
+`session-source-webhook`, `session-source-schedule`, or `session-source-unknown` in both lists and
+details; detail cards additionally expose the `session-detail-source` wrapper.
+
 ### Host pane (`services/host-pane`)
 
 | `data-pw`                                                                                                                                                                                                                                                                                                                                                                                                        | Where                                                                                                                                                       |

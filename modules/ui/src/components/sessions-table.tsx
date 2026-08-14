@@ -7,6 +7,7 @@ import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
 import { SessionPrioritySortHead } from "./session-priority-sort-head.tsx";
 import { sessionMatchesSearch, type SearchableSession } from "./session-search.ts";
+import { SessionSourceBadge } from "./session-source-badge.tsx";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { SessionStatusCell } from "./session-status-cell.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
@@ -118,7 +119,9 @@ export function SessionsTable({
             <TableCell className="max-w-xs align-top">
               <SessionPrompt sessionId={s.id} prompt={s.prompt} />
             </TableCell>
-            <TableCell>{s.source ?? "—"}</TableCell>
+            <TableCell>
+              <SessionSourceBadge source={s.source} />
+            </TableCell>
             <TableCell data-pw={`session-priority-${s.id}`}>{s.priority ?? 0}</TableCell>
             <TableCell className="whitespace-nowrap" data-pw={`session-created-${s.id}`}>
               <SessionCreatedTime value={s.createdAt} nowMs={nowMs} />
