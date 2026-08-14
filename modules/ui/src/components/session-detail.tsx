@@ -8,45 +8,9 @@ import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
+import type { SessionSummary } from "./session-detail-types.ts";
 
-export type SessionSummary = {
-  id: string;
-  status: string;
-  repositoryId?: string | null;
-  hostId?: string | null;
-  worktreeId?: string | null;
-  targetLabel?: string | null;
-  targetLabels?: string[] | null;
-  target?: { providerId?: string; commandId?: string } | null;
-  fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
-  queueTtlSeconds?: number | null;
-  queueExpiresAt?: string | null;
-  resolvedProviderAccountId?: string | null;
-  resolvedCommandId?: string | null;
-  resolvedHostId?: string | null;
-  resolvedRoute?: {
-    targetIndex?: number;
-    providerAccountId?: string | null;
-    commandId?: string | null;
-    hostId?: string | null;
-    worktreeId?: string | null;
-  } | null;
-  resumedFromSessionId?: string | null;
-  resumeFallback?: boolean | null;
-  resolvedArgv?: string[] | null;
-  prompt?: string | null;
-  source?: string | null;
-  concurrencyId?: string | null;
-  ref?: string | null;
-  timeout?: number | null;
-  ackReceivedAt?: string | null;
-  createdAt?: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  exitCode?: number | null;
-  errorCode?: string | null;
-  errorMessage?: string | null;
-};
+export type { SessionSummary } from "./session-detail-types.ts";
 
 export type SessionDetailProps = {
   session: SessionSummary;
@@ -141,11 +105,11 @@ export function SessionDetail({
                 </dd>
               </div>
             ) : null}
-            {s.worktreeId ? (
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
-                <dd className="font-mono text-sm">
-                  {worktreeHrefBase ? (
+            <div>
+              <dt className="text-xs uppercase text-muted-foreground">Worktree</dt>
+              <dd className="font-mono text-sm" data-pw="session-detail-worktree">
+                {s.worktreeId ? (
+                  worktreeHrefBase ? (
                     <Link
                       href={`${worktreeHrefBase}/${encodeURIComponent(s.worktreeId)}`}
                       className="hover:underline"
@@ -154,10 +118,14 @@ export function SessionDetail({
                     </Link>
                   ) : (
                     s.worktreeId
-                  )}
-                </dd>
-              </div>
-            ) : null}
+                  )
+                ) : s.type === "scheduled" ? (
+                  "Main checkout"
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Source</dt>
               <dd className="text-sm">{s.source ?? "—"}</dd>

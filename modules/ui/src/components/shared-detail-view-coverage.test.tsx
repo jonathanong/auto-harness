@@ -100,6 +100,7 @@ describe("shared detail views", () => {
     expect(linked).toContain('href="/repositories/repo%2Fa"');
     expect(linked).toContain('href="/hosts/host%2Fa"');
     expect(linked).toContain('href="/worktrees/worktree%2Fa"');
+    expect(linked).toContain('data-pw="session-detail-worktree"');
     expect(linked).toContain("30s");
     expect(linked).toContain("agent run");
     expect(linked).toContain('aria-label="Session logs"');
@@ -126,6 +127,15 @@ describe("shared detail views", () => {
     );
     expect(absent).toContain('Repository</dt><dd class="font-mono text-sm">—');
     expect(absent).toContain('Prompt</dt><dd class="whitespace-pre-wrap break-words text-sm">—');
+    expect(absent).toContain('data-pw="session-detail-worktree">—');
+    expect(
+      render(
+        <SessionDetail
+          session={{ id: "scheduled", type: "scheduled", status: "queued" }}
+          breadcrumbs={[]}
+        />,
+      ),
+    ).toContain('data-pw="session-detail-worktree">Main checkout');
   });
 
   it("renders worktree headers and settings links, optional fields, and fallbacks", () => {
