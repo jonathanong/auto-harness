@@ -34,6 +34,16 @@ afterEach(() => {
 });
 
 describe("SessionDetailTiming", () => {
+  it("uses the system clock when initialNow is omitted", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    const view = mount({ initialNow: undefined, status: "running", completedAt: null });
+    expect(view.container.querySelector('[data-pw="session-detail-duration"]')?.textContent).toBe(
+      "2m 3s",
+    );
+    act(() => view.root.unmount());
+  });
+
   it("shows exact readable timestamps and a terminal duration", () => {
     const view = mount();
     expect(
