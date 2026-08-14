@@ -69,8 +69,8 @@ test("reports the precise provider-account scope blocking command deletion", asy
   await page.goto(`/commands/${overrideCommand.id}`);
   await page.getByTestId("delete-command-open").click();
   await page.getByTestId("delete-command-confirm-submit").click();
+  await expect(page.getByTestId("mutation-error-toast")).toHaveRole("alert");
   const error = page.getByTestId("delete-command-error");
-  await expect(error).toHaveRole("alert");
   await expect(error).toContainText(`worktree ${worktreeId} command override on host ${hostId}`);
   await expect(page).toHaveURL(new RegExp(`/commands/${overrideCommand.id}$`));
 });
