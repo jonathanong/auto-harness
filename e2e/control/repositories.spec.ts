@@ -1,6 +1,23 @@
 import { test, expect } from "@playwright/test";
 
 test.describe("control plane repositories", () => {
+  test("repository hierarchy shows the catalog default branch", async ({ page, request }) => {
+    const name = `pw-repo-branch-${test.info().parallelIndex}-${Date.now()}`;
+    const response = await request.post("/api/v1/repositories", {
+      data: { name, url: `/tmp/${name}`, defaultBranch: "trunk" },
+    });
+    expect(response.ok()).toBe(true);
+    const repositoryId = ((await response.json()) as { id: string }).id;
+
+    try {
+      await page.goto("/repositories");
+      const branch = page.getByTestId(`repo-default-branch-${repositoryId}`);
+      await expect(branch).toHaveText("Default branch: trunk");
+    } finally {
+      await request.delete(`/api/v1/repositories/${repositoryId}`);
+    }
+  });
+
   test("repositories page loads with add-repository dialog closed", async ({ page }) => {
     await page.goto("/repositories");
     await expect(page.getByTestId("page-repositories")).toBeVisible();
@@ -64,12 +81,12 @@ test.describe("control plane repositories", () => {
     const hostId = `pw-attach-host-${test.info().parallelIndex}-${Date.now()}`;
     const repoName = `pw-attach-repo-${test.info().parallelIndex}-${Date.now()}`;
     const repo = await (
-      await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+      await request.post("/api/v1/repositories", {
         data: { name: repoName, url: `/tmp/${repoName}`, defaultBranch: "main" },
       })
     ).json();
     const repoId = repo.id as string;
-    await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+    await request.put(`/api/v1/hosts/${hostId}/inventory`, {
       data: { repositories: [], providerAccounts: [], commandProfiles: {} },
     });
 
@@ -87,10 +104,10 @@ test.describe("control plane repositories", () => {
       await page.getByTestId("attach-repo-submit").click();
       await expect(page).toHaveURL(new RegExp(`/repositories/${repoId}$`), { timeout: 15_000 });
     } finally {
-      await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+      await request.put(`/api/v1/hosts/${hostId}/inventory`, {
         data: { repositories: [], providerAccounts: [], commandProfiles: {} },
       });
-      await request.delete(`http://127.0.0.1:7430/api/v1/repositories/${repoId}`);
+      await request.delete(`/api/v1/repositories/${repoId}`);
     }
   });
 });

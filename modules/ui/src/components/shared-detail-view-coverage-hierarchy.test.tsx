@@ -56,6 +56,7 @@ describe("shared worktree hierarchy", () => {
             repositoryName: "Repository A",
             repoPath: "/repos/a",
             repoHrefBase: "/repositories",
+            defaultBranch: "trunk",
             worktrees: [worktree, changingLabels],
           },
           { repositoryId: "repo/empty", repoHrefBase: "/repositories", worktrees: [] },
@@ -66,6 +67,9 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain('href="/repositories/repo%2Fa"');
     expect(rich).toContain('href="/repositories/repo%2Fempty"');
     expect(rich).toContain('href="/worktrees/worktree%2Fa"');
+    expect(rich).toContain('data-pw="repo-default-branch-repo/a"');
+    expect(rich).toContain("Default branch:");
+    expect(rich).toContain(">trunk</code>");
     expect(rich).toContain("Add to repo/a");
     expect(rich).toContain("Remove worktree/a");
     expect(rich).toContain("No worktrees under this repository.");

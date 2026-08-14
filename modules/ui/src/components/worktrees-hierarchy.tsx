@@ -19,6 +19,8 @@ export type WorktreeRepoGroup = {
   repositoryId: string;
   /** Catalog name; falls back to repositoryId when unknown (e.g. deleted catalog entry). */
   repositoryName?: string;
+  /** Catalog default branch, when this hierarchy represents catalog repositories. */
+  defaultBranch?: string;
   /** Optional host path for the repo root. */
   repoPath?: string;
   /** When set, the repo name links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
@@ -91,6 +93,14 @@ export function WorktreesHierarchy({
                 </h3>
                 {g.repoPath ? (
                   <p className="break-all font-mono text-xs text-muted-foreground">{g.repoPath}</p>
+                ) : null}
+                {g.defaultBranch ? (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-pw={`repo-default-branch-${g.repositoryId}`}
+                  >
+                    Default branch: <code className="font-mono">{g.defaultBranch}</code>
+                  </p>
                 ) : null}
               </div>
             </div>
