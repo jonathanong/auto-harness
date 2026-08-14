@@ -120,6 +120,7 @@ test.describe("host pane sessions", () => {
         await detailPage.goto(`/sessions?q=${encodeURIComponent(commandId)}`);
         await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
         const row = detailPage.getByTestId(`session-row-${id}`);
+        await expect(row.getByTestId("session-source-api")).toHaveText("api");
         const createdTime = row.getByTestId(`session-created-${id}`).locator("time");
         const durationTime = row.getByTestId(`session-duration-${id}`).locator("time");
         await expect(createdTime).toHaveAttribute("title", /^\d{4}-\d\d-\d\dT.*Z$/);
@@ -147,6 +148,8 @@ test.describe("host pane sessions", () => {
           detailPage.getByTestId("session-detail-started").locator("time"),
         ).toHaveAttribute("datetime");
         await expect(detailPage.getByTestId("session-detail-duration")).toContainText(/\d+s/);
+        await expect(detailPage.getByTestId("session-detail-source")).toContainText("api");
+        await expect(detailPage.getByTestId("session-source-api")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
         await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
         const promptContent = detailPage.getByTestId("session-detail-prompt-content");

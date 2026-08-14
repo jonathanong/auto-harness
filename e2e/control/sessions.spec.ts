@@ -31,6 +31,7 @@ test.describe("control plane sessions", () => {
     ).toBeVisible();
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
+    await expect(page.getByTestId("session-source-api").first()).toHaveText("api");
     await expect(page.getByTestId("session-filters")).toBeVisible();
     const prioritySort = page.getByTestId("session-sort-priority");
     await expect(prioritySort).toHaveAccessibleName("Sort by priority, high to low");
@@ -173,6 +174,8 @@ test.describe("control plane sessions", () => {
         await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
         await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+        await expect(page.getByTestId("session-detail-source")).toContainText("ui");
+        await expect(page.getByTestId("session-source-ui")).toBeVisible();
         await expect(page.getByTestId("session-detail-priority")).toHaveText("0");
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
