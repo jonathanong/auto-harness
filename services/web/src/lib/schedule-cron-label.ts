@@ -17,7 +17,7 @@ export function describeCron(expression: string): string {
   const interval = /^\*\/([1-9]\d*) \* \* \* \*$/.exec(expression);
   if (interval) {
     const minutes = Number(interval[1]);
-    if (minutes > 59) return CUSTOM_SCHEDULE;
+    if (minutes > 59 || 60 % minutes !== 0) return CUSTOM_SCHEDULE;
     return minutes === 1 ? "Every minute" : `Every ${minutes} minutes`;
   }
 

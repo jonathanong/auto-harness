@@ -26,6 +26,7 @@ describe("describeCron", () => {
     for (const expression of [
       "0 0 * 1 *",
       "*/60 * * * *",
+      "*/40 * * * *",
       "60 * * * *",
       "0 0 * * 7",
       "0 0 0 * *",
