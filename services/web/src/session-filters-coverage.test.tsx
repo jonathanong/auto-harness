@@ -50,7 +50,10 @@ function setInputValue(input: HTMLInputElement, value: string) {
   act(() => input.dispatchEvent(new Event("input", { bubbles: true })));
 }
 
-afterEach(() => document.body.replaceChildren());
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.useRealTimers();
+});
 
 describe("SessionFilters", () => {
   it("reads URL state and pushes each filter, including clearing values", () => {
@@ -92,7 +95,7 @@ describe("SessionFilters", () => {
       '[data-pw="session-filter-q"]',
     ) as HTMLInputElement;
 
-    currentQ.value = "next";
+    setInputValue(currentQ, "next");
     keyDown(currentQ, "Escape");
     expect(router.push).toHaveBeenLastCalledWith(
       "/runs?status=failed&q=needle&concurrencyId=old&sort=priority_desc",
@@ -160,6 +163,49 @@ describe("SessionFilters", () => {
         ) as HTMLInputElement
       ).value,
     ).toBe("from-url");
+    view.unmount();
+  });
+
+  it("debounces query updates and cancels a superseded draft", () => {
+    vi.useFakeTimers();
+    const router = { push: vi.fn() };
+    const view = mount("status=running", router);
+    const q = view.container.querySelector('[data-pw="session-filter-q"]') as HTMLInputElement;
+    setInputValue(q, "first");
+    act(() => vi.advanceTimersByTime(299));
+    expect(router.push).not.toHaveBeenCalled();
+    setInputValue(q, "second");
+    act(() => vi.advanceTimersByTime(299));
+    expect(router.push).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(router.push).toHaveBeenCalledOnce();
+    expect(router.push).toHaveBeenLastCalledWith("/runs?status=running&q=second");
+    view.render("status=running&q=second");
+    expect(q.value).toBe("second");
+    view.unmount();
+  });
+
+  it("preserves newer filter drafts when an older query navigation resolves", () => {
+    vi.useFakeTimers();
+    const router = { push: vi.fn() };
+    const view = mount("", router);
+    const q = view.container.querySelector('[data-pw="session-filter-q"]') as HTMLInputElement;
+    const concurrency = view.container.querySelector(
+      '[data-pw="session-filter-concurrency-id"]',
+    ) as HTMLInputElement;
+
+    setInputValue(q, "first");
+    act(() => vi.advanceTimersByTime(300));
+    expect(router.push).toHaveBeenLastCalledWith("/runs?q=first");
+
+    setInputValue(q, "newer");
+    setInputValue(concurrency, "in progress");
+    view.render("q=first");
+    expect(q.value).toBe("newer");
+    expect(concurrency.value).toBe("in progress");
+
+    act(() => vi.advanceTimersByTime(300));
+    expect(router.push).toHaveBeenLastCalledWith("/runs?q=newer");
     view.unmount();
   });
 });

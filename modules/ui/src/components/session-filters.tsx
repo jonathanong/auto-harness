@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
@@ -52,7 +52,15 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
   const q = sp.get("q") ?? "";
   const concurrencyId = sp.get("concurrencyId") ?? "";
   const sort = sp.get("sort") ?? "latest";
+  const [queryDraft, setQueryDraft] = useState(q);
   const [concurrencyDraft, setConcurrencyDraft] = useState(concurrencyId);
+  const locallySubmittedQueries = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (locallySubmittedQueries.current.delete(q)) return;
+    locallySubmittedQueries.current.clear();
+    setQueryDraft(q);
+  }, [q]);
 
   useEffect(() => {
     setConcurrencyDraft(concurrencyId);
@@ -60,6 +68,9 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
 
   const push = useCallback(
     (next: { status?: string; q?: string; concurrencyId?: string; sort?: string }) => {
+      if (next.q !== undefined && next.q !== q) {
+        locallySubmittedQueries.current.add(next.q);
+      }
       start(() => {
         router.push(
           buildHref(
@@ -74,6 +85,12 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
     },
     [router, basePath, status, q, concurrencyId, sort],
   );
+
+  useEffect(() => {
+    if (queryDraft === q) return;
+    const timer = setTimeout(() => push({ q: queryDraft }), 300);
+    return () => clearTimeout(timer);
+  }, [push, q, queryDraft]);
 
   return (
     <div
@@ -127,16 +144,17 @@ export function SessionFilters({ basePath = "/sessions" }: SessionFiltersProps) 
         <Input
           id="q"
           data-pw="session-filter-q"
-          defaultValue={q}
+          value={queryDraft}
           placeholder="session fields…"
+          onChange={(e) => setQueryDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
-              push({ q: (e.target as HTMLInputElement).value });
+              push({ q: queryDraft });
             }
           }}
-          onBlur={(e) => {
-            if (e.target.value !== q) {
-              push({ q: e.target.value });
+          onBlur={() => {
+            if (queryDraft !== q) {
+              push({ q: queryDraft });
             }
           }}
         />
