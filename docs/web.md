@@ -113,7 +113,7 @@ The active sort is indicated by an arrow icon on the column header. Clicking the
 
 ### Search
 
-A search bar above the filter chips searches the sessions already loaded on the current page. Type to search (debounced 300ms), results update in real-time; it is not sent as an API query or backed by DynamoDB full-text search.
+A search bar above the filter chips searches the sessions already loaded on the current page. Enter a query and press Enter or move focus away from the field to apply it; it is not sent as an API query or backed by DynamoDB full-text search. Matching is case-insensitive across session and repository IDs (and the repository name when supplied), status and terminal reason, prompt, target and fallback labels/IDs, resolved route and host/worktree IDs, queue expiry, source, priority, required labels, concurrency ID, and created/started/completed timestamps.
 
 Example: searching "date parser" filters the current page's session prompts for those words.
 

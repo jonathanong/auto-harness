@@ -4,40 +4,12 @@ import Link from "next/link";
 
 import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
+import { sessionMatchesSearch, type SearchableSession } from "./session-search.ts";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { SessionStatusCell } from "./session-status-cell.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
-export type SessionRow = {
-  id: string;
-  status: string;
-  repositoryId?: string | null;
-  prompt?: string | null;
-  targetLabel?: string | null;
-  targetLabels?: string[] | null;
-  target?: { providerId?: string; commandId?: string } | null;
-  fallbacks?: Array<{ providerId?: string; commandId?: string }> | null;
-  queueExpiresAt?: string | null;
-  resolvedProviderAccountId?: string | null;
-  resolvedCommandId?: string | null;
-  resolvedHostId?: string | null;
-  resolvedRoute?: {
-    targetIndex?: number;
-    providerAccountId?: string | null;
-    commandId?: string | null;
-    hostId?: string | null;
-    worktreeId?: string | null;
-  } | null;
-  source?: string | null;
-  priority?: number | null;
-  requiredLabels?: string[] | null;
-  concurrencyId?: string | null;
-  hostId?: string | null;
-  createdAt?: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
-  errorCode?: string | null;
-};
+export type SessionRow = SearchableSession;
 
 export type SessionsTableProps = {
   items: SessionRow[];
@@ -58,21 +30,7 @@ export function SessionsTable({
   hrefBase,
   search = "",
 }: SessionsTableProps) {
-  const needle = search.trim().toLowerCase();
-  const visibleItems = needle
-    ? items.filter((session) =>
-        [
-          session.id,
-          session.prompt,
-          session.concurrencyId,
-          session.targetLabel,
-          ...(session.targetLabels ?? []),
-          ...(session.requiredLabels ?? []),
-        ]
-          .filter((value): value is string => Boolean(value))
-          .some((value) => value.toLowerCase().includes(needle)),
-      )
-    : items;
+  const visibleItems = items.filter((session) => sessionMatchesSearch(session, search));
   const nowMs = useSessionClock(visibleItems.some((session) => session.status === "running"));
   const cols = showHost ? 12 : 11;
   return (

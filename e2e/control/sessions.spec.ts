@@ -148,6 +148,14 @@ test.describe("control plane sessions", () => {
         );
         await expect(page.getByTestId("create-session-error")).toHaveCount(0);
 
+        // Client search includes configured fallback route fields that are not in the prompt.
+        const createdSessionId = decodeURIComponent(
+          new URL(page.url()).pathname.split("/").at(-1)!,
+        );
+        await page.goto(`/sessions?q=${encodeURIComponent(secondFallbackCommandId)}`);
+        await expect(page.getByTestId(`session-row-${createdSessionId}`)).toBeVisible();
+        await page.goto(`/sessions/${encodeURIComponent(createdSessionId)}`);
+
         // Queued sessions can be cancelled; cancelling unlocks resume.
         await page.getByTestId("session-cancel").click();
         await expect(page.getByTestId("session-detail-status")).toContainText("cancelled", {
