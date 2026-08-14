@@ -10,6 +10,11 @@ test.describe("host pane sessions", () => {
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
     await expect(page.getByTestId("session-filters")).toBeVisible();
+    const prioritySort = page.getByTestId("session-sort-priority");
+    await expect(prioritySort).toHaveAccessibleName("Sort by priority, high to low");
+    await prioritySort.click();
+    await expect(page).toHaveURL(/sort=priority_desc/);
+    await expect(prioritySort.locator("..")).toHaveAttribute("aria-sort", "descending");
   });
 
   test("clicking a session opens its detail page", async ({ page, request }) => {

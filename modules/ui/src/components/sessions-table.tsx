@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import type { SessionListQuery } from "@auto-harness/shared";
 
 import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
+import { SessionPrioritySortHead } from "./session-priority-sort-head.tsx";
 import { sessionMatchesSearch, type SearchableSession } from "./session-search.ts";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { SessionStatusCell } from "./session-status-cell.tsx";
@@ -20,6 +22,10 @@ export type SessionsTableProps = {
   hrefBase?: string;
   /** Client-side search over the rows loaded on this page only. */
   search?: string;
+  /** Current server-backed list ordering. */
+  sort?: SessionListQuery["sort"];
+  /** URL for toggling the rendered Priority column's server-backed ordering. */
+  prioritySortHref?: string;
 };
 
 /** Shared sessions table for control plane and host pane. */
@@ -29,6 +35,8 @@ export function SessionsTable({
   emptyMessage = "No sessions match filters.",
   hrefBase,
   search = "",
+  sort = "latest",
+  prioritySortHref,
 }: SessionsTableProps) {
   const visibleItems = items.filter((session) => sessionMatchesSearch(session, search));
   const nowMs = useSessionClock(visibleItems.some((session) => session.status === "running"));
@@ -44,7 +52,7 @@ export function SessionsTable({
           <TableHead>Queue expiry</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
-          <TableHead>Priority</TableHead>
+          <SessionPrioritySortHead sort={sort} href={prioritySortHref} />
           <TableHead>Created</TableHead>
           <TableHead>Duration</TableHead>
           <TableHead>Labels</TableHead>

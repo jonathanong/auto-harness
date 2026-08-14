@@ -12,8 +12,18 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
     await expect(page.getByTestId("session-filters")).toBeVisible();
+    const prioritySort = page.getByTestId("session-sort-priority");
+    await expect(prioritySort).toHaveAccessibleName("Sort by priority, high to low");
+    await prioritySort.click();
+    await expect(page).toHaveURL(/sort=priority_desc/);
+    await expect(prioritySort.locator("..")).toHaveAttribute("aria-sort", "descending");
+    await expect(prioritySort).toHaveAccessibleName("Sort by priority, low to high");
+    await prioritySort.click();
+    await expect(page).toHaveURL(/sort=priority_asc/);
+    await expect(prioritySort.locator("..")).toHaveAttribute("aria-sort", "ascending");
     await page.getByTestId("session-filter-status").selectOption("queued");
     await expect(page).toHaveURL(/status=queued/);
+    await expect(page).toHaveURL(/sort=priority_asc/);
   });
 
   test("sessions list exposes a retryable API error without an empty table", async ({ page }) => {

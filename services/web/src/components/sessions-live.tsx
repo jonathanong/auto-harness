@@ -72,6 +72,11 @@ export function SessionsLive({
 
   const nextHref = nextCursor ? sessionListHref({ ...listState, cursor: nextCursor }) : null;
   const prevHref = listState.cursor ? sessionListHref({ ...listState, cursor: "" }) : null;
+  const prioritySortHref = sessionListHref({
+    ...listState,
+    cursor: "",
+    sort: listState.sort === "priority_desc" ? "priority_asc" : "priority_desc",
+  });
   const narrowed = Boolean(
     listState.q ||
     listState.concurrencyId ||
@@ -123,6 +128,8 @@ export function SessionsLive({
             showHost
             hrefBase="/sessions"
             search={listState.q}
+            sort={listState.sort}
+            prioritySortHref={prioritySortHref}
             emptyMessage={narrowed ? "No sessions match filters." : "No sessions yet."}
           />
           <CursorPagination nextHref={nextHref} prevHref={prevHref} />
