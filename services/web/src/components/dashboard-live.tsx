@@ -106,7 +106,7 @@ export function DashboardLive({
 
       <DashboardEmptyStates
         showSessions={!error && snapshot.sessions.length === 0}
-        showAgents={!error && (snapshot.hosts.length === 0 || metrics.onlineHosts === 0)}
+        showHosts={!error && (snapshot.hosts.length === 0 || metrics.onlineHosts === 0)}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-pw="dashboard-stats">

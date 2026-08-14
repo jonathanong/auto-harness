@@ -15,10 +15,10 @@ describe("primary control-plane empty states", () => {
     expect(html).toContain('data-pw="dashboard-empty-sessions"');
     expect(html).toContain('data-pw="dashboard-empty-add-repository"');
     expect(html).toContain('href="/repositories"');
-    expect(html).toContain('data-pw="dashboard-empty-connect-agent"');
+    expect(html).toContain('data-pw="dashboard-empty-connect-host"');
     expect(html).toContain('data-pw="dashboard-empty-create-session"');
-    expect(html).toContain('data-pw="dashboard-empty-agents"');
-    expect(html).toContain('data-pw="dashboard-empty-setup-agent"');
+    expect(html).toContain('data-pw="dashboard-empty-hosts"');
+    expect(html).toContain('data-pw="dashboard-empty-setup-host"');
 
     stubApi({ "/api/v1/sessions?limit=50": {} });
     html = await renderPage(SessionsPage(emptySearchParams));
@@ -60,7 +60,7 @@ describe("primary control-plane empty states", () => {
     html = await renderPage(DashboardPage());
     expect(html).toContain("Live updates paused (offline)");
     expect(html).not.toContain('data-pw="dashboard-empty-sessions"');
-    expect(html).not.toContain('data-pw="dashboard-empty-agents"');
+    expect(html).not.toContain('data-pw="dashboard-empty-hosts"');
 
     stubApi({ "/api/v1/schedules": "__throw_string__", "/api/v1/session-targets": {} });
     html = await renderPage(SchedulesPage(emptySearchParams));

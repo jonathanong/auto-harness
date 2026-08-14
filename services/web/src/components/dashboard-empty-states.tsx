@@ -4,10 +4,10 @@ import Link from "next/link";
 import { PrimaryEmptyState } from "./primary-empty-state.tsx";
 
 export function DashboardEmptyStates({
-  showAgents,
+  showHosts,
   showSessions,
 }: {
-  showAgents: boolean;
+  showHosts: boolean;
   showSessions: boolean;
 }) {
   return (
@@ -21,8 +21,8 @@ export function DashboardEmptyStates({
               </Action>
             </li>
             <li>
-              <Action href="/hosts" pw="dashboard-empty-connect-agent">
-                Connect an agent
+              <Action href="/hosts" pw="dashboard-empty-connect-host">
+                Connect a host
               </Action>
             </li>
             <li>
@@ -34,11 +34,11 @@ export function DashboardEmptyStates({
         </PrimaryEmptyState>
       ) : null}
 
-      {showAgents ? (
-        <PrimaryEmptyState title="No agents connected." pw="dashboard-empty-agents">
+      {showHosts ? (
+        <PrimaryEmptyState title="No hosts connected." pw="dashboard-empty-hosts">
           <p data-pw="dashboard-no-online-hosts">Connect a host daemon before sessions can run.</p>
-          <Action href="/hosts" pw="dashboard-empty-setup-agent">
-            Set up a VPS agent →
+          <Action href="/hosts" pw="dashboard-empty-setup-host">
+            Set up a VPS host →
           </Action>
         </PrimaryEmptyState>
       ) : null}
