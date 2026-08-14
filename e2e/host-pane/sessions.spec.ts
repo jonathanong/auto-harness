@@ -58,7 +58,7 @@ test.describe("host pane sessions", () => {
         const created = await request.post(`${API}/api/v1/sessions`, {
           data: {
             repositoryId: repoId,
-            prompt: `hello-${wtId}`,
+            prompt: `hello-${wtId}\nhost pane second line`,
             target: { commandId },
             timeout: 30,
             requiredLabels: ["echo"],
@@ -69,6 +69,12 @@ test.describe("host pane sessions", () => {
 
         await page.goto("/sessions");
         await expect(page.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
+        const row = page.getByTestId(`session-row-${id}`);
+        await expect(row.getByTestId("session-prompt")).toHaveText(`hello-${wtId}`);
+        await row.getByTestId("session-prompt-toggle").click();
+        await expect(row.getByTestId("session-prompt")).toHaveText(
+          `hello-${wtId}\nhost pane second line`,
+        );
         await page.getByTestId(`session-link-${id}`).click();
 
         await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));

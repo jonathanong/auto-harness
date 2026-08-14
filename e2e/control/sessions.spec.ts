@@ -103,7 +103,8 @@ test.describe("control plane sessions", () => {
         );
         await page.getByTestId("create-session-fallback-remove-1").click();
         await expect(page.getByTestId("create-session-fallback-select-1")).toHaveCount(0);
-        await page.getByTestId("create-session-prompt").fill(`hello-${id}`);
+        const prompt = `hello-${id}\nSecond line <strong>stays text</strong>`;
+        await page.getByTestId("create-session-prompt").fill(prompt);
         await page.getByTestId("create-session-timeout").selectOption("1800");
         await expect(page.getByTestId("create-session-timeout-custom")).toHaveCount(0);
         const createRequest = page.waitForRequest(
@@ -115,6 +116,7 @@ test.describe("control plane sessions", () => {
           target: expect.objectContaining({ commandId: expect.any(String) }),
           fallbacks: [expect.objectContaining({ commandId: expect.any(String) })],
           timeout: 1800,
+          prompt,
         });
 
         // Lands on the new session's own detail page, not just the list.
@@ -132,6 +134,26 @@ test.describe("control plane sessions", () => {
           timeout: 15_000,
         });
         await expect(page.getByTestId("session-resume")).toBeVisible();
+
+        // Lists show one safe-text line by default and disclose the full prompt on demand.
+        const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");
+        await page.goto(`/sessions?q=${encodeURIComponent(sessionId)}`);
+        const row = page.getByTestId(`session-row-${sessionId}`);
+        const promptText = row.getByTestId("session-prompt");
+        const promptToggle = row.getByTestId("session-prompt-toggle");
+        await expect(promptText).toHaveText(`hello-${id}`);
+        await expect(promptToggle).toHaveText("Show full prompt");
+        await expect(promptToggle).toHaveAttribute("aria-expanded", "false");
+        await expect(row.locator("strong")).toHaveCount(0);
+        const controlledId = await promptToggle.getAttribute("aria-controls");
+        expect(controlledId).toBeTruthy();
+        await expect(promptText).toHaveAttribute("id", controlledId!);
+        await promptToggle.click();
+        await expect(promptText).toHaveText(prompt);
+        await expect(promptToggle).toHaveAttribute("aria-expanded", "true");
+        await expect(row.locator("strong")).toHaveCount(0);
+        await promptToggle.click();
+        await expect(promptText).toHaveText(`hello-${id}`);
       } finally {
         await removeHostRepo(request, repoId);
       }

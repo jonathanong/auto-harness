@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Badge } from "./badge.tsx";
+import { SessionPrompt } from "./session-prompt.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
@@ -141,7 +142,9 @@ export function SessionsTable({
               ) : null}
             </TableCell>
             <TableCell className="whitespace-nowrap text-xs">{s.queueExpiresAt ?? "—"}</TableCell>
-            <TableCell className="max-w-xs truncate">{s.prompt ?? "—"}</TableCell>
+            <TableCell className="max-w-xs align-top">
+              <SessionPrompt sessionId={s.id} prompt={s.prompt} />
+            </TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
             <TableCell data-pw={`session-priority-${s.id}`}>{s.priority ?? 0}</TableCell>
             <TableCell data-pw={`session-labels-${s.id}`}>
