@@ -7,6 +7,7 @@ import { StatusBadge } from "./status-badge.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
+import { SessionQueueDeadline } from "./session-queue-deadline.tsx";
 import { SessionDetailTiming } from "./session-detail-timing.tsx";
 import { SessionSourceBadge } from "./session-source-badge.tsx";
 import { SessionTimeoutDetail } from "./session-timeout-progress.tsx";
@@ -68,6 +69,7 @@ export function SessionDetail({
               </dd>
             </div>
             <SessionRouteSummary session={s} />
+            <SessionQueueDeadline status={s.status} queueExpiresAt={s.queueExpiresAt} />
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Repository</dt>
               <dd className="font-mono text-sm">

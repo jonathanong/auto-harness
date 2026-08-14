@@ -141,6 +141,7 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("page-session-detail")).toBeVisible();
         await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
+        await expect(detailPage.getByTestId("session-detail-queue-deadline")).toHaveCount(0);
         await expect(
           detailPage.getByTestId("session-detail-created").locator("time"),
         ).toHaveAttribute("datetime");

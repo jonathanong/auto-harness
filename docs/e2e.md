@@ -220,6 +220,11 @@ Session origin badges use `session-source-api`, `session-source-ui`,
 `session-source-webhook`, `session-source-schedule`, or `session-source-unknown` in both lists and
 details; detail cards additionally expose the `session-detail-source` wrapper.
 
+Queued detail cards in both UIs expose `session-detail-queue-deadline`, including the fixed expiry
+`time` and a live remaining-time label. The exact deadline has an accessible label; the countdown
+does not use a live region that would announce every tick. The field disappears after the session
+leaves the queue.
+
 ### Host pane (`services/host-pane`)
 
 | `data-pw`                                                                                                                                                                                                                                                                                                                                                                                                        | Where                                                                                                                                                       |

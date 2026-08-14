@@ -178,6 +178,9 @@ test.describe("control plane sessions", () => {
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
         await expect(page.getByTestId("session-detail-source")).toContainText("ui");
         await expect(page.getByTestId("session-source-ui")).toBeVisible();
+        const queueDeadline = page.getByTestId("session-detail-queue-deadline");
+        await expect(queueDeadline.locator("time")).toHaveAttribute("datetime");
+        await expect(queueDeadline).toContainText("remaining");
         await expect(page.getByTestId("session-detail-priority")).toHaveText("0");
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
