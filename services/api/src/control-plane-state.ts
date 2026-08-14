@@ -39,6 +39,8 @@ import type { ArchiveWriter } from "./archive-writer.ts";
 export type ControlPlaneState = {
   storage: DynamoPlaneStorage | undefined;
   pendingPersists: Promise<void>[];
+  /** Log writes that an archive must observe before it snapshots durable logs. */
+  pendingLogPersists: Promise<void>[];
   /**
    * Serializes fire-and-forget durable writes without starting the next write
    * until the preceding one has settled. The recovered tail deliberately keeps
@@ -104,9 +106,17 @@ export type ControlPlaneState = {
 };
 
 export function createControlPlaneState(options: ControlPlaneOptions = {}): ControlPlaneState {
+  if (
+    options.archiveWriter &&
+    options.archivePrefix &&
+    options.archivePrefix !== DEFAULT_ARCHIVE_PREFIX
+  ) {
+    throw new Error(`Archive writers require the ${DEFAULT_ARCHIVE_PREFIX} key prefix`);
+  }
   return {
     storage: options.storage,
     pendingPersists: [],
+    pendingLogPersists: [],
     writeTail: Promise.resolve(),
     sessions: new Map(),
     worktrees: new Map(),
@@ -171,13 +181,14 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
 export function queueWrite(
   state: ControlPlaneState,
   write: (storage: DynamoPlaneStorage | undefined) => Promise<void>,
-): void {
+): Promise<void> {
   const storage = state.storage;
   const queued = state.writeTail.then(() => write(storage));
   // Preserve the failure on `queued` for settleStorage, but recover the tail
   // so one failed asynchronous write does not permanently poison the queue.
   state.writeTail = queued.catch(() => undefined);
   state.pendingPersists.push(queued);
+  return queued;
 }
 
 export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
@@ -213,6 +224,7 @@ export { hydrateFromStorage };
 export async function settleStorage(state: ControlPlaneState): Promise<void> {
   const pending = state.pendingPersists;
   state.pendingPersists = [];
+  state.pendingLogPersists = [];
   const results = await Promise.allSettled(pending);
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;

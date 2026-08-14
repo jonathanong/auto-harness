@@ -5,8 +5,8 @@ export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
 ): Promise<ArchiveObject> {
-  const precedingWrites = [...state.pendingPersists];
-  await Promise.all(precedingWrites);
+  const precedingLogWrites = [...state.pendingLogPersists];
+  await Promise.all(precedingLogWrites);
   const logs = state.storage
     ? await state.storage.listLogs(sessionId)
     : [...(state.logs.get(sessionId) ?? [])];

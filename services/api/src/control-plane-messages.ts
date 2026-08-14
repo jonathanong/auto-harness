@@ -80,10 +80,11 @@ export function appendLog(
   const { retained, evicted } = retainLogs(state, rec);
   state.logs.set(opts.sessionId, retained);
   if (state.storage) {
-    queueWrite(state, async (storage) => {
+    const persisted = queueWrite(state, async (storage) => {
       await storage!.putLog(rec);
       state.onLogCommitted?.(rec);
     });
+    state.pendingLogPersists.push(persisted);
     for (const removed of evicted) {
       queueWrite(state, (storage) => storage!.deleteLog(removed.sessionId, removed.timestampSeq));
     }

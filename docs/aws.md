@@ -229,15 +229,19 @@ remain totally ordered even when their timestamps are equal. The API cursor
 encodes the last evaluated DynamoDB key and is opaque to callers. Audit table
 writes are conditional inserts; no lifecycle code deletes or updates records.
 
-### SessionLogs TTL and archival
+### SessionLogs retention and archival
 
-1. Each log item written with `ttl` = now + **7 days** (epoch seconds). DynamoDB TTL deletes expired items at no charge.
+1. Session log rows currently have no automatic expiry. A future retention change may add a
+   **7-day** DynamoDB TTL after the deletion policy is explicitly approved.
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
    write policy; terminal-session processing:
    - Query all SessionLogs for `sessionId`
    - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed state
-   - Prefer **leaving DynamoDB rows for TTL** (no bulk delete cost) unless storage pressure requires explicit delete after successful S3 put
+   - Leave DynamoDB rows intact after upload; this archive path never deletes them
+     The runtime writes directly from those workers; there is no separate archival Lambda. Its
+     policy permits bucket metadata/listing and `s3:PutObject` only below `sessions/*`. It does not
+     grant `s3:GetObject`, `s3:DeleteObject`, or bucket deletion.
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
    parameters. Archived-object retrieval is not part of the foundation or its
    archive-write policy; add a separately scoped read policy when that

@@ -18,7 +18,7 @@ export class S3ArchiveWriter implements ArchiveWriter {
   }
 
   async putArchive(object: { key: string; body: string; contentType: string }): Promise<void> {
-    if (!object.key.startsWith("sessions/") || !object.key.endsWith("/logs.jsonl")) {
+    if (!/^sessions\/[^/]+\/logs\.jsonl$/.test(object.key)) {
       throw new Error(`Refusing unexpected archive key: ${object.key}`);
     }
     await this.client.send(

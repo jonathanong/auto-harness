@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { configuredArchiveWriter, S3ArchiveWriter } from "./archive-writer.ts";
+import { createControlPlaneState } from "./control-plane-state.ts";
 
 describe("S3ArchiveWriter", () => {
   it("uploads only the bounded private session archive contract", async () => {
@@ -29,10 +30,26 @@ describe("S3ArchiveWriter", () => {
     await expect(
       writer.putArchive({ key: "other/logs.jsonl", body: "", contentType: "text/plain" }),
     ).rejects.toThrow("unexpected archive key");
+    await expect(
+      writer.putArchive({
+        key: "sessions/nested/session/logs.jsonl",
+        body: "",
+        contentType: "application/x-ndjson",
+      }),
+    ).rejects.toThrow("unexpected archive key");
     expect(configuredArchiveWriter("", { send: async () => undefined })).toBeUndefined();
     expect(configuredArchiveWriter("private-archives")).toBeInstanceOf(S3ArchiveWriter);
     expect(
       configuredArchiveWriter("private-archives", { send: async () => undefined }),
     ).toBeInstanceOf(S3ArchiveWriter);
+  });
+
+  it("rejects a custom prefix when an object writer is configured", () => {
+    expect(() =>
+      createControlPlaneState({
+        archivePrefix: "custom/",
+        archiveWriter: { putArchive: async () => undefined },
+      }),
+    ).toThrow("Archive writers require the sessions/ key prefix");
   });
 });
