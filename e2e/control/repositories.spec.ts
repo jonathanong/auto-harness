@@ -20,6 +20,9 @@ test.describe("control plane repositories", () => {
 
   test("repositories page loads with add-repository dialog closed", async ({ page }) => {
     await page.goto("/repositories");
+    await expect(
+      page.getByTestId("page-repositories").or(page.getByTestId("repositories-loading")).first(),
+    ).toBeVisible();
     await expect(page.getByTestId("page-repositories")).toBeVisible();
     await expect(page.getByTestId("repositories-heading")).toHaveText("Repositories");
     await expect(page.getByTestId("add-repo-open")).toBeVisible();

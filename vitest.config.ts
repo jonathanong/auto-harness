@@ -31,7 +31,7 @@ export default defineConfig({
         // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
-        "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx",
+        "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
         // Slack settings state and fields are exercised in happy-dom; the complete workflow stays in Playwright.
         "services/web/src/components/{settings-page-client,slack-settings-fields}.tsx",
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",

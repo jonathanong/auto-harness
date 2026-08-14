@@ -4,6 +4,7 @@ import { buildSessionsApiPath } from "@auto-harness/shared";
 import { SessionFilters, WithTooltip } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
+import { ListApiError } from "../../components/list-page-states.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseSessionListState } from "../../lib/url-state.ts";
 
@@ -66,13 +67,16 @@ export default async function SessionsPage({
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
         <SessionFilters />
       </Suspense>
-      <SessionsLive
-        initialItems={items}
-        initialError={error}
-        initialNextCursor={nextCursor}
-        listState={filters}
-        path={path}
-      />
+      {error ? (
+        <ListApiError resource="sessions" message={error} selector="sessions" />
+      ) : (
+        <SessionsLive
+          initialItems={items}
+          initialNextCursor={nextCursor}
+          listState={filters}
+          path={path}
+        />
+      )}
     </div>
   );
 }

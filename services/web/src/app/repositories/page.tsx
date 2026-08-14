@@ -2,6 +2,7 @@ import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
 
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx";
+import { ListApiError } from "../../components/list-page-states.tsx";
 import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
 import { apiGet } from "../../lib/api.ts";
 
@@ -67,31 +68,36 @@ export default async function RepositoriesPage() {
         </div>
         <AddRepoDialog />
       </div>
-      {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      {groups.length === 0 && !error ? (
-        <div data-pw="worktrees-empty">
-          <PrimaryEmptyState title="No repositories configured." pw="repositories-empty">
-            <p>Register a catalog repository before attaching it to a host.</p>
-            <AddRepoDialog
-              triggerLabel="Add one →"
-              triggerPw="repositories-empty-add"
-              dialogPw="repositories-empty-dialog"
-            />
-          </PrimaryEmptyState>
-        </div>
+      {error ? (
+        <ListApiError resource="repositories" message={error} selector="repositories" />
       ) : (
-        <WorktreesHierarchy
-          groups={groups}
-          showHost
-          hrefBase="/worktrees"
-          emptyMessage="No repositories registered yet."
-        />
-      )}
+        <>
+          {groups.length === 0 ? (
+            <div data-pw="worktrees-empty">
+              <PrimaryEmptyState title="No repositories configured." pw="repositories-empty">
+                <p>Register a catalog repository before attaching it to a host.</p>
+                <AddRepoDialog
+                  triggerLabel="Add one →"
+                  triggerPw="repositories-empty-add"
+                  dialogPw="repositories-empty-dialog"
+                />
+              </PrimaryEmptyState>
+            </div>
+          ) : (
+            <WorktreesHierarchy
+              groups={groups}
+              showHost
+              hrefBase="/worktrees"
+              emptyMessage="No repositories registered yet."
+            />
+          )}
 
-      <div className="border-t border-border pt-6">
-        <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-        <AttachLocalRepoForm hostIds={hostIds} repos={items} />
-      </div>
+          <div className="border-t border-border pt-6">
+            <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
+            <AttachLocalRepoForm hostIds={hostIds} repos={items} />
+          </div>
+        </>
+      )}
     </div>
   );
 }

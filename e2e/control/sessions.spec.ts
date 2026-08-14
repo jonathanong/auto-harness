@@ -6,11 +6,31 @@ import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page }) => {
     await page.goto("/sessions");
+    await expect(
+      page.getByTestId("page-sessions").or(page.getByTestId("sessions-loading")).first(),
+    ).toBeVisible();
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
     await expect(page.getByTestId("session-filters")).toBeVisible();
     await page.getByTestId("session-filter-status").selectOption("queued");
     await expect(page).toHaveURL(/status=queued/);
+  });
+
+  test("sessions list exposes a retryable API error without an empty table", async ({ page }) => {
+    await page.goto("/sessions?cursor=not-a-valid-cursor");
+    const error = page.getByTestId("sessions-api-error");
+    await expect(error).toBeVisible();
+    await expect(error).toContainText("Could not load sessions.");
+    await expect(page.getByTestId("sessions-table")).toHaveCount(0);
+
+    const refresh = page.waitForResponse(
+      (response) =>
+        response.request().resourceType() === "fetch" &&
+        response.url().includes("/sessions?cursor=not-a-valid-cursor"),
+    );
+    await page.getByTestId("sessions-api-retry").click();
+    await refresh;
+    await expect(error).toBeVisible();
   });
 
   test("new session form is present", async ({ page }) => {

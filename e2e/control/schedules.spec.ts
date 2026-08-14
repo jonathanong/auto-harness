@@ -44,6 +44,9 @@ test.describe("control plane schedules", () => {
     const commandId = ((await commandResponse.json()) as { id: string }).id;
 
     await page.goto("/schedules");
+    await expect(
+      page.getByTestId("page-schedules").or(page.getByTestId("schedules-loading")).first(),
+    ).toBeVisible();
     await expect(page.getByTestId("page-schedules")).toBeVisible();
     await expect(page.getByTestId("schedules-heading")).toHaveText("Schedules");
     await expect(page.getByTestId("form-create-schedule")).toBeVisible();
