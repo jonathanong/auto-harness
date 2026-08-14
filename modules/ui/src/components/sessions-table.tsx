@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
+import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 
@@ -33,6 +34,8 @@ export type SessionRow = {
   concurrencyId?: string | null;
   hostId?: string | null;
   createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
 };
 
 export type SessionsTableProps = {
@@ -69,7 +72,8 @@ export function SessionsTable({
           .some((value) => value.toLowerCase().includes(needle)),
       )
     : items;
-  const cols = showHost ? 10 : 9;
+  const nowMs = useSessionClock(visibleItems.some((session) => session.status === "running"));
+  const cols = showHost ? 12 : 11;
   return (
     <Table data-pw="sessions-table">
       <TableHeader>
@@ -82,6 +86,8 @@ export function SessionsTable({
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
           <TableHead>Priority</TableHead>
+          <TableHead>Created</TableHead>
+          <TableHead>Duration</TableHead>
           <TableHead>Labels</TableHead>
           <TableHead>Concurrency ID</TableHead>
         </TableRow>
@@ -147,6 +153,12 @@ export function SessionsTable({
             </TableCell>
             <TableCell>{s.source ?? "—"}</TableCell>
             <TableCell data-pw={`session-priority-${s.id}`}>{s.priority ?? 0}</TableCell>
+            <TableCell className="whitespace-nowrap" data-pw={`session-created-${s.id}`}>
+              <SessionCreatedTime value={s.createdAt} nowMs={nowMs} />
+            </TableCell>
+            <TableCell className="whitespace-nowrap" data-pw={`session-duration-${s.id}`}>
+              <SessionDuration session={s} nowMs={nowMs} />
+            </TableCell>
             <TableCell data-pw={`session-labels-${s.id}`}>
               {s.requiredLabels?.length ? (
                 <div className="flex max-w-xs flex-wrap gap-1">
