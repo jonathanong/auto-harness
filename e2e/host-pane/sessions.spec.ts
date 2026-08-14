@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 
@@ -16,6 +16,7 @@ test.describe("host pane sessions", () => {
     await withLocalHostLock(async () => {
       const repoId = `pw-agent-sess-repo-${test.info().parallelIndex}-${Date.now()}`;
       const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
+      let detailPage: Page | undefined;
 
       await putHostRepo(request, {
         id: repoId,
@@ -25,25 +26,49 @@ test.describe("host pane sessions", () => {
       });
 
       try {
-        // Host config alone doesn't bring a worktree online — the scheduler only assigns to
-        // online worktrees, and nothing here runs a real agent daemon. Register over REST
-        // (the documented substitute for a live WebSocket connection in e2e tests).
-        await request.post(`${API}/api/v1/host/messages`, {
-          data: {
-            type: "host:register",
-            hostId: "local-1",
-            worktrees: [
-              {
-                id: wtId,
-                name: wtId,
-                repositoryId: repoId,
-                path: `/tmp/${repoId}/${wtId}`,
-                labels: ["echo"],
-              },
-            ],
-            commandProfiles: ["echo-prompt"],
-          },
-        });
+        // Keep a real host socket alive so the assignment can enter running state.
+        await page.goto("/sessions");
+        await page.evaluate(
+          ({ repositoryId, worktreeId }) =>
+            new Promise<void>((resolve, reject) => {
+              const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+              const timeout = setTimeout(() => reject(new Error("registration timed out")), 10_000);
+              socket.addEventListener("message", (event) => {
+                const message = JSON.parse(String(event.data)) as {
+                  type?: string;
+                  message?: string;
+                };
+                if (message.type === "host:registered") {
+                  clearTimeout(timeout);
+                  (globalThis as typeof globalThis & { timeoutSocket?: WebSocket }).timeoutSocket =
+                    socket;
+                  resolve();
+                } else if (message.type === "error") {
+                  clearTimeout(timeout);
+                  reject(new Error(message.message));
+                }
+              });
+              socket.addEventListener("open", () => {
+                socket.send(
+                  JSON.stringify({
+                    type: "host:register",
+                    hostId: "local-1",
+                    worktrees: [
+                      {
+                        id: worktreeId,
+                        name: worktreeId,
+                        repositoryId,
+                        path: `/tmp/${repositoryId}/${worktreeId}`,
+                        labels: ["echo"],
+                      },
+                    ],
+                    commandProfiles: [],
+                  }),
+                );
+              });
+            }),
+          { repositoryId: repoId, worktreeId: wtId },
+        );
 
         const command = await request.post(`${API}/api/v1/commands`, {
           data: {
@@ -66,22 +91,52 @@ test.describe("host pane sessions", () => {
         });
         const { id } = (await created.json()) as { id: string };
         await request.post(`${API}/api/v1/scheduler/assign`);
+        const assigned = await request.get(`${API}/api/v1/sessions/${id}`);
+        const assignment = (await assigned.json()) as { attemptId: string; worktreeId: string };
+        await page.evaluate(
+          ({ sessionId, attemptId, worktreeId }) => {
+            const socket = (globalThis as typeof globalThis & { timeoutSocket?: WebSocket })
+              .timeoutSocket;
+            if (!socket) throw new Error("host socket missing");
+            socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+          },
+          { sessionId: id, attemptId: assignment.attemptId, worktreeId: assignment.worktreeId },
+        );
+        await expect
+          .poll(async () => {
+            const response = await request.get(`${API}/api/v1/sessions/${id}`);
+            return ((await response.json()) as { status: string }).status;
+          })
+          .toBe("running");
 
-        await page.goto("/sessions");
-        await expect(page.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
-        const row = page.getByTestId(`session-row-${id}`);
+        detailPage = await page.context().newPage();
+        await detailPage.goto("/sessions");
+        await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
+        const row = detailPage.getByTestId(`session-row-${id}`);
         await expect(row.getByTestId("session-prompt")).toHaveText(`hello-${wtId}`);
         await row.getByTestId("session-prompt-toggle").click();
         await expect(row.getByTestId("session-prompt")).toHaveText(
           `hello-${wtId}\nhost pane second line`,
         );
-        await page.getByTestId(`session-link-${id}`).click();
+        await detailPage.getByTestId(`session-link-${id}`).click();
 
-        await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`));
-        await expect(page.getByTestId("page-session-detail")).toBeVisible();
-        await expect(page.getByTestId("session-detail-id")).toHaveText(id);
-        await expect(page.getByTestId("session-detail-status")).toBeVisible();
+        await expect(detailPage).toHaveURL(new RegExp(`/sessions/${id}$`));
+        await expect(detailPage.getByTestId("page-session-detail")).toBeVisible();
+        await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
+        await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
+        await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
+        await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
+          "remaining",
+        );
       } finally {
+        await detailPage?.close();
+        await page
+          .evaluate(() => {
+            (
+              globalThis as typeof globalThis & { timeoutSocket?: WebSocket }
+            ).timeoutSocket?.close();
+          })
+          .catch(() => undefined);
         await removeHostRepo(request, repoId);
       }
     });
