@@ -14,7 +14,7 @@ import {
   isConditionalTransactionFailed,
   isConditionalTransactionFailureAt,
   type HostInventoryRecord,
-  type ArchiveObject,
+  type ArchiveMetadata,
   type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
@@ -565,7 +565,7 @@ export async function skipScheduleForActiveConcurrency(
   }
 }
 
-export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveObject): Promise<void> {
+export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveMetadata): Promise<void> {
   await ctx.doc.send(
     new PutCommand({
       TableName: ctx.tables.archives,
@@ -574,13 +574,16 @@ export async function putArchive(ctx: PlaneStorageCtx, obj: ArchiveObject): Prom
   );
 }
 
-export async function getArchive(ctx: PlaneStorageCtx, key: string): Promise<ArchiveObject | null> {
+export async function getArchive(
+  ctx: PlaneStorageCtx,
+  key: string,
+): Promise<ArchiveMetadata | null> {
   const res = await ctx.doc.send(new GetCommand({ TableName: ctx.tables.archives, Key: { key } }));
-  return catalogItem(res.Item as ArchiveObject | undefined);
+  return catalogItem(res.Item as ArchiveMetadata | undefined);
 }
 
-export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[]> {
-  const records: ArchiveObject[] = [];
+export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveMetadata[]> {
+  const records: ArchiveMetadata[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
@@ -590,7 +593,7 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveObject[
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...catalogPageItems(res.Items as ArchiveObject[] | undefined));
+    records.push(...catalogPageItems(res.Items as ArchiveMetadata[] | undefined));
     startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;

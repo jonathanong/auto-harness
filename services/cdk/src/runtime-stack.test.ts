@@ -26,6 +26,7 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
+          ARCHIVE_BUCKET: Match.anyValue(),
           HARNESS_DDB_PREFIX: "ReviewRuntime",
           WS_API_ENDPOINT: Match.anyValue(),
         }),
@@ -76,9 +77,16 @@ describe("AutoHarnessRuntimeStack", () => {
     }
     const functions = Object.values(template.findResources("AWS::Lambda::Function"));
     for (const fn of functions) {
+      expect(fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET).toBeDefined();
       expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET).toEqual({
         Ref: "HarnessCursorSecret",
       });
+    }
+    const roles = Object.values(template.findResources("AWS::IAM::Role"));
+    for (const role of roles) {
+      expect(JSON.stringify(role.Properties?.ManagedPolicyArns)).toContain(
+        "ArchiveDataAccessPolicy",
+      );
     }
     template.resourcePropertiesCountIs(
       "AWS::IAM::Policy",

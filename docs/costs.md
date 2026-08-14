@@ -139,7 +139,11 @@ before disconnect. This reduces API calls and fence checks, not billed item writ
 capacity is charged per item and transactional items use transactional capacity pricing.
 SessionLogs records do not carry a `ttl`; local table creation does not configure TTL, while the
 synthesized AWS table's TTL setting has nothing to expire without that attribute. On terminal
-status, the API serializes logs into the DynamoDB Archives table; it does not upload to S3.
+status, the API serializes one
+JSONL object, retains only bounded pointer/status metadata in DynamoDB, and uploads through the
+configured private S3 adapter. A pending metadata row makes interrupted uploads retryable without
+putting the body in DynamoDB. No account-backed archive measurements exist. Consequently, the totals above and the
+optimized comparison below must be recalculated before an AWS launch.
 
 **Target mitigation strategies:**
 
@@ -163,9 +167,9 @@ frames, and retention.
 
 ### S3
 
-This section models the **target S3 archive**, not current runtime behavior. The synthesized
-foundation creates an archive bucket and lifecycle policy, but no runtime uploads logs to it yet;
-current archive objects are rows in the DynamoDB Archives table.
+This section models the S3 archive without account-backed measurements. The synthesized foundation
+creates an archive bucket and lifecycle policy; runtime code uploads terminal JSONL when
+`ARCHIVE_BUCKET` is configured and retains bounded metadata rows in the DynamoDB Archives table.
 
 - **Storage**: $0.023 per GB/month (Standard), $0.0125 (Infrequent Access), $0.004 (Glacier)
 - **Requests**: $0.005 per 1K PUT, $0.0004 per 1K GET

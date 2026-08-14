@@ -229,15 +229,19 @@ remain totally ordered even when their timestamps are equal. The API cursor
 encodes the last evaluated DynamoDB key and is opaque to callers. Audit table
 writes are conditional inserts; no lifecycle code deletes or updates records.
 
-### SessionLogs TTL and archival
+### SessionLogs retention and archival
 
-1. Each log item written with `ttl` = now + **7 days** (epoch seconds). DynamoDB TTL deletes expired items at no charge.
+1. Session log rows currently have no automatic expiry. A future retention change may add a
+   **7-day** DynamoDB TTL after the deletion policy is explicitly approved.
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
-   archive policy. A terminal-session archival worker is not part of this stack yet.
-   When that worker lands, it should:
+   archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
+   write policy; terminal-session processing:
    - Query all SessionLogs for `sessionId`
-   - Write `s3://…/sessions/{sessionId}/logs.jsonl`
-   - Prefer **leaving DynamoDB rows for TTL** (no bulk delete cost) unless storage pressure requires explicit delete after successful S3 put
+   - Write the `sessions/{sessionId}/logs.jsonl` object and track pending/completed state
+   - Leave DynamoDB rows intact after upload; this archive path never deletes them
+     The runtime writes directly from those workers; there is no separate archival Lambda. Its
+     policy permits bucket metadata/listing and `s3:PutObject` only below `sessions/*`. It does not
+     grant `s3:GetObject`, `s3:DeleteObject`, or bucket deletion.
 3. REST `GET /sessions/:id/logs` serves recent DynamoDB rows with bounded query
    parameters. Archived-object retrieval is not part of the foundation or its
    archive-write policy; add a separately scoped read policy when that
@@ -429,6 +433,12 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 | Public access | Blocked                                                    |
 
 IAM: only archival Lambda role can `s3:PutObject`; optional read role for UI “download archive”.
+
+The API archive boundary writes terminal logs to this key as JSONL when `ARCHIVE_BUCKET` is
+configured. It also retains the archive metadata row in DynamoDB. Uploads use SSE-S3 and reject
+keys outside `sessions/{sessionId}/logs.jsonl`. Local tests inject an in-memory writer and never
+contact AWS. The DynamoDB row is bounded pointer/state metadata, never a duplicate log body. A
+pending row survives an interrupted S3 PUT so the same idempotent object key can be retried.
 
 ---
 

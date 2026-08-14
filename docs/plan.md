@@ -575,8 +575,13 @@ rewrite (account cooldown/fallback routing is now Phase 3, not Phase 5):
   bounded secret-safe metadata, and fail-closed acknowledgement if an audit
   append cannot persist).
 
-**Status (precursor/foundation behavior only):** `archiveSessionLogs` serializes logs into the
-DynamoDB Archives table, not S3. Webhook "deliveries" are recorded in in-process state, and a
+**Status (local/runtime code complete, deployment unproven):** `archiveSessionLogs` serializes
+terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in DynamoDB, and uses
+the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
+pending upload before the PUT so a repeated terminal message can retry safely. The bucket name and
+scoped archive policy are wired into the synthesized runtime functions; no account-backed upload
+or deployment has been run. Webhook
+"deliveries" are recorded in in-process state, and a
 separate durable outbox foundation provides secret-safe rows, bounded leases/retries, and
 dead-letter state. No lifecycle path enqueues that outbox and no outbound HTTP/configuration
 runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments without killing

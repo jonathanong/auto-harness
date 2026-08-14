@@ -3,6 +3,7 @@ import type { HostWireMessage, SessionStatus, TargetRef } from "@auto-harness/sh
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { SecretEncryptor } from "./secret-crypto.ts";
+import type { ArchiveWriter } from "./archive-writer.ts";
 
 export type { ConnectionRecord } from "./db/plane-storage-types.ts";
 export type { LogQuery, LogRecord } from "./db/plane-storage-types.ts";
@@ -31,6 +32,16 @@ export type ArchiveObject = {
   key: string;
   body: string;
   contentType: string;
+};
+
+/** Bounded durable pointer/state; archive bodies are never duplicated into DynamoDB. */
+export type ArchiveMetadata = {
+  key: string;
+  contentType: string;
+  bodyBytes: number;
+  status: "pending" | "complete";
+  objectStored: boolean;
+  updatedAt: string;
 };
 
 export type WebhookDelivery = {
@@ -68,6 +79,8 @@ export type ControlPlaneOptions = {
   reconnectGraceMs?: number;
   usageLimitRetryCeiling?: number;
   archivePrefix?: string;
+  /** Optional object-store boundary. Dynamo archive metadata remains durable separately. */
+  archiveWriter?: ArchiveWriter;
   /** HMAC secret used to sign session-list cursors across API workers. */
   sessionCursorSecret?: string;
   /** Opt-in outbound webhook URL (Phase 5). */

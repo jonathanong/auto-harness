@@ -102,7 +102,7 @@ describe("authoritative durable reads", () => {
       status: "idle",
       online: true,
     });
-    expect(writer.archiveSessionLogs("session")?.key).toContain("session.json");
+    expect((await writer.archiveSessionLogs("session")).key).toContain("session/logs.jsonl");
     await writer.settleStorage();
     expect(await reader.getSessionDurable("session")).toMatchObject({ prompt: "work" });
     expect((await reader.listSessionsPageDurable()).items.map((session) => session.id)).toEqual([
@@ -125,7 +125,10 @@ describe("authoritative durable reads", () => {
       ),
     ).toEqual(["first"]);
     expect(restarted.getWorktree("worktree")?.path).toBe("/worktree");
-    expect(restarted.getArchive("session")?.body).toContain("first");
+    expect(restarted.getArchive("session")).toMatchObject({
+      status: "complete",
+      objectStored: false,
+    });
     expect((await reader.updateRepositoryDurable("repository", { name: "renamed" })).ok).toBe(true);
     expect((await writer.getRepositoryDurable("repository"))?.name).toBe("renamed");
     expect((await reader.deleteHostInventoryDurable("host")).ok).toBe(true);

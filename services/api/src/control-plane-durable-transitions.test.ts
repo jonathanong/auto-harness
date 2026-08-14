@@ -693,6 +693,7 @@ describe("durable control-plane transitions", () => {
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
     });
+    let archiveUnavailable = true;
     const planeCreated = await createControlPlane({
       tablePrefix: ctx.prefix,
       skipEnsureTables: true,
@@ -702,6 +703,11 @@ describe("durable control-plane transitions", () => {
       shardCount: 1,
       ackDeadlineMs: 1,
       heartbeatStaleMs: 1,
+      archiveWriter: {
+        putArchive: async () => {
+          if (archiveUnavailable) throw new Error("temporary archive outage");
+        },
+      },
     });
     await planeCreated.plane.hydrateFromStorage();
     expect(
@@ -769,8 +775,20 @@ describe("durable control-plane transitions", () => {
       attemptId: reassignedAttempt.attemptId!,
       status: "completed" as const,
     };
+    await expect(planeCreated.plane.handleHostMessageDurable(terminal)).rejects.toThrow(
+      "temporary archive outage",
+    );
+    expect((await ctx.storage.getSession("session-idempotent"))?.status).toBe("completed");
+    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl")).toMatchObject({
+      status: "pending",
+      objectStored: false,
+    });
+    archiveUnavailable = false;
     expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
-    expect((await planeCreated.plane.handleHostMessageDurable(terminal)).ok).toBe(true);
+    expect(await ctx.storage.getArchive("sessions/session-idempotent/logs.jsonl")).toMatchObject({
+      status: "complete",
+      objectStored: true,
+    });
     expect((await ctx.storage.getSession("session-idempotent"))?.status).toBe("completed");
     expect(
       (await ctx.storage.listSessionsByStatus("running", 0)).some(

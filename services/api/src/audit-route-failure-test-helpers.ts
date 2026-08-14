@@ -173,6 +173,7 @@ export const durableMutationFailureCases = [
     "session:create",
   ],
   ["POST", "/api/v1/sessions/session-a/cancel", {}, "cancelSessionDurable", "session:cancel"],
+  ["POST", "/api/v1/sessions/session-a/archive", {}, "archiveSessionLogs", "session:archive"],
   ["POST", "/api/v1/sessions/session-a/resume", {}, "resumeSessionDurable", "session:resume"],
   ["POST", "/api/v1/scheduler/assign", {}, "assignQueuedDurable", "scheduler:assign"],
   [

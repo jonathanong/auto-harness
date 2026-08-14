@@ -3,6 +3,7 @@ import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
 import { configuredSecretEncryptor } from "./secret-crypto.ts";
+import { configuredArchiveWriter } from "./archive-writer.ts";
 
 export type CreateControlPlaneOptions = ControlPlaneOptions &
   CreateDynamoClientOptions & {
@@ -61,6 +62,7 @@ export async function createControlPlane(
       ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }
       : {}),
     ...(options.archivePrefix !== undefined ? { archivePrefix: options.archivePrefix } : {}),
+    archiveWriter: options.archiveWriter ?? configuredArchiveWriter(),
     ...(options.sessionCursorSecret !== undefined
       ? { sessionCursorSecret: options.sessionCursorSecret }
       : {}),

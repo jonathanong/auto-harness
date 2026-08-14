@@ -89,17 +89,31 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
     sendSessionForbidden(res);
     return true;
   }
-  const archived = plane.archiveSessionLogs(id);
-  if (
-    !(await writeRouteAudit(ctx, {
-      action: "session:archive",
-      resourceType: "session",
-      resourceId: id,
-      ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
-      outcome: archived ? "success" : "failed",
-    }))
-  )
-    return true;
-  send(res, 200, archived);
+  try {
+    const archived = await plane.archiveSessionLogs(id);
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: "session:archive",
+        resourceType: "session",
+        resourceId: id,
+        ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
+        outcome: "success",
+      }))
+    )
+      return true;
+    send(res, 200, archived);
+  } catch {
+    if (
+      !(await writeRouteAudit(ctx, {
+        action: "session:archive",
+        resourceType: "session",
+        resourceId: id,
+        ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
+        outcome: "failed",
+      }))
+    )
+      return true;
+    sendInternalError(res);
+  }
   return true;
 }

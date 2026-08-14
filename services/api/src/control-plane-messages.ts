@@ -16,7 +16,12 @@ import {
   registerHost,
   registerHostDurable,
 } from "./control-plane-agents.ts";
-import { archiveSessionLogs, maybeDeliverWebhook } from "./control-plane-lifecycle.ts";
+import {
+  archiveSessionLogs,
+  retrySessionArchiveIfNeeded,
+  maybeDeliverWebhook,
+  queueSessionArchive,
+} from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { assignQueued, assignQueuedDurable } from "./control-plane-assign.ts";
 import {
@@ -75,10 +80,11 @@ export function appendLog(
   const { retained, evicted } = retainLogs(state, rec);
   state.logs.set(opts.sessionId, retained);
   if (state.storage) {
-    queueWrite(state, async (storage) => {
+    const persisted = queueWrite(state, async (storage) => {
       await storage!.putLog(rec);
       state.onLogCommitted?.(rec);
     });
+    state.pendingLogPersists.push(persisted);
     for (const removed of evicted) {
       queueWrite(state, (storage) => storage!.deleteLog(removed.sessionId, removed.timestampSeq));
     }
@@ -438,10 +444,13 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  const terminal = isTerminalSessionStatus(msg.status);
+  if (terminal && isTerminalSessionStatus(session.status)) {
+    await retrySessionArchiveIfNeeded(state, session.id);
+  }
   if (session.worktreeId !== msg.worktreeId || session.attemptId !== msg.attemptId) {
     return { ok: true };
   }
-  const terminal = isTerminalSessionStatus(msg.status);
   if (!terminal) {
     return { ok: true };
   }
@@ -913,7 +922,7 @@ function applySessionStatus(
       if (session.resumedFromSessionId && msg.cliResumeRef === undefined) {
         delete session.cliResumeRef;
       }
-      void archiveSessionLogs(state, session.id);
+      queueSessionArchive(state, session.id);
       void maybeDeliverWebhook(state, session);
     }
   }

@@ -198,10 +198,13 @@ describe("DynamoDB Local storage", () => {
 
     await s.putArchive({
       key: "session-logs/sess-1.json",
-      body: "[]",
       contentType: "application/json",
+      bodyBytes: 2,
+      status: "complete",
+      objectStored: true,
+      updatedAt: "2026-01-01T00:00:00.000Z",
     });
-    expect((await s.getArchive("session-logs/sess-1.json"))?.body).toBe("[]");
+    expect((await s.getArchive("session-logs/sess-1.json"))?.bodyBytes).toBe(2);
     expect(await s.getArchive("missing")).toBeNull();
     expect((await s.listArchives()).length).toBeGreaterThan(0);
   });

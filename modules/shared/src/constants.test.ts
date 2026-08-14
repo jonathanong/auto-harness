@@ -26,7 +26,7 @@ describe("constants", () => {
     expect(DEFAULT_ACK_DEADLINE_MS).toBeGreaterThan(0);
     expect(DEFAULT_HEARTBEAT_STALE_MS).toBeLessThan(DEFAULT_ACK_DEADLINE_MS * 100);
     expect(DEFAULT_HOST_KEEPALIVE_MS).toBeGreaterThan(0);
-    expect(DEFAULT_ARCHIVE_PREFIX).toContain("session");
+    expect(DEFAULT_ARCHIVE_PREFIX).toBe("sessions/");
     expect(SESSION_STATUSES).toContain("queued");
     expect(TERMINAL_SESSION_STATUSES).not.toContain("queued");
     expect(ACTIVE_SESSION_STATUSES).toEqual(["queued", "running"]);

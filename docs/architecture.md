@@ -10,10 +10,10 @@ Auto-Harness is designed around two planes:
 | **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs                  | **[host-daemon.md](host-daemon.md)** |
 
 > **Maturity:** the control-plane and daemon behavior is implemented and exercised locally with
-> DynamoDB Local and local WebSockets. The AWS resources on `main` are a synthesizable persistence
-> foundation only; there is no repository-supported runtime deployment, live endpoint, or
-> account-backed end-to-end proof yet. The diagrams below describe the target cloud topology, not
-> a currently deployed service.
+> DynamoDB Local and local WebSockets. The AWS stack synthesizes REST, WebSocket, and cron Lambda
+> workers plus their DynamoDB and archive-bucket wiring. There is no live deployment or
+> account-backed end-to-end proof yet. The diagrams below describe the synthesized target cloud
+> topology, not a currently deployed service.
 
 ```mermaid
 graph TB
@@ -51,14 +51,17 @@ graph TB
     Agent --> WT3
 ```
 
-**Target split of responsibility:**
+**Synthesized runtime split of responsibility:**
 
 - **AWS** authenticates callers, stores sessions, runs the queue, assigns work (label match + round-robin), fans out logs, archives data, evaluates cron.
 - **Agent** maintains workspaces, spawns processes, streams output, holds secrets (git + AI keys).
 
-Today, those control-plane behaviors run in the local API. Durable session-log archival writes a
-JSON object to the DynamoDB Archives table; the S3 bucket exists in the synthesized foundation,
-but no runtime uploads archives to it.
+Today, those control-plane behaviors run in the local API. Durable session-log archival writes
+JSONL through an injected S3 adapter when `ARCHIVE_BUCKET` is configured and retains archive
+metadata in DynamoDB. That metadata contains only bounded pointer/retry state, never the log body;
+pending uploads are retried idempotently at the same object key. The private lifecycle-managed
+bucket and write-only runtime policy synthesize locally; no account-backed upload or deployment has
+been run.
 
 Deep dives live in the layer docs above; this page keeps cross-plane flows and design decisions only.
 
@@ -71,7 +74,7 @@ Deep dives live in the layer docs above; this page keeps cross-plane flows and d
 | Public API & auth      | [api.md](api.md), [websocket.md](websocket.md), [auth.md](auth.md), [security.md](security.md) | API key over WSS ([cli.md](cli.md) / [local-development.md](local-development.md))           |
 | Session queue / assign | Scheduler + round-robin                                                                        | Accepts `session:assign` only                                                                |
 | Worktrees              | DynamoDB inventory + online flags                                                              | Create/claim/release on disk                                                                 |
-| Logs                   | Current: SessionLogs + UI fan-out + DynamoDB Archives; target: S3 archival                     | Current: assigned-command PTY + pipe-based setup/hooks, each `session:log`; target: batching |
+| Logs                   | SessionLogs + UI fan-out + optional S3 JSONL writes; DynamoDB Archives stores bounded metadata | Current: assigned-command PTY + pipe-based setup/hooks, each `session:log`; target: batching |
 | Schedules              | EventBridge cron → sessions                                                                    | Main-checkout lock + run command                                                             |
 | Secrets                | No repo/AI secrets                                                                             | `.env`, SSH, vendor keys                                                                     |
 | UI                     | Hosted clients → REST/WS                                                                       | —                                                                                            |

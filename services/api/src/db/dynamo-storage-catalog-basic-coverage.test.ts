@@ -64,8 +64,15 @@ describe("DynamoDB Local basic catalog adapters", () => {
       { key: "repository:repository", owner: "owner", now: deletionAt },
     ]);
     await deleteRepository(ctx, "missing-repository");
-    await putArchive(ctx, { key: "archive", body: "[]", contentType: "application/json" });
-    expect((await getArchive(ctx, "archive"))?.body).toBe("[]");
+    await putArchive(ctx, {
+      key: "archive",
+      contentType: "application/json",
+      bodyBytes: 2,
+      status: "complete",
+      objectStored: true,
+      updatedAt: deletionAt,
+    });
+    expect((await getArchive(ctx, "archive"))?.bodyBytes).toBe(2);
     expect(await getArchive(ctx, "missing")).toBeNull();
     expect((await listArchives(ctx)).map(({ key }) => key)).toContain("archive");
     await putHostInventory(ctx, {

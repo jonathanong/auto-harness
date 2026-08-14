@@ -98,10 +98,13 @@ export type LogRecord = {
   seq: number;
 };
 
-export type ArchiveObject = {
+export type ArchiveMetadata = {
   key: string;
-  body: string;
   contentType: string;
+  bodyBytes: number;
+  status: "pending" | "complete";
+  objectStored: boolean;
+  updatedAt: string;
 };
 
 export type RepositoryRecord = {

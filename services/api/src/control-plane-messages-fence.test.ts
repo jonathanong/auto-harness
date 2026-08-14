@@ -161,6 +161,7 @@ describe("durable host-message fencing", () => {
         statusConcurrencyId = opts.concurrencyId;
         return true;
       },
+      listLogs: async () => [],
       putArchive: async () => {},
     } as never;
     expect(
