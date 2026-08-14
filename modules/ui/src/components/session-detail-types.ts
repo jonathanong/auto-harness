@@ -26,6 +26,7 @@ export type SessionSummary = {
   resolvedArgv?: string[] | null;
   prompt?: string | null;
   source?: string | null;
+  priority?: number | null;
   concurrencyId?: string | null;
   ref?: string | null;
   timeout?: number | null;

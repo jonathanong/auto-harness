@@ -4,7 +4,27 @@ import { test, expect } from "@playwright/test";
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
 
 test.describe("control plane sessions", () => {
-  test("sessions list page and filters", async ({ page }) => {
+  test("sessions list page and filters", async ({ page, request }) => {
+    const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      data: {
+        name: `pw-session-list-${Date.now()}`,
+        argv: ["echo"],
+        appendPrompt: true,
+        providerId: null,
+      },
+    });
+    expect(command.status()).toBe(201);
+    const commandId = ((await command.json()) as { id: string }).id;
+    const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+      data: {
+        repositoryId: `pw-session-list-${Date.now()}`,
+        prompt: "exercise session list controls",
+        target: { commandId },
+        timeout: 30,
+      },
+    });
+    expect(created.status()).toBe(201);
+
     await page.goto("/sessions");
     await expect(
       page.getByTestId("page-sessions").or(page.getByTestId("sessions-loading")).first(),
@@ -153,6 +173,7 @@ test.describe("control plane sessions", () => {
         await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
         await expect(page.getByTestId("page-session-detail")).toBeVisible();
         await expect(page.getByTestId("session-detail-status")).toContainText("queued");
+        await expect(page.getByTestId("session-detail-priority")).toHaveText("0");
         await expect(page.getByTestId("session-detail-concurrency-id")).toContainText(
           `pw-concurrency-${id}`,
         );

@@ -140,6 +140,7 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("session-detail-id")).toHaveText(id);
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
+        await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
         await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
         await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
           "remaining",
