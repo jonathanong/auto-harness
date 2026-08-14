@@ -175,7 +175,9 @@ describe("CreateSessionForm", () => {
     expect(field<HTMLInputElement>(view.container, "create-session-timeout-custom").value).toBe(
       "0.5",
     );
-    submit(field(view.container, "form-create-session"));
+    const form = field<HTMLFormElement>(view.container, "form-create-session");
+    expect(form.checkValidity()).toBe(true);
+    submit(form);
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       repositoryId: "source-repository",

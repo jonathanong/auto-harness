@@ -50,7 +50,7 @@ export function SessionTimeoutField({ initialSeconds = 600 }: { initialSeconds?:
             name="timeout"
             type="number"
             required
-            min={1}
+            min={Number.MIN_VALUE}
             step="any"
             value={customSeconds}
             onChange={(event) => setCustomSeconds(event.currentTarget.value)}
