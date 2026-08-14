@@ -17,6 +17,10 @@ export {
 export { AppShell, type AppShellProps, type NavItem } from "./components/app-shell.tsx";
 export { StatusBadge } from "./components/status-badge.tsx";
 export {
+  OnlineStatusBadge,
+  type OnlineStatusBadgeProps,
+} from "./components/online-status-badge.tsx";
+export {
   Tooltip,
   TooltipContent,
   TooltipProvider,

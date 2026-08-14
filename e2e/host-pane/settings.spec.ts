@@ -12,9 +12,9 @@ test.describe("host pane settings", () => {
     await expect(page.getByTestId("nav-settings")).toBeVisible();
   });
 
-  test("header shows an online badge", async ({ page }) => {
+  test("header shows an explicit connection badge", async ({ page }) => {
     await page.goto("/sessions");
-    await expect(page.getByTestId("host-shell-online")).toBeVisible();
+    await expect(page.getByTestId("host-shell-online")).toHaveText(/^(Online|Offline)$/);
   });
 
   test("settings page has drain control and raw host inventory JSON", async ({ page }) => {

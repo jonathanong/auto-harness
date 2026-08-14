@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
-import { DrainButton, StatusBadge, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
+import { DrainButton, OnlineStatusBadge, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
@@ -134,7 +134,7 @@ export default async function HostDetailPage({
                 <div>
                   <dt className="text-xs uppercase text-muted-foreground">Status</dt>
                   <dd data-pw="host-detail-status">
-                    <StatusBadge status={String(agent?.online ?? false)} />
+                    <OnlineStatusBadge online={agent?.online ?? false} />
                   </dd>
                 </div>
                 <div>

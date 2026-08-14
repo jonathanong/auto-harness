@@ -155,6 +155,7 @@ describe("shared detail views", () => {
     expect(linked).toContain("/repos/a");
     expect(linked).toContain("fast, linux");
     expect(linked).toContain('data-pw="worktree-detail-path"');
+    expect(linked).toContain('data-pw="worktree-detail-online">Online');
     const plain = render(
       <WorktreeDetailsCard
         worktree={{ id: "worktree/b", name: "b", repositoryId: "repo/b", path: "/b" }}

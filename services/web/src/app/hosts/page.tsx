@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import {
   DrainButton,
-  StatusBadge,
+  OnlineStatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -120,7 +120,7 @@ export default async function HostsPage({
                     </Link>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={String(h.online)} />
+                    <OnlineStatusBadge online={h.online} pw={`host-online-${h.hostId}`} />
                   </TableCell>
                   <TableCell className="text-xs">
                     {JSON.stringify(h.commandProfiles ?? [])}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { StatusBadge } from "./status-badge.tsx";
+import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 
 export type WorktreeDetailProps = {
@@ -115,7 +116,7 @@ export function WorktreeDetailsCard({
               {worktree.online === undefined ? (
                 "—"
               ) : (
-                <StatusBadge status={String(worktree.online)} />
+                <OnlineStatusBadge online={worktree.online} pw="worktree-detail-online" />
               )}
             </dd>
           </div>
