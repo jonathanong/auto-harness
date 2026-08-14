@@ -12,7 +12,7 @@ import {
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Toast, withToast } from "./toast.tsx";
+import { RetryToast, Toast, withToast } from "./toast.tsx";
 
 const router = {
   back: vi.fn(),
@@ -84,6 +84,31 @@ describe("shared Toast", () => {
     expect(withToast("/sessions?toast=Old&filter=active", "Done")).toBe(
       "/sessions?toast=Done&filter=active",
     );
+    view.unmount();
+  });
+
+  it("announces mutation failures and exposes retry progress", () => {
+    const onRetry = vi.fn();
+    const view = mount(<RetryToast onRetry={onRetry}>Could not delete command.</RetryToast>);
+    const alert = view.container.querySelector('[data-pw="mutation-error-toast"]');
+    expect(alert?.getAttribute("role")).toBe("alert");
+    expect(alert?.getAttribute("aria-atomic")).toBe("true");
+    const retry = view.container.querySelector<HTMLButtonElement>(
+      '[data-pw="mutation-error-retry"]',
+    );
+    act(() => retry?.click());
+    expect(onRetry).toHaveBeenCalledOnce();
+
+    view.rerender(
+      <RetryToast onRetry={onRetry} pending>
+        Could not delete command.
+      </RetryToast>,
+    );
+    const pending = view.container.querySelector<HTMLButtonElement>(
+      '[data-pw="mutation-error-retry"]',
+    );
+    expect(pending?.disabled).toBe(true);
+    expect(pending?.textContent).toBe("Retrying…");
     view.unmount();
   });
 });

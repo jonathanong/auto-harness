@@ -1,16 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Button, WithTooltip } from "@auto-harness/ui";
+import { Button, RetryToast, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 import { navigateBrowser } from "../lib/browser-navigation.ts";
+import { deleteCatalogResource } from "./catalog-delete.ts";
 import type { RequestFunction } from "./request-types.ts";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
 
 export function DeleteCommandButton({
   commandId,
@@ -29,6 +25,22 @@ export function DeleteCommandButton({
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blocked = Boolean(defaultForProviderName);
+  const deleteCommand = () => {
+    setPending(true);
+    void (async () => {
+      const failure = await deleteCatalogResource(
+        request,
+        `${apiBase()}/api/v1/commands/${encodeURIComponent(commandId)}`,
+      );
+      if (failure) {
+        setError(failure);
+        setPending(false);
+        return;
+      }
+      setPending(false);
+      navigate("/commands");
+    })();
+  };
 
   if (!confirming) {
     return (
@@ -60,9 +72,9 @@ export function DeleteCommandButton({
     >
       <p className="text-sm text-red-700">Permanently remove this command from the catalog.</p>
       {error ? (
-        <p className="text-sm text-red-700" role="alert" data-pw="delete-command-error">
-          {error}
-        </p>
+        <RetryToast onRetry={deleteCommand} pending={pending}>
+          <p data-pw="delete-command-error">{error}</p>
+        </RetryToast>
       ) : null}
       <div className="flex gap-2">
         <Button
@@ -71,27 +83,19 @@ export function DeleteCommandButton({
           variant="destructive"
           disabled={pending}
           data-pw="delete-command-confirm-submit"
-          onClick={() => {
-            setError(null);
-            setPending(true);
-            void (async () => {
-              const res = await request(
-                `${apiBase()}/api/v1/commands/${encodeURIComponent(commandId)}`,
-                { method: "DELETE" },
-              );
-              if (!res.ok) {
-                setError(await errorMessage(res));
-                setPending(false);
-                return;
-              }
-              setPending(false);
-              navigate("/commands");
-            })();
-          }}
+          onClick={deleteCommand}
         >
           {pending ? "Deleting…" : "Confirm delete"}
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            setError(null);
+            setConfirming(false);
+          }}
+        >
           Cancel
         </Button>
       </div>

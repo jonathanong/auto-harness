@@ -92,4 +92,4 @@ export {
   DialogTitle,
   DialogDescription,
 } from "./components/dialog.tsx";
-export { Toast, withToast } from "./components/toast.tsx";
+export { RetryToast, Toast, withToast } from "./components/toast.tsx";

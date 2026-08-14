@@ -50,25 +50,35 @@ describe("DeleteCommandButton", () => {
     const cancelView = mountForm(<DeleteCommandButton commandId="command/2" request={request} />);
     open(cancelView);
     press(
-      field<HTMLButtonElement>(document, "delete-command-confirm").querySelectorAll("button")[1]!,
+      [...field(document, "delete-command-confirm").querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      )!,
     );
     expect(document.querySelector('[data-pw="delete-command-confirm"]')).toBeNull();
     cancelView.unmount();
   });
 
-  it("renders API messages and status fallbacks", async () => {
+  it("renders API messages in a retry toast and retries successfully", async () => {
+    const navigate = vi.fn();
     const { request, enqueue } = createRequestFake(
       new Response(JSON.stringify({ error: { message: "command is in use" } }), {
         status: 409,
       }),
     );
-    const parsedView = mountForm(<DeleteCommandButton commandId="command/1" request={request} />);
+    const parsedView = mountForm(
+      <DeleteCommandButton commandId="command/1" request={request} navigate={navigate} />,
+    );
     open(parsedView);
     press(confirm());
     await act(async () => Promise.resolve());
-    const conflict = field(document, "delete-command-error");
-    expect(conflict.textContent).toBe("command is in use");
-    expect(conflict.getAttribute("role")).toBe("alert");
+    expect(field(document, "mutation-error-toast").getAttribute("role")).toBe("alert");
+    expect(field(document, "delete-command-error").textContent).toBe("command is in use");
+    enqueue(new Response(null, { status: 204 }));
+    await act(async () => {
+      field<HTMLButtonElement>(document, "mutation-error-retry").click();
+      await Promise.resolve();
+    });
+    expect(navigate).toHaveBeenCalledWith("/commands");
     parsedView.unmount();
 
     enqueue(new Response("not json", { status: 503 }));
@@ -77,6 +87,12 @@ describe("DeleteCommandButton", () => {
     press(confirm());
     await act(async () => Promise.resolve());
     expect(field(document, "delete-command-error").textContent).toBe("request failed (503)");
+    press(
+      [...field(document, "delete-command-confirm").querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      )!,
+    );
+    expect(document.querySelector('[data-pw="mutation-error-toast"]')).toBeNull();
     fallbackView.unmount();
   });
 });

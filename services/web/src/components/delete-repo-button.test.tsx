@@ -50,9 +50,11 @@ describe("DeleteRepoButton", () => {
     view.unmount();
   });
 
-  it("shows a response body when deletion fails and supports cancel", async () => {
+  it("shows structured failures in a retry toast and supports cancel", async () => {
     const { request } = createRequestFake(
-      new Response("repository has attachments", { status: 409 }),
+      new Response(JSON.stringify({ error: { message: "repository has attachments" } }), {
+        status: 409,
+      }),
     );
     const view = mountForm(
       <DeleteRepoButton repositoryId="repo/1" attachedHostCount={1} request={request} />,
@@ -60,8 +62,13 @@ describe("DeleteRepoButton", () => {
     open(view);
     press(confirm());
     await act(async () => Promise.resolve());
+    expect(field(document, "mutation-error-toast").getAttribute("role")).toBe("alert");
     expect(field(document, "delete-repo-error").textContent).toBe("repository has attachments");
-    press(field<HTMLButtonElement>(document, "delete-repo-confirm").querySelectorAll("button")[1]!);
+    press(
+      [...field(document, "delete-repo-confirm").querySelectorAll("button")].find(
+        (button) => button.textContent === "Cancel",
+      )!,
+    );
     expect(document.querySelector('[data-pw="delete-repo-confirm"]')).toBeNull();
     view.unmount();
   });
