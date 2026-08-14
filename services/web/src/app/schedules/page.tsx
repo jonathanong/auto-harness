@@ -103,10 +103,13 @@ export default async function SchedulesPage({
               <TableCell className="text-xs">
                 <span
                   title={`Cron: ${s.cron}`}
-                  aria-label={`${describeCron(s.cron)}. Cron expression: ${s.cron}`}
+                  aria-describedby={`schedule-cron-raw-${s.id}`}
                   data-pw={`schedule-cron-${s.id}`}
                 >
                   {describeCron(s.cron)}
+                </span>
+                <span id={`schedule-cron-raw-${s.id}`} className="sr-only">
+                  Cron expression: {s.cron}
                 </span>
               </TableCell>
               <TableCell>

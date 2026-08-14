@@ -89,10 +89,7 @@ test.describe("control plane schedules", () => {
     const cron = page.getByTestId(`schedule-cron-${scheduleId}`);
     await expect(cron).toHaveText("Every hour at minute 30");
     await expect(cron).toHaveAttribute("title", "Cron: 30 * * * *");
-    await expect(cron).toHaveAttribute(
-      "aria-label",
-      "Every hour at minute 30. Cron expression: 30 * * * *",
-    );
+    await expect(cron).toHaveAccessibleDescription("Cron expression: 30 * * * *");
     await page.getByTestId(`schedule-edit-${scheduleId}`).click();
     await expect(page.getByTestId(`form-edit-schedule-${scheduleId}`)).toBeVisible();
     await page.getByTestId("schedule-queue-ttl").fill("4321");

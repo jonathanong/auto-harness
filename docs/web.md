@@ -282,16 +282,16 @@ On submit:
 
 Displays all configured schedules in a table:
 
-| Column         | Description                                                                                                                                                                |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Name           | Schedule name                                                                                                                                                              |
-| Repository     | Target repository                                                                                                                                                          |
-| Target         | Resolved `targetLabel`                                                                                                                                                     |
-| Cron           | Human-readable UTC schedule for common patterns (e.g. "Every day at 6:00 AM UTC"), or "Custom schedule", with the raw cron expression on hover and in its accessible label |
-| Enabled        | Accessible toggle switch; saves immediately and preserves the current state with a retry message if the update fails                                                       |
-| Last Run       | Relative time + status badge (success/failed)                                                                                                                              |
-| Next Run       | Absolute time for next scheduled execution                                                                                                                                 |
-| Concurrency ID | Exact identity used to prevent overlapping automatic/manual runs; defaults to `schedule-${scheduleId}` for automatic fires                                                 |
+| Column         | Description                                                                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name           | Schedule name                                                                                                                                                                   |
+| Repository     | Target repository                                                                                                                                                               |
+| Target         | Resolved `targetLabel`                                                                                                                                                          |
+| Cron           | Human-readable UTC schedule for common patterns (e.g. "Every day at 6:00 AM UTC"), or "Custom schedule", with the raw cron expression on hover and as an accessible description |
+| Enabled        | Accessible toggle switch; saves immediately and preserves the current state with a retry message if the update fails                                                            |
+| Last Run       | Relative time + status badge (success/failed)                                                                                                                                   |
+| Next Run       | Absolute time for next scheduled execution                                                                                                                                      |
+| Concurrency ID | Exact identity used to prevent overlapping automatic/manual runs; defaults to `schedule-${scheduleId}` for automatic fires                                                      |
 
 ### Schedule Detail
 
