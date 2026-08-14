@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
+import { type SessionSummary } from "@auto-harness/ui";
 
+import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
 import { apiGet } from "../../../lib/api.ts";
 import { MAX_LIVE_LOG_ENTRIES } from "../../../lib/live-session-logs.ts";
@@ -57,23 +58,20 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
   } catch {
     /* usage is optional for older hosts and sessions */
   }
+  let hosts: Array<{ hostId: string; online: boolean }> = [];
+  if (session.status === "running" && session.hostId) {
+    try {
+      hosts =
+        (await apiGet<{ items: Array<{ hostId: string; online: boolean }> }>("/api/v1/hosts"))
+          .items ?? [];
+    } catch {
+      /* live client refresh retries host state */
+    }
+  }
 
   return (
     <div data-pw="page-session-detail">
-      <SessionDetail
-        session={session}
-        breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: session.id }]}
-        actions={
-          <SessionActions
-            sessionId={session.id}
-            status={session.status}
-            cloneEditHref={`/sessions/new?cloneFrom=${encodeURIComponent(session.id)}`}
-          />
-        }
-        repoHrefBase="/repositories"
-        hostHrefBase="/hosts"
-        worktreeHrefBase="/worktrees"
-      >
+      <SessionLiveDetail initialSession={session} initialHosts={hosts}>
         <div className="mb-4 rounded-md border p-4" data-pw="session-usage-summary">
           <h3 className="text-sm font-medium">Session usage</h3>
           {hasReportedUsage(usage) ? (
@@ -107,7 +105,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
             initialStatus={session.status}
           />
         </div>
-      </SessionDetail>
+      </SessionLiveDetail>
     </div>
   );
 }

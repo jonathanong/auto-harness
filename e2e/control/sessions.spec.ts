@@ -133,6 +133,141 @@ test.describe("control plane sessions", () => {
     });
   });
 
+  test("warns and confirms force-cancel when an assigned agent disconnects", async ({
+    page,
+    request,
+  }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const hostId = `pw-offline-host-${suffix}`;
+    const repoId = `pw-offline-repo-${suffix}`;
+    const worktreeId = `pw-offline-worktree-${suffix}`;
+    const inventory = await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+      data: {
+        repositories: [
+          {
+            id: repoId,
+            path: `/tmp/${repoId}`,
+            defaultBranch: "main",
+            worktrees: [
+              {
+                id: worktreeId,
+                name: worktreeId,
+                path: `/tmp/${repoId}/${worktreeId}`,
+                labels: [],
+              },
+            ],
+          },
+        ],
+        providerAccounts: [],
+        commandProfiles: {},
+      },
+    });
+    expect(inventory.ok()).toBe(true);
+    const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      data: { name: `pw-offline-command-${suffix}`, argv: ["echo"], providerId: null },
+    });
+    expect(command.ok()).toBe(true);
+    const commandId = ((await command.json()) as { id: string }).id;
+
+    await page.goto("/sessions");
+    await page.evaluate(
+      ({ hostId, repoId, worktreeId }) =>
+        new Promise<void>((resolve, reject) => {
+          const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+          const timeout = setTimeout(
+            () => reject(new Error("host registration timed out")),
+            10_000,
+          );
+          socket.addEventListener("message", (event) => {
+            const message = JSON.parse(String(event.data)) as { type?: string; message?: string };
+            if (message.type === "host:registered") {
+              clearTimeout(timeout);
+              (globalThis as typeof globalThis & { offlineSocket?: WebSocket }).offlineSocket =
+                socket;
+              resolve();
+            }
+            if (message.type === "error") {
+              clearTimeout(timeout);
+              reject(new Error(message.message));
+            }
+          });
+          socket.addEventListener("error", () => reject(new Error("host WebSocket failed")));
+          socket.addEventListener("open", () => {
+            socket.send(
+              JSON.stringify({
+                type: "host:register",
+                hostId,
+                worktrees: [
+                  {
+                    id: worktreeId,
+                    name: worktreeId,
+                    repositoryId: repoId,
+                    path: `/tmp/${repoId}/${worktreeId}`,
+                    labels: [],
+                  },
+                ],
+                commandProfiles: [],
+              }),
+            );
+          });
+        }),
+      { hostId, repoId, worktreeId },
+    );
+
+    const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+      data: { repositoryId: repoId, prompt: "stay running", target: { commandId }, timeout: 300 },
+    });
+    expect(created.status()).toBe(201);
+    const sessionId = ((await created.json()) as { id: string }).id;
+    expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+    const assigned = (await (
+      await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+    ).json()) as { attemptId: string; worktreeId: string };
+    await page.evaluate(
+      ({ sessionId, attemptId, worktreeId }) => {
+        const socket = (globalThis as typeof globalThis & { offlineSocket?: WebSocket })
+          .offlineSocket;
+        if (!socket) throw new Error("host socket missing");
+        socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+      },
+      { sessionId, attemptId: assigned.attemptId, worktreeId: assigned.worktreeId },
+    );
+    await expect
+      .poll(async () => {
+        const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+        return ((await response.json()) as { ackReceivedAt?: string }).ackReceivedAt;
+      })
+      .toBeTruthy();
+    await page.evaluate(() => {
+      (globalThis as typeof globalThis & { offlineSocket?: WebSocket }).offlineSocket?.close();
+    });
+    await expect
+      .poll(async () => {
+        const response = await request.get("http://127.0.0.1:7430/api/v1/hosts");
+        const hosts = (await response.json()) as {
+          items: Array<{ hostId: string; online: boolean }>;
+        };
+        return hosts.items.find((host) => host.hostId === hostId)?.online;
+      })
+      .toBe(false);
+
+    await page.goto(`/sessions/${encodeURIComponent(sessionId)}`);
+    await expect(page.getByTestId("session-live-state-error")).toHaveCount(0);
+    await expect(page.getByTestId("session-agent-offline")).toHaveAttribute("role", "alert");
+    await expect(page.getByTestId("session-agent-offline")).toContainText(
+      "Agent disconnected — session may be stale",
+    );
+    await expect(page.getByTestId("session-cancel")).toHaveCount(0);
+    await page.getByTestId("session-force-cancel").click();
+    await expect(page.getByTestId("session-force-cancel-confirm")).toContainText(
+      "cannot confirm that its remote process stopped",
+    );
+    await page.getByTestId("session-force-cancel-confirm-submit").click();
+    await expect(page.getByTestId("session-detail-status")).toContainText("cancelled", {
+      timeout: 15_000,
+    });
+  });
+
   test("session detail reports CLI usage and configured cost", async ({ page, request }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-usage-host-${suffix}`;

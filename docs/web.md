@@ -67,13 +67,13 @@ First-time users or empty views show contextual guidance instead of blank pages:
 
 ### Error & Loading States
 
-| State                         | Behavior                                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **Loading**                   | The shared route fallback announces a busy loading region and renders hidden-from-AT skeletons. Forms use pending labels. |
-| **Route error**               | The shared error boundary focuses a generic alert and offers a Retry button without exposing internal error text.         |
-| **API/form error**            | Page and form errors use alert semantics where the state can change in place; validation remains inline.                  |
-| **WebSocket disconnected**    | Yellow banner at top: "⚠️ Real-time updates paused — reconnecting..." with manual reconnect link                          |
-| **Agent offline mid-session** | Session card shows warning badge: "Agent disconnected — session may be stale". Force-cancel option.                       |
+| State                         | Behavior                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Loading**                   | The shared route fallback announces a busy loading region and renders hidden-from-AT skeletons. Forms use pending labels.                                                                                                                                                                                                            |
+| **Route error**               | The shared error boundary focuses a generic alert and offers a Retry button without exposing internal error text.                                                                                                                                                                                                                    |
+| **API/form error**            | Page and form errors use alert semantics where the state can change in place; validation remains inline.                                                                                                                                                                                                                             |
+| **WebSocket disconnected**    | Yellow banner at top: "⚠️ Real-time updates paused — reconnecting..." with manual reconnect link.                                                                                                                                                                                                                                    |
+| **Agent offline mid-session** | Session detail polls session/host state, shows an accessible "Agent disconnected — session may be stale" warning, and offers a confirmed Force-cancel. Force-cancel uses ordinary control-plane cancellation; it cannot confirm that the disconnected host process stopped, and its worktree stays reserved for safe reconciliation. |
 
 ---
 
