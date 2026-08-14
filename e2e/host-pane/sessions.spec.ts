@@ -142,9 +142,11 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("session-detail-status")).toContainText("running");
         await expect(detailPage.getByTestId("session-detail-worktree")).toHaveText(wtId);
         await expect(detailPage.getByTestId("session-detail-priority")).toHaveText("0");
-        await expect(detailPage.getByTestId("session-detail-prompt-content")).toHaveText(prompt);
-        await detailPage.getByTestId("session-detail-prompt-content").focus();
-        await expect(detailPage.getByTestId("session-detail-prompt-content")).toBeFocused();
+        const promptContent = detailPage.getByTestId("session-detail-prompt-content");
+        await expect(promptContent).toBeVisible();
+        expect(await promptContent.textContent()).toBe(prompt);
+        await promptContent.focus();
+        await expect(promptContent).toBeFocused();
         await expect(detailPage.getByTestId("session-timeout-progress")).toBeVisible();
         await expect(detailPage.getByTestId("session-timeout-remaining")).toContainText(
           "remaining",
