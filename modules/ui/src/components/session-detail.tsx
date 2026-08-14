@@ -30,15 +30,6 @@ export type SessionDetailProps = {
   worktreeHrefBase?: string;
 };
 
-function SessionDetailValue({ label, value }: { label: string; value?: string | number | null }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{value ?? "—"}</dd>
-    </div>
-  );
-}
-
 /** Shared session detail view — reused by the host pane and control page. */
 export function SessionDetail({
   session: s,
