@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { SessionActions, SessionDetail, SessionLogs, type SessionSummary } from "@auto-harness/ui";
+import { SessionLogs, type SessionSummary } from "@auto-harness/ui";
 
+import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -42,18 +43,12 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
 
   return (
     <div data-pw="page-session-detail">
-      <SessionDetail
-        session={session}
-        breadcrumbs={[{ label: "Sessions", href: "/sessions" }, { label: session.id }]}
-        actions={<SessionActions sessionId={session.id} status={session.status} />}
-        repoHrefBase="/repositories"
-        worktreeHrefBase="/worktrees"
-      >
+      <SessionLiveDetail initialSession={session}>
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Logs</h3>
           <SessionLogs items={logs} />
         </div>
-      </SessionDetail>
+      </SessionLiveDetail>
     </div>
   );
 }
