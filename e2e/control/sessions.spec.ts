@@ -207,9 +207,24 @@ test.describe("control plane sessions", () => {
           timeout: 15_000,
         });
         await expect(page.getByTestId("session-resume")).toHaveText("Resume");
+        const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");
+        await page.getByTestId("session-resume").click();
+        await expect(page.getByTestId("session-resume-dialog")).toBeVisible();
+        await page.getByTestId("session-resume-prompt").fill("continue from review");
+        await page.getByTestId("session-resume-timeout").fill("45");
+        await page.getByTestId("session-resume-priority").fill("60");
+        const resumeRequest = page.waitForRequest(
+          (request) => request.url().endsWith("/resume") && request.method() === "POST",
+        );
+        await page.getByTestId("session-resume-submit").click();
+        expect((await resumeRequest).postDataJSON()).toEqual({
+          prompt: "continue from review",
+          timeout: 45,
+          priority: 60,
+        });
+        await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
 
         // Lists show one safe-text line by default and disclose the full prompt on demand.
-        const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");
         await page.goto(`/sessions?q=${encodeURIComponent(sessionId)}`);
         const row = page.getByTestId(`session-row-${sessionId}`);
         const created = row.getByTestId(`session-created-${sessionId}`).locator("time");

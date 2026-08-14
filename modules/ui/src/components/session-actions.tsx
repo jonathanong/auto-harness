@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "./button.tsx";
 import { ConfirmButton } from "./confirm-button.tsx";
+import { ResumeSessionDialog, type ResumeOverrides } from "./resume-session-dialog.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 const ACTIVE_STATUSES = new Set(["queued", "running"]);
@@ -37,9 +38,13 @@ export function SessionActions({
   const request = async (
     which: "cancel" | "resume" | "clone" | "archive",
     path: string,
+    body?: ResumeOverrides,
   ): Promise<void | { ok: false; error: string }> => {
     const res = await fetch(`/api/v1/sessions/${encodeURIComponent(sessionId)}/${path}`, {
       method: "POST",
+      ...(body
+        ? { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+        : {}),
     });
     if (!res.ok) {
       const message = await res.text();
@@ -47,20 +52,24 @@ export function SessionActions({
       return { ok: false, error: message };
     }
     if (which === "resume" || which === "clone") {
-      const body = (await res.json()) as { id?: string };
-      if (body.id) {
-        router.push(`${detailHrefBase}/${encodeURIComponent(body.id)}`);
+      const responseBody = (await res.json()) as { id?: string };
+      if (responseBody.id) {
+        router.push(`${detailHrefBase}/${encodeURIComponent(responseBody.id)}`);
         return;
       }
     }
     router.refresh();
   };
 
-  const run = (which: "cancel" | "resume" | "clone" | "archive", path: string) => {
+  const run = (
+    which: "cancel" | "resume" | "clone" | "archive",
+    path: string,
+    body?: ResumeOverrides,
+  ) => {
     setError(null);
     setAction(which);
     start(async () => {
-      await request(which, path);
+      await request(which, path, body);
     });
   };
 
@@ -99,18 +108,12 @@ export function SessionActions({
         ) : null}
         {TERMINAL_STATUSES.has(status) ? (
           <>
-            <WithTooltip tip="Create a new session pinned to the same host, resuming from here">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
+            <WithTooltip tip="Create a new session pinned to the same host, with optional overrides">
+              <ResumeSessionDialog
                 disabled={pending}
-                aria-busy={pending && action === "resume"}
-                data-pw="session-resume"
-                onClick={() => void run("resume", "resume")}
-              >
-                {pending && action === "resume" ? "Resuming…" : "Resume"}
-              </Button>
+                pending={pending && action === "resume"}
+                onSubmit={(overrides) => run("resume", "resume", overrides)}
+              />
             </WithTooltip>
             <WithTooltip tip="Create a clean independent rerun of this session">
               <Button
