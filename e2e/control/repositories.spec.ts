@@ -27,6 +27,10 @@ test.describe("control plane repositories", () => {
       await page.getByTestId(`repository-url-copy-${repositoryId}`).click();
       await expect(page.getByTestId(`repository-url-copy-${repositoryId}`)).toHaveText("Copied");
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(url);
+
+      await page.goto(`/repositories/${repositoryId}?tab=worktrees`);
+      await expect(page.getByTestId(`repository-url-${repositoryId}`)).toHaveText(url);
+      await expect(page.getByTestId(`repository-url-copy-${repositoryId}`)).toBeVisible();
     } finally {
       await request.delete(`/api/v1/repositories/${repositoryId}`);
     }

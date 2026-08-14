@@ -82,10 +82,9 @@ export default async function RepositoryDetailPage({
   const group: WorktreeRepoGroup = {
     repositoryId,
     repositoryName: repository.name ?? repositoryId,
-    repoPath: repository.path ?? repository.url ?? undefined,
+    repoUrl: repository.url ?? undefined,
     worktrees,
   };
-
   let sessions: Session[] = [];
   try {
     const data = await apiGet<{ items: Session[] }>("/api/v1/sessions?limit=100");
