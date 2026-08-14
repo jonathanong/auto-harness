@@ -15,8 +15,9 @@ export function SessionPrompt({
     return <span data-pw="session-prompt">—</span>;
   }
   const firstBreak = prompt.search(/\r\n|\r|\n/);
-  const hasMore = firstBreak >= 0;
-  const firstLine = hasMore ? prompt.slice(0, firstBreak) : prompt;
+  const hasMoreLines = firstBreak >= 0;
+  const firstLine = hasMoreLines ? prompt.slice(0, firstBreak) : prompt;
+  const canDisclose = prompt.length > 0;
   const contentId = `session-prompt-${encodeURIComponent(sessionId)}`;
 
   return (
@@ -28,7 +29,7 @@ export function SessionPrompt({
       >
         {expanded ? prompt : firstLine}
       </span>
-      {hasMore ? (
+      {canDisclose ? (
         <button
           type="button"
           className="text-xs text-primary underline-offset-4 hover:underline"

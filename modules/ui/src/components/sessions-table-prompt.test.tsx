@@ -64,9 +64,17 @@ describe("SessionsTable prompt disclosure", () => {
     expect(row(view.container, "crlf").textContent).not.toContain("Windows second");
     expect(row(view.container, "cr").textContent).toContain("Old first");
     expect(row(view.container, "cr").textContent).not.toContain("Old second");
-    expect(
-      row(view.container, "single").querySelector('[data-pw="session-prompt-toggle"]'),
-    ).toBeNull();
+    const single = row(view.container, "single");
+    const singleText = single.querySelector('[data-pw="session-prompt"]') as HTMLElement;
+    const singleToggle = single.querySelector(
+      '[data-pw="session-prompt-toggle"]',
+    ) as HTMLButtonElement;
+    expect(singleText.className).toContain("truncate");
+    expect(singleToggle.textContent).toBe("Show full prompt");
+    act(() => singleToggle.click());
+    expect(singleText.textContent).toBe("One line");
+    expect(singleText.className).not.toContain("truncate");
+    expect(singleText.className).toContain("break-words");
     expect(
       row(view.container, "empty").querySelector('[data-pw="session-prompt"]')?.textContent,
     ).toBe("");
