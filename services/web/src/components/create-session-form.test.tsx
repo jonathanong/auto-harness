@@ -44,7 +44,8 @@ describe("CreateSessionForm", () => {
       source: "ui",
     });
     expect(router.push).toHaveBeenCalledWith("/sessions/session%2F1?toast=Session+queued.");
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(router.refresh).not.toHaveBeenCalled();
+    expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(false);
     view.unmount();
   });
 
@@ -98,6 +99,7 @@ describe("CreateSessionForm", () => {
     );
     await act(async () => finish(new Response("capacity unavailable", { status: 409 })));
     expect(field(view.container, "create-session-error").textContent).toBe("capacity unavailable");
+    expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(false);
     view.unmount();
 
     const empty = mountForm(<CreateSessionForm targets={[]} />);

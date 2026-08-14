@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { createRequestFake, field, mountForm, press } from "./form-test-helpers.tsx";
 import { DeleteCommandButton } from "./delete-command-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {
@@ -26,10 +26,13 @@ describe("DeleteCommandButton", () => {
   });
 
   it("confirms a successful deletion, shows pending state, and supports cancel", async () => {
+    const navigate = vi.fn();
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>((resolve) => (finish = resolve));
     const { request, requests } = createRequestFake(pending);
-    const view = mountForm(<DeleteCommandButton commandId="command/1" request={request} />);
+    const view = mountForm(
+      <DeleteCommandButton commandId="command/1" request={request} navigate={navigate} />,
+    );
     open(view);
     expect(field(document, "delete-command-confirm").textContent).toContain(
       "Permanently remove this command",
@@ -41,8 +44,7 @@ describe("DeleteCommandButton", () => {
     expect(requests).toEqual([
       ["/api/v1/commands/command%2F1", expect.objectContaining({ method: "DELETE" })],
     ]);
-    expect(router.push).toHaveBeenCalledWith("/commands");
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/commands");
     view.unmount();
 
     const cancelView = mountForm(<DeleteCommandButton commandId="command/2" request={request} />);

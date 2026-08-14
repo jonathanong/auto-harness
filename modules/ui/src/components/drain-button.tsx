@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState } from "react";
 
 import { Button, type ButtonProps } from "./button.tsx";
 import type { RequestFunction } from "./request-types.ts";
@@ -32,7 +32,7 @@ export function DrainButton({
   request = fetch,
 }: DrainButtonProps) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   return (
     <WithTooltip tip={tip}>
       <Button
@@ -42,14 +42,16 @@ export function DrainButton({
         disabled={pending}
         data-pw={pw}
         onClick={() => {
-          start(async () => {
+          setPending(true);
+          void (async () => {
             await request("/api/v1/hosts/drain", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ hostId }),
             });
+            setPending(false);
             router.refresh();
-          });
+          })();
         }}
       >
         {pending ? pendingLabel : label}

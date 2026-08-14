@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import { navigateBrowser } from "../lib/browser-navigation.ts";
 import type { RequestFunction } from "./request-types.ts";
 
 async function errorMessage(res: Response): Promise<string> {
@@ -18,13 +18,14 @@ export function DeleteCommandButton({
    * delete while this holds, so the UI disables up front rather than surfacing a 409. */
   defaultForProviderName,
   request = fetch,
+  navigate = navigateBrowser,
 }: {
   commandId: string;
   defaultForProviderName?: string;
   request?: RequestFunction;
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blocked = Boolean(defaultForProviderName);
@@ -72,18 +73,20 @@ export function DeleteCommandButton({
           data-pw="delete-command-confirm-submit"
           onClick={() => {
             setError(null);
-            start(async () => {
+            setPending(true);
+            void (async () => {
               const res = await request(
                 `${apiBase()}/api/v1/commands/${encodeURIComponent(commandId)}`,
                 { method: "DELETE" },
               );
               if (!res.ok) {
                 setError(await errorMessage(res));
+                setPending(false);
                 return;
               }
-              router.push("/commands");
-              router.refresh();
-            });
+              setPending(false);
+              navigate("/commands");
+            })();
           }}
         >
           {pending ? "Deleting…" : "Confirm delete"}

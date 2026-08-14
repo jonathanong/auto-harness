@@ -335,6 +335,7 @@ export function registerHost(
     previousInventory,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
+  state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putHostInventory(registrationInventory));
   }
@@ -537,6 +538,7 @@ export async function registerHostDurable(
   if (opts.draining) state.drainingHosts.add(opts.hostId);
   else state.drainingHosts.delete(opts.hostId);
   state.hostInventories.set(opts.hostId, registrationInventory);
+  state.hostInventoryRevision += 1;
   return { ok: true, connectionId };
 }
 

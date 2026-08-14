@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
@@ -12,7 +12,7 @@ type Repo = { id: string; name: string; defaultBranch?: string };
 /** Control-plane form: attach an existing catalog repository's local path to a selected host. */
 export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; repos: Repo[] }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (hostIds.length === 0) {
@@ -51,20 +51,23 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           setError("host, repository, and absolute path on the host are required");
           return;
         }
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const result = await attachLocalRepo({ hostId, id, path, defaultBranch });
           if (!result.ok) {
             setError(result.error);
+            setPending(false);
             return;
           }
           const repoName = repos.find((r) => r.id === id)?.name ?? id;
+          setPending(false);
           router.push(
             withToast(
               `/repositories/${id}`,
               `Attached ${repoName} on host ${hostId} with no worktrees.`,
             ),
           );
-        });
+        })();
       }}
     >
       <div className="space-y-1">

@@ -1,16 +1,17 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { flushSync } from "react-dom";
 import { emptyHostInventory } from "@auto-harness/shared";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 
 /** Control-plane: seed a host inventory slot (the host's daemon may be offline). */
 export function AddHostForm() {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
@@ -29,7 +30,8 @@ export function AddHostForm() {
           setError("hostId is required");
           return;
         }
-        start(async () => {
+        setPending(true);
+        void (async () => {
           const existing = await fetch(
             `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
             { cache: "no-store" },
@@ -50,14 +52,19 @@ export function AddHostForm() {
           );
           if (!res.ok) {
             setError(await res.text());
+            setPending(false);
             return;
           }
-          setOk(
-            `Host slot ${hostId} created (empty inventory). Run: HARNESS_HOST_ID=${hostId} pnpm local:agent start`,
+          flushSync(() => {
+            setOk(
+              `Host slot ${hostId} created (empty inventory). Run: HARNESS_HOST_ID=${hostId} pnpm local:agent start`,
+            );
+            form.reset();
+          });
+          router.replace(
+            withToast(`/hosts/${encodeURIComponent(hostId)}`, `Host slot ${hostId} created.`),
           );
-          form.reset();
-          router.refresh();
-        });
+        })();
       }}
     >
       <div className="space-y-1">

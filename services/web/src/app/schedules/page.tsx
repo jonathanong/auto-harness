@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
 
 import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
+import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet } from "../../lib/api.ts";
 import type { SessionTarget } from "../../session-target.ts";
@@ -99,7 +100,9 @@ export default async function SchedulesPage({
               </TableCell>
               <TableCell className="text-xs">{s.queueTtlSeconds ?? 691200}s</TableCell>
               <TableCell className="font-mono text-xs">{s.cron}</TableCell>
-              <TableCell>{s.enabled ? "Enabled" : "Disabled"}</TableCell>
+              <TableCell>
+                <ScheduleEnabledToggle id={s.id} enabled={s.enabled} />
+              </TableCell>
               <TableCell className="max-w-xs truncate font-mono text-xs">
                 {s.concurrencyId ?? "—"}
               </TableCell>

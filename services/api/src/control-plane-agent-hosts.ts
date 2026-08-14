@@ -64,6 +64,7 @@ export function putHostInventory(
   if (!result.ok) return result;
   const rec = result.config;
   state.hostInventories.set(hostId, rec);
+  state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putHostInventory({ ...rec }));
   }
@@ -106,6 +107,7 @@ export async function putHostInventoryDurable(
     ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
     ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),
   ]);
+  state.hostInventoryRevision += 1;
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
@@ -134,6 +136,7 @@ export function deleteHostInventory(
     return { ok: false, error: "agent host config not found" };
   }
   state.hostInventories.delete(hostId);
+  state.hostInventoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.deleteHostInventory(hostId));
   }
@@ -162,6 +165,7 @@ export async function deleteHostInventoryDurable(
     .map((worktree) => worktree.id);
   await state.storage.deleteHostInventory(hostId);
   await Promise.all(worktreeIds.map((id) => state.storage!.deleteWorktree(id)));
+  state.hostInventoryRevision += 1;
   state.hostInventories.delete(hostId);
   for (const [id, wt] of state.worktrees) {
     if (wt.hostId === hostId) state.worktrees.delete(id);

@@ -81,7 +81,8 @@ test("opens Clone & Edit without creating and submits only replayable source inp
 
   await page.getByTestId("create-session-prompt").fill(`${prompt} edited`);
   await page.getByTestId("create-session-submit").click();
-  await expect(page).toHaveURL(/\/sessions\/[^/?]+\?toast=/);
+  await expect(page).toHaveURL(/\/sessions\/[^/?]+(?:\?toast=.*)?$/);
+  await expect(page.getByTestId("toast")).toContainText("Session queued.");
   expect(creates).toHaveLength(1);
   expect(creates[0]).toEqual({
     repositoryId: repository.id,

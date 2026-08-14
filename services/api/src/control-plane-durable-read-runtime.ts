@@ -85,7 +85,7 @@ export async function getLogsDurable(
 
 export async function listWorktreesDurable(state: ControlPlaneState): Promise<WorktreeRecord[]> {
   if (!state.storage) return [...state.worktrees.values()].map((worktree) => ({ ...worktree }));
-  const worktrees = await state.storage.listAllWorktrees();
+  const worktrees = await state.storage.listAllWorktrees(true);
   state.worktrees.clear();
   for (const worktree of worktrees) state.worktrees.set(worktree.id, { ...worktree });
   return worktrees;

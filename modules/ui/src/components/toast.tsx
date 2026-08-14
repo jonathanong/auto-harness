@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 /**
  * Shows a one-off success message carried across a redirect via a `?toast=`
@@ -10,7 +10,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
  * provider, and strips itself from the URL once shown.
  */
 export function Toast({ paramName = "toast" }: { paramName?: string }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const param = searchParams.get(paramName);
@@ -26,7 +25,9 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
     const params = new URLSearchParams(searchParams);
     params.delete(paramName);
     const next = params.size ? `${pathname}?${params.toString()}` : pathname;
-    router.replace(next, { scroll: false });
+    // The content is already correct. Update only the address bar so cleanup
+    // cannot race the navigation that rendered this toast.
+    history.replaceState(history.state, "", next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [param]);
 

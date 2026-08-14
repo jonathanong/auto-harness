@@ -97,7 +97,7 @@ export function AppShell({
                         ? "bg-muted text-foreground"
                         : "text-muted-foreground hover:bg-muted/60",
                     )}
-                    prefetch
+                    prefetch={false}
                   >
                     {item.label}
                   </Link>

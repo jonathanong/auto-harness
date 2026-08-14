@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import { field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
 import { HostProviderAccountCommandForm } from "./host-provider-account-command-form.tsx";
 
 const commands = [
@@ -17,6 +17,7 @@ const inventory = {
 
 describe("HostProviderAccountCommandForm", () => {
   it("saves the selected host-level command override", async () => {
+    const navigate = vi.fn();
     const fetch = vi
       .fn()
       .mockResolvedValueOnce(json(inventory))
@@ -28,6 +29,7 @@ describe("HostProviderAccountCommandForm", () => {
         providerAccountId="account"
         currentCommandId={undefined}
         providerCommands={commands}
+        navigate={navigate}
       />,
     );
     setValue(field(view.container, "host-provider-account-command-select-account"), "command-1");
@@ -36,7 +38,11 @@ describe("HostProviderAccountCommandForm", () => {
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
       providerAccounts: [{ providerAccountId: "account", commandId: "command-1" }],
     });
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(
+      field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
+        .disabled,
+    ).toBe(false);
+    expect(navigate).toHaveBeenCalledWith("/");
     view.unmount();
   });
 
@@ -78,6 +84,32 @@ describe("HostProviderAccountCommandForm", () => {
     expect(field(view.container, "host-provider-account-command-error-account").textContent).toBe(
       "nope",
     );
+    expect(
+      field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
+        .disabled,
+    ).toBe(false);
+    view.unmount();
+  });
+
+  it("recovers when reading the inventory rejects", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("inventory unavailable")));
+    const view = mountForm(
+      <HostProviderAccountCommandForm
+        hostId="host"
+        providerAccountId="account"
+        currentCommandId={undefined}
+        providerCommands={commands}
+      />,
+    );
+    submit(field(view.container, "host-provider-account-command-form-account"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "host-provider-account-command-error-account").textContent).toBe(
+      "Error: inventory unavailable",
+    );
+    expect(
+      field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")
+        .disabled,
+    ).toBe(false);
     view.unmount();
   });
 });

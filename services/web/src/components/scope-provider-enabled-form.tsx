@@ -1,7 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import {
   getInventory,
@@ -10,12 +9,15 @@ import {
   type ProviderAccountScope,
 } from "@auto-harness/shared";
 
+import { navigateBrowser } from "../lib/browser-navigation.ts";
+
 export function ScopeProviderEnabledForm({
   hostId,
   scope,
   providerAccountId,
   currentOverride,
   inheritedLabel,
+  navigate = navigateBrowser,
 }: {
   hostId: string;
   scope: ProviderAccountScope;
@@ -24,9 +26,9 @@ export function ScopeProviderEnabledForm({
   currentOverride: boolean | undefined;
   /** Where an unset value inherits from, for the "(inherit from …)" option label. */
   inheritedLabel: string;
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -39,16 +41,24 @@ export function ScopeProviderEnabledForm({
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("enabled") ?? "");
         const enabled = value === "" ? undefined : value === "true";
-        start(async () => {
-          const current = await getInventory(hostId);
-          const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
-          const r = await putInventory(hostId, next);
-          if (!r.ok) {
-            setError(r.error);
-            return;
+        setPending(true);
+        void (async () => {
+          try {
+            const current = await getInventory(hostId);
+            const next = setScopeProviderEnabled(current, scope, providerAccountId, enabled);
+            const r = await putInventory(hostId, next);
+            if (!r.ok) {
+              setError(r.error);
+              return;
+            }
+            setPending(false);
+            navigate(`${location.pathname}${location.search}`);
+          } catch (cause) {
+            setError(String(cause));
+          } finally {
+            setPending(false);
           }
-          router.refresh();
-        });
+        })();
       }}
     >
       <select

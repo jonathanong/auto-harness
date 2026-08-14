@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import { field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
 import { CommandCreateForm } from "./command-create-form.tsx";
 
 const providers = [
@@ -16,9 +16,10 @@ function fill(view: ReturnType<typeof mountForm>) {
 
 describe("CommandCreateForm", () => {
   it("offers the standalone/provider selector and navigates after creation", async () => {
+    const navigate = vi.fn();
     const fetch = vi.fn().mockResolvedValue(json({ id: "c/1" }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<CommandCreateForm providers={providers} />);
+    const view = mountForm(<CommandCreateForm providers={providers} navigate={navigate} />);
     const select = field<HTMLSelectElement>(view.container, "command-catalog-provider");
     expect(select.labels?.[0]?.textContent).toBe("provider");
     setValue(select, "p1");
@@ -31,20 +32,21 @@ describe("CommandCreateForm", () => {
       appendPrompt: true,
       providerId: "p1",
     });
-    expect(router.push).toHaveBeenCalledWith("/commands/c/1?toast=Command+created.");
+    expect(navigate).toHaveBeenCalledWith("/commands/c/1?toast=Command+created.");
     view.unmount();
   });
 
   it("resets and refreshes fixed-provider commands, and reports errors while pending", async () => {
+    const navigate = vi.fn();
     const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<CommandCreateForm fixedProviderId="p/1" />);
+    const view = mountForm(<CommandCreateForm fixedProviderId="p/1" navigate={navigate} />);
     expect(view.container.querySelector('[data-pw="command-catalog-provider"]')).toBeNull();
     fill(view);
     submit(field(view.container, "form-command-catalog"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({ providerId: "p/1" });
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/");
     expect(field<HTMLTextAreaElement>(view.container, "command-catalog-argv").value).toBe("");
     vi.stubGlobal(
       "fetch",

@@ -17,7 +17,7 @@ export default defineConfig({
         "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx",
         // Session and schedule forms are exercised in happy-dom with real React
         // and Next contexts. App routes and the remaining app-owned components stay e2e-only.
-        "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,create-session-form,session-routing-fields,session-target-select}.tsx",
+        "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,schedule-enabled-toggle,create-session-form,session-routing-fields,session-target-select}.tsx",
         "modules/ui/src/lib/utils.ts",
         "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
         "modules/ui/src/components/{detail-header,provider-account-health,session-execution-summary,session-route-summary,sessions-table,tabs}.tsx",
@@ -117,6 +117,7 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "services/web/src/components/schedule-enabled-toggle.tsx": { 100: true },
         "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx}":
           {
             lines: 100,

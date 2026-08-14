@@ -2,6 +2,7 @@ import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dy
 import { describe, expect, it } from "vitest";
 
 import {
+  getHostInventory,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
 } from "./plane-storage-catalog.ts";
@@ -34,6 +35,25 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("durable schedule creation", () => {
+  it("reads host inventory strongly consistently after UI mutations", async () => {
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(GetCommand);
+          expect((command as GetCommand).input).toMatchObject({
+            TableName: "HostInventories",
+            Key: { hostId: "host-1" },
+            ConsistentRead: true,
+          });
+          return { Item: { hostId: "host-1", repositories: [], commandProfiles: {} } };
+        },
+      } as never,
+      tables: { hostInventories: "HostInventories" } as never,
+    };
+
+    await expect(getHostInventory(ctx, "host-1")).resolves.toMatchObject({ hostId: "host-1" });
+  });
+
   it("does not treat a failed schedule-cursor condition as a concurrency duplicate", async () => {
     let calls = 0;
     const ctx: PlaneStorageCtx = {

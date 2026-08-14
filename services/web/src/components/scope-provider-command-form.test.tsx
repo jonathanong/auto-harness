@@ -1,17 +1,9 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import {
-  createApiFake,
-  field,
-  json,
-  mountForm,
-  router,
-  setValue,
-  submit,
-} from "./form-test-helpers.tsx";
+import { createApiFake, field, json, mountForm, setValue, submit } from "./form-test-helpers.tsx";
 import { ScopeProviderCommandForm } from "./scope-provider-command-form.tsx";
 
 const inventory = {
@@ -25,6 +17,7 @@ const commands = [
 
 describe("ScopeProviderCommandForm", () => {
   it("selects and saves a provider command", async () => {
+    const navigate = vi.fn();
     const api = createApiFake(json(inventory), new Response(null, { status: 204 }));
     const view = mountForm(
       <ScopeProviderCommandForm
@@ -33,6 +26,7 @@ describe("ScopeProviderCommandForm", () => {
         providerAccountId="account/one"
         currentOverride={undefined}
         providerCommands={[...commands]}
+        navigate={navigate}
       />,
     );
     const select = field<HTMLSelectElement>(
@@ -46,7 +40,7 @@ describe("ScopeProviderCommandForm", () => {
     expect(api.requests[1]?.[1]).toMatchObject({
       body: expect.stringContaining('"commandId":"command/one"'),
     });
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/");
     view.unmount();
   });
 
@@ -83,13 +77,36 @@ describe("ScopeProviderCommandForm", () => {
     expect(api.requests[1]?.[1]).toMatchObject({
       body: expect.not.stringContaining("commandId"),
     });
-    api.enqueue(json(inventory), new Response(null, { status: 204 }));
+    api.enqueue(json(inventory), new Response("retry failed", { status: 422 }));
     select.remove();
     submit(form);
     await act(async () => Promise.resolve());
     expect(api.requests[3]?.[1]).toMatchObject({
       body: expect.not.stringContaining("commandId"),
     });
+    view.unmount();
+  });
+
+  it("recovers when reading the inventory rejects", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("inventory unavailable"));
+    const view = mountForm(
+      <ScopeProviderCommandForm
+        hostId="host"
+        scope={{ repositoryId: "repo/one" }}
+        providerAccountId="account/one"
+        currentOverride={undefined}
+        providerCommands={[...commands]}
+      />,
+    );
+    submit(field(view.container, "scope-provider-command-form-account/one"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "scope-provider-command-error-account/one").textContent).toBe(
+      "inventory unavailable",
+    );
+    expect(
+      field<HTMLButtonElement>(view.container, "scope-provider-command-submit-account/one")
+        .disabled,
+    ).toBe(false);
     view.unmount();
   });
 });
