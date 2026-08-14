@@ -78,12 +78,15 @@ describe("SessionActions", () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     const view = mount(<SessionActions sessionId="sess" status="queued" />, router);
     const cancel = view.container.querySelector('[data-pw="session-cancel"]') as HTMLButtonElement;
+    expect(cancel.textContent).toBe("Cancel session");
+    expect(cancel.getAttribute("aria-busy")).toBe("false");
     act(() => cancel.click());
     const pendingCancel = view.container.querySelector(
       '[data-pw="session-cancel"]',
     ) as HTMLButtonElement;
     expect(pendingCancel.disabled).toBe(true);
-    expect(pendingCancel.textContent).toBe("…");
+    expect(pendingCancel.textContent).toBe("Cancelling…");
+    expect(pendingCancel.getAttribute("aria-busy")).toBe("true");
     resolve(response(false, "cannot cancel"));
     await act(async () => {
       await Promise.resolve();
@@ -108,6 +111,8 @@ describe("SessionActions", () => {
     );
     const resume = view.container.querySelector('[data-pw="session-resume"]') as HTMLButtonElement;
     expect(resume).not.toBeNull();
+    expect(resume.textContent).toBe("Resume");
+    expect(resume.getAttribute("aria-busy")).toBe("false");
     await act(async () => {
       (view.container.querySelector('[data-pw="session-resume"]') as HTMLButtonElement).click();
       await Promise.resolve();
@@ -145,6 +150,8 @@ describe("SessionActions", () => {
 
     const clone = view.container.querySelector('[data-pw="session-clone"]') as HTMLButtonElement;
     expect(clone).not.toBeNull();
+    expect(clone.textContent).toBe("Re-run");
+    expect(clone.getAttribute("aria-busy")).toBe("false");
     await act(async () => {
       clone.click();
       await Promise.resolve();
@@ -182,7 +189,9 @@ describe("SessionActions", () => {
     const view = mount(<SessionActions sessionId="sess" status="unknown" />, router);
     expect(view.container.querySelector('[data-pw="session-cancel"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="session-resume"]')).toBeNull();
-    expect(view.container.querySelector('[data-pw="session-archive"]')).not.toBeNull();
+    const archive = view.container.querySelector('[data-pw="session-archive"]');
+    expect(archive?.textContent).toBe("Archive logs");
+    expect(archive?.getAttribute("aria-busy")).toBe("false");
     view.unmount();
   });
 });

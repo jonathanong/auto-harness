@@ -231,11 +231,13 @@ does not send browser input to the running process. Git, setup, and hook output 
 
 ### Cancel Button
 
-For `queued` or `running` sessions, a "Cancel Session" button is shown. It calls `POST /sessions/:id/cancel` and the status updates in real-time.
+For `queued` or `running` sessions, a "Cancel session" button is shown. It calls `POST /sessions/:id/cancel` and reads "Cancelling…" with a busy state while the request is pending; the status then updates in real-time.
 
 ### Re-run, Resume & Clone
 
 Action buttons on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`):
+
+Each action exposes its pending state with a descriptive label (`Resuming…`, `Re-running…`, or `Archiving…`) instead of an unlabeled spinner glyph.
 
 | Button           | Behavior                                                                                                                                                                                                                                                                                                                                |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
