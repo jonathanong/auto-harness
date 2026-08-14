@@ -105,6 +105,9 @@ describe("shared detail views", () => {
     expect(linked).toContain("30s");
     expect(linked).toContain('data-pw="session-detail-priority">0');
     expect(linked).toContain("agent run");
+    expect(linked).toContain('data-pw="session-detail-prompt"');
+    expect(linked).toContain('data-pw="session-detail-prompt-content" tabindex="0"');
+    expect(linked).toContain("Ship it");
     expect(linked).toContain('aria-label="Session logs"');
     expect(linked).toContain("Cancel");
 
@@ -129,7 +132,8 @@ describe("shared detail views", () => {
       <SessionDetail session={{ id: "session/c", status: "queued" }} breadcrumbs={[]} />,
     );
     expect(absent).toContain('Repository</dt><dd class="font-mono text-sm">—');
-    expect(absent).toContain('Prompt</dt><dd class="whitespace-pre-wrap break-words text-sm">—');
+    expect(absent).toContain('id="session-detail-prompt-heading"');
+    expect(absent).toContain('data-pw="session-detail-prompt-content" tabindex="0">—</pre>');
     expect(absent).toContain('data-pw="session-detail-worktree">—');
     expect(
       render(
