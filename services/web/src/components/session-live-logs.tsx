@@ -29,6 +29,7 @@ export function SessionLiveLogs({
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const [sessionStatus, setSessionStatus] = useState(initialStatus);
   const [error, setError] = useState<string | null>(null);
+  const [reconnectKey, setReconnectKey] = useState(0);
   const cursorRef = useRef<string | undefined>(lastLiveCursor(initialLogs));
 
   useEffect(() => {
@@ -121,7 +122,7 @@ export function SessionLiveLogs({
       }
       socket?.close(1000, "session log viewer unmounted");
     };
-  }, [sessionId]);
+  }, [reconnectKey, sessionId]);
 
   return (
     <div className="space-y-2" data-pw="session-logs-live-tail">
@@ -139,6 +140,23 @@ export function SessionLiveLogs({
         <p className="text-sm text-destructive" data-pw="session-logs-live-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {connectionState === "reconnecting" ? (
+        <div
+          className="flex items-center justify-between gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-950"
+          data-pw="session-logs-reconnect-banner"
+          role="status"
+        >
+          <span>Real-time updates paused — reconnecting…</span>
+          <button
+            type="button"
+            className="font-medium underline underline-offset-4"
+            data-pw="session-logs-reconnect-now"
+            onClick={() => setReconnectKey((current) => current + 1)}
+          >
+            Reconnect now
+          </button>
+        </div>
       ) : null}
       <SessionTerminalViewer sessionId={sessionId} items={items} />
     </div>
