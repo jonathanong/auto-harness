@@ -8,12 +8,17 @@ export function useSessionTableKeyboard(ids: string[], hrefBase?: string) {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.repeat || hasCommandModifier(event)) return;
-      if (isEditableTarget(event.target)) return;
+      if (
+        isEditableTarget(event.target) ||
+        document.querySelector('[role="dialog"][aria-modal="true"]')
+      )
+        return;
       const key = event.key.toLowerCase();
       if (key !== "j" && key !== "k" && key !== "enter") return;
       const selectedIndex = ids.indexOf(selectedId ?? "");
       if (key === "enter") {
-        if (selectedId && hrefBase) {
+        const selectedRow = findBySessionId<HTMLElement>("data-session-row-id", selectedId ?? "");
+        if (selectedId && hrefBase && event.target === selectedRow) {
           event.preventDefault();
           findBySessionId<HTMLAnchorElement>("data-session-link-id", selectedId)?.click();
         }

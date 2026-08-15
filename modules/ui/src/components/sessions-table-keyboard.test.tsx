@@ -62,7 +62,7 @@ describe("sessions table keyboard navigation", () => {
     await act(async () => Promise.resolve());
     expect(second.getAttribute("aria-selected")).toBe("true");
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
-    expect(press(document, "Enter").defaultPrevented).toBe(true);
+    expect(press(second, "Enter").defaultPrevented).toBe(true);
     expect(click).toHaveBeenCalledOnce();
 
     press(document, "k");
@@ -122,6 +122,31 @@ describe("sessions table keyboard navigation", () => {
       container.querySelector('[data-session-row-id="first"]')?.getAttribute("aria-selected"),
     ).toBe("true");
     expect(press(document, "Enter").defaultPrevented).toBe(false);
+    act(() => root.unmount());
+  });
+
+  it("ignores row shortcuts while a modal is open and preserves descendant controls", async () => {
+    const { container, root } = mount();
+    const first = container.querySelector<HTMLElement>('[data-session-row-id="first"]')!;
+    const sessionLink = container.querySelector<HTMLAnchorElement>(
+      '[data-session-link-id="first"]',
+    )!;
+    const sessionClick = vi.spyOn(sessionLink, "click").mockImplementation(() => undefined);
+
+    press(document, "j");
+    await act(async () => Promise.resolve());
+    const descendant = first.querySelector<HTMLAnchorElement>("a")!;
+    const descendantEvent = press(descendant, "Enter");
+    expect(descendantEvent.defaultPrevented).toBe(false);
+    expect(sessionClick).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    expect(press(document, "k").defaultPrevented).toBe(false);
+    expect(press(first, "Enter").defaultPrevented).toBe(false);
+    expect(sessionClick).not.toHaveBeenCalled();
     act(() => root.unmount());
   });
 });
