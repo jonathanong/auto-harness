@@ -84,7 +84,7 @@ Confirm nothing is listening on the ports you need (or stop prior processes):
 ```bash
 lsof -iTCP:7420 -sTCP:LISTEN || true  # API
 lsof -iTCP:7421 -sTCP:LISTEN || true  # web
-lsof -iTCP:7422 -sTCP:LISTEN || true  # agent-web
+lsof -iTCP:7422 -sTCP:LISTEN || true  # host-pane
 lsof -iTCP:7423 -sTCP:LISTEN || true  # DynamoDB Local
 ```
 
@@ -244,7 +244,7 @@ curl -sS http://127.0.0.1:7420/api/v1/sessions
 # {"items":[]} after a clean clear
 ```
 
-If `agents` is empty, the agent is not registered — fix WS URL / restart agent before creating sessions.
+If `items` is empty, the host is not registered — fix the WS URL or restart the daemon before creating sessions.
 
 ---
 
@@ -435,15 +435,15 @@ rm -rf "$WORK"             # optional — drop demo workspace
 
 ## 9. Troubleshooting
 
-| Symptom                                  | Likely cause                                                 | Fix                                                                                                 |
-| ---------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
-| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                                                  |
-| Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /agents`, `requiredLabels` vs worktree `labels`, agent log                               |
-| `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                                                      |
-| Target missing from dropdown             | Provider account not attached to any host, or agent offline  | Attach it on the host detail page's Provider accounts tab, or `POST /commands` for a standalone one |
-| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format                          |
-| Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                                                 |
-| Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                                             |
+| Symptom                                  | Likely cause                                                | Fix                                                                                                 |
+| ---------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                     | §2 `clearAll` on `AutoHarness` tables; restart API                                                  |
+| Session stuck `queued`                   | Host not registered; labels mismatch; worktree offline/busy | Check `GET /api/v1/hosts`, `requiredLabels` vs worktree `labels`, daemon log                        |
+| `EADDRINUSE` :7420                       | Previous API still running                                  | Kill listener on port; restart                                                                      |
+| Target missing from dropdown             | Provider account not attached to any host, or agent offline | Attach it on the host detail page's Provider accounts tab, or `POST /commands` for a standalone one |
+| Grok hangs / interactive TUI             | Missing headless flags                                      | Use `-p` / `--single` + `--always-approve` + non-interactive output format                          |
+| Worktree checkout fails                  | Bad absolute paths; missing git                             | Fix config paths; ensure primary repo is a git root                                                 |
+| Unit tests green, E2E fails              | Not the same as deploy path                                 | Always run §1 + §5 before deploy claims                                                             |
 
 ---
 
