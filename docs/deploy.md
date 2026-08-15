@@ -2,11 +2,11 @@
 
 Ops is split by **surface**. Pick the doc for what you are running.
 
-| Surface                                                                          | Doc                                                | Maturity                                                                |
-| -------------------------------------------------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------- |
-| **Local** — DynamoDB Local + API + optional web + agent                          | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                     |
-| **AWS control plane** — persistence plus REST, WebSocket, and scheduled runtimes | **[deploy-aws.md](deploy-aws.md)**                 | **Synthesizable only**; no deployment path or account-backed validation |
-| **VPS agent** — daemon, profiles, worktrees                                      | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Partial** (local start supported; systemd is the production shape)    |
+| Surface                                                                          | Doc                                                | Maturity                                                                        |
+| -------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Local** — DynamoDB Local + API + optional web + agent                          | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                             |
+| **AWS control plane** — persistence plus REST, WebSocket, and scheduled runtimes | **[deploy-aws.md](deploy-aws.md)**                 | **Synthesizable only**; no deployment path or account-backed validation         |
+| **VPS agent** — daemon, profiles, worktrees                                      | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run |
 
 No AWS surface has been deployed or validated against an AWS account by this repository. A
 successful CDK synth proves template shape only, not deployability or runtime behavior.

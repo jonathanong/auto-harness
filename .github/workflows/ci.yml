@@ -52,6 +52,9 @@ jobs:
       - name: Playwright selector coverage
         run: pnpm check:data-pw
 
+      - name: systemd service contract
+        run: pnpm check:systemd
+
       - name: Install lychee
         uses: lycheeverse/lychee-action@v2
         with:

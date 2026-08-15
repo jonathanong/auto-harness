@@ -1,0 +1,22 @@
+[Unit]
+Description=Auto Harness host daemon
+Documentation=https://github.com/jonathanong/auto-harness/blob/main/docs/deploy-host-daemon.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=harness
+Group=harness
+WorkingDirectory=/opt/auto-harness/current
+EnvironmentFile=/etc/auto-harness/host-daemon.env
+ExecStart=/usr/bin/env node services/host-daemon/bin/auto-harness-host-daemon.mjs start
+Restart=always
+RestartSec=5s
+TimeoutStopSec=infinity
+KillMode=mixed
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

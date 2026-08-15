@@ -3,7 +3,6 @@
  * Thin launcher: run agent CLI via Node native type stripping (no tsc/tsx build).
  * Requires Node.js >= 22.18 (type stripping enabled by default).
  */
-import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,7 +18,10 @@ if (major < 22 || (major === 22 && minor < 18)) {
   process.exit(1);
 }
 
-const result = spawnSync(process.execPath, [cli, ...process.argv.slice(2)], {
-  stdio: "inherit",
+// Run the CLI in this process so service-manager signals reach the daemon's
+// SIGINT/SIGTERM drain handlers. A child-process wrapper would make this
+// launcher systemd's MainPID while the actual daemon ran behind it.
+const { main } = await import(cli);
+void main([process.execPath, cli, ...process.argv.slice(2)]).then((code) => {
+  process.exitCode = code;
 });
-process.exit(result.status ?? 1);
