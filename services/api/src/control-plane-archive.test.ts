@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { archiveSessionLogs, retrySessionArchiveIfNeeded } from "./control-plane-archive.ts";
-import { createControlPlaneState } from "./control-plane-state.ts";
+import { createControlPlaneState, trackLogPersist } from "./control-plane-state.ts";
 
 describe("archive retry state", () => {
   it("stays disabled without a writer and skips a completed cached object", async () => {
@@ -54,7 +54,7 @@ describe("archive retry state", () => {
       archiveWriter: { putArchive: async ({ key }) => void uploaded.push(key) },
     });
     state.pendingPersists.push(failedArchive);
-    state.pendingLogPersists.push(logWrite);
+    trackLogPersist(state, "later-session", logWrite);
 
     const archive = archiveSessionLogs(state, "later-session");
     await Promise.resolve();

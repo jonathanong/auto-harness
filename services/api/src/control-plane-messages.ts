@@ -7,7 +7,7 @@ import {
 
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
-import { persistSession, queueWrite } from "./control-plane-state.ts";
+import { persistSession, queueWrite, trackLogPersist } from "./control-plane-state.ts";
 import {
   heartbeat,
   heartbeatDurable,
@@ -102,7 +102,7 @@ export function appendLog(
       await storage!.putLog(rec);
       state.onLogCommitted?.(rec);
     });
-    state.pendingLogPersists.push(persisted);
+    trackLogPersist(state, opts.sessionId, persisted);
   } else state.onLogCommitted?.(rec);
   return rec;
 }
