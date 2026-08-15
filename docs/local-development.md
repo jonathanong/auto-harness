@@ -232,7 +232,7 @@ With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1` support
 | Repositories                             | `GET/POST /repositories`, `GET/PUT/DELETE /repositories/:id`                                                                         |
 | Schedules                                | `GET/POST /schedules`, `GET/PUT/DELETE /schedules/:id`, `POST /schedules/:id/trigger`                                                |
 | Sessions                                 | `GET /sessions`, `POST /sessions/:id/cancel`                                                                                         |
-| Agents                                   | `GET /agents`, `POST /agents/drain`                                                                                                  |
+| Hosts                                    | `GET /hosts`, `POST /hosts/drain`; `GET/PUT/DELETE /hosts/:hostId/inventory`                                                         |
 | Providers / Provider Accounts / Commands | `GET/POST /providers`, `/provider-accounts`, `/commands` (+ `GET/PUT/DELETE .../:id`); `GET /session-targets` for the unified picker |
 
 Also available: worktrees, scheduler helpers, session logs/resume/archive — see [api.md](api.md) and [cli.md](cli.md) for the Phase 1 surface.

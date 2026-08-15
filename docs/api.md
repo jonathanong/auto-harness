@@ -404,6 +404,7 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
 {
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test in src/utils.test.ts",
+  "ref": "feature/fix-utils",
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
   "queueTtlSeconds": 691200,
@@ -411,24 +412,26 @@ Create a new session. This is the main endpoint for triggering AI work. **Operat
   "priority": 10,
   "requiredLabels": ["codex"],
   "concurrencyId": "filaments-pr-shepherd-123",
+  "metadata": { "pullRequest": 123 },
   "source": "ui"
 }
 ```
 
-| Field                           | Type     | Required    | Description                                                                                                                                                                                                                                |
-| ------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `repositoryId`                  | string   | ✓           | Target repository                                                                                                                                                                                                                          |
-| `prompt`                        | string   | ✓           | The prompt/instruction for the AI agent                                                                                                                                                                                                    |
-| `target`                        | object   | ✓           | Primary `{ providerId }` or `{ commandId }` target. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated.                                                                     |
-| `fallbacks`                     | object[] | ✗           | Ordered additional targets. The scheduler advances only when the preceding target has no eligible route.                                                                                                                                   |
-| `queueTtlSeconds`               | number   | ✗           | Absolute queue lifetime, default `691200` (8 days). Expiry reports `queue_expired`; fallback attempts do not reset it.                                                                                                                     |
-| `timeout`                       | number   | ✓           | Max session duration in seconds. The agent kills the process after this time.                                                                                                                                                              |
-| `priority`                      | number   | ✗           | Higher = more urgent. Default: `0`                                                                                                                                                                                                         |
-| `requiredLabels`                | string[] | ✗           | Worktree labels required. Default: `[]` (any worktree)                                                                                                                                                                                     |
-| `source`                        | string   | ✗           | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                                                                                                  |
-| `type`                          | string   | ✗           | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                                                                                        |
-| `providerAccountId`/`commandId` | string   | exactly one | Session target — a Provider Account (cascade-resolved to a Command at assign time) or a standalone Command. Never a free-form command string. See [Providers, Provider Accounts, and Commands](#providers-provider-accounts-and-commands). |
-| `concurrencyId`                 | string   | ✗           | Global exact-match identity. An active duplicate returns the existing session (`200`, `created: false`); terminal sessions release the identity for retry.                                                                                 |
+| Field             | Type     | Required | Description                                                                                                                                                            |
+| ----------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryId`    | string   | ✓        | Target repository                                                                                                                                                      |
+| `prompt`          | string   | ✓        | The prompt/instruction for the AI agent                                                                                                                                |
+| `ref`             | string   | ✗        | Branch, tag, or commit SHA to check out. The repository default branch is used when omitted.                                                                           |
+| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. |
+| `fallbacks`       | object[] | ✗        | Ordered additional targets. The scheduler advances only when the preceding target has no eligible route.                                                               |
+| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime, default `691200` (8 days). Expiry reports `queue_expired`; fallback attempts do not reset it.                                                 |
+| `timeout`         | number   | ✓        | Max session duration in seconds. The agent kills the process after this time.                                                                                          |
+| `priority`        | number   | ✗        | Higher = more urgent. Default: `0`                                                                                                                                     |
+| `requiredLabels`  | string[] | ✗        | Worktree labels required. Default: `[]` (any worktree)                                                                                                                 |
+| `source`          | string   | ✗        | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                              |
+| `type`            | string   | ✗        | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                    |
+| `concurrencyId`   | string   | ✗        | Global exact-match identity. An active duplicate returns the existing session (`200`, `created: false`); terminal sessions release the identity for retry.             |
+| `metadata`        | object   | ✗        | Caller-supplied, non-secret provenance carried with the session.                                                                                                       |
 
 Unknown target/fallback IDs, duplicate route references, or malformed target objects are rejected `400` at create time.
 
@@ -518,7 +521,8 @@ Get session details.
   "worktreeId": "wt-1",
   "userId": "sa-a1b2c3d4",
   "prompt": "Fix the failing test in src/utils.test.ts",
-  "command": "codex -p",
+  "target": { "providerId": "prov-codex" },
+  "fallbacks": [{ "commandId": "cmd-echo" }],
   "status": "running",
   "type": "prompt",
   "source": "ui",
@@ -531,7 +535,7 @@ Get session details.
   "errorMessage": null,
   "resumedFromSessionId": null,
   "pinnedHostId": null,
-  "pinnedWorktreeId": null,
+  "pinExpiresAt": null,
   "cliResumeRef": null,
   "queueExpiresAt": "2026-08-09T12:00:00Z",
   "resolvedRoute": null,
@@ -541,16 +545,16 @@ Get session details.
 }
 ```
 
-| Field                               | When set                                                                                           |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `hostId` / `worktreeId`             | Set when assigned (preferred native route for [resume](#post-sessionsidresume))                    |
-| `errorCode`                         | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                    |
-| `errorMessage`                      | Optional short human excerpt from the match / logs                                                 |
-| `resumedFromSessionId`              | Set on sessions created via resume — parent session id                                             |
-| `pinnedHostId` / `pinnedWorktreeId` | Temporary native-resume preference; cleared if that route is unschedulable                         |
-| `cliResumeRef`                      | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route |
-| `queueExpiresAt`                    | Fixed absolute queue deadline; fallback attempts never extend it                                   |
-| `resolvedRoute`                     | Last route diagnostics: target index, Provider Account, Command, Host, and Worktree (no secrets)   |
+| Field                           | When set                                                                                           |
+| ------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                |
+| `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                    |
+| `errorMessage`                  | Optional short human excerpt from the match / logs                                                 |
+| `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                             |
+| `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing   |
+| `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route |
+| `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                   |
+| `resolvedRoute`                 | Last route diagnostics: target index, Provider Account, Command, Host, and Worktree (no secrets)   |
 
 #### `POST /sessions/:id/clone`
 
@@ -592,7 +596,10 @@ INTERNAL_ERROR` when durable state cannot be read or persisted.
 
 #### `POST /sessions/:id/resume`
 
-Resume work from a prior session. Pass the **session id** in the path; the control plane prefers the source's **same agent and worktree** for native resume, then routes through the configured target/fallback chain if that route is unavailable.
+Resume work from a prior session. Pass the **session id** in the path. Native resume pins to the
+source host and command/account route, but may use another eligible worktree for the same
+repository and `ref`. If that route is unavailable, the control plane clears the native reference
+and placement pin, then routes a fresh run through the configured target/fallback chain.
 
 **Operator or admin.** Source session must have been assigned at least once (`hostId` + `worktreeId` recorded). Typically used on terminal sessions (`completed`, `failed`, `cancelled`, `timed_out`) or after a controlled stop — not while the source is still `running`.
 
@@ -619,7 +626,9 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
   "id": "sess-r9s8t7",
   "repositoryId": "repo-abc",
   "prompt": "Continue: also fix the edge case in parseDate",
-  "command": "codex -p",
+  "ref": "feature/fix-utils",
+  "target": { "providerId": "prov-codex" },
+  "fallbacks": [{ "commandId": "cmd-echo" }],
   "status": "queued",
   "timeout": 1800,
   "priority": 10,
@@ -628,16 +637,16 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
   "type": "prompt",
   "resumedFromSessionId": "sess-x1y2z3",
   "pinnedHostId": "vps-prod-1",
-  "pinnedWorktreeId": "wt-1",
+  "pinExpiresAt": "2026-08-01T14:00:00Z",
   "createdAt": "2026-08-01T13:00:00Z"
 }
 ```
 
 **Scheduling:**
 
-1. New session keeps `resumedFromSessionId` and initially prefers the source host/worktree plus stored native ref.
-2. Scheduler assigns that route only when idle, online, and not draining.
-3. If the native route is unavailable, clear `cliResumeRef` and placement pins and assign a fresh run through target/fallback order.
+1. New session keeps `resumedFromSessionId` and initially pins the source host plus stored native command/account route and CLI reference. It does not pin a worktree.
+2. Scheduler may assign that native route to any eligible worktree for the repository and `ref` on the pinned host when it is idle, online, and not draining.
+3. If the native route is unavailable or `pinExpiresAt` passes, clear `cliResumeRef` and every placement/route pin, mark the session as a resume fallback, and assign a fresh run through target/fallback order.
 4. `session:assign` includes `resume: true` only for the native route; fresh fallback assignments preserve `resumedFromSessionId` but omit the stale native ref/pins.
 
 **Agent behavior:** see [host-daemon.md — Resume](host-daemon.md#session-resume). On success, status progresses normally. Native resume being unschedulable is not terminal; it becomes a fresh target/fallback assignment.
@@ -652,14 +661,15 @@ Resume work from a prior session. Pass the **session id** in the path; the contr
 
 **Clone vs resume:**
 
-|                | Clone                               | Resume                                     |
-| -------------- | ----------------------------------- | ------------------------------------------ |
-| New session id | ✓                                   | ✓                                          |
-| Placement      | Any matching worktree (round-robin) | **Same** agent + worktree only             |
-| Workspace      | Fresh setup script (typical reset)  | Prefer keep tree; try CLI/workspace resume |
-| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented             |
+|                | Clone                               | Resume                                                                          |
+| -------------- | ----------------------------------- | ------------------------------------------------------------------------------- |
+| New session id | ✓                                   | ✓                                                                               |
+| Placement      | Any matching worktree (round-robin) | Source host for native resume; any eligible worktree there, then fresh routing  |
+| Workspace      | Fresh setup script (typical reset)  | Re-check out `ref`; use native CLI resume only while its route remains eligible |
+| Prompt         | Copy or override as full new prompt | Continuation / resume-oriented                                                  |
 
-You can also create a session with pin fields via advanced clients (`pinnedHostId` / `pinnedWorktreeId` / `resumedFromSessionId` on `POST /sessions`) if exposed; the supported product path is **`POST /sessions/:id/resume`**.
+Resume pin and provenance fields are server-managed. The supported product path is
+**`POST /sessions/:id/resume`**; `POST /sessions` does not accept placement pins.
 
 #### `POST /sessions/:id/cancel`
 
@@ -771,19 +781,18 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field                           | Type     | Required    | Description                                                                                                                           |
-| ------------------------------- | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `repositoryId`                  | string   | ✓           | Target repository                                                                                                                     |
-| `name`                          | string   | ✓           | Human-readable name for the schedule                                                                                                  |
-| `target`                        | object   | ✓           | Primary `{ providerId }` or `{ commandId }` target                                                                                    |
-| `fallbacks`                     | object[] | ✗           | Ordered fallback targets; same semantics as sessions                                                                                  |
-| `queueTtlSeconds`               | number   | ✗           | Absolute queue lifetime for each fire; default 8 days                                                                                 |
-| `cron`                          | string   | ✓           | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).            |
-| `timeout`                       | number   | ✗           | Max duration in seconds. Default: `3600` (1 hour)                                                                                     |
-| `enabled`                       | boolean  | ✗           | Default: `true`                                                                                                                       |
-| `ref`                           | string   | ✗           | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                 |
-| `providerAccountId`/`commandId` | string   | exactly one | Same target model as sessions — never a free-form shell string                                                                        |
-| `concurrencyId`                 | string   | ✗           | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is. |
+| Field             | Type     | Required | Description                                                                                                                           |
+| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryId`    | string   | ✓        | Target repository                                                                                                                     |
+| `name`            | string   | ✓        | Human-readable name for the schedule                                                                                                  |
+| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                    |
+| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                  |
+| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                 |
+| `cron`            | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).            |
+| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                     |
+| `enabled`         | boolean  | ✗        | Default: `true`                                                                                                                       |
+| `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                 |
+| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is. |
 
 The server derives `nextRunAt` from `cron` and its UTC clock; clients cannot choose the
 cursor. A create or update resets the cursor to the first matching minute strictly after the
@@ -946,6 +955,10 @@ Unified picker source for session/schedule creation: all Providers and Commands,
 
 #### Host inventory: attaching a Provider Account
 
-`PUT /agents/:hostId/config` (see [cli.md](cli.md)) carries `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an optional host-level command override per account. Per-repository and per-worktree overrides (`enabled?`, `commandId?`) live on the corresponding entries inside that same document's `repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
+`PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md)) carries
+`providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an
+optional host-level command override per account. Per-repository and per-worktree overrides
+(`enabled?`, `commandId?`) live on the corresponding entries inside that same document's
+`repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
 
 ---

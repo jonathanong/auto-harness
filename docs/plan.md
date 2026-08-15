@@ -138,7 +138,6 @@ erDiagram
         string hostId FK "nullable until assigned"
         string userId FK
         string prompt
-        string commandProfile "named profile resolved on the agent, e.g. codex-fix, claude-print"
         string ref "nullable — branch/tag/SHA to check out; default branch if omitted"
         string status "queued | running | completed | failed | cancelled | timed_out"
         string type "prompt | scheduled"
@@ -171,7 +170,8 @@ erDiagram
         string id PK
         string repositoryId FK
         string name
-        string commandProfile
+        object target "primary { providerId } or { commandId }"
+        object[] fallbacks "ordered additional targets"
         string cron "5-field cron expression"
         boolean enabled
         number timeout "seconds"
@@ -241,7 +241,8 @@ erDiagram
     Session ||--o{ NotificationDelivery : queues
 ```
 
-**Changed from an earlier draft of this document:** `command` → `commandProfile` (D4);
+**Changed from earlier drafts of this document:** free-form `command` first became a named
+`commandProfile`, then the current catalog-backed `target` plus ordered `fallbacks` model (D4);
 `pinnedWorktreeId` removed, `pinExpiresAt` added (D5); `ref`, `concurrencyKey`/`concurrencyId`, `onConflict`,
 `queueShard`, `metadata`, `queueExpiresAt`, `retryAfter`, `retryCount`, `target`, and `fallbacks` added; `SessionLog` sort key changed from
 bare `timestamp` to `timestampSeq`; `Worktree.online` and `Repository.terminalHookScript` added.
@@ -288,9 +289,10 @@ reference these by number; a phase is not done until its invariants have a passi
 6. **`usage_limit` pauses the assigned account and routes immediately.** No other terminal status
    (`failed` without that code, `timed_out`, `cancelled`) triggers account cooldown or fallback routing;
    queued sessions wait only until their fixed `queueExpiresAt` deadline.
-7. **Resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** Past
-   `pinExpiresAt`, a still-queued pinned resume fails clearly (`status: failed`, `errorCode:
-resume_failed`) rather than waiting indefinitely.
+7. **Native resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** It may
+   use any eligible worktree for the repository and `ref` on that host. If the native route is
+   unavailable or `pinExpiresAt` passes, the scheduler atomically clears the host, route, and CLI
+   reference pins and continues as a fresh target/fallback run rather than waiting indefinitely.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
    the control plane or the agent.
@@ -302,7 +304,8 @@ resume_failed`) rather than waiting indefinitely.
 10. **The control plane can do everything; the host pane is debug-only.** Hosts connect to the
     control plane over WebSocket only — there is no reachable address for a host from the control
     plane's side. Every action a user needs on a host (attach/edit repositories, add/remove/edit
-    worktrees, manage command profiles) must be reachable from `services/web`. `services/host-pane`
+    worktrees, attach Provider Accounts, and configure scoped Command overrides) must be reachable
+    from `services/web`. `services/host-pane`
     (`:7422`) is a local debugging tool for that host, never a required step in a normal workflow.
 
 ---
@@ -401,11 +404,11 @@ CLI modes; it does not add an interactive user-input channel.
   - CloudWatch Events rule (1-minute) for cron evaluation (provisioned by the CDK runtime stack).
 - `services/api` REST handlers:
   - Auth: login/logout, user CRUD, service account CRUD.
-  - Sessions: create (**`ref`, `commandProfile`, `concurrencyId`, `metadata`
+  - Sessions: create (**`ref`, `target`, `fallbacks`, `concurrencyId`, `metadata`
     accepted; response includes `url`**), list (`search` **omitted from v1** — see Access
     patterns), get, cancel, clone, resume (**agent-only pin**, D5).
   - Repositories: CRUD (include `terminalHookScript`).
-  - Worktrees: list, get. Agents: list, get. Schedules: CRUD + manual trigger. Integrations:
+  - Worktrees: list, get. Hosts: list, get inventory, drain. Schedules: CRUD + manual trigger. Integrations:
     Slack config CRUD.
 - `services/api` WebSocket handlers:
   - `$connect`/`$disconnect` — validate token, manage Connections table with the **conditional put
@@ -440,7 +443,7 @@ CLI modes; it does not add an interactive user-input channel.
 
 **Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
-session create with `ref`/`commandProfile`/`concurrencyId`/`metadata`/`url`.
+session create with `ref`/`target`/`fallbacks`/`concurrencyId`/`metadata`/`url`.
 CDK table definitions plus synthesizable HTTP/WebSocket Lambda runtime resources live in
 `services/cdk`, including an EventBridge rule and cron Lambda for durable scheduling sweeps.
 There is no deploy command or account-backed smoke test. The synthesized SessionLogs
@@ -528,13 +531,15 @@ above are live in a real deployment.** No workflow that needs `ref`, resume, or
   DynamoDB scan-backed search endpoint. If full-text search becomes a real requirement, it needs
   an explicit external index (e.g. OpenSearch), scoped and estimated as its own piece of work, not
   bundled into Phase 4.
-- Create-session form includes **ref**, **concurrencyId**, and **labels** fields, and a **command**
-  dropdown populated from agent-reported profiles (not free text).
+- Create-session form includes **ref**, **concurrencyId**, and **labels** fields, a catalog-backed
+  primary Provider/Command target picker, and ordered fallback targets (never free text).
 
 **Acceptance criteria**
 
 - Creating a session from the UI with a `ref` produces a session that checks out that ref.
-- The command dropdown only offers profiles the target agent actually has configured.
+- The target and fallback pickers only offer catalog Providers and Commands returned by
+  `GET /session-targets`; assignment later selects an eligible attached Provider Account or an
+  eligible providerless Command route.
 - `GET /sessions` uses the repository/principal-scoped, filter-first cursor contract documented in
   [api.md](api.md): latest/oldest/priority sorting, a default 50/max 100 page size, and signed
   cursors; search remains client-side over the current page.
@@ -606,11 +611,11 @@ with this table.
 
 | File                      | Section                                        | Change                                                                                                                                                                                                                                                      |
 | ------------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api.md`                  | `POST /sessions` request                       | Add `ref`, optional global exact `concurrencyId`, and `metadata`. Change `command` → `commandProfile` (string, must match an agent-reported profile name).                                                                                                  |
+| `api.md`                  | `POST /sessions` request                       | Add `ref`, optional global exact `concurrencyId`, and `metadata`. Replace free-form `command` with a catalog-backed `{ providerId }` or `{ commandId }` `target` plus ordered `fallbacks`.                                                                  |
 | `api.md`                  | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link).                                                                                                                                                                                                                                   |
 | `api.md`                  | `POST /sessions/:id/resume`                    | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5).                                                                                                                                 |
 | `api.md`                  | `GET /sessions` query params                   | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns).                                                                                                                                                                      |
-| `host-daemon.md`          | Executor                                       | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                                      |
+| `host-daemon.md`          | Executor                                       | Replace free-string `command` handling with control-plane-resolved catalog target argv (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                      |
 | `host-daemon.md`          | Worktree Manager / Setup scripts               | Document `ref`-aware checkout (D6).                                                                                                                                                                                                                         |
 | `host-daemon.md`          | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
 | `host-daemon.md`          | Usage limits                                   | Document global Provider Account cooldowns, ordered fallback routing, providerless Commands, and absolute queue TTL; ordinary failures remain terminal.                                                                                                     |
@@ -620,7 +625,7 @@ with this table.
 | `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
 | `websocket.md` / `aws.md` | Keepalive                                      | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead.                                                                                                                             |
 | `security.md`             | New section                                    | Threat model: prompt is untrusted/attacker-influenced input; the agent-held credential is scoped per D7; state plainly what this does and does not protect against, replacing the argument the dropped validator/publisher split used to make structurally. |
-| `auth.md`                 | Service accounts / roles                       | Note that `operator` maps to "run any configured command profile" post-D4, not arbitrary command execution.                                                                                                                                                 |
+| `auth.md`                 | Service accounts / roles                       | Note that `operator` maps to "run any configured catalog Provider/Command target" post-D4, not arbitrary command execution.                                                                                                                                 |
 | `costs.md`                | SessionLogs cost estimate                      | Recompute against a realistic long-running CLI session's message volume, not the prior ~50-chunk assumption; note the API Gateway 128 KB frame limit and DynamoDB 400 KB item limit as constraints on prompt/log-chunk size.                                |
 
 ---
@@ -631,7 +636,7 @@ Because this is a from-scratch build, verification is staged with the phases the
 than as one final pass:
 
 1. **Phase 1 exit:** run one real prompt (borrowed from a target repo's automation) end-to-end on
-   the local agent with no cloud — confirm ref checkout, command-profile resolution, and the
+   the local agent with no cloud — confirm ref checkout, catalog target resolution, and the
    terminal hook fire correctly.
 2. **Phase 2 exit:** invariant-focused integration tests (1, 3, 4, 5) pass against DynamoDB Local
    under concurrent/racing conditions, not just the happy path.
