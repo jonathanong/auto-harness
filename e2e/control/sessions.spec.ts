@@ -687,6 +687,181 @@ test.describe("control plane sessions", () => {
     await expect(page).toHaveURL(/concurrencyId=pw-concurrency-example/);
   });
 
+  test("shows a terminal error code without requiring an error message", async ({
+    page,
+    request,
+  }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const hostId = `pw-error-code-host-${suffix}`;
+    const repositoryName = `pw-error-code-repo-${suffix}`;
+    const worktreeId = `pw-error-code-worktree-${suffix}`;
+    let commandId: string | undefined;
+
+    try {
+      const repository = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+        data: { name: repositoryName, url: `/tmp/${repositoryName}`, defaultBranch: "main" },
+      });
+      const repositoryId = ((await repository.json()) as { id: string }).id;
+      const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+        data: { name: `pw-error-code-${suffix}`, argv: ["echo"], appendPrompt: true },
+      });
+      commandId = ((await command.json()) as { id: string }).id;
+      expect(
+        (
+          await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+            data: {
+              repositories: [
+                {
+                  id: repositoryId,
+                  path: `/tmp/${repositoryName}`,
+                  defaultBranch: "main",
+                  worktrees: [
+                    {
+                      id: worktreeId,
+                      name: worktreeId,
+                      path: `/tmp/${repositoryName}/worktree`,
+                      labels: [],
+                    },
+                  ],
+                },
+              ],
+              commandProfiles: {},
+            },
+          })
+        ).ok(),
+      ).toBe(true);
+
+      await page.goto("/sessions");
+      await page.evaluate(
+        ({ hostId, repositoryId, worktreeId }) =>
+          new Promise<void>((resolve, reject) => {
+            const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+            const timeout = setTimeout(
+              () => reject(new Error("host registration timed out")),
+              10_000,
+            );
+            socket.addEventListener("message", (event) => {
+              const message = JSON.parse(String(event.data)) as { type?: string; message?: string };
+              if (message.type === "host:registered") {
+                clearTimeout(timeout);
+                (
+                  globalThis as typeof globalThis & { errorCodeSocket?: WebSocket }
+                ).errorCodeSocket = socket;
+                resolve();
+              }
+              if (message.type === "error") {
+                clearTimeout(timeout);
+                reject(new Error(message.message));
+              }
+            });
+            socket.addEventListener("error", () => {
+              clearTimeout(timeout);
+              reject(new Error("host WebSocket failed"));
+            });
+            socket.addEventListener("open", () => {
+              socket.send(
+                JSON.stringify({
+                  type: "host:register",
+                  hostId,
+                  worktrees: [
+                    {
+                      id: worktreeId,
+                      name: worktreeId,
+                      repositoryId,
+                      path: `/tmp/${repositoryId}/worktree`,
+                      labels: [],
+                    },
+                  ],
+                  commandProfiles: [],
+                }),
+              );
+            });
+          }),
+        { hostId, repositoryId, worktreeId },
+      );
+
+      const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+        data: {
+          repositoryId,
+          prompt: "report a message-free terminal failure",
+          target: { commandId },
+          timeout: 30,
+        },
+      });
+      const sessionId = ((await created.json()) as { id: string }).id;
+      expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+      const assigned = (await (
+        await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+      ).json()) as { attemptId: string; worktreeId: string };
+      await page.evaluate(
+        ({ sessionId, attemptId, worktreeId }) => {
+          const socket = (globalThis as typeof globalThis & { errorCodeSocket?: WebSocket })
+            .errorCodeSocket;
+          if (!socket) throw new Error("host socket missing");
+          socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+        },
+        { sessionId, attemptId: assigned.attemptId, worktreeId: assigned.worktreeId },
+      );
+      await expect
+        .poll(async () => {
+          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          return ((await response.json()) as { status: string }).status;
+        })
+        .toBe("running");
+      await page.evaluate(
+        ({ sessionId, attemptId, worktreeId }) => {
+          const socket = (globalThis as typeof globalThis & { errorCodeSocket?: WebSocket })
+            .errorCodeSocket;
+          if (!socket) throw new Error("host socket missing");
+          socket.send(
+            JSON.stringify({
+              type: "session:status",
+              sessionId,
+              attemptId,
+              worktreeId,
+              status: "failed",
+              errorCode: "setup_failed",
+            }),
+          );
+        },
+        { sessionId, attemptId: assigned.attemptId, worktreeId: assigned.worktreeId },
+      );
+      await expect
+        .poll(async () => {
+          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          return (await response.json()) as {
+            status: string;
+            errorCode?: string;
+            errorMessage?: string;
+          };
+        })
+        .toMatchObject({ status: "failed", errorCode: "setup_failed" });
+      const terminal = (await (
+        await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+      ).json()) as { errorMessage?: string };
+      expect(terminal.errorMessage).toBeUndefined();
+
+      await page.goto(`/sessions/${sessionId}`);
+      await expect(page.getByTestId("session-detail-error")).toContainText("setup_failed");
+      await expect(page.getByTestId("session-detail-error")).toHaveAttribute("role", "alert");
+    } finally {
+      await page
+        .evaluate(() => {
+          (
+            globalThis as typeof globalThis & { errorCodeSocket?: WebSocket }
+          ).errorCodeSocket?.close();
+        })
+        .catch(() => undefined);
+      await request
+        .delete(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`)
+        .catch(() => undefined);
+      if (commandId)
+        await request
+          .delete(`http://127.0.0.1:7430/api/v1/commands/${commandId}`)
+          .catch(() => undefined);
+    }
+  });
+
   test("unknown session id shows a not-found state", async ({ page }) => {
     await page.goto("/sessions/does-not-exist-xyz");
     await expect(page.getByTestId("page-session-detail-not-found")).toBeVisible();
