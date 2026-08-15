@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
+import { randomUUID } from "node:crypto";
 import type { HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
@@ -7,7 +8,11 @@ import { SpawnProcessRunner } from "./executor.ts";
 import { PtyProcessRunner } from "./pty-runner.ts";
 import { createGitClient } from "./git.ts";
 import { configureConnectionEvents } from "./daemon-connection-events.ts";
-import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
+import {
+  applyDaemonInventory,
+  registerDaemon,
+  type DaemonRuntimeIdentity,
+} from "./daemon-registration.ts";
 import { sendDaemonLog } from "./daemon-log-sender.ts";
 import { OutboundQueue } from "./outbound-queue.ts";
 import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.ts";
@@ -29,6 +34,8 @@ export type DaemonLoopOptions = {
   /** Retry an unacknowledged durable drain notification at this interval. */
   drainRetryMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
+  daemonIdentity?: DaemonRuntimeIdentity;
 };
 type InflightSession = {
   controller: AbortController;
@@ -59,6 +66,7 @@ export class DaemonLoop {
   private readonly ackConfirmationMs: number;
   private readonly drainRetryMs: number;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  private readonly daemonIdentity: DaemonRuntimeIdentity;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
     this.config = options.config;
@@ -66,6 +74,10 @@ export class DaemonLoop {
     this.isDrainingExternal = options.isDraining ?? undefined;
     this.onLog = options.onLog ?? undefined;
     this.now = options.now ?? (() => new Date().toISOString());
+    this.daemonIdentity = options.daemonIdentity ?? {
+      instanceId: randomUUID(),
+      startedAt: this.now(),
+    };
     this.reconnectAbortMs = options.reconnectAbortMs ?? 75_000;
     this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
     this.drainRetryMs = options.drainRetryMs ?? 1_000;
@@ -124,6 +136,7 @@ export class DaemonLoop {
         session.acknowledged ? [sessionId] : [],
       ),
       this.drainRequested || this.draining,
+      this.daemonIdentity,
     );
   }
   async keepalive(): Promise<void> {

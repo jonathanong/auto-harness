@@ -30,6 +30,13 @@ function optionalText(candidate: unknown, max = 512): boolean {
   return candidate === undefined || (typeof candidate === "string" && candidate.length <= max);
 }
 
+function isUuid(candidate: unknown): candidate is string {
+  return (
+    typeof candidate === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
+  );
+}
+
 export type WsHub = {
   hostCount(): number;
   close(): void;
@@ -350,6 +357,11 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
             !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
+        (message.daemonInstanceId === undefined) !== (message.daemonStartedAt === undefined) ||
+        (message.daemonInstanceId !== undefined && !isUuid(message.daemonInstanceId)) ||
+        (message.daemonStartedAt !== undefined &&
+          (!boundedText(message.daemonStartedAt, 128) ||
+            !Number.isFinite(Date.parse(message.daemonStartedAt)))) ||
         (message.draining !== undefined && message.draining !== true)
       ) {
         return null;

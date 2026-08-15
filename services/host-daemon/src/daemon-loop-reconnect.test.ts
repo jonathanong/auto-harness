@@ -151,11 +151,31 @@ describe("DaemonLoop reconnect", () => {
       const transport = createLoopbackTransport({
         sendToServer: (message) => void sent.push(message),
       });
-      const loop = new DaemonLoop({ config, transport, now: () => "now", isDraining: () => false });
+      const identity = {
+        instanceId: "123e4567-e89b-42d3-a456-426614174000",
+        startedAt: "2026-08-11T00:00:00.000Z",
+      };
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        now: () => "now",
+        isDraining: () => false,
+        daemonIdentity: identity,
+      });
       await loop.start();
       await loop.applyInventory({ ...config, commandProfiles: { changed: { argv: ["echo"] } } });
       await loop.keepalive();
       expect(sent.filter((message) => message.type === "host:register")).toHaveLength(2);
+      expect(sent.filter((message) => message.type === "host:register")).toEqual([
+        expect.objectContaining({
+          daemonInstanceId: identity.instanceId,
+          daemonStartedAt: identity.startedAt,
+        }),
+        expect.objectContaining({
+          daemonInstanceId: identity.instanceId,
+          daemonStartedAt: identity.startedAt,
+        }),
+      ]);
       expect(sent.at(-1)).toEqual({ type: "host:keepalive", hostId: config.hostId, at: "now" });
       expect(loop.isDraining()).toBe(false);
       const draining = loop.beginDrain();
@@ -164,6 +184,21 @@ describe("DaemonLoop reconnect", () => {
       expect(loop.isDraining()).toBe(true);
       await loop.waitForIdle();
       loop.stop();
+
+      const replacement = new DaemonLoop({
+        config,
+        transport,
+        daemonIdentity: {
+          instanceId: "223e4567-e89b-42d3-a456-426614174000",
+          startedAt: "2026-08-12T00:00:00.000Z",
+        },
+      });
+      await replacement.start();
+      expect(sent.filter((message) => message.type === "host:register").at(-1)).toMatchObject({
+        daemonInstanceId: "223e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-12T00:00:00.000Z",
+      });
+      replacement.stop();
     } finally {
       cleanup();
     }

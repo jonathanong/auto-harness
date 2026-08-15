@@ -589,7 +589,9 @@ runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments witho
 in-flight CLIs. The signed-manifest updater core sequences drain, idle, checksum
 verification, staging, activation, and restart through injected boundaries, but production
 download/install/supervisor adapters remain unwired, so operators still execute that path
-manually. Slack config CRUD exists, while OAuth, delivery, inbound
+manually. Host registration carries one daemon-process identity across reconnects; durable
+inventory records count identity changes and expose local API/UI restart observability without
+restarting a host or sending an external alert. Slack config CRUD exists, while OAuth, delivery, inbound
 verification, and session-thread lifecycle do not.
 
 **Migration marker:** none of this gates any product-repo automation workflow.

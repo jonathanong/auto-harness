@@ -15,6 +15,7 @@ import { protectScheduledRunsForFailedRegistration } from "./control-plane-regis
 import {
   buildRegisteredInventory,
   resolveRegisteredRepositories,
+  type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
 
 /** Undo a registration after its lease committed but its reconciliation did
@@ -163,6 +164,9 @@ export function listHosts(state: ControlPlaneState): Array<{
   worktreeIds: string[];
   repositories: Array<{ id: string; path: string }>;
   repositoryIds: string[];
+  daemonStartedAt: string | null;
+  restartCount: number;
+  lastRestartDetectedAt: string | null;
 }> {
   const byHost = new Map<
     string,
@@ -176,6 +180,9 @@ export function listHosts(state: ControlPlaneState): Array<{
       worktreeIds: string[];
       repositories: Array<{ id: string; path: string }>;
       repositoryIds: string[];
+      daemonStartedAt: string | null;
+      restartCount: number;
+      lastRestartDetectedAt: string | null;
     }
   >();
   for (const wt of state.worktrees.values()) {
@@ -189,6 +196,9 @@ export function listHosts(state: ControlPlaneState): Array<{
       worktreeIds: [] as string[],
       repositories: [],
       repositoryIds: [],
+      daemonStartedAt: null,
+      restartCount: 0,
+      lastRestartDetectedAt: null,
     };
     cur.worktreeIds.push(wt.id);
     if (!cur.repositoryIds.includes(wt.repositoryId)) cur.repositoryIds.push(wt.repositoryId);
@@ -208,6 +218,9 @@ export function listHosts(state: ControlPlaneState): Array<{
       worktreeIds: [] as string[],
       repositories: [],
       repositoryIds: [...(conn.repositoryIds ?? [])],
+      daemonStartedAt: null,
+      restartCount: 0,
+      lastRestartDetectedAt: null,
     };
     cur.online = true;
     cur.connectedAt = conn.connectedAt;
@@ -230,10 +243,16 @@ export function listHosts(state: ControlPlaneState): Array<{
         worktreeIds: host.repositories.flatMap((r) => r.worktrees.map((w) => w.id)),
         repositories: host.repositories.map(({ id, path }) => ({ id, path })),
         repositoryIds: host.repositories.map(({ id }) => id),
+        daemonStartedAt: host.daemonStartedAt ?? null,
+        restartCount: host.restartCount ?? 0,
+        lastRestartDetectedAt: host.lastRestartDetectedAt ?? null,
       });
     } else {
       current.repositories = host.repositories.map(({ id, path }) => ({ id, path }));
       current.repositoryIds = host.repositories.map(({ id }) => id);
+      current.daemonStartedAt = host.daemonStartedAt ?? null;
+      current.restartCount = host.restartCount ?? 0;
+      current.lastRestartDetectedAt = host.lastRestartDetectedAt ?? null;
     }
   }
   return [...byHost.values()]
@@ -263,6 +282,7 @@ export function registerHost(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    daemonIdentity?: RegisteredDaemonIdentity;
     draining?: true;
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
@@ -339,6 +359,7 @@ export function registerHost(
     conn.capabilities,
     at,
     previousInventory,
+    opts.daemonIdentity,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
   state.hostInventoryRevision += 1;
@@ -395,6 +416,7 @@ export async function registerHostDurable(
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
+    daemonIdentity?: RegisteredDaemonIdentity;
     draining?: true;
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
@@ -531,6 +553,7 @@ export async function registerHostDurable(
     conn.capabilities,
     at,
     previousInventory,
+    opts.daemonIdentity,
   );
   try {
     await state.storage.putHostInventory(registrationInventory);

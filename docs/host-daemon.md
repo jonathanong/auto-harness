@@ -137,6 +137,12 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 
 Outbound message types: `host:register`, `session:ack`, `session:log`, `session:status`, `worktree:status`, `pong`.
 
+Each daemon process reports one opaque UUID and process start time on every registration. The UUID
+remains unchanged across socket reconnects and inventory refreshes. A control plane with a prior
+modern UUID records a restart only when a later registration reports a different UUID; first
+registration is a baseline, and legacy registrations without the pair remain accepted. Detection
+is durable local observability only: it neither restarts the host nor sends an external notification.
+
 ### Config Loader
 
 - Merge file + env

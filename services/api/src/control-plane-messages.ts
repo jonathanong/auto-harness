@@ -203,6 +203,14 @@ export function handleHostMessage(
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
         ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+        ...(msg.daemonInstanceId && msg.daemonStartedAt
+          ? {
+              daemonIdentity: {
+                instanceId: msg.daemonInstanceId,
+                startedAt: msg.daemonStartedAt,
+              },
+            }
+          : {}),
         ...(msg.draining ? { draining: true } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
@@ -297,6 +305,14 @@ export async function handleHostMessageDurable(
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
+      ...(msg.daemonInstanceId && msg.daemonStartedAt
+        ? {
+            daemonIdentity: {
+              instanceId: msg.daemonInstanceId,
+              startedAt: msg.daemonStartedAt,
+            },
+          }
+        : {}),
       ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),

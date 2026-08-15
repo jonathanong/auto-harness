@@ -13,6 +13,53 @@ type RegisteredWorktree = {
   labels: string[];
 };
 
+export type RegisteredDaemonIdentity = {
+  instanceId: string;
+  startedAt: string;
+};
+
+type RuntimeFields = Pick<
+  HostInventoryRecord,
+  "daemonInstanceId" | "daemonStartedAt" | "restartCount" | "lastRestartDetectedAt"
+>;
+
+/** Preserve local runtime observability through inventory edits and legacy registrations. */
+export function preservedDaemonRuntime(previous?: HostInventoryRecord): RuntimeFields {
+  return {
+    ...(previous?.daemonInstanceId ? { daemonInstanceId: previous.daemonInstanceId } : {}),
+    ...(previous?.daemonStartedAt ? { daemonStartedAt: previous.daemonStartedAt } : {}),
+    ...(previous?.restartCount !== undefined ? { restartCount: previous.restartCount } : {}),
+    ...(previous?.lastRestartDetectedAt
+      ? { lastRestartDetectedAt: previous.lastRestartDetectedAt }
+      : {}),
+  };
+}
+
+/** First modern registration establishes a baseline; only a known identity change counts. */
+function nextDaemonRuntime(
+  previous: HostInventoryRecord | undefined,
+  identity: RegisteredDaemonIdentity | undefined,
+  detectedAt: string,
+): RuntimeFields {
+  if (!identity) return preservedDaemonRuntime(previous);
+  const priorCount = previous?.restartCount ?? 0;
+  const changed =
+    previous?.daemonInstanceId !== undefined && previous.daemonInstanceId !== identity.instanceId;
+  return {
+    daemonInstanceId: identity.instanceId,
+    daemonStartedAt:
+      previous?.daemonInstanceId === identity.instanceId && previous.daemonStartedAt
+        ? previous.daemonStartedAt
+        : identity.startedAt,
+    restartCount: priorCount + (changed ? 1 : 0),
+    ...(changed
+      ? { lastRestartDetectedAt: detectedAt }
+      : previous?.lastRestartDetectedAt
+        ? { lastRestartDetectedAt: previous.lastRestartDetectedAt }
+        : {}),
+  };
+}
+
 /** Parse the optional repository portion of a host registration message. */
 export function parseHostRegistrationRepositories(
   raw: unknown,
@@ -93,6 +140,7 @@ export function buildRegisteredInventory(
   capabilities: HostInventoryRecord["capabilities"],
   updatedAt: string,
   previous?: HostInventoryRecord,
+  daemonIdentity?: RegisteredDaemonIdentity,
 ): HostInventoryRecord {
   const priorById = new Map(
     (previous?.repositories ?? []).map((repository) => [repository.id, repository]),
@@ -105,6 +153,7 @@ export function buildRegisteredInventory(
   }
   return {
     hostId,
+    ...nextDaemonRuntime(previous, daemonIdentity, updatedAt),
     repositories: repositories.map((repository) => {
       const prior = priorById.get(repository.id);
       const advertised = worktreesByRepo.get(repository.id) ?? [];

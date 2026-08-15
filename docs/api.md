@@ -848,11 +848,11 @@ Automatic cron fires use `schedule-${scheduleId}` unless the schedule supplies a
 
 ---
 
-### Agents
+### Hosts
 
-#### `GET /agents`
+#### `GET /api/v1/hosts`
 
-List connected agents and their status.
+List configured hosts, including connection health and local daemon restart observability.
 
 **Response:** `200 OK`
 
@@ -860,19 +860,26 @@ List connected agents and their status.
 {
   "items": [
     {
-      "id": "vps-prod-1",
-      "status": "connected",
-      "worktreeCount": 4,
-      "busyWorktrees": 2,
-      "connectedAt": "2026-08-01T08:00:00Z"
+      "hostId": "vps-prod-1",
+      "online": true,
+      "connectedAt": "2026-08-01T08:00:00Z",
+      "lastHeartbeatAt": "2026-08-01T08:00:30Z",
+      "daemonStartedAt": "2026-08-01T07:00:00Z",
+      "restartCount": 1,
+      "lastRestartDetectedAt": "2026-08-01T07:00:02Z",
+      "commandProfiles": ["codex"],
+      "worktreeIds": ["docs"],
+      "repositoryIds": ["auto-harness"]
     }
   ]
 }
 ```
 
-#### `GET /agents/:id`
-
-Get agent details including worktrees and current sessions.
+The first modern daemon registration establishes a baseline and returns `restartCount: 0`. Socket
+reconnects reuse the daemon instance id and do not increment the count. A later process identity
+increments the durable count and stamps detection time using the control-plane clock. Legacy
+daemons remain compatible and report an unknown start time. These fields do not trigger a host
+restart or an external notification.
 
 ---
 

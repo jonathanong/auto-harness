@@ -125,6 +125,14 @@ export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 /** Durable agent host inventory (paths + command profile argv). */
 export type HostInventoryRecord = {
   hostId: string;
+  /** Opaque identity last reported by a modern daemon process. */
+  daemonInstanceId?: string;
+  /** Start time reported by that daemon process. */
+  daemonStartedAt?: string;
+  /** Number of observed changes from one known daemon process identity to another. */
+  restartCount?: number;
+  /** Control-plane time of the most recently observed process identity change. */
+  lastRestartDetectedAt?: string;
   repositories: Array<{
     id: string;
     path: string;

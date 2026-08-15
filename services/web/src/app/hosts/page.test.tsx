@@ -8,8 +8,20 @@ describe("hosts fleet route", () => {
     stubApi({
       "/api/v1/hosts": {
         items: [
-          { hostId: "host/a", online: true, connectedAt: "2026-08-12T00:00:00.000Z" },
-          { hostId: "single", online: true, connectedAt: "2026-08-12T01:00:00.000Z" },
+          {
+            hostId: "host/a",
+            online: true,
+            connectedAt: "2026-08-12T00:00:00.000Z",
+            daemonStartedAt: "2026-08-11T23:00:00.000Z",
+            restartCount: 2,
+            lastRestartDetectedAt: "2026-08-12T00:30:00.000Z",
+          },
+          {
+            hostId: "single",
+            online: true,
+            connectedAt: "2026-08-12T01:00:00.000Z",
+            restartCount: 1,
+          },
           { hostId: "empty", online: false, connectedAt: null },
         ],
       },
@@ -61,6 +73,13 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="host-connected-at-host/a"');
     expect(html).toContain('dateTime="2026-08-12T00:00:00.000Z"');
     expect(html).toContain('data-pw="host-connected-at-empty">—');
+    expect(html).toContain('data-pw="host-restart-count-host/a">2 restarts detected');
+    expect(html).toContain('data-pw="host-daemon-started-at-host/a"');
+    expect(html).toContain('dateTime="2026-08-11T23:00:00.000Z"');
+    expect(html).toContain('data-pw="host-last-restart-host/a"');
+    expect(html).toContain('data-pw="host-restart-count-empty">0 restarts detected');
+    expect(html).toContain('data-pw="host-restart-count-single">1 restart detected');
+    expect(html).toContain('data-pw="host-daemon-started-at-empty">legacy/unknown');
   });
 
   it("keeps the filtered empty result when no hosts match", async () => {
@@ -73,7 +92,7 @@ describe("hosts fleet route", () => {
       HostsPage({ searchParams: Promise.resolve({ online: "online" }) }),
     );
     expect(html).toContain("No hosts match filters");
-    expect(html).toContain('colSpan="8"');
+    expect(html).toContain('colSpan="9"');
   });
 
   it("surfaces a host fleet read failure", async () => {
