@@ -5,6 +5,17 @@ import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const repositoryName = `pw-session-repository-${suffix}`;
+    const repository = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+      data: {
+        name: repositoryName,
+        url: `https://git.example.test/pw-session-list-${suffix}.git`,
+        defaultBranch: "main",
+      },
+    });
+    expect(repository.status()).toBe(201);
+    const repositoryId = ((await repository.json()) as { id: string }).id;
     const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
       data: {
         name: `pw-session-list-${Date.now()}`,
@@ -17,13 +28,14 @@ test.describe("control plane sessions", () => {
     const commandId = ((await command.json()) as { id: string }).id;
     const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
       data: {
-        repositoryId: `pw-session-list-${Date.now()}`,
+        repositoryId,
         prompt: "exercise session list controls",
         target: { commandId },
         timeout: 30,
       },
     });
     expect(created.status()).toBe(201);
+    const sessionId = ((await created.json()) as { id: string }).id;
 
     await page.goto("/sessions");
     await expect(
@@ -32,6 +44,12 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
     await expect(page.getByTestId("session-source-api").first()).toHaveText("api");
+    const repositoryCell = page.getByTestId(`session-repository-${sessionId}`);
+    await expect(repositoryCell).toHaveText(repositoryName);
+    await expect(repositoryCell.locator("a")).toHaveAttribute(
+      "href",
+      `/repositories/${repositoryId}`,
+    );
     await expect(page.getByTestId("session-filters")).toBeVisible();
     const prioritySort = page.getByTestId("session-sort-priority");
     await expect(prioritySort).toHaveAccessibleName("Sort by priority, high to low");

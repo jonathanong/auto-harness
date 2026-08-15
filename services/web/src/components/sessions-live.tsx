@@ -13,6 +13,7 @@ export function SessionsLive({
   initialNextCursor,
   listState,
   path,
+  repositoryNames = {},
   pollMs = 5_000,
 }: {
   initialItems: SessionRow[];
@@ -20,6 +21,7 @@ export function SessionsLive({
   initialNextCursor: string | null;
   listState: SessionListQuery;
   path: string;
+  repositoryNames?: Readonly<Record<string, string>>;
   pollMs?: number;
 }) {
   const [items, setItems] = useState(initialItems);
@@ -130,6 +132,8 @@ export function SessionsLive({
             search={listState.q}
             sort={listState.sort}
             prioritySortHref={prioritySortHref}
+            repositoryHrefBase="/repositories"
+            repositoryNames={repositoryNames}
             emptyMessage={narrowed ? "No sessions match filters." : "No sessions yet."}
           />
           <CursorPagination nextHref={nextHref} prevHref={prevHref} />
