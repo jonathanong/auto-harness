@@ -135,11 +135,17 @@ describe("shared display primitives", () => {
     expect(table).toContain("cell-marker");
 
     expect(render(<StatusBadge status="QUEUED" />)).toContain("bg-amber-100");
-    expect(render(<StatusBadge status="running" />)).toContain("bg-primary");
+    const running = render(<StatusBadge status="running" />);
+    expect(running).toContain("bg-primary");
+    expect(running).toContain("animate-pulse");
+    expect(running).toContain("motion-reduce:animate-none");
+    expect(running).toContain('aria-label="running, live"');
+    expect(running).toContain('data-pw="status-running-live"');
     expect(render(<StatusBadge status="completed" />)).toContain("bg-emerald-100");
     expect(render(<StatusBadge status="failed" />)).toContain("bg-red-100");
     expect(render(<StatusBadge status="cancelled" />)).toContain("bg-muted");
     expect(render(<StatusBadge status="unknown" />)).toContain("text-foreground");
+    expect(render(<StatusBadge status="unknown" />)).not.toContain("animate-pulse");
     expect(render(<OnlineStatusBadge online pw="host-online-a" />)).toContain(
       'data-pw="host-online-a">Online',
     );

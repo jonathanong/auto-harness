@@ -15,5 +15,20 @@ const MAP: Record<string, "default" | "secondary" | "success" | "warning" | "dan
 export function StatusBadge({ status }: { status: string }) {
   const key = status.toLowerCase();
   const variant = MAP[key] ?? "outline";
-  return <Badge variant={variant}>{status}</Badge>;
+  const running = key === "running";
+  return (
+    <Badge
+      variant={variant}
+      aria-label={running ? "running, live" : status}
+      data-pw={running ? "status-running-live" : undefined}
+    >
+      {running ? (
+        <span
+          className="mr-1.5 h-1.5 w-1.5 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+          aria-hidden="true"
+        />
+      ) : null}
+      {status}
+    </Badge>
+  );
 }
