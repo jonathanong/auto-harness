@@ -23,6 +23,10 @@ export type SessionsTableProps = {
   hrefBase?: string;
   /** Client-side search over the rows loaded on this page only. */
   search?: string;
+  /** Stable catalog labels keyed by repository id. */
+  repositoryNames?: Readonly<Record<string, string>>;
+  /** When set, repository ids link to this detail-route base. */
+  repositoryHrefBase?: string;
   /** Current server-backed list ordering. */
   sort?: SessionListQuery["sort"];
   /** URL for toggling the rendered Priority column's server-backed ordering. */
@@ -36,18 +40,31 @@ export function SessionsTable({
   emptyMessage = "No sessions match filters.",
   hrefBase,
   search = "",
+  repositoryNames = {},
+  repositoryHrefBase,
   sort = "latest",
   prioritySortHref,
 }: SessionsTableProps) {
-  const visibleItems = items.filter((session) => sessionMatchesSearch(session, search));
+  const visibleItems = items.filter((session) =>
+    sessionMatchesSearch(
+      {
+        ...session,
+        repositoryName: session.repositoryId
+          ? (repositoryNames[session.repositoryId] ?? session.repositoryName)
+          : session.repositoryName,
+      },
+      search,
+    ),
+  );
   const nowMs = useSessionClock(visibleItems.some((session) => session.status === "running"));
-  const cols = showHost ? 12 : 11;
+  const cols = showHost ? 13 : 12;
   return (
     <Table data-pw="sessions-table">
       <TableHeader>
         <TableRow>
           <TableHead>ID</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Repository</TableHead>
           {showHost ? <TableHead>Host</TableHead> : null}
           <TableHead>Route</TableHead>
           <TableHead>Queue expiry</TableHead>
@@ -78,6 +95,22 @@ export function SessionsTable({
             </TableCell>
             <TableCell>
               <SessionStatusCell status={s.status} errorCode={s.errorCode} sessionId={s.id} />
+            </TableCell>
+            <TableCell data-pw={`session-repository-${s.id}`}>
+              {s.repositoryId ? (
+                repositoryHrefBase ? (
+                  <Link
+                    href={`${repositoryHrefBase}/${encodeURIComponent(s.repositoryId)}`}
+                    className="hover:underline"
+                  >
+                    {repositoryNames[s.repositoryId] ?? s.repositoryName ?? s.repositoryId}
+                  </Link>
+                ) : (
+                  (repositoryNames[s.repositoryId] ?? s.repositoryName ?? s.repositoryId)
+                )
+              ) : (
+                "—"
+              )}
             </TableCell>
             {showHost ? (
               <TableCell className="font-mono text-xs">{s.hostId ?? "—"}</TableCell>

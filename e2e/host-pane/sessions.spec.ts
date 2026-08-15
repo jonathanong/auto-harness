@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the end-to-end host registration and lifecycle flow stays together. */
 import { test, expect, type Page } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
@@ -19,7 +20,17 @@ test.describe("host pane sessions", () => {
 
   test("clicking a session opens its detail page", async ({ page, request }) => {
     await withLocalHostLock(async () => {
-      const repoId = `pw-agent-sess-repo-${test.info().parallelIndex}-${Date.now()}`;
+      const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+      const repositoryName = `pw-host-session-repository-${suffix}`;
+      const repository = await request.post(`${API}/api/v1/repositories`, {
+        data: {
+          name: repositoryName,
+          url: `https://git.example.test/pw-agent-sess-repo-${suffix}.git`,
+          defaultBranch: "main",
+        },
+      });
+      expect(repository.status()).toBe(201);
+      const repoId = ((await repository.json()) as { id: string }).id;
       const wtId = `wt-${test.info().parallelIndex}-${Date.now()}`;
       let detailPage: Page | undefined;
 
@@ -126,6 +137,12 @@ test.describe("host pane sessions", () => {
         await detailPage.goto(`/sessions?q=${encodeURIComponent(commandId)}`);
         await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
         const row = detailPage.getByTestId(`session-row-${id}`);
+        const repositoryCell = row.getByTestId(`session-repository-${id}`);
+        await expect(repositoryCell).toHaveText(repositoryName);
+        await expect(repositoryCell.locator("a")).toHaveAttribute(
+          "href",
+          `/repositories/${repoId}`,
+        );
         await expect(row.getByTestId("session-source-api")).toHaveText("api");
         const createdTime = row.getByTestId(`session-created-${id}`).locator("time");
         const durationTime = row.getByTestId(`session-duration-${id}`).locator("time");

@@ -20,7 +20,7 @@ describe("primary control-plane empty states", () => {
     expect(html).toContain('data-pw="dashboard-empty-hosts"');
     expect(html).toContain('data-pw="dashboard-empty-setup-host"');
 
-    stubApi({ "/api/v1/sessions?limit=50": {} });
+    stubApi({ "/api/v1/sessions?limit=50": {}, "/api/v1/repositories": {} });
     html = await renderPage(SessionsPage(emptySearchParams));
     expect(html).toContain('data-pw="sessions-empty"');
     expect(html).toContain('data-pw="sessions-empty-create"');
@@ -45,7 +45,10 @@ describe("primary control-plane empty states", () => {
   });
 
   it("preserves filtered empty results and suppresses onboarding on API failure", async () => {
-    stubApi({ "/api/v1/sessions?limit=50&status=failed": {} });
+    stubApi({
+      "/api/v1/sessions?limit=50&status=failed": {},
+      "/api/v1/repositories": {},
+    });
     let html = await renderPage(
       SessionsPage({ searchParams: Promise.resolve({ status: "failed" }) }),
     );

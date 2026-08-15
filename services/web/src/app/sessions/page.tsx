@@ -26,6 +26,7 @@ type Session = {
   completedAt?: string | null;
   errorCode?: string | null;
 };
+type Repository = { id: string; name: string };
 
 export default async function SessionsPage({
   searchParams,
@@ -42,13 +43,20 @@ export default async function SessionsPage({
   const filters = parseSessionListState(sp);
 
   let items: Session[] = [];
+  let repositoryNames: Record<string, string> = {};
   let nextCursor: string | null = null;
   let error: string | null = null;
   const path = buildSessionsApiPath(filters);
   try {
-    const data = await apiGet<{ items: Session[]; nextCursor: string | null }>(path);
-    items = data.items ?? [];
-    nextCursor = data.nextCursor ?? null;
+    const [sessions, repositories] = await Promise.all([
+      apiGet<{ items: Session[]; nextCursor: string | null }>(path),
+      apiGet<{ items: Repository[] }>("/api/v1/repositories").catch(() => ({ items: [] })),
+    ]);
+    items = sessions.items ?? [];
+    nextCursor = sessions.nextCursor ?? null;
+    repositoryNames = Object.fromEntries(
+      (repositories.items ?? []).map((repository) => [repository.id, repository.name]),
+    );
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
@@ -79,6 +87,7 @@ export default async function SessionsPage({
           initialNextCursor={nextCursor}
           listState={filters}
           path={path}
+          repositoryNames={repositoryNames}
         />
       )}
     </div>

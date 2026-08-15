@@ -18,6 +18,7 @@ describe("shared sessions table and tabs", () => {
           {
             id: "a/b",
             status: "running",
+            repositoryId: "repo/a",
             hostId: "host",
             targetLabels: ["primary", "backup", "tertiary"],
             fallbacks: [{ providerId: "p" }],
@@ -34,10 +35,23 @@ describe("shared sessions table and tabs", () => {
             requiredLabels: ["codex", "gpu"],
             concurrencyId: "group",
           },
+          {
+            id: "embedded-name",
+            status: "queued",
+            repositoryId: "repo-embedded",
+            repositoryName: "Embedded repository",
+          },
+          { id: "linked-id", status: "queued", repositoryId: "repo-id" },
         ]}
+        repositoryNames={{ "repo/a": "Harness" }}
+        repositoryHrefBase="/repositories"
       />,
     );
     expect(row).toContain('href="/sessions/a%2Fb"');
+    expect(row).toContain('href="/repositories/repo%2Fa"');
+    expect(row).toContain("Harness");
+    expect(row).toContain("Embedded repository");
+    expect(row).toContain('href="/repositories/repo-id"');
     expect(row).toContain("host");
     expect(row).toContain("+2 fallbacks");
     expect(row).toContain("target 1: account / command / route-host");
@@ -72,6 +86,7 @@ describe("shared sessions table and tabs", () => {
           {
             id: "partial",
             status: "queued",
+            repositoryId: "repo-raw",
             hostId: null,
             target: {},
             targetLabels: ["primary", "backup"],
@@ -84,6 +99,8 @@ describe("shared sessions table and tabs", () => {
       />,
     );
     expect(partial).toContain("a / route-c / —");
+    expect(partial).toContain('data-pw="session-repository-partial">repo-raw');
+    expect(partial).toContain('data-pw="session-repository-null-route">—');
     expect(partial).toContain("CLI / — / —");
     expect(render(<SessionsTable items={[]} emptyMessage="Nothing here" />)).toContain(
       "Nothing here",
@@ -141,6 +158,15 @@ describe("shared sessions table and tabs", () => {
     expect(render(<SessionsTable items={searchable} search="gpu" />)).toContain(
       'data-pw="session-row-searchable"',
     );
+    expect(
+      render(
+        <SessionsTable
+          items={[{ id: "repo-search", status: "queued", repositoryId: "repo-1" }]}
+          repositoryNames={{ "repo-1": "Auto Harness" }}
+          search="harness"
+        />,
+      ),
+    ).toContain('data-pw="session-row-repo-search"');
   });
 
   it("links valid, fallback, and empty tab selections to their expected routes", () => {

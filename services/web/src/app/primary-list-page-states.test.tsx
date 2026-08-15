@@ -23,11 +23,28 @@ describe("primary list page states", () => {
   });
 
   it("replaces the sessions table with a retry alert after an API failure", async () => {
-    stubApi({ "/api/v1/sessions?limit=50&sort=latest": jsonResponse({}, 503) });
+    stubApi({
+      "/api/v1/sessions?limit=50": jsonResponse({}, 503),
+      "/api/v1/repositories": {},
+    });
     const html = await renderPage(SessionsPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="sessions-api-error"');
     expect(html).toContain('data-pw="sessions-api-retry"');
     expect(html).not.toContain('data-pw="sessions-table"');
+  });
+
+  it("keeps session rows with repository id fallback when the catalog is unavailable", async () => {
+    stubApi({
+      "/api/v1/sessions?limit=50": {
+        items: [{ id: "session-1", status: "queued", repositoryId: "repo-fallback" }],
+      },
+      "/api/v1/repositories": jsonResponse({}, 503),
+    });
+    const html = await renderPage(SessionsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="session-row-session-1"');
+    expect(html).toContain('data-pw="session-repository-session-1"');
+    expect(html).toContain("repo-fallback");
+    expect(html).not.toContain('data-pw="sessions-api-error"');
   });
 
   it("replaces repository content and its dependent form after an API failure", async () => {

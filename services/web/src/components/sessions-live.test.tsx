@@ -24,7 +24,10 @@ describe("SessionsLive", () => {
   it("polls the bounded current page and updates session rows", async () => {
     vi.useFakeTimers();
     const request = createRequestFake(
-      json({ items: [{ id: "live", status: "running" }], nextCursor: "next-live" }),
+      json({
+        items: [{ id: "live", status: "running", repositoryId: "repo-1" }],
+        nextCursor: "next-live",
+      }),
     );
     vi.stubGlobal("fetch", request.request);
     const view = mountForm(
@@ -34,11 +37,15 @@ describe("SessionsLive", () => {
         listState={listState}
         path="/api/v1/sessions?status=running"
         pollMs={10}
+        repositoryNames={{ "repo-1": "Harness" }}
       />,
     );
     expect(view.container.textContent).toContain("No sessions yet");
     await act(async () => vi.advanceTimersByTimeAsync(10));
     expect(field(view.container, "session-row-live")).toBeTruthy();
+    const repository = field<HTMLTableCellElement>(view.container, "session-repository-live");
+    expect(repository.textContent).toBe("Harness");
+    expect(repository.querySelector("a")?.getAttribute("href")).toBe("/repositories/repo-1");
     expect(field<HTMLAnchorElement>(view.container, "pagination-next").href).toContain(
       "cursor=next-live",
     );
