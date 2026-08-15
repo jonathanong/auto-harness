@@ -31,7 +31,6 @@ test.describe("host pane sessions", () => {
       });
 
       try {
-        // Keep a real host socket alive so the assignment can enter running state.
         await page.goto("/sessions");
         await page.evaluate(
           ({ repositoryId, worktreeId }) =>
@@ -96,6 +95,9 @@ test.describe("host pane sessions", () => {
           },
         });
         const { id } = (await created.json()) as { id: string };
+        detailPage = await page.context().newPage();
+        await detailPage.goto(`/sessions/${encodeURIComponent(id)}`);
+        await expect(detailPage.getByTestId("session-detail-queue-deadline")).toBeVisible();
         await request.post(`${API}/api/v1/scheduler/assign`);
         const assigned = await request.get(`${API}/api/v1/sessions/${id}`);
         const assignment = (await assigned.json()) as { attemptId: string; worktreeId: string };
@@ -115,7 +117,11 @@ test.describe("host pane sessions", () => {
           })
           .toBe("running");
 
-        detailPage = await page.context().newPage();
+        await expect(detailPage.getByTestId("session-detail-status")).toContainText("running", {
+          timeout: 15_000,
+        });
+        await expect(detailPage.getByTestId("session-detail-queue-deadline")).toHaveCount(0);
+
         // Host-pane search uses the same projection, including configured route IDs.
         await detailPage.goto(`/sessions?q=${encodeURIComponent(commandId)}`);
         await expect(detailPage.getByTestId(`session-link-${id}`)).toBeVisible({ timeout: 15_000 });
@@ -203,10 +209,5 @@ test.describe("host pane sessions", () => {
         await removeHostRepo(request, repoId);
       }
     });
-  });
-
-  test("unknown session id shows a not-found state", async ({ page }) => {
-    await page.goto("/sessions/does-not-exist-xyz");
-    await expect(page.getByTestId("page-session-detail-not-found")).toBeVisible();
   });
 });

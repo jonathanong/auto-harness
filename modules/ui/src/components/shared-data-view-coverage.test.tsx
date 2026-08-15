@@ -78,15 +78,13 @@ describe("shared data display composites", () => {
     expect(render(<SessionExecutionSummary resumeFallback />)).toContain("fresh attempt");
   });
 
-  it("renders route labels, fallback sources, queue metadata, and resolution precedence", () => {
+  it("renders route labels, fallback sources, and resolution precedence", () => {
     const complete = render(
       <SessionRouteSummary
         session={{
           targetLabel: "primary",
           targetLabels: ["primary", "backup"],
           fallbacks: [{ providerId: "ignored" }],
-          queueExpiresAt: "tomorrow",
-          queueTtlSeconds: 60,
           resolvedProviderAccountId: "account",
           resolvedCommandId: "command",
           resolvedHostId: "host",
@@ -96,7 +94,6 @@ describe("shared data display composites", () => {
       />,
     );
     expect(complete).toContain("Fallbacks: backup");
-    expect(complete).toContain("tomorrow (60s TTL)");
     expect(complete).toContain("target 2");
     expect(complete).toContain("account: account");
     expect(complete).toContain("command: command");
@@ -117,9 +114,7 @@ describe("shared data display composites", () => {
       ),
     ).toContain("Fallbacks: command:c");
     expect(render(<SessionRouteSummary session={{ fallbacks: [{}] }} />)).toContain("Fallbacks: —");
-    const cli = render(
-      <SessionRouteSummary session={{ queueExpiresAt: null, queueTtlSeconds: null }} />,
-    );
+    const cli = render(<SessionRouteSummary session={{}} />);
     expect(cli).toContain("Target");
     expect(cli).toContain("—");
     expect(cli).toContain("account: CLI");

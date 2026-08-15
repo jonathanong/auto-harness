@@ -118,6 +118,7 @@ describe("shared detail views", () => {
         session={{
           id: "session/b",
           status: "queued",
+          queueExpiresAt: "2026-08-14T12:30:00.000Z",
           repositoryId: "repo/b",
           hostId: "host/b",
           worktreeId: "worktree/b",
@@ -129,6 +130,8 @@ describe("shared detail views", () => {
     expect(plain).toContain('data-pw="session-source-unknown"');
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
+    expect(plain).toContain('data-pw="session-detail-queue-deadline"');
+    expect(plain).toContain('dateTime="2026-08-14T12:30:00.000Z"');
     expect(plain).toContain('data-pw="session-detail-priority">—');
     expect(plain).toContain('Timeout</dt><dd class="text-sm" data-pw="session-detail-timeout">—');
     const absent = render(

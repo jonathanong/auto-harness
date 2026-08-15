@@ -5,8 +5,6 @@ export type SessionRouteSummaryProps = {
   targetLabels?: string[] | null;
   target?: TargetRef | null;
   fallbacks?: TargetRef[] | null;
-  queueTtlSeconds?: number | null;
-  queueExpiresAt?: string | null;
   resolvedProviderAccountId?: string | null;
   resolvedCommandId?: string | null;
   resolvedHostId?: string | null;
@@ -38,13 +36,6 @@ export function SessionRouteSummary({ session: s }: { session: SessionRouteSumma
               "—"}
           </dd>
         ) : null}
-      </div>
-      <div>
-        <dt className="text-xs uppercase text-muted-foreground">Queue expiry</dt>
-        <dd className="text-sm" data-pw="session-detail-queue-expiry">
-          {s.queueExpiresAt ?? "—"}
-          {s.queueTtlSeconds != null ? ` (${s.queueTtlSeconds}s TTL)` : ""}
-        </dd>
       </div>
       <div>
         <dt className="text-xs uppercase text-muted-foreground">Resolved route</dt>
