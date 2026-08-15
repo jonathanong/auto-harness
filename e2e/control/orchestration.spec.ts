@@ -103,8 +103,7 @@ test.describe("real orchestration", () => {
         if (status === "running" && !sawRunning) {
           sawRunning = true;
           await page.reload();
-          await expect(page.getByTestId("status-running-live")).toHaveAttribute(
-            "aria-label",
+          await expect(page.getByTestId("status-running-live")).toHaveAccessibleName(
             "running, live",
           );
         }

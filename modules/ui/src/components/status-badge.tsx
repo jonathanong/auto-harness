@@ -19,7 +19,8 @@ export function StatusBadge({ status }: { status: string }) {
   return (
     <Badge
       variant={variant}
-      aria-label={running ? "running, live" : status}
+      role={running ? "status" : undefined}
+      aria-label={running ? "running, live" : undefined}
       data-pw={running ? "status-running-live" : undefined}
     >
       {running ? (

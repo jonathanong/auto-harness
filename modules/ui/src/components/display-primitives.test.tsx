@@ -139,6 +139,7 @@ describe("shared display primitives", () => {
     expect(running).toContain("bg-primary");
     expect(running).toContain("animate-pulse");
     expect(running).toContain("motion-reduce:animate-none");
+    expect(running).toContain('role="status"');
     expect(running).toContain('aria-label="running, live"');
     expect(running).toContain('data-pw="status-running-live"');
     expect(render(<StatusBadge status="completed" />)).toContain("bg-emerald-100");
