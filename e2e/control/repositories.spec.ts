@@ -19,6 +19,13 @@ test.describe("control plane repositories", () => {
       await page.goto("/repositories");
       const branch = page.getByTestId(`repo-default-branch-${repositoryId}`);
       await expect(branch).toHaveText("Default branch: trunk");
+      await expect(page.getByTestId(`repo-count-sessions-${repositoryId}`)).toHaveText("Sessions0");
+      await expect(page.getByTestId(`repo-count-worktrees-${repositoryId}`)).toHaveText(
+        "Worktrees0",
+      );
+      await expect(page.getByTestId(`repo-count-schedules-${repositoryId}`)).toHaveText(
+        "Schedules0",
+      );
       await expect(page.getByTestId(`repository-url-${repositoryId}`)).toHaveText(url);
       await expect(page.getByTestId(`repository-url-${repositoryId}`)).toHaveAttribute(
         "title",

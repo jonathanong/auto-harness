@@ -57,6 +57,9 @@ describe("shared worktree hierarchy", () => {
             repoUrl: "https://git.example.test/repos/a.git",
             repoHrefBase: "/repositories",
             defaultBranch: "trunk",
+            sessionCount: 12,
+            worktreeCount: 2,
+            scheduleCount: 3,
             worktrees: [worktree, changingLabels],
           },
           { repositoryId: "repo/empty", repoHrefBase: "/repositories", worktrees: [] },
@@ -72,6 +75,10 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain('data-pw="repo-default-branch-repo/a"');
     expect(rich).toContain("Default branch:");
     expect(rich).toContain(">trunk</code>");
+    expect(rich).toContain('data-pw="repo-count-sessions-repo/a"');
+    expect(rich).toContain('data-pw="repo-count-worktrees-repo/a"');
+    expect(rich).toContain('data-pw="repo-count-schedules-repo/a"');
+    expect(rich).toContain(">12</dd>");
     expect(rich).toContain("Add to repo/a");
     expect(rich).toContain("Remove worktree/a");
     expect(rich).toContain("No worktrees under this repository.");

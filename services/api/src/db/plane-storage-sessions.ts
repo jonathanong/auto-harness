@@ -291,6 +291,42 @@ export async function listSessionsByRepository(
   }
 }
 
+/** Count a repository's sessions without materializing its retained history. */
+export async function countSessionsByRepository(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+  hostId?: string,
+): Promise<number> {
+  try {
+    let count = 0;
+    let startKey: Record<string, unknown> | undefined;
+    do {
+      const res = await ctx.doc.send(
+        new QueryCommand({
+          TableName: ctx.tables.sessions,
+          IndexName: SESSIONS_REPOSITORY_INDEX,
+          KeyConditionExpression: "repositoryId = :repositoryId",
+          ExpressionAttributeValues: {
+            ":repositoryId": repositoryId,
+            ...(hostId ? { ":hostId": hostId } : {}),
+          },
+          ...(hostId ? { FilterExpression: "hostId = :hostId" } : {}),
+          Select: "COUNT",
+          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+        }),
+      );
+      count += res.Count ?? 0;
+      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    } while (startKey && Object.keys(startKey).length > 0);
+    return count;
+  } catch (error) {
+    if (!isRepositoryIndexUnavailable(error)) throw error;
+    return (await listSessionsByRepositoryScan(ctx, repositoryId)).filter(
+      (session) => !hostId || session.hostId === hostId,
+    ).length;
+  }
+}
+
 function isRepositoryIndexUnavailable(error: unknown): boolean {
   return (
     typeof error === "object" &&

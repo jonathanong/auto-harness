@@ -8,7 +8,15 @@ import { apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
-type Repo = { id: string; name: string; url: string; defaultBranch?: string };
+type Repo = {
+  id: string;
+  name: string;
+  url: string;
+  defaultBranch?: string;
+  sessionCount: number;
+  worktreeCount: number;
+  scheduleCount: number;
+};
 type Host = { hostId: string };
 type Wt = {
   id: string;
@@ -51,6 +59,9 @@ export default async function RepositoriesPage() {
     repoHrefBase: "/repositories",
     repoUrl: r.url,
     defaultBranch: r.defaultBranch ?? "main",
+    sessionCount: r.sessionCount,
+    worktreeCount: r.worktreeCount,
+    scheduleCount: r.scheduleCount,
     worktrees: worktreesByRepo.get(r.id) ?? [],
   }));
 

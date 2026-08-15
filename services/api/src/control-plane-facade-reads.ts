@@ -12,6 +12,48 @@ import * as usage from "./control-plane-usage.ts";
 
 /** Durable read-through facade kept separate from mutation-heavy base methods. */
 export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
+  async listRepositoryCountsDurable(
+    repositoryIds: readonly string[],
+    hostId?: string,
+  ): Promise<Map<string, { sessionCount: number; worktreeCount: number; scheduleCount: number }>> {
+    const counts = new Map(
+      repositoryIds.map((id) => [id, { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]),
+    );
+    if (repositoryIds.length === 0) return counts;
+    const [sessionCounts, worktreeRecords, scheduleRecords] = await Promise.all([
+      this.state.storage
+        ? Promise.all(
+            repositoryIds.map((repositoryId) =>
+              this.state.storage!.countSessionsByRepository(repositoryId, hostId),
+            ),
+          )
+        : Promise.resolve(
+            repositoryIds.map(
+              (repositoryId) =>
+                [...this.state.sessions.values()].filter(
+                  (session) =>
+                    session.repositoryId === repositoryId && (!hostId || session.hostId === hostId),
+                ).length,
+            ),
+          ),
+      durableRuntime.listWorktreesDurable(this.state),
+      durableCatalog.listSchedulesDurable(this.state),
+    ]);
+    repositoryIds.forEach((repositoryId, index) => {
+      counts.get(repositoryId)!.sessionCount = sessionCounts[index] ?? 0;
+    });
+    for (const worktree of worktreeRecords) {
+      if (hostId && worktree.hostId !== hostId) continue;
+      const count = counts.get(worktree.repositoryId);
+      if (count) count.worktreeCount += 1;
+    }
+    for (const schedule of scheduleRecords) {
+      const count = counts.get(schedule.repositoryId);
+      if (count) count.scheduleCount += 1;
+    }
+    return counts;
+  }
+
   async refreshSchedulerReadModelDurable(): Promise<void> {
     await durableRuntime.refreshSchedulerReadModel(this.state);
   }

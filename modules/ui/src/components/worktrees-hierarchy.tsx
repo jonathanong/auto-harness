@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 
 import { RepositoryUrlCopy } from "./repository-url-copy.tsx";
+import { RepositoryObservabilityCounts } from "./repository-observability-counts.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
@@ -28,6 +29,9 @@ export type WorktreeRepoGroup = {
   repoPath?: string;
   /** Catalog Git URL; unlike a host path, this is rendered with an exact copy control. */
   repoUrl?: string;
+  sessionCount?: number;
+  worktreeCount?: number;
+  scheduleCount?: number;
   /** When set, the repo name links to `${repoHrefBase}/${encodeURIComponent(repositoryId)}`. */
   repoHrefBase?: string;
   worktrees: WorktreeRow[];
@@ -111,6 +115,7 @@ export function WorktreesHierarchy({
                 ) : null}
               </div>
             </div>
+            <RepositoryObservabilityCounts repository={g} />
           </summary>
           <div className="space-y-3 border-t border-border p-4">
             {renderRepoActions ? (
