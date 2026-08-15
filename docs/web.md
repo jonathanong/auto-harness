@@ -224,13 +224,13 @@ does not send browser input to the running process. Git, setup, and hook output 
 **Target status transitions** are displayed as system messages in the terminal:
 
 ```
-[system] Session started at 2026-08-01T12:00:05Z
+[system] Session started at 2026-08-01T12:00:05.000Z
 [system] Running setup script...
 [system] Setup complete.
 [system] Spawning: codex (argument count: 1)
 ... stdout/stderr output ...
 [system] Process exited with code 0
-[system] Session completed at 2026-08-01T12:05:30Z
+[system] Session completed at 2026-08-01T12:05:30.000Z
 ```
 
 The setup lines appear only when a setup script runs successfully. Spawn messages include only the
