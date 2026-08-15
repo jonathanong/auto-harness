@@ -1,11 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { SessionRecord } from "./db/types.ts";
 import type { WebhookTransportRequest } from "./webhook-delivery-types.ts";
-import type { DurableWebhookDelivery } from "./webhook-outbox.ts";
-import { processWebhookOutboxOnce, retryDelay, WebhookWorker } from "./webhook-worker.ts";
+import { processWebhookOutboxOnce, retryDelay } from "./webhook-worker.ts";
 import {
-  webhookMemoryStore,
   webhookProcessStore,
   webhookTestDelivery,
   webhookTestDestination,
@@ -129,77 +126,5 @@ describe("webhook outbox processor", () => {
         RangeError,
       );
     }
-  });
-});
-
-function terminalSession(): SessionRecord {
-  return {
-    id: "session-worker",
-    repositoryId: "repository-1",
-    prompt: "not transported",
-    target: { commandId: "command-1" },
-    fallbacks: [],
-    targetLabels: ["Codex"],
-    queueTtlSeconds: 60,
-    queueExpiresAt: webhookTestNow,
-    timeout: 60,
-    priority: 0,
-    requiredLabels: [],
-    status: "completed",
-    queueShard: 0,
-    createdAt: webhookTestNow,
-    completedAt: webhookTestNow,
-  };
-}
-
-describe("WebhookWorker", () => {
-  it("reconciles, drains once, and remains idempotent after restart", async () => {
-    const rows = new Map<string, DurableWebhookDelivery>();
-    const requests: WebhookTransportRequest[] = [];
-    const store = webhookMemoryStore(rows);
-    const dependencies = {
-      store,
-      transport: {
-        async deliver(request: WebhookTransportRequest) {
-          requests.push(request);
-          return { ok: true } as const;
-        },
-      },
-      selectDestinations: async () => [webhookTestDestination],
-      listSessions: async () => [terminalSession()],
-    };
-    const options = { now: () => webhookTestNow, leaseId: () => "lease-1" };
-    const first = new WebhookWorker(dependencies, options);
-    first.start();
-    first.start();
-    await first.stop();
-    expect(requests).toHaveLength(1);
-
-    const restarted = new WebhookWorker(dependencies, { ...options, leaseId: () => "lease-2" });
-    restarted.start();
-    await restarted.stop();
-    expect(requests).toHaveLength(1);
-    expect([...rows.values()][0]).toMatchObject({ state: "delivered", attemptCount: 1 });
-  });
-
-  it("guards in-flight ticks and isolates dependency and observer failures", async () => {
-    expect(() => new WebhookWorker({} as never, { intervalMs: 0 })).toThrow(RangeError);
-    const onError = vi.fn(() => {
-      throw new Error("observer");
-    });
-    const worker = new WebhookWorker(
-      {
-        store: webhookProcessStore(),
-        transport: { deliver: vi.fn() },
-        selectDestinations: vi.fn(),
-        listSessions: vi.fn(async () => Promise.reject(new Error("sessions unavailable"))),
-      },
-      { onError },
-    );
-    await expect(worker.tick()).resolves.toBe(false);
-    worker.start();
-    await expect(worker.tick()).resolves.toBe(false);
-    await worker.stop();
-    expect(onError).toHaveBeenCalledOnce();
   });
 });

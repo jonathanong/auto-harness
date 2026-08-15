@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@auto-harness/shared";
+import type { SessionTerminalStatus } from "@auto-harness/shared";
 
 import type { WebhookLeaseFence, WebhookLeaseInput } from "./db/plane-storage-webhook-outbox.ts";
 import type {
@@ -9,14 +9,12 @@ import type {
   WebhookFailureCode,
 } from "./webhook-outbox.ts";
 
-export type TerminalSessionStatus = Exclude<SessionStatus, "queued" | "running">;
-
 /** The only session fields visible to destination selection. */
 export type WebhookLifecycleSnapshot = {
   sessionId: string;
   repositoryId: string;
   attemptId: string | null;
-  status: TerminalSessionStatus;
+  status: SessionTerminalStatus;
   occurredAt: string;
 };
 
@@ -63,4 +61,18 @@ export type WebhookOutboxStore = {
     },
   ): Promise<"pending" | "dead" | null>;
   deadLetterExhaustedWebhookDelivery(input: { id: string; now: string }): Promise<boolean>;
+};
+
+export type WebhookWorkerOptions = {
+  intervalMs?: number;
+  maxDeliveriesPerTick?: number;
+  maxSessionsPerTick?: number;
+  dueQueryLimit?: number;
+  leaseMs?: number;
+  baseRetryMs?: number;
+  maxRetryMs?: number;
+  now?: () => string;
+  leaseId?: () => string;
+  owner?: string;
+  onError?: (error: unknown) => void;
 };
