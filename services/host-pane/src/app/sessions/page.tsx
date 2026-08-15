@@ -68,6 +68,14 @@ export default async function SessionsPage({
     },
     "/sessions",
   );
+  const createdSortHref = sessionListHref(
+    {
+      ...filters,
+      cursor: "",
+      sort: filters.sort === "latest" ? "oldest" : "latest",
+    },
+    "/sessions",
+  );
 
   return (
     <div className="space-y-4" data-pw="page-sessions">
@@ -89,7 +97,7 @@ export default async function SessionsPage({
         emptyMessage="No sessions for this agent."
         search={filters.q}
         sort={filters.sort}
-        prioritySortHref={prioritySortHref}
+        sortHrefs={{ priority: prioritySortHref, created: createdSortHref }}
         repositoryHrefBase="/repositories"
         repositoryNames={repositoryNames}
       />

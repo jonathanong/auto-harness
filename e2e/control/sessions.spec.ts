@@ -58,6 +58,12 @@ test.describe("control plane sessions", () => {
       `/repositories/${repositoryId}`,
     );
     await expect(page.getByTestId("session-filters")).toBeVisible();
+    const createdSort = page.getByTestId("session-sort-created");
+    await expect(createdSort).toHaveAccessibleName("Sort by creation time, oldest first");
+    await createdSort.click();
+    await expect(page).toHaveURL(/sort=oldest/);
+    await expect(createdSort.locator("..")).toHaveAttribute("aria-sort", "ascending");
+    await expect(createdSort).toHaveAccessibleName("Sort by creation time, newest first");
     const prioritySort = page.getByTestId("session-sort-priority");
     await expect(prioritySort).toHaveAccessibleName("Sort by priority, high to low");
     await prioritySort.click();
