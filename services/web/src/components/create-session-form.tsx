@@ -2,11 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
 import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
+import { SessionPromptField } from "./session-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 import type { SessionCloneDraft } from "../session-clone-draft.ts";
 import { SessionCreateDetailFields } from "./session-create-detail-fields.tsx";
@@ -115,19 +116,7 @@ export function CreateSessionForm({
           initialFallbacks={initialValues?.fallbacks}
         />
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="prompt" tip="Prompt text passed to the resolved command">
-          Prompt
-        </Label>
-        <Textarea
-          id="prompt"
-          name="prompt"
-          required
-          rows={4}
-          defaultValue={initialValues?.prompt}
-          data-pw="create-session-prompt"
-        />
-      </div>
+      <SessionPromptField initialValue={initialValues?.prompt} />
       <SessionCreateDetailFields initialValues={initialValues} />
       {error ? (
         <p className="text-sm text-red-700" data-pw="create-session-error">
