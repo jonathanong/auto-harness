@@ -17,11 +17,6 @@ export async function manageWeb(scratch: string): Promise<void> {
     repositoryIdFactory: () => "repo-web",
     now: () => "2026-01-01T00:00:00.000Z",
   });
-  plane.registerHost({
-    hostId: "a1",
-    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "demo", path: "/w", labels: [] }],
-    commandProfiles: ["echo-prompt"],
-  });
   const command = plane.createCommand({ name: "echo-prompt", argv: ["echo"], providerId: null });
   if (!command.ok) {
     throw new Error(command.error);
@@ -55,11 +50,18 @@ export async function manageWeb(scratch: string): Promise<void> {
       defaultBranch: "main",
     }),
   });
+  const createRepoBody = (await createRepo.json()) as { id?: string };
+  const repositoryId = createRepoBody.id ?? "missing-repository-id";
+  plane.registerHost({
+    hostId: "a1",
+    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId, path: "/w", labels: [] }],
+    commandProfiles: ["echo-prompt"],
+  });
   const createSched = await fetch(`${base}/api/v1/schedules`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      repositoryId: "demo",
+      repositoryId,
       name: "nightly",
       target: { commandId: command.command.id },
       cron: "0 * * * *",
@@ -68,9 +70,10 @@ export async function manageWeb(scratch: string): Promise<void> {
       ref: "main",
     }),
   });
+  const createSchedBody = (await createSched.json()) as { repositoryId?: string };
   const trigger = await fetch(`${base}/api/v1/schedules/sched-web/trigger`, { method: "POST" });
   plane.createSession({
-    repositoryId: "demo",
+    repositoryId,
     prompt: "web-cancel",
     target: { commandId: command.command.id },
     timeout: 10,
@@ -89,9 +92,12 @@ export async function manageWeb(scratch: string): Promise<void> {
       {
         pages,
         createRepo: createRepo.status,
+        repositoryId,
         createSched: createSched.status,
+        scheduleRepositoryId: createSchedBody.repositoryId,
         trigger: trigger.status,
         cancel: cancel.status,
+        cancelRepositoryId: toCancel.repositoryId,
         drain: drain.status,
       },
       null,

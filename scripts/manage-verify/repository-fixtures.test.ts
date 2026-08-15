@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { manageRepos } from "./repos.mts";
+import { manageWeb } from "./web.mts";
 
 describe("management smoke repository fixtures", () => {
   it("follows the current repository route contract end to end", async () => {
@@ -26,6 +27,25 @@ describe("management smoke repository fixtures", () => {
       });
     } finally {
       process.exitCode = previousExitCode;
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the authoritative repository ID throughout the web management flow", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "manage-web-repository-test-"));
+    try {
+      await manageWeb(scratch);
+      expect(JSON.parse(readFileSync(join(scratch, "web.json"), "utf8"))).toMatchObject({
+        createRepo: 201,
+        repositoryId: "repo-web",
+        createSched: 201,
+        scheduleRepositoryId: "repo-web",
+        trigger: 201,
+        cancel: 200,
+        cancelRepositoryId: "repo-web",
+        drain: 200,
+      });
+    } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
   });
