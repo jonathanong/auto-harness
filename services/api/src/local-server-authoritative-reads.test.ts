@@ -25,14 +25,14 @@ describe("durable session routes", () => {
         })
       ).ok,
     ).toBe(true);
-    for (const [seq, content] of [
-      [2, "second"],
-      [1, "first"],
+    for (const [seq, stream, content] of [
+      [2, "stdout", "command output"],
+      [1, "system", "Session started at 2026-01-01T00:00:00.000Z"],
     ] as const) {
       await writer.handleHostMessageDurable({
         type: "session:log",
         sessionId: "session",
-        stream: "stdout",
+        stream,
         content,
         timestamp: "2026-01-01T00:00:00.000Z",
         seq,
@@ -43,8 +43,13 @@ describe("durable session routes", () => {
     const response = await invokeHandler(handler, "GET", "/api/v1/sessions/session/logs");
     expect(response.status).toBe(200);
     expect(
-      (response.json as { items: Array<{ content: string }> }).items.map(({ content }) => content),
-    ).toEqual(["first", "second"]);
+      (response.json as { items: Array<{ stream: string; content: string }> }).items.map(
+        ({ stream, content }) => ({ stream, content }),
+      ),
+    ).toEqual([
+      { stream: "system", content: "Session started at 2026-01-01T00:00:00.000Z" },
+      { stream: "stdout", content: "command output" },
+    ]);
   });
 
   it("enforces the bounded historical-log route contract", async () => {

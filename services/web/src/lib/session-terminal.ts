@@ -4,10 +4,15 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 13;
 export const MIN_TERMINAL_FONT_SIZE = 10;
 export const MAX_TERMINAL_FONT_SIZE = 24;
 
+export function terminalEntryText(item: LiveLogEntry): string {
+  if (item.stream !== "system") return item.content;
+  return `[system] ${item.content.replace(/\r?\n$/, "")}\r\n`;
+}
+
 export function terminalText(items: readonly LiveLogEntry[]): string {
   return [...items]
     .toSorted((left, right) => left.timestampSeq.localeCompare(right.timestampSeq))
-    .map((item) => item.content)
+    .map(terminalEntryText)
     .join("");
 }
 

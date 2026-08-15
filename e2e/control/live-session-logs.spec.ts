@@ -108,6 +108,16 @@ test.describe("live session logs", () => {
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
         "live browser tail",
       );
+      host.socket.send(logFrame(session.id, "Process exited with code 0", 4, "system"));
+      host.socket.send(
+        logFrame(session.id, "Session completed at 2026-08-01T12:05:30.000Z", 5, "system"),
+      );
+      await expect(page.getByTestId("session-terminal-transcript")).toContainText(
+        "[system] Process exited with code 0",
+      );
+      await expect(page.getByTestId("session-terminal-transcript")).toContainText(
+        "[system] Session completed at 2026-08-01T12:05:30.000Z",
+      );
 
       await page.getByTestId("session-logs").click();
       await page.keyboard.press("Control+f");
@@ -198,11 +208,16 @@ async function connectHost(
   return { socket, assignment };
 }
 
-function logFrame(sessionId: string, content: string, seq: number): string {
+function logFrame(
+  sessionId: string,
+  content: string,
+  seq: number,
+  stream: "stdout" | "system" = "stdout",
+): string {
   return JSON.stringify({
     type: "session:log",
     sessionId,
-    stream: "stdout",
+    stream,
     content: `${content}\r\n`,
     timestamp: new Date().toISOString(),
     seq,

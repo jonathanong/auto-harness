@@ -96,6 +96,13 @@ describe("DaemonLoop run", () => {
         ),
       ).toBe(true);
       expect(serverMsgs.some((m) => m.type === "session:log")).toBe(true);
+      const systemLogs = serverMsgs.flatMap((message) =>
+        message.type === "session:log" && message.stream === "system" ? [message.content] : [],
+      );
+      expect(systemLogs[0]).toMatch(/^Session started at /);
+      expect(systemLogs).toContain("Spawning: printf (argument count: 2)");
+      expect(systemLogs).toContain("Process exited with code 0");
+      expect(systemLogs.at(-1)).toMatch(/^Session completed at /);
 
       await loop.keepalive();
       expect(serverMsgs.some((m) => m.type === "host:keepalive")).toBe(true);

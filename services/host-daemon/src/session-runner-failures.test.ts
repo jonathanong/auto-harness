@@ -32,6 +32,11 @@ describe("SessionRunner process and profile failures", () => {
       errorCode: "setup_failed",
       errorMessage: "main checkout sessions must be scheduled",
     });
+    expect(result.logs.map((chunk) => chunk.content)).toEqual([
+      "Session started at 2026-08-01T00:00:00.000Z",
+      "main checkout sessions must be scheduled",
+      "Session failed at 2026-08-01T00:00:00.000Z",
+    ]);
   });
 
   it("fails non-zero process exit", async () => {

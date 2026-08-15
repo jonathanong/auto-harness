@@ -43,6 +43,7 @@ export class SessionRunner {
       this.deps.now,
       options.initialLogSeq,
     );
+    streamer.writeTimestampedSystem("Session started");
 
     let expired = false;
     const timeout = new AbortController();

@@ -57,12 +57,20 @@ export class LogStreamer {
   }
 
   write(stream: LogStream, content: string): SessionLogChunk | null {
+    return this.writeAt(stream, content, this.now());
+  }
+
+  writeTimestampedSystem(label: string): SessionLogChunk | null {
+    const timestamp = this.now();
+    return this.writeAt("system", `${label} at ${timestamp}`, timestamp);
+  }
+
+  private writeAt(stream: LogStream, content: string, timestamp: string): SessionLogChunk | null {
     if (this.emittedChunks >= this.maxChunks || this.emittedBytes >= this.maxBytes) {
       return null;
     }
     const bounded = truncateUtf8(content, this.maxBytes - this.emittedBytes);
     if (bounded.length === 0) return null;
-    const timestamp = this.now();
     const seq = this.seq++;
     const chunk: SessionLogChunk = {
       sessionId: this.sessionId,
