@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one end-to-end flow owns the host, viewer, and terminal lifecycle. */
 import { expect, test } from "@playwright/test";
 
 const API = `http://127.0.0.1:${7430 + portOffset()}`;
@@ -7,6 +8,17 @@ test.describe("live session logs", () => {
     page,
     request,
   }) => {
+    await page.addInitScript(() => {
+      const NativeWebSocket = window.WebSocket;
+      window.WebSocket = class extends NativeWebSocket {
+        constructor(url: string | URL, protocols?: string | string[]) {
+          super(url, protocols);
+          if (String(url).includes("/ws/viewer")) {
+            (window as typeof window & { testViewerSocket?: WebSocket }).testViewerSocket = this;
+          }
+        }
+      };
+    });
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-live-host-${suffix}`;
     const repoId = `pw-live-repo-${suffix}`;
@@ -74,6 +86,19 @@ test.describe("live session logs", () => {
         "history from the real host socket",
       );
       await expect(page.getByTestId("session-logs").locator(".xterm-screen")).toBeVisible();
+
+      await page.evaluate(() => {
+        (window as typeof window & { testViewerSocket?: WebSocket }).testViewerSocket?.close(4001);
+      });
+      await expect(page.getByTestId("session-logs-reconnect-banner")).toContainText(
+        "Real-time updates paused",
+      );
+      const reconnectTicket = page.waitForResponse((response) =>
+        response.url().endsWith("/api/v1/auth/viewer-ticket"),
+      );
+      await page.getByTestId("session-logs-reconnect-now").click();
+      expect((await reconnectTicket).status()).toBe(200);
+      await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — running");
 
       host.socket.send(logFrame(session.id, "\u001b[31mANSI red output\u001b[0m", 2));
       await expect(page.getByTestId("session-terminal-transcript")).toContainText(
