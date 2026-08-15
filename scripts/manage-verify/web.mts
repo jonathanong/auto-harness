@@ -6,6 +6,7 @@ import { writeFileSync } from "node:fs";
 
 import { ControlPlane } from "../../services/api/src/control-plane.ts";
 import { startLocalServer } from "../../services/api/src/local-server.ts";
+import { MANAGE_REPOSITORY_NAME } from "./repos.mts";
 
 export async function manageWeb(scratch: string): Promise<void> {
   let n = 0;
@@ -49,7 +50,7 @@ export async function manageWeb(scratch: string): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       id: "demo",
-      name: "Demo",
+      name: MANAGE_REPOSITORY_NAME,
       url: "/tmp/demo",
       defaultBranch: "main",
     }),

@@ -6,6 +6,9 @@ import { writeFileSync } from "node:fs";
 import { ControlPlane } from "../../services/api/src/control-plane.ts";
 import { startLocalServer } from "../../services/api/src/local-server.ts";
 
+export const MANAGE_REPOSITORY_NAME = "demo";
+const MANAGE_REPOSITORY_UPDATED_NAME = "demo2";
+
 export async function manageRepos(scratch: string): Promise<void> {
   const plane = new ControlPlane({
     repositoryIdFactory: () => "repo-manage",
@@ -19,28 +22,34 @@ export async function manageRepos(scratch: string): Promise<void> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      id: "demo",
-      name: "Demo",
+      name: MANAGE_REPOSITORY_NAME,
       url: "/tmp/demo",
       defaultBranch: "main",
       setupScript: "s.sh",
     }),
   });
-  steps.push({ create: create.status, body: await create.json() });
-  const get = await fetch(`${base}/api/v1/repositories/demo`);
+  const createBody = (await create.json()) as { id?: string };
+  steps.push({ create: create.status, body: createBody });
+  const repositoryId = createBody.id ?? "missing-repository-id";
+  const repositoryPath = `${base}/api/v1/repositories/${encodeURIComponent(repositoryId)}`;
+  const get = await fetch(repositoryPath);
   steps.push({ get: get.status, body: await get.json() });
   const list = await fetch(`${base}/api/v1/repositories`);
   steps.push({ list: list.status, body: await list.json() });
-  const put = await fetch(`${base}/api/v1/repositories/demo`, {
+  const put = await fetch(repositoryPath, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "Demo2", url: "/tmp/d2", defaultBranch: "dev" }),
+    body: JSON.stringify({
+      name: MANAGE_REPOSITORY_UPDATED_NAME,
+      url: "/tmp/d2",
+      defaultBranch: "dev",
+    }),
   });
   const putBody = (await put.json()) as { name?: string };
   steps.push({ put: put.status, body: putBody });
-  const del = await fetch(`${base}/api/v1/repositories/demo`, { method: "DELETE" });
+  const del = await fetch(repositoryPath, { method: "DELETE" });
   steps.push({ del: del.status });
-  const get2 = await fetch(`${base}/api/v1/repositories/demo`);
+  const get2 = await fetch(repositoryPath);
   steps.push({ getAfterDelete: get2.status });
   await api.close();
   const ok =
@@ -48,7 +57,7 @@ export async function manageRepos(scratch: string): Promise<void> {
     get.status === 200 &&
     list.status === 200 &&
     put.status === 200 &&
-    putBody.name === "Demo2" &&
+    putBody.name === MANAGE_REPOSITORY_UPDATED_NAME &&
     del.status === 204 &&
     get2.status === 404;
   const out = { ok, steps };
