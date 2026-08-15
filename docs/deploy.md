@@ -46,23 +46,24 @@ download/restart orchestration remains future work.
 
 ### Teardown
 
-| Surface                              | Where to look                                                                 |
-| ------------------------------------ | ----------------------------------------------------------------------------- |
-| Local processes + DynamoDB container | [deploy-local.md](deploy-local.md#teardown)                                   |
-| AWS disposable foundation            | [Manual deletion constraints](deploy-aws.md#teardown-a-disposable-foundation) |
-| Single agent host                    | [deploy-host-daemon.md](deploy-host-daemon.md#teardown)                       |
+| Surface                                          | Where to look                                                                 |
+| ------------------------------------------------ | ----------------------------------------------------------------------------- |
+| Local processes + DynamoDB container             | [deploy-local.md](deploy-local.md#teardown)                                   |
+| AWS synthesized stack, if independently deployed | [Manual deletion constraints](deploy-aws.md#teardown-a-disposable-foundation) |
+| Single agent host                                | [deploy-host-daemon.md](deploy-host-daemon.md#teardown)                       |
 
-Always drain agents before destroying the control plane.
+If an operator independently deploys the synthesized stack, always drain agents before destroying
+that control plane.
 
 ---
 
 ## Related
 
-| Doc                                                      | Role                                  |
-| -------------------------------------------------------- | ------------------------------------- |
-| [deploy-local.md](deploy-local.md)                       | Local deploy / update / teardown      |
-| [deploy-aws.md](deploy-aws.md)                           | AWS deploy / update / teardown        |
-| [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown |
-| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy E2E checklist              |
-| [local-development.md](local-development.md)             | Local runbook                         |
-| [setup.md](setup.md)                                     | Install overview                      |
+| Doc                                                      | Role                                               |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| [deploy-local.md](deploy-local.md)                       | Local deploy / update / teardown                   |
+| [deploy-aws.md](deploy-aws.md)                           | AWS synthesis and future deploy/delete constraints |
+| [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown              |
+| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy E2E checklist                           |
+| [local-development.md](local-development.md)             | Local runbook                                      |
+| [setup.md](setup.md)                                     | Install overview                                   |
