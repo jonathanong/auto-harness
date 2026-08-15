@@ -19,7 +19,7 @@ export default defineConfig({
         // and Next contexts. App routes and the remaining app-owned components stay e2e-only.
         "services/web/src/components/{schedule-create-form,schedule-edit-form,schedule-trigger-button,schedule-enabled-toggle,create-session-form,prompt-markdown-preview,session-prompt-field,session-routing-fields,session-target-select}.tsx",
         "modules/ui/src/lib/utils.ts",
-        "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx",
+        "modules/ui/src/components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx",
         "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,repository-url-copy.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}",
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
@@ -33,7 +33,7 @@ export default defineConfig({
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
         // Settings state and fields are exercised in happy-dom; complete workflows stay in Playwright.
         "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
-        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",
+        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx",
         "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
         "services/web/src/app/commands/page.tsx",
         "services/web/src/app/commands/*/page.tsx",
@@ -117,13 +117,14 @@ export default defineConfig({
             statements: 100,
           },
         "services/web/src/components/schedule-enabled-toggle.tsx": { 100: true },
-        "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination}.tsx}":
+        "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx}":
           {
             lines: 100,
             branches: 100,
             functions: 100,
             statements: 100,
           },
+        "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
         "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx":
           {
             100: true,
@@ -174,7 +175,7 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
-        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx":
+        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx":
           {
             lines: 100,
             branches: 100,

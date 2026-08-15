@@ -31,6 +31,10 @@ export {
 } from "./components/tooltip.tsx";
 export { CursorPagination, type CursorPaginationProps } from "./components/cursor-pagination.tsx";
 export {
+  PaginatedSessions,
+  type PaginatedSessionsProps,
+} from "./components/paginated-sessions.tsx";
+export {
   SessionsTable,
   type SessionRow,
   type SessionsTableProps,

@@ -218,6 +218,64 @@ test.describe("host pane sessions", () => {
         await expect(detailPage.getByTestId("session-detail-status-reason")).toHaveText(
           "Queue expired",
         );
+
+        const secondCreated = await request.post(`${API}/api/v1/sessions`, {
+          data: {
+            repositoryId: repoId,
+            prompt: `second-${wtId}`,
+            target: { commandId },
+            timeout: 30,
+            requiredLabels: ["echo"],
+          },
+        });
+        expect(secondCreated.status()).toBe(201);
+        const secondId = ((await secondCreated.json()) as { id: string }).id;
+        await request.post(`${API}/api/v1/scheduler/assign`);
+        const secondAssigned = await request.get(`${API}/api/v1/sessions/${secondId}`);
+        const secondAssignment = (await secondAssigned.json()) as {
+          attemptId: string;
+          worktreeId: string;
+        };
+        await page.evaluate(
+          ({ sessionId, attemptId, worktreeId }) => {
+            const socket = (globalThis as typeof globalThis & { timeoutSocket?: WebSocket })
+              .timeoutSocket;
+            if (!socket) throw new Error("host socket missing");
+            socket.send(JSON.stringify({ type: "session:ack", sessionId, attemptId, worktreeId }));
+            socket.send(
+              JSON.stringify({
+                type: "session:status",
+                sessionId,
+                attemptId,
+                worktreeId,
+                status: "failed",
+              }),
+            );
+          },
+          {
+            sessionId: secondId,
+            attemptId: secondAssignment.attemptId,
+            worktreeId: secondAssignment.worktreeId,
+          },
+        );
+        await expect
+          .poll(async () => {
+            const current = await request.get(`${API}/api/v1/sessions/${secondId}`);
+            return ((await current.json()) as { status: string }).status;
+          })
+          .toBe("failed");
+
+        await page.goto(`/sessions?limit=1&repositoryId=${repoId}`);
+        await expect(page.locator("[data-session-row-id]")).toHaveCount(1);
+        const boundedUrl = page.url();
+        await page.getByTestId("sessions-load-more").click();
+        await expect(page.getByTestId(`session-row-${id}`)).toBeVisible();
+        await expect(page.getByTestId(`session-row-${secondId}`)).toBeVisible();
+        await expect(page.locator("[data-session-row-id]")).toHaveCount(2);
+        expect(page.url()).toBe(boundedUrl);
+        await page.locator("body").press("j");
+        await page.locator("body").press("j");
+        await expect(page.locator('[data-session-row-id][aria-selected="true"]')).toHaveCount(1);
       } finally {
         await detailPage?.close();
         await page

@@ -37,6 +37,16 @@ test.describe("control plane sessions", () => {
     });
     expect(created.status()).toBe(201);
     const sessionId = ((await created.json()) as { id: string }).id;
+    const secondCreated = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+      data: {
+        repositoryId,
+        prompt: "exercise appended session page",
+        target: { commandId },
+        timeout: 30,
+      },
+    });
+    expect(secondCreated.status()).toBe(201);
+    const secondSessionId = ((await secondCreated.json()) as { id: string }).id;
     expect(
       (
         await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
@@ -44,12 +54,23 @@ test.describe("control plane sessions", () => {
         })
       ).ok(),
     ).toBe(true);
-    await page.goto("/sessions");
+    await page.goto(`/sessions?limit=1&repositoryId=${repositoryId}`);
     await expect(
       page.getByTestId("page-sessions").or(page.getByTestId("sessions-loading")).first(),
     ).toBeVisible();
     await expect(page.getByTestId("page-sessions")).toBeVisible();
     await expect(page.getByTestId("sessions-heading")).toHaveText("Sessions");
+    await expect(page.locator("[data-session-row-id]")).toHaveCount(1);
+    const boundedUrl = page.url();
+    await page.getByTestId("sessions-load-more").click();
+    await expect(page.getByTestId(`session-row-${sessionId}`)).toBeVisible();
+    await expect(page.getByTestId(`session-row-${secondSessionId}`)).toBeVisible();
+    await expect(page.locator("[data-session-row-id]")).toHaveCount(2);
+    expect(page.url()).toBe(boundedUrl);
+    await page.locator("body").press("j");
+    await page.locator("body").press("j");
+    await expect(page.locator('[data-session-row-id][aria-selected="true"]')).toHaveCount(1);
+    await page.goto("/sessions");
     await expect(page.getByTestId("session-source-api").first()).toHaveText("api");
     const repositoryCell = page.getByTestId(`session-repository-${sessionId}`);
     await expect(repositoryCell).toHaveText(repositoryName);

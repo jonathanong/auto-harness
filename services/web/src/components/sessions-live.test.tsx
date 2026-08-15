@@ -65,8 +65,8 @@ describe("SessionsLive", () => {
     const repository = field<HTMLTableCellElement>(view.container, "session-repository-live");
     expect(repository.textContent).toBe("Harness");
     expect(repository.querySelector("a")?.getAttribute("href")).toBe("/repositories/repo-1");
-    expect(field<HTMLAnchorElement>(view.container, "pagination-next").href).toContain(
-      "cursor=next-live",
+    expect(field<HTMLButtonElement>(view.container, "sessions-load-more").textContent).toBe(
+      "Load more",
     );
     expect(String(request.requests[0]?.[0])).toBe("/api/v1/sessions?status=running");
   });
@@ -97,7 +97,26 @@ describe("SessionsLive", () => {
     expect(field(view.container, "sessions-live-active")).toBeTruthy();
   });
 
-  it("resets server state on a query change and serializes slow polls", async () => {
+  it("shows the first-session guidance when polling empties the loaded list", async () => {
+    vi.useFakeTimers();
+    const request = createRequestFake(json({ items: [], nextCursor: null }));
+    vi.stubGlobal("fetch", request.request);
+    const view = mountForm(
+      <SessionsLive
+        initialItems={[{ id: "stale", status: "queued" }]}
+        initialNextCursor={null}
+        listState={listState}
+        path="/api/v1/sessions"
+        pollMs={10}
+      />,
+    );
+    expect(view.container.textContent).not.toContain("Create your first session");
+    await act(async () => vi.advanceTimersByTimeAsync(10));
+    expect(field(view.container, "sessions-empty").textContent).toContain("No sessions yet");
+    expect(field(view.container, "sessions-empty-create")).toBeTruthy();
+  });
+
+  it("resets server state on a query change and rejects a slow stale poll", async () => {
     vi.useFakeTimers();
     let resolveSlow!: (response: Response) => void;
     const slow = new Promise<Response>((resolve) => {
@@ -130,18 +149,16 @@ describe("SessionsLive", () => {
     await act(async () => vi.advanceTimersByTimeAsync(10));
     press(field(view.container, "change-query"));
     expect(field(view.container, "session-row-new-query")).toBeTruthy();
-    expect(field<HTMLAnchorElement>(view.container, "pagination-next").href).toContain(
-      "status=running",
+    expect(field<HTMLButtonElement>(view.container, "sessions-load-more").textContent).toBe(
+      "Load more",
     );
     await act(async () => vi.advanceTimersByTimeAsync(30));
-    expect(request.requests).toHaveLength(1);
+    expect(request.requests.length).toBeGreaterThan(1);
     await act(async () => {
       resolveSlow(json({ items: [{ id: "slow", status: "running" }], nextCursor: null }));
       await slow;
     });
-    expect(field(view.container, "session-row-new-query")).toBeTruthy();
+    expect(field(view.container, "session-row-polled")).toBeTruthy();
     expect(view.container.querySelector('[data-pw="session-row-slow"]')).toBeNull();
-    await act(async () => vi.advanceTimersByTimeAsync(10));
-    expect(request.requests).toHaveLength(2);
   });
 });

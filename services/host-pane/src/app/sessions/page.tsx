@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@auto-harness/shared";
-import { CursorPagination, SessionFilters, SessionsTable } from "@auto-harness/ui";
+import { SessionFilters } from "@auto-harness/ui";
 
+import { SessionsLive } from "../../components/sessions-live.tsx";
 import { hostId, apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -56,10 +57,6 @@ export default async function SessionsPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const nextHref = nextCursor
-    ? sessionListHref({ ...filters, cursor: nextCursor }, "/sessions")
-    : null;
-  const prevHref = filters.cursor ? sessionListHref({ ...filters, cursor: "" }, "/sessions") : null;
   const prioritySortHref = sessionListHref(
     {
       ...filters,
@@ -91,17 +88,15 @@ export default async function SessionsPage({
         <SessionFilters />
       </Suspense>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
-      <SessionsTable
-        items={items}
-        hrefBase="/sessions"
-        emptyMessage="No sessions for this agent."
-        search={filters.q}
-        sort={filters.sort}
-        sortHrefs={{ priority: prioritySortHref, created: createdSortHref }}
-        repositoryHrefBase="/repositories"
+      <SessionsLive
+        initialItems={items}
+        initialNextCursor={nextCursor}
+        path={buildSessionsApiPath(filters, { hostId: id })}
+        listState={filters}
+        prioritySortHref={prioritySortHref}
+        createdSortHref={createdSortHref}
         repositoryNames={repositoryNames}
       />
-      <CursorPagination nextHref={nextHref} prevHref={prevHref} />
     </div>
   );
 }

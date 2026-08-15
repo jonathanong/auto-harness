@@ -113,9 +113,9 @@ The active sort is indicated by an arrow icon on the column header. Clicking the
 
 ### Search
 
-A search bar above the filter chips searches the sessions already loaded on the current page. Enter a query and press Enter or move focus away from the field to apply it; it is not sent as an API query or backed by DynamoDB full-text search. Matching is case-insensitive across session and repository IDs (and the repository name when supplied), status and terminal reason, prompt, target and fallback labels/IDs, resolved route and host/worktree IDs, queue expiry, source, priority, required labels, concurrency ID, and created/started/completed timestamps.
+A search bar above the filter chips searches the sessions on the currently loaded pages. Enter a query and press Enter or move focus away from the field to apply it; it is not sent as an API query or backed by DynamoDB full-text search. Matching is case-insensitive across session and repository IDs (and the repository name when supplied), status and terminal reason, prompt, target and fallback labels/IDs, resolved route and host/worktree IDs, queue expiry, source, priority, required labels, concurrency ID, and created/started/completed timestamps.
 
-Example: searching "date parser" filters the current page's session prompts for those words.
+Example: searching "date parser" filters the currently loaded pages' session prompts for those words.
 
 ### Filtering
 
@@ -129,19 +129,22 @@ Filters are displayed as dropdowns/chips below the search bar. Multiple filters 
 | **Concurrency ID** | Exact active-run identity (when present); duplicate creates link to the existing session | Inspect dedupe/concurrency behavior                  |
 | **Agent**          | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
 
-Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc&source=api&hostId=agent-1`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the current page and is never sent to `GET /sessions`.
+Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc&source=api&hostId=agent-1`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the currently loaded pages and is never sent to `GET /sessions`.
 
 ### Pagination
 
-Sessions are paginated with cursor-based pagination. The list shows 50 sessions per page with "Load more" at the bottom. The API's `cursor` parameter handles efficient DynamoDB pagination.
+Sessions are paginated with cursor-based pagination. The list initially shows 50 sessions and
+appends the next API page when "Load more" is selected. Loaded pages are deduplicated by session id,
+and loading another page does not replace the active filter/sort/search URL. The API's `cursor`
+parameter handles efficient DynamoDB pagination; bookmarked cursor URLs remain valid starting bounds.
 
 ### Real-Time Updates
 
-The session list refreshes its current bounded API page every five seconds:
+The control-plane session list refreshes its currently loaded bounded API pages every five seconds:
 
 - New sessions appear at the top of the first page automatically
 - Status badges and host assignment update in place
-- Active filters, cursor bounds, and client-side search remain applied
+- Active filters, cursor bounds, appended rows, and client-side search remain applied
 - A request failure keeps the last successful rows and exposes a retry action
 
 The detail log stream continues to use the viewer WebSocket. List and dashboard polling is
