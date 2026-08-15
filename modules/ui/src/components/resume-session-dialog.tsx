@@ -1,16 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "./button.tsx";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "./dialog.tsx";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 
@@ -19,10 +12,12 @@ export type ResumeOverrides = { prompt?: string; timeout?: number; priority?: nu
 export function ResumeSessionDialog({
   disabled,
   pending,
+  error,
   onSubmit,
 }: {
   disabled: boolean;
   pending: boolean;
+  error?: string | null;
   onSubmit: (overrides: ResumeOverrides) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -30,20 +25,23 @@ export function ResumeSessionDialog({
   const [timeout, setTimeoutValue] = useState("");
   const [priority, setPriority] = useState("");
 
+  useEffect(() => {
+    if (error) setOpen(true);
+  }, [error]);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled}
-          aria-busy={pending}
-          data-pw="session-resume"
-        >
-          {pending ? "Resuming…" : "Resume"}
-        </Button>
-      </DialogTrigger>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={disabled}
+        aria-busy={pending}
+        data-pw="session-resume"
+        onClick={() => setOpen(true)}
+      >
+        {pending ? "Resuming…" : "Resume"}
+      </Button>
       <DialogContent data-pw="session-resume-dialog">
         <DialogHeader>
           <DialogTitle>Resume session</DialogTitle>
@@ -51,6 +49,11 @@ export function ResumeSessionDialog({
             Continue on the same host when possible. Every override is optional.
           </DialogDescription>
         </DialogHeader>
+        {error ? (
+          <p className="text-sm text-red-700" role="alert" data-pw="session-resume-error">
+            {error}
+          </p>
+        ) : null}
         <form
           className="space-y-3"
           onSubmit={(event) => {

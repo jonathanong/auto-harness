@@ -28,8 +28,8 @@ function mount(node: ReactNode, router: Router) {
   return { container, unmount: () => act(() => root.unmount()) };
 }
 
-function response(body: string) {
-  return { ok: true, text: vi.fn(async () => body), json: vi.fn(async () => JSON.parse(body)) };
+function response(body: string, ok = true) {
+  return { ok, text: vi.fn(async () => body), json: vi.fn(async () => JSON.parse(body)) };
 }
 
 function setInput(pw: string, value: string) {
@@ -126,6 +126,28 @@ describe("session resume actions", () => {
       await Promise.resolve();
     });
     expect(router.push).toHaveBeenCalledWith("/sessions/continued");
+    view.unmount();
+  });
+
+  it("keeps a failed resume open and surfaces its error inside the dialog", async () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(response("cannot resume this session", false)),
+    );
+    const view = mount(<SessionActions sessionId="old" status="failed" />, router);
+    await submitResume(view.container);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const dialog = document.body.querySelector('[data-pw="session-resume-dialog"]') as HTMLElement;
+    expect(dialog).not.toBeNull();
+    const error = dialog.querySelector('[data-pw="session-resume-error"]');
+    expect(error?.getAttribute("role")).toBe("alert");
+    expect(error?.textContent).toBe("cannot resume this session");
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
   });
 });

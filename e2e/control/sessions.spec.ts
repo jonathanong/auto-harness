@@ -207,22 +207,7 @@ test.describe("control plane sessions", () => {
           timeout: 15_000,
         });
         await expect(page.getByTestId("session-resume")).toHaveText("Resume");
-        const sessionId = decodeURIComponent(new URL(page.url()).pathname.split("/").at(-1) ?? "");
-        await page.getByTestId("session-resume").click();
-        await expect(page.getByTestId("session-resume-dialog")).toBeVisible();
-        await page.getByTestId("session-resume-prompt").fill("continue from review");
-        await page.getByTestId("session-resume-timeout").fill("45");
-        await page.getByTestId("session-resume-priority").fill("60");
-        const resumeRequest = page.waitForRequest(
-          (request) => request.url().endsWith("/resume") && request.method() === "POST",
-        );
-        await page.getByTestId("session-resume-submit").click();
-        expect((await resumeRequest).postDataJSON()).toEqual({
-          prompt: "continue from review",
-          timeout: 45,
-          priority: 60,
-        });
-        await expect(page).toHaveURL(/\/sessions\/[^/?]+$/, { timeout: 15_000 });
+        const sessionId = createdSessionId;
 
         // Lists show one safe-text line by default and disclose the full prompt on demand.
         await page.goto(`/sessions?q=${encodeURIComponent(sessionId)}`);
@@ -405,6 +390,24 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("session-detail-status")).toContainText("cancelled", {
       timeout: 15_000,
     });
+    await page.getByTestId("session-resume").click();
+    await expect(page.getByTestId("session-resume-dialog")).toBeVisible();
+    await page.getByTestId("session-resume-prompt").fill("continue from review");
+    await page.getByTestId("session-resume-timeout").fill("45");
+    await page.getByTestId("session-resume-priority").fill("60");
+    const resumeRequest = page.waitForRequest(
+      (request) => request.url().endsWith("/resume") && request.method() === "POST",
+    );
+    await page.getByTestId("session-resume-submit").click();
+    expect((await resumeRequest).postDataJSON()).toEqual({
+      prompt: "continue from review",
+      timeout: 45,
+      priority: 60,
+    });
+    await expect(page).not.toHaveURL(`/sessions/${encodeURIComponent(sessionId)}`, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("session-detail-status")).toContainText("queued");
   });
 
   test("session detail reports CLI usage and configured cost", async ({ page, request }) => {

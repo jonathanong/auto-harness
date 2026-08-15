@@ -112,6 +112,7 @@ export function SessionActions({
               <ResumeSessionDialog
                 disabled={pending}
                 pending={pending && action === "resume"}
+                error={action === "resume" ? error : null}
                 onSubmit={(overrides) => run("resume", "resume", overrides)}
               />
             </WithTooltip>
