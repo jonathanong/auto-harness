@@ -45,4 +45,18 @@ describe("required CI check contract", () => {
     expect(integration).toContain("run: pnpm local:dynamodb && pnpm local:dynamodb:ready");
     expect(integration).toContain("run: pnpm test:integration");
   });
+
+  it("runs default and required-auth production E2E in the stable Playwright job", () => {
+    const tests = job("playwright");
+    expect(tests).toContain("name: Playwright E2E\n");
+    expect(tests).toContain("run: pnpm test:e2e\n");
+    expect(tests).toContain("name: Playwright E2E (required auth)\n");
+    expect(tests).toContain("run: pnpm test:e2e:auth\n");
+    expect(tests.indexOf("run: pnpm test:e2e\n")).toBeLessThan(
+      tests.indexOf("run: pnpm test:e2e:auth\n"),
+    );
+    expect(tests).toContain("name: playwright-report");
+    expect(tests).toContain("playwright-report/");
+    expect(tests).toContain("test-results/");
+  });
 });
