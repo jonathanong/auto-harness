@@ -33,9 +33,9 @@ Run from repo root. These exercise **shipped** scripts and modules — not re-im
 
 ```bash
 pnpm check                 # lint, fmt, tests+coverage, knip, depcruise, links
-pnpm test:integration      # real HTTP+WS server + real agent daemon + real echo subprocess
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
+pnpm test:integration      # real HTTP+WS + daemon + CLI, including durable scheduler/restart proof
 pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
 pnpm local:cli-e2e         # documented pnpm local:daemon run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201 queued
