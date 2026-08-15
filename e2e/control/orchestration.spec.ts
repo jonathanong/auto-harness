@@ -58,7 +58,7 @@ test.describe("real orchestration", () => {
       await request.post(`${API}/api/v1/commands`, {
         data: {
           name: commandName,
-          argv: ["echo", "hello world"],
+          argv: ["node", "-e", "setTimeout(() => console.log('hello world'), 1000)"],
           appendPrompt: false,
           providerId: null,
         },
@@ -94,13 +94,22 @@ test.describe("real orchestration", () => {
 
       // Local dev/test never auto-assigns — nudge the scheduler, same as every other spec here.
       let status = "queued";
+      let sawRunning = false;
       for (let i = 0; i < 100 && status !== "completed" && status !== "failed"; i++) {
         await request.post(`${API}/api/v1/scheduler/assign`);
         await new Promise((r) => setTimeout(r, 100));
         const res = await request.get(`${API}/api/v1/sessions/${sessionId}`);
         status = ((await res.json()) as { status: string }).status;
+        if (status === "running" && !sawRunning) {
+          sawRunning = true;
+          await page.reload();
+          await expect(page.getByTestId("status-running-live")).toHaveAccessibleName(
+            "running, live",
+          );
+        }
       }
       expect(status).toBe("completed");
+      expect(sawRunning).toBe(true);
 
       // The UI has no client-side polling — reload once to prove it reflects the real result.
       await page.reload();
