@@ -43,6 +43,43 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId(`host-drain-${id}`)).toBeEnabled({ timeout: 15_000 });
   });
 
+  test("expands connected agent worktree details", async ({ page, request }) => {
+    await withLocalHostLock(async () => {
+      const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+      const repositoryId = `pw-fleet-repo-${suffix}`;
+      const worktreeId = `pw-fleet-worktree-${suffix}`;
+      await putHostRepo(request, {
+        id: repositoryId,
+        path: `/tmp/${repositoryId}`,
+        defaultBranch: "main",
+        worktrees: [
+          {
+            id: worktreeId,
+            name: "fleet-feature",
+            path: `/tmp/${worktreeId}`,
+            labels: ["fleet"],
+          },
+        ],
+      });
+      try {
+        await page.goto("/hosts");
+        await expect(page.getByTestId("host-connected-at-local-1")).toBeVisible();
+        const details = page.getByTestId("host-worktrees-local-1");
+        await expect(details).toContainText("1 worktree");
+        await details.locator("summary").click();
+        await expect(page.getByTestId(`host-worktree-link-${worktreeId}`)).toContainText(
+          "fleet-feature",
+        );
+        await expect(details).toContainText("fleet");
+        await expect(details).toContainText(`/tmp/${worktreeId}`);
+        await expect(details).toContainText(`Repository: ${repositoryId}`);
+        await expect(details).toContainText("Current session: None");
+      } finally {
+        await removeHostRepo(request, repositoryId);
+      }
+    });
+  });
+
   test("unknown host id shows a not-found state", async ({ page }) => {
     await page.goto("/hosts/does-not-exist-xyz");
     await expect(page.getByTestId("page-host-detail-not-found")).toBeVisible();

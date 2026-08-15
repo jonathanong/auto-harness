@@ -156,6 +156,7 @@ async function validateRunningSessionsDurable(
 export function listHosts(state: ControlPlaneState): Array<{
   hostId: string;
   online: boolean;
+  connectedAt: string | null;
   lastHeartbeatAt: string | null;
   commandProfiles: string[];
   capabilities: HostCapability[];
@@ -168,6 +169,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     {
       hostId: string;
       online: boolean;
+      connectedAt: string | null;
       lastHeartbeatAt: string | null;
       commandProfiles: string[];
       capabilities: HostCapability[];
@@ -180,6 +182,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     const cur = byHost.get(wt.hostId) ?? {
       hostId: wt.hostId,
       online: false,
+      connectedAt: null,
       lastHeartbeatAt: null,
       commandProfiles: [] as string[],
       capabilities: [],
@@ -198,6 +201,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     const cur = byHost.get(conn.hostId) ?? {
       hostId: conn.hostId,
       online: true,
+      connectedAt: conn.connectedAt,
       lastHeartbeatAt: conn.lastHeartbeatAt,
       commandProfiles: conn.commandProfiles,
       capabilities: normalizeHostCapabilities(conn.capabilities),
@@ -206,6 +210,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositoryIds: [...(conn.repositoryIds ?? [])],
     };
     cur.online = true;
+    cur.connectedAt = conn.connectedAt;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.commandProfiles = [...conn.commandProfiles];
     cur.capabilities = normalizeHostCapabilities(conn.capabilities);
@@ -218,6 +223,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       byHost.set(host.hostId, {
         hostId: host.hostId,
         online: false,
+        connectedAt: null,
         lastHeartbeatAt: null,
         commandProfiles: Object.keys(host.commandProfiles),
         capabilities: normalizeHostCapabilities(host.capabilities),

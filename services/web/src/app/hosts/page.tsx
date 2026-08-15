@@ -13,6 +13,10 @@ import {
 
 import { AddHostForm } from "../../components/add-host-form.tsx";
 import { HostFilters } from "../../components/host-filters.tsx";
+import {
+  HostWorktreeDetails,
+  type FleetWorktree,
+} from "../../components/host-worktree-details.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseHostListState } from "../../lib/url-state.ts";
 
@@ -21,6 +25,7 @@ export const dynamic = "force-dynamic";
 type Host = {
   hostId: string;
   online: boolean;
+  connectedAt?: string | null;
   commandProfiles?: string[];
   worktreeIds?: string[];
 };
@@ -47,6 +52,7 @@ export default async function HostsPage({
 
   let hosts: Host[] = [];
   let inventories: HostInventorySummary[] = [];
+  let worktrees: FleetWorktree[] = [];
   let error: string | null = null;
   try {
     const [h, inv] = await Promise.all([
@@ -58,8 +64,15 @@ export default async function HostsPage({
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
+  try {
+    const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees");
+    worktrees = response.items ?? [];
+  } catch {
+    // Worktree details are auxiliary; keep host management available if this read fails.
+  }
 
   const inventoryById = new Map(inventories.map((inv) => [inv.hostId, inv]));
+  const worktreesByHost = Map.groupBy(worktrees, (worktree) => worktree.hostId);
   let rows = hosts;
   if (filters.online === "online") {
     rows = rows.filter((h) => h.online);
@@ -99,6 +112,8 @@ export default async function HostsPage({
               <TableHead>profiles</TableHead>
               <TableHead>repos</TableHead>
               <TableHead>host config</TableHead>
+              <TableHead>connected</TableHead>
+              <TableHead>worktrees</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -127,6 +142,24 @@ export default async function HostsPage({
                   </TableCell>
                   <TableCell className="text-xs">{repoCount}</TableCell>
                   <TableCell>{inventory ? "yes" : "no"}</TableCell>
+                  <TableCell
+                    className="whitespace-nowrap text-xs"
+                    data-pw={`host-connected-at-${h.hostId}`}
+                  >
+                    {h.connectedAt ? (
+                      <time dateTime={h.connectedAt} title={h.connectedAt}>
+                        {h.connectedAt}
+                      </time>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <HostWorktreeDetails
+                      hostId={h.hostId}
+                      worktrees={worktreesByHost.get(h.hostId) ?? []}
+                    />
+                  </TableCell>
                   <TableCell>
                     <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
                   </TableCell>
@@ -135,7 +168,7 @@ export default async function HostsPage({
             })}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-muted-foreground">
+                <TableCell colSpan={8} className="text-muted-foreground">
                   No hosts match filters. Add a host above or start a daemon.
                 </TableCell>
               </TableRow>
