@@ -366,7 +366,10 @@ Fleet-wide worktrees view, grouped by repository. Each worktree's detail page ha
 
 ### Host List
 
-Table of registered hosts: agent id, online/offline status, attached repository count, drain control.
+The connected-host fleet table shows each host id, online/offline status, attached repository count,
+whether host configuration exists, connection time, worktree count, busy worktrees, and drain
+control. Expand a host's worktree summary to inspect each worktree's path, labels, status, current
+session, and links to its repository, worktree, and active session details.
 
 ### Host Detail
 
@@ -437,11 +440,6 @@ separate capabilities and are not enabled by this UI.
 - Delete a user account with explicit confirmation
 - Only unscoped admins can manage users; other authenticated users see a permission boundary
 - Users change their own password after signing in; passwords and hashes are never displayed
-
-### Connected Agents
-
-- List of agents with status (online/offline), worktree count, busy worktrees, connection time
-- Click to expand — shows worktree details (path, labels, status, current session)
 
 ---
 
