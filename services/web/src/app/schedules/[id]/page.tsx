@@ -4,7 +4,16 @@ import {
   ScheduleEditForm,
   type EditableSchedule,
 } from "../../../components/schedule-edit-form.tsx";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import { ScheduleHistoryTime } from "../../../components/schedule-history-time.tsx";
+import {
+  StatusBadge,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 
 import { ApiError, apiGet } from "../../../lib/api.ts";
 import type { SessionTarget } from "../../../session-target.ts";
@@ -15,6 +24,7 @@ type SessionHistory = {
   id: string;
   status: string;
   createdAt?: string;
+  startedAt?: string | null;
   completedAt?: string | null;
 };
 
@@ -107,7 +117,7 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
             </TableHeader>
             <TableBody>
               {history.map((session) => (
-                <TableRow key={session.id}>
+                <TableRow key={session.id} data-pw={`schedule-history-row-${session.id}`}>
                   <TableCell>
                     <Link
                       href={`/sessions/${encodeURIComponent(session.id)}`}
@@ -116,8 +126,17 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
                       {session.id}
                     </Link>
                   </TableCell>
-                  <TableCell>{session.status}</TableCell>
-                  <TableCell className="text-xs">{session.createdAt ?? "—"}</TableCell>
+                  <TableCell data-pw={`schedule-history-status-${session.id}`}>
+                    <StatusBadge status={session.status} />
+                  </TableCell>
+                  <TableCell>
+                    <ScheduleHistoryTime
+                      createdAt={session.createdAt}
+                      startedAt={session.startedAt}
+                      completedAt={session.completedAt}
+                      sessionId={session.id}
+                    />
+                  </TableCell>
                 </TableRow>
               ))}
               {history.length === 0 ? (

@@ -16,6 +16,7 @@ export {
 } from "./components/table.tsx";
 export { AppShell, type AppShellProps, type NavItem } from "./components/app-shell.tsx";
 export { StatusBadge } from "./components/status-badge.tsx";
+export { formatDuration } from "./components/session-time.tsx";
 export {
   OnlineStatusBadge,
   type OnlineStatusBadgeProps,

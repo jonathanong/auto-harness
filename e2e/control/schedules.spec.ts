@@ -93,6 +93,16 @@ test.describe("control plane schedules", () => {
     await page.goto(detailUrl);
     await expect(page.getByTestId("schedule-detail-active-session")).toBeVisible();
     await expect(page.getByTestId("schedule-history-table").getByRole("row")).toHaveCount(2);
+    const historyRow = page.locator('[data-pw^="schedule-history-row-"]').first();
+    const historyId = (await historyRow.getAttribute("data-pw"))!.replace(
+      "schedule-history-row-",
+      "",
+    );
+    await expect(page.getByTestId(`schedule-history-status-${historyId}`)).toHaveText("queued");
+    await expect(
+      page.getByTestId(`schedule-history-time-${historyId}`).locator("time"),
+    ).toHaveAttribute("datetime");
+    await expect(page.getByTestId(`schedule-history-duration-${historyId}`)).toHaveCount(0);
 
     await page.goto(`/schedules/not-found-${Date.now()}`);
     await expect(page.getByTestId("page-schedule-detail-not-found")).toBeVisible();
