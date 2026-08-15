@@ -447,7 +447,7 @@ There is no deploy command or account-backed smoke test. The synthesized Session
 table enables the `ttl` attribute, but runtime log records do not populate it and local table
 creation does not configure TTL, so current logs do not expire through TTL. Terminal archival
 retains bounded pointer/status metadata in the DynamoDB Archives table and writes JSONL objects to
-S3 when `ARCHIVE_BUCKET` configures the archive writer; no account-backed upload has been verified.
+S3 when `ARCHIVE_BUCKET` configures the archive writer. No account-backed upload has been verified.
 The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
