@@ -58,12 +58,13 @@ describe("DynamoDB repository session pagination", () => {
       doc: {
         send: async (command: { input: Record<string, unknown> }) => {
           commands.push(command);
-          return {};
+          return { LastEvaluatedKey: {} };
         },
       },
       tables: { sessions: "Sessions" },
     } as unknown as PlaneStorageCtx;
     await expect(countSessionsByRepository(empty, "repo-1")).resolves.toBe(0);
+    expect(commands).toHaveLength(1);
     expect(commands[0]?.input).not.toHaveProperty("FilterExpression");
     expect(commands[0]?.input).toMatchObject({
       ExpressionAttributeValues: { ":repositoryId": "repo-1" },

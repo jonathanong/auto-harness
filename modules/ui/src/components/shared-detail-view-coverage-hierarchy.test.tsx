@@ -79,6 +79,8 @@ describe("shared worktree hierarchy", () => {
     expect(rich).toContain('data-pw="repo-count-worktrees-repo/a"');
     expect(rich).toContain('data-pw="repo-count-schedules-repo/a"');
     expect(rich).toContain(">12</dd>");
+    expect(rich).toContain(">2</dd>");
+    expect(rich).toContain(">3</dd>");
     expect(rich).toContain("Add to repo/a");
     expect(rich).toContain("Remove worktree/a");
     expect(rich).toContain("No worktrees under this repository.");
