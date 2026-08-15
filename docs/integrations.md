@@ -288,8 +288,11 @@ The outbox deliberately does not persist an endpoint, signing secret, request he
 logs, metadata, response body, or free-form failure text. Destination selection freezes only the
 exact `configurationId` + `configurationVersion`; the injected transport receives that reference,
 the stable delivery idempotency key, and the exact event body only after a worker owns a live lease.
-The transport must deduplicate ambiguous retries by that key. Configuration CRUD, HTTP transport,
-signing, endpoint validation, and secret resolution are not part of the safe local runtime.
+The selector is a historical resolver: for a given snapshot it must always return the configuration
+versions that were effective at `occurredAt`, even after rotation or process restart, rather than
+the versions that are current during a later reconciliation. The transport must deduplicate
+ambiguous retries by the stable delivery key. Configuration CRUD, HTTP transport, signing, endpoint
+validation, and secret resolution are not part of the safe local runtime.
 
 The eventual configuration shape remains target-only:
 

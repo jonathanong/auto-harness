@@ -67,11 +67,7 @@ export class WebhookWorker {
       await tick;
       return true;
     } catch (error) {
-      try {
-        this.options.onError?.(error);
-      } catch {
-        // Observability must not poison later ticks.
-      }
+      this.reportError(error);
       return false;
     } finally {
       if (this.inFlight === tick) this.inFlight = undefined;
@@ -87,12 +83,16 @@ export class WebhookWorker {
       const session = sessions[(start + offset) % sessions.length]!;
       const fingerprint = `${session.status}\0${session.attemptId ?? ""}\0${session.completedAt ?? ""}`;
       if (this.reconciledSessions.get(session.id) === fingerprint) continue;
-      await reconcileWebhookSession({
-        store: this.dependencies.store,
-        selectDestinations: this.dependencies.selectDestinations,
-        session,
-      });
-      this.reconciledSessions.set(session.id, fingerprint);
+      try {
+        await reconcileWebhookSession({
+          store: this.dependencies.store,
+          selectDestinations: this.dependencies.selectDestinations,
+          session,
+        });
+        this.reconciledSessions.set(session.id, fingerprint);
+      } catch (error) {
+        this.reportError(error);
+      }
     }
     this.nextSessionIndex = sessions.length === 0 ? 0 : (start + sessionCount) % sessions.length;
 
@@ -105,5 +105,13 @@ export class WebhookWorker {
       },
       () => this.started,
     );
+  }
+
+  private reportError(error: unknown): void {
+    try {
+      this.options.onError?.(error);
+    } catch {
+      // Observability must not poison reconciliation, delivery, or later ticks.
+    }
   }
 }

@@ -7,6 +7,7 @@ import { WebhookWorker } from "./webhook-worker.ts";
 import {
   webhookMemoryStore,
   webhookProcessStore,
+  webhookTestDelivery,
   webhookTestDestination,
   webhookTestNow,
 } from "./webhook-worker-test-helpers.ts";
@@ -108,5 +109,28 @@ describe("WebhookWorker", () => {
     await expect(worker.tick()).resolves.toBe(false);
     await worker.stop();
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("drains existing deliveries when historical destination resolution fails", async () => {
+    const row = webhookTestDelivery();
+    const rows = new Map([[row.id, row]]);
+    const onError = vi.fn();
+    const deliver = vi.fn(async () => ({ ok: true }) as const);
+    const worker = new WebhookWorker(
+      {
+        store: webhookMemoryStore(rows),
+        transport: { deliver },
+        selectDestinations: async () => Promise.reject(new Error("configuration unavailable")),
+        listSessions: async () => [terminalSession()],
+      },
+      { now: () => webhookTestNow, onError },
+    );
+    worker.start();
+    await vi.waitFor(() => expect(deliver).toHaveBeenCalledOnce());
+    await worker.stop();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "configuration unavailable" }),
+    );
+    expect([...rows.values()][0]).toMatchObject({ state: "delivered" });
   });
 });

@@ -18,6 +18,12 @@ export type WebhookLifecycleSnapshot = {
   occurredAt: string;
 };
 
+/**
+ * Historical resolver: the same snapshot must return the same immutable
+ * configuration references forever, including after rotation and restart.
+ * Implementations resolve the versions that were effective at occurredAt,
+ * never whichever versions happen to be current when reconciliation runs.
+ */
 export type WebhookDestinationSelector = (
   snapshot: WebhookLifecycleSnapshot,
 ) => Promise<readonly WebhookDestinationRef[]>;
