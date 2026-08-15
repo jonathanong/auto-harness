@@ -90,10 +90,37 @@ their daemon protocols first.
 ```bash
 sudo systemctl status auto-harness-host-daemon.service
 sudo journalctl -u auto-harness-host-daemon.service -n 100 --no-pager
-curl -sS "$HARNESS_API_URL/api/v1/hosts"
-curl -sS "$HARNESS_API_URL/api/v1/hosts/$HARNESS_HOST_ID/inventory"
-curl -sS "$HARNESS_API_URL/api/v1/session-targets"   # attached provider accounts + standalone commands
+sudo env HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env node --input-type=module <<'NODE'
+import { readFileSync } from "node:fs";
+
+const entries = new Map(
+  readFileSync(process.env.HARNESS_ENV_FILE, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+);
+const hostId = entries.get("HARNESS_HOST_ID");
+const apiKey = entries.get("HARNESS_API_KEY");
+let base = entries.get("HARNESS_API_URL")?.replace(/\/$/, "").replace(/\/ws$/, "");
+if (!hostId || !apiKey || !base) throw new Error("host id, API URL, and API key are required");
+base = base.replace(/^wss:/, "https:").replace(/^ws:/, "http:");
+const headers = { authorization: `Bearer ${apiKey}` };
+for (const path of [
+  "/api/v1/hosts",
+  `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+  "/api/v1/session-targets",
+]) {
+  const response = await fetch(`${base}${path}`, { headers });
+  console.log(path, response.status, await response.text());
+  if (!response.ok) process.exitCode = 1;
+}
+NODE
 ```
+
+The verifier reads the root-only environment file without echoing its API key, converts either an
+HTTP(S) base or WS(S) `/ws` endpoint to the REST base, and authenticates every request. Keep the
+installed file in the example's unquoted `KEY=value` form; systemd environment files are not shell
+scripts.
 
 Host inventory template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Runbooks: [local-development.md](local-development.md), [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 
@@ -115,6 +142,10 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
    sudo -u harness git -C /opt/auto-harness/current fetch --all --tags
    sudo -u harness git -C /opt/auto-harness/current checkout NEW_IMMUTABLE_REVISION
    sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
+   sudo install -m 0644 \
+     /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
+     /etc/systemd/system/auto-harness-host-daemon.service
+   sudo systemctl daemon-reload
    ```
 
 4. Restart only after drain, then verify registration:
@@ -142,6 +173,10 @@ dependencies, and restart:
 ```bash
 sudo -u harness git -C /opt/auto-harness/current checkout PREVIOUS_IMMUTABLE_REVISION
 sudo -u harness env CI=true corepack pnpm --dir /opt/auto-harness/current install --prod --frozen-lockfile
+sudo install -m 0644 \
+  /opt/auto-harness/current/services/host-daemon/systemd/auto-harness-host-daemon.service \
+  /etc/systemd/system/auto-harness-host-daemon.service
+sudo systemctl daemon-reload
 sudo systemctl restart auto-harness-host-daemon.service
 ```
 
