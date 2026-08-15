@@ -12,7 +12,10 @@ export function SessionPromptField({ initialValue = "" }: { initialValue?: strin
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
-        <Label htmlFor="prompt" tip="Prompt text passed to the resolved command">
+        <Label
+          htmlFor={preview ? undefined : "prompt"}
+          tip="Prompt text passed to the resolved command"
+        >
           Prompt
         </Label>
         <div className="flex gap-1" role="group" aria-label="Prompt view">
@@ -32,6 +35,7 @@ export function SessionPromptField({ initialValue = "" }: { initialValue?: strin
             variant={preview ? "outline" : "ghost"}
             aria-pressed={preview}
             data-pw="create-session-prompt-preview-toggle"
+            disabled={!prompt}
             onClick={() => setPreview(true)}
           >
             Preview
@@ -40,22 +44,26 @@ export function SessionPromptField({ initialValue = "" }: { initialValue?: strin
       </div>
       <Textarea
         id="prompt"
-        name="prompt"
-        required
+        name={preview ? undefined : "prompt"}
+        required={!preview}
+        disabled={preview}
+        hidden={preview}
         rows={6}
         value={prompt}
         onChange={(event) => setPrompt(event.currentTarget.value)}
-        className={preview ? "sr-only" : undefined}
         data-pw="create-session-prompt"
       />
       {preview ? (
-        <div
-          className="min-h-36 rounded-md border border-border bg-background p-3"
-          data-pw="create-session-prompt-preview"
-          aria-live="polite"
-        >
-          <PromptMarkdownPreview value={prompt} />
-        </div>
+        <>
+          <input type="hidden" name="prompt" value={prompt} readOnly />
+          <div
+            className="min-h-36 rounded-md border border-border bg-background p-3"
+            data-pw="create-session-prompt-preview"
+            aria-live="polite"
+          >
+            <PromptMarkdownPreview value={prompt} />
+          </div>
+        </>
       ) : null}
     </div>
   );

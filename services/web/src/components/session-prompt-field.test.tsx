@@ -52,15 +52,29 @@ describe("SessionPromptField", () => {
   it("switches between editing and a live preview while retaining form input", () => {
     const view = mountForm(<SessionPromptField />);
     const textarea = field<HTMLTextAreaElement>(view.container, "create-session-prompt");
+    const previewButton = field<HTMLButtonElement>(
+      view.container,
+      "create-session-prompt-preview-toggle",
+    );
+    expect(previewButton.disabled).toBe(true);
     setValue(textarea, "# Fix **tests**");
+    expect(previewButton.disabled).toBe(false);
 
-    act(() => field(view.container, "create-session-prompt-preview-toggle").click());
-    expect(textarea.className).toContain("sr-only");
+    act(() => previewButton.click());
+    expect(textarea.hidden).toBe(true);
+    expect(textarea.disabled).toBe(true);
+    expect(textarea.required).toBe(false);
     expect(field(view.container, "create-session-prompt-preview").textContent).toBe("Fix tests");
     expect(textarea.value).toBe("# Fix **tests**");
+    expect(
+      view.container.querySelector<HTMLInputElement>('input[type="hidden"][name="prompt"]')?.value,
+    ).toBe("# Fix **tests**");
 
     act(() => field(view.container, "create-session-prompt-write").click());
-    expect(textarea.className).not.toContain("sr-only");
+    expect(textarea.hidden).toBe(false);
+    expect(textarea.disabled).toBe(false);
+    expect(textarea.required).toBe(true);
+    expect(view.container.querySelector('input[type="hidden"][name="prompt"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="create-session-prompt-preview"]')).toBeNull();
     view.unmount();
   });
