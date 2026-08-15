@@ -33,6 +33,7 @@ describe("required CI check contract", () => {
     expect(staticAnalysis).toContain("run: pnpm knip");
     expect(staticAnalysis).toContain("run: pnpm depcruise");
     expect(staticAnalysis).toContain("run: pnpm check:data-pw");
+    expect(staticAnalysis).toContain("run: pnpm check:systemd");
     expect(staticAnalysis).toContain("uses: lycheeverse/lychee-action@v2");
     expect(staticAnalysis).not.toContain("run: pnpm test");
 
