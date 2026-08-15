@@ -38,6 +38,8 @@ function seedSessions(plane: ControlPlane): void {
   plane.state.sessions.get("s3")!.hostId = "host-a";
   plane.state.sessions.get("s4")!.status = "completed";
   plane.state.sessions.get("s2")!.scheduleId = "schedule-a";
+  plane.state.sessions.get("s3")!.source = "ui";
+  plane.state.sessions.get("s5")!.source = "ui";
 }
 
 describe("listSessionsPage", () => {
@@ -68,6 +70,12 @@ describe("listSessionsPage", () => {
     });
     expect(scoped2.items).toHaveLength(2);
     expect(scoped2.items.every((session) => session.repositoryId === "r1")).toBe(true);
+
+    const source1 = plane.listSessionsPage({ source: "ui", limit: 1 });
+    expect(source1.items.map((session) => session.id)).toEqual(["s5"]);
+    const source2 = plane.listSessionsPage({ source: "ui", limit: 1, cursor: source1.nextCursor! });
+    expect(source2.items.map((session) => session.id)).toEqual(["s3"]);
+    expect(source2.items.every((session) => session.source === "ui")).toBe(true);
 
     expect(() =>
       plane.listSessionsPage({
@@ -108,6 +116,9 @@ describe("listSessionsPage", () => {
         .listSessionsPage({ scheduleId: "schedule-a", limit: 50 })
         .items.map((session) => session.id),
     ).toEqual(["s2"]);
+    expect(
+      plane.listSessionsPage({ source: "ui", limit: 50 }).items.map((session) => session.id),
+    ).toEqual(["s5", "s3"]);
 
     expect(
       plane.listSessionsPage({ sort: "oldest", limit: 3 }).items.map((session) => session.id),

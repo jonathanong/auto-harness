@@ -17,7 +17,8 @@ type SessionListQueryParam =
   | "hostId"
   | "sort"
   | "concurrencyId"
-  | "scheduleId";
+  | "scheduleId"
+  | "source";
 
 function readSingleQueryParam(url: URL, name: SessionListQueryParam): string | undefined {
   const values = url.searchParams.getAll(name);
@@ -85,6 +86,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
       const sortRaw = parseSort(readSingleQueryParam(url, "sort"));
       const concurrencyId = readSingleQueryParam(url, "concurrencyId");
       const scheduleId = readSingleQueryParam(url, "scheduleId");
+      const source = readSingleQueryParam(url, "source");
       const page = await plane.listSessionsPageDurable({
         ...(limit !== undefined ? { limit } : {}),
         ...(cursor !== undefined ? { cursor } : {}),
@@ -94,6 +96,7 @@ export async function handleSessionReadRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(sortRaw !== undefined ? { sort: sortRaw } : {}),
         ...(concurrencyId !== undefined ? { concurrencyId } : {}),
         ...(scheduleId !== undefined ? { scheduleId } : {}),
+        ...(source !== undefined ? { source } : {}),
         ...(sessionScope(ctx) ? { scope: sessionScope(ctx) } : {}),
       });
       send(res, 200, page);

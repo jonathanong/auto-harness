@@ -129,7 +129,7 @@ Filters are displayed as dropdowns/chips below the search bar. Multiple filters 
 | **Concurrency ID** | Exact active-run identity (when present); duplicate creates link to the existing session | Inspect dedupe/concurrency behavior                  |
 | **Agent**          | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
 
-Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the current page and is never sent to `GET /sessions`.
+Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc&source=api&hostId=agent-1`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the current page and is never sent to `GET /sessions`.
 
 ### Pagination
 

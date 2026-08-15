@@ -169,7 +169,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       (
         await invoke(
           "GET",
-          "/api/v1/sessions?limit=5&hostId=a1&status=completed&sort=oldest&repositoryId=r1&concurrencyId=k&scheduleId=nightly",
+          "/api/v1/sessions?limit=5&hostId=a1&status=completed&sort=oldest&repositoryId=r1&concurrencyId=k&scheduleId=nightly&source=ui",
         )
       ).status,
     ).toBe(200);

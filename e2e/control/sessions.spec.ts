@@ -7,6 +7,7 @@ test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const repositoryName = `pw-session-repository-${suffix}`;
+    const hostId = `pw-session-filter-host-${suffix}`;
     const repository = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
       data: {
         name: repositoryName,
@@ -36,7 +37,13 @@ test.describe("control plane sessions", () => {
     });
     expect(created.status()).toBe(201);
     const sessionId = ((await created.json()) as { id: string }).id;
-
+    expect(
+      (
+        await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+          data: { repositories: [], commandProfiles: {} },
+        })
+      ).ok(),
+    ).toBe(true);
     await page.goto("/sessions");
     await expect(
       page.getByTestId("page-sessions").or(page.getByTestId("sessions-loading")).first(),
@@ -64,6 +71,14 @@ test.describe("control plane sessions", () => {
     await expect(page).toHaveURL(/status=queued/);
     await expect(page).toHaveURL(/sort=priority_asc/);
     await page.getByTestId("session-filter-q").fill("debounced prompt");
+    await expect(page).toHaveURL(/q=debounced\+prompt/);
+    await page.getByTestId("session-filter-repository").selectOption(repositoryId);
+    await expect(page).toHaveURL(new RegExp(`repositoryId=${repositoryId}`));
+    await page.getByTestId("session-filter-agent").selectOption(hostId);
+    await expect(page).toHaveURL(new RegExp(`hostId=${hostId}`));
+    await page.getByTestId("session-filter-source").selectOption("api");
+    await expect(page).toHaveURL(/source=api/);
+    await expect(page).toHaveURL(/sort=priority_asc/);
     await expect(page).toHaveURL(/q=debounced\+prompt/);
   });
 

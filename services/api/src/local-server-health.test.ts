@@ -83,10 +83,13 @@ describe("createLocalApp health and sessions", () => {
       "hostId=",
       "concurrencyId=",
       "scheduleId=",
+      "source=",
+      "source=other",
       "repositoryId=r1&repositoryId=r2",
       "hostId=h1&hostId=h2",
       "concurrencyId=c1&concurrencyId=c2",
       "scheduleId=s1&scheduleId=s2",
+      "source=ui&source=api",
     ]) {
       expect((await invoke("GET", `/api/v1/sessions?${query}`)).json).toMatchObject({
         error: { code: "VALIDATION_ERROR" },

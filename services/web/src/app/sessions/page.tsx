@@ -47,18 +47,29 @@ export default async function SessionsPage({
   let nextCursor: string | null = null;
   let error: string | null = null;
   const path = buildSessionsApiPath(filters);
-  try {
-    const [sessions, repositories] = await Promise.all([
-      apiGet<{ items: Session[]; nextCursor: string | null }>(path),
-      apiGet<{ items: Repository[] }>("/api/v1/repositories").catch(() => ({ items: [] })),
-    ]);
-    items = sessions.items ?? [];
-    nextCursor = sessions.nextCursor ?? null;
+  let repositories: Array<{ id: string; label: string }> = [];
+  let hosts: Array<{ id: string; label: string }> = [];
+  const [sessionsResult, repositoriesResult, hostsResult] = await Promise.allSettled([
+    apiGet<{ items: Session[]; nextCursor: string | null }>(path),
+    apiGet<{ items: Repository[] }>("/api/v1/repositories"),
+    apiGet<{ items: Array<{ hostId: string }> }>("/api/v1/hosts"),
+  ]);
+  if (sessionsResult.status === "fulfilled") {
+    items = sessionsResult.value.items ?? [];
+    nextCursor = sessionsResult.value.nextCursor ?? null;
+  } else error = String(sessionsResult.reason);
+  if (repositoriesResult.status === "fulfilled") {
+    repositories = (repositoriesResult.value.items ?? [])
+      .map(({ id, name }) => ({ id, label: name }))
+      .toSorted((a, b) => a.label.localeCompare(b.label));
     repositoryNames = Object.fromEntries(
-      (repositories.items ?? []).map((repository) => [repository.id, repository.name]),
+      (repositoriesResult.value.items ?? []).map((repository) => [repository.id, repository.name]),
     );
-  } catch (e) {
-    error = e instanceof Error ? e.message : String(e);
+  }
+  if (hostsResult.status === "fulfilled") {
+    hosts = (hostsResult.value.items ?? [])
+      .map(({ hostId }) => ({ id: hostId, label: hostId }))
+      .toSorted((a, b) => a.label.localeCompare(b.label));
   }
 
   return (
@@ -77,7 +88,7 @@ export default async function SessionsPage({
         </WithTooltip>
       </div>
       <Suspense fallback={<p className="text-sm text-muted-foreground">Loading filters…</p>}>
-        <SessionFilters />
+        <SessionFilters repositories={repositories} hosts={hosts} />
       </Suspense>
       {error ? (
         <ListApiError resource="sessions" message={error} selector="sessions" />

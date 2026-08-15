@@ -18,7 +18,14 @@ const state = { sessionCursorSecret: "secret" } as ControlPlaneState;
 const base = {
   version: 1 as const,
   sort: "latest" as const,
-  query: { repositoryId: null, status: null, hostId: null, concurrencyId: null, scheduleId: null },
+  query: {
+    repositoryId: null,
+    status: null,
+    hostId: null,
+    concurrencyId: null,
+    scheduleId: null,
+    source: null,
+  },
   scope: { repositoryIds: null, hostId: null },
 };
 
@@ -41,6 +48,7 @@ describe("session cursor primitives", () => {
       repositoryId: "repo",
     });
     expect(() => normalizeQuery({ status: "bad" })).toThrow(InvalidSessionListQueryError);
+    expect(() => normalizeQuery({ source: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ hostId: "" })).toThrow(InvalidSessionListQueryError);
     expect(normalizeScope({ repositoryIds: ["b", "a", "a"], hostId: "host" })).toEqual({
       repositoryIds: ["a", "b"],
@@ -56,6 +64,17 @@ describe("session cursor primitives", () => {
     };
     const encoded = encodeSessionCursor(state, cursor);
     expect(decodeSessionCursor(state, encoded, base)).toEqual(cursor.position);
+    const legacy = encodeSessionCursor(state, {
+      ...cursor,
+      query: {
+        repositoryId: null,
+        status: null,
+        hostId: null,
+        concurrencyId: null,
+        scheduleId: null,
+      } as SessionCursor["query"],
+    });
+    expect(decodeSessionCursor(state, legacy, base)).toEqual(cursor.position);
     expect(() => decodeSessionCursor(state, "bad", base)).toThrow(InvalidSessionCursorError);
     expect(() => decodeSessionCursor(state, `${encoded}x`, base)).toThrow(
       InvalidSessionCursorError,

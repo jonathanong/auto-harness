@@ -21,6 +21,25 @@ const listState: SessionListQuery = {
 };
 
 describe("SessionsLive", () => {
+  it.each([
+    ["source", { ...listState, source: "manual" }],
+    ["agent", { ...listState, hostId: "host-1" }],
+  ] satisfies ReadonlyArray<readonly [string, SessionListQuery]>)(
+    "treats an active %s filter as a narrowed list",
+    (_label, filteredState) => {
+      const view = mountForm(
+        <SessionsLive
+          initialItems={[]}
+          initialNextCursor={null}
+          listState={filteredState}
+          path="/api/v1/sessions"
+        />,
+      );
+      expect(view.container.textContent).toContain("No sessions match filters.");
+      expect(view.container.textContent).not.toContain("Create your first session");
+    },
+  );
+
   it("polls the bounded current page and updates session rows", async () => {
     vi.useFakeTimers();
     const request = createRequestFake(

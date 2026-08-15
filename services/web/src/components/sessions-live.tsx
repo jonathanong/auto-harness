@@ -84,7 +84,9 @@ export function SessionsLive({
     listState.concurrencyId ||
     listState.cursor ||
     listState.repositoryId ||
+    listState.hostId ||
     listState.scheduleId ||
+    listState.source ||
     listState.status !== "all",
   );
   const showFirstSession = !error && items.length === 0 && !narrowed;

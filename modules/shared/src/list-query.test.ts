@@ -13,6 +13,8 @@ describe("list-query", () => {
       repositoryId: "",
       scheduleId: "",
       sort: "latest",
+      hostId: "",
+      source: "",
     });
     expect(
       parseSessionListQuery(
@@ -27,6 +29,8 @@ describe("list-query", () => {
       repositoryId: "",
       scheduleId: "",
       sort: "oldest",
+      hostId: "",
+      source: "",
     });
   });
 
@@ -58,8 +62,16 @@ describe("list-query", () => {
 
   it("includes every supported navigation filter", () => {
     expect(
-      sessionListHref({ repositoryId: "repo-1", scheduleId: "schedule-1", sort: "oldest" }),
-    ).toBe("/sessions?repositoryId=repo-1&scheduleId=schedule-1&sort=oldest");
+      sessionListHref({
+        repositoryId: "repo-1",
+        scheduleId: "schedule-1",
+        sort: "oldest",
+        hostId: "host-1",
+        source: "ui",
+      }),
+    ).toBe(
+      "/sessions?repositoryId=repo-1&scheduleId=schedule-1&hostId=host-1&source=ui&sort=oldest",
+    );
   });
 
   it("builds API paths", () => {
@@ -73,6 +85,8 @@ describe("list-query", () => {
         repositoryId: "",
         scheduleId: "",
         sort: "latest",
+        hostId: "",
+        source: "",
       },
       { hostId: "local-1" },
     );
@@ -82,7 +96,7 @@ describe("list-query", () => {
   });
 
   it("includes cursor and filters but never sends client-side q", () => {
-    const path = buildSessionsApiPath({
+    const query = {
       status: "all",
       q: "hello",
       concurrencyId: "pr-1",
@@ -91,12 +105,20 @@ describe("list-query", () => {
       repositoryId: "repo-1",
       scheduleId: "schedule-1",
       sort: "priority_desc",
-    });
+      hostId: "host-1",
+      source: "schedule",
+    } as const;
+    const path = buildSessionsApiPath(query);
     expect(path).toContain("cursor=c1");
     expect(path).not.toContain("q=hello");
     expect(path).toContain("concurrencyId=pr-1");
     expect(path).toContain("repositoryId=repo-1");
     expect(path).toContain("scheduleId=schedule-1");
     expect(path).toContain("sort=priority_desc");
+    expect(path).toContain("hostId=host-1");
+    expect(path).toContain("source=schedule");
+
+    expect(buildSessionsApiPath(query, { hostId: "bound-host" })).toContain("hostId=bound-host");
+    expect(buildSessionsApiPath(query, { hostId: "bound-host" })).not.toContain("hostId=host-1");
   });
 });

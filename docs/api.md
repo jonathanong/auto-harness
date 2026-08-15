@@ -472,6 +472,7 @@ List sessions with optional filters.
 | `status`        | string | Filter by status, or `all` (default): `queued`, `running`, `completed`, `failed`, `cancelled`, `timed_out` |
 | `repositoryId`  | string | Filter by repository                                                                                       |
 | `hostId`        | string | Filter by assigned host                                                                                    |
+| `source`        | string | Filter by origin: `api`, `ui`, `webhook`, or `schedule`                                                    |
 | `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`                                  |
 | `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                                                |
 | `cursor`        | string | Pagination cursor from previous response                                                                   |
@@ -481,7 +482,7 @@ List sessions with optional filters.
 Results are scoped to the authenticated principal's allowed repositories and host binding
 before the `limit` is applied. `nextCursor` is an opaque, signed cursor bound to all filters,
 sort order, and principal scope; changing or tampering with those values returns `400`. Invalid
-limits, statuses, empty filter values, and duplicate filter parameters return a structured `400`.
+limits, statuses, sources, empty filter values, and duplicate filter parameters return a structured `400`.
 
 For multi-worker deployments, set `HARNESS_CURSOR_SECRET` to the same stable secret on every API
 worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). If neither variable
