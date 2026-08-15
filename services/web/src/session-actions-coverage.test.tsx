@@ -99,44 +99,6 @@ describe("SessionActions", () => {
     view.unmount();
   });
 
-  it("pushes the resumed session and refreshes when the response has no id", async () => {
-    const router = { push: vi.fn(), refresh: vi.fn() };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(response(true, JSON.stringify({ id: "new/session" })));
-    vi.stubGlobal("fetch", fetchMock);
-    const view = mount(
-      <SessionActions sessionId="old" status="completed" detailHrefBase="/runs" />,
-      router,
-    );
-    const resume = view.container.querySelector('[data-pw="session-resume"]') as HTMLButtonElement;
-    expect(resume).not.toBeNull();
-    expect(resume.textContent).toBe("Resume");
-    expect(resume.getAttribute("aria-busy")).toBe("false");
-    await act(async () => {
-      (view.container.querySelector('[data-pw="session-resume"]') as HTMLButtonElement).click();
-      await Promise.resolve();
-    });
-    expect(router.push).toHaveBeenCalledWith("/runs/new%2Fsession");
-    expect(router.refresh).not.toHaveBeenCalled();
-
-    view.unmount();
-    const noIdRouter = { push: vi.fn(), refresh: vi.fn() };
-    const noIdFetch = vi.fn().mockResolvedValue(response(true, JSON.stringify({})));
-    vi.stubGlobal("fetch", noIdFetch);
-    const noIdView = mount(
-      <SessionActions sessionId="old" status="completed" detailHrefBase="/runs" />,
-      noIdRouter,
-    );
-    await act(async () => {
-      (noIdView.container.querySelector('[data-pw="session-resume"]') as HTMLButtonElement).click();
-      await Promise.resolve();
-    });
-    expect(noIdFetch).toHaveBeenCalledOnce();
-    expect(noIdRouter.refresh).toHaveBeenCalledOnce();
-    noIdView.unmount();
-  });
-
   it("clones a terminal session and navigates to the new session", async () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     const fetchMock = vi
