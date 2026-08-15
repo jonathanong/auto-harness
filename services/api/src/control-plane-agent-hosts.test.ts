@@ -67,6 +67,7 @@ describe("agent host inventory", () => {
     expect(offline).toMatchObject({
       hostId: "slot-offline",
       online: false,
+      connectedAt: null,
       commandProfiles: ["echo-prompt"],
       worktreeIds: [],
     });
@@ -78,6 +79,7 @@ describe("agent host inventory", () => {
     });
     const afterReg = plane.listHosts().find((a) => a.hostId === "slot-offline");
     expect(afterReg?.online).toBe(true);
+    expect(afterReg?.connectedAt).toBe("2026-01-01T00:00:00.000Z");
     // Offline host with worktrees exposes worktreeIds in the fleet list.
     expect(
       plane.putHostInventory("host-with-wts", {
