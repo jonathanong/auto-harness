@@ -25,8 +25,15 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
+      const repositories = (await plane.listRepositoriesDurable()).filter((repo) =>
+        scoped(ctx, repo.id),
+      );
+      const counts = await plane.listRepositoryCountsDurable(
+        repositories.map((repo) => repo.id),
+        ctx.principal?.boundHostId,
+      );
       send(res, 200, {
-        items: (await plane.listRepositoriesDurable()).filter((repo) => scoped(ctx, repo.id)),
+        items: repositories.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
       });
     } catch {
       sendInternalError(res);

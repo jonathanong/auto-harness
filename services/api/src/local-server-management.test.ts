@@ -186,6 +186,16 @@ describe("createLocalApp operator management REST", () => {
     });
     expect(created.status).toBe(201);
     const sid = (created.json as { id: string }).id;
+    expect((await invoke("GET", "/api/v1/repositories")).json).toMatchObject({
+      items: [
+        expect.objectContaining({
+          id: "repo-1",
+          sessionCount: 2,
+          worktreeCount: 0,
+          scheduleCount: 1,
+        }),
+      ],
+    });
     const cancelled = await invoke("POST", `/api/v1/sessions/${sid}/cancel`);
     expect(cancelled.status).toBe(200);
     expect(cancelled.json).toMatchObject({ status: "cancelled" });

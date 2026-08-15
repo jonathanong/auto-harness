@@ -363,11 +363,18 @@ List all repositories.
       "name": "my-app",
       "url": "git@github.com:org/my-app.git",
       "defaultBranch": "main",
+      "sessionCount": 12,
+      "worktreeCount": 3,
+      "scheduleCount": 2,
       "createdAt": "2026-08-01T00:00:00Z"
     }
   ]
 }
 ```
+
+The three count fields are durable, index-backed totals for each repository visible to the
+authenticated principal. Host-bound credentials receive session and worktree totals for their host.
+Session totals can briefly lag a just-committed write while DynamoDB propagates its repository index.
 
 #### `GET /repositories/:id`
 

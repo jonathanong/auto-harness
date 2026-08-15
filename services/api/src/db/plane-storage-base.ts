@@ -65,6 +65,10 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByRepository(this.ctx, repositoryId);
   }
 
+  countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
+    return sessions.countSessionsByRepository(this.ctx, repositoryId, hostId);
+  }
+
   async listSessionsByHost(hostId: string): Promise<SessionRecord[]> {
     return (await sessions.listAllSessions(this.ctx)).filter(
       (session) => session.hostId === hostId,

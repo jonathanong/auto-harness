@@ -145,6 +145,22 @@ describe("ControlPlane storage write-through paths", () => {
     expect(plane.listRepositories().some((r) => r.id === "r1")).toBe(true);
     expect(plane.getHostInventory("a1")?.hostId).toBe("a1");
     expect(plane.listArchives().length).toBeGreaterThan(0);
+    expect(await storage.listAllSessions()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "s1", repositoryId: "r2" })]),
+    );
+    await expect(plane.listRepositoryCountsDurable(["r1", "r2", "missing"])).resolves.toEqual(
+      new Map([
+        ["r1", { sessionCount: 0, worktreeCount: 1, scheduleCount: 1 }],
+        ["r2", { sessionCount: 1, worktreeCount: 0, scheduleCount: 0 }],
+        ["missing", { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }],
+      ]),
+    );
+    await expect(plane.listRepositoryCountsDurable(["r1", "r2"], "a1")).resolves.toEqual(
+      new Map([
+        ["r1", { sessionCount: 0, worktreeCount: 1, scheduleCount: 1 }],
+        ["r2", { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }],
+      ]),
+    );
 
     // Verify real persistence directly against storage, not just the in-process cache.
     expect(await storage.getSession("s1")).not.toBeNull();

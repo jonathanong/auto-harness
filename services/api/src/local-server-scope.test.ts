@@ -99,7 +99,14 @@ describe("scoped control-plane REST resources", () => {
       invokeHandler(handler, method, path, body, { authorization: `Bearer ${key}` });
 
     expect((await invoke("GET", "/api/v1/repositories")).json).toMatchObject({
-      items: [expect.objectContaining({ id: "repo-a" })],
+      items: [
+        expect.objectContaining({
+          id: "repo-a",
+          sessionCount: 1,
+          worktreeCount: 1,
+          scheduleCount: 1,
+        }),
+      ],
     });
     expect((await invoke("GET", "/api/v1/repositories/repo-b")).status).toBe(404);
     expect((await invoke("GET", "/api/v1/schedules")).json).toMatchObject({
