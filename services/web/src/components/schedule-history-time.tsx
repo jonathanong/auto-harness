@@ -30,7 +30,12 @@ export function ScheduleHistoryTime({
         </time>
       )}
       {duration !== null ? (
-        <span className="block text-muted-foreground">{formatDuration(duration)}</span>
+        <span
+          className="block text-muted-foreground"
+          data-pw={`schedule-history-duration-${sessionId}`}
+        >
+          {formatDuration(duration)}
+        </span>
       ) : null}
     </div>
   );

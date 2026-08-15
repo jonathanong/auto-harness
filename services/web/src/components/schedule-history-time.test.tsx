@@ -19,6 +19,7 @@ describe("ScheduleHistoryTime", () => {
       />,
     );
     expect(html).toContain(`dateTime="${createdAt}"`);
+    expect(html).toContain('data-pw="schedule-history-duration-s/1"');
     expect(html).toContain(duration);
   });
 

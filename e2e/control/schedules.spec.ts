@@ -102,6 +102,7 @@ test.describe("control plane schedules", () => {
     await expect(
       page.getByTestId(`schedule-history-time-${historyId}`).locator("time"),
     ).toHaveAttribute("datetime");
+    await expect(page.getByTestId(`schedule-history-duration-${historyId}`)).toHaveCount(0);
 
     await page.goto(`/schedules/not-found-${Date.now()}`);
     await expect(page.getByTestId("page-schedule-detail-not-found")).toBeVisible();
