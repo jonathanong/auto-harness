@@ -91,6 +91,11 @@ test.describe("control plane sessions", () => {
     await expect(page.getByTestId("form-create-session")).toBeVisible();
     await expect(page.getByTestId("create-session-repository-id")).toBeVisible();
     await expect(page.getByTestId("create-session-prompt")).toBeVisible();
+    await page.getByTestId("create-session-prompt").fill("# Review **carefully**");
+    await page.getByTestId("create-session-prompt-preview-toggle").click();
+    await expect(page.getByTestId("create-session-prompt-preview")).toHaveText("Review carefully");
+    await page.getByTestId("create-session-prompt-write").click();
+    await expect(page.getByTestId("create-session-prompt")).toBeVisible();
     await expect(page.getByTestId("create-session-timeout-control")).toBeVisible();
     await expect(page.getByTestId("create-session-timeout")).toBeVisible();
     await expect(page.getByTestId("create-session-timeout")).toHaveValue("custom");
