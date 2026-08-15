@@ -428,23 +428,28 @@ separate capabilities and are not enabled by this UI.
 
 ## Keyboard Shortcuts
 
-The authenticated control-plane shell provides the shortcuts below. They are ignored while focus
-is in an input, textarea, select, combobox, textbox role, or editable element. A visible Shortcuts
-button provides the same help dialog without requiring keyboard discovery. The `G` prefix is
-announced to assistive technology and expires after 1.5 seconds.
+The authenticated control-plane shell provides the shortcuts below. Except for `Esc`, they are
+ignored while focus is in an input, textarea, select, combobox, textbox role, or editable element.
+A visible Shortcuts button provides the same help dialog without requiring keyboard discovery. The
+`G` prefix is announced to assistive technology and expires after 1.5 seconds. Session-row
+navigation follows the current filtered order and moves focus with the selected row.
 
-| Shortcut | Action              |
-| -------- | ------------------- |
-| `N`      | Open new session    |
-| `?`      | Open shortcut help  |
-| `G D`    | Go to Dashboard     |
-| `G N`    | Go to New session   |
-| `G S`    | Go to Sessions      |
-| `G R`    | Go to Repositories  |
-| `G W`    | Go to Worktrees     |
-| `G P`    | Go to Providers     |
-| `G C`    | Go to Commands      |
-| `G A`    | Go to Schedules     |
-| `G H`    | Go to Hosts         |
-| `G T`    | Go to Settings      |
-| `Esc`    | Close shortcut help |
+| Shortcut | Action                                         |
+| -------- | ---------------------------------------------- |
+| `N`      | Open new session                               |
+| `S`      | Focus session search                           |
+| `J`      | Select next session                            |
+| `K`      | Select previous session                        |
+| `Enter`  | Open selected session                          |
+| `?`      | Open shortcut help                             |
+| `G D`    | Go to Dashboard                                |
+| `G N`    | Go to New session                              |
+| `G S`    | Go to Sessions                                 |
+| `G R`    | Go to Repositories                             |
+| `G W`    | Go to Worktrees                                |
+| `G P`    | Go to Providers                                |
+| `G C`    | Go to Commands                                 |
+| `G A`    | Go to Schedules                                |
+| `G H`    | Go to Hosts                                    |
+| `G T`    | Go to Settings                                 |
+| `Esc`    | Close shortcut help or leave an editable field |

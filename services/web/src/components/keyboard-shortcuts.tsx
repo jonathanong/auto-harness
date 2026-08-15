@@ -52,6 +52,7 @@ export function KeyboardShortcuts() {
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.repeat || hasCommandModifier(event)) return;
       if (isEditableTarget(event.target)) {
+        if (event.key === "Escape" && event.target instanceof HTMLElement) event.target.blur();
         clearPrefix();
         return;
       }
@@ -75,6 +76,14 @@ export function KeyboardShortcuts() {
       if (key === "n") {
         event.preventDefault();
         router.push("/sessions/new");
+        return;
+      }
+      if (key === "s") {
+        const search = document.querySelector<HTMLInputElement>('[data-pw="session-filter-q"]');
+        if (search) {
+          event.preventDefault();
+          search.focus();
+        }
         return;
       }
       if (key === "g") {
@@ -125,6 +134,13 @@ export function KeyboardShortcuts() {
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           <Shortcut keys="N" label="New session" pw="keyboard-shortcut-new-session" />
+          <Shortcut keys="S" label="Focus session search" pw="keyboard-shortcut-search" />
+          <Shortcut
+            keys="J / K"
+            label="Select next / previous session"
+            pw="keyboard-shortcut-row"
+          />
+          <Shortcut keys="Enter" label="Open selected session" pw="keyboard-shortcut-open" />
           <Shortcut keys="?" label="Open this help" pw="keyboard-shortcut-help" />
           {navigationShortcuts.map(([key, label]) => (
             <Shortcut

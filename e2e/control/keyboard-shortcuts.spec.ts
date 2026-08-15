@@ -12,6 +12,9 @@ test.describe("control-plane keyboard shortcuts", () => {
     await expect(dialog).toHaveRole("dialog");
     await expect(dialog).toContainText("Keyboard shortcuts");
     await expect(page.getByTestId("keyboard-shortcut-new-session")).toBeVisible();
+    await expect(page.getByTestId("keyboard-shortcut-search")).toBeVisible();
+    await expect(page.getByTestId("keyboard-shortcut-row")).toBeVisible();
+    await expect(page.getByTestId("keyboard-shortcut-open")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-help")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-d")).toBeVisible();
     await expect(page.getByTestId("keyboard-shortcut-go-n")).toBeVisible();
@@ -59,5 +62,50 @@ test.describe("control-plane keyboard shortcuts", () => {
     await prompt.press("d");
     await expect(page).toHaveURL(/\/sessions\/new$/);
     await expect(page.getByTestId("keyboard-shortcuts-dialog")).toBeHidden();
+  });
+
+  test("focuses search and selects and opens a session row", async ({ page, request }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const repository = await request.post("/api/v1/repositories", {
+      data: {
+        name: `pw-keyboard-repository-${suffix}`,
+        url: `https://git.example.test/pw-keyboard-${suffix}.git`,
+      },
+    });
+    expect(repository.status()).toBe(201);
+    const repositoryId = ((await repository.json()) as { id: string }).id;
+    const command = await request.post("/api/v1/commands", {
+      data: {
+        name: `pw-keyboard-command-${suffix}`,
+        argv: ["echo"],
+        appendPrompt: true,
+        providerId: null,
+      },
+    });
+    expect(command.status()).toBe(201);
+    const commandId = ((await command.json()) as { id: string }).id;
+    const prompt = `keyboard navigation ${suffix}`;
+    const created = await request.post("/api/v1/sessions", {
+      data: { repositoryId, prompt, target: { commandId }, timeout: 30 },
+    });
+    expect(created.status()).toBe(201);
+    const sessionId = ((await created.json()) as { id: string }).id;
+
+    await page.goto("/sessions");
+    await expect(page.getByTestId("page-sessions")).toBeVisible();
+    await page.keyboard.press("s");
+    const search = page.getByTestId("session-filter-q");
+    await expect(search).toBeFocused();
+    await search.fill(prompt);
+    await page.keyboard.press("Escape");
+    await expect(search).not.toBeFocused();
+    const row = page.getByTestId(`session-row-${sessionId}`);
+    await expect(row).toBeVisible();
+
+    await page.keyboard.press("j");
+    await expect(row).toHaveAttribute("aria-selected", "true");
+    await expect(row).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(`/sessions/${sessionId}`);
   });
 });

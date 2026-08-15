@@ -11,6 +11,7 @@ import { SessionSourceBadge } from "./session-source-badge.tsx";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { SessionStatusCell } from "./session-status-cell.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
+import { useSessionTableKeyboard } from "./use-session-table-keyboard.ts";
 
 export type SessionRow = SearchableSession;
 
@@ -58,8 +59,12 @@ export function SessionsTable({
   );
   const nowMs = useSessionClock(visibleItems.some((session) => session.status === "running"));
   const cols = showHost ? 13 : 12;
+  const { selectedId, setSelectedId } = useSessionTableKeyboard(
+    visibleItems.map((session) => session.id),
+    hrefBase,
+  );
   return (
-    <Table data-pw="sessions-table">
+    <Table data-pw="sessions-table" aria-keyshortcuts="J K Enter">
       <TableHeader>
         <TableRow>
           <TableHead>ID</TableHead>
@@ -79,13 +84,22 @@ export function SessionsTable({
       </TableHeader>
       <TableBody>
         {visibleItems.map((s) => (
-          <TableRow key={s.id} data-pw={`session-row-${s.id}`}>
+          <TableRow
+            key={s.id}
+            data-pw={`session-row-${s.id}`}
+            data-session-row-id={s.id}
+            aria-selected={selectedId === s.id}
+            tabIndex={-1}
+            className={selectedId === s.id ? "bg-muted ring-2 ring-inset ring-primary" : undefined}
+            onClick={() => setSelectedId(s.id)}
+          >
             <TableCell className="font-mono text-xs">
               {hrefBase ? (
                 <Link
                   href={`${hrefBase}/${encodeURIComponent(s.id)}`}
                   className="hover:underline"
                   data-pw={`session-link-${s.id}`}
+                  data-session-link-id={s.id}
                 >
                   {s.id}
                 </Link>
