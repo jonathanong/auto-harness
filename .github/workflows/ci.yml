@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: lint · test · knip · depcruise · links · data-pw
+  static-code-analysis:
+    name: static-code-analysis
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,16 +43,6 @@ jobs:
       - name: Format check
         run: pnpm fmt:check
 
-      # DynamoDB Local so write-through / createControlPlane branches hit coverage thresholds
-      - name: Start DynamoDB Local
-        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
-
-      - name: Test with coverage
-        run: pnpm test
-
-      - name: Verify exact Dynamo adapter coverage
-        run: pnpm check:coverage:dynamo-adapters
-
       - name: Knip
         run: pnpm knip
 
@@ -69,8 +59,41 @@ jobs:
           fail: true
           jobSummary: true
 
+  vitest:
+    name: vitest
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
+          node-version: "22.18"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # DynamoDB Local so write-through / createControlPlane branches hit coverage thresholds
+      - name: Start DynamoDB Local
+        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
+
+      - name: Test with coverage
+        run: pnpm test
+
+      - name: Verify exact Dynamo adapter coverage
+        run: pnpm check:coverage:dynamo-adapters
+
   integration:
-    name: integration (real orchestration)
+    name: integration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -94,8 +117,8 @@ jobs:
       - name: Integration tests
         run: pnpm test:integration
 
-  e2e:
-    name: playwright (control + host-pane)
+  playwright:
+    name: playwright
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
