@@ -157,3 +157,10 @@ export {
   type PublicSlackIntegration,
   type SlackNotifications,
 } from "./slack.ts";
+
+export {
+  installCrashLogging,
+  onShutdownSignal,
+  type LifecycleLogger,
+  type ShutdownHandle,
+} from "./process-lifecycle.ts";

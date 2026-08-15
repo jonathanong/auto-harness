@@ -1,3 +1,5 @@
+import { installCrashLogging, onShutdownSignal } from "@auto-harness/shared";
+
 import { startLocalServer } from "./local-server.ts";
 
 export async function main(argv: string[] = process.argv): Promise<number> {
@@ -36,6 +38,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     host = raw;
   }
 
+  installCrashLogging();
   const server = await startLocalServer({ port, host, useDynamo: true });
   console.log(`Auto Harness local API listening on http://${host}:${server.port}`);
   console.log(`POST http://${host}:${server.port}/api/v1/sessions`);
@@ -43,8 +46,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     `DynamoDB: ${process.env.HARNESS_DDB_ENDPOINT ?? "http://127.0.0.1:7423"} (pnpm local:dynamodb)`,
   );
 
-  await new Promise<void>(() => {
-    /* run until killed */
+  // startLocalServer already returns a close() that stops the Slack and webhook workers,
+  // the scheduler, both WebSocket hubs, and the HTTP server. Nothing was calling it, so
+  // docker stop / systemctl stop severed in-flight requests and abandoned any sweep the
+  // scheduler was mid-way through.
+  await new Promise<void>((resolve) => {
+    onShutdownSignal(async () => {
+      console.log("shutting down");
+      await server.close();
+      resolve();
+    });
   });
   return 0;
 }

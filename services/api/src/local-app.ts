@@ -48,7 +48,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
   const memoryLimiter = new MemoryRateLimiter(config.maxEntries);
   const now = options.rateLimitNow ?? (() => Date.now());
   const trustProxy = options.trustProxy ?? process.env.HARNESS_TRUST_PROXY === "true";
-  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const route = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     if (applyLocalCors(req, res)) return;
     const url = new URL(req.url ?? "/", "http://localhost");
     const method = req.method ?? "GET";
@@ -157,6 +157,28 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (await handleSlackIntegrationRoutes(ctx)) return;
     if (await handleSessionTargetRoutes(ctx)) return;
     send(res, 404, { error: { code: "NOT_FOUND", message: "not found" } });
+  };
+
+  /**
+   * Last-resort boundary. Route modules catch their own IO, but anything escaping one —
+   * a malformed request URL, a throw inside CORS, rate limiting, or authentication —
+   * used to reject the floated promise in local-server's createServer callback. Node
+   * turns an unhandled rejection into process exit, so a single unguarded throw took the
+   * whole API down and left the client socket hanging with no response.
+   */
+  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    try {
+      await route(req, res);
+    } catch (error) {
+      // Path only: query strings carry credentials such as the viewer WebSocket ticket.
+      const path = (req.url ?? "/").split("?")[0];
+      console.error(`unhandled error in ${req.method ?? "GET"} ${path}`, error);
+      if (!res.headersSent) {
+        send(res, 500, {
+          error: { code: "INTERNAL_ERROR", message: "internal server error" },
+        });
+      }
+    }
   };
   return { store, plane, handler };
 }
