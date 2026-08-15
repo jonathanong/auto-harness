@@ -4,11 +4,17 @@ import type { DaemonConfig } from "./config.ts";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
+export type DaemonRuntimeIdentity = {
+  instanceId: string;
+  startedAt: string;
+};
+
 export async function registerDaemon(
   config: DaemonConfig,
   transport: Pick<DaemonTransport, "send">,
   runningSessions: readonly string[],
   draining = false,
+  identity?: DaemonRuntimeIdentity,
 ): Promise<void> {
   // Registration is the reconnect barrier.  It deliberately bypasses the
   // producer-side FIFO so WsTransport can synchronously replace its pending
@@ -31,6 +37,9 @@ export async function registerDaemon(
     commandProfiles: Object.keys(config.commandProfiles).toSorted(),
     capabilities: ["scheduled-main-checkout"],
     runningSessions: [...runningSessions].toSorted(),
+    ...(identity
+      ? { daemonInstanceId: identity.instanceId, daemonStartedAt: identity.startedAt }
+      : {}),
     ...(draining ? { draining: true } : {}),
   };
   await transport.send(registration);

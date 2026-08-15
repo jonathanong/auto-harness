@@ -34,6 +34,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getHostLock(hostId: string) {
       return hostLocks.get(hostId) ?? null;
     },
+    async getHostInventory() {
+      return null;
+    },
     async getSession(id: string) {
       return sessions.get(id) ?? null;
     },
@@ -65,6 +68,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       connections.set(String(connection.connectionId), connection);
     },
     async putHostInventory() {},
+    async putHostInventoryFenced() {
+      return true;
+    },
     async putWorktreeFenced() {
       return true;
     },

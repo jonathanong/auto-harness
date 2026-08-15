@@ -610,6 +610,34 @@ export async function putHostInventory(
   });
 }
 
+/** Publish inventory only while the registering connection still owns the host lease. */
+export async function putHostInventoryFenced(
+  ctx: PlaneStorageCtx,
+  rec: HostInventoryRecord,
+  fence: { hostId: string; connectionId: string },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: fence.hostId },
+              ConditionExpression: "connectionId = :connectionId",
+              ExpressionAttributeValues: { ":connectionId": fence.connectionId },
+            },
+          },
+          { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
+}
+
 export async function getHostInventory(
   ctx: PlaneStorageCtx,
   hostId: string,

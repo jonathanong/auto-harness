@@ -138,6 +138,10 @@ export type HostToServerMessage =
       capabilities?: HostCapability[];
       /** Running daemon-owned sessions, used to reconcile an interrupted socket. */
       runningSessions?: string[];
+      /** Stable for one daemon process and reused across socket reconnects. */
+      daemonInstanceId?: string;
+      /** Process start time reported alongside daemonInstanceId. */
+      daemonStartedAt?: string;
       /** A reconnecting daemon retains drain until this shutdown completes. */
       draining?: true;
     }

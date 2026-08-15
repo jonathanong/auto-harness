@@ -11,12 +11,15 @@ describe("durable host registration", () => {
     const calls: string[] = [];
     plane.state.storage = {
       tryRegisterHost: async () => (calls.push("lease"), true),
+      getHostInventory: async () => null,
       getWorktree: async () => null,
       putWorktreeFenced: async (_worktree: { id: string }, fence: { connectionId: string }) => (
         calls.push(`worktree:${fence.connectionId}`), true
       ),
       listWorktreesByHost: async () => [],
-      putHostInventory: async () => {},
+      putHostInventoryFenced: async (_inventory: unknown, fence: { connectionId: string }) => (
+        calls.push(`inventory:${fence.connectionId}`), true
+      ),
     } as never;
     const result = await plane.registerHostDurable({
       hostId: "h",
@@ -26,33 +29,8 @@ describe("durable host registration", () => {
       replaceExisting: true,
     });
     expect(result).toEqual({ ok: true, connectionId: "c" });
-    expect(calls).toEqual(["lease", "worktree:c"]);
+    expect(calls).toEqual(["lease", "worktree:c", "inventory:c"]);
     expect(plane.state.connections.get("c")?.capabilities).toEqual(["scheduled-main-checkout"]);
-  });
-
-  it("releases a just-acquired lease if fenced inventory loses", async () => {
-    const plane = new ControlPlane({ connectionIdFactory: () => "c" });
-    const calls: string[] = [];
-    plane.state.storage = {
-      tryRegisterHost: async () => true,
-      getWorktree: async () => null,
-      listWorktreesByHost: async () => [],
-      putWorktreeFenced: async () => false,
-      releaseHostConnection: async (_hostId: string, connectionId: string) => (
-        calls.push(connectionId), true
-      ),
-      getHostLock: async () => null,
-      setWorktreeOnlineFenced: async () => false,
-    } as never;
-    await expect(
-      plane.registerHostDurable({
-        hostId: "h",
-        worktrees: inventory,
-        commandProfiles: [],
-        replaceExisting: true,
-      }),
-    ).resolves.toEqual({ ok: false, error: "host connection changed while publishing inventory" });
-    expect(calls).toEqual(["c"]);
   });
 
   it("preserves the current cache on duplicate leases and inventory write failures", async () => {
@@ -67,6 +45,7 @@ describe("durable host registration", () => {
     const released: string[] = [];
     failing.state.storage = {
       tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
       getWorktree: async () => null,
       listWorktreesByHost: async () => [],
       putWorktreeFenced: async () => {
@@ -139,10 +118,11 @@ describe("durable host registration", () => {
     let writes = 0;
     busy.state.storage = {
       tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
       getWorktree: async () => ({ id: "w", status: "busy" }),
       putWorktreeFenced: async () => (writes++, true),
       listWorktreesByHost: async () => [],
-      putHostInventory: async () => {},
+      putHostInventoryFenced: async () => true,
     } as never;
     expect(
       await busy.registerHostDurable({

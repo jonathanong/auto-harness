@@ -22,6 +22,11 @@ describe("daemon registration", () => {
       },
       { send: async (message: unknown) => void messages.push(message) } as never,
       ["z", "a"],
+      false,
+      {
+        instanceId: "123e4567-e89b-42d3-a456-426614174000",
+        startedAt: "2026-08-11T00:00:00.000Z",
+      },
     );
     expect(messages).toEqual([
       expect.objectContaining({
@@ -31,6 +36,8 @@ describe("daemon registration", () => {
         repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
         commandProfiles: ["a", "z"],
         runningSessions: ["a", "z"],
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
         worktrees: [expect.objectContaining({ id: "w", repositoryId: "r" })],
       }),
     ]);

@@ -45,6 +45,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
         ...registration,
         capabilities: ["scheduled-main-checkout"],
         runningSessions: ["session-1"],
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
       }),
     ).toMatchObject({ type: "host:register" });
     expect(
@@ -101,6 +103,18 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, runningSessions: "session-1" },
       { ...registration, runningSessions: Array(1_001).fill("session-1") },
       { ...registration, runningSessions: [""] },
+      { ...registration, daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000" },
+      { ...registration, daemonStartedAt: "2026-08-11T00:00:00.000Z" },
+      {
+        ...registration,
+        daemonInstanceId: "not-a-uuid",
+        daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      },
+      {
+        ...registration,
+        daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
+        daemonStartedAt: "not-a-time",
+      },
     ];
     for (const candidate of invalid) expect(parseHostMessage(candidate)).toBe(null);
   });

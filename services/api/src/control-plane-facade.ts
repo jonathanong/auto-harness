@@ -122,6 +122,7 @@ export class ControlPlaneBase {
     repositories?: HostRepositoryRegistration[];
     commandProfiles: string[];
     capabilities?: HostCapability[];
+    daemonIdentity?: { instanceId: string; startedAt: string };
     replaceExisting?: boolean;
   }): { ok: true; connectionId: string } | { ok: false; error: string } {
     return agents.registerHost(this.state, opts);

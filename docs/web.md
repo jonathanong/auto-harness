@@ -367,9 +367,13 @@ Fleet-wide worktrees view, grouped by repository. Each worktree's detail page ha
 ### Host List
 
 The connected-host fleet table shows each host id, online/offline status, attached repository count,
-whether host configuration exists, connection time, worktree count, busy worktrees, and drain
-control. Expand a host's worktree summary to inspect each worktree's path, labels, status, current
-session, and links to its repository, worktree, and active session details.
+whether host configuration exists, connection time, daemon start time, detected restart count and
+last detection time, worktree count, busy worktrees, and drain control. A daemon process keeps one
+opaque instance id across WebSocket reconnects; the control plane counts a restart only when a later
+registration changes a previously known instance id. Legacy daemons establish no baseline. This is
+local API/UI observability, not an outbound alert and not permission to restart a host. Expand a
+host's worktree summary to inspect each worktree's path, labels, status, current session, and links
+to its repository, worktree, and active session details.
 
 ### Host Detail
 

@@ -643,6 +643,13 @@ export class DynamoPlaneStorageBase {
     return catalog.putHostInventory(this.ctx, rec, markers);
   }
 
+  putHostInventoryFenced(
+    rec: HostInventoryRecord,
+    fence: { hostId: string; connectionId: string },
+  ): Promise<boolean> {
+    return catalog.putHostInventoryFenced(this.ctx, rec, fence);
+  }
+
   getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {
     return catalog.getHostInventory(this.ctx, hostId);
   }

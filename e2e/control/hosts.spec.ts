@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
@@ -80,6 +81,40 @@ test.describe("control plane hosts", () => {
     });
   });
 
+  test("shows durable daemon restart observability", async ({ page }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const hostId = `pw-restart-host-${suffix}`;
+    const firstStartedAt = "2026-08-15T12:00:00.000Z";
+    const secondStartedAt = "2026-08-15T12:05:00.000Z";
+    let socket: WebSocket | undefined;
+
+    try {
+      socket = await registerObservedHost(hostId, randomUUID(), firstStartedAt);
+      await page.goto("/hosts");
+      await expect(page.getByTestId(`host-restart-count-${hostId}`)).toHaveText(
+        "0 restarts detected",
+      );
+      await expect(page.getByTestId(`host-daemon-started-at-${hostId}`)).toHaveAttribute(
+        "datetime",
+        firstStartedAt,
+      );
+
+      await closeSocket(socket);
+      socket = await registerObservedHost(hostId, randomUUID(), secondStartedAt);
+      await page.reload();
+      await expect(page.getByTestId(`host-restart-count-${hostId}`)).toHaveText(
+        "1 restart detected",
+      );
+      await expect(page.getByTestId(`host-daemon-started-at-${hostId}`)).toHaveAttribute(
+        "datetime",
+        secondStartedAt,
+      );
+      await expect(page.getByTestId(`host-last-restart-${hostId}`)).toHaveAttribute("datetime");
+    } finally {
+      if (socket) await closeSocket(socket);
+    }
+  });
+
   test("unknown host id shows a not-found state", async ({ page }) => {
     await page.goto("/hosts/does-not-exist-xyz");
     await expect(page.getByTestId("page-host-detail-not-found")).toBeVisible();
@@ -126,3 +161,40 @@ test.describe("control plane hosts", () => {
     });
   });
 });
+
+async function registerObservedHost(
+  hostId: string,
+  daemonInstanceId: string,
+  daemonStartedAt: string,
+) {
+  const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+  await new Promise<void>((resolve, reject) => {
+    socket.addEventListener("message", (event) => {
+      const message = JSON.parse(String(event.data)) as { type?: string; message?: string };
+      if (message.type === "host:registered") resolve();
+      if (message.type === "error") reject(new Error(message.message));
+    });
+    socket.addEventListener("error", () => reject(new Error("host WebSocket failed")));
+    socket.addEventListener("open", () =>
+      socket.send(
+        JSON.stringify({
+          type: "host:register",
+          hostId,
+          daemonInstanceId,
+          daemonStartedAt,
+          worktrees: [],
+          commandProfiles: [],
+        }),
+      ),
+    );
+  });
+  return socket;
+}
+
+async function closeSocket(socket: WebSocket): Promise<void> {
+  if (socket.readyState === WebSocket.CLOSED) return;
+  await new Promise<void>((resolve) => {
+    socket.addEventListener("close", () => resolve(), { once: true });
+    socket.close();
+  });
+}

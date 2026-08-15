@@ -194,6 +194,7 @@ describe("agent registration branch boundaries", () => {
     const writes: string[] = [];
     plane.state.storage = {
       tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
       getSession: async () => null,
       listWorktreesByHost: async () => [
         { ...worktree({ id: "idle", name: "idle", status: "idle", currentSessionId: null }) },
@@ -202,7 +203,7 @@ describe("agent registration branch boundaries", () => {
       putWorktreeFenced: async (row: { id: string; connectionId: string }) => (
         writes.push(`${row.id}:${row.connectionId}`), true
       ),
-      putHostInventory: async () => {},
+      putHostInventoryFenced: async () => true,
     } as never;
     expect(
       await plane.registerHostDurable({

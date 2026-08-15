@@ -3,6 +3,7 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { parseHostBody } from "./control-plane-agent-hosts-parse.ts";
+import { preservedDaemonRuntime } from "./control-plane-agent-registration.ts";
 import { findWorktreeNameCollision } from "./control-plane-worktree-names.ts";
 import {
   getHostInventoryDurable,
@@ -81,7 +82,14 @@ function prepareHostInventory(
     const parsed = parseHostBody(hostId, body);
     const collision = findWorktreeNameCollision(state, hostId, parsed);
     if (collision) return { ok: false, error: collision };
-    return { ok: true, config: { ...parsed, updatedAt: state.now() } };
+    return {
+      ok: true,
+      config: {
+        ...parsed,
+        ...preservedDaemonRuntime(state.hostInventories.get(hostId)),
+        updatedAt: state.now(),
+      },
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }

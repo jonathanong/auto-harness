@@ -298,6 +298,7 @@ describe("reconnect reconciliation", () => {
       getWorktree: async () => (++worktreeReads === 1 ? busyBeforeSweep : idleInventory),
       listWorktreesByHost: async () => [busyBeforeSweep],
       tryRegisterHost: async () => (calls.push("lease"), true),
+      getHostInventory: async () => null,
       putWorktreeFenced: async () => (calls.push("inventory"), true),
       releaseHostConnection: async () => (calls.push("release"), true),
       getHostLock: async () => null,
@@ -411,6 +412,7 @@ describe("reconnect reconciliation", () => {
       getWorktree: async () => (++worktreeReads === 1 ? preSweepWorktree : inventory),
       listWorktreesByHost: async () => [preSweepWorktree],
       tryRegisterHost: async () => (calls.push("lease:A"), true),
+      getHostInventory: async () => null,
       putWorktreeFenced: async () => (calls.push("inventory:A"), true),
       setWorktreeOnlineFenced: async (
         _id: string,
