@@ -1,12 +1,22 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import type { SessionAssign } from "@auto-harness/shared";
+import { installCrashLogging, onShutdownSignal, type SessionAssign } from "@auto-harness/shared";
 
 import type { DaemonConfig } from "./config.ts";
 import { loadDaemonConfig } from "./config.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
 import type { SessionRunResult } from "./session-runner.ts";
+
+/**
+ * Upper bound on graceful shutdown. In-flight CLIs are drained, not killed, so this is
+ * generous — but finite, so a wedged daemon can still be restarted.
+ */
+function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
+  const raw = env.HARNESS_SHUTDOWN_TIMEOUT_MS;
+  const parsed = raw === undefined ? Number.NaN : Number(raw);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 60_000;
+}
 
 export function printUsage(log: (msg: string) => void = console.log): void {
   log(`Usage:
@@ -142,15 +152,25 @@ export async function runCli(
         log: deps.log,
         error: deps.error,
       });
-      const shutdown = (): void => {
-        void stop().then(() => {
-          process.exitCode = 0;
-        });
-      };
-      process.on("SIGINT", shutdown);
-      process.on("SIGTERM", shutdown);
-      await new Promise<void>(() => {
-        /* run until killed */
+      // The previous handler ran stop() again on a second signal, had no catch — so a
+      // rejecting stop() became an unhandled rejection during shutdown — and only set
+      // process.exitCode, which does not end a process holding an open handle.
+      await new Promise<void>((finished) => {
+        onShutdownSignal(
+          async () => {
+            await stop();
+            finished();
+          },
+          {
+            timeoutMs: shutdownTimeoutMs(env),
+            logger: (message, err) =>
+              deps.error(
+                err === undefined
+                  ? message
+                  : `${message}: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+          },
+        );
       });
       return 0;
     } catch (err) {
@@ -169,6 +189,7 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 }
 
 if (process.argv[1]?.endsWith("cli.ts") || process.argv[1]?.endsWith("cli.js")) {
+  installCrashLogging();
   void main().then((code) => {
     process.exitCode = code;
   });

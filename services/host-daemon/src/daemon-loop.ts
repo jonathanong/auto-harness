@@ -33,6 +33,11 @@ export type DaemonLoopOptions = {
   ackConfirmationMs?: number;
   /** Retry an unacknowledged durable drain notification at this interval. */
   drainRetryMs?: number;
+  /**
+   * Upper bound on waiting for the control plane to acknowledge a drain. Reaching it
+   * proceeds to the in-flight wait rather than retrying forever.
+   */
+  drainDeadlineMs?: number;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
   daemonIdentity?: DaemonRuntimeIdentity;
@@ -65,6 +70,8 @@ export class DaemonLoop {
   private readonly reconnectAbortMs: number;
   private readonly ackConfirmationMs: number;
   private readonly drainRetryMs: number;
+  private readonly drainDeadlineMs: number;
+  private drainDeadline: ReturnType<typeof setTimeout> | undefined;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
   private connectionEvents: { stop: () => void } | undefined;
@@ -81,6 +88,7 @@ export class DaemonLoop {
     this.reconnectAbortMs = options.reconnectAbortMs ?? 75_000;
     this.ackConfirmationMs = options.ackConfirmationMs ?? this.reconnectAbortMs;
     this.drainRetryMs = options.drainRetryMs ?? 1_000;
+    this.drainDeadlineMs = options.drainDeadlineMs ?? 30_000;
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
@@ -167,6 +175,20 @@ export class DaemonLoop {
     // A lost acknowledgement needs the same retry path as a failed initial
     // write, and the promise above remains pending until either path commits.
     this.scheduleDrainRetry();
+    // ...but not forever. With the control plane unreachable the retry loop never
+    // commits, so beginDrain never settled and stop() hung — even with nothing in
+    // flight. Give up announcing after the deadline and move on to draining the work
+    // that is actually running; the control plane reclaims this host by heartbeat.
+    this.drainDeadline = this.timers.setTimeout(() => {
+      this.drainDeadline = undefined;
+      if (!this.draining) {
+        this.onLog?.(
+          `drain not acknowledged within ${this.drainDeadlineMs}ms; continuing shutdown`,
+        );
+        this.confirmDrain();
+      }
+    }, this.drainDeadlineMs);
+    this.drainDeadline.unref?.();
     return this.drainConfirmation;
   }
 
@@ -183,6 +205,8 @@ export class DaemonLoop {
 
   stop(): void {
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
+    if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
+    this.drainDeadline = undefined;
     this.connectionEvents?.stop();
     this.transport.close();
   }
@@ -256,6 +280,8 @@ export class DaemonLoop {
     this.drainRequested = true;
     if (this.drainRetry) this.timers.clearTimeout(this.drainRetry);
     this.drainRetry = undefined;
+    if (this.drainDeadline) this.timers.clearTimeout(this.drainDeadline);
+    this.drainDeadline = undefined;
     const resolve = this.resolveDrainConfirmation;
     this.resolveDrainConfirmation = undefined;
     resolve?.();
