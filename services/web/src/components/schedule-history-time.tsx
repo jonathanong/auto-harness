@@ -1,15 +1,20 @@
+import { formatDuration } from "@auto-harness/ui";
+
 export function ScheduleHistoryTime({
   createdAt,
+  startedAt,
   completedAt,
   sessionId,
 }: {
   createdAt?: string;
+  startedAt?: string | null;
   completedAt?: string | null;
   sessionId: string;
 }) {
   const created = parseDate(createdAt);
+  const started = parseDate(startedAt);
   const completed = parseDate(completedAt);
-  const duration = created !== null && completed !== null ? Math.max(0, completed - created) : null;
+  const duration = started !== null && completed !== null ? Math.max(0, completed - started) : null;
 
   return (
     <div className="text-xs" data-pw={`schedule-history-time-${sessionId}`}>
@@ -35,14 +40,4 @@ function parseDate(value?: string | null): number | null {
   if (!value) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatDuration(milliseconds: number): string {
-  const seconds = Math.floor(milliseconds / 1_000);
-  const hours = Math.floor(seconds / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const remainder = seconds % 60;
-  if (hours) return `${hours}h ${minutes}m`;
-  if (minutes) return `${minutes}m ${remainder}s`;
-  return `${remainder}s`;
 }

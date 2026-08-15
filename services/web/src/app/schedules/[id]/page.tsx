@@ -24,6 +24,7 @@ type SessionHistory = {
   id: string;
   status: string;
   createdAt?: string;
+  startedAt?: string | null;
   completedAt?: string | null;
 };
 
@@ -131,6 +132,7 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
                   <TableCell>
                     <ScheduleHistoryTime
                       createdAt={session.createdAt}
+                      startedAt={session.startedAt}
                       completedAt={session.completedAt}
                       sessionId={session.id}
                     />

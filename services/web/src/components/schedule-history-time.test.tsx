@@ -11,7 +11,12 @@ describe("ScheduleHistoryTime", () => {
     ["2026-08-12T12:00:42.000Z", "2026-08-12T12:00:00.000Z", "0s"],
   ])("shows %s to %s as %s", (createdAt, completedAt, duration) => {
     const html = renderToStaticMarkup(
-      <ScheduleHistoryTime createdAt={createdAt} completedAt={completedAt} sessionId="s/1" />,
+      <ScheduleHistoryTime
+        createdAt={createdAt}
+        startedAt={createdAt}
+        completedAt={completedAt}
+        sessionId="s/1"
+      />,
     );
     expect(html).toContain(`dateTime="${createdAt}"`);
     expect(html).toContain(duration);
@@ -21,6 +26,7 @@ describe("ScheduleHistoryTime", () => {
     const active = renderToStaticMarkup(
       <ScheduleHistoryTime
         createdAt="2026-08-12T12:00:00.000Z"
+        startedAt="2026-08-12T12:05:00.000Z"
         completedAt={null}
         sessionId="active"
       />,
@@ -32,5 +38,18 @@ describe("ScheduleHistoryTime", () => {
       <ScheduleHistoryTime createdAt="invalid" completedAt="also-invalid" sessionId="invalid" />,
     );
     expect(invalid).toContain("—");
+  });
+
+  it("excludes queue wait from terminal duration", () => {
+    const html = renderToStaticMarkup(
+      <ScheduleHistoryTime
+        createdAt="2026-08-12T12:00:00.000Z"
+        startedAt="2026-08-12T12:05:00.000Z"
+        completedAt="2026-08-12T12:06:00.000Z"
+        sessionId="queued"
+      />,
+    );
+    expect(html).toContain("1m 0s");
+    expect(html).not.toContain("6m 0s");
   });
 });
