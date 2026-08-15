@@ -30,6 +30,7 @@ test.describe("control plane worktrees", () => {
       try {
         await page.goto("/worktrees");
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("echo");
         await page.getByTestId(`worktree-link-${wtId}`).click();
 
         await expect(page).toHaveURL(new RegExp(`/worktrees/${wtId}$`));
@@ -37,6 +38,7 @@ test.describe("control plane worktrees", () => {
         await expect(page.getByTestId("worktree-detail-id")).toHaveText(wtId);
         await page.getByTestId("tab-settings").click();
         await expect(page.getByTestId("worktree-detail-path")).toHaveText(wtPath);
+        await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("echo");
         await page.getByTestId("worktree-edit-open").click();
         await expect(page.getByTestId("form-edit-worktree")).toBeVisible();
         await expect(page.getByTestId("worktree-edit-path")).toHaveValue(wtPath);

@@ -5,6 +5,7 @@ import { RepositoryUrlCopy } from "./repository-url-copy.tsx";
 import { StatusBadge } from "./status-badge.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
+import { WorktreeLabels } from "./worktree-labels.tsx";
 
 export type WorktreeRow = {
   id: string;
@@ -165,7 +166,7 @@ export function WorktreesHierarchy({
                         <TableCell className="font-mono text-xs">{wt.hostId ?? "—"}</TableCell>
                       ) : null}
                       <TableCell className="text-xs">
-                        {(wt.labels ?? []).length ? (wt.labels ?? []).join(", ") : "—"}
+                        <WorktreeLabels labels={wt.labels} worktreeId={wt.id} />
                       </TableCell>
                       {renderWorktreeActions ? (
                         <TableCell className="relative z-10 text-right">
