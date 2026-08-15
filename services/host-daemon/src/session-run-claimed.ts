@@ -94,7 +94,10 @@ async function runProcessAndFinish(
   timedOut: () => boolean,
   remainingMs: () => number,
 ): Promise<SessionRunResult> {
-  streamer.write("system", `Spawning: ${argv[0]} (${Math.max(0, argv.length - 1)} arguments)`);
+  streamer.write(
+    "system",
+    `Spawning: ${argv[0]} (argument count: ${Math.max(0, argv.length - 1)})`,
+  );
   let combined = "";
   const capturePolicy =
     commandRunner.outputStreams === "merged" && assign.resumeRefCapture
@@ -119,6 +122,12 @@ async function runProcessAndFinish(
     streamer.write(trailing.stream, trailing.content);
   }
   if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
+  streamer.write(
+    "system",
+    result.exitCode === null
+      ? "Process exited without an exit code"
+      : `Process exited with code ${String(result.exitCode)}`,
+  );
 
   const finish = (outcome: Parameters<typeof finishSession>[7]) =>
     finishSession(

@@ -38,6 +38,7 @@ export async function failSession(
   exitCode: number | null,
 ): Promise<SessionRunResult> {
   streamer.write("system", errorMessage);
+  streamer.writeTimestampedSystem("Session failed");
   return {
     status: "failed",
     exitCode,
@@ -57,7 +58,6 @@ export async function finishSession(
   hookScript: string | undefined,
   outcome: SessionOutcome,
 ): Promise<SessionRunResult> {
-  streamer.write("system", `Session ${outcome.status}`);
   if (hookScript) {
     await runTerminalHook(processRunner, {
       scriptPath: hookScript,
@@ -70,6 +70,7 @@ export async function finishSession(
       ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),
     });
   }
+  streamer.writeTimestampedSystem(`Session ${outcome.status}`);
   void worktreeId;
   return {
     status: outcome.status,

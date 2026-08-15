@@ -224,13 +224,20 @@ does not send browser input to the running process. Git, setup, and hook output 
 **Target status transitions** are displayed as system messages in the terminal:
 
 ```
-[system] Session started at 2026-08-01T12:00:05Z
+[system] Session started at 2026-08-01T12:00:05.000Z
 [system] Running setup script...
-[system] Setup complete. Spawning: codex -p
+[system] Setup complete.
+[system] Spawning: codex (argument count: 1)
 ... stdout/stderr output ...
 [system] Process exited with code 0
-[system] Session completed at 2026-08-01T12:05:30Z
+[system] Session completed at 2026-08-01T12:05:30.000Z
 ```
+
+The setup lines appear only when a setup script runs successfully. Spawn messages include only the
+executable and argument count; command arguments and prompts are never copied into system logs. A
+terminated process without an exit code is reported as `Process exited without an exit code`, and
+the final timestamped marker names the actual terminal status (`completed`, `failed`, `cancelled`,
+or `timed_out`).
 
 ### Cancel Button
 

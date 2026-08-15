@@ -131,6 +131,45 @@ describe("SessionTerminalViewer", () => {
     expect(field(view.container, "session-logs-empty").textContent).toContain("No logs");
   });
 
+  it("formats an appended system event for the live terminal", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    let append:
+      | ((items: Array<Parameters<typeof SessionTerminalViewer>[0]["items"][number]>) => void)
+      | undefined;
+    function Lifecycle() {
+      const [items, setItems] = useState([
+        { timestampSeq: "a", seq: 1, stream: "stdout", content: "output\n", timestamp: "now" },
+      ]);
+      append = setItems;
+      return <SessionTerminalViewer sessionId="lifecycle" items={items} />;
+    }
+    mountForm(<Lifecycle />);
+    await settle();
+    mocks.write.mockClear();
+    act(() =>
+      append?.([
+        { timestampSeq: "a", seq: 1, stream: "stdout", content: "output\n", timestamp: "now" },
+        {
+          timestampSeq: "b",
+          seq: 2,
+          stream: "system",
+          content: "Session completed at now",
+          timestamp: "now",
+        },
+      ]),
+    );
+    expect(mocks.write).toHaveBeenCalledWith(
+      "[system] Session completed at now\r\n",
+      expect.any(Function),
+    );
+  });
+
   it("appends across a sliding log window without resetting terminal history", async () => {
     vi.stubGlobal(
       "ResizeObserver",

@@ -21,7 +21,9 @@ describe("SessionRunner main checkout lock cleanup", () => {
       }),
     );
     await new Promise<void>((resolve) => setTimeout(resolve, 20));
-    await expect(queued).resolves.toMatchObject({ status: "timed_out" });
+    const timedOut = await queued;
+    expect(timedOut).toMatchObject({ status: "timed_out" });
+    expect(timedOut.logs.at(-1)?.content).toMatch(/^Session timed_out at /);
     expect(test.hooks).toEqual([]);
     firstGate.resolve();
     await first;
@@ -50,7 +52,11 @@ describe("SessionRunner main checkout lock cleanup", () => {
           setupScript: "setup",
         }),
       ),
-    ).rejects.toThrow("setup failed");
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "setup failed",
+    });
     await expect(
       test.runner.run(
         baseAssign({ repositoryId: "r1", worktreeId: null, sessionType: "scheduled" }),

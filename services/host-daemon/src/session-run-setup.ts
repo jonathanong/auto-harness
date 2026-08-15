@@ -26,7 +26,7 @@ export async function runSetupIfNeeded(
     assign.setupScript ?? claimed.worktree.setupScript ?? claimed.repository.setupScript;
   if (!setupScript || assign.resume) return null;
 
-  streamer.write("system", "Running setup script");
+  streamer.write("system", "Running setup script...");
   if (signal?.aborted) {
     return await finishSession(
       processRunner,
@@ -73,7 +73,10 @@ export async function runSetupIfNeeded(
       { status: "cancelled", exitCode: setup.exitCode },
     );
   }
-  if (setup.exitCode === 0) return null;
+  if (setup.exitCode === 0) {
+    streamer.write("system", "Setup complete.");
+    return null;
+  }
 
   return await finishSession(
     processRunner,

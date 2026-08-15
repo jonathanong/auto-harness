@@ -19,6 +19,23 @@ describe("LogStreamer", () => {
     expect(streamer.nextSeq()).toBe(2);
   });
 
+  it("uses one timestamp for a timestamped system event's content and cursor", () => {
+    const chunks = [];
+    const streamer = new LogStreamer(
+      "sess-1",
+      (chunk) => chunks.push(chunk),
+      () => "2026-08-01T12:00:05.000Z",
+    );
+    streamer.writeTimestampedSystem("Session started");
+    expect(chunks).toEqual([
+      expect.objectContaining({
+        stream: "system",
+        content: "Session started at 2026-08-01T12:00:05.000Z",
+        timestamp: "2026-08-01T12:00:05.000Z",
+      }),
+    ]);
+  });
+
   it("caps total retained chunks and UTF-8 bytes", () => {
     const chunks: string[] = [];
     const streamer = new LogStreamer(

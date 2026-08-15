@@ -83,7 +83,7 @@ describe("DaemonLoop errors", () => {
     }
   });
 
-  it("maps optional assign fields and runner throw to setup_failed", async () => {
+  it("maps optional assign fields and process failures to setup_failed", async () => {
     const { config, cleanup } = await makeRepo();
     try {
       const serverMsgs: HostToServerMessage[] = [];

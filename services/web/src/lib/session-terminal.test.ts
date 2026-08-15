@@ -31,6 +31,59 @@ describe("session terminal helpers", () => {
     ).toBe("\u001b[31mred\u001b[0m\rprogressdone\n");
   });
 
+  it("labels and line-terminates system events without changing stdout", () => {
+    expect(
+      terminalText([
+        {
+          timestampSeq: "a",
+          seq: 1,
+          stream: "system",
+          content: "Session started at 2026-08-01T12:00:05.000Z",
+          timestamp: "2026-08-01T12:00:05.000Z",
+        },
+        {
+          timestampSeq: "b",
+          seq: 2,
+          stream: "stdout",
+          content: "exact stdout\n",
+          timestamp: "2026-08-01T12:00:06.000Z",
+        },
+        {
+          timestampSeq: "c",
+          seq: 3,
+          stream: "system",
+          content: "Session completed\n",
+          timestamp: "2026-08-01T12:00:07.000Z",
+        },
+      ]),
+    ).toBe(
+      "[system] Session started at 2026-08-01T12:00:05.000Z\r\n" +
+        "exact stdout\n" +
+        "[system] Session completed\r\n",
+    );
+  });
+
+  it("starts a system event on a new line after unterminated process output", () => {
+    expect(
+      terminalText([
+        {
+          timestampSeq: "a",
+          seq: 1,
+          stream: "stdout",
+          content: "partial output",
+          timestamp: "now",
+        },
+        {
+          timestampSeq: "b",
+          seq: 2,
+          stream: "system",
+          content: "Process exited with code 0",
+          timestamp: "now",
+        },
+      ]),
+    ).toBe("partial output\r\n[system] Process exited with code 0\r\n");
+  });
+
   it("clamps font size and sanitizes download names", () => {
     expect(adjustedTerminalFontSize(13, 1)).toBe(14);
     expect(adjustedTerminalFontSize(MAX_TERMINAL_FONT_SIZE, 1)).toBe(MAX_TERMINAL_FONT_SIZE);
