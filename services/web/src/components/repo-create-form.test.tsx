@@ -20,6 +20,7 @@ describe("RepoCreateForm", () => {
     );
     setValue(name, "catalog-repo");
     setValue(field(view.container, "repo-catalog-url"), "git@example.test:catalog-repo.git");
+    setValue(field(view.container, "repo-catalog-setup"), "pnpm install\npnpm build");
     submit(form);
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith(
@@ -30,6 +31,7 @@ describe("RepoCreateForm", () => {
       name: "catalog-repo",
       url: "git@example.test:catalog-repo.git",
       defaultBranch: "main",
+      setupScript: "pnpm install\npnpm build",
     });
     expect(router.push).toHaveBeenCalledWith("/repositories/repo-1?toast=Repository+created.");
     view.unmount();
@@ -60,13 +62,14 @@ describe("RepoCreateForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<RepoCreateForm />);
     const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
-    form.querySelectorAll("input").forEach((input) => input.remove());
+    form.querySelectorAll("input, textarea").forEach((input) => input.remove());
     submit(form);
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       name: "",
       url: "",
       defaultBranch: "main",
+      setupScript: "",
     });
     view.unmount();
   });
