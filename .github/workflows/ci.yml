@@ -162,6 +162,10 @@ jobs:
         # CI is set by Actions → no server reuse, 2 workers, retries, github reporter
         run: pnpm test:e2e
 
+      - name: Playwright E2E (required auth)
+        # Production control UI with required auth and fixed test-only credentials
+        run: pnpm test:e2e:auth
+
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
