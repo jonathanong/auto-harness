@@ -25,6 +25,15 @@ describe("global keyboard shortcuts", () => {
     expect(dialog?.getAttribute("aria-describedby")).toBeTruthy();
     expect(dialog?.textContent).toContain("Keyboard shortcuts");
     expect(dialog?.textContent).toContain("Go to Sessions");
+    expect(field(document.body, "keyboard-shortcut-search").textContent).toContain(
+      "Focus session search",
+    );
+    expect(field(document.body, "keyboard-shortcut-row").textContent).toContain(
+      "Select next / previous session",
+    );
+    expect(field(document.body, "keyboard-shortcut-open").textContent).toContain(
+      "Open selected session",
+    );
     expect(dialog?.contains(document.activeElement)).toBe(true);
 
     key(document, "Escape");
@@ -51,6 +60,9 @@ describe("global keyboard shortcuts", () => {
     key(document, "g");
     act(() => vi.advanceTimersByTime(1_500));
     expect(field(view.container, "shortcut-sequence-status").textContent).toBe("");
+    key(document, "g");
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });
 
@@ -102,4 +114,27 @@ describe("global keyboard shortcuts", () => {
     expect(router.push).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-pw="keyboard-shortcuts-dialog"]')).toBeNull();
   });
+
+  it("focuses session search with S and leaves editable fields with Escape", () => {
+    const view = mountForm(
+      <ControlShell>
+        <input data-pw="session-filter-q" />
+      </ControlShell>,
+    );
+    const search = field<HTMLInputElement>(view.container, "session-filter-q");
+    expect(pressAndReport(document, "s")).toBe(true);
+    expect(document.activeElement).toBe(search);
+    key(search, "Escape");
+    expect(document.activeElement).not.toBe(search);
+
+    view.unmount();
+    mountForm(<ControlShell>Dashboard</ControlShell>);
+    expect(pressAndReport(document, "s")).toBe(false);
+  });
 });
+
+function pressAndReport(target: EventTarget, value: string): boolean {
+  const event = new KeyboardEvent("keydown", { key: value, bubbles: true, cancelable: true });
+  act(() => target.dispatchEvent(event));
+  return event.defaultPrevented;
+}
