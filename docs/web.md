@@ -419,6 +419,14 @@ separate capabilities and are not enabled by this UI.
 - Rotate by creating an overlapping replacement with identical role/scope, showing its key once,
   and keeping the old key active until the admin confirms every consumer has been updated
 
+### User Accounts
+
+- List all human user accounts with username and role
+- Create a user account with an initial write-only password and role (`read-only`, `operator`, `admin`)
+- Delete a user account with explicit confirmation
+- Only unscoped admins can manage users; other authenticated users see a permission boundary
+- Users change their own password after signing in; passwords and hashes are never displayed
+
 ### Connected Agents
 
 - List of agents with status (online/offline), worktree count, busy worktrees, connection time
