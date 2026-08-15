@@ -39,7 +39,7 @@ export function SessionStatusDetail({
   status: string;
   errorCode?: string | null;
 }) {
-  const reason = sessionStatusReason(errorCode);
+  const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
   return (
     <div className="space-y-1" data-pw="session-detail-status">
       <StatusBadge status={status} />

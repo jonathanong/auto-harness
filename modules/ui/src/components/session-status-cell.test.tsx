@@ -53,5 +53,11 @@ describe("SessionStatusCell", () => {
       <SessionStatusDetail status="failed" errorCode="setup_failed" />,
     );
     expect(ordinary).not.toContain("session-detail-status-reason");
+    const reassigned = renderToStaticMarkup(
+      <SessionStatusDetail status="running" errorCode="usage_limit" />,
+    );
+    expect(reassigned).toContain("running");
+    expect(reassigned).not.toContain("Usage limit");
+    expect(reassigned).not.toContain("session-detail-status-reason");
   });
 });
