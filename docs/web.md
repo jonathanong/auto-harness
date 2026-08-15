@@ -133,15 +133,18 @@ Filters and client-side search persist in the URL query string (e.g. `?q=date+pa
 
 ### Pagination
 
-Sessions are paginated with cursor-based pagination. The list shows 50 sessions per page with "Load more" at the bottom. The API's `cursor` parameter handles efficient DynamoDB pagination.
+Sessions are paginated with cursor-based pagination. The list initially shows 50 sessions and
+appends the next API page when "Load more" is selected. Loaded pages are deduplicated by session id,
+and loading another page does not replace the active filter/sort/search URL. The API's `cursor`
+parameter handles efficient DynamoDB pagination; bookmarked cursor URLs remain valid starting bounds.
 
 ### Real-Time Updates
 
-The session list refreshes its current bounded API page every five seconds:
+The control-plane session list refreshes its currently loaded bounded API pages every five seconds:
 
 - New sessions appear at the top of the first page automatically
 - Status badges and host assignment update in place
-- Active filters, cursor bounds, and client-side search remain applied
+- Active filters, cursor bounds, appended rows, and client-side search remain applied
 - A request failure keeps the last successful rows and exposes a retry action
 
 The detail log stream continues to use the viewer WebSocket. List and dashboard polling is
