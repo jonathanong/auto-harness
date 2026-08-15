@@ -63,6 +63,27 @@ describe("session terminal helpers", () => {
     );
   });
 
+  it("starts a system event on a new line after unterminated process output", () => {
+    expect(
+      terminalText([
+        {
+          timestampSeq: "a",
+          seq: 1,
+          stream: "stdout",
+          content: "partial output",
+          timestamp: "now",
+        },
+        {
+          timestampSeq: "b",
+          seq: 2,
+          stream: "system",
+          content: "Process exited with code 0",
+          timestamp: "now",
+        },
+      ]),
+    ).toBe("partial output\r\n[system] Process exited with code 0\r\n");
+  });
+
   it("clamps font size and sanitizes download names", () => {
     expect(adjustedTerminalFontSize(13, 1)).toBe(14);
     expect(adjustedTerminalFontSize(MAX_TERMINAL_FONT_SIZE, 1)).toBe(MAX_TERMINAL_FONT_SIZE);

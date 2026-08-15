@@ -94,7 +94,11 @@ describe("SessionRunner main checkout", () => {
       test.runner.run(
         baseAssign({ repositoryId: "r1", worktreeId: null, sessionType: "scheduled" }),
       ),
-    ).rejects.toThrow("primary failed");
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "primary failed",
+    });
     await expect(
       test.runner.run(
         baseAssign({ repositoryId: "r1", worktreeId: null, sessionType: "scheduled" }),

@@ -77,7 +77,7 @@ export class SessionRunner {
         if (!(await this.deps.worktrees.acquireMain(assign.repositoryId, signal))) {
           clearTimeout(timeoutTimer);
           const status = expired ? "timed_out" : "cancelled";
-          streamer.write("system", `Session ${status}`);
+          streamer.writeTimestampedSystem(`Session ${status}`);
           return { status, exitCode: null, logs };
         }
         mainClaimed = true;
@@ -170,17 +170,34 @@ export class SessionRunner {
         );
       }
 
-      return await runClaimedSession(
-        this.deps.processRunner,
-        streamer,
-        logs,
-        assign,
-        claimed,
-        signal,
-        () => expired,
-        () => Math.max(1, deadlineMs - Date.now()),
-        this.deps.commandRunner ?? this.deps.processRunner,
-      );
+      try {
+        return await runClaimedSession(
+          this.deps.processRunner,
+          streamer,
+          logs,
+          assign,
+          claimed,
+          signal,
+          () => expired,
+          () => Math.max(1, deadlineMs - Date.now()),
+          this.deps.commandRunner ?? this.deps.processRunner,
+        );
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // A runner error can include the original argv. Keep the transcript
+        // useful without copying prompts or other opaque arguments into logs.
+        streamer.write("system", "Process execution failed.");
+        return await finishSession(
+          this.deps.processRunner,
+          streamer,
+          logs,
+          assign,
+          claimed.worktree.id,
+          claimed.cwd,
+          claimed.repository.terminalHookScript,
+          { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
+        );
+      }
     } finally {
       clearTimeout(timeoutTimer);
       if (mainClaimed) {

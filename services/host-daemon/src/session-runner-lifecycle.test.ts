@@ -50,4 +50,41 @@ describe("SessionRunner lifecycle transcript", () => {
       ]),
     );
   });
+
+  it("flushes buffered final output before the process exit marker", async () => {
+    const { sessionRunner } = setup({
+      async run(opts) {
+        opts.onChunk({ stream: "stdout", data: "unterminated final output" });
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    });
+    const result = await sessionRunner.run(
+      baseAssign({ resumeRefCapture: { stream: "stdout", linePrefix: "resume: " } }),
+    );
+    const content = result.logs.map((chunk) => chunk.content);
+    expect(content.indexOf("unterminated final output")).toBeLessThan(
+      content.indexOf("Process exited with code 0"),
+    );
+  });
+
+  it("closes the transcript when process execution rejects", async () => {
+    const { sessionRunner } = setup({
+      async run() {
+        throw new Error("runner boom");
+      },
+    });
+    const result = await sessionRunner.run(baseAssign());
+    expect(result).toMatchObject({
+      status: "failed",
+      errorCode: "setup_failed",
+      errorMessage: "runner boom",
+    });
+    expect(result.logs.map((chunk) => chunk.content)).toEqual(
+      expect.arrayContaining([
+        "Process execution failed.",
+        "Session failed at 2026-08-01T00:00:00.000Z",
+      ]),
+    );
+    expect(result.logs.some((chunk) => chunk.content.includes("runner boom"))).toBe(false);
+  });
 });

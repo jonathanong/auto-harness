@@ -4,16 +4,23 @@ export const DEFAULT_TERMINAL_FONT_SIZE = 13;
 export const MIN_TERMINAL_FONT_SIZE = 10;
 export const MAX_TERMINAL_FONT_SIZE = 24;
 
-export function terminalEntryText(item: LiveLogEntry): string {
+function terminalEntryText(item: LiveLogEntry, startsAtLineBoundary = true): string {
   if (item.stream !== "system") return item.content;
-  return `[system] ${item.content.replace(/\r?\n$/, "")}\r\n`;
+  const boundary = startsAtLineBoundary ? "" : "\r\n";
+  return `${boundary}[system] ${item.content.replace(/\r?\n$/, "")}\r\n`;
 }
 
-export function terminalText(items: readonly LiveLogEntry[]): string {
-  return [...items]
-    .toSorted((left, right) => left.timestampSeq.localeCompare(right.timestampSeq))
-    .map(terminalEntryText)
-    .join("");
+export function terminalText(items: readonly LiveLogEntry[], precedingText = ""): string {
+  let startsAtLineBoundary = precedingText.length === 0 || /[\r\n]$/.test(precedingText);
+  let text = "";
+  for (const item of [...items].toSorted((left, right) =>
+    left.timestampSeq.localeCompare(right.timestampSeq),
+  )) {
+    const entry = terminalEntryText(item, startsAtLineBoundary);
+    text += entry;
+    startsAtLineBoundary = entry.length === 0 || /[\r\n]$/.test(entry);
+  }
+  return text;
 }
 
 export function adjustedTerminalFontSize(current: number, delta: number): number {

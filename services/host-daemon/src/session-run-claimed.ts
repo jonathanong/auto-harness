@@ -117,17 +117,17 @@ async function runProcessAndFinish(
       if (safeContent) streamer.write(c.stream, safeContent);
     },
   });
+  const cliResumeRef = resumeRef.finish();
+  for (const trailing of resumeRef.drainTrailing()) {
+    streamer.write(trailing.stream, trailing.content);
+  }
+  if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
   streamer.write(
     "system",
     result.exitCode === null
       ? "Process exited without an exit code"
       : `Process exited with code ${String(result.exitCode)}`,
   );
-  const cliResumeRef = resumeRef.finish();
-  for (const trailing of resumeRef.drainTrailing()) {
-    streamer.write(trailing.stream, trailing.content);
-  }
-  if (cliResumeRef) streamer.write("system", "Captured CLI resume reference");
 
   const finish = (outcome: Parameters<typeof finishSession>[7]) =>
     finishSession(

@@ -304,21 +304,10 @@ export class DaemonLoop {
 
     const assign = sessionAssignFromWire(msg);
 
-    let result: SessionRunResult;
-    try {
-      result = await this.runner.run(assign, {
-        signal,
-        initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
-      });
-    } catch (err) {
-      result = {
-        status: "failed",
-        exitCode: null,
-        errorCode: "setup_failed",
-        errorMessage: err instanceof Error ? err.message : String(err),
-        logs: [],
-      };
-    }
+    const result: SessionRunResult = await this.runner.run(assign, {
+      signal,
+      initialLogSeq: this.nextLogSeq.get(msg.sessionId) ?? 0,
+    });
 
     if (result.logs.length > 0) {
       this.nextLogSeq.set(msg.sessionId, result.logs.at(-1)!.seq + 1);

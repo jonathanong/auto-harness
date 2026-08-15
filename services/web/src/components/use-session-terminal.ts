@@ -3,7 +3,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 
 import type { LiveLogEntry } from "../lib/live-session-logs.ts";
-import { DEFAULT_TERMINAL_FONT_SIZE, terminalEntryText } from "../lib/session-terminal.ts";
+import { DEFAULT_TERMINAL_FONT_SIZE, terminalText } from "../lib/session-terminal.ts";
 
 type SessionTerminalRuntime = {
   terminal: Terminal;
@@ -81,7 +81,7 @@ export function useSessionTerminal(
     if (appended.length > 0 || text.startsWith(runtime.renderedText)) {
       const suffix =
         appended.length > 0
-          ? appended.map(terminalEntryText).join("")
+          ? terminalText(appended, runtime.renderedText)
           : text.slice(runtime.renderedText.length);
       runtime.terminal.write(suffix, () => {
         if (wasAtBottom) runtime.terminal.scrollToBottom();
