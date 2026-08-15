@@ -28,7 +28,8 @@ export type WebhookEvent = {
   subject: { type: "session"; id: string };
   data: {
     repositoryId: string;
-    attemptId: string;
+    /** Null when the session reached terminal state before its first assignment. */
+    attemptId: string | null;
     status: SessionStatus;
   };
 };
@@ -63,7 +64,7 @@ export type DurableWebhookDelivery = {
 export type WebhookEnqueueInput = {
   sessionId: string;
   repositoryId: string;
-  attemptId: string;
+  attemptId: string | null;
   status: SessionStatus;
   occurredAt: string;
   destination: WebhookDestinationRef;
@@ -93,7 +94,7 @@ export function assertWebhookFailureCode(value: string): asserts value is Webhoo
   }
 }
 
-function stableId(prefix: string, parts: readonly (number | string)[]): string {
+function stableId(prefix: string, parts: readonly (null | number | string)[]): string {
   const digest = createHash("sha256").update(JSON.stringify(parts)).digest("hex");
   return `${prefix}_${digest}`;
 }
@@ -105,7 +106,7 @@ function stableId(prefix: string, parts: readonly (number | string)[]): string {
 export function createWebhookDelivery(input: WebhookEnqueueInput): DurableWebhookDelivery {
   assertNonEmpty(input.sessionId, "sessionId");
   assertNonEmpty(input.repositoryId, "repositoryId");
-  assertNonEmpty(input.attemptId, "attemptId");
+  if (input.attemptId !== null) assertNonEmpty(input.attemptId, "attemptId");
   assertNonEmpty(input.destination.configurationId, "configurationId");
   assertCanonicalTimestamp(input.occurredAt, "occurredAt");
   if (!isTerminalSessionStatus(input.status)) {

@@ -1,4 +1,4 @@
-import type { HostWireMessage, SessionStatus, TargetRef } from "@auto-harness/shared";
+import type { HostWireMessage, TargetRef } from "@auto-harness/shared";
 
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -44,14 +44,6 @@ export type ArchiveMetadata = {
   updatedAt: string;
 };
 
-export type WebhookDelivery = {
-  url: string;
-  sessionId: string;
-  status: SessionStatus;
-  deliveredAt: string;
-  payload: string;
-};
-
 export type ControlPlaneOptions = {
   /**
    * DynamoDB persistence (Local or AWS). Required for production/local server.
@@ -83,8 +75,6 @@ export type ControlPlaneOptions = {
   archiveWriter?: ArchiveWriter;
   /** HMAC secret used to sign session-list cursors across API workers. */
   sessionCursorSecret?: string;
-  /** Opt-in outbound webhook URL (Phase 5). */
-  webhookUrl?: string | null;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
 };
 

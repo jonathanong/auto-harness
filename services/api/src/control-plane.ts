@@ -1,11 +1,6 @@
 import type { HostToServerMessage } from "@auto-harness/shared";
 
-import type {
-  ArchiveMetadata,
-  ArchiveObject,
-  PublicSession,
-  WebhookDelivery,
-} from "./control-plane-types.ts";
+import type { ArchiveMetadata, ArchiveObject, PublicSession } from "./control-plane-types.ts";
 import { ControlPlaneManagement } from "./control-plane-management-ext.ts";
 import * as agents from "./control-plane-agents.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
@@ -25,7 +20,6 @@ export type {
   LogRecord,
   PublicSession,
   ScheduleRecord,
-  WebhookDelivery,
 } from "./control-plane-types.ts";
 
 /**
@@ -143,10 +137,6 @@ export class ControlPlane extends ControlPlaneManagement {
 
   listArchives(): ArchiveMetadata[] {
     return lifecycle.listArchives(this.state);
-  }
-
-  listWebhookDeliveries(): WebhookDelivery[] {
-    return lifecycle.listWebhookDeliveries(this.state);
   }
 
   drainHost(hostId: string): { ok: boolean; runningSessionIds: string[] } {

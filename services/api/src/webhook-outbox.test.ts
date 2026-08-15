@@ -63,12 +63,18 @@ describe("webhook outbox contract", () => {
       },
     });
     expect(JSON.stringify(first)).not.toMatch(/prompt|secret|token|private\.example/);
+
+    const unassigned = createWebhookDelivery({ ...input, attemptId: null });
+    expect(unassigned.event.data.attemptId).toBeNull();
+    expect(createWebhookDelivery({ ...input, attemptId: null }).id).toBe(unassigned.id);
+    expect(unassigned.event.id).not.toBe(first.event.id);
   });
 
   it("rejects ambiguous identifiers, timestamps, states, and retry bounds", () => {
-    for (const key of ["sessionId", "repositoryId", "attemptId"] as const) {
+    for (const key of ["sessionId", "repositoryId"] as const) {
       expect(() => createWebhookDelivery({ ...input, [key]: " " })).toThrow(`${key} must`);
     }
+    expect(() => createWebhookDelivery({ ...input, attemptId: " " })).toThrow("attemptId must");
     expect(() =>
       createWebhookDelivery({
         ...input,

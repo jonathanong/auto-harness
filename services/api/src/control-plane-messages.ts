@@ -19,7 +19,6 @@ import {
 import {
   archiveSessionLogs,
   retrySessionArchiveIfNeeded,
-  maybeDeliverWebhook,
   queueSessionArchive,
 } from "./control-plane-lifecycle.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
@@ -659,7 +658,6 @@ async function applySessionStatusDurable(
     state.pendingAcks.delete(session.id);
     if (!shouldRetry) {
       await archiveSessionLogs(state, session.id);
-      maybeDeliverWebhook(state, next);
     }
     return { ok: true };
   }
@@ -783,7 +781,6 @@ async function applySessionStatusDurable(
   state.pendingAcks.delete(msg.sessionId);
   if (!shouldSuppressTarget) {
     await archiveSessionLogs(state, msg.sessionId);
-    maybeDeliverWebhook(state, nextSession);
   }
   if (shouldSuppressTarget) await assignQueuedDurable(state);
   return { ok: true };
@@ -939,7 +936,6 @@ function applySessionStatus(
         delete session.cliResumeRef;
       }
       queueSessionArchive(state, session.id);
-      void maybeDeliverWebhook(state, session);
     }
   }
   persistSession(state, session);

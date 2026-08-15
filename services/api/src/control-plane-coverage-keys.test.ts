@@ -7,7 +7,6 @@ describe("ControlPlane coverage: concurrency ids list and resume metadata", () =
   it("concurrency ids list and resume metadata", () => {
     const planeH = new ControlPlane({
       archivePrefix: "arch/",
-      webhookUrl: null,
       idFactory: (() => {
         let i = 0;
         return () => `h${++i}`;

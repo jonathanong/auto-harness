@@ -11,6 +11,8 @@ import type { LocalSchedulerOptions } from "./local-scheduler.ts";
 import type { RateLimitConfigOverrides, RateLimitEvent } from "./rate-limit.ts";
 import type { SlackTransport } from "./slack-delivery-types.ts";
 import type { SlackLifecycleWorkerOptions } from "./slack-worker.ts";
+import type { WebhookDestinationSelector, WebhookTransport } from "./webhook-delivery-types.ts";
+import type { WebhookWorkerOptions } from "./webhook-worker.ts";
 
 const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -50,6 +52,11 @@ export type LocalServerOptions = {
    */
   slackTransport?: SlackTransport;
   slackWorker?: SlackLifecycleWorkerOptions;
+  /** Secret-safe routing boundary. It returns only immutable configuration references. */
+  webhookDestinationSelector?: WebhookDestinationSelector;
+  /** Optional outbound boundary. Production supplies no implementation. */
+  webhookTransport?: WebhookTransport;
+  webhookWorker?: WebhookWorkerOptions;
 };
 
 export type RouteCtx = {

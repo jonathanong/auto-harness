@@ -30,7 +30,6 @@ describe("ControlPlane coverage: schedule fail usage limit supersede defaults", 
     // Providerless usage limits suppress this target for the queued session.
     const planeK = new ControlPlane({
       archivePrefix: "x/",
-      webhookUrl: "https://hook.test",
       idFactory: () => "k1",
       now: () => "2026-01-01T00:00:00.000Z",
       shardCount: 1,

@@ -29,7 +29,6 @@ import type {
   PendingAck,
   PublicSession,
   ScheduleRecord,
-  WebhookDelivery,
 } from "./control-plane-types.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { UsageRecord } from "./usage.ts";
@@ -69,7 +68,6 @@ export type ControlPlaneState = {
   usageRecords: Map<string, UsageRecord>;
   archives: Map<string, ArchiveMetadata>;
   archiveWriter: ArchiveWriter | undefined;
-  webhookDeliveries: WebhookDelivery[];
   pendingAcks: Map<string, PendingAck>;
   /** In-memory counterpart of HostLocks.mainCheckoutLeases. Key is a pair
    * encoded with NUL, which repository IDs cannot contain on supported APIs. */
@@ -99,7 +97,6 @@ export type ControlPlaneState = {
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   sessionCursorSecret: string;
-  webhookUrl: string | null;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
   /** Called only after a log is durable (or committed in the in-memory plane). */
   onLogCommitted: ((record: LogRecord) => void) | undefined;
@@ -135,7 +132,6 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     usageRecords: new Map(),
     archives: new Map(),
     archiveWriter: options.archiveWriter,
-    webhookDeliveries: [],
     pendingAcks: new Map(),
     mainCheckoutLeases: new Map(),
     drainingHosts: new Set(),
@@ -172,7 +168,6 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
       process.env.HARNESS_CURSOR_SECRET ??
       process.env.HARNESS_SESSION_SECRET ??
       randomBytes(32).toString("base64url"),
-    webhookUrl: options.webhookUrl ? options.webhookUrl : null,
     onHostMessage: options.onHostMessage,
     onLogCommitted: undefined,
   };

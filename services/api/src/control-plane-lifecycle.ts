@@ -1,7 +1,6 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
-import type { SessionRecord } from "./db/types.ts";
-import type { PublicSession, WebhookDelivery } from "./control-plane-types.ts";
+import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
@@ -117,29 +116,6 @@ export async function reclaimStaleHostsDurable(
     state.disconnectedHosts.delete(hostId);
   }
   return reclaimed;
-}
-
-export function maybeDeliverWebhook(state: ControlPlaneState, session: SessionRecord): void {
-  if (!state.webhookUrl) {
-    return;
-  }
-  const payload = JSON.stringify({
-    sessionId: session.id,
-    status: session.status,
-    errorCode: session.errorCode ?? null,
-    url: `${state.publicBaseUrl}/sessions/${session.id}`,
-  });
-  state.webhookDeliveries.push({
-    url: state.webhookUrl,
-    sessionId: session.id,
-    status: session.status,
-    deliveredAt: state.now(),
-    payload,
-  });
-}
-
-export function listWebhookDeliveries(state: ControlPlaneState): WebhookDelivery[] {
-  return [...state.webhookDeliveries];
 }
 
 /** Cancel a non-terminal session; running holds worktree until late terminal. */

@@ -23,7 +23,6 @@ export type {
   LogRecord,
   PublicSession,
   ScheduleRecord,
-  WebhookDelivery,
 } from "./control-plane.ts";
 export { createControlPlane } from "./create-plane.ts";
 export type { CreateControlPlaneOptions } from "./create-plane.ts";
@@ -49,4 +48,18 @@ export type {
   WebhookEvent,
   WebhookFailureCode,
 } from "./webhook-outbox.ts";
+export {
+  processWebhookOutboxOnce,
+  retryDelay as webhookRetryDelay,
+  WebhookWorker,
+} from "./webhook-worker.ts";
+export type { WebhookWorkerOptions } from "./webhook-worker.ts";
+export type {
+  WebhookDestinationSelector,
+  WebhookLifecycleSnapshot,
+  WebhookOutboxStore,
+  WebhookTransport,
+  WebhookTransportRequest,
+  WebhookTransportResult,
+} from "./webhook-delivery-types.ts";
 export { main as apiCliMain } from "./cli.ts";
