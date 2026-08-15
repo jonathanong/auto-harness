@@ -138,8 +138,13 @@ test.describe("control plane sessions", () => {
       const fallbackCommandName = `echo-fallback-${test.info().parallelIndex}-${Date.now()}`;
       const secondFallbackCommandName = `echo-fallback-two-${test.info().parallelIndex}-${Date.now()}`;
 
+      const repositoryResponse = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+        data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
+      });
+      expect(repositoryResponse.ok()).toBe(true);
+      const repositoryId = ((await repositoryResponse.json()) as { id: string }).id;
       await putHostRepo(request, {
-        id: repoId,
+        id: repositoryId,
         path: "/tmp/pw-demo",
         defaultBranch: "main",
         worktrees: [{ id: "wt-1", name: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
@@ -167,7 +172,7 @@ test.describe("control plane sessions", () => {
         await expect(page.getByTestId("create-session-target")).toBeEnabled({
           timeout: 15_000,
         });
-        await page.getByTestId("create-session-repository-id").fill(repoId);
+        await page.getByTestId("create-session-repository-id").selectOption(repositoryId);
         await page.getByTestId("create-session-target").selectOption(`command:${commandId}`);
         await page.getByTestId("create-session-fallback-add").click();
         await page

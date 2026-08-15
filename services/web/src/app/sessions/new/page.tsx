@@ -17,14 +17,16 @@ export default async function NewSessionPage({
   searchParams: Promise<{ cloneFrom?: string | string[] }>;
 }) {
   let targets: SessionTarget[] = [];
+  let repositories: Array<{ id: string; name: string }> = [];
   let availableLabels: string[] = [];
   let draft: SessionCloneDraft | null = null;
   const errors: string[] = [];
   const query = await searchParams;
   const requestedCloneId = cloneSourceId(query.cloneFrom);
   if (query.cloneFrom !== undefined && !requestedCloneId) errors.push("clone source: invalid id");
-  const [targetResult, worktreeResult, sourceResult] = await Promise.allSettled([
+  const [targetResult, repositoryResult, worktreeResult, sourceResult] = await Promise.allSettled([
     apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
+    apiGet<{ items: Array<{ id: string; name: string }> }>("/api/v1/repositories"),
     apiGet<{ items: Array<{ online?: boolean; labels?: string[] }> }>("/api/v1/worktrees"),
     requestedCloneId
       ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
@@ -32,6 +34,11 @@ export default async function NewSessionPage({
   ]);
   if (targetResult.status === "fulfilled") targets = targetResult.value.items ?? [];
   else errors.push(`targets: ${String(targetResult.reason)}`);
+  if (repositoryResult.status === "fulfilled") {
+    repositories = (repositoryResult.value.items ?? []).toSorted((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  } else errors.push(`repositories: ${String(repositoryResult.reason)}`);
   if (worktreeResult.status === "fulfilled") {
     availableLabels = [
       ...new Set(
@@ -49,8 +56,12 @@ export default async function NewSessionPage({
     errors.push("clone source: session could not be loaded");
   }
   targets = includeDraftTargets(targets, draft);
-  if (draft)
+  if (draft) {
     availableLabels = [...new Set([...availableLabels, ...draft.requiredLabels])].toSorted();
+    if (!repositories.some((repository) => repository.id === draft.repositoryId)) {
+      repositories = [{ id: draft.repositoryId, name: draft.repositoryId }, ...repositories];
+    }
+  }
 
   return (
     <div className="mx-auto max-w-lg space-y-4" data-pw="page-session-new">
@@ -73,6 +84,7 @@ export default async function NewSessionPage({
       <CreateSessionForm
         key={requestedCloneId ?? "fresh"}
         targets={targets}
+        repositories={repositories}
         availableLabels={availableLabels}
         initialValues={draft}
       />

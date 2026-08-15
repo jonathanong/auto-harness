@@ -83,11 +83,19 @@ export async function runRealCliSession(opts: {
     ).toBeTruthy();
     const account = await accountRes.json();
 
+    const repositoryRes = await request.post(`${API}/api/v1/repositories`, {
+      data: { name: repoId, url: repo, defaultBranch: "main" },
+    });
+    expect(
+      repositoryRes.ok(),
+      `create repository failed: ${await repositoryRes.text()}`,
+    ).toBeTruthy();
+    const repositoryId = ((await repositoryRes.json()) as { id: string }).id;
     const configRes = await request.put(`${API}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {
-            id: repoId,
+            id: repositoryId,
             path: repo,
             defaultBranch: "main",
             worktrees: [{ id: wtId, name: wtId, path: wt, labels: [providerName] }],
@@ -115,7 +123,7 @@ export async function runRealCliSession(opts: {
 
     await page.goto("/sessions/new");
     await expect(page.getByTestId("create-session-target")).toBeEnabled({ timeout: 15_000 });
-    await page.getByTestId("create-session-repository-id").fill(repoId);
+    await page.getByTestId("create-session-repository-id").selectOption(repositoryId);
     await page
       .getByTestId("create-session-target")
       .selectOption({ label: `${providerName} — e2e` });
