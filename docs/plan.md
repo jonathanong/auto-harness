@@ -289,9 +289,10 @@ reference these by number; a phase is not done until its invariants have a passi
 6. **`usage_limit` pauses the assigned account and routes immediately.** No other terminal status
    (`failed` without that code, `timed_out`, `cancelled`) triggers account cooldown or fallback routing;
    queued sessions wait only until their fixed `queueExpiresAt` deadline.
-7. **Resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** Past
-   `pinExpiresAt`, a still-queued pinned resume fails clearly (`status: failed`, `errorCode:
-resume_failed`) rather than waiting indefinitely.
+7. **Native resume assigns only to `pinnedHostId`, on an agent-only pin, with an expiry.** It may
+   use any eligible worktree for the repository and `ref` on that host. If the native route is
+   unavailable or `pinExpiresAt` passes, the scheduler atomically clears the host, route, and CLI
+   reference pins and continues as a fresh target/fallback run rather than waiting indefinitely.
 8. **No shell interpolation of untrusted input.** Prompts, `ref`, and any caller-supplied string
    are passed as argv elements or via stdin — never concatenated into a shell command string, on
    the control plane or the agent.
@@ -303,7 +304,8 @@ resume_failed`) rather than waiting indefinitely.
 10. **The control plane can do everything; the host pane is debug-only.** Hosts connect to the
     control plane over WebSocket only — there is no reachable address for a host from the control
     plane's side. Every action a user needs on a host (attach/edit repositories, add/remove/edit
-    worktrees, manage command profiles) must be reachable from `services/web`. `services/host-pane`
+    worktrees, attach Provider Accounts, and configure scoped Command overrides) must be reachable
+    from `services/web`. `services/host-pane`
     (`:7422`) is a local debugging tool for that host, never a required step in a normal workflow.
 
 ---
@@ -613,7 +615,7 @@ with this table.
 | `api.md`                  | `POST /sessions` response, `GET /sessions/:id` | Add `url` (UI deep link).                                                                                                                                                                                                                                   |
 | `api.md`                  | `POST /sessions/:id/resume`                    | Remove `pinnedWorktreeId` from behavior description; document agent-only pin + `pinExpiresAt` + re-checkout-via-`ref` (D5).                                                                                                                                 |
 | `api.md`                  | `GET /sessions` query params                   | Remove or caveat `search` — not implemented against DynamoDB (see §4 Access patterns).                                                                                                                                                                      |
-| `host-daemon.md`          | Executor                                       | Replace free-string `command` handling with command-profile resolution (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                                      |
+| `host-daemon.md`          | Executor                                       | Replace free-string `command` handling with control-plane-resolved catalog target argv (D4); document the per-session env allowlist (don't inherit the agent user's full environment).                                                                      |
 | `host-daemon.md`          | Worktree Manager / Setup scripts               | Document `ref`-aware checkout (D6).                                                                                                                                                                                                                         |
 | `host-daemon.md`          | Session resume                                 | Rewrite around agent-only pin (D5); remove worktree-preservation language.                                                                                                                                                                                  |
 | `host-daemon.md`          | Usage limits                                   | Document global Provider Account cooldowns, ordered fallback routing, providerless Commands, and absolute queue TTL; ordinary failures remain terminal.                                                                                                     |
@@ -623,7 +625,7 @@ with this table.
 | `aws.md`                  | DynamoDB tables                                | Sharded queue GSI; `SessionLogs` SK becomes `timestampSeq`.                                                                                                                                                                                                 |
 | `websocket.md` / `aws.md` | Keepalive                                      | Remove "server pings every ~30s" (no server process holds this timer under Lambda); document agent-initiated keepalive instead.                                                                                                                             |
 | `security.md`             | New section                                    | Threat model: prompt is untrusted/attacker-influenced input; the agent-held credential is scoped per D7; state plainly what this does and does not protect against, replacing the argument the dropped validator/publisher split used to make structurally. |
-| `auth.md`                 | Service accounts / roles                       | Note that `operator` maps to "run any configured command profile" post-D4, not arbitrary command execution.                                                                                                                                                 |
+| `auth.md`                 | Service accounts / roles                       | Note that `operator` maps to "run any configured catalog Provider/Command target" post-D4, not arbitrary command execution.                                                                                                                                 |
 | `costs.md`                | SessionLogs cost estimate                      | Recompute against a realistic long-running CLI session's message volume, not the prior ~50-chunk assumption; note the API Gateway 128 KB frame limit and DynamoDB 400 KB item limit as constraints on prompt/log-chunk size.                                |
 
 ---
@@ -634,7 +636,7 @@ Because this is a from-scratch build, verification is staged with the phases the
 than as one final pass:
 
 1. **Phase 1 exit:** run one real prompt (borrowed from a target repo's automation) end-to-end on
-   the local agent with no cloud — confirm ref checkout, command-profile resolution, and the
+   the local agent with no cloud — confirm ref checkout, catalog target resolution, and the
    terminal hook fire correctly.
 2. **Phase 2 exit:** invariant-focused integration tests (1, 3, 4, 5) pass against DynamoDB Local
    under concurrent/racing conditions, not just the happy path.

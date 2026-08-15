@@ -436,15 +436,15 @@ rm -rf "$WORK"             # optional — drop demo workspace
 
 ## 9. Troubleshooting
 
-| Symptom                                  | Likely cause                                                | Fix                                                                                                 |
-| ---------------------------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                     | §2 `clearAll` on `AutoHarness` tables; restart API                                                  |
-| Session stuck `queued`                   | Host not registered; labels mismatch; worktree offline/busy | Check `GET /api/v1/hosts`, `requiredLabels` vs worktree `labels`, daemon log                        |
-| `EADDRINUSE` :7420                       | Previous API still running                                  | Kill listener on port; restart                                                                      |
-| Target missing from dropdown             | Provider account not attached to any host, or agent offline | Attach it on the host detail page's Provider accounts tab, or `POST /commands` for a standalone one |
-| Grok hangs / interactive TUI             | Missing headless flags                                      | Use `-p` / `--single` + `--always-approve` + non-interactive output format                          |
-| Worktree checkout fails                  | Bad absolute paths; missing git                             | Fix config paths; ensure primary repo is a git root                                                 |
-| Unit tests green, E2E fails              | Not the same as deploy path                                 | Always run §1 + §5 before deploy claims                                                             |
+| Symptom                                  | Likely cause                                                 | Fix                                                                                                        |
+| ---------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                                                         |
+| Session stuck `queued`                   | Host not registered; labels mismatch; worktree offline/busy  | Check `GET /api/v1/hosts`, `requiredLabels` vs worktree `labels`, daemon log                               |
+| `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                                                             |
+| Target missing from dropdown             | Catalog entry absent or `GET /api/v1/session-targets` failed | Create the Provider/Command and inspect that request; attach an account if a listed Provider cannot assign |
+| Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format                                 |
+| Worktree checkout fails                  | Bad absolute paths; missing git                              | Fix config paths; ensure primary repo is a git root                                                        |
+| Unit tests green, E2E fails              | Not the same as deploy path                                  | Always run §1 + §5 before deploy claims                                                                    |
 
 ---
 
