@@ -254,13 +254,13 @@ examples: [harness.md](harness.md).
 
 ### Custom Webhooks (Outbound)
 
-**Prepared foundation, not a runtime integration:** optional machine-to-machine callbacks remain a
-target if something other than Slack must react to terminal status. The current control-plane
-precursor can record a configured URL and a would-be delivery in process. Separately, the durable
-foundation provides a `WebhookDeliveries` outbox with idempotent event creation, bounded due-row
-queries, exact lease fences, retry exhaustion, and a dead-letter state. Nothing writes lifecycle
-events into that table or performs an outbound request yet. Webhooks are **not required** for the
-GHA fire-and-forget + Slack pattern.
+**Safe local pre-transport runtime:** optional machine-to-machine callbacks remain a target if
+something other than Slack must react to terminal status. An opt-in local worker can reconcile
+durable terminal session snapshots into the `WebhookDeliveries` outbox, query pending and expired
+leases with bounded reads, recover exact lease fences, retry with bounded backoff, and dead-letter
+exhausted rows. It starts only when durable storage, a secret-safe destination selector, and a
+transport are all explicitly injected. Production injects none, so it performs no outbound request.
+Webhooks are **not required** for the GHA fire-and-forget + Slack pattern.
 
 Durable rows contain only a versioned configuration reference and this stable, secret-safe event
 envelope:
@@ -280,11 +280,16 @@ envelope:
 }
 ```
 
+`attemptId` is `null` when a session becomes terminal before its first assignment, such as a queued
+cancellation or queue expiry. The null participates in the stable event digest; the worker never
+fabricates an assignment identity.
+
 The outbox deliberately does not persist an endpoint, signing secret, request headers, prompt,
-logs, metadata, response body, or free-form failure text. A future configuration feature must
-resolve the exact `configurationId` + `configurationVersion` only after a worker owns a live lease.
-Configuration CRUD, HTTP transport, signing, endpoint validation, and lifecycle enqueue wiring are
-not part of the prepared foundation.
+logs, metadata, response body, or free-form failure text. Destination selection freezes only the
+exact `configurationId` + `configurationVersion`; the injected transport receives that reference,
+the stable delivery idempotency key, and the exact event body only after a worker owns a live lease.
+The transport must deduplicate ambiguous retries by that key. Configuration CRUD, HTTP transport,
+signing, endpoint validation, and secret resolution are not part of the safe local runtime.
 
 The eventual configuration shape remains target-only:
 

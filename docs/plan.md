@@ -581,11 +581,11 @@ terminal logs to `sessions/{sessionId}/logs.jsonl`, retains archive metadata in 
 the private S3 writer when `ARCHIVE_BUCKET` is configured. Metadata is bounded and records a
 pending upload before the PUT so a repeated terminal message can retry safely. The bucket name and
 scoped archive policy are wired into the synthesized runtime functions; no account-backed upload
-or deployment has been run. Webhook
-"deliveries" are recorded in in-process state, and a
-separate durable outbox foundation provides secret-safe rows, bounded leases/retries, and
-dead-letter state. No lifecycle path enqueues that outbox and no outbound HTTP/configuration
-runtime exists. `drainHost` + `DaemonLoop.beginDrain` stop new assignments without killing
+or deployment has been run. An opt-in local webhook worker reconciles terminal session snapshots
+into the secret-safe durable outbox and processes bounded pending or expired leases through
+explicitly injected destination and transport boundaries. Production supplies neither boundary,
+so no outbound HTTP/configuration or secret runtime exists. `drainHost` +
+`DaemonLoop.beginDrain` stop new assignments without killing
 in-flight CLIs. The signed-manifest updater core sequences drain, idle, checksum
 verification, staging, activation, and restart through injected boundaries, but production
 download/install/supervisor adapters remain unwired, so operators still execute that path

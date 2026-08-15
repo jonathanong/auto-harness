@@ -9,6 +9,7 @@ import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { slackSessionSnapshot } from "./slack-session-runtime.ts";
 import { SlackLifecycleWorker } from "./slack-worker.ts";
+import { WebhookWorker } from "./webhook-worker.ts";
 import { createPlaneWsBridge, type WsHub } from "./ws-hub.ts";
 import { attachViewerWsHub, type ViewerWsHub } from "./viewer-ws-hub.ts";
 
@@ -23,6 +24,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   viewerWs?: ViewerWsHub;
   scheduler: LocalScheduler;
   slackWorker?: SlackLifecycleWorker;
+  webhookWorker?: WebhookWorker;
 }> {
   const port = options.port ?? 7420;
   const host = options.host ?? "127.0.0.1";
@@ -83,6 +85,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   await auth.hydrate(resolvedPlane.state.storage);
   const scheduler = new LocalScheduler(resolvedPlane, options.scheduler);
   const slackWorker = createSlackWorker(resolvedPlane, options);
+  const webhookWorker = createWebhookWorker(resolvedPlane, options);
   const server = createServer((req, res) => {
     void handler(req, res);
   });
@@ -99,6 +102,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
 
   scheduler.start();
   slackWorker?.start();
+  webhookWorker?.start();
 
   return {
     port,
@@ -106,10 +110,12 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane: resolvedPlane,
     scheduler,
     ...(slackWorker ? { slackWorker } : {}),
+    ...(webhookWorker ? { webhookWorker } : {}),
     ...(wsHub !== undefined ? { ws: wsHub } : {}),
     ...(viewerWsHub !== undefined ? { viewerWs: viewerWsHub } : {}),
     close: async () => {
       await slackWorker?.stop();
+      await webhookWorker?.stop();
       await scheduler.stop();
       await new Promise<void>((resolve, reject) => {
         wsHub?.close();
@@ -124,6 +130,25 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
       });
     },
   };
+}
+
+function createWebhookWorker(
+  plane: ControlPlane,
+  options: LocalServerOptions,
+): WebhookWorker | undefined {
+  const storage = plane.state.storage;
+  if (!storage || !options.webhookDestinationSelector || !options.webhookTransport) {
+    return undefined;
+  }
+  return new WebhookWorker(
+    {
+      store: storage,
+      transport: options.webhookTransport,
+      selectDestinations: options.webhookDestinationSelector,
+      listSessions: async () => plane.listSessions(),
+    },
+    options.webhookWorker,
+  );
 }
 
 function createSlackWorker(

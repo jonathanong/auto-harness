@@ -129,7 +129,6 @@ describe("ControlPlane lifecycle", () => {
       archiveWriter: { putArchive: async (object) => void uploaded.push(object) },
       idFactory: () => "sess-1",
       now: () => "2026-01-01T00:00:00.000Z",
-      webhookUrl: "https://example.test/hook",
       shardCount: 1,
     });
     seedBaseCommand(plane);
@@ -180,8 +179,6 @@ describe("ControlPlane lifecycle", () => {
       },
     ]);
     expect(plane.getArchive("sess-1")?.bodyBytes).toBe(Buffer.byteLength(uploaded[0]!.body));
-    expect(plane.listWebhookDeliveries()).toHaveLength(1);
-    plane.setWebhookUrl(null);
     expect(plane.listArchives()).toHaveLength(1);
   });
 

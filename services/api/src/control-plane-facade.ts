@@ -54,10 +54,6 @@ export class ControlPlaneBase {
     await settleStorage(this.state);
   }
 
-  setWebhookUrl(url: string | null): void {
-    this.state.webhookUrl = url;
-  }
-
   seedWorktree(record: WorktreeRecord): void {
     worktrees.seedWorktree(this.state, record);
   }

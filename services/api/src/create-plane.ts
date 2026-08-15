@@ -66,7 +66,6 @@ export async function createControlPlane(
     ...(options.sessionCursorSecret !== undefined
       ? { sessionCursorSecret: options.sessionCursorSecret }
       : {}),
-    ...(options.webhookUrl !== undefined ? { webhookUrl: options.webhookUrl } : {}),
     ...(options.onHostMessage !== undefined ? { onHostMessage: options.onHostMessage } : {}),
     ...(options.secretEncryptor !== undefined
       ? { secretEncryptor: options.secretEncryptor }
