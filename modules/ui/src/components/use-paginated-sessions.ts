@@ -32,9 +32,7 @@ export function usePaginatedSessions({
   const generationRef = useRef(0);
   const pollRequestRef = useRef(0);
   const loadRequestRef = useRef(0);
-  const pollingRef = useRef(false);
-  const loadingMoreRef = useRef(false);
-  pathRef.current = path;
+  const requestingRef = useRef(false);
 
   const setPages = useCallback((update: (current: SessionPage[]) => SessionPage[]) => {
     setPagesState((current) => {
@@ -45,11 +43,11 @@ export function usePaginatedSessions({
   }, []);
 
   useEffect(() => {
+    pathRef.current = path;
     generationRef.current += 1;
     pollRequestRef.current += 1;
     loadRequestRef.current += 1;
-    pollingRef.current = false;
-    loadingMoreRef.current = false;
+    requestingRef.current = false;
     const next = makePage(path, initialItems, initialNextCursor);
     pagesRef.current = [next];
     setPagesState([next]);
@@ -59,10 +57,10 @@ export function usePaginatedSessions({
   }, [initialItems, initialNextCursor, initialPollError, path]);
 
   const refresh = useCallback(async () => {
-    if (pollingRef.current) return;
+    if (requestingRef.current) return;
     const requestId = pollRequestRef.current + 1;
     pollRequestRef.current = requestId;
-    pollingRef.current = true;
+    requestingRef.current = true;
     const generation = generationRef.current;
     const snapshot = pagesRef.current;
     try {
@@ -82,12 +80,12 @@ export function usePaginatedSessions({
         setPollError(errorMessage(reason));
       }
     } finally {
-      if (pollRequestRef.current === requestId) pollingRef.current = false;
+      if (pollRequestRef.current === requestId) requestingRef.current = false;
     }
   }, [fetchPage, path, setPages]);
 
   const retryRefresh = useCallback(() => {
-    pollingRef.current = false;
+    requestingRef.current = false;
     return refresh();
   }, [refresh]);
 
@@ -107,12 +105,12 @@ export function usePaginatedSessions({
   }, [pollMs, refresh]);
 
   const loadMore = useCallback(async () => {
-    if (loadingMoreRef.current) return;
+    if (requestingRef.current) return;
     const cursor = pagesRef.current.at(-1)?.nextCursor;
     if (!cursor) return;
     const requestId = loadRequestRef.current + 1;
     loadRequestRef.current = requestId;
-    loadingMoreRef.current = true;
+    requestingRef.current = true;
     const generation = generationRef.current;
     setLoadingMore(true);
     setLoadError(null);
@@ -130,7 +128,7 @@ export function usePaginatedSessions({
       }
     } finally {
       if (loadRequestRef.current === requestId) {
-        loadingMoreRef.current = false;
+        requestingRef.current = false;
         setLoadingMore(false);
       }
     }

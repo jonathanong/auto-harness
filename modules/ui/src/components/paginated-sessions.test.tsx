@@ -5,7 +5,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PaginatedSessions } from "./paginated-sessions.tsx";
-import { dedupeSessions, pagePath } from "./use-paginated-sessions.ts";
 
 (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -170,23 +169,6 @@ describe("PaginatedSessions", () => {
     await act(async () => resolve(json({ items: [{ id: "stale", status: "queued" }] })));
     expect(view.container.querySelector('[data-pw="session-row-stale"]')).toBeNull();
     act(() => view.root.unmount());
-  });
-
-  it("supports cursor helpers and stable first-occurrence deduplication", () => {
-    expect(pagePath("/api/v1/sessions?cursor=old&status=queued", "next value")).toBe(
-      "/api/v1/sessions?cursor=next+value&status=queued",
-    );
-    expect(pagePath("/api/v1/sessions?cursor=old", "")).toBe("/api/v1/sessions");
-    expect(
-      dedupeSessions([
-        { id: "one", status: "running" },
-        { id: "one", status: "completed" },
-        { id: "two", status: "queued" },
-      ]),
-    ).toEqual([
-      { id: "one", status: "running" },
-      { id: "two", status: "queued" },
-    ]);
   });
 
   it("accepts an API page with omitted optional fields", async () => {

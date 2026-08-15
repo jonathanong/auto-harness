@@ -43,7 +43,6 @@ export function SessionsLive({
     listState.source ||
     listState.status !== "all",
   );
-  const showFirstSession = !initialError && initialItems.length === 0 && !narrowed;
 
   return (
     <PaginatedSessions
@@ -62,7 +61,7 @@ export function SessionsLive({
       repositoryNames={repositoryNames}
       emptyMessage={narrowed ? "No sessions match filters." : "No sessions yet."}
       emptyState={
-        showFirstSession ? (
+        !narrowed ? (
           <PrimaryEmptyState title="No sessions yet." pw="sessions-empty">
             <p>Queue a one-off task to start using Auto Harness.</p>
             <TipLink

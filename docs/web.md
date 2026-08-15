@@ -113,9 +113,9 @@ The active sort is indicated by an arrow icon on the column header. Clicking the
 
 ### Search
 
-A search bar above the filter chips searches the sessions already loaded on the current page. Enter a query and press Enter or move focus away from the field to apply it; it is not sent as an API query or backed by DynamoDB full-text search. Matching is case-insensitive across session and repository IDs (and the repository name when supplied), status and terminal reason, prompt, target and fallback labels/IDs, resolved route and host/worktree IDs, queue expiry, source, priority, required labels, concurrency ID, and created/started/completed timestamps.
+A search bar above the filter chips searches the sessions on the currently loaded pages. Enter a query and press Enter or move focus away from the field to apply it; it is not sent as an API query or backed by DynamoDB full-text search. Matching is case-insensitive across session and repository IDs (and the repository name when supplied), status and terminal reason, prompt, target and fallback labels/IDs, resolved route and host/worktree IDs, queue expiry, source, priority, required labels, concurrency ID, and created/started/completed timestamps.
 
-Example: searching "date parser" filters the current page's session prompts for those words.
+Example: searching "date parser" filters the currently loaded pages' session prompts for those words.
 
 ### Filtering
 
@@ -129,7 +129,7 @@ Filters are displayed as dropdowns/chips below the search bar. Multiple filters 
 | **Concurrency ID** | Exact active-run identity (when present); duplicate creates link to the existing session | Inspect dedupe/concurrency behavior                  |
 | **Agent**          | Dropdown of connected agents                                                             | Show only sessions assigned to a specific agent      |
 
-Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc&source=api&hostId=agent-1`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the current page and is never sent to `GET /sessions`.
+Filters and client-side search persist in the URL query string (e.g. `?q=date+parser&status=failed&repositoryId=repo-abc&source=api&hostId=agent-1`) so filtered views can be shared or bookmarked. The `q` value is applied only to rows on the currently loaded pages and is never sent to `GET /sessions`.
 
 ### Pagination
 
