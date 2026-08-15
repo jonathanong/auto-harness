@@ -124,6 +124,7 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
+        "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
         "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx":
           {
             100: true,

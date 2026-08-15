@@ -99,20 +99,17 @@ describe("PaginatedSessions", () => {
       .fn()
       .mockResolvedValueOnce(json({ items: [{ id: "older", status: "queued" }], nextCursor: null }))
       .mockResolvedValueOnce(
-        json({ items: [{ id: "new", status: "running" }], nextCursor: "cursor-2" }),
+        json({ items: [{ id: "inserted", status: "running" }], nextCursor: "shifted-cursor" }),
       )
       .mockResolvedValueOnce(
-        json({ items: [{ id: "older", status: "completed" }], nextCursor: null }),
+        json({ items: [{ id: "new", status: "running" }], nextCursor: "cursor-2" }),
       )
       .mockResolvedValueOnce(new Response(null, { status: 503 }))
       .mockResolvedValueOnce(
-        json({ items: [{ id: "older", status: "completed" }], nextCursor: null }),
+        json({ items: [{ id: "inserted", status: "completed" }], nextCursor: "shifted-cursor" }),
       )
       .mockResolvedValueOnce(
         json({ items: [{ id: "new", status: "completed" }], nextCursor: "cursor-2" }),
-      )
-      .mockResolvedValueOnce(
-        json({ items: [{ id: "older", status: "completed" }], nextCursor: null }),
       );
     const view = mount(
       <PaginatedSessions
@@ -128,10 +125,11 @@ describe("PaginatedSessions", () => {
     expect(fetchPage.mock.calls.map(([path]) => path)).toEqual([
       "/api/v1/sessions?limit=1&cursor=cursor-2",
       "/api/v1/sessions?limit=1",
-      "/api/v1/sessions?limit=1&cursor=cursor-2",
+      "/api/v1/sessions?limit=1&cursor=shifted-cursor",
     ]);
     expect(byPw(view.container, "session-row-new").textContent).toContain("running");
-    expect(byPw(view.container, "session-row-older").textContent).toContain("completed");
+    expect(byPw(view.container, "session-row-inserted")).toBeTruthy();
+    expect(view.container.querySelector('[data-pw="session-row-older"]')).toBeNull();
     await act(async () => vi.advanceTimersByTimeAsync(10));
     expect(byPw(view.container, "sessions-live-error")).toBeTruthy();
     await act(async () => {
@@ -139,7 +137,7 @@ describe("PaginatedSessions", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(byPw(view.container, "sessions-live-active")).toBeTruthy();
-    expect(fetchPage).toHaveBeenCalledTimes(7);
+    expect(fetchPage).toHaveBeenCalledTimes(6);
     expect(byPw(view.container, "session-row-new").textContent).toContain("completed");
     act(() => view.root.unmount());
   });
@@ -189,5 +187,21 @@ describe("PaginatedSessions", () => {
       { id: "one", status: "running" },
       { id: "two", status: "queued" },
     ]);
+  });
+
+  it("accepts an API page with omitted optional fields", async () => {
+    const fetchPage = vi.fn().mockResolvedValue(json({}));
+    const view = mount(
+      <PaginatedSessions
+        initialItems={[{ id: "kept", status: "queued" }]}
+        initialNextCursor="next"
+        path="/api/v1/sessions?limit=1"
+        fetchPage={fetchPage}
+      />,
+    );
+    await act(async () => byPw<HTMLButtonElement>(view.container, "sessions-load-more").click());
+    expect(byPw(view.container, "session-row-kept")).toBeTruthy();
+    expect(view.container.querySelector('[data-pw="sessions-load-more"]')).toBeNull();
+    act(() => view.root.unmount());
   });
 });

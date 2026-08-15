@@ -66,20 +66,16 @@ export function usePaginatedSessions({
     const generation = generationRef.current;
     const snapshot = pagesRef.current;
     try {
-      const refreshed = await Promise.all(
-        snapshot.map(
-          async (page) =>
-            [page.cursor, await requestPage(fetchPage, pagePath(path, page.cursor))] as const,
-        ),
-      );
+      const refreshed: SessionPage[] = [];
+      let cursor = snapshot[0].cursor;
+      for (let index = 0; index < snapshot.length; index += 1) {
+        const page = await requestPage(fetchPage, pagePath(path, cursor));
+        refreshed.push({ ...page, cursor });
+        if (!page.nextCursor) break;
+        cursor = page.nextCursor;
+      }
       if (!isCurrent(generationRef, pollRequestRef, pathRef, generation, requestId, path)) return;
-      const byCursor = new Map(refreshed);
-      setPages((current) =>
-        current.map((page) => {
-          const next = byCursor.get(page.cursor);
-          return next ? { ...next, cursor: page.cursor } : page;
-        }),
-      );
+      setPages(() => refreshed);
       setPollError(null);
     } catch (reason) {
       if (isCurrent(generationRef, pollRequestRef, pathRef, generation, requestId, path)) {
