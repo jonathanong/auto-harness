@@ -49,7 +49,7 @@ export default async function RepositoriesPage() {
     repositoryId: r.id,
     repositoryName: r.name,
     repoHrefBase: "/repositories",
-    repoPath: r.url,
+    repoUrl: r.url,
     defaultBranch: r.defaultBranch ?? "main",
     worktrees: worktreesByRepo.get(r.id) ?? [],
   }));
