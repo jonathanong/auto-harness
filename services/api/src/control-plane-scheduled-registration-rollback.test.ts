@@ -88,8 +88,8 @@ describe("scheduled registration rollback", () => {
     });
     await replacement.plane.hydrateFromStorage();
     const replacementStorage = replacement.plane.state.storage!;
-    const originalPut = replacementStorage.putHostInventory.bind(replacementStorage);
-    replacementStorage.putHostInventory = async () => {
+    const originalPut = replacementStorage.putHostInventoryFenced.bind(replacementStorage);
+    replacementStorage.putHostInventoryFenced = async () => {
       throw new Error("inventory failed");
     };
     try {
@@ -105,7 +105,7 @@ describe("scheduled registration rollback", () => {
         }),
       ).rejects.toThrow("inventory failed");
     } finally {
-      replacementStorage.putHostInventory = originalPut;
+      replacementStorage.putHostInventoryFenced = originalPut;
     }
 
     expect(await ctx.storage.getSession(sessionId)).toMatchObject({

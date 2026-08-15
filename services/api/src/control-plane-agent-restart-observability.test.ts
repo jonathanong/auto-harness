@@ -119,6 +119,13 @@ describe("daemon restart observability", () => {
       return;
     }
     let connection = 0;
+    // This worker exists before the baseline write and deliberately never
+    // hydrates, reproducing a stale warm Lambda cache.
+    const staleReplacement = new ControlPlane({
+      storage: ctx.storage,
+      now: () => "2026-08-12T00:00:01.000Z",
+      connectionIdFactory: () => `restart-connection-${++connection}`,
+    });
     const first = new ControlPlane({
       storage: ctx.storage,
       now: () => "2026-08-11T00:00:01.000Z",
@@ -143,13 +150,7 @@ describe("daemon restart observability", () => {
     ).toBe(true);
     expect((await afterBaseline.registerHostDurable(registration(FIRST))).ok).toBe(true);
 
-    const replacement = new ControlPlane({
-      storage: ctx.storage,
-      now: () => "2026-08-12T00:00:01.000Z",
-      connectionIdFactory: () => `restart-connection-${++connection}`,
-    });
-    await replacement.hydrateFromStorage();
-    expect((await replacement.registerHostDurable(registration(SECOND))).ok).toBe(true);
+    expect((await staleReplacement.registerHostDurable(registration(SECOND))).ok).toBe(true);
 
     const hydrated = new ControlPlane({ storage: ctx.storage });
     await hydrated.hydrateFromStorage();

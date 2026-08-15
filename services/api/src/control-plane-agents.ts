@@ -17,6 +17,7 @@ import {
   resolveRegisteredRepositories,
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
+import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
@@ -444,11 +445,11 @@ export async function registerHostDurable(
   }
   const connectionId = opts.connectionId ?? state.connectionIdFactory();
   const at = state.now();
-  const previousInventory = state.hostInventories.get(opts.hostId);
+  const cachedPreviousInventory = state.hostInventories.get(opts.hostId);
   const registeredRepositories = resolveRegisteredRepositories(
     opts.repositories,
     opts.worktrees,
-    previousInventory,
+    cachedPreviousInventory,
   );
   const conn: ConnectionRecord = {
     connectionId,
@@ -470,6 +471,17 @@ export async function registerHostDurable(
   });
   if (!won) {
     return { ok: false, error: `hostId ${opts.hostId} already has an active connection` };
+  }
+  let previousInventory: HostInventoryRecord | undefined;
+  try {
+    // The acquired lease serializes registration writers. Read the strongly
+    // consistent durable baseline only now so a stale warm worker cannot
+    // reset restart telemetry learned by another API process.
+    previousInventory =
+      (await state.storage.getHostInventory(opts.hostId)) ?? cachedPreviousInventory;
+  } catch (err) {
+    await rollbackDurableRegistration(state, opts.hostId, connectionId, at, []);
+    throw err;
   }
   // The transaction committed. Finish all related row writes before changing
   // this process's cache; a failed inventory/worktree write must not make the
@@ -556,7 +568,15 @@ export async function registerHostDurable(
     opts.daemonIdentity,
   );
   try {
-    await state.storage.putHostInventory(registrationInventory);
+    if (
+      !(await state.storage.putHostInventoryFenced(registrationInventory, {
+        hostId: opts.hostId,
+        connectionId,
+      }))
+    ) {
+      await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+      return { ok: false, error: "host connection changed while publishing inventory" };
+    }
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     throw err;
