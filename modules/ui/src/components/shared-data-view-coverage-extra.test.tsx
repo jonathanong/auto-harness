@@ -111,7 +111,7 @@ describe("shared sessions table and tabs", () => {
       <SessionsTable
         items={[]}
         sort="priority_desc"
-        prioritySortHref="/sessions?sort=priority_asc"
+        sortHrefs={{ priority: "/sessions?sort=priority_asc" }}
       />,
     );
     expect(priorityDescending).toContain('aria-sort="descending"');
@@ -124,7 +124,7 @@ describe("shared sessions table and tabs", () => {
       <SessionsTable
         items={[]}
         sort="priority_asc"
-        prioritySortHref="/sessions?sort=priority_desc"
+        sortHrefs={{ priority: "/sessions?sort=priority_desc" }}
       />,
     );
     expect(priorityAscending).toContain('aria-sort="ascending"');
@@ -132,10 +132,30 @@ describe("shared sessions table and tabs", () => {
     expect(priorityAscending).toContain("↑");
 
     const latest = render(
-      <SessionsTable items={[]} sort="latest" prioritySortHref="/sessions?sort=priority_desc" />,
+      <SessionsTable
+        items={[]}
+        sort="latest"
+        sortHrefs={{ priority: "/sessions?sort=priority_desc" }}
+      />,
     );
     expect(latest).not.toContain("aria-sort");
     expect(latest).toContain("↕");
+
+    const newestFirst = render(
+      <SessionsTable items={[]} sort="latest" sortHrefs={{ created: "/sessions?sort=oldest" }} />,
+    );
+    expect(newestFirst).toContain('aria-sort="descending"');
+    expect(newestFirst).toContain('href="/sessions?sort=oldest"');
+    expect(newestFirst).toContain('aria-label="Sort by creation time, oldest first"');
+    expect(newestFirst).toContain('data-pw="session-sort-created"');
+    expect(newestFirst).toContain("↓");
+
+    const oldestFirst = render(
+      <SessionsTable items={[]} sort="oldest" sortHrefs={{ created: "/sessions?sort=latest" }} />,
+    );
+    expect(oldestFirst).toContain('aria-sort="ascending"');
+    expect(oldestFirst).toContain('aria-label="Sort by creation time, newest first"');
+    expect(oldestFirst).toContain("↑");
 
     const searchable = [
       {

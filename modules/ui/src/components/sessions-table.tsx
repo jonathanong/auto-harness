@@ -5,14 +5,13 @@ import type { SessionListQuery } from "@auto-harness/shared";
 
 import { Badge } from "./badge.tsx";
 import { SessionPrompt } from "./session-prompt.tsx";
-import { SessionPrioritySortHead } from "./session-priority-sort-head.tsx";
 import { sessionMatchesSearch, type SearchableSession } from "./session-search.ts";
+import { SessionSortHead } from "./session-sort-head.tsx";
 import { SessionSourceBadge } from "./session-source-badge.tsx";
 import { SessionCreatedTime, SessionDuration, useSessionClock } from "./session-time.tsx";
 import { SessionStatusCell } from "./session-status-cell.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 import { useSessionTableKeyboard } from "./use-session-table-keyboard.ts";
-
 export type SessionRow = SearchableSession;
 
 export type SessionsTableProps = {
@@ -30,8 +29,7 @@ export type SessionsTableProps = {
   repositoryHrefBase?: string;
   /** Current server-backed list ordering. */
   sort?: SessionListQuery["sort"];
-  /** URL for toggling the rendered Priority column's server-backed ordering. */
-  prioritySortHref?: string;
+  sortHrefs?: { priority?: string; created?: string };
 };
 
 /** Shared sessions table for control plane and host pane. */
@@ -44,7 +42,7 @@ export function SessionsTable({
   repositoryNames = {},
   repositoryHrefBase,
   sort = "latest",
-  prioritySortHref,
+  sortHrefs = {},
 }: SessionsTableProps) {
   const visibleItems = items.filter((session) =>
     sessionMatchesSearch(
@@ -75,8 +73,8 @@ export function SessionsTable({
           <TableHead>Queue expiry</TableHead>
           <TableHead>Prompt</TableHead>
           <TableHead>Source</TableHead>
-          <SessionPrioritySortHead sort={sort} href={prioritySortHref} />
-          <TableHead>Created</TableHead>
+          <SessionSortHead kind="priority" sort={sort} href={sortHrefs.priority} />
+          <SessionSortHead kind="created" sort={sort} href={sortHrefs.created} />
           <TableHead>Duration</TableHead>
           <TableHead>Labels</TableHead>
           <TableHead>Concurrency ID</TableHead>

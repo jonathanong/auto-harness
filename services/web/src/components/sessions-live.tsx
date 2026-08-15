@@ -79,6 +79,11 @@ export function SessionsLive({
     cursor: "",
     sort: listState.sort === "priority_desc" ? "priority_asc" : "priority_desc",
   });
+  const createdSortHref = sessionListHref({
+    ...listState,
+    cursor: "",
+    sort: listState.sort === "latest" ? "oldest" : "latest",
+  });
   const narrowed = Boolean(
     listState.q ||
     listState.concurrencyId ||
@@ -133,7 +138,7 @@ export function SessionsLive({
             hrefBase="/sessions"
             search={listState.q}
             sort={listState.sort}
-            prioritySortHref={prioritySortHref}
+            sortHrefs={{ priority: prioritySortHref, created: createdSortHref }}
             repositoryHrefBase="/repositories"
             repositoryNames={repositoryNames}
             emptyMessage={narrowed ? "No sessions match filters." : "No sessions yet."}
