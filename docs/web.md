@@ -158,22 +158,22 @@ Clicking a session in the list opens the session detail view.
 
 The header displays session metadata:
 
-| Field      | Display                                                                                                                              |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Session ID | Monospaced, copyable                                                                                                                 |
-| Status     | Animated badge with status color                                                                                                     |
-| Repository | Link to repository                                                                                                                   |
-| Target     | Configured target/fallback chain; once assigned, show selected Provider Account, Command, Host, Worktree, and exact resolved argv    |
-| Queue      | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline |
-| Agent      | Agent name (if assigned)                                                                                                             |
-| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                                                                  |
-| Priority   | Numeric value                                                                                                                        |
-| Source     | Origin badge                                                                                                                         |
-| Created    | Full timestamp                                                                                                                       |
-| Started    | Full timestamp (if started)                                                                                                          |
-| Duration   | Live elapsed time (running) or total time (completed)                                                                                |
-| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions.                                          |
-| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                                                                  |
+| Field      | Display                                                                                                                               |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Session ID | Monospaced, copyable                                                                                                                  |
+| Status     | Badge with status color; terminal `usage_limit` and `queue_expired` errors include distinct “Usage limit” and “Queue expired” reasons |
+| Repository | Link to repository                                                                                                                    |
+| Target     | Configured target/fallback chain; once assigned, show selected Provider Account, Command, Host, Worktree, and exact resolved argv     |
+| Queue      | Fixed `queueExpiresAt` timestamp/countdown while queued; `queue_expired` is terminal and fallback attempts never extend the deadline  |
+| Agent      | Agent name (if assigned)                                                                                                              |
+| Worktree   | Worktree path (if assigned), "Main checkout" for scheduled sessions                                                                   |
+| Priority   | Numeric value                                                                                                                         |
+| Source     | Origin badge                                                                                                                          |
+| Created    | Full timestamp                                                                                                                        |
+| Started    | Full timestamp (if started)                                                                                                           |
+| Duration   | Live elapsed time (running) or total time (completed)                                                                                 |
+| Timeout    | Configured timeout (e.g. "30 min"). Progress bar shows time remaining for running sessions.                                           |
+| Exit Code  | Shown on completion — `0` (green) or non-zero (red)                                                                                   |
 
 ### Prompt
 

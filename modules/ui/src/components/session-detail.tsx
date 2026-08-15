@@ -3,7 +3,7 @@ import Link from "next/link";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
-import { StatusBadge } from "./status-badge.tsx";
+import { SessionStatusDetail } from "./session-status-cell.tsx";
 import { SessionRouteSummary } from "./session-route-summary.tsx";
 import { SessionExecutionSummary } from "./session-execution-summary.tsx";
 import { SessionIdCopyButton } from "./session-id-copy-button.tsx";
@@ -64,8 +64,8 @@ export function SessionDetail({
           <dl className="grid gap-4 sm:grid-cols-2">
             <div>
               <dt className="text-xs uppercase text-muted-foreground">Status</dt>
-              <dd data-pw="session-detail-status">
-                <StatusBadge status={s.status} />
+              <dd>
+                <SessionStatusDetail status={s.status} errorCode={s.errorCode} />
               </dd>
             </div>
             <SessionRouteSummary session={s} />

@@ -31,3 +31,23 @@ export function SessionStatusCell({
     </div>
   );
 }
+
+export function SessionStatusDetail({
+  status,
+  errorCode,
+}: {
+  status: string;
+  errorCode?: string | null;
+}) {
+  const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
+  return (
+    <div className="space-y-1" data-pw="session-detail-status">
+      <StatusBadge status={status} />
+      {reason ? (
+        <div className="text-xs text-muted-foreground" data-pw="session-detail-status-reason">
+          {reason}
+        </div>
+      ) : null}
+    </div>
+  );
+}
