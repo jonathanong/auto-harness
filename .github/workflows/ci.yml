@@ -114,6 +114,9 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Start DynamoDB Local
+        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
+
       - name: Integration tests
         run: pnpm test:integration
 

@@ -11,11 +11,10 @@ import type { LogRecord } from "../services/api/src/control-plane-types.ts";
 import { runCommandOk } from "../scripts/lib/run-command.mts";
 
 /**
- * The only test in the repo that runs the full real orchestration path end to
- * end: a real HTTP+WS server, a real agent daemon connected over a real
- * `ws://` socket, and a real `echo` subprocess in a real git worktree — as
- * opposed to e2e/*.spec.ts, which fake out the agent side over REST since
- * Playwright never starts a daemon. See docs/agent-e2e-testing.md.
+ * Fast orchestration proof using the in-memory control plane: a real HTTP+WS
+ * server, agent daemon, socket, git worktree, and subprocess. The companion
+ * durable integration test covers DynamoDB, HTTP setup, scheduler dispatch,
+ * and restart persistence. See docs/host-daemon-e2e-testing.md.
  */
 
 async function git(cwd: string, args: string[]): Promise<string> {

@@ -40,5 +40,9 @@ describe("required CI check contract", () => {
     expect(tests).toContain("run: pnpm local:dynamodb && pnpm local:dynamodb:ready");
     expect(tests).toContain("run: pnpm test");
     expect(tests).toContain("run: pnpm check:coverage:dynamo-adapters");
+
+    const integration = job("integration");
+    expect(integration).toContain("run: pnpm local:dynamodb && pnpm local:dynamodb:ready");
+    expect(integration).toContain("run: pnpm test:integration");
   });
 });
