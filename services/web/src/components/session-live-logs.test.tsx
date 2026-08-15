@@ -6,12 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { field, mountForm, press } from "./form-test-helpers.tsx";
 import { SessionLiveLogs } from "./session-live-logs.tsx";
 
-vi.mock("./session-terminal-viewer.tsx", () => ({
-  SessionTerminalViewer: ({ sessionId }: { sessionId: string }) => (
-    <div data-pw="mock-terminal">{sessionId}</div>
-  ),
-}));
-
 type Handler = (event: { code?: number; data?: string }) => void;
 
 class FakeWebSocket {
