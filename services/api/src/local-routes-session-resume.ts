@@ -1,6 +1,10 @@
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { canAccessSession, sendSessionForbidden } from "./local-routes-session-access.ts";
+import {
+  canAccessSession,
+  canAuthorSessions,
+  sendSessionForbidden,
+} from "./local-routes-session-access.ts";
 
 const RESUME_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
 
@@ -23,7 +27,7 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
   let existing: Awaited<ReturnType<typeof plane.getSessionDurable>>;
   try {
     existing = await plane.getSessionDurable(id);
-    if (!existing || !canAccessSession(ctx, existing.repositoryId)) {
+    if (!canAuthorSessions(ctx) || !existing || !canAccessSession(ctx, existing.repositoryId)) {
       if (
         !(await writeRouteAudit(ctx, {
           action: "session:resume",

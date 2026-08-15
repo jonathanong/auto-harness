@@ -2,6 +2,7 @@
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
+import { canAuthorSessions } from "./local-routes-session-access.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -306,7 +307,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
-      if (!scoped(ctx, body.repositoryId)) {
+      if (!canAuthorSessions(ctx) || !scoped(ctx, body.repositoryId)) {
         if (
           !(await writeRouteAudit(ctx, {
             action: "schedule:create",
@@ -387,7 +388,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     let triggerExisting: Awaited<ReturnType<typeof plane.getScheduleDurable>>;
     try {
       triggerExisting = await plane.getScheduleDurable(schedTrigger[1]!);
-      if (triggerExisting && !scoped(ctx, triggerExisting.repositoryId)) {
+      if (
+        !canAuthorSessions(ctx) ||
+        (triggerExisting && !scoped(ctx, triggerExisting.repositoryId))
+      ) {
         if (
           !(await writeRouteAudit(ctx, {
             action: "schedule:trigger",
@@ -483,7 +487,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
       sendInternalError(res);
       return true;
     }
-    if (existing && !scoped(ctx, existing.repositoryId)) {
+    // Editing a schedule redirects what it will mint, so it needs the authoring check.
+    // Deleting one only stops it minting, and stays available to host-bound admins.
+    const redirectsFutureSessions = method !== "DELETE";
+    if (
+      (redirectsFutureSessions && !canAuthorSessions(ctx)) ||
+      (existing && !scoped(ctx, existing.repositoryId))
+    ) {
       if (
         !(await writeRouteAudit(ctx, {
           action: `schedule:${method === "DELETE" ? "delete" : "update"}`,

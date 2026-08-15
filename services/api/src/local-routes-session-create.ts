@@ -1,6 +1,10 @@
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { canAccessSession, sendSessionForbidden } from "./local-routes-session-access.ts";
+import {
+  canAccessSession,
+  canAuthorSessions,
+  sendSessionForbidden,
+} from "./local-routes-session-access.ts";
 
 export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
@@ -25,7 +29,7 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     body && typeof body === "object" ? (body as Record<string, unknown>) : undefined;
   const repositoryId =
     typeof sessionBody?.repositoryId === "string" ? sessionBody.repositoryId : undefined;
-  if (!canAccessSession(ctx, repositoryId)) {
+  if (!canAuthorSessions(ctx) || !canAccessSession(ctx, repositoryId)) {
     if (
       !(await writeRouteAudit(ctx, {
         action: "session:create",
