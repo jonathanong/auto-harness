@@ -66,7 +66,7 @@ describe("host message optional-field coverage", () => {
     ).resolves.toMatchObject({ ok: true, connectionId: "connection" });
   });
 
-  it("deletes an evicted fenced log chunk", async () => {
+  it("evicts a fenced log chunk from memory without deleting it durably", async () => {
     const row = session();
     const current = state(row);
     const old: LogRecord[] = Array.from({ length: 10_000 }, (_, seq) => ({
@@ -96,7 +96,10 @@ describe("host message optional-field coverage", () => {
       },
       "connection",
     );
-    expect(deleted).toHaveLength(1);
+    expect(deleted).toEqual([]);
+    // The window still slid: the oldest chunk left the cache, the newest arrived.
+    expect(current.logs.get("s")).toHaveLength(10_000);
+    expect(current.logs.get("s")?.at(-1)?.seq).toBe(10_001);
   });
 
   it("adds default providerless suppression fields without a worktree", async () => {

@@ -35,26 +35,46 @@ export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
-function retainLogs(
-  state: ControlPlaneState,
-  rec: LogRecord,
-): {
-  retained: LogRecord[];
-  evicted: LogRecord[];
-} {
-  const retained = [...(state.logs.get(rec.sessionId) ?? []), rec].toSorted((a, b) =>
-    a.timestampSeq.localeCompare(b.timestampSeq),
-  );
-  let retainedBytes = retained.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
-  const evicted: LogRecord[] = [];
-  while (retained.length > MAX_RETAINED_LOG_CHUNKS || retainedBytes > MAX_RETAINED_LOG_BYTES) {
-    const removed = retained.shift();
-    if (removed) {
-      retainedBytes -= Buffer.byteLength(removed.content);
-      evicted.push(removed);
-    }
+/**
+ * Running size of each retained list, keyed by the list itself so it is discarded
+ * whenever the list is replaced wholesale (a durable read rebuilds it). Without this the
+ * bound cost a full re-measure of every retained chunk on every incoming chunk.
+ */
+const retainedByteTotals = new WeakMap<LogRecord[], number>();
+
+function measure(records: readonly LogRecord[]): number {
+  return records.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
+}
+
+/**
+ * Bound the in-memory replay cache for one session and return the retained list.
+ *
+ * Eviction is **only** a cache bound. Evicted chunks are deliberately not reported to the
+ * caller: DynamoDB holds the durable transcript that `archiveSessionLogs` reads, and
+ * deleting evicted rows there — which this used to do — silently destroyed the beginning
+ * of any session that outgrew the window. Durable retention belongs to the SessionLogs
+ * TTL (docs/plan.md Phase 2), not to a cache eviction.
+ */
+function retainLogs(state: ControlPlaneState, rec: LogRecord): LogRecord[] {
+  const retained = state.logs.get(rec.sessionId) ?? [];
+  let bytes = retainedByteTotals.get(retained) ?? measure(retained);
+
+  // Chunks arrive in order, so this is an append in the common case. The walk back only
+  // pays when a reconnect replays out of order, and it avoids re-sorting the whole list.
+  let index = retained.length;
+  while (index > 0 && retained[index - 1]!.timestampSeq.localeCompare(rec.timestampSeq) > 0) {
+    index -= 1;
   }
-  return { retained, evicted };
+  retained.splice(index, 0, rec);
+  bytes += Buffer.byteLength(rec.content);
+
+  while (retained.length > MAX_RETAINED_LOG_CHUNKS || bytes > MAX_RETAINED_LOG_BYTES) {
+    const removed = retained.shift();
+    if (!removed) break;
+    bytes -= Buffer.byteLength(removed.content);
+  }
+  retainedByteTotals.set(retained, bytes);
+  return retained;
 }
 
 export function appendLog(
@@ -76,17 +96,13 @@ export function appendLog(
     timestamp: opts.timestamp,
     seq: opts.seq,
   };
-  const { retained, evicted } = retainLogs(state, rec);
-  state.logs.set(opts.sessionId, retained);
+  state.logs.set(opts.sessionId, retainLogs(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
       await storage!.putLog(rec);
       state.onLogCommitted?.(rec);
     });
     state.pendingLogPersists.push(persisted);
-    for (const removed of evicted) {
-      queueWrite(state, (storage) => storage!.deleteLog(removed.sessionId, removed.timestampSeq));
-    }
   } else state.onLogCommitted?.(rec);
   return rec;
 }
@@ -113,13 +129,7 @@ export async function appendLogDurable(
   if (state.storage) {
     await state.storage.putLog(rec);
   }
-  const { retained, evicted } = retainLogs(state, rec);
-  if (state.storage) {
-    for (const removed of evicted) {
-      await state.storage.deleteLog(removed.sessionId, removed.timestampSeq);
-    }
-  }
-  state.logs.set(opts.sessionId, retained);
+  state.logs.set(opts.sessionId, retainLogs(state, rec));
   state.onLogCommitted?.(rec);
   return rec;
 }
@@ -178,11 +188,7 @@ export async function handleHostLogBatchDurable(
     return { ok: false, error: "stale host connection" };
   }
   for (const record of records) {
-    const { retained, evicted } = retainLogs(state, record);
-    for (const removed of evicted) {
-      await storage.deleteLog(removed.sessionId, removed.timestampSeq);
-    }
-    state.logs.set(record.sessionId, retained);
+    state.logs.set(record.sessionId, retainLogs(state, record));
     state.onLogCommitted?.(record);
   }
   return { ok: true };
@@ -372,12 +378,10 @@ export async function handleHostMessageDurable(
       ) {
         return { ok: false, error: "stale host connection" };
       }
-      const { retained, evicted } = retainLogs(state, {
+      const retained = retainLogs(state, {
         ...log,
         timestampSeq: formatLogSortKey(log.timestamp, log.seq),
       });
-      for (const removed of evicted)
-        await storage.deleteLog(removed.sessionId, removed.timestampSeq);
       state.logs.set(log.sessionId, retained);
       state.onLogCommitted?.({ ...log, timestampSeq: formatLogSortKey(log.timestamp, log.seq) });
     } else {

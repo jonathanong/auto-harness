@@ -102,7 +102,8 @@ describe("durable host log batches", () => {
       ),
     ).resolves.toEqual({ ok: true });
     expect(written).toEqual([[10_000, 10_001]]);
-    expect(deleted).toEqual([0, 1]);
+    // Eviction bounds the cache only; the durable transcript stays whole.
+    expect(deleted).toEqual([]);
     expect(published).toEqual([10_000, 10_001]);
     expect(
       plane
