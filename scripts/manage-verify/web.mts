@@ -30,78 +30,81 @@ export async function manageWeb(scratch: string): Promise<void> {
     publicBaseUrl: "http://ui",
   });
   const base = `http://127.0.0.1:${apiPort}`;
-  const pages: Record<string, number> = {};
-  for (const path of [
-    "/api/v1/sessions",
-    "/api/v1/repositories",
-    "/api/v1/schedules",
-    "/api/v1/hosts",
-  ]) {
-    const r = await fetch(`${base}${path}`);
-    pages[path] = r.status;
-  }
-  const createRepo = await fetch(`${base}/api/v1/repositories`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      id: "demo",
-      name: MANAGE_REPOSITORY_NAME,
-      url: "/tmp/demo",
-      defaultBranch: "main",
-    }),
-  });
-  const createRepoBody = (await createRepo.json()) as { id?: string };
-  const repositoryId = createRepoBody.id ?? "missing-repository-id";
-  plane.registerHost({
-    hostId: "a1",
-    worktrees: [{ id: "wt-1", name: "wt-1", repositoryId, path: "/w", labels: [] }],
-    commandProfiles: ["echo-prompt"],
-  });
-  const createSched = await fetch(`${base}/api/v1/schedules`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      repositoryId,
-      name: "nightly",
-      target: { commandId: command.command.id },
-      cron: "0 * * * *",
-      timeout: 60,
-      nextRunAt: "2026-01-01T00:00:00.000Z",
-      ref: "main",
-    }),
-  });
-  const createSchedBody = (await createSched.json()) as { repositoryId?: string };
-  const trigger = await fetch(`${base}/api/v1/schedules/sched-web/trigger`, { method: "POST" });
-  plane.createSession({
-    repositoryId,
-    prompt: "web-cancel",
-    target: { commandId: command.command.id },
-    timeout: 10,
-  });
-  const toCancel = plane.listSessions().find((s) => s.prompt === "web-cancel")!;
-  const cancel = await fetch(`${base}/api/v1/sessions/${toCancel.id}/cancel`, { method: "POST" });
-  const drain = await fetch(`${base}/api/v1/hosts/drain`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ hostId: "a1" }),
-  });
-  await api.close();
-  writeFileSync(
-    `${scratch}/web.json`,
-    JSON.stringify(
-      {
-        pages,
-        createRepo: createRepo.status,
+  try {
+    const pages: Record<string, number> = {};
+    for (const path of [
+      "/api/v1/sessions",
+      "/api/v1/repositories",
+      "/api/v1/schedules",
+      "/api/v1/hosts",
+    ]) {
+      const r = await fetch(`${base}${path}`);
+      pages[path] = r.status;
+    }
+    const createRepo = await fetch(`${base}/api/v1/repositories`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "demo",
+        name: MANAGE_REPOSITORY_NAME,
+        url: "/tmp/demo",
+        defaultBranch: "main",
+      }),
+    });
+    const createRepoBody = (await createRepo.json()) as { id?: string };
+    const repositoryId = createRepoBody.id ?? "missing-repository-id";
+    plane.registerHost({
+      hostId: "a1",
+      worktrees: [{ id: "wt-1", name: "wt-1", repositoryId, path: "/w", labels: [] }],
+      commandProfiles: ["echo-prompt"],
+    });
+    const createSched = await fetch(`${base}/api/v1/schedules`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
         repositoryId,
-        createSched: createSched.status,
-        scheduleRepositoryId: createSchedBody.repositoryId,
-        trigger: trigger.status,
-        cancel: cancel.status,
-        cancelRepositoryId: toCancel.repositoryId,
-        drain: drain.status,
-      },
-      null,
-      2,
-    ),
-  );
+        name: "nightly",
+        target: { commandId: command.command.id },
+        cron: "0 * * * *",
+        timeout: 60,
+        nextRunAt: "2026-01-01T00:00:00.000Z",
+        ref: "main",
+      }),
+    });
+    const createSchedBody = (await createSched.json()) as { repositoryId?: string };
+    const trigger = await fetch(`${base}/api/v1/schedules/sched-web/trigger`, { method: "POST" });
+    plane.createSession({
+      repositoryId,
+      prompt: "web-cancel",
+      target: { commandId: command.command.id },
+      timeout: 10,
+    });
+    const toCancel = plane.listSessions().find((s) => s.prompt === "web-cancel")!;
+    const cancel = await fetch(`${base}/api/v1/sessions/${toCancel.id}/cancel`, { method: "POST" });
+    const drain = await fetch(`${base}/api/v1/hosts/drain`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ hostId: "a1" }),
+    });
+    writeFileSync(
+      `${scratch}/web.json`,
+      JSON.stringify(
+        {
+          pages,
+          createRepo: createRepo.status,
+          repositoryId,
+          createSched: createSched.status,
+          scheduleRepositoryId: createSchedBody.repositoryId,
+          trigger: trigger.status,
+          cancel: cancel.status,
+          cancelRepositoryId: toCancel.repositoryId,
+          drain: drain.status,
+        },
+        null,
+        2,
+      ),
+    );
+  } finally {
+    await api.close();
+  }
 }
