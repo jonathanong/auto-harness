@@ -244,7 +244,8 @@ curl -sS http://127.0.0.1:7420/api/v1/sessions
 # {"items":[]} after a clean clear
 ```
 
-If `items` is empty, the host is not registered — fix the WS URL or restart the daemon before creating sessions.
+If the `items` array returned by `GET /api/v1/hosts` is empty, the host is not registered — fix
+the WS URL or restart the daemon before creating sessions.
 
 ---
 
