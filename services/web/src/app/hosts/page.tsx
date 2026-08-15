@@ -55,16 +55,20 @@ export default async function HostsPage({
   let worktrees: FleetWorktree[] = [];
   let error: string | null = null;
   try {
-    const [h, inv, wt] = await Promise.all([
+    const [h, inv] = await Promise.all([
       apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: HostInventorySummary[] }>("/api/v1/host-inventories"),
-      apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees"),
     ]);
     hosts = h.items ?? [];
     inventories = inv.items ?? [];
-    worktrees = wt.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
+  }
+  try {
+    const response = await apiGet<{ items: FleetWorktree[] }>("/api/v1/worktrees");
+    worktrees = response.items ?? [];
+  } catch {
+    // Worktree details are auxiliary; keep host management available if this read fails.
   }
 
   const inventoryById = new Map(inventories.map((inv) => [inv.hostId, inv]));

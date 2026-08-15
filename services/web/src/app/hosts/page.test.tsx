@@ -85,4 +85,17 @@ describe("hosts fleet route", () => {
     const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("fleet unavailable");
   });
+
+  it("keeps host management available when worktree details fail", async () => {
+    stubApi({
+      "/api/v1/hosts": { items: [{ hostId: "still-visible", online: true }] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": new Error("worktrees unavailable"),
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="host-row-still-visible"');
+    expect(html).toContain('data-pw="host-drain-still-visible"');
+    expect(html).toContain("No worktrees configured.");
+    expect(html).not.toContain("worktrees unavailable");
+  });
 });
