@@ -445,9 +445,10 @@ CDK table definitions plus synthesizable HTTP/WebSocket Lambda runtime resources
 `services/cdk`, including an EventBridge rule and cron Lambda for durable scheduling sweeps.
 There is no deploy command or account-backed smoke test. The synthesized SessionLogs
 table enables the `ttl` attribute, but runtime log records do not populate it and local table
-creation does not configure TTL, so current logs do not expire through TTL. The current archive
-path writes the DynamoDB Archives table rather than S3. The local store is DynamoDB Local via
-`pnpm local:dynamodb` (official image).
+creation does not configure TTL, so current logs do not expire through TTL. Terminal archival
+retains bounded pointer/status metadata in the DynamoDB Archives table and writes JSONL objects to
+S3 when `ARCHIVE_BUCKET` configures the archive writer. No account-backed upload has been verified.
+The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 

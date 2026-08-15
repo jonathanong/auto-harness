@@ -221,7 +221,7 @@ does not send browser input to the running process. Git, setup, and hook output 
 | Fullscreen | Expand the terminal to fill the viewport                                                                          |
 | Download   | Download the full log as a `.txt` file                                                                            |
 
-**Target status transitions** are displayed as system messages in the terminal:
+**Status transitions** are displayed as system messages in the terminal:
 
 ```
 [system] Session started at 2026-08-01T12:00:05.000Z
