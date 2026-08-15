@@ -12,7 +12,9 @@ import { loadDaemonConfig } from "../services/host-daemon/src/config.ts";
 import { startDaemon } from "../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../scripts/lib/run-command.mts";
 
-const TABLE_PREFIX = "AutoHarnessIntegration";
+const TABLE_PREFIX = process.env.HARNESS_DDB_PREFIX ?? "AutoHarnessIntegration";
+const TERMINAL_POLL_ATTEMPTS = 200;
+const TERMINAL_POLL_INTERVAL_MS = 50;
 
 type RunningServer = Awaited<ReturnType<typeof startLocalServer>>;
 
@@ -34,10 +36,10 @@ async function jsonRequest<T>(
 
 async function waitForTerminal(base: string, sessionId: string): Promise<{ status: string }> {
   let session = { status: "queued" };
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for (let attempt = 0; attempt < TERMINAL_POLL_ATTEMPTS; attempt++) {
     session = await jsonRequest<{ status: string }>(base, `/api/v1/sessions/${sessionId}`, 200);
     if (session.status === "completed" || session.status === "failed") return session;
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, TERMINAL_POLL_INTERVAL_MS));
   }
   return session;
 }
@@ -192,12 +194,12 @@ describe("durable full-stack orchestration", () => {
     });
     storage = restartedPlane.storage;
     server = await startLocalServer({
-      port: port + 1,
+      port,
       plane: restartedPlane.plane,
       enableWs: false,
       publicBaseUrl: "http://ui",
     });
-    const restartedBase = `http://127.0.0.1:${port + 1}`;
+    const restartedBase = `http://127.0.0.1:${port}`;
     const durableSession = await jsonRequest<{ status: string; exitCode: number | null }>(
       restartedBase,
       `/api/v1/sessions/${createdSession.id}`,
