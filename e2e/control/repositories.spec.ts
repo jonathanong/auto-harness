@@ -67,9 +67,11 @@ test.describe("control plane repositories", () => {
     await page.getByTestId("add-repo-open").click();
     await expect(page.getByTestId("form-repo-catalog")).toBeVisible();
     await expect(page.getByTestId("repo-catalog-branch")).toHaveValue("main");
+    await expect(page.getByTestId("repo-catalog-setup")).toHaveValue("");
     await expect(page.getByTestId("repo-catalog-error")).toBeHidden();
     await page.getByTestId("repo-catalog-name").fill(name);
     await page.getByTestId("repo-catalog-url").fill(`/tmp/${name}`);
+    await page.getByTestId("repo-catalog-setup").fill("pnpm install\npnpm build");
     await page.getByTestId("repo-catalog-submit").click();
 
     // Success navigates straight to the new repo's detail page (toast + navigate) —
@@ -86,6 +88,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("edit-repo-url")).toHaveValue(`/tmp/${name}`);
     await expect(page.getByTestId("edit-repo-branch")).toHaveValue("main");
     await expect(page.getByTestId("edit-repo-setup")).toBeVisible();
+    await expect(page.getByTestId("edit-repo-setup")).toHaveValue("pnpm install\npnpm build");
     await expect(page.getByTestId("edit-repo-hook")).toBeVisible();
     await expect(page.getByTestId("edit-repo-error")).toBeHidden();
     await page.getByTestId("edit-repo-submit").click();

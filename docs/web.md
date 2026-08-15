@@ -335,7 +335,8 @@ Expandable hierarchy of configured repositories and their worktrees. Each reposi
 
 ### Add/Edit Repository
 
-Form with fields: name, git URL, default branch, setup script (optional).
+Both Add and Edit forms include name, git URL, default branch, and an optional multiline setup
+script.
 
 ### Repository Detail
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 
@@ -23,6 +23,7 @@ export function RepoCreateForm() {
           name: String(fd.get("name") ?? ""),
           url: String(fd.get("url") ?? ""),
           defaultBranch: String(fd.get("defaultBranch") ?? "main"),
+          setupScript: String(fd.get("setupScript") ?? ""),
         };
         start(async () => {
           const res = await fetch(`${apiBase()}/api/v1/repositories`, {
@@ -66,6 +67,18 @@ export function RepoCreateForm() {
           name="defaultBranch"
           defaultValue="main"
           data-pw="repo-catalog-branch"
+        />
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor="setupScript" tip="Optional catalog-level setup script">
+          setup script
+        </Label>
+        <Textarea
+          id="setupScript"
+          name="setupScript"
+          rows={3}
+          className="font-mono text-xs"
+          data-pw="repo-catalog-setup"
         />
       </div>
       {error ? (
