@@ -114,6 +114,30 @@ describe("onShutdownSignal", () => {
     }
   });
 
+  it("falls back to console.error when no logger is injected", async () => {
+    vi.useFakeTimers();
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const target = fakeProcess();
+      installCrashLogging({ process: target as never });
+      target.emit("uncaughtException", new Error("bang"));
+
+      const handle = onShutdownSignal(() => new Promise<void>(() => {}), {
+        process: target as never,
+        timeoutMs: 1_000,
+      });
+      void handle.shutdown();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      // With an error argument, and — from the deadline path — without one.
+      expect(errors).toHaveBeenCalledWith("uncaught exception", expect.any(Error));
+      expect(errors).toHaveBeenCalledWith("graceful shutdown exceeded 1000ms; exiting");
+    } finally {
+      errors.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it("detaches its listeners on dispose", () => {
     const target = fakeProcess();
 
@@ -122,5 +146,51 @@ describe("onShutdownSignal", () => {
     handle.dispose();
 
     expect(target.listenerCount("SIGTERM")).toBe(0);
+  });
+
+  it("cancels a pending deadline when disposed mid-shutdown", async () => {
+    vi.useFakeTimers();
+    try {
+      const target = fakeProcess();
+      const handle = onShutdownSignal(() => new Promise<void>(() => {}), {
+        process: target as never,
+        timeoutMs: 1_000,
+        logger: () => {},
+      });
+
+      void handle.shutdown();
+      handle.dispose();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(target.exits).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("binds to the real process when none is injected", () => {
+    const before = process.listenerCount("SIGTERM");
+
+    const handle = onShutdownSignal(async () => {});
+    expect(process.listenerCount("SIGTERM")).toBe(before + 1);
+    handle.dispose();
+
+    expect(process.listenerCount("SIGTERM")).toBe(before);
+  });
+});
+
+describe("installCrashLogging default target", () => {
+  it("binds to the real process when none is injected", () => {
+    const before = process.listenerCount("unhandledRejection");
+    const added = () => process.listeners("unhandledRejection").slice(before);
+
+    installCrashLogging({ logger: () => {} });
+    expect(process.listenerCount("unhandledRejection")).toBe(before + 1);
+
+    for (const listener of added()) process.off("unhandledRejection", listener);
+    for (const listener of process.listeners("uncaughtException").slice(-1)) {
+      process.off("uncaughtException", listener);
+    }
+    expect(process.listenerCount("unhandledRejection")).toBe(before);
   });
 });

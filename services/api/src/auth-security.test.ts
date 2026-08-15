@@ -100,7 +100,9 @@ describe("control-plane authentication security", () => {
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
-    expect(first.authenticateApiKey(created.apiKey)).toMatchObject({ id: created.account.id });
+    expect(await first.authenticateApiKey(created.apiKey)).toMatchObject({
+      id: created.account.id,
+    });
 
     const second = new AuthService({
       mode: "required",
@@ -109,11 +111,13 @@ describe("control-plane authentication security", () => {
     });
     await second.hydrate(undefined);
     await second.hydrate(storage);
-    expect(second.authenticateApiKey(created.apiKey)).toMatchObject({
+    expect(await second.authenticateApiKey(created.apiKey)).toMatchObject({
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
-    expect(second.authenticateApiKey(plain.apiKey)).toMatchObject({ username: "plain-agent" });
+    expect(await second.authenticateApiKey(plain.apiKey)).toMatchObject({
+      username: "plain-agent",
+    });
     expect(await second.authenticatePassword("persisted-user", "password")).toMatchObject(
       createdUser,
     );
@@ -133,8 +137,8 @@ describe("control-plane authentication security", () => {
     expect(await lazy.authenticatePassword("persisted-user", "password")).toMatchObject(
       createdUser,
     );
-    expect(second.authenticateApiKey(`${created.apiKey}x`)).toBeNull();
-    expect(second.authenticateApiKey("anything")).toBeNull();
+    expect(await second.authenticateApiKey(`${created.apiKey}x`)).toBeNull();
+    expect(await second.authenticateApiKey("anything")).toBeNull();
     await second.deleteUser("persisted-user", storage);
     await second.deleteServiceAccount(plain.account.id, storage);
   });
@@ -450,7 +454,7 @@ describe("control-plane authentication security", () => {
     let service2Cookie = "";
     auth.issueCookie(
       { setHeader: (_name: string, value: string) => (service2Cookie = value) } as never,
-      auth.authenticateApiKey(service2.apiKey)!,
+      (await auth.authenticateApiKey(service2.apiKey))!,
     );
     expect(
       await auth.authenticate(request({ cookie: service2Cookie.split(";")[0]! })),

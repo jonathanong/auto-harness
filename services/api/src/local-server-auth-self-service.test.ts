@@ -33,7 +33,7 @@ describe("self-service authentication routes", () => {
     );
     expect(viewerTicket.status).toBe(200);
     expect(
-      auth.authenticateViewerTicket((viewerTicket.json as { ticket: string }).ticket),
+      await auth.authenticateViewerTicket((viewerTicket.json as { ticket: string }).ticket),
     ).toMatchObject(user);
     expect((await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket")).status).toBe(401);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/me")).status).toBe(401);
