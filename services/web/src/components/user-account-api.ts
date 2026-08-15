@@ -1,0 +1,55 @@
+import { apiFetch } from "../lib/client-api.ts";
+
+export type UserAccountRole = "read-only" | "operator" | "admin";
+
+export type UserAccount = {
+  id: string;
+  username: string;
+  role: UserAccountRole;
+  kind: "user";
+};
+
+export type UserAccountInput = {
+  username: string;
+  password: string;
+  role: UserAccountRole;
+};
+
+type UserAccountData =
+  | { kind: "ready"; accounts: UserAccount[] }
+  | { kind: "forbidden" }
+  | { kind: "unauthorized" };
+
+export async function loadUserAccounts(): Promise<UserAccountData> {
+  const response = await apiFetch("/api/v1/auth/users", { cache: "no-store" });
+  if (response.status === 401) return { kind: "unauthorized" };
+  if (response.status === 403) return { kind: "forbidden" };
+  if (!response.ok) throw new Error(await responseError(response));
+  const body = (await response.json()) as { items?: UserAccount[] };
+  return { kind: "ready", accounts: body.items ?? [] };
+}
+
+export async function createUserAccount(input: UserAccountInput): Promise<UserAccount> {
+  const response = await apiFetch("/api/v1/auth/users", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  return (await response.json()) as UserAccount;
+}
+
+/** The current API route identifies durable users by username. */
+export async function deleteUserAccount(username: string): Promise<void> {
+  const response = await apiFetch(`/api/v1/auth/users/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+}
+
+async function responseError(response: Response): Promise<string> {
+  const body = (await response.json().catch(() => null)) as {
+    error?: { message?: string };
+  } | null;
+  return body?.error?.message ?? `request failed (${response.status})`;
+}

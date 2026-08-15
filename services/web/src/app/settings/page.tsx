@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@auto-harness/ui";
 import { ChangePasswordForm } from "../../components/change-password-form.tsx";
 import { ServiceAccountSettings } from "../../components/service-account-settings.tsx";
 import { SettingsPageClient } from "../../components/settings-page-client.tsx";
+import { UserAccountSettings } from "../../components/user-account-settings.tsx";
 import { apiGet } from "../../lib/api.ts";
 
 type Principal = {
@@ -69,15 +70,18 @@ export default async function SettingsPage() {
           </Card>
         )
       ) : null}
-      <ServiceAccountSettings
-        canManage={
-          !principal ||
-          (principal.role === "admin" &&
-            !principal.allowedRepositoryIds?.length &&
-            !principal.boundHostId)
-        }
-      />
+      <UserAccountSettings canManage={canManageAccounts(principal)} />
+      <ServiceAccountSettings canManage={canManageAccounts(principal)} />
       <SettingsPageClient />
     </div>
+  );
+}
+
+function canManageAccounts(principal: Principal | undefined): boolean {
+  return (
+    !principal ||
+    (principal.role === "admin" &&
+      !principal.allowedRepositoryIds?.length &&
+      !principal.boundHostId)
   );
 }

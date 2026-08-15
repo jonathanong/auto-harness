@@ -31,8 +31,8 @@ export default defineConfig({
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
-        // Slack settings state and fields are exercised in happy-dom; the complete workflow stays in Playwright.
-        "services/web/src/components/{settings-page-client,slack-settings-fields}.tsx",
+        // Settings state and fields are exercised in happy-dom; complete workflows stay in Playwright.
+        "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx",
         "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
         "services/web/src/app/commands/page.tsx",
@@ -167,12 +167,13 @@ export default defineConfig({
             functions: 100,
             statements: 100,
           },
-        "services/web/src/components/{control-shell,host-filters,edit-worktree-form}.tsx": {
-          lines: 100,
-          branches: 100,
-          functions: 100,
-          statements: 100,
-        },
+        "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
+          {
+            lines: 100,
+            branches: 100,
+            functions: 100,
+            statements: 100,
+          },
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly}.tsx":
           {
             lines: 100,
