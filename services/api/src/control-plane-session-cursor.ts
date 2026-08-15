@@ -119,6 +119,12 @@ function sign(state: ControlPlaneState, payload: string): string {
   return createHmac("sha256", state.sessionCursorSecret).update(payload).digest("base64url");
 }
 
+function normalizeCursorQuery(query: unknown): unknown {
+  if (!query || typeof query !== "object" || Array.isArray(query)) return query;
+  const cursorQuery = query as Partial<CursorQuery>;
+  return { ...cursorQuery, source: cursorQuery.source ?? null };
+}
+
 export function encodeSessionCursor(state: ControlPlaneState, cursor: SessionCursor): string {
   const payload = cursorPayload(cursor);
   return `${payload}.${sign(state, payload)}`;
@@ -151,7 +157,7 @@ export function decodeSessionCursor(
   if (
     cursor.version !== expected.version ||
     cursor.sort !== expected.sort ||
-    JSON.stringify(cursor.query) !== JSON.stringify(expected.query) ||
+    JSON.stringify(normalizeCursorQuery(cursor.query)) !== JSON.stringify(expected.query) ||
     JSON.stringify(cursor.scope) !== JSON.stringify(expected.scope)
   ) {
     throw new InvalidSessionCursorError();

@@ -64,6 +64,17 @@ describe("session cursor primitives", () => {
     };
     const encoded = encodeSessionCursor(state, cursor);
     expect(decodeSessionCursor(state, encoded, base)).toEqual(cursor.position);
+    const legacy = encodeSessionCursor(state, {
+      ...cursor,
+      query: {
+        repositoryId: null,
+        status: null,
+        hostId: null,
+        concurrencyId: null,
+        scheduleId: null,
+      } as SessionCursor["query"],
+    });
+    expect(decodeSessionCursor(state, legacy, base)).toEqual(cursor.position);
     expect(() => decodeSessionCursor(state, "bad", base)).toThrow(InvalidSessionCursorError);
     expect(() => decodeSessionCursor(state, `${encoded}x`, base)).toThrow(
       InvalidSessionCursorError,
