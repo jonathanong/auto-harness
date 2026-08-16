@@ -204,7 +204,6 @@ export function handleHostMessage(
       const r = registerHost(state, {
         hostId: msg.hostId,
         worktrees: msg.worktrees,
-        commandProfiles: msg.commandProfiles,
         ...(msg.repositories ? { repositories: msg.repositories } : {}),
         ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
         ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),
@@ -306,7 +305,6 @@ export async function handleHostMessageDurable(
     const result = await registerHostDurable(state, {
       hostId: msg.hostId,
       worktrees: msg.worktrees,
-      commandProfiles: msg.commandProfiles,
       ...(msg.repositories ? { repositories: msg.repositories } : {}),
       ...(msg.capabilities ? { capabilities: msg.capabilities } : {}),
       ...(msg.runningSessions ? { runningSessions: msg.runningSessions } : {}),

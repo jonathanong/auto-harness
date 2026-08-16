@@ -49,7 +49,6 @@ export type ConnectionRecord = {
   hostId: string;
   connectedAt: string;
   lastHeartbeatAt: string;
-  commandProfiles: string[];
   /** Repository IDs advertised by this daemon, including zero-worktree repos. */
   repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
@@ -122,7 +121,7 @@ export type RepositoryRecord = {
 /** Enable/command override for a provider account at a repository or worktree scope. */
 export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 
-/** Durable agent host inventory (paths + command profile argv). */
+/** Durable agent host inventory (repository/worktree config for a host). */
 export type HostInventoryRecord = {
   hostId: string;
   /** Opaque identity last reported by a modern daemon process. */
@@ -150,10 +149,8 @@ export type HostInventoryRecord = {
     }>;
   }>;
   providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
-  commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
-  logLevel?: "debug" | "info" | "warn" | "error";
   updatedAt: string;
   /**
    * Optimistic-concurrency counter. The inventory document is replaced whole by

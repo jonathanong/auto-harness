@@ -359,9 +359,6 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
             worktree.labels.every((label) => boundedText(label, 128))
           );
         }) ||
-        !Array.isArray(message.commandProfiles) ||
-        message.commandProfiles.length > 1_000 ||
-        !message.commandProfiles.every((profile) => boundedText(profile)) ||
         (message.capabilities !== undefined &&
           (!Array.isArray(message.capabilities) ||
             message.capabilities.length > HOST_CAPABILITIES.length ||

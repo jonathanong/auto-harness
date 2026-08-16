@@ -51,6 +51,5 @@ export function validateRegisterWorktreeNames(
     hostId,
     repositories: [{ id: "_", path: "_", defaultBranch: "main", worktrees }],
     providerAccounts: [],
-    commandProfiles: {},
   });
 }

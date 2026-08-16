@@ -2,7 +2,6 @@ import type { WorktreeRecord } from "./db/types.ts";
 import type { LogQuery, LogRecord, PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as agents from "./control-plane-agents.ts";
-import { listCommandProfiles } from "./control-plane-command-profiles.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
 import * as durableRuntime from "./control-plane-durable-read-runtime.ts";
 import * as schedules from "./control-plane-schedules.ts";
@@ -66,12 +65,6 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
     await durableRuntime.refreshSchedulerReadModel(this.state);
     await durableRuntime.listWorktreesDurable(this.state);
     return agents.listHosts(this.state);
-  }
-
-  async listCommandProfilesDurable(): Promise<string[]> {
-    await durableRuntime.refreshSchedulerReadModel(this.state);
-    await durableRuntime.listWorktreesDurable(this.state);
-    return listCommandProfiles(this.state);
   }
 
   async getSessionDurable(id: string): Promise<PublicSession | null> {

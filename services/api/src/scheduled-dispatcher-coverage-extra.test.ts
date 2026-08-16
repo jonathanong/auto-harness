@@ -51,14 +51,13 @@ describe("scheduled dispatcher coverage edges", () => {
       "host",
       [{ id: "repo", path: "/old", defaultBranch: "trunk" }],
       [{ id: "wt", name: "wt", repositoryId: "repo", path: "/old/wt", labels: ["x"] }],
-      {},
       [],
       NOW,
     );
     const repos = resolveRegisteredRepositories(undefined, [], previous);
     expect(repos).toEqual([{ id: "repo", path: "/old", defaultBranch: "trunk" }]);
     expect(
-      buildRegisteredInventory("host", [{ id: "repo", path: "/new" }], [], {}, [], NOW, previous),
+      buildRegisteredInventory("host", [{ id: "repo", path: "/new" }], [], [], NOW, previous),
     ).toMatchObject({ repositories: [{ path: "/new", defaultBranch: "trunk", worktrees: [] }] });
   });
 
@@ -78,7 +77,7 @@ describe("scheduled dispatcher coverage edges", () => {
     ).toBeNull();
     state.hostInventories.set(
       "host",
-      buildRegisteredInventory("host", [{ id: "repo", path: "/repo" }], [], {}, [], NOW),
+      buildRegisteredInventory("host", [{ id: "repo", path: "/repo" }], [], [], NOW),
     );
     expect(
       resolveScheduledSessionTarget(state, buildProviderCatalog(state), scheduled(), "host"),
@@ -109,7 +108,6 @@ describe("scheduled dispatcher coverage edges", () => {
         hostId: "host",
         worktrees: [],
         repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
-        commandProfiles: [],
         runningSessions: [run.id],
         replaceExisting: true,
       });
@@ -128,7 +126,6 @@ describe("scheduled dispatcher coverage edges", () => {
       hostId: "host",
       worktrees: [],
       repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
-      commandProfiles: [],
       capabilities: ["scheduled-main-checkout"],
     });
     plane.state.sessions.set(

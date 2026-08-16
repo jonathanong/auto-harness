@@ -29,15 +29,6 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
     return true;
   }
 
-  if (method === "GET" && url.pathname === "/api/v1/command-profiles") {
-    try {
-      send(res, 200, { items: await plane.listCommandProfilesDurable() });
-    } catch {
-      send(res, 500, { error: { code: "INTERNAL_ERROR", message: "internal server error" } });
-    }
-    return true;
-  }
-
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
     try {
       send(res, 200, {

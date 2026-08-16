@@ -136,7 +136,6 @@ export function buildRegisteredInventory(
   hostId: string,
   repositories: readonly HostRepositoryRegistration[],
   worktrees: readonly RegisteredWorktree[],
-  commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>,
   capabilities: HostInventoryRecord["capabilities"],
   updatedAt: string,
   previous?: HostInventoryRecord,
@@ -178,9 +177,7 @@ export function buildRegisteredInventory(
       };
     }),
     providerAccounts: previous?.providerAccounts.map((account) => ({ ...account })) ?? [],
-    commandProfiles,
     capabilities,
-    ...(previous?.logLevel !== undefined ? { logLevel: previous.logLevel } : {}),
     updatedAt,
   };
 }

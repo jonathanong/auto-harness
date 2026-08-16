@@ -50,7 +50,6 @@ describe("scheduled final branch coverage", () => {
       "host",
       [{ id: "repo", path: "/old" }],
       [{ id: "wt", name: "wt", repositoryId: "repo", path: "/old/wt", labels: [] }],
-      {},
       [],
       NOW,
     );
@@ -60,7 +59,6 @@ describe("scheduled final branch coverage", () => {
         "host",
         [{ id: "repo", path: "/repo" }],
         [{ id: "wt", name: "wt", repositoryId: "repo", path: "/repo/wt", labels: [] }],
-        {},
         [],
         NOW,
         previous,

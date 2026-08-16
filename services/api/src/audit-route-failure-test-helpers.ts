@@ -149,7 +149,7 @@ export const durableMutationFailureCases = [
   [
     "PUT",
     "/api/v1/hosts/host-a/inventory",
-    { repositories: [], commandProfiles: {} },
+    { repositories: [] },
     "putHostInventoryDurable",
     "host-inventory:update",
   ],

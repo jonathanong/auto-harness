@@ -6,7 +6,7 @@ import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 
 describe("createLocalApp agent and scheduler routes", () => {
-  it("covers agents, profiles, scheduler, logs, resume, clone, drain routes", async () => {
+  it("covers agents, scheduler, logs, resume, clone, drain routes", async () => {
     const plane = new ControlPlane({
       idFactory: (() => {
         let n = 0;
@@ -19,7 +19,6 @@ describe("createLocalApp agent and scheduler routes", () => {
     plane.registerHost({
       hostId: "a1",
       worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
-      commandProfiles: ["echo-prompt"],
     });
     plane.createCommand({
       id: "cmd-echo",
@@ -33,7 +32,6 @@ describe("createLocalApp agent and scheduler routes", () => {
       invokeHandler(handler as never, method, path, body);
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
-    expect((await invoke("GET", "/api/v1/command-profiles")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
 
     const created = await invoke("POST", "/api/v1/sessions", {
