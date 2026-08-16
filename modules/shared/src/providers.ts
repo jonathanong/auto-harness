@@ -39,6 +39,13 @@ export type Command = {
   argv: string[];
   /** When true, session prompt is appended as the final argv element. */
   appendPrompt: boolean;
+  /**
+   * When true, a literal "--" is inserted before the appended prompt so a leading-dash
+   * prompt can't be read as a flag. Opt-in, not automatic: "--" only means "end of options"
+   * for getopt-style executables — e.g. `printf "%s"` treats it as literal data, turning
+   * "hello" into "--hello". Only enable this for commands whose executable itself honors "--".
+   */
+  appendPromptSeparator?: boolean;
   /** Optional argv-only native resume command. Supports {cliResumeRef} and {prompt}. */
   resumeArgvTemplate?: string[];
   /** Bounded literal-prefix policy used by the agent to extract a native resume reference. */

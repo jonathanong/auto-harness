@@ -8,7 +8,7 @@ describe("createGitClient checkout and revParse", () => {
     const git = createGitClient(
       scripted([
         {
-          match: ["rev-parse", "--verify", "main"],
+          match: ["rev-parse", "--verify", "--end-of-options", "main"],
           exitCode: 0,
           stdout: "abc123\n",
         },
@@ -21,9 +21,13 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fetches then falls back to checkout --detach", async () => {
     const git = createGitClient(
       scripted([
-        { match: ["rev-parse", "--verify", "main"], exitCode: 1, stderr: "no" },
+        { match: ["rev-parse", "--verify", "--end-of-options", "main"], exitCode: 1, stderr: "no" },
         { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-        { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "abc\n" },
+        {
+          match: ["rev-parse", "--verify", "--end-of-options", "main"],
+          exitCode: 0,
+          stdout: "abc\n",
+        },
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "old git" },
         { match: ["checkout", "--detach", "abc"], exitCode: 0 },
       ]),
@@ -35,9 +39,13 @@ describe("createGitClient checkout and revParse", () => {
     await expect(
       createGitClient(
         scripted([
-          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e" },
+          { match: ["rev-parse", "--verify", "--end-of-options", "bad"], exitCode: 1, stderr: "e" },
           { match: ["fetch", "--all", "--tags"], exitCode: 0 },
-          { match: ["rev-parse", "--verify", "bad"], exitCode: 1, stderr: "e2" },
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "bad"],
+            exitCode: 1,
+            stderr: "e2",
+          },
         ]),
       ).checkoutRef({ cwd: "/repo", ref: "bad" }),
     ).rejects.toThrow(/Failed to resolve ref/);
@@ -47,7 +55,11 @@ describe("createGitClient checkout and revParse", () => {
     await expect(
       createGitClient(
         scripted([
-          { match: ["rev-parse", "--verify", "main"], exitCode: 0, stdout: "abc\n" },
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "main"],
+            exitCode: 0,
+            stdout: "abc\n",
+          },
           { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
           { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
         ]),

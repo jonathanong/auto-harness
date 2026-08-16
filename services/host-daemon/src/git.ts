@@ -103,10 +103,25 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     async checkoutRef({ cwd, ref, signal }) {
       // Prefer detached checkout so a branch already used by the main repo
       // (e.g. ref "main" while primary tree is on main) still works.
-      let resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref], signal);
+      // `--end-of-options` stops git from reading `ref` as a flag: unlike most git
+      // subcommands, a plain `--` before the ref makes `rev-parse --verify` treat it
+      // as a pathspec instead of a revision ("Needed a single revision"), so this is
+      // the git-native separator here rather than `--` (see `switch -- ref` below,
+      // which does accept plain `--`).
+      let resolved = await runGit(
+        runner,
+        cwd,
+        ["rev-parse", "--verify", "--end-of-options", ref],
+        signal,
+      );
       if (resolved.exitCode !== 0) {
         await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
-        resolved = await runGit(runner, cwd, ["rev-parse", "--verify", ref], signal);
+        resolved = await runGit(
+          runner,
+          cwd,
+          ["rev-parse", "--verify", "--end-of-options", ref],
+          signal,
+        );
       }
       if (resolved.exitCode !== 0) {
         throw new Error(`Failed to resolve ref ${ref}: ${resolved.stderr}`);

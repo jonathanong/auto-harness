@@ -4,6 +4,7 @@ export function commandPatchFromBody(body: Record<string, unknown>): {
   name?: string;
   argv?: string[];
   appendPrompt?: boolean;
+  appendPromptSeparator?: boolean;
   providerId?: string | null;
   resumeArgvTemplate?: string[] | null;
   resumeRefCapture?: ResumeRefCapture | null;
@@ -12,6 +13,9 @@ export function commandPatchFromBody(body: Record<string, unknown>): {
     ...(typeof body.name === "string" ? { name: body.name } : {}),
     ...(Array.isArray(body.argv) ? { argv: body.argv as string[] } : {}),
     ...(typeof body.appendPrompt === "boolean" ? { appendPrompt: body.appendPrompt } : {}),
+    ...(typeof body.appendPromptSeparator === "boolean"
+      ? { appendPromptSeparator: body.appendPromptSeparator }
+      : {}),
     ...(typeof body.providerId === "string" || body.providerId === null
       ? { providerId: body.providerId }
       : {}),

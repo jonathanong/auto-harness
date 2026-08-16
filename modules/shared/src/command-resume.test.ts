@@ -37,6 +37,21 @@ describe("command native resume schema", () => {
     }
   });
 
+  it("inserts -- before a standalone {prompt} token only when appendPromptSeparator opts in", () => {
+    const template = ["codex", "resume", "{cliResumeRef}", "{prompt}"];
+    expect(materializeResumeArgv(template, "abc", "-x")).toEqual(["codex", "resume", "abc", "-x"]);
+    expect(materializeResumeArgv(template, "abc", "-x", true)).toEqual([
+      "codex",
+      "resume",
+      "abc",
+      "--",
+      "-x",
+    ]);
+    // The guard only applies to a whole-token placeholder — embedding {prompt} in a larger
+    // operator-authored string is unaffected either way.
+    expect(materializeResumeArgv(["--flag={prompt}"], "abc", "-x", true)).toEqual(["--flag=-x"]);
+  });
+
   it("rejects unknown placeholders, controls, and oversized values", () => {
     expect(validateCommandResumeSpec({ resumeArgvTemplate: ["x", "{shell}"] }).ok).toBe(false);
     expect(validateCommandResumeSpec({ resumeArgvTemplate: ["x", "{prompt}"] }).ok).toBe(false);

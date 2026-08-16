@@ -25,6 +25,7 @@ test.describe("control plane commands", () => {
     await page.getByTestId("command-catalog-name").fill(name);
     await page.getByTestId("command-catalog-argv").fill("echo");
     await expect(page.getByTestId("command-catalog-append-prompt")).toBeChecked();
+    await expect(page.getByTestId("command-catalog-append-prompt-separator")).not.toBeChecked();
     await page.getByTestId("command-catalog-submit").click();
 
     await expect(page).toHaveURL(/\/commands\/[^/]+$/, { timeout: 15_000 });
@@ -44,6 +45,8 @@ test.describe("control plane commands", () => {
     await expect(page.getByTestId("edit-command-error")).toBeHidden();
     await expect(page.getByTestId("edit-command-name")).toHaveValue(name);
     await expect(page.getByTestId("edit-command-append-prompt")).toBeChecked();
+    await expect(page.getByTestId("edit-command-append-prompt-separator")).not.toBeChecked();
+    await page.getByTestId("edit-command-append-prompt-separator").check();
     await page.getByTestId("edit-command-argv").fill("echo\n-n");
     await page.getByTestId("edit-command-provider").selectOption({ label: providerName });
     await page.getByTestId("edit-command-submit").click();
@@ -51,6 +54,10 @@ test.describe("control plane commands", () => {
     await expect(page.getByTestId("command-detail-provider")).toHaveText(providerName, {
       timeout: 15_000,
     });
+
+    // Round-trips through the API/DB: re-opening the edit form reflects the persisted value.
+    await page.getByTestId("edit-command-open").click();
+    await expect(page.getByTestId("edit-command-append-prompt-separator")).toBeChecked();
 
     await page.getByTestId("delete-command-open").click();
     await expect(page.getByTestId("delete-command-confirm")).toBeVisible();

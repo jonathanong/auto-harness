@@ -183,6 +183,7 @@ export class ControlPlaneCatalog extends ControlPlaneReadFacade {
       name: string;
       argv: string[];
       appendPrompt: boolean;
+      appendPromptSeparator: boolean;
       providerId: string | null;
       resumeArgvTemplate: string[] | null;
       resumeRefCapture: ResumeRefCapture | null;
@@ -197,6 +198,7 @@ export class ControlPlaneCatalog extends ControlPlaneReadFacade {
       name: string;
       argv: string[];
       appendPrompt: boolean;
+      appendPromptSeparator: boolean;
       providerId: string | null;
       resumeArgvTemplate: string[] | null;
       resumeRefCapture: ResumeRefCapture | null;

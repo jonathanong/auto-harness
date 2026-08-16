@@ -13,6 +13,8 @@ export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
   argv: string[];
   appendPrompt: boolean;
+  /** See Command.appendPromptSeparator. */
+  appendPromptSeparator?: boolean;
 };
 
 /** Payload used when assigning work to an agent (control plane → agent). */

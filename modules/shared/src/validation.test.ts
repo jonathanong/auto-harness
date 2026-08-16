@@ -203,6 +203,33 @@ describe("validateCreateSessionInput", () => {
     });
   });
 
+  it("rejects a manual session ref shaped as a CLI flag", () => {
+    // Previously only `type: "scheduled"` refs were checked for this — a manual
+    // session's ref reached `git rev-parse --verify <ref>` with no shape check at all.
+    const result = validateCreateSessionInput({ ...base, ref: "--upload-pack=evil" });
+    expect(result).toEqual({ ok: false, error: "ref must be a valid git ref" });
+  });
+
+  it("still accepts a manual session ref that a scheduled ref would reject", () => {
+    // A one-shot session may legitimately target a specific commit or a fully-qualified
+    // ref; only the scheduled path restricts to a stable branch name.
+    for (const ref of ["a1b2c3d", "HEAD~1", "refs/tags/v1.0.0"]) {
+      expect(validateCreateSessionInput({ ...base, ref }).ok).toBe(true);
+    }
+  });
+
+  it("rejects a prompt over the byte cap", () => {
+    const result = validateCreateSessionInput({
+      ...base,
+      prompt: "x".repeat(64 * 1024 + 1),
+    });
+    expect(result).toEqual({ ok: false, error: "prompt must be at most 65536 bytes" });
+  });
+
+  it("accepts a prompt at the byte cap", () => {
+    expect(validateCreateSessionInput({ ...base, prompt: "x".repeat(64 * 1024) }).ok).toBe(true);
+  });
+
   it("accepts concurrencyId and metadata", () => {
     const result = validateCreateSessionInput({
       ...base,

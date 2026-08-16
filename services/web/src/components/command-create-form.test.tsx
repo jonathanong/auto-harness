@@ -30,6 +30,7 @@ describe("CommandCreateForm", () => {
       name: "cmd",
       argv: ["tool", "-p"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: "p1",
     });
     expect(navigate).toHaveBeenCalledWith("/commands/c/1?toast=Command+created.");

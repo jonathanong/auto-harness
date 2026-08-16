@@ -14,6 +14,7 @@ export type CommandInput = {
   name: string;
   argv: string[];
   appendPrompt?: boolean;
+  appendPromptSeparator?: boolean;
   resumeArgvTemplate?: string[] | null;
   resumeRefCapture?: ResumeRefCapture | null;
   /** Soft FK — the UI filters/suggests by it; a mismatched value is never hard-blocked. */
@@ -60,6 +61,7 @@ function prepareCreateCommand(
     name: input.name,
     argv: argv.value,
     appendPrompt: input.appendPrompt !== false,
+    appendPromptSeparator: input.appendPromptSeparator === true,
     ...resume.value,
     providerId: input.providerId ?? null,
     createdAt: at,
@@ -106,6 +108,7 @@ export function updateCommand(
     name: string;
     argv: string[];
     appendPrompt: boolean;
+    appendPromptSeparator: boolean;
     providerId: string | null;
     resumeArgvTemplate: string[] | null;
     resumeRefCapture: ResumeRefCapture | null;
@@ -127,6 +130,7 @@ function prepareUpdateCommand(
     name: string;
     argv: string[];
     appendPrompt: boolean;
+    appendPromptSeparator: boolean;
     providerId: string | null;
     resumeArgvTemplate: string[] | null;
     resumeRefCapture: ResumeRefCapture | null;
@@ -148,6 +152,9 @@ function prepareUpdateCommand(
     ...(patch.name !== undefined ? { name: patch.name } : {}),
     ...(patch.argv !== undefined ? { argv: patch.argv } : {}),
     ...(patch.appendPrompt !== undefined ? { appendPrompt: patch.appendPrompt } : {}),
+    ...(patch.appendPromptSeparator !== undefined
+      ? { appendPromptSeparator: patch.appendPromptSeparator }
+      : {}),
     ...(patch.providerId !== undefined ? { providerId: patch.providerId } : {}),
     ...(patch.resumeArgvTemplate !== undefined && patch.resumeArgvTemplate !== null
       ? { resumeArgvTemplate: resume.value.resumeArgvTemplate }

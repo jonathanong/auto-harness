@@ -121,10 +121,18 @@ function resolveNativeResumeRoute(
     commandId: session.pinnedCommandId,
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
-      ? materializeResumeArgv(spec.resumeArgvTemplate, session.cliResumeRef!, session.prompt)
-      : spec.appendPrompt
-        ? [...spec.argv, session.prompt]
-        : [...spec.argv],
+      ? materializeResumeArgv(
+          spec.resumeArgvTemplate,
+          session.cliResumeRef!,
+          session.prompt,
+          spec.appendPromptSeparator,
+        )
+      : // Same opt-in `--` separator as buildArgv, for the same reason.
+        !spec.appendPrompt
+        ? [...spec.argv]
+        : spec.appendPromptSeparator
+          ? [...spec.argv, "--", session.prompt]
+          : [...spec.argv, session.prompt],
     resumeSpec: copyResumeSpec(spec),
   };
 }
@@ -294,13 +302,20 @@ export function resolveScheduledSessionTarget(
 
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
-  return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
+  if (!command.appendPrompt) return [...command.argv];
+  // `--` only neutralizes a leading-dash prompt for getopt-style executables that treat it
+  // as "end of options" — some commands (e.g. `printf "%s"`) instead read it as literal
+  // data, breaking the one-argument contract. So it's opt-in per Command, not automatic.
+  return command.appendPromptSeparator
+    ? [...command.argv, "--", prompt]
+    : [...command.argv, prompt];
 }
 
 function commandResumeSpec(command: CommandRecord): SessionResumeSpec {
   return {
     argv: [...command.argv],
     appendPrompt: command.appendPrompt,
+    appendPromptSeparator: command.appendPromptSeparator,
     ...(command.resumeArgvTemplate ? { resumeArgvTemplate: [...command.resumeArgvTemplate] } : {}),
     ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
   };
@@ -310,6 +325,7 @@ function copyResumeSpec(spec: SessionResumeSpec): SessionResumeSpec {
   return {
     argv: [...spec.argv],
     appendPrompt: spec.appendPrompt,
+    appendPromptSeparator: spec.appendPromptSeparator,
     ...(spec.resumeArgvTemplate ? { resumeArgvTemplate: [...spec.resumeArgvTemplate] } : {}),
     ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
   };

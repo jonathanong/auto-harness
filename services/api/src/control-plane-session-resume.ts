@@ -138,6 +138,7 @@ function copyResumeSpec(source: NonNullable<SessionRecord["resumeSpec"]>) {
   return {
     argv: [...source.argv],
     appendPrompt: source.appendPrompt,
+    appendPromptSeparator: source.appendPromptSeparator,
     ...(source.resumeArgvTemplate !== undefined
       ? { resumeArgvTemplate: [...source.resumeArgvTemplate] }
       : {}),

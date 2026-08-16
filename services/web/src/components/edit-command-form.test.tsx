@@ -41,6 +41,7 @@ describe("EditCommandForm", () => {
       name: "codex",
       argv: ["codex", "-p"],
       appendPrompt: false,
+      appendPromptSeparator: false,
       providerId: null,
     });
     expect(router.refresh).toHaveBeenCalledOnce();
@@ -84,6 +85,7 @@ describe("EditCommandForm", () => {
       name: "",
       argv: [],
       appendPrompt: false,
+      appendPromptSeparator: false,
       providerId: null,
     });
     view.unmount();

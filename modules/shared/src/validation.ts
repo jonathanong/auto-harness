@@ -9,10 +9,17 @@ import {
   DEFAULT_QUEUE_TTL_SECONDS,
 } from "./constants.ts";
 import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
-import { isValidScheduledBranchRef } from "./scheduled-branch-ref.ts";
+import { isValidScheduledBranchRef, isValidSessionRef } from "./scheduled-branch-ref.ts";
 import type { TargetRef } from "./session.ts";
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/**
+ * Upper bound on a session prompt. Without one, a prompt could grow to whatever the
+ * request-body cap allows (1 MiB), well past DynamoDB's 400 KiB item limit once combined
+ * with the rest of the session record.
+ */
+const MAX_PROMPT_BYTES = 64 * 1024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -87,6 +94,9 @@ export function validateCreateSessionInput(input: {
   if (!isNonEmptyString(input.prompt)) {
     return { ok: false, error: "prompt is required" };
   }
+  if (new TextEncoder().encode(input.prompt).length > MAX_PROMPT_BYTES) {
+    return { ok: false, error: `prompt must be at most ${MAX_PROMPT_BYTES} bytes` };
+  }
   const routing = validateTargetRouting(input);
   if (!routing.ok) return routing;
   if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {
@@ -116,6 +126,11 @@ export function validateCreateSessionInput(input: {
   if (input.ref !== undefined) {
     if (!isNonEmptyString(input.ref)) {
       return { ok: false, error: "ref must be a non-empty string when set" };
+    }
+    // Reject shell/argv-hostile shapes for every session, not only scheduled ones — a
+    // manual ref reaches `git rev-parse`/`git switch` in worktree-manager.ts too.
+    if (!isValidSessionRef(input.ref)) {
+      return { ok: false, error: "ref must be a valid git ref" };
     }
     ref = input.ref;
   }

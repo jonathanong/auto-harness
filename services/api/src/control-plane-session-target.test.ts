@@ -46,7 +46,7 @@ function worktree(over: Partial<WorktreeRecord> = {}): WorktreeRecord {
 }
 
 describe("resolveSessionTargetArgv", () => {
-  it("resolves a standalone command, appending the prompt", () => {
+  it("resolves a standalone command, appending the prompt as a single trailing element", () => {
     const state = createControlPlaneState();
     state.commands.set("cmd-1", {
       id: "cmd-1",
@@ -64,7 +64,31 @@ describe("resolveSessionTargetArgv", () => {
       session({ target: { commandId: "cmd-1" } }),
       worktree(),
     );
+    // No "--" by default: some executables (e.g. `printf "%s"`) read it as literal data
+    // rather than an option terminator, which would break the one-argument contract.
     expect(argv).toEqual(["echo", "hello"]);
+  });
+
+  it("inserts -- before the prompt only when appendPromptSeparator opts in", () => {
+    const state = createControlPlaneState();
+    state.commands.set("cmd-1", {
+      id: "cmd-1",
+      name: "claude-print",
+      argv: ["claude", "-p"],
+      appendPrompt: true,
+      appendPromptSeparator: true,
+      providerId: null,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    const catalog = buildProviderCatalog(state);
+    const argv = resolveSessionTargetArgv(
+      state,
+      catalog,
+      session({ target: { commandId: "cmd-1" }, prompt: "--dangerously-skip-permissions" }),
+      worktree(),
+    );
+    expect(argv).toEqual(["claude", "-p", "--", "--dangerously-skip-permissions"]);
   });
 
   it("resolves a standalone command without appending the prompt", () => {

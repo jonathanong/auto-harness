@@ -52,6 +52,7 @@ export function EditCommandForm({
           .map((s) => s.trim())
           .filter(Boolean);
         const appendPrompt = fd.get("appendPrompt") === "on";
+        const appendPromptSeparator = fd.get("appendPromptSeparator") === "on";
         const providerId = String(fd.get("providerId") ?? "") || null;
         start(async () => {
           const res = await fetch(
@@ -59,7 +60,7 @@ export function EditCommandForm({
             {
               method: "PUT",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ name, argv, appendPrompt, providerId }),
+              body: JSON.stringify({ name, argv, appendPrompt, appendPromptSeparator, providerId }),
             },
           );
           if (!res.ok) {
@@ -105,6 +106,15 @@ export function EditCommandForm({
           data-pw="edit-command-append-prompt"
         />
         append session prompt as the final argv element
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="appendPromptSeparator"
+          defaultChecked={command.appendPromptSeparator}
+          data-pw="edit-command-append-prompt-separator"
+        />
+        insert -- before the prompt (getopt-style CLIs only — breaks commands like printf)
       </label>
       <div className="space-y-1">
         <Label
