@@ -587,7 +587,6 @@ export async function registerHostDurable(
         opts.hostId,
         registeredRepositories,
         opts.worktrees,
-        previousInventory?.commandProfiles ?? {},
         conn.capabilities,
         at,
         previousInventory,
