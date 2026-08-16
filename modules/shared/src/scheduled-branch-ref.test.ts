@@ -69,6 +69,9 @@ describe("isValidSessionRef", () => {
       "feature/.hidden",
       "feature/topic.lock",
       "feature/",
+      "/feature",
+      "feature//broken",
+      "feature.",
       "feature name",
       "featurebroken",
       "feature@{1}",
@@ -76,5 +79,8 @@ describe("isValidSessionRef", () => {
     ]) {
       expect(isValidSessionRef(value)).toBe(false);
     }
+    expect(isValidSessionRef(1)).toBe(false);
+    expect(isValidSessionRef(null)).toBe(false);
+    expect(isValidSessionRef(undefined)).toBe(false);
   });
 });

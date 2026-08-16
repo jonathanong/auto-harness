@@ -147,10 +147,22 @@ export function materializeResumeArgv(
   template: readonly string[],
   resumeRef: string,
   prompt: string,
+  appendPromptSeparator = false,
 ): string[] {
-  return template.map((arg) =>
-    arg.replace(/\{(cliResumeRef|prompt)\}/g, (_match, placeholder: string) =>
-      placeholder === "cliResumeRef" ? resumeRef : prompt,
-    ),
-  );
+  const argv: string[] = [];
+  for (const arg of template) {
+    // Same opt-in `--` guard as buildArgv (control-plane-session-target.ts), for the same
+    // reason: only safe when the whole element is the prompt placeholder, not embedded in a
+    // larger operator-authored string.
+    if (appendPromptSeparator && arg === "{prompt}") {
+      argv.push("--", prompt);
+      continue;
+    }
+    argv.push(
+      arg.replace(/\{(cliResumeRef|prompt)\}/g, (_match, placeholder: string) =>
+        placeholder === "cliResumeRef" ? resumeRef : prompt,
+      ),
+    );
+  }
+  return argv;
 }

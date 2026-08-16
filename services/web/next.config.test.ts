@@ -39,6 +39,13 @@ describe("services/web CSP connect-src", () => {
     expect(csp).not.toContain("7420");
   });
 
+  it("falls back to apiUpstream when NEXT_PUBLIC_HARNESS_VIEWER_WS_URL is not a parseable URL", async () => {
+    process.env.HARNESS_API_HTTP = "http://127.0.0.1:7420";
+    process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL = "not-a-url";
+    const csp = await loadCspHeader();
+    expect(csp).toContain("connect-src 'self' ws://127.0.0.1:7420");
+  });
+
   it("bakes the same effective viewer URL into the client env as the CSP is derived from", async () => {
     process.env.HARNESS_API_HTTP = "http://127.0.0.1:7420";
     process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL = "wss://viewer.example.com:9443/ws/viewer";

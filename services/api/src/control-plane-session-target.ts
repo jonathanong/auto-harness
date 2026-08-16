@@ -121,7 +121,12 @@ function resolveNativeResumeRoute(
     commandId: session.pinnedCommandId,
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
-      ? materializeResumeArgv(spec.resumeArgvTemplate, session.cliResumeRef!, session.prompt)
+      ? materializeResumeArgv(
+          spec.resumeArgvTemplate,
+          session.cliResumeRef!,
+          session.prompt,
+          spec.appendPromptSeparator,
+        )
       : // Same opt-in `--` separator as buildArgv, for the same reason.
         !spec.appendPrompt
         ? [...spec.argv]
