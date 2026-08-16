@@ -59,9 +59,12 @@ integers): `HARNESS_RATE_LIMIT_WINDOW_SECONDS`,
 `HARNESS_RATE_LIMIT_MUTATION`, `HARNESS_RATE_LIMIT_SCHEDULER`,
 `HARNESS_RATE_LIMIT_HOST`, `HARNESS_RATE_LIMIT_MAX_ENTRIES`, and
 `HARNESS_WS_RATE_LIMIT_PER_SECOND`. Set `HARNESS_RATE_LIMIT_MODE=disabled` only
-for an isolated loopback test. Login is keyed by the peer socket address. A
-forwarded address is used only when `HARNESS_TRUST_PROXY=true`; otherwise
-`X-Forwarded-For` is ignored because it is spoofable.
+for an isolated loopback test. The login bucket applies to `POST /auth/login`
+and to unauthenticated requests that fail credential checks. It is keyed by
+the peer socket address. Authenticated requests use only the actor
+read/mutation/scheduler/host buckets. A forwarded address is used only when
+`HARNESS_TRUST_PROXY=true`; otherwise `X-Forwarded-For` is ignored because it
+is spoofable.
 
 In memory-only mode, counters are bounded by `HARNESS_RATE_LIMIT_MAX_ENTRIES`
 and evict the oldest key when full. With DynamoDB-backed mode, each counter is
