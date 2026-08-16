@@ -41,10 +41,12 @@ defeats the point of a secret. Instead, each Lambda's environment holds only the
 **name** of an SSM `SecureString` parameter; the Lambda fetches the actual value
 from SSM once per cold start.
 
-**Before synthesizing**, populate the three SecureString parameters (CloudFormation
-cannot create a `SecureString` parameter itself, so this is always a separate,
-out-of-band step — run it once per environment, before or after the stack deploy,
-in any order):
+Populate the three SecureString parameters **before deployment, or at latest before
+the first Lambda invocation** (synthesis itself never reads a parameter value, so it
+does not need this step first; deploy and provisioning are independent of each other,
+but every cold start does need it). CloudFormation cannot create a `SecureString`
+parameter itself, so this is always a separate, out-of-band step, run once per
+environment:
 
 ```bash
 aws ssm put-parameter --type SecureString --overwrite \
@@ -55,13 +57,25 @@ aws ssm put-parameter --type SecureString --overwrite \
   --name /auto-harness/harness-cursor-secret --value "$(openssl rand -base64 32)"
 ```
 
+If a Lambda cold-starts before these are populated, that invocation fails — but the
+failure does not stick: the next invocation retries the fetch rather than reusing a
+cached failure for the rest of that container's lifetime, so provisioning late is a
+recoverable mistake, not one that needs a container recycle to clear.
+
 The stack parameters `HarnessAdminsSsmParam`, `HarnessSessionSecretSsmParam`,
 and `HarnessCursorSecretSsmParam` default to the parameter names above; override
-them at deploy time only if you name your parameters differently. Each Lambda's
-IAM role is granted `ssm:GetParameter` scoped to exactly these three parameter
-ARNs, plus `kms:Decrypt` on the AWS-managed `alias/aws/ssm` key (the default
-encryption key for a `SecureString` created without specifying a customer-managed
-key).
+them at deploy time only if you name your parameters differently. CloudFormation
+rejects an override that does not start with `/` — an SSM parameter ARN always
+needs a leading slash, whether it comes from a hierarchical name's own `/` or one
+supplied separately, so this repo requires the former rather than guessing which
+case applies. Each Lambda's IAM role is granted `ssm:GetParameter` scoped to
+exactly these three parameter ARNs, plus `kms:Decrypt` on the AWS-managed
+`alias/aws/ssm` key (the default encryption key for a `SecureString` created
+without specifying a customer-managed key) — scoped further with `kms:ViaService`
+(so the grant only applies to SSM calling KMS on the Lambda's behalf, not a direct
+`kms:Decrypt` for anything else encrypted under that shared key) and an
+`EncryptionContext:PARAMETER_ARN` condition (so it only applies to decrypting
+these three specific parameters).
 
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

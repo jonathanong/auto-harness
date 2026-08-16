@@ -6,11 +6,11 @@ How principals prove identity and what they can do. Security principles, transpo
 
 Auto Harness has three tiers of credentials:
 
-| Tier             | For                      | Auth method                      | Managed by           |
-| ---------------- | ------------------------ | -------------------------------- | -------------------- |
-| Admin accounts   | Platform administrators  | Username + password (env var)    | Environment variable |
-| User accounts    | Human operators          | Username + password (basic auth) | Admins               |
-| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins               |
+| Tier             | For                      | Auth method                      | Managed by                                                   |
+| ---------------- | ------------------------ | -------------------------------- | ------------------------------------------------------------ |
+| Admin accounts   | Platform administrators  | Username + password (env var)    | Local/VPS: env var. Lambda: [SSM parameter](#admin-accounts) |
+| User accounts    | Human operators          | Username + password (basic auth) | Admins                                                       |
+| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins                                                       |
 
 ## Local authentication and public binds
 
@@ -149,7 +149,7 @@ sequenceDiagram
     participant DDB as DynamoDB
 
     Browser->>API: POST /auth/login { username, password }
-    API->>API: Check HARNESS_ADMINS env var
+    API->>API: Check bootstrap admins (env var locally, SSM-fetched value on Lambda)
     alt Admin account match
         API->>Browser: 200 + Set-Cookie: session=jwt (role: admin)
     else Not an admin
