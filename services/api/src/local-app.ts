@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- login, logout, and actor rate-limit paths share one handler. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { AuthService } from "./auth.ts";
@@ -79,8 +80,9 @@ export function createLocalApp(options: LocalServerOptions = {}): {
       if (await enforceRateLimit(loginLimit)) return;
       if (await handleAuthRoutes({ auth, ...ctx })) return;
     }
-    const authorization = req.headers.authorization ?? "";
-    const basicGuess = authorization.startsWith("Basic ") && !hasSessionCookie(req.headers.cookie);
+    const authorizationHeader = req.headers?.authorization;
+    const authorization = typeof authorizationHeader === "string" ? authorizationHeader : "";
+    const basicGuess = authorization.startsWith("Basic ") && !hasSessionCookie(req.headers?.cookie);
     if (auth.mode === "required") {
       // Password guesses must consume the spray budget before bcrypt.
       if (basicGuess && (await enforceRateLimit(loginLimit))) return;
