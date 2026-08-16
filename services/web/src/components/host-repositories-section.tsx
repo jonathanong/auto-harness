@@ -59,7 +59,7 @@ export function HostRepositoriesSection({
             const repo = reposById[g.repositoryId];
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
-                <HostRepoSettingsForm hostId={hostId} inventory={inventory} repo={repo} />
+                <HostRepoSettingsForm hostId={hostId} repo={repo} />
                 <div className="flex gap-2">
                   <AddWorktreeForm
                     hostId={hostId}

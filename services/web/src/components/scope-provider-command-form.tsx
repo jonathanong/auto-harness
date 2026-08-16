@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
 import {
-  getInventory,
-  putInventory,
+  mutateInventory,
   setScopeProviderCommand,
   type Command,
   type ProviderAccountScope,
@@ -44,14 +43,9 @@ export function ScopeProviderCommandForm({
         setPending(true);
         void (async () => {
           try {
-            const current = await getInventory(hostId);
-            const next = setScopeProviderCommand(
-              current,
-              scope,
-              providerAccountId,
-              value || undefined,
+            const r = await mutateInventory(hostId, (current) =>
+              setScopeProviderCommand(current, scope, providerAccountId, value || undefined),
             );
-            const r = await putInventory(hostId, next);
             if (!r.ok) {
               setError(r.error);
               return;

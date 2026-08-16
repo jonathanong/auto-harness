@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { getInventory, putInventory, removeHostWorktree } from "@auto-harness/shared";
+import { mutateInventory, removeHostWorktree } from "@auto-harness/shared";
 
 import { ConfirmButton } from "./confirm-button.tsx";
 
@@ -10,16 +10,15 @@ export function RemoveWorktreeButton({
   repositoryId,
   worktreeId,
   redirectTo,
-  readInventory = getInventory,
-  writeInventory = putInventory,
+  mutate = mutateInventory,
 }: {
   hostId: string;
   repositoryId: string;
   worktreeId: string;
   /** Navigate here after a successful removal instead of refreshing in place (e.g. the detail page). */
   redirectTo?: string;
-  readInventory?: typeof getInventory;
-  writeInventory?: typeof putInventory;
+  /** Injectable read-modify-write boundary; conditional on the version it reads. */
+  mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   return (
@@ -29,9 +28,9 @@ export function RemoveWorktreeButton({
       confirmDescription="Removes it from host inventory. Does not delete disk files."
       pw={`worktree-remove-${worktreeId}`}
       onConfirm={async () => {
-        const current = await readInventory(hostId);
-        const next = removeHostWorktree(current, repositoryId, worktreeId);
-        const r = await writeInventory(hostId, next);
+        const r = await mutate(hostId, (current) =>
+          removeHostWorktree(current, repositoryId, worktreeId),
+        );
         if (!r.ok) {
           return;
         }

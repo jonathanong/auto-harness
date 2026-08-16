@@ -14,11 +14,54 @@ const repo = {
 };
 const inventory = { repositories: [repo], providerAccounts: [], commandProfiles: {} };
 
+/**
+ * Inventory mutations now read fresh immediately before writing, so the stub must answer
+ * the GET as well as the PUT.
+ */
+function stubInventoryFetch(current: unknown) {
+  const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    Promise.resolve(
+      init?.method === "PUT"
+        ? new Response(null, { status: 204 })
+        : new Response(JSON.stringify(current), { status: 200 }),
+    ),
+  );
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+function putBody(fetch: { mock: { calls: unknown[][] } }): unknown {
+  const call = fetch.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+  return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
+}
+
+/**
+ * Answers the read immediately and defers the write, which is the call under test. The
+ * write only starts once the read resolves, so `finish` waits for it to register.
+ */
+function stubDeferredPut(current: unknown) {
+  let settle: ((response: Response) => void) | undefined;
+  const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    init?.method === "PUT"
+      ? new Promise<Response>((resolve) => (settle = resolve))
+      : Promise.resolve(new Response(JSON.stringify(current), { status: 200 })),
+  );
+  vi.stubGlobal("fetch", fetch);
+  // The write starts only after the read resolves, so yield until it registers. The loop
+  // condition is updated from the fetch stub, not from inside the loop body.
+  const finish = async (response: Response) => {
+    for (let i = 0; i < 20; i += 1) {
+      if (settle) break;
+      await Promise.resolve();
+    }
+    settle?.(response);
+  };
+  return { fetch, finish };
+}
+
 describe("HostRepoSettingsForm", () => {
   it("opens its settings, exposes labelled inputs, and cancels", () => {
-    const view = mountForm(
-      <HostRepoSettingsForm hostId="host" inventory={inventory} repo={repo} />,
-    );
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     expect(
       field<HTMLInputElement>(view.container, "repo-settings-path-repo-1").labels?.[0]?.textContent,
@@ -36,9 +79,7 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("requires an absolute path before saving", () => {
-    const view = mountForm(
-      <HostRepoSettingsForm hostId="host" inventory={inventory} repo={repo} />,
-    );
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     const form = field<HTMLFormElement>(view.container, "form-repo-settings-repo-1");
     field(view.container, "repo-settings-path-repo-1").remove();
@@ -50,11 +91,8 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("saves trimmed settings with a main fallback and keeps worktrees", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
-    const view = mountForm(
-      <HostRepoSettingsForm hostId="host/one" inventory={inventory} repo={repo} />,
-    );
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(<HostRepoSettingsForm hostId="host/one" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     setValue(field(view.container, "repo-settings-path-repo-1"), " /new/repo ");
     setValue(field(view.container, "repo-settings-branch-repo-1"), " ");
@@ -62,7 +100,7 @@ describe("HostRepoSettingsForm", () => {
     setValue(field(view.container, "repo-settings-hook-repo-1"), "hook");
     submit(field(view.container, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+    expect(putBody(fetch)).toMatchObject({
       repositories: [
         {
           id: "repo-1",
@@ -80,12 +118,8 @@ describe("HostRepoSettingsForm", () => {
   });
 
   it("uses absent field fallbacks and displays a pending save failure", async () => {
-    let finish!: (response: Response) => void;
-    const fetch = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
-    vi.stubGlobal("fetch", fetch);
-    const view = mountForm(
-      <HostRepoSettingsForm hostId="host" inventory={inventory} repo={repo} />,
-    );
+    const { finish } = stubDeferredPut(inventory);
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     const form = field<HTMLFormElement>(view.container, "form-repo-settings-repo-1");
     field(view.container, "repo-settings-branch-repo-1").remove();
@@ -95,7 +129,7 @@ describe("HostRepoSettingsForm", () => {
     expect(field<HTMLButtonElement>(view.container, "repo-settings-submit-repo-1").disabled).toBe(
       true,
     );
-    await act(async () => finish(new Response("cannot save", { status: 500 })));
+    await act(async () => await finish(new Response("cannot save", { status: 500 })));
     expect(field(view.container, "repo-settings-error-repo-1").textContent).toBe("cannot save");
     view.unmount();
   });

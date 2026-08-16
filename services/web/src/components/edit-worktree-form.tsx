@@ -2,22 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  putInventory,
-  updateHostWorktree,
-  type HostInventory,
-  type HostWorktree,
-} from "@auto-harness/shared";
+import { mutateInventory, updateHostWorktree, type HostWorktree } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 
 export function EditWorktreeForm({
   hostId,
-  inventory,
   repositoryId,
   worktree,
 }: {
   hostId: string;
-  inventory: HostInventory;
   repositoryId: string;
   worktree: HostWorktree;
 }) {
@@ -58,13 +51,16 @@ export function EditWorktreeForm({
           return;
         }
         start(async () => {
-          const next = updateHostWorktree(inventory, repositoryId, {
-            id: worktree.id,
-            name: worktree.name,
-            path,
-            labels,
-          });
-          const r = await putInventory(hostId, next);
+          // Built from a fresh read, not the page-load `inventory` prop: another tab may
+          // have changed the document since this page rendered.
+          const r = await mutateInventory(hostId, (current) =>
+            updateHostWorktree(current, repositoryId, {
+              id: worktree.id,
+              name: worktree.name,
+              path,
+              labels,
+            }),
+          );
           if (!r.ok) {
             setError(r.error);
             return;

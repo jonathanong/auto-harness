@@ -92,36 +92,17 @@ describe("shared path and destructive action controls", () => {
   });
 
   it("requires confirmation and refreshes or redirects after repository removal", async () => {
-    const readInventory = vi.fn().mockResolvedValue({
-      repositories: [],
-      providerAccounts: [],
-      commandProfiles: {},
-    });
-    const writeInventory = vi.fn();
+    const mutate = vi.fn();
     mount(<RemoveRepoButton hostId="host-1" repositoryId="default" />).unmount();
 
-    let view = mount(
-      <RemoveRepoButton
-        hostId="host-1"
-        repositoryId="repo-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
-      />,
-    );
-    writeInventory.mockResolvedValueOnce({ ok: false, error: "failed" });
+    let view = mount(<RemoveRepoButton hostId="host-1" repositoryId="repo-1" mutate={mutate} />);
+    mutate.mockResolvedValueOnce({ ok: false, error: "failed" });
     await confirm("repo-remove-repo-1");
     expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
 
-    view = mount(
-      <RemoveRepoButton
-        hostId="host-1"
-        repositoryId="repo-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
-      />,
-    );
-    writeInventory.mockResolvedValueOnce({ ok: true });
+    view = mount(<RemoveRepoButton hostId="host-1" repositoryId="repo-1" mutate={mutate} />);
+    mutate.mockResolvedValueOnce({ ok: true });
     await confirm("repo-remove-repo-1");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -131,24 +112,17 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         redirectTo="/repositories"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
+    mutate.mockResolvedValueOnce({ ok: true });
     await confirm("repo-remove-repo-1");
     expect(router.push).toHaveBeenCalledWith("/repositories");
     expect(router.refresh).toHaveBeenCalledTimes(2);
   });
 
   it("requires confirmation and refreshes or redirects after worktree removal", async () => {
-    const current = {
-      repositories: [{ id: "repo-1", path: "/src/repo", defaultBranch: "main", worktrees: [] }],
-      providerAccounts: [],
-      commandProfiles: {},
-    };
-    const readInventory = vi.fn().mockResolvedValue(current);
-    const writeInventory = vi.fn();
+    const mutate = vi.fn();
     mount(
       <RemoveWorktreeButton hostId="host-1" repositoryId="repo-1" worktreeId="default" />,
     ).unmount();
@@ -158,11 +132,10 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         worktreeId="worktree-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: false, error: "failed" });
+    mutate.mockResolvedValueOnce({ ok: false, error: "failed" });
     await confirm("worktree-remove-worktree-1");
     expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
@@ -172,11 +145,10 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         worktreeId="worktree-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
+    mutate.mockResolvedValueOnce({ ok: true });
     await confirm("worktree-remove-worktree-1");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -187,11 +159,10 @@ describe("shared path and destructive action controls", () => {
         repositoryId="repo-1"
         worktreeId="worktree-1"
         redirectTo="/worktrees"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
+    mutate.mockResolvedValueOnce({ ok: true });
     await confirm("worktree-remove-worktree-1");
     expect(router.push).toHaveBeenCalledWith("/worktrees");
     expect(router.refresh).toHaveBeenCalledTimes(2);
