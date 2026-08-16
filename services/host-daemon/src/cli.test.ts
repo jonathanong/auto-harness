@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
 import type { DaemonConfig } from "./config.ts";
@@ -120,6 +122,19 @@ describe("printUsage / main / defaults", () => {
     expect(lines[0]).toMatch(/local-1/);
     const d = createDefaultRunSessionDeps();
     expect(typeof d.loadConfig).toBe("function");
+  });
+
+  it("default deps' log/error/readFile close over the real console and filesystem", () => {
+    const d = createDefaultRunSessionDeps();
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    d.log("hello");
+    d.error("oops");
+    expect(log).toHaveBeenCalledWith("hello");
+    expect(error).toHaveBeenCalledWith("oops");
+    log.mockRestore();
+    error.mockRestore();
+    expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
   });
 
   it("main delegates", async () => {

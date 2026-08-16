@@ -25,7 +25,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm install`                | Install workspace                                                                |
 | `pnpm lint`                   | oxlint                                                                           |
 | `pnpm fmt` / `pnpm fmt:check` | oxfmt                                                                            |
-| `pnpm test`                   | vitest with **100%** coverage thresholds                                         |
+| `pnpm test`                   | vitest with coverage thresholds (98/97/100/98 global; 100% per-file overrides)   |
 | `pnpm knip`                   | Unused exports/deps                                                              |
 | `pnpm depcruise`              | Architecture import boundaries                                                   |
 | `pnpm links`                  | lychee markdown link check                                                       |
@@ -44,7 +44,7 @@ Package manager: **pnpm** only (see `packageManager` in root `package.json`). Lo
 ## Testing
 
 - Framework: **vitest**.
-- Coverage: **100%** lines, branches, functions, statements on `modules/*/src` and `services/*/src` (excluding pure type files like `types.ts`, `session.ts`, thin `**/cli.ts`, and `*.test.ts`).
+- Coverage: enforced globally at **lines 98 / branches 97 / functions 100 / statements 98** on `modules/*/src` and `services/*/src` (excluding pure type files like `types.ts`, `session.ts`, thin `**/cli.ts`, and `*.test.ts`); `vitest.config.ts` raises most individual files to a **100%** per-file threshold override — see its `coverage.thresholds` map for the current list.
 - **Mock only host CLI boundaries** (`child_process`, `node-pty`, and similar “run a CLI tool” adapters). Prefer real modules, in-memory fakes, and pure functions for everything else.
 - Do not lower coverage thresholds to land incomplete code.
 

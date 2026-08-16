@@ -35,6 +35,9 @@ export default defineConfig({
         "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx",
         "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
+        "services/host-pane/src/lib/{api,inventory}.ts",
+        "services/host-pane/src/middleware.ts",
+        "services/host-daemon/src/cli.ts",
         "services/web/src/app/commands/page.tsx",
         "services/web/src/app/commands/*/page.tsx",
         "services/web/src/app/providers/page.tsx",
@@ -54,10 +57,14 @@ export default defineConfig({
         "**/.next/**",
         "**/types.ts",
         "**/*-types.ts",
-        "**/session.ts",
-        "**/providers.ts",
-        "**/daemon-transport.ts",
-        "**/cli.ts",
+        // Exact paths, not a `**` glob: these two are pure type-only files today, but a
+        // glob would silently drop coverage on any future file that happens to share the
+        // name, anywhere in the repo.
+        "modules/shared/src/session.ts",
+        "modules/shared/src/providers.ts",
+        // These two are thin entrypoints; services/host-daemon/src/cli.ts is real
+        // argv-parsing and dispatch logic — see its explicit include/threshold below.
+        "services/{api,cdk}/src/cli.ts",
         // Follow-up DynamoDB storage-adapter coverage tranches retain the split
         // implementations. The core client/table/bootstrap adapter is covered here
         // with real-Dynamo integration tests.
@@ -81,10 +88,6 @@ export default defineConfig({
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
         "**/services/web/src/lib/attach-local-repo.ts",
-        // Host-pane component and explicit route coverage are enabled;
-        // server helpers remain e2e-only.
-        "**/services/host-pane/src/lib/**",
-        "**/services/host-pane/src/middleware.ts",
         "**/services/host-pane/src/index.ts",
         "**/next.config.ts",
         "**/tailwind.config.ts",
@@ -96,120 +99,71 @@ export default defineConfig({
         functions: 100,
         statements: 98,
         "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,repository-url-copy.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/web/src/components/schedule-enabled-toggle.tsx": { 100: true },
         "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx}":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
         "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx":
           {
             100: true,
           },
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters,session-logs}.tsx":
           {
             100: true,
           },
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx":
-          {
-            lines: 100,
-            branches: 100,
-            functions: 100,
-            statements: 100,
-          },
+          { 100: true },
         "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport}.ts":
           {
             100: true,
           },
         "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
+        // Real argv-parsing/dispatch logic, unlike the two thin cli.ts entrypoints this
+        // module is not covering. `start`'s raw SIGINT/SIGTERM handling and the
+        // top-level direct-invocation guard are not exercised by unit tests today —
+        // threshold pinned at the currently-achieved value rather than 100.
+        "services/host-daemon/src/cli.ts": {
+          lines: 86,
+          branches: 78,
+          functions: 72,
+          statements: 86,
+        },
+        "services/host-pane/src/middleware.ts": { 100: true },
+        "services/host-pane/src/lib/inventory.ts": { 100: true },
+        // headers()'s success path (forwarding a real cookie/authorization pair) needs a
+        // Next.js request context this test environment does not provide; only the
+        // no-context catch branch is exercised.
+        "services/host-pane/src/lib/api.ts": {
+          lines: 94,
+          branches: 60,
+          functions: 100,
+          statements: 94,
+        },
         "services/host-pane/src/app/layout.tsx": { 100: true },
         "services/host-pane/src/app/page.tsx": { 100: true },
         "services/host-pane/src/app/repositories/page.tsx": { 100: true },
         "services/host-pane/src/app/settings/page.tsx": { 100: true },
         "services/host-pane/src/app/api/browse/route.ts": { 100: true },
-        "services/web/src/app/commands/**/page.tsx": {
-          lines: 100,
-          branches: 100,
-          functions: 100,
-          statements: 100,
-        },
-        "services/web/src/app/providers/**/page.tsx": {
-          lines: 100,
-          branches: 100,
-          functions: 100,
-          statements: 100,
-        },
-        "services/web/src/app/repositories/**/page.tsx": {
-          lines: 100,
-          branches: 100,
-          functions: 100,
-          statements: 100,
-        },
+        "services/web/src/app/commands/**/page.tsx": { 100: true },
+        "services/web/src/app/providers/**/page.tsx": { 100: true },
+        "services/web/src/app/repositories/**/page.tsx": { 100: true },
         "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
