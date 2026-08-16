@@ -30,13 +30,11 @@ type Host = {
   daemonStartedAt?: string | null;
   restartCount?: number;
   lastRestartDetectedAt?: string | null;
-  commandProfiles?: string[];
   worktreeIds?: string[];
 };
 
 type HostInventorySummary = {
   hostId: string;
-  commandProfiles?: Record<string, unknown>;
   repositories?: unknown[];
 };
 
@@ -113,7 +111,6 @@ export default async function HostsPage({
             <TableRow>
               <TableHead>hostId</TableHead>
               <TableHead>online</TableHead>
-              <TableHead>profiles</TableHead>
               <TableHead>repos</TableHead>
               <TableHead>host config</TableHead>
               <TableHead>connected</TableHead>
@@ -141,9 +138,6 @@ export default async function HostsPage({
                   </TableCell>
                   <TableCell>
                     <OnlineStatusBadge online={h.online} pw={`host-online-${h.hostId}`} />
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {JSON.stringify(h.commandProfiles ?? [])}
                   </TableCell>
                   <TableCell className="text-xs">{repoCount}</TableCell>
                   <TableCell>{inventory ? "yes" : "no"}</TableCell>

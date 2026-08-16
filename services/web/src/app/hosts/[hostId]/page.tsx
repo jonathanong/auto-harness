@@ -54,7 +54,6 @@ export default async function HostDetailPage({
 
   const inv: HostInventory = {
     repositories: [],
-    commandProfiles: {},
     ...inventory,
     // A record persisted before this field existed can genuinely lack it at runtime,
     // despite the type saying it's required — never crash on stale storage data.

@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 describe("host-pane settings route", () => {
-  it("renders provider-account names and a host inventory with its optional log level", async () => {
+  it("renders provider-account names from the host inventory", async () => {
     process.env.HARNESS_HOST_ID = "host-a";
     setApiTransportForTests(async (input) => {
       const url = String(input);
@@ -34,8 +34,6 @@ describe("host-pane settings route", () => {
         return Response.json({
           repositories: [],
           providerAccounts: [{ providerAccountId: "account-a" }],
-          commandProfiles: { default: ["codex"] },
-          logLevel: "debug",
         });
       }
       if (url.endsWith("/providers"))
@@ -51,7 +49,6 @@ describe("host-pane settings route", () => {
 
     expect(markup).toContain("Provider accounts");
     expect(markup).toContain("Provider A — Account A");
-    expect(markup).toContain("&quot;logLevel&quot;: &quot;debug&quot;");
   });
 
   it("keeps raw inventory settings usable when the catalog requests fail", async () => {

@@ -58,7 +58,7 @@ export function HostConfigForm({
       <div className="space-y-1">
         <Label
           htmlFor="configJson"
-          tip="Full host inventory JSON (repositories, worktrees, commandProfiles). Prefer the form UI when possible."
+          tip="Full host inventory JSON (repositories, worktrees). Prefer the form UI when possible."
         >
           host config JSON
         </Label>
