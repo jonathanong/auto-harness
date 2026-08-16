@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
-import { installCrashLogging, onShutdownSignal, type SessionAssign } from "@auto-harness/shared";
+import {
+  installCrashLogging,
+  onShutdownSignal,
+  type LifecycleLogger,
+  type SessionAssign,
+} from "@auto-harness/shared";
 
 import type { DaemonConfig } from "./config.ts";
 import { loadDaemonConfig } from "./config.ts";
@@ -16,6 +21,22 @@ function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.HARNESS_SHUTDOWN_TIMEOUT_MS;
   const parsed = raw === undefined ? Number.NaN : Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 60_000;
+}
+
+/**
+ * Builds onShutdownSignal's logger from deps.error. A curried factory rather than an
+ * inline arrow at the call site: the returned function is a stable, named reference that
+ * a test can invoke directly, instead of a fresh closure per `runCli` call that only
+ * onShutdownSignal itself would ever call.
+ */
+export function shutdownLoggerFor(error: (msg: string) => void): LifecycleLogger {
+  return (message, err) => {
+    error(
+      err === undefined
+        ? message
+        : `${message}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  };
 }
 
 export function printUsage(log: (msg: string) => void = console.log): void {
@@ -49,6 +70,8 @@ export type RunSessionDeps = {
   readFile: (path: string) => string;
   log: (msg: string) => void;
   error: (msg: string) => void;
+  /** Passed straight through to onShutdownSignal; defaults to the real process there. */
+  process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
 };
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
@@ -161,12 +184,8 @@ export async function runCli(
           },
           {
             timeoutMs: shutdownTimeoutMs(env),
-            logger: (message, err) =>
-              deps.error(
-                err === undefined
-                  ? message
-                  : `${message}: ${err instanceof Error ? err.message : String(err)}`,
-              ),
+            ...(deps.process ? { process: deps.process } : {}),
+            logger: shutdownLoggerFor(deps.error),
           },
         );
       });
@@ -186,9 +205,19 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   return runCli(argv);
 }
 
-if (process.argv[1]?.endsWith("cli.ts") || process.argv[1]?.endsWith("cli.js")) {
+/** True only when this file is the literal entrypoint (`node cli.ts`/`cli.js`), not when a test imports it. */
+export function isDirectInvocation(argv1: string | undefined): boolean {
+  // Compare the exact basename, not a suffix: endsWith("cli.ts") also matches an
+  // unrelated file like mycli.ts, which would run main() on mere import.
+  const filename = argv1 === undefined ? undefined : basename(argv1);
+  return filename === "cli.ts" || filename === "cli.js";
+}
+
+export function setExitCode(code: number): void {
+  process.exitCode = code;
+}
+
+if (isDirectInvocation(process.argv[1])) {
   installCrashLogging();
-  void main().then((code) => {
-    process.exitCode = code;
-  });
+  void main().then(setExitCode);
 }
