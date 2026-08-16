@@ -75,6 +75,73 @@ describe("usage report authorization", () => {
     ).toBe(404);
   });
 
+  it("hides other hosts' rows on the repository usage report", async () => {
+    const auth = new AuthService({
+      mode: "required",
+      secret: "s".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64url",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({
+      name: "host reader",
+      role: "read-only",
+      boundHostId: "host-1",
+    });
+    const plane = new ControlPlane();
+    plane.state.sessions.set("own", {
+      id: "own",
+      repositoryId: "repo-1",
+      hostId: "host-1",
+    } as never);
+    plane.state.sessions.set("foreign", {
+      id: "foreign",
+      repositoryId: "repo-1",
+      hostId: "host-2",
+    } as never);
+    plane.state.usageRecords.set("own", {
+      sessionId: "own",
+      repositoryId: "repo-1",
+      attemptId: "a1",
+      worktreeId: "w1",
+      kind: "delta",
+      sequence: 1,
+      inputTokens: "3",
+      source: "cli",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      receivedAt: "2026-01-01T00:00:00.000Z",
+    });
+    plane.state.usageRecords.set("foreign", {
+      sessionId: "foreign",
+      repositoryId: "repo-1",
+      attemptId: "a2",
+      worktreeId: "w2",
+      kind: "delta",
+      sequence: 1,
+      inputTokens: "9",
+      source: "cli",
+      observedAt: "2026-01-01T00:00:00.000Z",
+      receivedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const { handler } = createLocalApp({ plane, authService: auth });
+
+    const response = await invokeHandler(
+      handler,
+      "GET",
+      "/api/v1/usage?repositoryId=repo-1",
+      undefined,
+      {
+        authorization: `Bearer ${apiKey}`,
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({
+      aggregate: { inputTokens: "3" },
+      items: [{ sessionId: "own" }],
+    });
+    expect(JSON.stringify(response.json)).not.toContain("foreign");
+  });
+
   it("returns session and repository usage scoped by durable route attribution", async () => {
     const plane = new ControlPlane();
     plane.state.sessions.set("session-1", {

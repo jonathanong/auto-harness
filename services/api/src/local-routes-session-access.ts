@@ -1,8 +1,13 @@
-import { mayAccessRepository } from "./auth-policy.ts";
+import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { send, type RouteCtx } from "./local-http.ts";
 
 export function canAccessSession(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
+}
+
+/** Host-bound credentials may only see or mutate work assigned to their host. */
+export function canAccessSessionHost(ctx: RouteCtx, hostId: string | null | undefined): boolean {
+  return mayAccessHost(ctx.principal, hostId);
 }
 
 export function sendSessionForbidden(res: RouteCtx["res"]): void {
@@ -26,8 +31,9 @@ export function canAuthorSessions(ctx: RouteCtx): boolean {
 
 export function canCancelSession(
   ctx: RouteCtx,
-  session: { metadata?: Record<string, unknown> },
+  session: { hostId?: string | null; metadata?: Record<string, unknown> },
 ): boolean {
+  if (!canAccessSessionHost(ctx, session.hostId)) return false;
   return (
     !ctx.principal ||
     ctx.principal.role === "admin" ||

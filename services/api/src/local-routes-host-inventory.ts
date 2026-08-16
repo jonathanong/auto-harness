@@ -99,6 +99,21 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       return true;
     }
     try {
+      // GET hides out-of-scope repos, so a scoped PUT of the filtered body
+      // would otherwise delete every repo the caller cannot see.
+      const incoming =
+        body && typeof body === "object" && !Array.isArray(body)
+          ? (body as { repositories?: unknown })
+          : undefined;
+      if (ctx.principal?.allowedRepositoryIds && Array.isArray(incoming?.repositories)) {
+        const existing = await plane.getHostInventoryDurable(hostId);
+        if (existing) {
+          const hidden = existing.repositories.filter(
+            (repository) => !mayAccessRepository(ctx.principal, repository.id),
+          );
+          incoming.repositories = [...hidden, ...incoming.repositories];
+        }
+      }
       const result = await plane.putHostInventoryDurable(hostId, body);
       if (!result.ok) {
         if (

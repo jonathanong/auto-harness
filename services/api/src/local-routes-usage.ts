@@ -49,10 +49,20 @@ export async function handleUsageRoutes(ctx: RouteCtx): Promise<boolean> {
     const records = (await plane.getUsageDurable()).filter(
       (record) => record.repositoryId === repositoryId,
     );
+    const hostVisible = ctx.principal?.boundHostId
+      ? (
+          await Promise.all(
+            records.map(async (record) => {
+              const session = await plane.getSessionDurable(record.sessionId);
+              return session && mayAccessHost(ctx.principal, session.hostId) ? record : null;
+            }),
+          )
+        ).filter((record) => record !== null)
+      : records;
     const providerId = url.searchParams.get("providerId");
     const accountId = url.searchParams.get("providerAccountId");
     const commandId = url.searchParams.get("commandId");
-    const scoped = records.filter(
+    const scoped = hostVisible.filter(
       (record) =>
         (!providerId || record.providerId === providerId) &&
         (!accountId || record.providerAccountId === accountId) &&

@@ -150,6 +150,37 @@ describe("host inventory route outcomes", () => {
       });
     }
   });
+  it("keeps out-of-scope repositories when a scoped caller PUTs the filtered body", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+
+    const res = await invoke(
+      plane,
+      "PUT",
+      "/api/v1/hosts/host-1/inventory",
+      {
+        repositories: [
+          { id: "repo-allowed", path: "/allowed-updated", defaultBranch: "main", worktrees: [] },
+        ],
+      },
+      scoped,
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({
+      repositories: [expect.objectContaining({ id: "repo-allowed", path: "/allowed-updated" })],
+    });
+    expect(JSON.stringify(res.json)).not.toContain("repo-hidden");
+
+    const stored = await plane.getHostInventoryDurable("host-1");
+    expect(stored?.repositories.map((repository) => repository.id).toSorted()).toEqual([
+      "repo-allowed",
+      "repo-hidden",
+    ]);
+    expect(
+      stored?.repositories.find((repository) => repository.id === "repo-hidden"),
+    ).toMatchObject({ path: "/hidden" });
+  });
+
   it("answers 409 when the write loses to a concurrent edit", async () => {
     const plane = new ControlPlane();
     // A conflict is not a bad request: the body was valid, the document simply moved.
