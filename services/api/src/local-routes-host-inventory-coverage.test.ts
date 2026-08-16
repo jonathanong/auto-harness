@@ -1,8 +1,12 @@
+/* eslint-disable max-lines -- inventory route outcomes plus scoped PUT merge cases. */
 import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
+import {
+  handleHostInventoryRoutes,
+  mergeHiddenRepositories,
+} from "./local-routes-host-inventory.ts";
 import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
 
 const scoped: Principal = {
@@ -20,6 +24,16 @@ const inventory = {
   ],
   commandProfiles: {},
 };
+
+describe("mergeHiddenRepositories", () => {
+  it("is a no-op without scope or an existing document", () => {
+    const incoming = { repositories: [{ id: "repo-allowed" }] };
+    mergeHiddenRepositories(null, incoming, scoped);
+    expect(incoming.repositories).toEqual([{ id: "repo-allowed" }]);
+    mergeHiddenRepositories(inventory, incoming, undefined);
+    expect(incoming.repositories).toEqual([{ id: "repo-allowed" }]);
+  });
+});
 
 describe("host inventory route outcomes", () => {
   it("filters list and detail reads for unscoped and repository-scoped callers", async () => {

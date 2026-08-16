@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository, session, and host-scope usage cases. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";

@@ -1,6 +1,22 @@
+/* eslint-disable max-lines -- scoped PUT merge shares the inventory route module. */
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import type { Principal } from "./auth.ts";
 import { writeRouteAudit } from "./local-audit.ts";
+import type { HostInventory } from "@auto-harness/shared";
+
+/** Preserve repos a scoped caller cannot see so a filtered GET+PUT cannot wipe them. */
+export function mergeHiddenRepositories(
+  existing: HostInventory | null,
+  incoming: { repositories: unknown[] },
+  principal: Principal | undefined,
+): void {
+  if (!principal?.allowedRepositoryIds || !existing) return;
+  const hidden = existing.repositories.filter(
+    (repository) => !mayAccessRepository(principal, repository.id),
+  );
+  incoming.repositories = [...hidden, ...incoming.repositories];
+}
 
 /**
  * Host inventory routes (paths + command profile argv).
@@ -99,20 +115,16 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
       return true;
     }
     try {
-      // GET hides out-of-scope repos, so a scoped PUT of the filtered body
-      // would otherwise delete every repo the caller cannot see.
       const incoming =
         body && typeof body === "object" && !Array.isArray(body)
-          ? (body as { repositories?: unknown })
+          ? (body as { repositories?: unknown[] })
           : undefined;
-      if (ctx.principal?.allowedRepositoryIds && Array.isArray(incoming?.repositories)) {
-        const existing = await plane.getHostInventoryDurable(hostId);
-        if (existing) {
-          const hidden = existing.repositories.filter(
-            (repository) => !mayAccessRepository(ctx.principal, repository.id),
-          );
-          incoming.repositories = [...hidden, ...incoming.repositories];
-        }
+      if (Array.isArray(incoming?.repositories)) {
+        mergeHiddenRepositories(
+          await plane.getHostInventoryDurable(hostId),
+          incoming as { repositories: unknown[] },
+          ctx.principal,
+        );
       }
       const result = await plane.putHostInventoryDurable(hostId, body);
       if (!result.ok) {
