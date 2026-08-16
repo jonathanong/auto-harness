@@ -595,6 +595,30 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveMetadat
 }
 
 /**
+ * Build the `ConditionExpression`/`ExpressionAttributeValues` pair that makes an inventory
+ * write conditional on the version the caller read, shared by `putHostInventory` and
+ * `putHostInventoryFenced` so the two condition strings cannot drift apart. Version 0
+ * means "the caller read a document with no version yet", which is either a
+ * pre-versioning row or no row at all.
+ */
+function inventoryVersionCondition(expectedVersion: number | undefined): {
+  ConditionExpression?: string;
+  ExpressionAttributeValues?: Record<string, unknown>;
+} {
+  if (expectedVersion === undefined) return {};
+  if (expectedVersion === 0) {
+    return {
+      ConditionExpression: "attribute_not_exists(version) OR version = :expected",
+      ExpressionAttributeValues: { ":expected": 0 },
+    };
+  }
+  return {
+    ConditionExpression: "version = :expected",
+    ExpressionAttributeValues: { ":expected": expectedVersion },
+  };
+}
+
+/**
  * Replace a host's inventory document.
  *
  * `expectedVersion` makes the replace conditional on the document not having moved since
@@ -609,22 +633,12 @@ export async function putHostInventory(
   markers?: readonly DeletionMarker[],
   expectedVersion?: number,
 ): Promise<boolean> {
-  const condition =
-    expectedVersion === undefined
-      ? {}
-      : expectedVersion === 0
-        ? {
-            // Version 0 means "the caller read a document with no version yet", which is
-            // either a pre-versioning row or no row at all.
-            ConditionExpression: "attribute_not_exists(version) OR version = :expected",
-            ExpressionAttributeValues: { ":expected": 0 },
-          }
-        : {
-            ConditionExpression: "version = :expected",
-            ExpressionAttributeValues: { ":expected": expectedVersion },
-          };
   const write = {
-    Put: { TableName: ctx.tables.hostInventories, Item: { ...rec }, ...condition },
+    Put: {
+      TableName: ctx.tables.hostInventories,
+      Item: { ...rec },
+      ...inventoryVersionCondition(expectedVersion),
+    },
   };
   try {
     await guardedWrite(ctx, markers, write, async () => {
@@ -636,12 +650,24 @@ export async function putHostInventory(
   }
 }
 
-/** Publish inventory only while the registering connection still owns the host lease. */
+/**
+ * Publish inventory only while the registering connection still owns the host lease.
+ *
+ * `expectedVersion`, when given, additionally conditions the inventory half of the
+ * transaction on the version the caller read. Without it, a registration that read the
+ * inventory before a concurrent UI edit committed a newer version would overwrite that
+ * edit — the transaction only fenced on the connection lease, which a UI edit never
+ * touches, so nothing here ever detected the collision. The two condition failures are
+ * distinguished by which transaction item DynamoDB reports failed (index 0: the lease
+ * moved to another connection, not retryable here; index 1: the version moved, retryable
+ * by the caller re-reading and rebuilding against the current document).
+ */
 export async function putHostInventoryFenced(
   ctx: PlaneStorageCtx,
   rec: HostInventoryRecord,
   fence: { hostId: string; connectionId: string },
-): Promise<boolean> {
+  expectedVersion?: number,
+): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -654,13 +680,20 @@ export async function putHostInventoryFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
-          { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } },
+          {
+            Put: {
+              TableName: ctx.tables.hostInventories,
+              Item: { ...rec },
+              ...inventoryVersionCondition(expectedVersion),
+            },
+          },
         ],
       }),
     );
-    return true;
+    return { ok: true };
   } catch (err) {
-    return conditionalCatalogWriteOrThrow(err);
+    if (!isConditionalTransactionFailed(err)) throw err;
+    return { ok: false, reason: isConditionalTransactionFailureAt(err, 1) ? "version" : "lease" };
   }
 }
 

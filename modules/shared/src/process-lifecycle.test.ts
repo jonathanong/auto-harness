@@ -48,6 +48,22 @@ describe("installCrashLogging", () => {
     ]);
     expect((logged[0]![1] as Error).message).toBe("boom");
   });
+
+  it("exits after logging, rather than leaving the process alive in an unknown state", () => {
+    // Registering an unhandledRejection/uncaughtException listener at all suppresses
+    // Node's default crash-on-either behavior — a listener that only logs would leave
+    // the process running past the exact condition this module exists to terminate on.
+    const target = fakeProcess();
+
+    installCrashLogging({ process: target as never, logger: () => {} });
+    target.emit("unhandledRejection", new Error("boom"));
+
+    expect(target.exits).toEqual([1]);
+
+    target.emit("uncaughtException", new Error("bang"));
+
+    expect(target.exits).toEqual([1, 1]);
+  });
 });
 
 describe("onShutdownSignal", () => {
@@ -64,16 +80,48 @@ describe("onShutdownSignal", () => {
   });
 
   it("swallows a rejecting stop so shutdown itself cannot crash the process", async () => {
-    const target = fakeProcess();
-    const logged: string[] = [];
+    vi.useFakeTimers();
+    try {
+      const target = fakeProcess();
+      const logged: string[] = [];
 
-    const handle = onShutdownSignal(async () => Promise.reject(new Error("drain failed")), {
-      process: target as never,
-      logger: (message) => logged.push(message),
-    });
+      const handle = onShutdownSignal(async () => Promise.reject(new Error("drain failed")), {
+        process: target as never,
+        timeoutMs: 5_000,
+        logger: (message) => logged.push(message),
+      });
 
-    await expect(handle.shutdown()).resolves.toBeUndefined();
-    expect(logged).toContain("error during shutdown");
+      await expect(handle.shutdown()).resolves.toBeUndefined();
+      expect(logged).toContain("error during shutdown");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the forced-exit deadline armed when stop rejects, rather than treating the caught error as done", async () => {
+    // A caller (cli.ts) resolves its own outer promise only after `await stop()`
+    // succeeds inside the callback it hands to onShutdownSignal:
+    //   onShutdownSignal(async () => { await stop(); finished(); }, ...)
+    // If stop() rejects, that callback rejects before reaching finished() — the
+    // caller's own promise never resolves. The forced-exit deadline is the only thing
+    // that still brings the process down in that case, so it must not be cancelled
+    // just because the rejection was caught and logged here.
+    vi.useFakeTimers();
+    try {
+      const target = fakeProcess();
+      const handle = onShutdownSignal(async () => Promise.reject(new Error("drain failed")), {
+        process: target as never,
+        timeoutMs: 5_000,
+        logger: () => {},
+      });
+
+      void handle.shutdown();
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(target.exits).toEqual([1]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("forces the process down when stop never settles", async () => {

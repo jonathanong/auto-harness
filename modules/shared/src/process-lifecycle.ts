@@ -15,23 +15,32 @@ const defaultLogger: LifecycleLogger = (message, error) => {
 };
 
 /**
- * Record why the process is going down before it does. These handlers deliberately do not
- * swallow the failure: an unhandled rejection still terminates, because continuing from
- * unknown state is worse than restarting under a supervisor.
+ * Record why the process is going down, then actually take it down.
+ *
+ * Registering an `unhandledRejection`/`uncaughtException` listener at all suppresses
+ * Node's default behavior of crashing on either — that default *is* the termination this
+ * module exists to preserve. A listener that only logs leaves the process alive and
+ * continuing in whatever unknown state triggered the error, which is worse than a crash:
+ * a supervisor (systemd's `Restart=always`, ECS, etc.) can recover from an exit; nothing
+ * recovers from a process silently corrupting state it no longer understands. So log
+ * synchronously, then exit — matching Node's own guidance that it is not safe to resume
+ * normal operation after either event.
  */
 export function installCrashLogging(
   options: {
     logger?: LifecycleLogger;
-    process?: Pick<NodeJS.Process, "on">;
+    process?: Pick<NodeJS.Process, "on" | "exit">;
   } = {},
 ): void {
   const log = options.logger ?? defaultLogger;
   const target = options.process ?? process;
   target.on("unhandledRejection", (reason) => {
     log("unhandled promise rejection", reason);
+    target.exit(1);
   });
   target.on("uncaughtException", (error) => {
     log("uncaught exception", error);
+    target.exit(1);
   });
 }
 
@@ -80,13 +89,18 @@ export function onShutdownSignal(
     }, timeoutMs);
     // Never hold the event loop open on behalf of the deadline itself.
     forced.unref?.();
+    // Cancel the deadline only on success. A failed stop() still needs the deadline to
+    // force the process down — cancelling it unconditionally (as a blanket .finally()
+    // once did) disarmed the one guarantee that made the failure recoverable: the caller
+    // in cli.ts resolves its own outer promise only after stop() succeeds, so on a
+    // rejection the process must fall back to the timer, not the caller's resolve.
     running = stop()
-      .catch((error: unknown) => {
-        log("error during shutdown", error);
-      })
-      .finally(() => {
+      .then(() => {
         if (forced) cancel(forced);
         forced = undefined;
+      })
+      .catch((error: unknown) => {
+        log("error during shutdown", error);
       });
     return running;
   };

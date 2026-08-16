@@ -37,7 +37,7 @@ describe("pending durable writes", () => {
     expect(state.pendingPersists).toHaveLength(0);
   });
 
-  it("forgets a session's log writes once they settle", async () => {
+  it("forgets a session's log writes once they succeed", async () => {
     const state = createControlPlaneState();
     let release: (() => void) | undefined;
     const write = new Promise<void>((resolve) => {
@@ -50,6 +50,44 @@ describe("pending durable writes", () => {
     await write;
 
     expect(state.pendingLogPersists.has("session-a")).toBe(false);
+  });
+
+  it("keeps a failed log write tracked so a later archive of that session sees the gap", async () => {
+    // Pruning on any settlement (success or failure) let archiveSessionLogs's
+    // Promise.all see an empty pending set and publish a transcript silently missing
+    // the chunk the failed write never persisted. Only success may prune.
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async () => undefined },
+    });
+    const failed = Promise.reject(new Error("log write failed"));
+
+    trackLogPersist(state, "mine", failed);
+    await failed.catch(() => undefined);
+
+    expect(state.pendingLogPersists.get("mine")?.has(failed)).toBe(true);
+    await expect(archiveSessionLogs(state, "mine")).rejects.toThrow("log write failed");
+  });
+
+  it("does not produce an unhandled rejection when a tracked write fails", async () => {
+    // .finally() returns a new promise that passes the original rejection through; a
+    // bare `void` on that derived promise with no .catch() was itself an unhandled
+    // rejection whenever the tracked write failed, independent of whether the original
+    // promise was already handled elsewhere.
+    const state = createControlPlaneState();
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown) => seen.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      trackLogPersist(state, "mine", Promise.reject(new Error("log write failed")));
+      // Let the rejection's microtasks — and Node's unhandled-rejection detection,
+      // which runs on a later tick — actually settle before asserting.
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+
+    expect(seen).toEqual([]);
   });
 
   it("archives one session without waiting on another session's log writes", async () => {

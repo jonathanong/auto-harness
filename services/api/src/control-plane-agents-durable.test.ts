@@ -18,7 +18,7 @@ describe("durable host registration", () => {
       ),
       listWorktreesByHost: async () => [],
       putHostInventoryFenced: async (_inventory: unknown, fence: { connectionId: string }) => (
-        calls.push(`inventory:${fence.connectionId}`), true
+        calls.push(`inventory:${fence.connectionId}`), { ok: true }
       ),
     } as never;
     const result = await plane.registerHostDurable({
@@ -122,7 +122,7 @@ describe("durable host registration", () => {
       getWorktree: async () => ({ id: "w", status: "busy" }),
       putWorktreeFenced: async () => (writes++, true),
       listWorktreesByHost: async () => [],
-      putHostInventoryFenced: async () => true,
+      putHostInventoryFenced: async () => ({ ok: true }),
     } as never;
     expect(
       await busy.registerHostDurable({

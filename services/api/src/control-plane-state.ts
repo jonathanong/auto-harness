@@ -201,7 +201,21 @@ export function queueWrite(
   return queued;
 }
 
-/** Track a session's log write so an archive of that session waits for it. */
+/**
+ * Track a session's log write so an archive of that session waits for it.
+ *
+ * Only a *successful* write is pruned. `archiveSessionLogs` awaits `Promise.all` over
+ * this session's pending set, so a write left in it after failing makes that `Promise.all`
+ * reject too — surfacing the incomplete transcript to the caller instead of silently
+ * publishing an archive that is missing the chunk the failed write never persisted.
+ * Pruning on `finally()` (settled, not just resolved) used to erase that signal.
+ *
+ * `.then(onSuccess, onFailure)` rather than `.finally()` for the same reason `queueWrite`
+ * uses it: `.finally()` returns a new promise that passes the original rejection through,
+ * so discarding it with a bare `void` (no `.catch()` on that *derived* promise) was itself
+ * an unhandled rejection whenever `persisted` failed — independent of whether `persisted`
+ * was already otherwise handled.
+ */
 export function trackLogPersist(
   state: ControlPlaneState,
   sessionId: string,
@@ -210,10 +224,10 @@ export function trackLogPersist(
   const pending = state.pendingLogPersists.get(sessionId) ?? new Set<Promise<void>>();
   pending.add(persisted);
   state.pendingLogPersists.set(sessionId, pending);
-  void persisted.finally(() => {
+  void persisted.then(() => {
     pending.delete(persisted);
     if (pending.size === 0) state.pendingLogPersists.delete(sessionId);
-  });
+  }, noop);
 }
 
 export function persistSession(state: ControlPlaneState, session: SessionRecord): void {

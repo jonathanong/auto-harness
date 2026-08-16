@@ -645,11 +645,13 @@ export class DynamoPlaneStorageBase {
     return catalog.putHostInventory(this.ctx, rec, markers, expectedVersion);
   }
 
+  /** See catalog.putHostInventoryFenced for why the result distinguishes lease vs. version. */
   putHostInventoryFenced(
     rec: HostInventoryRecord,
     fence: { hostId: string; connectionId: string },
-  ): Promise<boolean> {
-    return catalog.putHostInventoryFenced(this.ctx, rec, fence);
+    expectedVersion?: number,
+  ): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
+    return catalog.putHostInventoryFenced(this.ctx, rec, fence, expectedVersion);
   }
 
   getHostInventory(hostId: string): Promise<HostInventoryRecord | null> {
