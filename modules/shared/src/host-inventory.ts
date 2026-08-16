@@ -44,28 +44,13 @@ export type HostInventory = {
   repositories: HostRepository[];
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
-  commandProfiles: Record<string, { argv: string[]; appendPrompt: boolean }>;
   /** Optional features this host daemon explicitly supports. */
   capabilities?: HostCapability[];
-  logLevel?: "debug" | "info" | "warn" | "error";
-};
-
-export const DEFAULT_ECHO_PROFILE: HostInventory["commandProfiles"] = {
-  "echo-prompt": { argv: ["echo"], appendPrompt: true },
 };
 
 /** Suggested path only — never auto-persist without explicit worktree create. */
 export function defaultWorktreePath(repoPath: string, worktreeName: string): string {
   return `${repoPath.replace(/\/$/, "")}/.worktrees/${worktreeName}`;
-}
-
-function seedProfiles(
-  existing: HostInventory | null | undefined,
-): HostInventory["commandProfiles"] {
-  if (existing?.commandProfiles && Object.keys(existing.commandProfiles).length > 0) {
-    return { ...existing.commandProfiles };
-  }
-  return { ...DEFAULT_ECHO_PROFILE };
 }
 
 function cloneInventory(existing: HostInventory | null | undefined): HostInventory {
@@ -79,9 +64,7 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
     providerAccounts: existing?.providerAccounts
       ? existing.providerAccounts.map((a) => ({ ...a }))
       : [],
-    commandProfiles: seedProfiles(existing),
     capabilities: [...(existing?.capabilities ?? [])],
-    ...(existing?.logLevel !== undefined ? { logLevel: existing.logLevel } : {}),
   };
 }
 
@@ -225,7 +208,6 @@ export function emptyHostInventory(): HostInventory {
   return {
     repositories: [],
     providerAccounts: [],
-    commandProfiles: { ...DEFAULT_ECHO_PROFILE },
     capabilities: [],
   };
 }

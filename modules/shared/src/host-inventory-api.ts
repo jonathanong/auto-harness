@@ -35,19 +35,9 @@ async function readInventory(
       providerAccounts: Array.isArray(cfg.providerAccounts)
         ? (cfg.providerAccounts as HostInventory["providerAccounts"])
         : [],
-      commandProfiles:
-        cfg.commandProfiles && typeof cfg.commandProfiles === "object"
-          ? (cfg.commandProfiles as HostInventory["commandProfiles"])
-          : emptyHostInventory().commandProfiles,
       capabilities: Array.isArray(cfg.capabilities)
         ? normalizeHostCapabilities(cfg.capabilities.filter(isHostCapability))
         : [],
-      ...(cfg.logLevel === "debug" ||
-      cfg.logLevel === "info" ||
-      cfg.logLevel === "warn" ||
-      cfg.logLevel === "error"
-        ? { logLevel: cfg.logLevel }
-        : {}),
     },
   };
 }
@@ -63,9 +53,7 @@ export async function putInventory(
     body: JSON.stringify({
       repositories: inv.repositories,
       providerAccounts: inv.providerAccounts,
-      commandProfiles: inv.commandProfiles,
       ...(inv.capabilities !== undefined ? { capabilities: inv.capabilities } : {}),
-      ...(inv.logLevel !== undefined ? { logLevel: inv.logLevel } : {}),
       ...(version !== undefined ? { version } : {}),
     }),
   });
