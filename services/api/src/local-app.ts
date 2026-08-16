@@ -98,24 +98,27 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
     if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (auth.mode === "required") {
-      const limited = await enforceRateLimit({
-        config,
-        memoryLimiter,
-        now,
-        options,
-        plane,
-        req,
-        res,
-        method,
-        pathname: url.pathname,
-        principal: undefined,
-        bucket: "login",
-        trustProxy,
-      });
-      if (limited) return;
       const principal = await auth.authenticate(req);
-      if (!principal)
+      if (!principal) {
+        // Failed/missing credentials share the login spray budget, keyed by IP.
+        // Authenticated traffic must not: the UI polls far faster than 10/min.
+        const limited = await enforceRateLimit({
+          config,
+          memoryLimiter,
+          now,
+          options,
+          plane,
+          req,
+          res,
+          method,
+          pathname: url.pathname,
+          principal: undefined,
+          bucket: "login",
+          trustProxy,
+        });
+        if (limited) return;
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
+      }
       if (!selfServiceAuthRoute && !authorize(principal, method, url.pathname)) {
         ctx.principal = principal;
         return auditAuthFailure(ctx, "auth:authorize", 403, "insufficient role for this operation");

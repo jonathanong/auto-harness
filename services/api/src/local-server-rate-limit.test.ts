@@ -85,6 +85,38 @@ describe("local API rate limits", () => {
     expect((await create(`Bearer ${first.apiKey}`, "third")).status).toBe(429);
   });
 
+  it("does not bill authenticated traffic to the IP login bucket", async () => {
+    const events: string[] = [];
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({ name: "reader", role: "read-only" });
+    const { handler } = createLocalApp({
+      authService: auth,
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { login: 1, read: 10 } },
+      onRateLimitEvent: (event) => events.push(`${event.bucket}:${event.outcome}`),
+    });
+    const headers = { authorization: `Bearer ${apiKey}` };
+
+    expect(
+      (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, headers)).status,
+    ).toBe(200);
+    expect(
+      (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, headers)).status,
+    ).toBe(200);
+    expect(events.filter((event) => event.startsWith("login:"))).toEqual([]);
+    expect(events.filter((event) => event === "read:allowed")).toHaveLength(2);
+
+    expect((await invokeHandler(handler, "GET", "/api/v1/repositories")).status).toBe(401);
+    expect((await invokeHandler(handler, "GET", "/api/v1/repositories")).status).toBe(429);
+    expect(events).toContain("login:denied");
+  });
+
   it("fails closed when a denied mutation cannot be appended to the audit trail", async () => {
     const store = new MemorySessionStore();
     const events: string[] = [];
