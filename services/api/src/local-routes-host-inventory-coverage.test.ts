@@ -108,6 +108,9 @@ describe("host inventory route outcomes", () => {
         commandProfiles: {},
       }),
     ).toMatchObject({ status: 400 });
+    expect(await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", null)).toMatchObject({
+      status: 400,
+    });
 
     const handler = routeHandler(plane, "PUT", "/api/v1/hosts/host-1/inventory", scoped);
     expect(await invokeBadJson(handler, "PUT", "/api/v1/hosts/host-1/inventory")).toBe(400);
@@ -193,6 +196,29 @@ describe("host inventory route outcomes", () => {
     expect(
       stored?.repositories.find((repository) => repository.id === "repo-hidden"),
     ).toMatchObject({ path: "/hidden" });
+  });
+
+  it("returns internal error when a durable write throws after audit succeeds", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    plane.putHostInventoryDurable = async () => {
+      throw new Error("write exploded");
+    };
+    plane.deleteHostInventoryDurable = async () => {
+      throw new Error("delete exploded");
+    };
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+      }),
+    ).toMatchObject({
+      status: 500,
+      json: { error: { code: "INTERNAL_ERROR" } },
+    });
+    expect(await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory")).toMatchObject({
+      status: 500,
+      json: { error: { code: "INTERNAL_ERROR" } },
+    });
   });
 
   it("answers 409 when the write loses to a concurrent edit", async () => {
