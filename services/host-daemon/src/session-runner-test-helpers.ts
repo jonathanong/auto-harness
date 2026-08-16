@@ -21,10 +21,6 @@ export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
 export function setup(runner: ProcessRunner) {
   const config = parseDaemonConfig({
     hostId: "a1",
-    commandProfiles: {
-      "echo-prompt": { argv: ["echo"], appendPrompt: true },
-      "usage-cmd": { argv: ["usage"], appendPrompt: false },
-    },
     repositories: [
       {
         id: "repo-1",

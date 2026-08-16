@@ -34,7 +34,6 @@ export async function registerDaemon(
     repositories: config.repositories
       .map(({ id, path, defaultBranch }) => ({ id, path, defaultBranch }))
       .toSorted((a, b) => a.id.localeCompare(b.id)),
-    commandProfiles: Object.keys(config.commandProfiles).toSorted(),
     capabilities: ["scheduled-main-checkout"],
     runningSessions: [...runningSessions].toSorted(),
     ...(identity
@@ -52,18 +51,12 @@ export async function applyDaemonInventory(
   register: () => Promise<void>,
 ): Promise<void> {
   const previousRepositories = config.repositories;
-  const previousCommandProfiles = config.commandProfiles;
-  const previousLogLevel = config.logLevel;
   config.repositories = next.repositories;
-  config.commandProfiles = next.commandProfiles;
-  if (next.logLevel) config.logLevel = next.logLevel;
   try {
     await worktrees.ensureAll();
     await register();
   } catch (err) {
     config.repositories = previousRepositories;
-    config.commandProfiles = previousCommandProfiles;
-    config.logLevel = previousLogLevel;
     throw err;
   }
 }

@@ -8,7 +8,6 @@ describe("daemon registration", () => {
     await registerDaemon(
       {
         hostId: "h",
-        logLevel: "info",
         repositories: [
           {
             id: "r",
@@ -18,7 +17,6 @@ describe("daemon registration", () => {
           },
         ],
         providerAccounts: [],
-        commandProfiles: { z: { argv: ["z"] }, a: { argv: ["a"] } },
       },
       { send: async (message: unknown) => void messages.push(message) } as never,
       ["z", "a"],
@@ -34,7 +32,6 @@ describe("daemon registration", () => {
         hostId: "h",
         capabilities: ["scheduled-main-checkout"],
         repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
-        commandProfiles: ["a", "z"],
         runningSessions: ["a", "z"],
         daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
@@ -43,15 +40,12 @@ describe("daemon registration", () => {
     ]);
   });
 
-  it("applies optional inventory settings, ensures worktrees, then registers", async () => {
-    const config = {
-      hostId: "h",
-      logLevel: "info" as const,
-      repositories: [],
-      providerAccounts: [],
-      commandProfiles: {},
+  it("applies the next repositories, ensures worktrees, then registers", async () => {
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
+    const next = {
+      ...config,
+      repositories: [{ id: "p", path: "/p", defaultBranch: "main", worktrees: [] }],
     };
-    const next = { ...config, logLevel: "debug" as const, commandProfiles: { p: { argv: ["p"] } } };
     const calls: string[] = [];
     await applyDaemonInventory(
       config,
@@ -59,24 +53,19 @@ describe("daemon registration", () => {
       { ensureAll: async () => void calls.push("ensure") } as never,
       async () => void calls.push("register"),
     );
-    expect(config.logLevel).toBe("debug");
-    expect(config.commandProfiles).toEqual(next.commandProfiles);
+    expect(config.repositories).toEqual(next.repositories);
     expect(calls).toEqual(["ensure", "register"]);
   });
 
   it("restores the prior inventory when preparation fails", async () => {
     const config = {
       hostId: "h",
-      logLevel: "info" as const,
       repositories: [{ id: "old", path: "/old", defaultBranch: "main", worktrees: [] }],
       providerAccounts: [],
-      commandProfiles: { old: { argv: ["old"] } },
     };
     const next = {
       ...config,
-      logLevel: "debug" as const,
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
-      commandProfiles: { next: { argv: ["next"] } },
     };
 
     await expect(
@@ -94,22 +83,13 @@ describe("daemon registration", () => {
     expect(config.repositories).toEqual([
       { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
     ]);
-    expect(config.commandProfiles).toEqual({ old: { argv: ["old"] } });
-    expect(config.logLevel).toBe("info");
   });
 
   it("restores the prior inventory when registration fails", async () => {
-    const config = {
-      hostId: "h",
-      logLevel: "info" as const,
-      repositories: [],
-      providerAccounts: [],
-      commandProfiles: {},
-    };
+    const config = { hostId: "h", repositories: [], providerAccounts: [] };
     const next = {
       ...config,
-      logLevel: "debug" as const,
-      commandProfiles: { next: { argv: ["next"] } },
+      repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
     await expect(
@@ -118,7 +98,5 @@ describe("daemon registration", () => {
       }),
     ).rejects.toThrow("registration failed");
     expect(config.repositories).toEqual([]);
-    expect(config.commandProfiles).toEqual({});
-    expect(config.logLevel).toBe("info");
   });
 });

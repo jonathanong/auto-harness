@@ -41,7 +41,6 @@ describe("resume re-checks out ref after worktree reuse", () => {
 
       const config: DaemonConfig = {
         hostId: "agent-resume",
-        logLevel: "info",
         repositories: [
           {
             id: "demo",
@@ -54,9 +53,6 @@ describe("resume re-checks out ref after worktree reuse", () => {
           },
         ],
         providerAccounts: [],
-        commandProfiles: {
-          "echo-prompt": { argv: ["printf", "%s"], appendPrompt: true },
-        },
       };
 
       let plane!: ControlPlane;

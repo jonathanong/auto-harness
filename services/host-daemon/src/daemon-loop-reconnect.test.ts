@@ -13,10 +13,8 @@ describe("DaemonLoop reconnect", () => {
     const loop = new DaemonLoop({
       config: {
         hostId: "h",
-        logLevel: "info",
         repositories: [],
         providerAccounts: [],
-        commandProfiles: {},
       },
       transport: createLoopbackTransport({ sendToServer() {} }),
     });
@@ -163,7 +161,7 @@ describe("DaemonLoop reconnect", () => {
         daemonIdentity: identity,
       });
       await loop.start();
-      await loop.applyInventory({ ...config, commandProfiles: { changed: { argv: ["echo"] } } });
+      await loop.applyInventory(config);
       await loop.keepalive();
       expect(sent.filter((message) => message.type === "host:register")).toHaveLength(2);
       expect(sent.filter((message) => message.type === "host:register")).toEqual([
@@ -251,10 +249,12 @@ describe("DaemonLoop reconnect", () => {
 
       await loop.applyInventory({
         ...config,
-        commandProfiles: { ...config.commandProfiles, refreshed: { argv: ["echo"] } },
+        repositories: config.repositories.map((repo) => ({ ...repo, defaultBranch: "refreshed" })),
       });
       expect(transport.registers.at(-1)).toEqual(
-        expect.objectContaining({ commandProfiles: ["echo-prompt", "refreshed"] }),
+        expect.objectContaining({
+          repositories: [expect.objectContaining({ id: "demo", defaultBranch: "refreshed" })],
+        }),
       );
       expect(transport.sent.at(-1)?.type).toBe("host:register");
 

@@ -63,7 +63,7 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
         await options.applyInventory(next);
         lastFp = fp;
         options.log(
-          `host inventory updated from control plane (${next.repositories.length} repo(s), ${Object.keys(next.commandProfiles).length} profile(s))`,
+          `host inventory updated from control plane (${next.repositories.length} repo(s))`,
         );
       } catch (err) {
         options.error(`inventory poll failed: ${err instanceof Error ? err.message : String(err)}`);

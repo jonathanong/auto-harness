@@ -61,7 +61,7 @@ describe("startInventoryPoll", () => {
       expect(applyInventory).toHaveBeenCalledTimes(2);
       expect(applied[1]).toEqual(applied[0]);
       expect(errors).toHaveLength(1);
-      expect(logs).toEqual(["host inventory updated from control plane (1 repo(s), 1 profile(s))"]);
+      expect(logs).toEqual(["host inventory updated from control plane (1 repo(s))"]);
     } finally {
       await stop();
     }

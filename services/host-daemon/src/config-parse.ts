@@ -1,11 +1,6 @@
 import { parseProviderAccountOverrides, parseProviderAccounts } from "@auto-harness/shared";
 
-import type {
-  DaemonConfig,
-  CommandProfileConfig,
-  RepositoryConfig,
-  WorktreeConfig,
-} from "./config-types.ts";
+import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -17,30 +12,6 @@ function requireString(obj: Record<string, unknown>, key: string, ctx: string): 
     throw new Error(`${ctx}: ${key} must be a non-empty string`);
   }
   return value;
-}
-
-function parseCommandProfiles(raw: unknown): Record<string, CommandProfileConfig> {
-  if (!isRecord(raw)) {
-    throw new Error("commandProfiles must be an object");
-  }
-  const out: Record<string, CommandProfileConfig> = {};
-  for (const [name, profile] of Object.entries(raw)) {
-    if (!isRecord(profile)) {
-      throw new Error(`commandProfiles.${name} must be an object`);
-    }
-    if (
-      !Array.isArray(profile.argv) ||
-      profile.argv.length === 0 ||
-      !profile.argv.every((a) => typeof a === "string" && a.length > 0)
-    ) {
-      throw new Error(`commandProfiles.${name}.argv must be a non-empty string array`);
-    }
-    out[name] = {
-      argv: profile.argv as string[],
-      appendPrompt: profile.appendPrompt !== false,
-    };
-  }
-  return out;
 }
 
 function parseWorktree(raw: unknown, index: number, repoId: string): WorktreeConfig {
@@ -133,21 +104,11 @@ export function parseDaemonConfig(
   if (raw.repositories.length === 0 && !options.allowEmptyRepositories) {
     throw new Error("repositories must be a non-empty array");
   }
-  const logLevelRaw = raw.logLevel;
-  const logLevel =
-    logLevelRaw === "debug" ||
-    logLevelRaw === "info" ||
-    logLevelRaw === "warn" ||
-    logLevelRaw === "error"
-      ? logLevelRaw
-      : "info";
 
   const config: DaemonConfig = {
     hostId,
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
     providerAccounts: parseProviderAccounts(raw.providerAccounts),
-    commandProfiles: parseCommandProfiles(raw.commandProfiles ?? {}),
-    logLevel,
   };
   if (typeof raw.apiUrl === "string") {
     config.apiUrl = raw.apiUrl;

@@ -11,7 +11,7 @@ afterEach(() => vi.useRealTimers());
 
 describe("startDaemon runtime wiring", () => {
   it("requires a configured WebSocket target", async () => {
-    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "", logLevel: "info" });
+    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "" });
     await expect(startDaemon({ config })).rejects.toThrow("apiUrl (or --ws) is required");
   });
 
@@ -21,7 +21,6 @@ describe("startDaemon runtime wiring", () => {
     const config = emptyDaemonConfig({
       hostId: "host-empty",
       apiUrl: `http://127.0.0.1:${harness.port}/`,
-      logLevel: "info",
     });
     try {
       const daemon = await startDaemon({
@@ -48,18 +47,16 @@ describe("startDaemon runtime wiring", () => {
         identity: {
           hostId: config.hostId,
           apiUrl: `http://127.0.0.1:${harness.port}`,
-          logLevel: "info",
         },
         inventoryPollMs: 5,
         runUntil: waitFor(() => harness.registrations >= 2),
         fetchFn: async () => {
           fetches++;
           return Response.json({
-            repositories: config.repositories,
-            commandProfiles: {
-              ...config.commandProfiles,
-              added: { argv: ["true"], appendPrompt: false },
-            },
+            repositories: config.repositories.map((repo) => ({
+              ...repo,
+              defaultBranch: "refreshed",
+            })),
           });
         },
         log: (line) => lines.push(line),
@@ -76,7 +73,7 @@ describe("startDaemon runtime wiring", () => {
 
   it("reports WSS connection errors while enforcing the registration deadline", async () => {
     const errors: string[] = [];
-    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "", logLevel: "info" });
+    const config = emptyDaemonConfig({ hostId: "host-1", apiUrl: "" });
     await expect(
       startDaemon({
         config,
@@ -95,7 +92,6 @@ describe("startDaemon runtime wiring", () => {
     const config = emptyDaemonConfig({
       hostId: "host-keepalive",
       apiUrl: `ws://127.0.0.1:${harness.port}/ws`,
-      logLevel: "info",
     });
     const daemon = await startDaemon({ config, error: (line) => errors.push(line) });
     try {

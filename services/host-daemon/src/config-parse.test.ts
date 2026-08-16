@@ -9,20 +9,16 @@ describe("parseDaemonConfig", () => {
       ...valid,
       apiUrl: "wss://example/ws",
       apiKey: "hns_x",
-      logLevel: "warn",
     });
     expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("wss://example/ws");
     expect(config.apiKey).toBe("hns_x");
-    expect(config.logLevel).toBe("warn");
-    expect(config.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);
   });
 
-  it("defaults branch and log level", () => {
+  it("defaults branch when not given", () => {
     const config = parseDaemonConfig({
       hostId: "x",
-      logLevel: "nope",
       repositories: [
         {
           id: "r",
@@ -32,8 +28,6 @@ describe("parseDaemonConfig", () => {
       ],
     });
     expect(config.repositories[0]?.defaultBranch).toBe("main");
-    expect(config.logLevel).toBe("info");
-    expect(Object.keys(config.commandProfiles)).toEqual([]);
   });
 
   it("parses repository and worktree provider-account overrides", () => {
@@ -61,46 +55,24 @@ describe("parseDaemonConfig", () => {
   });
 
   it("rejects empty repositories", () => {
-    expect(() => parseDaemonConfig({ hostId: "x", repositories: [], commandProfiles: {} })).toThrow(
-      /repositories/,
-    );
+    expect(() => parseDaemonConfig({ hostId: "x", repositories: [] })).toThrow(/repositories/);
     expect(() => parseDaemonConfig({ hostId: "x" })).toThrow("repositories must be an array");
   });
 
-  it("rejects non-object root and bad profiles", () => {
+  it("rejects a non-object root", () => {
     expect(() => parseDaemonConfig(null)).toThrow(/object/);
-    expect(() =>
-      parseDaemonConfig({
-        ...valid,
-        commandProfiles: { bad: { argv: [] } },
-      }),
-    ).toThrow(/argv/);
-    expect(() =>
-      parseDaemonConfig({
-        ...valid,
-        commandProfiles: { bad: "x" },
-      }),
-    ).toThrow(/object/);
-    expect(() =>
-      parseDaemonConfig({
-        ...valid,
-        commandProfiles: "nope",
-      }),
-    ).toThrow(/commandProfiles/);
   });
 
   it("rejects invalid worktree and repo fields", () => {
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [{ id: "r", path: "/r", worktrees: "x" }],
       }),
     ).toThrow(/worktrees/);
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [
           {
             id: "r",
@@ -113,14 +85,12 @@ describe("parseDaemonConfig", () => {
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [null],
       }),
     ).toThrow(/object/);
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [
           {
             id: "r",
@@ -134,7 +104,6 @@ describe("parseDaemonConfig", () => {
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [
           {
             id: "r",
@@ -148,7 +117,6 @@ describe("parseDaemonConfig", () => {
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [
           {
             id: "r",
@@ -161,7 +129,6 @@ describe("parseDaemonConfig", () => {
     expect(() =>
       parseDaemonConfig({
         hostId: "x",
-        commandProfiles: {},
         repositories: [
           {
             id: "r",
