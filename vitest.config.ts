@@ -87,7 +87,6 @@ export default defineConfig({
         // Pure re-export of @auto-harness/shared's apiBase/apiGet (tested there);
         // a re-export-only file registers as an uncovered function in v8 coverage.
         "**/services/web/src/lib/api.ts",
-        "**/services/web/src/lib/attach-local-repo.ts",
         "**/services/host-pane/src/index.ts",
         "**/next.config.ts",
         "**/tailwind.config.ts",
