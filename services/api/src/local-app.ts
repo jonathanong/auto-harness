@@ -56,74 +56,62 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (method === "GET" && url.pathname === "/health") return send(res, 200, { ok: true });
     const authRoute = url.pathname.startsWith("/api/v1/auth/");
     const loginRoute = method === "POST" && url.pathname === "/api/v1/auth/login";
-    const sessionRoute =
-      method === "POST" &&
-      (url.pathname === "/api/v1/auth/login" || url.pathname === "/api/v1/auth/logout");
+    const logoutRoute = method === "POST" && url.pathname === "/api/v1/auth/logout";
     const selfServiceAuthRoute =
       url.pathname === "/api/v1/auth/me" ||
       url.pathname === "/api/v1/auth/password" ||
       url.pathname === "/api/v1/auth/viewer-ticket";
+    const loginLimit = {
+      config,
+      memoryLimiter,
+      now,
+      options,
+      plane,
+      req,
+      res,
+      method,
+      pathname: url.pathname,
+      principal: undefined,
+      bucket: "login" as const,
+      trustProxy,
+    };
     if (loginRoute) {
-      const limited = await enforceRateLimit({
-        config,
-        memoryLimiter,
-        now,
-        options,
-        plane,
-        req,
-        res,
-        method,
-        pathname: url.pathname,
-        principal: undefined,
-        bucket: "login",
-        trustProxy,
-      });
-      if (limited) return;
-    } else if (sessionRoute) {
-      const limited = await enforceRateLimit({
-        config,
-        memoryLimiter,
-        now,
-        options,
-        plane,
-        req,
-        res,
-        method,
-        pathname: url.pathname,
-        principal: undefined,
-        bucket: "mutation",
-        trustProxy,
-      });
-      if (limited) return;
+      if (await enforceRateLimit(loginLimit)) return;
+      if (await handleAuthRoutes({ auth, ...ctx })) return;
     }
-    if (sessionRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
+    const authorization = req.headers.authorization ?? "";
+    const basicGuess = authorization.startsWith("Basic ") && !hasSessionCookie(req.headers.cookie);
     if (auth.mode === "required") {
+      // Password guesses must consume the spray budget before bcrypt.
+      if (basicGuess && (await enforceRateLimit(loginLimit))) return;
       const principal = await auth.authenticate(req);
       if (!principal) {
-        // Failed/missing credentials share the login spray budget, keyed by IP.
-        // Authenticated traffic must not: the UI polls far faster than 10/min.
-        const limited = await enforceRateLimit({
-          config,
-          memoryLimiter,
-          now,
-          options,
-          plane,
-          req,
-          res,
-          method,
-          pathname: url.pathname,
-          principal: undefined,
-          bucket: "login",
-          trustProxy,
-        });
-        if (limited) return;
+        if (!basicGuess && (await enforceRateLimit(loginLimit))) return;
         return auditAuthFailure(ctx, "auth:authenticate", 401, "authentication required");
       }
-      if (!selfServiceAuthRoute && !authorize(principal, method, url.pathname)) {
-        ctx.principal = principal;
+      ctx.principal = principal;
+      if (!selfServiceAuthRoute && !logoutRoute && !authorize(principal, method, url.pathname)) {
+        const deniedBucket = classifyRateLimitBucket(method, url.pathname);
+        if (
+          deniedBucket &&
+          (await enforceRateLimit({
+            ...loginLimit,
+            principal,
+            bucket: deniedBucket,
+          }))
+        )
+          return;
         return auditAuthFailure(ctx, "auth:authorize", 403, "insufficient role for this operation");
       }
-      ctx.principal = principal;
+    } else if (logoutRoute) {
+      if (
+        await enforceRateLimit({
+          ...loginLimit,
+          bucket: "mutation",
+        })
+      )
+        return;
+      if (await handleAuthRoutes({ auth, ...ctx })) return;
     } else if (selfServiceAuthRoute) {
       const principal = await auth.authenticate(req);
       if (principal) ctx.principal = principal;
@@ -184,6 +172,16 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     }
   };
   return { store, plane, handler };
+}
+
+function hasSessionCookie(cookieHeader: string | string[] | undefined): boolean {
+  const header = Array.isArray(cookieHeader) ? cookieHeader.join("; ") : cookieHeader;
+  return Boolean(
+    header
+      ?.split(";")
+      .map((part) => part.trim())
+      .some((part) => part.startsWith("auto_harness_session=")),
+  );
 }
 
 async function auditAuthFailure(

@@ -117,6 +117,41 @@ describe("local API rate limits", () => {
     expect(events).toContain("login:denied");
   });
 
+  it("meters logout to the authenticated actor and Basic guesses before bcrypt", async () => {
+    const events: string[] = [];
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64",
+      ),
+    });
+    const user = await auth.createUser({ username: "alice", password: "secret", role: "operator" });
+    const cookie = await issueCookieForRateLimit(auth, user);
+    const { handler } = createLocalApp({
+      authService: auth,
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { login: 1, mutation: 2 } },
+      onRateLimitEvent: (event) => events.push(`${event.bucket}:${event.outcome}`),
+    });
+
+    expect(
+      (await invokeHandler(handler, "POST", "/api/v1/auth/logout", undefined, { cookie })).status,
+    ).toBe(204);
+    expect(events.filter((event) => event.startsWith("login:"))).toEqual([]);
+    expect(events).toContain("mutation:allowed");
+
+    const wrongBasic = {
+      authorization: `Basic ${Buffer.from("alice:no").toString("base64")}`,
+    };
+    expect(
+      (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
+    ).toBe(401);
+    expect(
+      (await invokeHandler(handler, "GET", "/api/v1/repositories", undefined, wrongBasic)).status,
+    ).toBe(429);
+  });
+
   it("fails closed when a denied mutation cannot be appended to the audit trail", async () => {
     const store = new MemorySessionStore();
     const events: string[] = [];
@@ -141,3 +176,20 @@ describe("local API rate limits", () => {
     expect(events).toContain("error");
   });
 });
+
+async function issueCookieForRateLimit(
+  auth: AuthService,
+  principal: {
+    id: string;
+    username: string;
+    role: "admin" | "operator" | "read-only";
+    kind: string;
+  },
+): Promise<string> {
+  let header = "";
+  auth.issueCookie(
+    { setHeader: (_name: string, value: string) => (header = value) } as never,
+    principal as never,
+  );
+  return header.split(";")[0]!;
+}
