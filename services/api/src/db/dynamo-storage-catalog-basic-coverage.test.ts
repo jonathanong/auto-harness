@@ -87,6 +87,35 @@ describe("DynamoDB Local basic catalog adapters", () => {
     await deleteHostInventory(ctx, "host");
   });
 
+  it("conditions putHostInventory on the version it was read at", async () => {
+    const hostId = "host-versioned";
+    const record = (updatedAt: string, version: number) => ({
+      hostId,
+      updatedAt,
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+      version,
+    });
+    // No existing row: expectedVersion 0 means "no version seen yet" (the
+    // condition also matches attribute_not_exists(version)) and must succeed.
+    expect(await putHostInventory(ctx, record("t1", 1), undefined, 0)).toBe(true);
+    expect((await getHostInventory(ctx, hostId))?.version).toBe(1);
+
+    // Stale write: caller still thinks version is 0, but it's now 1 — rejected,
+    // and the stored record is left untouched.
+    expect(await putHostInventory(ctx, record("stale", 2), undefined, 0)).toBe(false);
+    expect((await getHostInventory(ctx, hostId))?.updatedAt).toBe("t1");
+
+    // Correct version: succeeds and advances the stored version.
+    expect(await putHostInventory(ctx, record("t2", 2), undefined, 1)).toBe(true);
+    expect((await getHostInventory(ctx, hostId))?.version).toBe(2);
+
+    // Wrong positive expectedVersion: rejected.
+    expect(await putHostInventory(ctx, record("stale2", 3), undefined, 1)).toBe(false);
+    expect((await getHostInventory(ctx, hostId))?.updatedAt).toBe("t2");
+  });
+
   it("covers catalog value helpers", () => {
     expect(catalogItem(undefined)).toBeNull();
     expect(catalogItem({ id: "item" })).toEqual({ id: "item" });
