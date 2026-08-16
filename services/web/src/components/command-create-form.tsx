@@ -108,9 +108,11 @@ export function CommandCreateForm({
         <input
           type="checkbox"
           name="appendPromptSeparator"
+          defaultChecked
           data-pw="command-catalog-append-prompt-separator"
         />
-        insert -- before the prompt (getopt-style CLIs only — breaks commands like printf)
+        insert -- before the prompt (on by default — uncheck for tools like printf that treat -- as
+        data)
       </label>
       {fixedProviderId || !providers ? null : (
         <div className="space-y-1">
