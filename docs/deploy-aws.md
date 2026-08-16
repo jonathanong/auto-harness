@@ -32,19 +32,53 @@ CloudFormation shape only.
 
 ## Secrets and config (never commit)
 
-| Variable                 | Purpose                                                                                                                                      |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HARNESS_ADMINS`         | Base64 JSON `[{ "username", "password" }]` bootstrap admins                                                                                  |
-| `HARNESS_SESSION_SECRET` | JWT signing for UI session cookies                                                                                                           |
-| `HARNESS_CURSOR_SECRET`  | Stable HMAC key for session-list cursors (same on every API worker)                                                                          |
-| `WEB_ORIGIN`             | CORS allow-list for the web UI origin                                                                                                        |
-| Table names / prefix     | From stack (see [aws.md](aws.md) env table)                                                                                                  |
-| `ARCHIVE_BUCKET`         | S3 archive bucket                                                                                                                            |
-| `WS_API_ENDPOINT`        | API Gateway Management API for `postToConnection`                                                                                            |
-| `KMS_KEY_ID`             | Optional — Slack / integration secrets                                                                                                       |
-| Rate-limit variables     | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
+Three bootstrap secrets — `HARNESS_ADMINS`, `HARNESS_SESSION_SECRET`, and
+`HARNESS_CURSOR_SECRET` — are **never** stored as plaintext Lambda environment
+variables. A Lambda's environment configuration is readable in cleartext by
+anyone with `lambda:GetFunctionConfiguration`, and appears in plaintext in
+CloudTrail's Lambda-configuration events, so putting a real secret value there
+defeats the point of a secret. Instead, each Lambda's environment holds only the
+**name** of an SSM `SecureString` parameter; the Lambda fetches the actual value
+from SSM once per cold start.
 
-**Rotation:** change secret in the secret store / stack parameter → redeploy or update function configuration → verify login/WS. Admin bootstrap rotation requires redeploy of the Lambda env that holds `HARNESS_ADMINS` ([auth.md](auth.md)).
+**Before synthesizing**, populate the three SecureString parameters (CloudFormation
+cannot create a `SecureString` parameter itself, so this is always a separate,
+out-of-band step — run it once per environment, before or after the stack deploy,
+in any order):
+
+```bash
+aws ssm put-parameter --type SecureString --overwrite \
+  --name /auto-harness/harness-admins --value "$(echo '[{"username":"admin","password":"..."}]' | base64)"
+aws ssm put-parameter --type SecureString --overwrite \
+  --name /auto-harness/harness-session-secret --value "$(openssl rand -base64 32)"
+aws ssm put-parameter --type SecureString --overwrite \
+  --name /auto-harness/harness-cursor-secret --value "$(openssl rand -base64 32)"
+```
+
+The stack parameters `HarnessAdminsSsmParam`, `HarnessSessionSecretSsmParam`,
+and `HarnessCursorSecretSsmParam` default to the parameter names above; override
+them at deploy time only if you name your parameters differently. Each Lambda's
+IAM role is granted `ssm:GetParameter` scoped to exactly these three parameter
+ARNs, plus `kms:Decrypt` on the AWS-managed `alias/aws/ssm` key (the default
+encryption key for a `SecureString` created without specifying a customer-managed
+key).
+
+| Variable               | Purpose                                                                                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| SSM: bootstrap secrets | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
+| `WEB_ORIGIN`           | CORS allow-list for the web UI origin                                                                                                        |
+| Table names / prefix   | From stack (see [aws.md](aws.md) env table)                                                                                                  |
+| `ARCHIVE_BUCKET`       | S3 archive bucket                                                                                                                            |
+| `WS_API_ENDPOINT`      | API Gateway Management API for `postToConnection`                                                                                            |
+| `KMS_KEY_ID`           | Optional — Slack / integration secrets                                                                                                       |
+| Rate-limit variables   | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
+
+**Rotation:** `aws ssm put-parameter --overwrite` with the new value — no redeploy
+required. Existing warm Lambda containers keep the value they fetched at their own
+cold start until they naturally recycle; force an immediate rollover by updating
+any Lambda config field (a no-op environment variable touch is enough) to recycle
+containers early. Admin bootstrap rotation ([auth.md](auth.md)) is the same
+`put-parameter` step against the admins parameter.
 
 ---
 
@@ -86,9 +120,12 @@ choose `destroy` for data that must survive a stack replacement.
 
 ### Stack parameters and outputs
 
-Deployment tooling must supply the runtime stack's no-echo `HarnessAdmins`,
-`HarnessSessionSecret`, and `HarnessCursorSecret` parameters and exact `WebOrigin`. Do not store their
-values in CDK context or source control.
+Deployment tooling must supply the runtime stack's `HarnessAdminsSsmParam`,
+`HarnessSessionSecretSsmParam`, and `HarnessCursorSecretSsmParam` parameters
+(SSM parameter names — default values point at the names used in the
+`put-parameter` commands above) and exact `WebOrigin`. The three secret values
+themselves are never CDK parameters and must never be stored in CDK context or
+source control — only in SSM.
 
 | Output                                                      | Consumer                                          |
 | ----------------------------------------------------------- | ------------------------------------------------- |
