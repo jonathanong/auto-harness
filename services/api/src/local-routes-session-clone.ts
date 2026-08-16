@@ -1,7 +1,11 @@
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
-import { canAuthorSessions, sendSessionForbidden } from "./local-routes-session-access.ts";
+import {
+  canAccessSessionHost,
+  canAuthorSessions,
+  sendSessionForbidden,
+} from "./local-routes-session-access.ts";
 
 const CLONE_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
 
@@ -95,7 +99,10 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
       () => send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } }),
     );
   }
-  if (ctx.principal && !mayAccessRepository(ctx.principal, source.repositoryId)) {
+  if (
+    (ctx.principal && !mayAccessRepository(ctx.principal, source.repositoryId)) ||
+    !canAccessSessionHost(ctx, source.hostId)
+  ) {
     return respondAfterCloneAudit(
       ctx,
       {

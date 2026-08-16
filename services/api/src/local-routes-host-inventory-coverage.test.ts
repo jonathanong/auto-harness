@@ -1,8 +1,12 @@
+/* eslint-disable max-lines -- inventory route outcomes plus scoped PUT merge cases. */
 import { describe, expect, it } from "vitest";
 
 import type { Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
-import { handleHostInventoryRoutes } from "./local-routes-host-inventory.ts";
+import {
+  handleHostInventoryRoutes,
+  mergeHiddenRepositories,
+} from "./local-routes-host-inventory.ts";
 import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
 
 const scoped: Principal = {
@@ -20,6 +24,16 @@ const inventory = {
   ],
   commandProfiles: {},
 };
+
+describe("mergeHiddenRepositories", () => {
+  it("is a no-op without scope or an existing document", () => {
+    const incoming = { repositories: [{ id: "repo-allowed" }] };
+    mergeHiddenRepositories(null, incoming, scoped);
+    expect(incoming.repositories).toEqual([{ id: "repo-allowed" }]);
+    mergeHiddenRepositories(inventory, incoming, undefined);
+    expect(incoming.repositories).toEqual([{ id: "repo-allowed" }]);
+  });
+});
 
 describe("host inventory route outcomes", () => {
   it("filters list and detail reads for unscoped and repository-scoped callers", async () => {
@@ -94,6 +108,9 @@ describe("host inventory route outcomes", () => {
         commandProfiles: {},
       }),
     ).toMatchObject({ status: 400 });
+    expect(await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", null)).toMatchObject({
+      status: 400,
+    });
 
     const handler = routeHandler(plane, "PUT", "/api/v1/hosts/host-1/inventory", scoped);
     expect(await invokeBadJson(handler, "PUT", "/api/v1/hosts/host-1/inventory")).toBe(400);
@@ -150,6 +167,60 @@ describe("host inventory route outcomes", () => {
       });
     }
   });
+  it("keeps out-of-scope repositories when a scoped caller PUTs the filtered body", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+
+    const res = await invoke(
+      plane,
+      "PUT",
+      "/api/v1/hosts/host-1/inventory",
+      {
+        repositories: [
+          { id: "repo-allowed", path: "/allowed-updated", defaultBranch: "main", worktrees: [] },
+        ],
+      },
+      scoped,
+    );
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({
+      repositories: [expect.objectContaining({ id: "repo-allowed", path: "/allowed-updated" })],
+    });
+    expect(JSON.stringify(res.json)).not.toContain("repo-hidden");
+
+    const stored = await plane.getHostInventoryDurable("host-1");
+    expect(stored?.repositories.map((repository) => repository.id).toSorted()).toEqual([
+      "repo-allowed",
+      "repo-hidden",
+    ]);
+    expect(
+      stored?.repositories.find((repository) => repository.id === "repo-hidden"),
+    ).toMatchObject({ path: "/hidden" });
+  });
+
+  it("returns internal error when a durable write throws after audit succeeds", async () => {
+    const plane = new ControlPlane();
+    expect((await plane.putHostInventoryDurable("host-1", inventory)).ok).toBe(true);
+    plane.putHostInventoryDurable = async () => {
+      throw new Error("write exploded");
+    };
+    plane.deleteHostInventoryDurable = async () => {
+      throw new Error("delete exploded");
+    };
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+      }),
+    ).toMatchObject({
+      status: 500,
+      json: { error: { code: "INTERNAL_ERROR" } },
+    });
+    expect(await invoke(plane, "DELETE", "/api/v1/hosts/host-1/inventory")).toMatchObject({
+      status: 500,
+      json: { error: { code: "INTERNAL_ERROR" } },
+    });
+  });
+
   it("answers 409 when the write loses to a concurrent edit", async () => {
     const plane = new ControlPlane();
     // A conflict is not a bad request: the body was valid, the document simply moved.

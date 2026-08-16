@@ -2,6 +2,7 @@ import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import {
   canAccessSession,
+  canAccessSessionHost,
   canCancelSession,
   sendSessionForbidden,
 } from "./local-routes-session-access.ts";
@@ -14,7 +15,9 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
       const session = await plane.getSessionDurable(cancelMatch[1]!);
       if (
         session &&
-        (!canAccessSession(ctx, session.repositoryId) || !canCancelSession(ctx, session))
+        (!canAccessSession(ctx, session.repositoryId) ||
+          !canAccessSessionHost(ctx, session.hostId) ||
+          !canCancelSession(ctx, session))
       ) {
         if (
           !(await writeRouteAudit(ctx, {
@@ -77,7 +80,11 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
   // Resolve durably: a cache-only read makes the scope check below vanish whenever this
   // process has not seen the session, which is the normal case on a fresh worker.
   const session = await plane.getSessionDurable(id);
-  if (!session || !canAccessSession(ctx, session.repositoryId)) {
+  if (
+    !session ||
+    !canAccessSession(ctx, session.repositoryId) ||
+    !canAccessSessionHost(ctx, session.hostId)
+  ) {
     if (
       !(await writeRouteAudit(ctx, {
         action: "session:archive",
