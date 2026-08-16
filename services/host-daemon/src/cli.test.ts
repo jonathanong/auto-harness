@@ -126,6 +126,13 @@ describe("isDirectInvocation / setExitCode", () => {
     expect(isDirectInvocation(undefined)).toBe(false);
   });
 
+  it("does not match a filename that merely ends with the substring cli.ts", () => {
+    // A naive endsWith("cli.ts") check also matches unrelated files like mycli.ts — if
+    // such a file imported this module, main() would run unexpectedly on import.
+    expect(isDirectInvocation("/tools/mycli.ts")).toBe(false);
+    expect(isDirectInvocation("/tools/mycli.js")).toBe(false);
+  });
+
   it("sets process.exitCode to the given value", () => {
     const original = process.exitCode;
     try {

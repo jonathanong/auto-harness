@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 
 import {
   installCrashLogging,
@@ -207,7 +207,10 @@ export async function main(argv: string[] = process.argv): Promise<number> {
 
 /** True only when this file is the literal entrypoint (`node cli.ts`/`cli.js`), not when a test imports it. */
 export function isDirectInvocation(argv1: string | undefined): boolean {
-  return argv1?.endsWith("cli.ts") === true || argv1?.endsWith("cli.js") === true;
+  // Compare the exact basename, not a suffix: endsWith("cli.ts") also matches an
+  // unrelated file like mycli.ts, which would run main() on mere import.
+  const filename = argv1 === undefined ? undefined : basename(argv1);
+  return filename === "cli.ts" || filename === "cli.js";
 }
 
 export function setExitCode(code: number): void {
