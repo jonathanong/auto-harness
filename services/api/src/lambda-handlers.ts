@@ -287,7 +287,16 @@ export function createLambdaHandlers(
 ): LambdaRuntime {
   let runtime: Promise<LambdaRuntime> | undefined;
   const getRuntime = (): Promise<LambdaRuntime> => {
-    runtime ??= createRuntime();
+    // A rejected promise is a valid, non-nullish value, so `??=` alone would cache a
+    // failed cold start (e.g. an SSM parameter not yet provisioned) forever: every
+    // invocation this warm container ever handles again would reject immediately,
+    // recoverable only by waiting for AWS to recycle the container. Clear the cache on
+    // rejection so the *next* invocation gets a fresh attempt; concurrent callers of
+    // this same failed attempt still all see the same rejection, correctly.
+    runtime ??= createRuntime().catch((error: unknown) => {
+      runtime = undefined;
+      throw error;
+    });
     return runtime;
   };
   return {

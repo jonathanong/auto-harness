@@ -6,6 +6,7 @@ import {
   createLambdaHandlers,
   createLambdaRuntime,
   loadBootstrapSecrets,
+  type LambdaRuntime,
 } from "./lambda-handlers.ts";
 
 function hostPrincipal(hostId = "host-1") {
@@ -358,6 +359,50 @@ describe("Lambda runtime adapters", () => {
         requestContext: { connectionId: "one", routeKey: "$disconnect" },
       }),
     ).resolves.toEqual({ statusCode: 200 });
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries construction on the next invocation instead of caching a failed cold start", async () => {
+    // A rejected promise is not null/undefined, so a bare `runtime ??= createRuntime()`
+    // would cache the failure forever — every invocation this container ever handles
+    // again would reject immediately, e.g. because an SSM bootstrap-secret parameter was
+    // not yet provisioned at the container's first cold start.
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("SSM parameter not found"))
+      .mockResolvedValueOnce({
+        cron: vi.fn(async () => ({
+          ackDeadlinesEnforced: 0,
+          queuedAssigned: 0,
+          scheduledAssigned: 0,
+          schedulesFired: 0,
+          staleHostsReclaimed: 0,
+        })),
+        rest: vi.fn(),
+        websocket: vi.fn(),
+      });
+    const handlers = createLambdaHandlers(create);
+
+    await expect(handlers.cron()).rejects.toThrow("SSM parameter not found");
+    await expect(handlers.cron()).resolves.toMatchObject({ schedulesFired: 0 });
+
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a second concurrent caller of the same failed attempt", async () => {
+    let reject!: (error: Error) => void;
+    const create = vi.fn(() => new Promise<LambdaRuntime>((_resolve, r) => (reject = r)));
+    const handlers = createLambdaHandlers(create);
+
+    const first = handlers.cron();
+    const second = handlers.cron();
+    reject(new Error("SSM parameter not found"));
+
+    await expect(first).rejects.toThrow("SSM parameter not found");
+    await expect(second).rejects.toThrow("SSM parameter not found");
+    // Both callers shared the one in-flight attempt; construction still only ran once
+    // for this failure, and the *next* invocation after both have settled is what
+    // triggers the retry (covered above), not each concurrent caller individually.
     expect(create).toHaveBeenCalledTimes(1);
   });
 
