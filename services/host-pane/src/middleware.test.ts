@@ -1,20 +1,49 @@
+import { createHmac } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 
 import { middleware } from "./middleware.ts";
 
-describe("host-pane authentication middleware", () => {
-  afterEach(() => delete process.env.HARNESS_AUTH_MODE);
+const secret = "a".repeat(32);
+const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
 
-  it("allows local disabled mode and requires a session cookie in required mode", () => {
+describe("host-pane authentication middleware", () => {
+  afterEach(() => {
+    delete process.env.HARNESS_AUTH_MODE;
+    delete process.env.HARNESS_SESSION_SECRET;
+  });
+
+  it("allows local disabled mode and requires a signed session in required mode", async () => {
     const request = new NextRequest("http://localhost/api/browse");
-    expect(middleware(request).headers.get("x-middleware-next")).toBe("1");
+    expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
 
     process.env.HARNESS_AUTH_MODE = "required";
-    expect(middleware(request).status).toBe(401);
-    const authenticated = new NextRequest("http://localhost/api/browse", {
+    process.env.HARNESS_SESSION_SECRET = secret;
+    expect((await middleware(request)).status).toBe(401);
+    const forged = new NextRequest("http://localhost/api/browse", {
       headers: { cookie: "auto_harness_session=signed" },
     });
-    expect(middleware(authenticated).headers.get("x-middleware-next")).toBe("1");
+    expect((await middleware(forged)).status).toBe(401);
+    const viewer = new NextRequest("http://localhost/api/browse", {
+      headers: { cookie: `auto_harness_session=${signedToken({ audience: "viewer" })}` },
+    });
+    expect((await middleware(viewer)).status).toBe(401);
+    const authenticated = new NextRequest("http://localhost/api/browse", {
+      headers: { cookie: `auto_harness_session=${signedToken()}` },
+    });
+    expect((await middleware(authenticated)).headers.get("x-middleware-next")).toBe("1");
   });
 });
+
+function signedToken(claimOverrides: Record<string, unknown> = {}): string {
+  const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode({
+    id: "user:alice",
+    username: "alice",
+    role: "operator",
+    kind: "user",
+    exp: Math.floor(Date.now() / 1000) + 60,
+    ...claimOverrides,
+  })}`;
+  return `${unsigned}.${createHmac("sha256", secret).update(unsigned).digest("base64url")}`;
+}
