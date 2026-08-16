@@ -1,5 +1,7 @@
 import type { NextConfig } from "next";
 
+import { SECURITY_HEADERS } from "@auto-harness/shared";
+
 const apiUpstream = (
   process.env.HARNESS_API_HTTP ??
   process.env.HARNESS_API_URL ??
@@ -27,6 +29,9 @@ const nextConfig: NextConfig = {
       { source: "/api/:path*", destination: `${apiUpstream}/api/:path*` },
       { source: "/health", destination: `${apiUpstream}/health` },
     ];
+  },
+  async headers() {
+    return [{ source: "/(.*)", headers: [...SECURITY_HEADERS] }];
   },
 };
 
