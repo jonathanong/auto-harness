@@ -876,7 +876,6 @@ List configured hosts, including connection health and local daemon restart obse
       "daemonStartedAt": "2026-08-01T07:00:00Z",
       "restartCount": 1,
       "lastRestartDetectedAt": "2026-08-01T07:00:02Z",
-      "commandProfiles": ["codex"],
       "worktreeIds": ["docs"],
       "repositoryIds": ["auto-harness"]
     }

@@ -149,12 +149,11 @@ fi
 
 Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p"]`) — see §5.2 for the exact commands.
 
-Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it is a list of `{providerAccountId}` attachments, not fixed argv):
+Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` — a list of `{providerAccountId}` attachments, not fixed argv):
 
 ```bash
 cat > "$WORK/config/host-inventory.config.json" <<EOF
 {
-  "commandProfiles": {},
   "providerAccounts": [
     $([ -n "$GROK_ACCOUNT_ID" ] && echo "{\"providerAccountId\": \"$GROK_ACCOUNT_ID\"}")
   ],
@@ -184,7 +183,7 @@ Agent process identity (env only):
 ```bash
 export HARNESS_HOST_ID=local-e2e-1
 export HARNESS_API_URL=http://127.0.0.1:7420
-# optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL
+# optional: HARNESS_API_KEY
 ```
 
 ---

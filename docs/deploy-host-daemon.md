@@ -54,7 +54,6 @@ On the agent host:
 | `HARNESS_HOST_ID`             | Required agent id                                                                                             |
 | `HARNESS_API_URL`             | Control plane base (`https://…` or `wss://…/ws`)                                                              |
 | `HARNESS_API_KEY`             | Service account `hns_…`                                                                                       |
-| `HARNESS_LOG_LEVEL`           | Optional (`info` default)                                                                                     |
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`) |
 
 6. Install the environment file and checked-in unit. Populate the copied environment file before starting;

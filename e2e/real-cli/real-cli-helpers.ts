@@ -103,7 +103,6 @@ export async function runRealCliSession(opts: {
           },
         ],
         providerAccounts: [{ providerAccountId: account.id }],
-        commandProfiles: {},
       },
     });
     expect(configRes.ok(), `attach account to host failed: ${await configRes.text()}`).toBeTruthy();
@@ -112,7 +111,6 @@ export async function runRealCliSession(opts: {
     const config = await fetchHostInventory({
       hostId,
       apiUrl: WS_BASE,
-      logLevel: "info",
     });
     const daemon = await startDaemon({
       config,
