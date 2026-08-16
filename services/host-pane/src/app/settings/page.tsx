@@ -76,8 +76,8 @@ export default async function SettingsPage() {
       <div className="space-y-2 border-t border-border pt-6">
         <h3 className="text-lg font-medium">Advanced: raw host inventory JSON</h3>
         <p className="text-sm text-muted-foreground">
-          Power-user edit of full inventory (bulk worktrees). Prefer the forms on Repositories
-          when possible.
+          Power-user edit of full inventory (bulk worktrees). Prefer the forms on Repositories when
+          possible.
         </p>
         <HostConfigForm hostId={id} initialJson={initialJson} />
       </div>

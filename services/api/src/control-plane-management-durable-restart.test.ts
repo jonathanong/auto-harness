@@ -172,9 +172,7 @@ describe("durable management restart visibility", () => {
     expect((await plane.updateScheduleDurable("schedule", { name: "schedule-updated" })).ok).toBe(
       true,
     );
-    expect(
-      (await plane.putHostInventoryDurable("host", { repositories: [] })).ok,
-    ).toBe(true);
+    expect((await plane.putHostInventoryDurable("host", { repositories: [] })).ok).toBe(true);
 
     const restarted = new ControlPlane({ storage });
     await restarted.hydrateFromStorage();

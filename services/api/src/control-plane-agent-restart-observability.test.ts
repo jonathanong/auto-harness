@@ -130,9 +130,9 @@ describe("daemon restart observability", () => {
       connectionIdFactory: () => `restart-connection-${++connection}`,
     });
     await afterBaseline.hydrateFromStorage();
-    expect(
-      (await afterBaseline.putHostInventoryDurable("host", { repositories: [] })).ok,
-    ).toBe(true);
+    expect((await afterBaseline.putHostInventoryDurable("host", { repositories: [] })).ok).toBe(
+      true,
+    );
     expect((await afterBaseline.registerHostDurable(registration(FIRST))).ok).toBe(true);
 
     expect((await staleReplacement.registerHostDurable(registration(SECOND))).ok).toBe(true);

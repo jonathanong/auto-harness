@@ -4,7 +4,12 @@ import type { DaemonConfig, HostIdentity } from "./config-types.ts";
 import { fetchHostInventory, type FetchHostInventoryDeps } from "./bootstrap.ts";
 import { parseDaemonConfig } from "./config-parse.ts";
 
-export type { DaemonConfig, HostIdentity, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
+export type {
+  DaemonConfig,
+  HostIdentity,
+  RepositoryConfig,
+  WorktreeConfig,
+} from "./config-types.ts";
 export { findRepository, findWorktree } from "./config-types.ts";
 export { parseDaemonConfig } from "./config-parse.ts";
 export {
