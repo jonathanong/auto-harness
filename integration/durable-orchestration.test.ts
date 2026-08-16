@@ -5,12 +5,18 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createControlPlane } from "../services/api/src/create-plane.ts";
-import type { LogRecord } from "../services/api/src/control-plane-types.ts";
 import type { DynamoPlaneStorage } from "../services/api/src/db/plane-storage.ts";
 import { startLocalServer } from "../services/api/src/local-server.ts";
 import { loadDaemonConfig } from "../services/host-daemon/src/config.ts";
 import { startDaemon } from "../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../scripts/lib/run-command.mts";
+import { filamentsCreateSessionBody } from "./filaments-session-contract.ts";
+import {
+  exerciseFilamentsResume,
+  expectDurableFilamentsSource,
+  expectDurableFilamentsResume,
+  expectFilamentsSessionOutput,
+} from "./filaments-session-integration-test-helpers.ts";
 
 const TABLE_PREFIX = process.env.HARNESS_DDB_PREFIX ?? "AutoHarnessIntegration";
 const TERMINAL_POLL_ATTEMPTS = 200;
@@ -126,7 +132,7 @@ describe("durable full-stack orchestration", () => {
                 id: "durable-integration-worktree",
                 name: "durable-integration-worktree",
                 path: worktreePath,
-                labels: ["integration"],
+                labels: ["filaments"],
               },
             ],
           },
@@ -154,34 +160,27 @@ describe("durable full-stack orchestration", () => {
     const createdSession = await jsonRequest<{ id: string }>(base, "/api/v1/sessions", 201, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        repositoryId: repository.id,
-        prompt: "unused by fixed command",
-        target: { commandId: command.id },
-        ref: "main",
-        timeout: 30,
-        queueTtlSeconds: 300,
-        requiredLabels: ["integration"],
-      }),
+      body: JSON.stringify(
+        filamentsCreateSessionBody({
+          repositoryId: repository.id,
+          commandId: command.id,
+          prompt: "Filaments full-stack dispatch contract",
+          concurrencyId: "filaments-durable-integration",
+        }),
+      ),
     });
 
     const terminal = await waitForTerminal(base, createdSession.id);
     expect(terminal.status).toBe("completed");
-    const liveLogs = await jsonRequest<{ items: LogRecord[] }>(
-      base,
-      `/api/v1/sessions/${createdSession.id}/logs`,
-      200,
-    );
-    expect(liveLogs.items).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          stream: "stdout",
-          content: expect.stringContaining("durable-full-stack-output"),
-        }),
-        expect.objectContaining({ stream: "system", content: "Process exited with code 0" }),
-      ]),
-    );
+    await expectFilamentsSessionOutput({ base, jsonRequest, sessionId: createdSession.id });
     expect(await git(worktreePath, ["rev-parse", "HEAD"])).toBe(mainSha);
+
+    const resumedSessionId = await exerciseFilamentsResume({
+      base,
+      jsonRequest,
+      sourceSessionId: createdSession.id,
+      waitForTerminal,
+    });
 
     await stopDaemon();
     stopDaemon = undefined;
@@ -200,19 +199,16 @@ describe("durable full-stack orchestration", () => {
       publicBaseUrl: "http://ui",
     });
     const restartedBase = `http://127.0.0.1:${port}`;
-    const durableSession = await jsonRequest<{ status: string; exitCode: number | null }>(
-      restartedBase,
-      `/api/v1/sessions/${createdSession.id}`,
-      200,
-    );
-    expect(durableSession).toMatchObject({ status: "completed", exitCode: 0 });
-    const durableLogs = await jsonRequest<{ items: LogRecord[] }>(
-      restartedBase,
-      `/api/v1/sessions/${createdSession.id}/logs`,
-      200,
-    );
-    expect(durableLogs.items.some((log) => log.content.includes("durable-full-stack-output"))).toBe(
-      true,
-    );
+    await expectDurableFilamentsSource({
+      base: restartedBase,
+      jsonRequest,
+      sessionId: createdSession.id,
+    });
+    await expectDurableFilamentsResume({
+      base: restartedBase,
+      jsonRequest,
+      resumedSessionId,
+      sourceSessionId: createdSession.id,
+    });
   });
 });

@@ -612,16 +612,18 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 ```json
 {
   "prompt": "Continue: also fix the edge case in parseDate",
+  "concurrencyId": "filaments-pr-shepherd-123",
   "timeout": 1800,
   "priority": 10
 }
 ```
 
-| Field      | Type   | Required | Description                                                                                                                                          |
-| ---------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`   | string | ✗        | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
-| `timeout`  | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                       |
-| `priority` | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                  |
+| Field           | Type   | Required | Description                                                                                                                                          |
+| --------------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`        | string | ✗        | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
+| `concurrencyId` | string | ✗        | Optional caller assertion; when set, it must exactly match the source session’s inherited concurrency identity. It cannot override that identity.    |
+| `timeout`       | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                       |
+| `priority`      | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                  |
 
 **Response:** `201 Created`
 
