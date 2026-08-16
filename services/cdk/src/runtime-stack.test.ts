@@ -38,7 +38,7 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          HARNESS_CURSOR_SECRET: { Ref: "HarnessCursorSecret" },
+          HARNESS_CURSOR_SECRET_SSM_PARAM: { Ref: "HarnessCursorSecretSsmParam" },
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
@@ -78,8 +78,8 @@ describe("AutoHarnessRuntimeStack", () => {
     const functions = Object.values(template.findResources("AWS::Lambda::Function"));
     for (const fn of functions) {
       expect(fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET).toBeDefined();
-      expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET).toEqual({
-        Ref: "HarnessCursorSecret",
+      expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
+        Ref: "HarnessCursorSecretSsmParam",
       });
     }
     const roles = Object.values(template.findResources("AWS::IAM::Role"));
@@ -110,11 +110,48 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasOutput("WebSocketUrl", {});
     expect(Object.keys(template.toJSON().Parameters)).toEqual(
       expect.arrayContaining([
-        "HarnessAdmins",
-        "HarnessCursorSecret",
-        "HarnessSessionSecret",
+        "HarnessAdminsSsmParam",
+        "HarnessCursorSecretSsmParam",
+        "HarnessSessionSecretSsmParam",
         "WebOrigin",
       ]),
+    );
+    // These parameters hold an SSM parameter *name*, not a secret value — unlike the
+    // plaintext CfnParameters they replaced, none require a minimum secret length.
+    const parameters = template.toJSON().Parameters as Record<
+      string,
+      { MinLength?: number; Type: string }
+    >;
+    for (const id of [
+      "HarnessAdminsSsmParam",
+      "HarnessSessionSecretSsmParam",
+      "HarnessCursorSecretSsmParam",
+    ]) {
+      expect(parameters[id]?.Type).toBe("String");
+      expect(parameters[id]?.MinLength).toBeUndefined();
+    }
+
+    template.resourcePropertiesCountIs(
+      "AWS::IAM::Policy",
+      {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({ Action: "ssm:GetParameter", Effect: "Allow" }),
+          ]),
+        },
+      },
+      3,
+    );
+    template.resourcePropertiesCountIs(
+      "AWS::IAM::Policy",
+      {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({ Action: "kms:Decrypt", Effect: "Allow" }),
+          ]),
+        },
+      },
+      3,
     );
   });
 });
