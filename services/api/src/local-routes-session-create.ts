@@ -56,9 +56,13 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
   const input = sessionBody
     ? {
         ...sessionBody,
-        // Callers cannot spoof scheduled/webhook provenance on the public create path.
+        // Public create cannot mint scheduled sessions. webhook/ui are real
+        // caller provenance; schedule is internal to the dispatcher.
         type: "prompt",
-        source: sessionBody.source === "ui" ? "ui" : "api",
+        source:
+          sessionBody.source === "ui" || sessionBody.source === "webhook"
+            ? sessionBody.source
+            : "api",
         ...(ctx.principal
           ? {
               metadata: {

@@ -44,12 +44,12 @@ describe("schedule ref REST contract", () => {
       (
         await invoke("POST", "/api/v1/sessions", {
           repositoryId: "repo",
-          prompt: "bad type",
+          prompt: "bad type is ignored",
           target: { commandId: "command" },
           timeout: 30,
           type: "other",
         })
-      ).status,
-    ).toBe(400);
+      ).json,
+    ).toMatchObject({ type: "prompt", source: "api" });
   });
 });
