@@ -10,6 +10,21 @@ const apiUpstream = (
   .replace(/\/$/, "")
   .replace(/\/ws$/, "");
 
+// Mirrors services/web/next.config.ts's derivation so both apps' CSP stay in lockstep —
+// host-pane has no browser WebSocket of its own today, but if NEXT_PUBLIC_HARNESS_VIEWER_WS_URL
+// is ever set here too, connect-src should reflect it rather than only apiUpstream.
+const effectiveViewerWsUrl =
+  process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL ??
+  apiUpstream.replace(/^http/, "ws") + "/ws/viewer";
+
+function viewerWsOrigin(): string {
+  try {
+    return new URL(effectiveViewerWsUrl).origin;
+  } catch {
+    return wsOrigin(apiUpstream);
+  }
+}
+
 const nextConfig: NextConfig = {
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
@@ -32,13 +47,13 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     // host-pane has no browser WebSocket of its own today, but it computes the same
-    // apiUpstream as services/web and shares the same control-plane API — allowing it
-    // here keeps both apps' CSP derived from one source rather than drifting if
+    // effectiveViewerWsUrl as services/web and shares the same control-plane API — allowing
+    // it here keeps both apps' CSP derived from one source rather than drifting if
     // host-pane ever needs a direct connection too.
     return [
       {
         source: "/(.*)",
-        headers: [...securityHeaders({ connectSrcOrigins: [wsOrigin(apiUpstream)] })],
+        headers: [...securityHeaders({ connectSrcOrigins: [viewerWsOrigin()] })],
       },
     ];
   },

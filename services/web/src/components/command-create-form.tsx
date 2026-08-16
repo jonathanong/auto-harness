@@ -44,13 +44,14 @@ export function CommandCreateForm({
           .map((s) => s.trim())
           .filter(Boolean);
         const appendPrompt = fd.get("appendPrompt") === "on";
+        const appendPromptSeparator = fd.get("appendPromptSeparator") === "on";
         const providerId = fixedProviderId ?? (String(fd.get("providerId") ?? "") || null);
         setPending(true);
         void (async () => {
           const res = await fetch(`${apiBase()}/api/v1/commands`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name, argv, appendPrompt, providerId }),
+            body: JSON.stringify({ name, argv, appendPrompt, appendPromptSeparator, providerId }),
           });
           if (!res.ok) {
             setError(await errorMessage(res));
@@ -102,6 +103,14 @@ export function CommandCreateForm({
           data-pw="command-catalog-append-prompt"
         />
         append session prompt as the final argv element
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="appendPromptSeparator"
+          data-pw="command-catalog-append-prompt-separator"
+        />
+        insert -- before the prompt (getopt-style CLIs only — breaks commands like printf)
       </label>
       {fixedProviderId || !providers ? null : (
         <div className="space-y-1">

@@ -65,7 +65,7 @@ describe("control-plane native resume", () => {
     const assignments = () =>
       messages.filter((message) => (message as { type?: string }).type === "session:assign");
     expect(assignments()[0]).toMatchObject({
-      resolvedArgv: ["codex", "exec", "--", "first"],
+      resolvedArgv: ["codex", "exec", "first"],
       resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
     });
     acknowledge(plane, "s1");
@@ -128,7 +128,7 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
-      resolvedArgv: ["tool", "run", "--", "continue here"],
+      resolvedArgv: ["tool", "run", "continue here"],
     });
     const resumedId = resumed.ok ? resumed.session.id : "";
     acknowledge(plane, resumedId);
@@ -138,6 +138,44 @@ describe("control-plane native resume", () => {
     expect(plane.resumeSession(sourceId, { prompt: "not appended" }).ok).toBe(true);
     plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({ resolvedArgv: ["tool", "plain"] });
+  });
+
+  it("inserts -- in the frozen native-resume-pin fallback only when appendPromptSeparator opts in", () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({ shardCount: 1 });
+    plane.setOnHostMessage((_host, message) => messages.push(message));
+    plane.createCommand({
+      id: "cmd",
+      name: "claude-print",
+      argv: ["claude", "-p"],
+      appendPromptSeparator: true,
+    });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: ["claude-print"],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "original",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId);
+    plane.updateCommand("cmd", { argv: ["changed"] });
+    expect(plane.deleteCommand("cmd").ok).toBe(true);
+
+    const resumed = plane.resumeSession(sourceId, { prompt: "--dangerously-skip-permissions" });
+    expect(resumed.ok).toBe(true);
+    plane.assignQueued();
+    expect(messages.at(-1)).toMatchObject({
+      type: "session:assign",
+      resolvedArgv: ["claude", "-p", "--", "--dangerously-skip-permissions"],
+    });
   });
 
   it("rejects non-terminal sources and native resumes without a captured reference", () => {

@@ -82,7 +82,7 @@ describe("scheduled dispatcher coverage edges", () => {
     expect(
       resolveScheduledSessionTarget(state, buildProviderCatalog(state), scheduled(), "host"),
     ).toMatchObject({
-      resolvedArgv: ["tool", "--", "maintenance"],
+      resolvedArgv: ["tool", "maintenance"],
     });
     expect(
       resolveScheduledSessionTarget(
