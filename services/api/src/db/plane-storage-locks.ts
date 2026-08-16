@@ -14,6 +14,7 @@ import {
   type ConnectionRecord,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 /** Interpret DynamoDB conditional failures while preserving all other errors. */
 export function conditionalHostWriteOrThrow(err: unknown): false {
@@ -23,12 +24,6 @@ export function conditionalHostWriteOrThrow(err: unknown): false {
 
 export function connectionPageItems(items: ConnectionRecord[] | undefined): ConnectionRecord[] {
   return items ?? [];
-}
-
-export function nextConnectionPage(
-  key: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  return key && Object.keys(key).length > 0 ? key : undefined;
 }
 
 /**
@@ -341,7 +336,7 @@ export async function listConnections(ctx: PlaneStorageCtx): Promise<ConnectionR
       }),
     );
     items.push(...connectionPageItems(res.Items as ConnectionRecord[] | undefined));
-    startKey = nextConnectionPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return items;
 }

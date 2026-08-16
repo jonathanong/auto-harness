@@ -186,10 +186,9 @@ export default async function WorktreeDetailPage({
                     repoPath={repoPath}
                     hostHrefBase="/hosts"
                   />
-                  {worktree.hostId && inventory && hostWorktree ? (
+                  {worktree.hostId && hostWorktree ? (
                     <EditWorktreeForm
                       hostId={worktree.hostId}
-                      inventory={inventory}
                       repositoryId={worktree.repositoryId}
                       worktree={hostWorktree}
                     />

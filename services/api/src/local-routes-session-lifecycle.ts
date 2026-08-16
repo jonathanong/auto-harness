@@ -74,14 +74,16 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
   const archiveMatch = /^\/api\/v1\/sessions\/([^/]+)\/archive$/.exec(url.pathname);
   if (method !== "POST" || !archiveMatch) return false;
   const id = archiveMatch[1]!;
-  const session = plane.getSession(id);
-  if (session && !canAccessSession(ctx, session.repositoryId)) {
+  // Resolve durably: a cache-only read makes the scope check below vanish whenever this
+  // process has not seen the session, which is the normal case on a fresh worker.
+  const session = await plane.getSessionDurable(id);
+  if (!session || !canAccessSession(ctx, session.repositoryId)) {
     if (
       !(await writeRouteAudit(ctx, {
         action: "session:archive",
         resourceType: "session",
         resourceId: id,
-        repositoryId: session.repositoryId,
+        ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
         outcome: "denied",
       }))
     )
@@ -96,19 +98,25 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
         action: "session:archive",
         resourceType: "session",
         resourceId: id,
-        ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
+        repositoryId: session.repositoryId,
         outcome: "success",
       }))
     )
       return true;
-    send(res, 200, archived);
+    // Metadata only. The transcript is retrievable through the scoped logs route; echoing
+    // it here would make this endpoint a second, less guarded way to read it.
+    send(res, 200, {
+      key: archived.key,
+      contentType: archived.contentType,
+      bodyBytes: Buffer.byteLength(archived.body),
+    });
   } catch {
     if (
       !(await writeRouteAudit(ctx, {
         action: "session:archive",
         resourceType: "session",
         resourceId: id,
-        ...(session?.repositoryId ? { repositoryId: session.repositoryId } : {}),
+        repositoryId: session.repositoryId,
         outcome: "failed",
       }))
     )

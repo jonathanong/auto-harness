@@ -38,11 +38,12 @@ export function mayAccessRepository(
   principal: Principal | undefined,
   repositoryId: string | undefined,
 ): boolean {
-  return (
-    !principal?.allowedRepositoryIds ||
-    !repositoryId ||
-    principal.allowedRepositoryIds.includes(repositoryId)
-  );
+  if (!principal?.allowedRepositoryIds) return true;
+  // A repository-scoped principal against a resource whose repository we could not
+  // determine: deny. Granting here made every unidentified resource reachable by every
+  // scoped caller, which is the wrong default for the one check that enforces the scope.
+  if (!repositoryId) return false;
+  return principal.allowedRepositoryIds.includes(repositoryId);
 }
 
 /** A host-bound service account may only inspect or operate its own host. */

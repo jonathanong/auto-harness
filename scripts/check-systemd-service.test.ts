@@ -16,14 +16,14 @@ describe("production host systemd artifacts", () => {
   it("rejects lost drain semantics, unsupported readiness, and secret-shaped examples", () => {
     expect(
       validateSystemdArtifacts(
-        service.replace("TimeoutStopSec=infinity\n", "").replace("Type=simple", "Type=notify") +
+        service.replace("TimeoutStopSec=15min\n", "").replace("Type=simple", "Type=notify") +
           "\nWatchdogSec=30s\nExecReload=sh -c true\n",
         envExample.replace("REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY", "hns_real-looking-key"),
       ),
     ).toEqual(
       expect.arrayContaining([
         "missing service directive: Type=simple",
-        "missing service directive: TimeoutStopSec=infinity",
+        "missing service directive: TimeoutStopSec=15min",
         "forbidden service behavior: Type=notify",
         "forbidden service behavior: WatchdogSec=",
         "forbidden service behavior: ExecReload=",

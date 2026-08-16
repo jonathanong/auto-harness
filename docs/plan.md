@@ -416,7 +416,11 @@ CLI modes; it does not add an interactive user-input channel.
   - `$default` — route by `type`.
   - Task dispatch: `session:assign` to agent, including `ref` when set.
   - Status/log forwarding: agent → DynamoDB, agent → subscribed clients.
-  - Live log replay: buffer last 100 lines per session, replay on `session:subscribe`.
+  - Live log replay: buffer recent chunks per session, replay on `session:subscribe`. The
+    implemented window is **10,000 chunks / 10 MiB per session** (`control-plane-messages.ts`)
+    rather than the 100 lines first sketched here. It is a memory bound only — chunks that
+    leave the window stay in `SessionLogs`, which is what `GET /sessions/:id/logs` and
+    `archiveSessionLogs` read. Durable retention is the SessionLogs TTL below, not eviction.
 - Cron handler:
   - Due schedules via **conditional `nextRunAt` advance as the claim** (Invariant 4).
   - Creates sessions `type: scheduled`, `source: schedule`.

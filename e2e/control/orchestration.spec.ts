@@ -7,8 +7,9 @@ import { expect, test } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
+import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 
 async function git(cwd: string, args: string[]): Promise<string> {
   return (await runCommandOk("git", args, { cwd })).trim();
@@ -72,7 +73,7 @@ test.describe("real orchestration", () => {
       // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
       const config = await fetchHostInventory({
         hostId,
-        apiUrl: "ws://127.0.0.1:7430/ws",
+        apiUrl: WS_BASE,
         logLevel: "info",
       });
       const daemon = await startDaemon({

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Label, WithTooltip } from "@auto-harness/ui";
-import { attachProviderAccountToHost, getInventory, putInventory } from "@auto-harness/shared";
+import { attachProviderAccountToHost, mutateInventory } from "@auto-harness/shared";
 
 export function AttachProviderAccountToHostForm({
   hostId,
@@ -35,9 +35,9 @@ export function AttachProviderAccountToHostForm({
         const fd = new FormData(e.currentTarget);
         const providerAccountId = String(fd.get("providerAccountId") ?? "");
         start(async () => {
-          const current = await getInventory(hostId);
-          const next = attachProviderAccountToHost(current, { providerAccountId });
-          const r = await putInventory(hostId, next);
+          const r = await mutateInventory(hostId, (current) =>
+            attachProviderAccountToHost(current, { providerAccountId }),
+          );
           if (!r.ok) {
             setError(r.error);
             return;

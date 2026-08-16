@@ -88,7 +88,7 @@ describe("ScopeProviderEnabledForm", () => {
       field<HTMLButtonElement>(view.container, "scope-provider-enabled-submit-account/one")
         .disabled,
     ).toBe(true);
-    await act(async () => finish(new Response("cannot disable", { status: 409 })));
+    await act(async () => finish(new Response("cannot disable", { status: 422 })));
     expect(field(view.container, "scope-provider-enabled-error-account/one").textContent).toBe(
       "cannot disable",
     );

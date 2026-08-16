@@ -286,15 +286,26 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
           socket.destroy();
           return;
         }
-        const principal = authenticateSocket(req, auth);
-        if (auth?.mode === "required" && !principal) {
-          socket.write(
-            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
-          );
-          socket.destroy();
-          return;
-        }
-        wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, req, principal));
+        // Credential lookup may re-read accounts, so the upgrade completes on a later
+        // tick. The viewer hub on this same server already upgrades asynchronously.
+        void (async () => {
+          let principal: Principal | null = null;
+          try {
+            principal = await authenticateSocket(req, auth);
+          } catch (error) {
+            console.error("host websocket authentication failed", error);
+            socket.destroy();
+            return;
+          }
+          if (auth?.mode === "required" && !principal) {
+            socket.write(
+              "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+            socket.destroy();
+            return;
+          }
+          wss.handleUpgrade(req, socket, head, (ws) => handleConnection(ws, req, principal));
+        })();
       };
       server.on("upgrade", onUpgrade);
       return {
@@ -311,11 +322,14 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
   };
 }
 
-function authenticateSocket(req: IncomingMessage, auth: AuthService | undefined): Principal | null {
+async function authenticateSocket(
+  req: IncomingMessage,
+  auth: AuthService | undefined,
+): Promise<Principal | null> {
   if (!auth) return null;
   const bearer = req.headers.authorization;
   const token = bearer?.startsWith("Bearer ") ? bearer.slice("Bearer ".length) : null;
-  return token ? auth.authenticateApiKey(token) : null;
+  return token ? await auth.authenticateApiKey(token) : null;
 }
 
 export function parseHostMessage(raw: unknown): HostToServerMessage | null {

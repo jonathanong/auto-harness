@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
 import { AuthService } from "./auth.ts";
@@ -38,6 +38,49 @@ describe("WebSocket host authentication", () => {
     expect(await rejectedRegistration(url, readOnly.apiKey, "a1")).toBe(1008);
     expect(await rejectedRegistration(url, bound.apiKey, "b2")).toBe(1008);
 
+    hub.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  it("drops the socket when the credential lookup itself fails", async () => {
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
+        "base64url",
+      ),
+    });
+    // Account lookup now reaches storage, so it can reject. Left uncaught inside the
+    // upgrade's async callback that would be an unhandled rejection, not a closed socket.
+    auth.authenticateApiKey = () => Promise.reject(new Error("account store unavailable"));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const bridge = createPlaneWsBridge();
+    const server = createServer();
+    const hub = bridge.attach(server, new ControlPlane(), auth);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("no port");
+
+    const closed = await new Promise<string>((resolve, reject) => {
+      const ws = new WebSocket(`ws://127.0.0.1:${address.port}/ws`, {
+        headers: { authorization: "Bearer hns_whatever" },
+      });
+      const timer = setTimeout(() => reject(new Error("lookup-failure timeout")), 3000);
+      ws.on("error", () => {
+        clearTimeout(timer);
+        resolve("errored");
+      });
+      ws.on("open", () => {
+        clearTimeout(timer);
+        resolve("opened");
+      });
+    });
+
+    expect(closed).toBe("errored");
+    expect(errors).toHaveBeenCalledWith("host websocket authentication failed", expect.any(Error));
+    errors.mockRestore();
     hub.close();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),

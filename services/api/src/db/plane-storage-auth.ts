@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 import type { AuthAccountRecord, PlaneStorageCtx } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 export async function putAuthAccount(ctx: PlaneStorageCtx, rec: AuthAccountRecord): Promise<void> {
   await ctx.doc.send(
@@ -82,8 +83,8 @@ export async function getAuthAccountByUsername(
     );
     const user = res.Items?.[0] as AuthAccountRecord | undefined;
     if (user) return user;
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return null;
 }
 
@@ -98,8 +99,8 @@ export async function listAuthAccounts(ctx: PlaneStorageCtx): Promise<AuthAccoun
       }),
     );
     records.push(...((res.Items ?? []) as AuthAccountRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 

@@ -15,6 +15,8 @@ type Options = {
   onError?: (err: Error) => void;
   socketFactory?: (url: string, options?: ConstructorParameters<typeof WebSocket>[1]) => WebSocket;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
+  /** Injectable for deterministic reconnect-jitter tests. */
+  random?: () => number;
 };
 
 type InflightWrite = { item: WsBufferItem; target: WebSocket; epoch: number };
@@ -38,6 +40,7 @@ export function createWsTransport(options: Options): DaemonTransport & {
     ? { headers: { authorization: `Bearer ${options.apiKey}` } }
     : undefined;
   const timers = options.timers ?? globalThis;
+  const random = options.random ?? Math.random;
   const factory = options.socketFactory ?? ((target, opts) => new WebSocket(target, opts));
   const lossMarkers = new Map<string, LossMarker>();
   const buffer = new WsOutboundBuffer(
@@ -103,7 +106,11 @@ export function createWsTransport(options: Options): DaemonTransport & {
   };
 
   const retryLater = (): void => {
-    const wait = delay;
+    // Jitter the wait. A whole fleet loses its sockets at the same instant when the
+    // control plane restarts, and an unjittered ladder has every host retrying together
+    // on the same 1s/2s/4s boundaries — the reconnect storm lands exactly when the
+    // control plane can least absorb it.
+    const wait = Math.round(delay * (0.5 + random()));
     delay = Math.min(delay * 2, 60_000);
     retry = timers.setTimeout(() => {
       retry = undefined;

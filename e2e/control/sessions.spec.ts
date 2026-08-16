@@ -2,13 +2,14 @@
 import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
+import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
 test.describe("control plane sessions", () => {
   test("sessions list page and filters", async ({ page, request }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const repositoryName = `pw-session-repository-${suffix}`;
     const hostId = `pw-session-filter-host-${suffix}`;
-    const repository = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+    const repository = await request.post(`${API_BASE}/api/v1/repositories`, {
       data: {
         name: repositoryName,
         url: `https://git.example.test/pw-session-list-${suffix}.git`,
@@ -17,7 +18,7 @@ test.describe("control plane sessions", () => {
     });
     expect(repository.status()).toBe(201);
     const repositoryId = ((await repository.json()) as { id: string }).id;
-    const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+    const command = await request.post(`${API_BASE}/api/v1/commands`, {
       data: {
         name: `pw-session-list-${Date.now()}`,
         argv: ["echo"],
@@ -27,7 +28,7 @@ test.describe("control plane sessions", () => {
     });
     expect(command.status()).toBe(201);
     const commandId = ((await command.json()) as { id: string }).id;
-    const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+    const created = await request.post(`${API_BASE}/api/v1/sessions`, {
       data: {
         repositoryId,
         prompt: "exercise session list controls",
@@ -37,7 +38,7 @@ test.describe("control plane sessions", () => {
     });
     expect(created.status()).toBe(201);
     const sessionId = ((await created.json()) as { id: string }).id;
-    const secondCreated = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+    const secondCreated = await request.post(`${API_BASE}/api/v1/sessions`, {
       data: {
         repositoryId,
         prompt: "exercise appended session page",
@@ -49,7 +50,7 @@ test.describe("control plane sessions", () => {
     const secondSessionId = ((await secondCreated.json()) as { id: string }).id;
     expect(
       (
-        await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+        await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
           data: { repositories: [], commandProfiles: {} },
         })
       ).ok(),
@@ -165,7 +166,7 @@ test.describe("control plane sessions", () => {
       const fallbackCommandName = `echo-fallback-${test.info().parallelIndex}-${Date.now()}`;
       const secondFallbackCommandName = `echo-fallback-two-${test.info().parallelIndex}-${Date.now()}`;
 
-      const repositoryResponse = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+      const repositoryResponse = await request.post(`${API_BASE}/api/v1/repositories`, {
         data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
       });
       expect(repositoryResponse.ok()).toBe(true);
@@ -176,15 +177,15 @@ test.describe("control plane sessions", () => {
         defaultBranch: "main",
         worktrees: [{ id: "wt-1", name: "wt-1", path: "/tmp/pw-demo/wt-1", labels: ["echo"] }],
       });
-      const commandResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const commandResponse = await request.post(`${API_BASE}/api/v1/commands`, {
         data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },
       });
       const commandId = ((await commandResponse.json()) as { id: string }).id;
-      const fallbackResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const fallbackResponse = await request.post(`${API_BASE}/api/v1/commands`, {
         data: { name: fallbackCommandName, argv: ["echo"], appendPrompt: true, providerId: null },
       });
       const fallbackCommandId = ((await fallbackResponse.json()) as { id: string }).id;
-      const secondFallbackResponse = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const secondFallbackResponse = await request.post(`${API_BASE}/api/v1/commands`, {
         data: {
           name: secondFallbackCommandName,
           argv: ["echo"],
@@ -303,7 +304,7 @@ test.describe("control plane sessions", () => {
         await promptToggle.click();
         await expect(promptText).toHaveText(`hello-${id}`);
 
-        const expiring = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+        const expiring = await request.post(`${API_BASE}/api/v1/sessions`, {
           data: {
             repositoryId: repoId,
             prompt: `expire-${id}`,
@@ -316,7 +317,7 @@ test.describe("control plane sessions", () => {
         expect(expiring.ok()).toBe(true);
         const { id: expiringId } = (await expiring.json()) as { id: string };
         await page.waitForTimeout(1_100);
-        await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign");
+        await request.post(`${API_BASE}/api/v1/scheduler/assign`);
         await page.goto(`/sessions?q=${encodeURIComponent(expiringId)}`);
         const expiredReason = page.getByTestId(`session-status-reason-${expiringId}`);
         await expect(expiredReason).toHaveText("Queue expired");
@@ -337,7 +338,7 @@ test.describe("control plane sessions", () => {
     const hostId = `pw-offline-host-${suffix}`;
     const repoId = `pw-offline-repo-${suffix}`;
     const worktreeId = `pw-offline-worktree-${suffix}`;
-    const inventory = await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+    const inventory = await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
       data: {
         repositories: [
           {
@@ -359,7 +360,7 @@ test.describe("control plane sessions", () => {
       },
     });
     expect(inventory.ok()).toBe(true);
-    const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+    const command = await request.post(`${API_BASE}/api/v1/commands`, {
       data: { name: `pw-offline-command-${suffix}`, argv: ["echo"], providerId: null },
     });
     expect(command.ok()).toBe(true);
@@ -367,9 +368,9 @@ test.describe("control plane sessions", () => {
 
     await page.goto("/sessions");
     await page.evaluate(
-      ({ hostId, repoId, worktreeId }) =>
+      ({ hostId, repoId, worktreeId, wsBase }) =>
         new Promise<void>((resolve, reject) => {
-          const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+          const socket = new WebSocket(wsBase);
           const timeout = setTimeout(
             () => reject(new Error("host registration timed out")),
             10_000,
@@ -407,17 +408,17 @@ test.describe("control plane sessions", () => {
             );
           });
         }),
-      { hostId, repoId, worktreeId },
+      { hostId, repoId, worktreeId, wsBase: WS_BASE },
     );
 
-    const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+    const created = await request.post(`${API_BASE}/api/v1/sessions`, {
       data: { repositoryId: repoId, prompt: "stay running", target: { commandId }, timeout: 300 },
     });
     expect(created.status()).toBe(201);
     const sessionId = ((await created.json()) as { id: string }).id;
-    expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+    expect((await request.post(`${API_BASE}/api/v1/scheduler/assign`)).ok()).toBe(true);
     const assigned = (await (
-      await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+      await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`)
     ).json()) as { attemptId: string; worktreeId: string };
     await page.evaluate(
       ({ sessionId, attemptId, worktreeId }) => {
@@ -430,7 +431,7 @@ test.describe("control plane sessions", () => {
     );
     await expect
       .poll(async () => {
-        const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+        const response = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
         return ((await response.json()) as { ackReceivedAt?: string }).ackReceivedAt;
       })
       .toBeTruthy();
@@ -439,7 +440,7 @@ test.describe("control plane sessions", () => {
     });
     await expect
       .poll(async () => {
-        const response = await request.get("http://127.0.0.1:7430/api/v1/hosts");
+        const response = await request.get(`${API_BASE}/api/v1/hosts`);
         const hosts = (await response.json()) as {
           items: Array<{ hostId: string; online: boolean }>;
         };
@@ -493,7 +494,7 @@ test.describe("control plane sessions", () => {
     let commandId: string | undefined;
 
     try {
-      const provider = await request.post("http://127.0.0.1:7430/api/v1/providers", {
+      const provider = await request.post(`${API_BASE}/api/v1/providers`, {
         data: {
           name: providerName,
           usageRates: { currency: "USD", inputTokenMicros: "2" },
@@ -502,51 +503,48 @@ test.describe("control plane sessions", () => {
       expect(provider.ok()).toBe(true);
       providerId = ((await provider.json()) as { id: string }).id;
 
-      const account = await request.post("http://127.0.0.1:7430/api/v1/provider-accounts", {
+      const account = await request.post(`${API_BASE}/api/v1/provider-accounts`, {
         data: { providerId, label: `${providerName}@example.com` },
       });
       expect(account.ok()).toBe(true);
       accountId = ((await account.json()) as { id: string }).id;
 
-      const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const command = await request.post(`${API_BASE}/api/v1/commands`, {
         data: { name: `${providerName}-command`, argv: ["echo"], providerId },
       });
       expect(command.ok()).toBe(true);
       commandId = ((await command.json()) as { id: string }).id;
 
-      const inventory = await request.put(
-        `http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`,
-        {
-          data: {
-            repositories: [
-              {
-                id: repoId,
-                path: "/tmp/pw-usage",
-                defaultBranch: "main",
-                worktrees: [
-                  {
-                    id: worktreeId,
-                    name: worktreeId,
-                    path: "/tmp/pw-usage/worktree",
-                    labels: [],
-                  },
-                ],
-              },
-            ],
-            providerAccounts: [{ providerAccountId: accountId }],
-            commandProfiles: {},
-          },
+      const inventory = await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
+        data: {
+          repositories: [
+            {
+              id: repoId,
+              path: "/tmp/pw-usage",
+              defaultBranch: "main",
+              worktrees: [
+                {
+                  id: worktreeId,
+                  name: worktreeId,
+                  path: "/tmp/pw-usage/worktree",
+                  labels: [],
+                },
+              ],
+            },
+          ],
+          providerAccounts: [{ providerAccountId: accountId }],
+          commandProfiles: {},
         },
-      );
+      });
       expect(inventory.ok()).toBe(true);
 
       // Connect from the control-plane origin (rather than an opaque blank-page
       // origin) to exercise the same browser WebSocket policy as the real UI.
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repoId, worktreeId }) =>
+        ({ hostId, repoId, worktreeId, wsBase }) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+            const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
               () => reject(new Error("host registration timed out")),
               10_000,
@@ -587,17 +585,17 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repoId, worktreeId },
+        { hostId, repoId, worktreeId, wsBase: WS_BASE },
       );
 
-      const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+      const created = await request.post(`${API_BASE}/api/v1/sessions`, {
         data: { repositoryId: repoId, prompt: "report usage", target: { commandId }, timeout: 30 },
       });
       expect(created.status()).toBe(201);
       const sessionId = ((await created.json()) as { id: string }).id;
-      expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+      expect((await request.post(`${API_BASE}/api/v1/scheduler/assign`)).ok()).toBe(true);
 
-      const assigned = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+      const assigned = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
       expect(assigned.ok()).toBe(true);
       const session = (await assigned.json()) as { attemptId: string; worktreeId: string };
       await page.evaluate(
@@ -611,7 +609,7 @@ test.describe("control plane sessions", () => {
       );
       await expect
         .poll(async () => {
-          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          const response = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
           return ((await response.json()) as { status: string }).status;
         })
         .toBe("running");
@@ -663,9 +661,7 @@ test.describe("control plane sessions", () => {
 
       await expect
         .poll(async () => {
-          const usage = await request.get(
-            `http://127.0.0.1:7430/api/v1/sessions/${sessionId}/usage`,
-          );
+          const usage = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}/usage`);
           return ((await usage.json()) as { aggregate: { inputTokens: string } }).aggregate
             .inputTokens;
         })
@@ -683,21 +679,15 @@ test.describe("control plane sessions", () => {
           (globalThis as typeof globalThis & { usageSocket?: WebSocket }).usageSocket?.close();
         })
         .catch(() => undefined);
-      await request
-        .delete(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`)
-        .catch(() => undefined);
+      await request.delete(`${API_BASE}/api/v1/hosts/${hostId}/inventory`).catch(() => undefined);
       if (commandId)
-        await request
-          .delete(`http://127.0.0.1:7430/api/v1/commands/${commandId}`)
-          .catch(() => undefined);
+        await request.delete(`${API_BASE}/api/v1/commands/${commandId}`).catch(() => undefined);
       if (accountId)
         await request
-          .delete(`http://127.0.0.1:7430/api/v1/provider-accounts/${accountId}`)
+          .delete(`${API_BASE}/api/v1/provider-accounts/${accountId}`)
           .catch(() => undefined);
       if (providerId)
-        await request
-          .delete(`http://127.0.0.1:7430/api/v1/providers/${providerId}`)
-          .catch(() => undefined);
+        await request.delete(`${API_BASE}/api/v1/providers/${providerId}`).catch(() => undefined);
     }
   });
 
@@ -719,17 +709,17 @@ test.describe("control plane sessions", () => {
     let commandId: string | undefined;
 
     try {
-      const repository = await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+      const repository = await request.post(`${API_BASE}/api/v1/repositories`, {
         data: { name: repositoryName, url: `/tmp/${repositoryName}`, defaultBranch: "main" },
       });
       const repositoryId = ((await repository.json()) as { id: string }).id;
-      const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+      const command = await request.post(`${API_BASE}/api/v1/commands`, {
         data: { name: `pw-error-code-${suffix}`, argv: ["echo"], appendPrompt: true },
       });
       commandId = ((await command.json()) as { id: string }).id;
       expect(
         (
-          await request.put(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`, {
+          await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
             data: {
               repositories: [
                 {
@@ -754,9 +744,9 @@ test.describe("control plane sessions", () => {
 
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repositoryId, worktreeId }) =>
+        ({ hostId, repositoryId, worktreeId, wsBase }) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+            const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
               () => reject(new Error("host registration timed out")),
               10_000,
@@ -798,10 +788,10 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repositoryId, worktreeId },
+        { hostId, repositoryId, worktreeId, wsBase: WS_BASE },
       );
 
-      const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+      const created = await request.post(`${API_BASE}/api/v1/sessions`, {
         data: {
           repositoryId,
           prompt: "report a message-free terminal failure",
@@ -810,9 +800,9 @@ test.describe("control plane sessions", () => {
         },
       });
       const sessionId = ((await created.json()) as { id: string }).id;
-      expect((await request.post("http://127.0.0.1:7430/api/v1/scheduler/assign")).ok()).toBe(true);
+      expect((await request.post(`${API_BASE}/api/v1/scheduler/assign`)).ok()).toBe(true);
       const assigned = (await (
-        await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+        await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`)
       ).json()) as { attemptId: string; worktreeId: string };
       await page.evaluate(
         ({ sessionId, attemptId, worktreeId }) => {
@@ -825,7 +815,7 @@ test.describe("control plane sessions", () => {
       );
       await expect
         .poll(async () => {
-          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          const response = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
           return ((await response.json()) as { status: string }).status;
         })
         .toBe("running");
@@ -849,7 +839,7 @@ test.describe("control plane sessions", () => {
       );
       await expect
         .poll(async () => {
-          const response = await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`);
+          const response = await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`);
           return (await response.json()) as {
             status: string;
             errorCode?: string;
@@ -858,7 +848,7 @@ test.describe("control plane sessions", () => {
         })
         .toMatchObject({ status: "failed", errorCode: "setup_failed" });
       const terminal = (await (
-        await request.get(`http://127.0.0.1:7430/api/v1/sessions/${sessionId}`)
+        await request.get(`${API_BASE}/api/v1/sessions/${sessionId}`)
       ).json()) as { errorMessage?: string };
       expect(terminal.errorMessage).toBeUndefined();
 
@@ -873,13 +863,9 @@ test.describe("control plane sessions", () => {
           ).errorCodeSocket?.close();
         })
         .catch(() => undefined);
-      await request
-        .delete(`http://127.0.0.1:7430/api/v1/hosts/${hostId}/inventory`)
-        .catch(() => undefined);
+      await request.delete(`${API_BASE}/api/v1/hosts/${hostId}/inventory`).catch(() => undefined);
       if (commandId)
-        await request
-          .delete(`http://127.0.0.1:7430/api/v1/commands/${commandId}`)
-          .catch(() => undefined);
+        await request.delete(`${API_BASE}/api/v1/commands/${commandId}`).catch(() => undefined);
     }
   });
 

@@ -1,6 +1,7 @@
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { canAuthorSessions, sendSessionForbidden } from "./local-routes-session-access.ts";
 
 const CLONE_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
 
@@ -55,6 +56,18 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
   const match = /^\/api\/v1\/sessions\/([^/]+)\/clone$/.exec(url.pathname);
   if (method !== "POST" || !match) return false;
   const sourceId = match[1]!;
+  if (!canAuthorSessions(ctx)) {
+    return respondAfterCloneAudit(
+      ctx,
+      {
+        action: "session:clone",
+        resourceType: "session",
+        resourceId: sourceId,
+        outcome: "denied",
+      },
+      () => sendSessionForbidden(res),
+    );
+  }
   let source: Awaited<ReturnType<typeof plane.getSessionDurable>>;
   try {
     source = await plane.getSessionDurable(sourceId);

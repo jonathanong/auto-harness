@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- state shape and the durable write queue share one file. */
 import { randomBytes } from "node:crypto";
 
 import {
@@ -37,9 +38,18 @@ import type { ArchiveWriter } from "./archive-writer.ts";
 /** Shared mutable state bag for ControlPlane subsystems. */
 export type ControlPlaneState = {
   storage: DynamoPlaneStorage | undefined;
+  /**
+   * Durable writes still in flight. Fulfilled writes prune themselves; rejected ones stay
+   * until settleStorage surfaces them. Retaining every settled write, as this used to,
+   * grew one promise per write for the life of the process.
+   */
   pendingPersists: Promise<void>[];
-  /** Log writes that an archive must observe before it snapshots durable logs. */
-  pendingLogPersists: Promise<void>[];
+  /**
+   * Log writes an archive must observe before it snapshots durable logs, keyed by
+   * session. Keyed, because archiving one session used to await every log write since
+   * process start, making archive cost scale with total output rather than the session's.
+   */
+  pendingLogPersists: Map<string, Set<Promise<void>>>;
   /**
    * Serializes fire-and-forget durable writes without starting the next write
    * until the preceding one has settled. The recovered tail deliberately keeps
@@ -112,7 +122,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
   return {
     storage: options.storage,
     pendingPersists: [],
-    pendingLogPersists: [],
+    pendingLogPersists: new Map(),
     writeTail: Promise.resolve(),
     sessions: new Map(),
     worktrees: new Map(),
@@ -172,6 +182,8 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     onLogCommitted: undefined,
   };
 }
+const noop = (): void => undefined;
+
 export function queueWrite(
   state: ControlPlaneState,
   write: (storage: DynamoPlaneStorage | undefined) => Promise<void>,
@@ -182,7 +194,40 @@ export function queueWrite(
   // so one failed asynchronous write does not permanently poison the queue.
   state.writeTail = queued.catch(() => undefined);
   state.pendingPersists.push(queued);
+  void queued.then(() => {
+    const index = state.pendingPersists.indexOf(queued);
+    if (index >= 0) state.pendingPersists.splice(index, 1);
+  }, noop);
   return queued;
+}
+
+/**
+ * Track a session's log write so an archive of that session waits for it.
+ *
+ * Only a *successful* write is pruned. `archiveSessionLogs` awaits `Promise.all` over
+ * this session's pending set, so a write left in it after failing makes that `Promise.all`
+ * reject too — surfacing the incomplete transcript to the caller instead of silently
+ * publishing an archive that is missing the chunk the failed write never persisted.
+ * Pruning on `finally()` (settled, not just resolved) used to erase that signal.
+ *
+ * `.then(onSuccess, onFailure)` rather than `.finally()` for the same reason `queueWrite`
+ * uses it: `.finally()` returns a new promise that passes the original rejection through,
+ * so discarding it with a bare `void` (no `.catch()` on that *derived* promise) was itself
+ * an unhandled rejection whenever `persisted` failed — independent of whether `persisted`
+ * was already otherwise handled.
+ */
+export function trackLogPersist(
+  state: ControlPlaneState,
+  sessionId: string,
+  persisted: Promise<void>,
+): void {
+  const pending = state.pendingLogPersists.get(sessionId) ?? new Set<Promise<void>>();
+  pending.add(persisted);
+  state.pendingLogPersists.set(sessionId, pending);
+  void persisted.then(() => {
+    pending.delete(persisted);
+    if (pending.size === 0) state.pendingLogPersists.delete(sessionId);
+  }, noop);
 }
 
 export function persistSession(state: ControlPlaneState, session: SessionRecord): void {
@@ -218,7 +263,7 @@ export { hydrateFromStorage };
 export async function settleStorage(state: ControlPlaneState): Promise<void> {
   const pending = state.pendingPersists;
   state.pendingPersists = [];
-  state.pendingLogPersists = [];
+  state.pendingLogPersists = new Map();
   const results = await Promise.allSettled(pending);
   const failed = results.find((result) => result.status === "rejected");
   if (failed) throw failed.reason;

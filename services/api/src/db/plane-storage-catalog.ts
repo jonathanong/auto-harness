@@ -36,6 +36,7 @@ import {
   getSession,
   releaseConcurrencyLock,
 } from "./plane-storage-sessions.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
@@ -49,12 +50,6 @@ export function catalogItem<T>(item: T | undefined): T | null {
 
 export function catalogPageItems<T>(items: T[] | undefined): T[] {
   return items ?? [];
-}
-
-export function nextCatalogPage(
-  key: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  return key && Object.keys(key).length > 0 ? key : undefined;
 }
 
 export function scheduleAttributes(
@@ -166,7 +161,7 @@ export async function listLogs(ctx: PlaneStorageCtx, sessionId: string): Promise
       }),
     );
     records.push(...catalogPageItems(res.Items as LogRecord[] | undefined));
-    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
@@ -220,7 +215,7 @@ export async function queryLogs(
       }),
     );
     records.push(...catalogPageItems(res.Items as LogRecord[] | undefined));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey && records.length < query.limit);
   return records;
 }
@@ -336,7 +331,7 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
       }),
     );
     records.push(...catalogPageItems(res.Items as ScheduleRecord[] | undefined));
-    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
@@ -395,7 +390,7 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
       }),
     );
     records.push(...catalogPageItems(res.Items as RepositoryRecord[] | undefined));
-    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
@@ -594,28 +589,85 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveMetadat
       }),
     );
     records.push(...catalogPageItems(res.Items as ArchiveMetadata[] | undefined));
-    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
 
+/**
+ * Build the `ConditionExpression`/`ExpressionAttributeValues` pair that makes an inventory
+ * write conditional on the version the caller read, shared by `putHostInventory` and
+ * `putHostInventoryFenced` so the two condition strings cannot drift apart. Version 0
+ * means "the caller read a document with no version yet", which is either a
+ * pre-versioning row or no row at all.
+ */
+function inventoryVersionCondition(expectedVersion: number | undefined): {
+  ConditionExpression?: string;
+  ExpressionAttributeValues?: Record<string, unknown>;
+} {
+  if (expectedVersion === undefined) return {};
+  if (expectedVersion === 0) {
+    return {
+      ConditionExpression: "attribute_not_exists(version) OR version = :expected",
+      ExpressionAttributeValues: { ":expected": 0 },
+    };
+  }
+  return {
+    ConditionExpression: "version = :expected",
+    ExpressionAttributeValues: { ":expected": expectedVersion },
+  };
+}
+
+/**
+ * Replace a host's inventory document.
+ *
+ * `expectedVersion` makes the replace conditional on the document not having moved since
+ * the caller read it. Without it this was an unconditional whole-document Put, so the
+ * control plane adding a worktree while the host pane added another silently dropped one
+ * of them — and the worktree projection then deleted the orphaned Worktrees rows.
+ * Returns false when the condition fails so the caller can answer 409.
+ */
 export async function putHostInventory(
   ctx: PlaneStorageCtx,
   rec: HostInventoryRecord,
   markers?: readonly DeletionMarker[],
-): Promise<void> {
-  const write = { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } };
-  await guardedWrite(ctx, markers, write, async () => {
-    await ctx.doc.send(new PutCommand(write.Put));
-  });
+  expectedVersion?: number,
+): Promise<boolean> {
+  const write = {
+    Put: {
+      TableName: ctx.tables.hostInventories,
+      Item: { ...rec },
+      ...inventoryVersionCondition(expectedVersion),
+    },
+  };
+  try {
+    await guardedWrite(ctx, markers, write, async () => {
+      await ctx.doc.send(new PutCommand(write.Put));
+    });
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
 }
 
-/** Publish inventory only while the registering connection still owns the host lease. */
+/**
+ * Publish inventory only while the registering connection still owns the host lease.
+ *
+ * `expectedVersion`, when given, additionally conditions the inventory half of the
+ * transaction on the version the caller read. Without it, a registration that read the
+ * inventory before a concurrent UI edit committed a newer version would overwrite that
+ * edit — the transaction only fenced on the connection lease, which a UI edit never
+ * touches, so nothing here ever detected the collision. The two condition failures are
+ * distinguished by which transaction item DynamoDB reports failed (index 0: the lease
+ * moved to another connection, not retryable here; index 1: the version moved, retryable
+ * by the caller re-reading and rebuilding against the current document).
+ */
 export async function putHostInventoryFenced(
   ctx: PlaneStorageCtx,
   rec: HostInventoryRecord,
   fence: { hostId: string; connectionId: string },
-): Promise<boolean> {
+  expectedVersion?: number,
+): Promise<{ ok: true } | { ok: false; reason: "lease" | "version" }> {
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -628,13 +680,20 @@ export async function putHostInventoryFenced(
               ExpressionAttributeValues: { ":connectionId": fence.connectionId },
             },
           },
-          { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } },
+          {
+            Put: {
+              TableName: ctx.tables.hostInventories,
+              Item: { ...rec },
+              ...inventoryVersionCondition(expectedVersion),
+            },
+          },
         ],
       }),
     );
-    return true;
+    return { ok: true };
   } catch (err) {
-    return conditionalCatalogWriteOrThrow(err);
+    if (!isConditionalTransactionFailed(err)) throw err;
+    return { ok: false, reason: isConditionalTransactionFailureAt(err, 1) ? "version" : "lease" };
   }
 }
 
@@ -664,7 +723,7 @@ export async function listHostInventories(ctx: PlaneStorageCtx): Promise<HostInv
       }),
     );
     records.push(...catalogPageItems(res.Items as HostInventoryRecord[] | undefined));
-    startKey = nextCatalogPage(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }

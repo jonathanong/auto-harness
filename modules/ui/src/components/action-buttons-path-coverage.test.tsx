@@ -2,6 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HostInventory } from "@auto-harness/shared";
 
 import { input, mount, reset, response, router } from "./action-form-test-helpers.ts";
 import { DrainButton } from "./drain-button.tsx";
@@ -92,36 +93,33 @@ describe("shared path and destructive action controls", () => {
   });
 
   it("requires confirmation and refreshes or redirects after repository removal", async () => {
-    const readInventory = vi.fn().mockResolvedValue({
-      repositories: [],
+    // Invoke the transform mutate() receives, rather than only asserting the
+    // component reacts to a stubbed ok/error result — this is what actually
+    // exercises removeHostRepository through the button's own boundary.
+    const current: HostInventory = {
+      repositories: [{ id: "repo-1", path: "/src/repo-1", defaultBranch: "main", worktrees: [] }],
       providerAccounts: [],
       commandProfiles: {},
-    });
-    const writeInventory = vi.fn();
+    };
+    const mutate = vi.fn(
+      (
+        _hostId: string,
+        transform: (existing: HostInventory) => HostInventory,
+      ): Promise<{ ok: true } | { ok: false; error: string }> => {
+        const next = transform(current);
+        expect(next.repositories.find((r) => r.id === "repo-1")).toBeUndefined();
+        return Promise.resolve({ ok: true });
+      },
+    );
     mount(<RemoveRepoButton hostId="host-1" repositoryId="default" />).unmount();
 
-    let view = mount(
-      <RemoveRepoButton
-        hostId="host-1"
-        repositoryId="repo-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
-      />,
-    );
-    writeInventory.mockResolvedValueOnce({ ok: false, error: "failed" });
+    let view = mount(<RemoveRepoButton hostId="host-1" repositoryId="repo-1" mutate={mutate} />);
+    mutate.mockImplementationOnce(() => Promise.resolve({ ok: false, error: "failed" }));
     await confirm("repo-remove-repo-1");
     expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
 
-    view = mount(
-      <RemoveRepoButton
-        hostId="host-1"
-        repositoryId="repo-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
-      />,
-    );
-    writeInventory.mockResolvedValueOnce({ ok: true });
+    view = mount(<RemoveRepoButton hostId="host-1" repositoryId="repo-1" mutate={mutate} />);
     await confirm("repo-remove-repo-1");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -131,24 +129,41 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         redirectTo="/repositories"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
     await confirm("repo-remove-repo-1");
     expect(router.push).toHaveBeenCalledWith("/repositories");
     expect(router.refresh).toHaveBeenCalledTimes(2);
   });
 
   it("requires confirmation and refreshes or redirects after worktree removal", async () => {
-    const current = {
-      repositories: [{ id: "repo-1", path: "/src/repo", defaultBranch: "main", worktrees: [] }],
+    // Invoke the transform mutate() receives, rather than only asserting the
+    // component reacts to a stubbed ok/error result — this is what actually
+    // exercises removeHostWorktree through the button's own boundary.
+    const current: HostInventory = {
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/src/repo-1",
+          defaultBranch: "main",
+          worktrees: [{ id: "worktree-1", name: "worktree-1", path: "/src/wt-1", labels: [] }],
+        },
+      ],
       providerAccounts: [],
       commandProfiles: {},
     };
-    const readInventory = vi.fn().mockResolvedValue(current);
-    const writeInventory = vi.fn();
+    const mutate = vi.fn(
+      (
+        _hostId: string,
+        transform: (existing: HostInventory) => HostInventory,
+      ): Promise<{ ok: true } | { ok: false; error: string }> => {
+        const next = transform(current);
+        const repo = next.repositories.find((r) => r.id === "repo-1");
+        expect(repo?.worktrees.find((w) => w.id === "worktree-1")).toBeUndefined();
+        return Promise.resolve({ ok: true });
+      },
+    );
     mount(
       <RemoveWorktreeButton hostId="host-1" repositoryId="repo-1" worktreeId="default" />,
     ).unmount();
@@ -158,11 +173,10 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         worktreeId="worktree-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: false, error: "failed" });
+    mutate.mockImplementationOnce(() => Promise.resolve({ ok: false, error: "failed" }));
     await confirm("worktree-remove-worktree-1");
     expect(router.refresh).not.toHaveBeenCalled();
     view.unmount();
@@ -172,11 +186,9 @@ describe("shared path and destructive action controls", () => {
         hostId="host-1"
         repositoryId="repo-1"
         worktreeId="worktree-1"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
     await confirm("worktree-remove-worktree-1");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
@@ -187,11 +199,9 @@ describe("shared path and destructive action controls", () => {
         repositoryId="repo-1"
         worktreeId="worktree-1"
         redirectTo="/worktrees"
-        readInventory={readInventory}
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
-    writeInventory.mockResolvedValueOnce({ ok: true });
     await confirm("worktree-remove-worktree-1");
     expect(router.push).toHaveBeenCalledWith("/worktrees");
     expect(router.refresh).toHaveBeenCalledTimes(2);

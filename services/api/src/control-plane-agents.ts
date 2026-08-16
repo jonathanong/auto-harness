@@ -557,7 +557,7 @@ export async function registerHostDurable(
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
     return { ok: false, error: "reported running session lost reconnect reconciliation" };
   }
-  const registrationInventory = buildRegisteredInventory(
+  let registrationInventory = buildRegisteredInventory(
     opts.hostId,
     registeredRepositories,
     opts.worktrees,
@@ -568,14 +568,43 @@ export async function registerHostDurable(
     opts.daemonIdentity,
   );
   try {
-    if (
-      !(await state.storage.putHostInventoryFenced(registrationInventory, {
-        hostId: opts.hostId,
-        connectionId,
-      }))
-    ) {
-      await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
-      return { ok: false, error: "host connection changed while publishing inventory" };
+    // The version this registration read is only as fresh as the strongly-consistent
+    // read taken above, before the worktree-publishing and reconciliation round-trips
+    // that follow it — round-trips a concurrent UI edit's own write can land inside. The
+    // fenced write is conditioned on that version; a "version" failure means exactly that
+    // race happened, and is retried by re-reading the now-current document and rebuilding
+    // the registration against it — buildRegisteredInventory already layers the agent's
+    // report onto `previous` rather than replacing it outright, so the retry reconciles
+    // with the edit instead of re-losing it. A "lease" failure means a different
+    // connection won registration entirely and is not retryable here.
+    for (let attempt = 0; ; attempt += 1) {
+      const result = await state.storage.putHostInventoryFenced(
+        registrationInventory,
+        { hostId: opts.hostId, connectionId },
+        previousInventory?.version ?? 0,
+      );
+      if (result.ok) break;
+      if (result.reason === "lease" || attempt >= 2) {
+        await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);
+        return {
+          ok: false,
+          error:
+            result.reason === "lease"
+              ? "host connection changed while publishing inventory"
+              : "host inventory changed while publishing registration",
+        };
+      }
+      previousInventory = (await state.storage.getHostInventory(opts.hostId)) ?? undefined;
+      registrationInventory = buildRegisteredInventory(
+        opts.hostId,
+        registeredRepositories,
+        opts.worktrees,
+        previousInventory?.commandProfiles ?? {},
+        conn.capabilities,
+        at,
+        previousInventory,
+        opts.daemonIdentity,
+      );
     }
   } catch (err) {
     await rollbackDurableRegistration(state, opts.hostId, connectionId, at, publishedWorktrees);

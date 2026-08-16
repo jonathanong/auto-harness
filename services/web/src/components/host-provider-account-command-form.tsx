@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button, WithTooltip } from "@auto-harness/ui";
-import { getInventory, putInventory, setHostProviderAccountCommand } from "@auto-harness/shared";
+import { mutateInventory, setHostProviderAccountCommand } from "@auto-harness/shared";
 import type { Command } from "@auto-harness/shared";
 
 import { navigateBrowser } from "../lib/browser-navigation.ts";
@@ -36,13 +36,9 @@ export function HostProviderAccountCommandForm({
         setPending(true);
         void (async () => {
           try {
-            const current = await getInventory(hostId);
-            const next = setHostProviderAccountCommand(
-              current,
-              providerAccountId,
-              value || undefined,
+            const r = await mutateInventory(hostId, (current) =>
+              setHostProviderAccountCommand(current, providerAccountId, value || undefined),
             );
-            const r = await putInventory(hostId, next);
             if (!r.ok) {
               setError(r.error);
               return;

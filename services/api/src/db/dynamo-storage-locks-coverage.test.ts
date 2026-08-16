@@ -16,7 +16,6 @@ import {
   heartbeatConnection,
   listConnections,
   markHostDraining,
-  nextConnectionPage,
   putConnection,
   releaseHostConnection,
   releaseHostLock,
@@ -24,6 +23,7 @@ import {
   tryRegisterHost,
 } from "./plane-storage-locks.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
 let ctx: PlaneStorageCtx;
@@ -61,9 +61,9 @@ describe("DynamoDB Local host lock adapters", () => {
     expect(() => conditionalHostWriteOrThrow(new Error("unavailable"))).toThrow("unavailable");
     expect(connectionPageItems(undefined)).toEqual([]);
     expect(connectionPageItems([connection("connection", "host")])).toHaveLength(1);
-    expect(nextConnectionPage(undefined)).toBeUndefined();
-    expect(nextConnectionPage({})).toBeUndefined();
-    expect(nextConnectionPage({ connectionId: "next" })).toEqual({ connectionId: "next" });
+    expect(nextPageKey(undefined)).toBeUndefined();
+    expect(nextPageKey({})).toBeUndefined();
+    expect(nextPageKey({ connectionId: "next" })).toEqual({ connectionId: "next" });
   });
   it("coordinates registration, replacement, draining, heartbeat, and release", async () => {
     expect(

@@ -36,7 +36,7 @@ describe("fenced host inventory publication", () => {
         hostId: "host-1",
         connectionId: "connection-1",
       }),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({ ok: true });
     expect(commands[0]?.input).toMatchObject({
       TransactItems: [
         {
@@ -54,6 +54,68 @@ describe("fenced host inventory publication", () => {
         hostId: "host-1",
         connectionId: "stale-connection",
       }),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ ok: false, reason: "lease" });
+  });
+
+  it("distinguishes a version conflict from a lease conflict", async () => {
+    // Index 0 is the lease ConditionCheck, index 1 is the inventory Put — a caller
+    // (registerHostDurable) needs to know which failed: a lease conflict means a
+    // different connection won registration and is not retryable, while a version
+    // conflict means a concurrent UI edit landed and is retryable by re-reading.
+    const commands: TransactWriteCommand[] = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          commands.push(command as TransactWriteCommand);
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }],
+          };
+        },
+      } as never,
+      tables: { hostInventories: "HostInventories", hostLocks: "HostLocks" } as never,
+    };
+    const inventory = {
+      hostId: "host-1",
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+      updatedAt: "2026-08-15T00:00:00.000Z",
+      version: 3,
+    };
+
+    await expect(
+      putHostInventoryFenced(ctx, inventory, { hostId: "host-1", connectionId: "connection-1" }, 2),
+    ).resolves.toEqual({ ok: false, reason: "version" });
+    expect(commands[0]?.input).toMatchObject({
+      TransactItems: [
+        {},
+        {
+          Put: {
+            TableName: "HostInventories",
+            ConditionExpression: "version = :expected",
+            ExpressionAttributeValues: { ":expected": 2 },
+          },
+        },
+      ],
+    });
+  });
+
+  it("rethrows an error that is not a recognized conditional failure", async () => {
+    const ctx: PlaneStorageCtx = {
+      doc: { send: async () => Promise.reject(new Error("network down")) } as never,
+      tables: { hostInventories: "HostInventories", hostLocks: "HostLocks" } as never,
+    };
+    const inventory = {
+      hostId: "host-1",
+      repositories: [],
+      providerAccounts: [],
+      commandProfiles: {},
+      updatedAt: "2026-08-15T00:00:00.000Z",
+    };
+
+    await expect(
+      putHostInventoryFenced(ctx, inventory, { hostId: "host-1", connectionId: "connection-1" }),
+    ).rejects.toThrow("network down");
   });
 });

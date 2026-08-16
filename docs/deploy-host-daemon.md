@@ -75,10 +75,16 @@ sudo systemctl enable --now auto-harness-host-daemon.service
 
 The unit runs as `harness`, starts the declared package entrypoint from
 `/opt/auto-harness/current`, restarts after exits or crashes, and sends SIGTERM only to the daemon
-first. `TimeoutStopSec=infinity` plus `KillMode=mixed` lets the daemon durably enter drain and wait
+first. `TimeoutStopSec=15min` plus `KillMode=mixed` lets the daemon durably enter drain and wait
 for in-flight CLIs instead of having systemd kill the whole cgroup. An operator can still use an
 explicit `systemctl kill --kill-who=all --signal=SIGKILL auto-harness-host-daemon.service` for an
 acknowledged emergency; that is not the normal update path.
+
+The bound is finite on purpose. It was `infinity`, and the daemon had no bound of its own:
+with the control plane unreachable, `beginDrain()` retried its announcement forever and
+never settled, so `systemctl stop` hung indefinitely even with no session in flight. The
+daemon now stops announcing after `drainDeadlineMs` (30s) and forces exit after
+`HARNESS_SHUTDOWN_TIMEOUT_MS` (default 10min), with this unit as the outer backstop.
 
 The service is `Type=simple`: the daemon does not implement `sd_notify` or a systemd watchdog.
 `systemctl status` proves process liveness, while host online/keepalive state in the control plane is

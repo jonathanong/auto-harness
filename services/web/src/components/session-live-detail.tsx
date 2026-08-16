@@ -1,5 +1,6 @@
 "use client";
 
+import { isTerminalSessionStatus } from "@auto-harness/shared";
 import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
 import { type ReactNode, useEffect, useState } from "react";
 
@@ -51,20 +52,24 @@ export function SessionLiveDetail({
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
-    const refresh = async () => {
+    // Returns false once the session reaches a terminal status: nothing can change after
+    // that, and re-arming anyway left every open tab polling a finished session forever.
+    const refresh = async (): Promise<boolean> => {
       try {
         const next = await fetchSessionLiveState(initialSession.id);
-        if (!active) return;
+        if (!active) return false;
         setSession(next.session);
         setHosts(next.hosts);
         setRefreshFailed(false);
+        return !isTerminalSessionStatus(next.session.status);
       } catch {
         if (active) setRefreshFailed(true);
+        return true;
       }
     };
     const poll = async () => {
-      await refresh();
-      if (active) timer = setTimeout(() => void poll(), SESSION_STATE_POLL_MS);
+      const keepPolling = await refresh();
+      if (active && keepPolling) timer = setTimeout(() => void poll(), SESSION_STATE_POLL_MS);
     };
     void poll();
     return () => {

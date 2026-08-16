@@ -15,6 +15,7 @@ import { listAllAuditLogs } from "./plane-storage-audit.ts";
 import { getSlackIntegration } from "./plane-storage-integrations.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
@@ -55,8 +56,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
           }),
         );
       }
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
   }
   {
     let startKey: Record<string, unknown> | undefined;
@@ -72,8 +73,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
           }),
         );
       }
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
   }
   {
     let startKey: Record<string, unknown> | undefined;
@@ -92,8 +93,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
           }),
         );
       }
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
   }
   for (const s of await listSchedules(ctx)) {
     await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.schedules, Key: { id: s.id } }));
@@ -160,8 +161,8 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
           }),
         );
       }
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
   }
 }
 
@@ -177,5 +178,5 @@ async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: stri
       );
     }
     startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey !== undefined);
 }

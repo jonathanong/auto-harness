@@ -21,14 +21,52 @@ const inventory = {
 };
 
 function form(worktreeValue = worktree) {
-  return (
-    <EditWorktreeForm
-      hostId="host/one"
-      inventory={inventory}
-      repositoryId="repo-1"
-      worktree={worktreeValue}
-    />
+  return <EditWorktreeForm hostId="host/one" repositoryId="repo-1" worktree={worktreeValue} />;
+}
+
+/**
+ * Inventory mutations now read fresh immediately before writing, so the stub must answer
+ * the GET as well as the PUT.
+ */
+function stubInventoryFetch(current: unknown) {
+  const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    Promise.resolve(
+      init?.method === "PUT"
+        ? new Response(null, { status: 204 })
+        : new Response(JSON.stringify(current), { status: 200 }),
+    ),
   );
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
+function putBody(fetch: { mock: { calls: unknown[][] } }): unknown {
+  const call = fetch.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "PUT");
+  return JSON.parse(String((call?.[1] as RequestInit | undefined)?.body));
+}
+
+/**
+ * Answers the read immediately and defers the write, which is the call under test. The
+ * write only starts once the read resolves, so `finish` waits for it to register.
+ */
+function stubDeferredPut(current: unknown) {
+  let settle: ((response: Response) => void) | undefined;
+  const fetch = vi.fn((_url: string, init?: RequestInit) =>
+    init?.method === "PUT"
+      ? new Promise<Response>((resolve) => (settle = resolve))
+      : Promise.resolve(new Response(JSON.stringify(current), { status: 200 })),
+  );
+  vi.stubGlobal("fetch", fetch);
+  // The write starts only after the read resolves, so yield until it registers. The loop
+  // condition is updated from the fetch stub, not from inside the loop body.
+  const finish = async (response: Response) => {
+    for (let i = 0; i < 20; i += 1) {
+      if (settle) break;
+      await Promise.resolve();
+    }
+    settle?.(response);
+  };
+  return { fetch, finish };
 }
 
 describe("EditWorktreeForm", () => {
@@ -60,8 +98,7 @@ describe("EditWorktreeForm", () => {
   });
 
   it("saves trimmed paths and labels, preserving worktree settings", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const fetch = stubInventoryFetch(inventory);
     const view = mountForm(form());
     press(field(view.container, "worktree-edit-open"));
     setValue(field(view.container, "worktree-edit-path"), " /new/feature ");
@@ -72,7 +109,7 @@ describe("EditWorktreeForm", () => {
       "/api/v1/hosts/host%2Fone/inventory",
       expect.objectContaining({ method: "PUT" }),
     );
-    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
+    expect(putBody(fetch)).toMatchObject({
       repositories: [
         {
           worktrees: [
@@ -92,15 +129,13 @@ describe("EditWorktreeForm", () => {
   });
 
   it("uses missing-label fallbacks and displays a pending request failure", async () => {
-    let finish!: (response: Response) => void;
-    const fetch = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
-    vi.stubGlobal("fetch", fetch);
+    const { finish } = stubDeferredPut(inventory);
     const view = mountForm(form({ ...worktree, labels: undefined } as typeof worktree));
     press(field(view.container, "worktree-edit-open"));
     field<HTMLInputElement>(view.container, "worktree-edit-labels").remove();
     submit(field(view.container, "form-edit-worktree"));
     expect(field<HTMLButtonElement>(view.container, "worktree-edit-submit").disabled).toBe(true);
-    await act(async () => finish(new Response("cannot save", { status: 500 })));
+    await act(async () => await finish(new Response("cannot save", { status: 500 })));
     expect(field(view.container, "worktree-edit-error").textContent).toBe("cannot save");
     view.unmount();
   });

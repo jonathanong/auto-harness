@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
 test.describe("control plane commands", () => {
   test("commands page loads with add-command dialog closed", async ({ page }) => {
@@ -15,7 +16,7 @@ test.describe("control plane commands", () => {
   }) => {
     const name = `pw-cmd-${test.info().parallelIndex}-${Date.now()}`;
     const providerName = `pw-cmd-prov-${test.info().parallelIndex}-${Date.now()}`;
-    await request.post("http://127.0.0.1:7430/api/v1/providers", { data: { name: providerName } });
+    await request.post(`${API_BASE}/api/v1/providers`, { data: { name: providerName } });
 
     await page.goto("/commands");
     await page.getByTestId("add-command-open").click();

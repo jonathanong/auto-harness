@@ -156,6 +156,6 @@ export async function listAllWebhookDeliveries(
     );
     records.push(...(response.Items ?? []).map(delivery));
     startKey = response.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey !== undefined);
   return records;
 }

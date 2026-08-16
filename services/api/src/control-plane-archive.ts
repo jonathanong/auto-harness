@@ -5,8 +5,9 @@ export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
 ): Promise<ArchiveObject> {
-  const precedingLogWrites = [...state.pendingLogPersists];
-  await Promise.all(precedingLogWrites);
+  // Only this session's log writes. Awaiting every pending log write made archive cost
+  // scale with total output since process start rather than with the session's own.
+  await Promise.all(state.pendingLogPersists.get(sessionId) ?? []);
   const logs = state.storage
     ? await state.storage.listLogs(sessionId)
     : [...(state.logs.get(sessionId) ?? [])];

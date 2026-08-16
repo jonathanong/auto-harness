@@ -31,6 +31,20 @@ admins remain environment-only and can administer those accounts. Passwords
 are bcrypt hashes and API keys are SHA-256 hashes. The one-time plain API key
 is never stored or returned again after creation.
 
+### Account cache freshness
+
+Each API worker serves credential decisions from an in-process account cache. The
+cache is re-read when it passes `HARNESS_AUTH_CACHE_TTL_MS` (default `30000`), which
+bounds how long a **revoked** API key or a deleted user's session cookie can still be
+accepted by a worker that did not handle the revocation. A credential that is not
+found locally also triggers an immediate re-read — rate-limited to once per second, so
+unknown tokens cannot drive one table read per request — so an account created on
+another worker is usable right away rather than after the TTL.
+
+Set the TTL lower to shorten the revocation window at the cost of more reads. `0`
+re-reads on every request. Immediate, read-free revocation would need a key-hash index
+on the `Users` table; that is not implemented.
+
 ### Admin accounts
 
 Admin accounts are bootstrapped via environment variable on the Lambda. This is the root credential — it exists before any database records.

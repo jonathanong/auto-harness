@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
+import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
 test.describe("control plane hosts", () => {
   test("hosts page loads with filters and add form", async ({ page }) => {
@@ -124,7 +125,7 @@ test.describe("control plane hosts", () => {
     await withLocalHostLock(async () => {
       const repoId = `pw-host-repo-${test.info().parallelIndex}-${Date.now()}`;
       const repo = await (
-        await request.post("http://127.0.0.1:7430/api/v1/repositories", {
+        await request.post(`${API_BASE}/api/v1/repositories`, {
           data: { name: repoId, url: `/tmp/${repoId}`, defaultBranch: "main" },
         })
       ).json();
@@ -156,7 +157,7 @@ test.describe("control plane hosts", () => {
         });
       } finally {
         await removeHostRepo(request, repo.id);
-        await request.delete(`http://127.0.0.1:7430/api/v1/repositories/${repo.id}`);
+        await request.delete(`${API_BASE}/api/v1/repositories/${repo.id}`);
       }
     });
   });
@@ -167,7 +168,7 @@ async function registerObservedHost(
   daemonInstanceId: string,
   daemonStartedAt: string,
 ) {
-  const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+  const socket = new WebSocket(WS_BASE);
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener("message", (event) => {
       const message = JSON.parse(String(event.data)) as { type?: string; message?: string };

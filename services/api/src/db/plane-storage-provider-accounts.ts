@@ -11,6 +11,7 @@ import {
   withMarkerTable,
 } from "./plane-storage-deletion-markers.ts";
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 export async function putProviderAccount(
   ctx: PlaneStorageCtx,
@@ -71,8 +72,8 @@ export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<Provid
     records.push(
       ...((res.Items ?? []) as ProviderAccountRecord[]).map((record) => normalize(record)!),
     );
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 

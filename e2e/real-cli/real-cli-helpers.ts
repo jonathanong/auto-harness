@@ -7,8 +7,9 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { fetchHostInventory } from "../../services/host-daemon/src/bootstrap.ts";
 import { startDaemon } from "../../services/host-daemon/src/start-daemon.ts";
 import { runCommandOk } from "../../scripts/lib/run-command.mts";
+import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 
 const REAL_CLI_PROMPT =
   "Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files.";
@@ -110,7 +111,7 @@ export async function runRealCliSession(opts: {
     // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
     const config = await fetchHostInventory({
       hostId,
-      apiUrl: "ws://127.0.0.1:7430/ws",
+      apiUrl: WS_BASE,
       logLevel: "info",
     });
     const daemon = await startDaemon({

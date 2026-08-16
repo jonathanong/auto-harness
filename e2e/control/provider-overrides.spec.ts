@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 
 test.describe("control plane provider account scope overrides", () => {
   test("disable at repo scope, then re-enable and override the command at worktree scope, then reset", async ({

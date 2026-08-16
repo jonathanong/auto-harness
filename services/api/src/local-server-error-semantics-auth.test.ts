@@ -79,6 +79,13 @@ describe("local auth route error semantics", () => {
       allowedRepositoryIds: ["allowed-repository"],
       boundHostId: "host",
     });
+    // Body validation is only reachable by a credential allowed to author sessions at
+    // all; a host-bound one is refused before the body is inspected.
+    const { apiKey: authoringKey } = await auth.createServiceAccount({
+      name: "authoring-operator",
+      role: "operator",
+      allowedRepositoryIds: ["allowed-repository"],
+    });
     const plane = new ControlPlane();
     plane.registerHost({
       hostId: "host",
@@ -130,7 +137,7 @@ describe("local auth route error semantics", () => {
         target: { commandId: "echo" },
         metadata: ["not", "an", "object"],
       },
-      headers,
+      { authorization: `Bearer ${authoringKey}` },
     );
     expect(invalidMetadata.status).toBe(400);
     expect(errorCode(invalidMetadata)).toBe("VALIDATION_ERROR");

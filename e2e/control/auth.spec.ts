@@ -1,8 +1,9 @@
 import { createHmac } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
-const apiUrl = "http://127.0.0.1:7430/api/v1";
+const apiUrl = `${API_BASE}/api/v1`;
 const admin = { username: "auth-admin", password: "auth-password" };
 const sessionSecret = "auth-e2e-session-secret-auth-e2e-session-secret";
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");

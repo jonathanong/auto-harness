@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
 async function pauseProviderAccount(accountId: string): Promise<void> {
   const response = await fetch("http://127.0.0.1:7433", {
@@ -137,7 +138,7 @@ test.describe("control plane providers", () => {
     });
     await expect
       .poll(async () => {
-        const response = await request.get(`http://127.0.0.1:7430/api/v1/providers/${providerId}`);
+        const response = await request.get(`${API_BASE}/api/v1/providers/${providerId}`);
         return ((await response.json()) as { defaultCommandId: string | null }).defaultCommandId;
       })
       .toBeNull();
@@ -167,10 +168,10 @@ test.describe("control plane providers", () => {
   }) => {
     const name = `pw-remove-error-${test.info().parallelIndex}-${Date.now()}`;
     const provider = await (
-      await request.post("http://127.0.0.1:7430/api/v1/providers", { data: { name } })
+      await request.post(`${API_BASE}/api/v1/providers`, { data: { name } })
     ).json();
     const account = await (
-      await request.post("http://127.0.0.1:7430/api/v1/provider-accounts", {
+      await request.post(`${API_BASE}/api/v1/provider-accounts`, {
         data: { providerId: provider.id, label: `${name}@example.com` },
       })
     ).json();

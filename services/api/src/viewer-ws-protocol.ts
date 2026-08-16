@@ -13,7 +13,9 @@ export async function authenticateViewer(
   auth: AuthService,
 ): Promise<Principal | null> {
   const ticket = new URL(req.url ?? "/", "http://localhost").searchParams.get("ticket");
-  const principal = ticket ? auth.authenticateViewerTicket(ticket) : await auth.authenticate(req);
+  const principal = ticket
+    ? await auth.authenticateViewerTicket(ticket)
+    : await auth.authenticate(req);
   return principal && (principal.kind === "admin" || principal.kind === "user") ? principal : null;
 }
 

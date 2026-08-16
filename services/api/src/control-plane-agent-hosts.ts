@@ -60,7 +60,7 @@ export function putHostInventory(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
-): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
+): InventoryWriteResult {
   const result = prepareHostInventory(state, hostId, body);
   if (!result.ok) return result;
   const rec = result.config;
@@ -71,6 +71,20 @@ export function putHostInventory(
   }
   syncWorktreesFromHost(state, rec);
   return { ok: true, config: { ...rec } };
+}
+
+type InventoryWriteResult =
+  | { ok: true; config: HostInventoryRecord }
+  | { ok: false; error: string; conflict?: true };
+
+/**
+ * The version the caller claims to have read, if it sent one. Absent means an
+ * unconditional replace, which is what pre-versioning clients get.
+ */
+function expectedVersionFrom(body: unknown): number | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as { version?: unknown }).version;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
 function prepareHostInventory(
@@ -88,6 +102,7 @@ function prepareHostInventory(
         ...parsed,
         ...preservedDaemonRuntime(state.hostInventories.get(hostId)),
         updatedAt: state.now(),
+        version: (state.hostInventories.get(hostId)?.version ?? 0) + 1,
       },
     };
   } catch (err) {
@@ -100,7 +115,7 @@ export async function putHostInventoryDurable(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
-): Promise<ReturnType<typeof putHostInventory>> {
+): Promise<InventoryWriteResult> {
   if (!state.storage) return putHostInventory(state, hostId, body);
   await Promise.all([listHostInventoriesDurable(state), listWorktreesDurable(state)]);
   const result = prepareHostInventory(state, hostId, body);
@@ -110,7 +125,21 @@ export async function putHostInventoryDurable(
     return { ok: false, error: "host inventory has too many catalog references" };
   }
   const projection = projectHostWorktrees(state, result.config);
-  await state.storage.putHostInventory({ ...result.config }, markers);
+  const expectedVersion = expectedVersionFrom(body);
+  const stored = await state.storage.putHostInventory(
+    { ...result.config },
+    markers,
+    expectedVersion,
+  );
+  // Only a conditional write can lose. An unconditional one has no condition to fail, and
+  // its result is not meaningful — storage doubles here return nothing at all.
+  if (expectedVersion !== undefined && !stored) {
+    return {
+      ok: false,
+      conflict: true,
+      error: "host inventory changed since it was read; re-read and retry",
+    };
+  }
   await Promise.all([
     ...projection.worktrees.map((worktree) => state.storage!.putWorktree({ ...worktree })),
     ...projection.removedIds.map((id) => state.storage!.deleteWorktree(id)),

@@ -69,7 +69,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     },
     async putHostInventory() {},
     async putHostInventoryFenced() {
-      return true;
+      return { ok: true };
     },
     async putWorktreeFenced() {
       return true;

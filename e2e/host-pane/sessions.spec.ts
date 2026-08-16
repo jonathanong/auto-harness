@@ -2,8 +2,9 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
+import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 
 test.describe("host pane sessions", () => {
   test("sessions page loads", async ({ page }) => {
@@ -50,9 +51,9 @@ test.describe("host pane sessions", () => {
       try {
         await page.goto("/sessions");
         await page.evaluate(
-          ({ repositoryId, worktreeId }) =>
+          ({ repositoryId, worktreeId, wsBase }) =>
             new Promise<void>((resolve, reject) => {
-              const socket = new WebSocket("ws://127.0.0.1:7430/ws");
+              const socket = new WebSocket(wsBase);
               const timeout = setTimeout(() => reject(new Error("registration timed out")), 10_000);
               socket.addEventListener("message", (event) => {
                 const message = JSON.parse(String(event.data)) as {
@@ -88,7 +89,7 @@ test.describe("host pane sessions", () => {
                 );
               });
             }),
-          { repositoryId: repoId, worktreeId: wtId },
+          { repositoryId: repoId, worktreeId: wtId, wsBase: WS_BASE },
         );
 
         const command = await request.post(`${API}/api/v1/commands`, {

@@ -104,6 +104,6 @@ export async function listUsageRecords(
     );
     records.push(...((result.Items ?? []) as UsageRecord[]));
     startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey);
+  } while (startKey !== undefined);
   return records;
 }

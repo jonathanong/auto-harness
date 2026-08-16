@@ -90,6 +90,14 @@ describe("scoped control-plane REST resources", () => {
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
+    // Same repository scope, no host binding. Session- and schedule-authoring routes are
+    // closed to host-bound agent identities, so the positive assertions below use this
+    // one; the scope-hiding assertions stay on the host-bound key.
+    const { apiKey: authoringKey } = await auth.createServiceAccount({
+      name: "scoped-operator",
+      role: "operator",
+      allowedRepositoryIds: ["repo-a"],
+    });
     const { handler } = createLocalApp({
       plane,
       authService: auth,
@@ -117,21 +125,27 @@ describe("scoped control-plane REST resources", () => {
       (await invoke("PATCH", "/api/v1/schedules/schedule-a", { repositoryId: "repo-b" })).status,
     ).toBe(404);
     expect(
-      (await invoke("PATCH", "/api/v1/schedules/schedule-a", { name: "renamed" })).status,
+      (await invoke("PATCH", "/api/v1/schedules/schedule-a", { name: "renamed" }, authoringKey))
+        .status,
     ).toBe(200);
     expect(
       (
-        await invoke("POST", "/api/v1/schedules", {
-          repositoryId: "repo-a",
-          name: "explicit",
-          target: { commandId: "cmd-a" },
-          cron: "* * * * *",
-          timeout: 10,
-          nextRunAt: "2026-01-01T00:00:00.000Z",
-          enabled: false,
-          ref: "main",
-          id: "schedule-c",
-        })
+        await invoke(
+          "POST",
+          "/api/v1/schedules",
+          {
+            repositoryId: "repo-a",
+            name: "explicit",
+            target: { commandId: "cmd-a" },
+            cron: "* * * * *",
+            timeout: 10,
+            nextRunAt: "2026-01-01T00:00:00.000Z",
+            enabled: false,
+            ref: "main",
+            id: "schedule-c",
+          },
+          authoringKey,
+        )
       ).status,
     ).toBe(201);
     expect(
@@ -148,14 +162,19 @@ describe("scoped control-plane REST resources", () => {
     ).toBe(404);
     expect(
       (
-        await invoke("POST", "/api/v1/schedules", {
-          repositoryId: "repo-a",
-          name: "invalid-target",
-          target: { commandId: "missing" },
-          cron: "* * * * *",
-          timeout: 10,
-          nextRunAt: "2026-01-01T00:00:00.000Z",
-        })
+        await invoke(
+          "POST",
+          "/api/v1/schedules",
+          {
+            repositoryId: "repo-a",
+            name: "invalid-target",
+            target: { commandId: "missing" },
+            cron: "* * * * *",
+            timeout: 10,
+            nextRunAt: "2026-01-01T00:00:00.000Z",
+          },
+          authoringKey,
+        )
       ).status,
     ).toBe(400);
     expect(
@@ -172,31 +191,44 @@ describe("scoped control-plane REST resources", () => {
     ).toBe(404);
     expect(
       (
-        await invoke("POST", "/api/v1/schedules", {
-          repositoryId: "repo-a",
-          name: "invalid-target",
-          target: { commandId: "missing" },
-          cron: "* * * * *",
-          timeout: 10,
-          nextRunAt: "2026-01-01T00:00:00.000Z",
-        })
+        await invoke(
+          "POST",
+          "/api/v1/schedules",
+          {
+            repositoryId: "repo-a",
+            name: "invalid-target",
+            target: { commandId: "missing" },
+            cron: "* * * * *",
+            timeout: 10,
+            nextRunAt: "2026-01-01T00:00:00.000Z",
+          },
+          authoringKey,
+        )
       ).status,
     ).toBe(400);
     expect(
       (
-        await invoke("PATCH", "/api/v1/schedules/schedule-c", {
-          name: "explicit-2",
-          target: { commandId: "cmd-a" },
-          cron: "0 * * * *",
-          timeout: 20,
-          nextRunAt: "2026-01-02T00:00:00.000Z",
-          enabled: true,
-          ref: "develop",
-          repositoryId: "repo-a",
-        })
+        await invoke(
+          "PATCH",
+          "/api/v1/schedules/schedule-c",
+          {
+            name: "explicit-2",
+            target: { commandId: "cmd-a" },
+            cron: "0 * * * *",
+            timeout: 20,
+            nextRunAt: "2026-01-02T00:00:00.000Z",
+            enabled: true,
+            ref: "develop",
+            repositoryId: "repo-a",
+          },
+          authoringKey,
+        )
       ).status,
     ).toBe(200);
-    expect((await invoke("POST", "/api/v1/schedules/schedule-c/trigger")).status).toBe(201);
+    expect(
+      (await invoke("POST", "/api/v1/schedules/schedule-c/trigger", undefined, authoringKey))
+        .status,
+    ).toBe(201);
     expect((await invokeHandler(handler, "DELETE", "/api/v1/schedules/schedule-a")).status).toBe(
       401,
     );
@@ -266,12 +298,17 @@ describe("scoped control-plane REST resources", () => {
         )
       ).status,
     ).toBe(404);
-    const owned = await invoke("POST", "/api/v1/sessions", {
-      repositoryId: "repo-a",
-      prompt: "owned",
-      target: { commandId: "cmd-a" },
-      timeout: 10,
-    });
+    const owned = await invoke(
+      "POST",
+      "/api/v1/sessions",
+      {
+        repositoryId: "repo-a",
+        prompt: "owned",
+        target: { commandId: "cmd-a" },
+        timeout: 10,
+      },
+      authoringKey,
+    );
     expect(owned.status).toBe(201);
     const ownedSession = owned.json as { id: string; metadata: { createdBy: string } };
     expect(ownedSession.metadata.createdBy).toContain("service:");
@@ -287,6 +324,9 @@ describe("scoped control-plane REST resources", () => {
       peer.apiKey,
     );
     expect(denied.status).toBe(404);
-    expect((await invoke("POST", `/api/v1/sessions/${ownedSession.id}/cancel`)).status).toBe(200);
+    expect(
+      (await invoke("POST", `/api/v1/sessions/${ownedSession.id}/cancel`, undefined, authoringKey))
+        .status,
+    ).toBe(200);
   });
 });

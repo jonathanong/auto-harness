@@ -23,6 +23,19 @@ export type AuthMode = "disabled" | "required";
 const COOKIE = "auto_harness_session";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const VIEWER_TICKET_MS = 60 * 1000;
+/**
+ * Upper bound on how long this process may keep serving a credential decision from its
+ * account cache. hydrate() used to run once per cold start on the REST path, so a warm
+ * worker accepted a revoked API key, and honoured a deleted user's cookie, until the
+ * container recycled — minutes to hours.
+ */
+const DEFAULT_CACHE_TTL_MS = 30_000;
+/**
+ * Floor between cache-miss refreshes. An unknown key is usually a newly created account
+ * this worker has not seen, and refetching makes it usable immediately — but without a
+ * floor, a flood of invalid bearer tokens would drive one table scan per request.
+ */
+const MISS_REFRESH_INTERVAL_MS = 1_000;
 // Keep password verification work comparable for unknown usernames.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("auto-harness-dummy-password", 12);
 
@@ -83,11 +96,26 @@ export class AuthService {
   private readonly users = new Map<string, User>();
   private readonly serviceAccounts = new Map<string, ServiceAccount>();
   private storage: AuthStorage | undefined;
+  private readonly cacheTtlMs: number;
+  private readonly now: () => number;
+  private lastRefreshAt = Number.NEGATIVE_INFINITY;
+  private lastMissRefreshAt = Number.NEGATIVE_INFINITY;
+  private refreshing: Promise<void> | undefined;
 
-  constructor(options: { mode?: AuthMode; secret?: string; admins?: string } = {}) {
+  constructor(
+    options: {
+      mode?: AuthMode;
+      secret?: string;
+      admins?: string;
+      cacheTtlMs?: number;
+      now?: () => number;
+    } = {},
+  ) {
     this.mode = options.mode ?? authModeFromEnv();
     this.secret = options.secret ?? process.env.HARNESS_SESSION_SECRET ?? "";
     this.admins = parseAdmins(options.admins ?? process.env.HARNESS_ADMINS);
+    this.cacheTtlMs = options.cacheTtlMs ?? cacheTtlFromEnv();
+    this.now = options.now ?? Date.now;
     if (this.mode === "required" && (this.secret.length < 32 || this.admins.length === 0)) {
       throw new Error(
         "HARNESS_AUTH_MODE=required needs HARNESS_SESSION_SECRET (at least 32 characters) and HARNESS_ADMINS",
@@ -98,6 +126,38 @@ export class AuthService {
   async hydrate(storage: AuthStorage | undefined): Promise<void> {
     await hydrateAccounts(storage, this.users, this.serviceAccounts);
     this.storage = storage;
+    this.lastRefreshAt = this.now();
+  }
+
+  /**
+   * Re-read accounts when this process's view may have gone stale.
+   *
+   * `reason: "miss"` means a credential was not found locally, which most often means a
+   * newly created account: refresh eagerly so it becomes usable right away, but no more
+   * than once per MISS_REFRESH_INTERVAL_MS so unknown tokens cannot amplify into a scan
+   * per request. Otherwise refresh only once the cache passes its TTL, which is what
+   * bounds how long a revoked credential keeps working.
+   */
+  private async refreshAccounts(reason: "hit" | "miss"): Promise<void> {
+    const storage = this.storage;
+    if (!storage) return;
+    const now = this.now();
+    // The miss floor is measured from the last miss-driven refresh, not from any refresh.
+    // Measuring from the latter would let a recent hydrate suppress the very lookup this
+    // path exists for: a key created moments ago on another worker.
+    if (reason === "miss") {
+      if (now - this.lastMissRefreshAt < MISS_REFRESH_INTERVAL_MS) return;
+      this.lastMissRefreshAt = now;
+    } else if (now - this.lastRefreshAt < this.cacheTtlMs) return;
+    // Coalesce: concurrent requests past the threshold share one read.
+    this.refreshing ??= hydrateAccounts(storage, this.users, this.serviceAccounts)
+      .then(() => {
+        this.lastRefreshAt = this.now();
+      })
+      .finally(() => {
+        this.refreshing = undefined;
+      });
+    await this.refreshing;
   }
 
   async createUser(
@@ -196,7 +256,7 @@ export class AuthService {
       .map((part) => part.trim())
       .find((part) => part.startsWith(`${COOKIE}=`));
     if (cookie) {
-      const principal = this.verifySession(cookie.slice(COOKIE.length + 1));
+      const principal = await this.verifySession(cookie.slice(COOKIE.length + 1));
       if (principal) return principal;
     }
     const authorization = req.headers.authorization;
@@ -241,9 +301,20 @@ export class AuthService {
     return user && valid ? publicPrincipal(user) : null;
   }
 
-  authenticateApiKey(key: string): Principal | null {
+  async authenticateApiKey(key: string): Promise<Principal | null> {
     if (!key) return null;
     const hash = hashApiKey(key);
+    await this.refreshAccounts("hit");
+    const found = this.matchApiKey(hash);
+    if (found) return found;
+    // Unknown here usually means an account created on another worker. Before rejecting,
+    // give the cache one bounded chance to catch up; otherwise a brand-new key's success
+    // would depend on which worker answered.
+    await this.refreshAccounts("miss");
+    return this.matchApiKey(hash);
+  }
+
+  private matchApiKey(hash: string): Principal | null {
     for (const account of this.serviceAccounts.values()) {
       if (account.keyHash.length !== hash.length) continue;
       if (timingSafeEqual(Buffer.from(hash), Buffer.from(account.keyHash)))
@@ -280,11 +351,11 @@ export class AuthService {
     return `${unsigned}.${signature}`;
   }
 
-  authenticateViewerTicket(token: string): Principal | null {
-    return this.verifySession(token, "viewer");
+  async authenticateViewerTicket(token: string): Promise<Principal | null> {
+    return await this.verifySession(token, "viewer");
   }
 
-  private verifySession(token: string, audience?: "viewer"): Principal | null {
+  private async verifySession(token: string, audience?: "viewer"): Promise<Principal | null> {
     const parts = token.split(".");
     if (parts.length !== 3 || !this.secret) return null;
     const [header, payload, signature] = parts as [string, string, string];
@@ -315,7 +386,14 @@ export class AuthService {
     if (value.kind !== "admin" && value.kind !== "user" && value.kind !== "service-account")
       return null;
     if (audience ? value.audience !== audience : value.audience !== undefined) return null;
-    const current = this.findCurrentPrincipal(value);
+    // Re-bind to live account state. This is the check that makes a cookie revocable, so
+    // it must not be answered from a cache that outlived the account.
+    await this.refreshAccounts("hit");
+    let current = this.findCurrentPrincipal(value);
+    if (!current) {
+      await this.refreshAccounts("miss");
+      current = this.findCurrentPrincipal(value);
+    }
     const { exp: _exp, audience: _audience, ...claims } = value;
     if (!current || !samePrincipalClaims(current, claims)) return null;
     return current;
@@ -361,6 +439,15 @@ function samePrincipalClaims(current: Principal, claims: Record<string, unknown>
     actual.length === expected.length &&
     actual.every((value, index) => value === expected[index])
   );
+}
+
+export function cacheTtlFromEnv(value = process.env.HARNESS_AUTH_CACHE_TTL_MS): number {
+  if (value === undefined || value === "") return DEFAULT_CACHE_TTL_MS;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error("HARNESS_AUTH_CACHE_TTL_MS must be a non-negative integer");
+  }
+  return parsed;
 }
 
 export function authModeFromEnv(value = process.env.HARNESS_AUTH_MODE): AuthMode {

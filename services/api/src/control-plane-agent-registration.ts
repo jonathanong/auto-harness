@@ -153,6 +153,10 @@ export function buildRegisteredInventory(
   }
   return {
     hostId,
+    // Advance the optimistic-concurrency counter rather than dropping it: a registration
+    // is another whole-document replace, and leaving the attribute off would fail the
+    // next conditional edit from the UI.
+    version: (previous?.version ?? 0) + 1,
     ...nextDaemonRuntime(previous, daemonIdentity, updatedAt),
     repositories: repositories.map((repository) => {
       const prior = priorById.get(repository.id);

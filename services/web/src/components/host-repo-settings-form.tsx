@@ -2,23 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import {
-  putInventory,
-  upsertHostRepository,
-  type HostInventory,
-  type HostRepository,
-} from "@auto-harness/shared";
+import { mutateInventory, upsertHostRepository, type HostRepository } from "@auto-harness/shared";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
-export function HostRepoSettingsForm({
-  hostId,
-  inventory,
-  repo,
-}: {
-  hostId: string;
-  inventory: HostInventory;
-  repo: HostRepository;
-}) {
+export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: HostRepository }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
@@ -55,14 +42,17 @@ export function HostRepoSettingsForm({
           return;
         }
         start(async () => {
-          const next = upsertHostRepository(inventory, {
-            id: repo.id,
-            path,
-            defaultBranch,
-            setupScript,
-            terminalHookScript,
-          });
-          const r = await putInventory(hostId, next);
+          // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
+          // elsewhere is not silently reverted by this save.
+          const r = await mutateInventory(hostId, (current) =>
+            upsertHostRepository(current, {
+              id: repo.id,
+              path,
+              defaultBranch,
+              setupScript,
+              terminalHookScript,
+            }),
+          );
           if (!r.ok) {
             setError(r.error);
             return;

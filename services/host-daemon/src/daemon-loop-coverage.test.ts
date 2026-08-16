@@ -157,8 +157,10 @@ describe("DaemonLoop coverage guards", () => {
           transport,
           onLog: (line) => lines.push(line),
           timers: {
+            // beginDrain schedules the retry first and the drain deadline second;
+            // this test drives the retry, so keep the first callback.
             setTimeout: (callback) => {
-              retry = callback;
+              retry ??= callback;
               return 1 as never;
             },
             clearTimeout: () => {

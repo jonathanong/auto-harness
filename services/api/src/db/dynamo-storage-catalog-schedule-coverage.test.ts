@@ -11,7 +11,6 @@ import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   conditionalCatalogWriteOrThrow,
   isActiveSession,
-  nextCatalogPage,
   putSchedule,
   scheduleAttributes,
   tryClaimSchedule,
@@ -20,6 +19,7 @@ import {
   skipScheduleForActiveConcurrency,
 } from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
 let ctx: PlaneStorageCtx;
@@ -45,9 +45,9 @@ describe("DynamoDB Local schedule catalog adapters", () => {
       ),
     ).toBe(false);
     expect(() => conditionalCatalogWriteOrThrow(new Error("unavailable"))).toThrow("unavailable");
-    expect(nextCatalogPage(undefined)).toBeUndefined();
-    expect(nextCatalogPage({})).toBeUndefined();
-    expect(nextCatalogPage({ id: "next" })).toEqual({ id: "next" });
+    expect(nextPageKey(undefined)).toBeUndefined();
+    expect(nextPageKey({})).toBeUndefined();
+    expect(nextPageKey({ id: "next" })).toEqual({ id: "next" });
     expect(scheduleAttributes(undefined)).toBeNull();
     expect(scheduleAttributes({ id: "schedule" })).toEqual({ id: "schedule" });
     expect(isActiveSession(null)).toBe(false);
