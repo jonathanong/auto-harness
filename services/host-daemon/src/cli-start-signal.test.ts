@@ -52,8 +52,12 @@ async function acceptingServer(): Promise<{ port: number; close(): Promise<void>
   };
 }
 
-/** Captures handlers registered via `on()` without touching the real process. */
-function fakeProcess(): Pick<NodeJS.Process, "on"> & {
+/**
+ * Captures handlers registered via `on()`/`off()` without touching the real process.
+ * Shaped like modules/shared/src/process-lifecycle.test.ts's own fakeProcess, since this
+ * is passed straight through to that module's onShutdownSignal.
+ */
+function fakeProcess(): Pick<NodeJS.Process, "on" | "off" | "exit"> & {
   fire(event: string): void;
   hasListener(event: string): boolean;
 } {
@@ -62,6 +66,13 @@ function fakeProcess(): Pick<NodeJS.Process, "on"> & {
     on(event: string, handler: () => void) {
       handlers.set(event, handler);
       return this as never;
+    },
+    off(event: string) {
+      handlers.delete(event);
+      return this as never;
+    },
+    exit(code?: number) {
+      throw new Error(`unexpected forced exit(${code ?? 0}) in test`);
     },
     fire(event: string) {
       handlers.get(event)?.();
