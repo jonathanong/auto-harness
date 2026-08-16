@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
-const apiUrl = "http://127.0.0.1:7430/api/v1";
+const apiUrl = `${API_BASE}/api/v1`;
 const admin = { username: "auth-admin", password: "auth-password" };
 
 test.describe("service-account administration", () => {

@@ -2,8 +2,9 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { API_BASE } from "./harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 const LOCK_DIR = join(tmpdir(), "auto-harness-e2e-local-1.lock");
 
 /**

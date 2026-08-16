@@ -20,6 +20,7 @@ import {
   type DeletionMarker,
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 /** Interpret conditional delete failures without coupling tests to a client double. */
 export function conditionalProviderWriteOrThrow(err: unknown): false {
@@ -29,12 +30,6 @@ export function conditionalProviderWriteOrThrow(err: unknown): false {
 
 export function pageItems<T>(items: T[] | undefined): T[] {
   return items ?? [];
-}
-
-export function pageStartKey(
-  key: Record<string, unknown> | undefined,
-): Record<string, unknown> | undefined {
-  return key && Object.keys(key).length > 0 ? key : undefined;
 }
 
 export async function putProvider(
@@ -101,7 +96,7 @@ export async function listProviders(ctx: PlaneStorageCtx): Promise<ProviderRecor
       }),
     );
     records.push(...pageItems(res.Items as ProviderRecord[] | undefined));
-    startKey = pageStartKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
@@ -155,7 +150,7 @@ export async function listCommands(ctx: PlaneStorageCtx): Promise<CommandRecord[
       }),
     );
     records.push(...pageItems(res.Items as CommandRecord[] | undefined));
-    startKey = pageStartKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }

@@ -26,6 +26,7 @@ import {
   withMarkerTable,
   type DeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
@@ -255,8 +256,8 @@ export async function listAllSessions(
       }),
     );
     items.push(...((res.Items ?? []) as Record<string, unknown>[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return items.map(itemToSession);
 }
 
@@ -282,8 +283,8 @@ export async function listSessionsByRepository(
       records.push(
         ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
       );
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey && Object.keys(startKey).length > 0);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
     return records;
   } catch (error) {
     if (!isRepositoryIndexUnavailable(error)) throw error;
@@ -316,8 +317,8 @@ export async function countSessionsByRepository(
         }),
       );
       count += res.Count ?? 0;
-      startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-    } while (startKey && Object.keys(startKey).length > 0);
+      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+    } while (startKey !== undefined);
     return count;
   } catch (error) {
     if (!isRepositoryIndexUnavailable(error)) throw error;
@@ -355,8 +356,8 @@ async function listSessionsByRepositoryScan(
     records.push(
       ...(res.Items ?? []).map((item) => itemToSession(item as Record<string, unknown>)),
     );
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -380,8 +381,8 @@ export async function listSessionsByStatus(
       }),
     );
     records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 
@@ -462,8 +463,8 @@ export async function listAllWorktrees(
       }),
     );
     items.push(...((res.Items ?? []) as WorktreeRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return items;
 }
 
@@ -484,8 +485,8 @@ export async function listWorktreesForRepo(
       }),
     );
     records.push(...((res.Items ?? []) as WorktreeRecord[]));
-    startKey = res.LastEvaluatedKey as Record<string, unknown> | undefined;
-  } while (startKey && Object.keys(startKey).length > 0);
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
   return records;
 }
 

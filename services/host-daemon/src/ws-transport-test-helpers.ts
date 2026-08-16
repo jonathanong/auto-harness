@@ -58,5 +58,8 @@ export function transportFor(sockets: FakeSocket[]) {
       sockets.push(socket);
       return socket as unknown as WebSocket;
     },
+    // Midpoint jitter, so the ladder lands on its nominal 1/2/4… values and backoff
+    // assertions stay exact. Jitter itself is covered in ws-transport-jitter.test.ts.
+    random: () => 0.5,
   });
 }

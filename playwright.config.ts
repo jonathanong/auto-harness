@@ -1,14 +1,20 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import {
+  API_BASE,
+  API_PORT,
+  CONTROL_PORT,
+  DYNAMO_ENDPOINT,
+  HOST_PANE_PORT,
+} from "./e2e/harness-endpoints.ts";
+
 const requiredAuthE2e = process.env.HARNESS_E2E_AUTH === "1";
 const controlOnly = process.env.HARNESS_E2E_CONTROL_ONLY === "1";
-const portOffset = parsePortOffset(process.env.HARNESS_E2E_PORT_OFFSET);
-const apiPort = 7430 + portOffset;
-const controlPort = 7431 + portOffset;
-const hostPanePort = 7432 + portOffset;
-const dynamoPort = 7433 + portOffset;
-const dynamoEndpoint = process.env.HARNESS_E2E_DDB_ENDPOINT ?? `http://127.0.0.1:${dynamoPort}`;
-const apiUrl = `http://127.0.0.1:${apiPort}`;
+const apiPort = API_PORT;
+const controlPort = CONTROL_PORT;
+const hostPanePort = HOST_PANE_PORT;
+const dynamoEndpoint = DYNAMO_ENDPOINT;
+const apiUrl = API_BASE;
 
 /**
  * Playwright E2E — see docs/e2e.md.
@@ -111,12 +117,3 @@ export default defineConfig({
       : []),
   ],
 });
-
-function parsePortOffset(value: string | undefined): number {
-  if (value === undefined || value === "") return 0;
-  const offset = Number(value);
-  if (!Number.isInteger(offset) || offset < 0 || offset > 50_000) {
-    throw new Error("HARNESS_E2E_PORT_OFFSET must be an integer from 0 through 50000");
-  }
-  return offset;
-}

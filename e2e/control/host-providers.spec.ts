@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
-const API = "http://127.0.0.1:7430";
+const API = API_BASE;
 
 test.describe("control plane host provider accounts", () => {
   test("attach an account with a command override, then change, clear, and detach it", async ({

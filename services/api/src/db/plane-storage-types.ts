@@ -210,3 +210,16 @@ export function isConditionalTransactionFailureAt(err: unknown, index: number): 
   const reasons = (err as { CancellationReasons?: Array<{ Code?: string }> }).CancellationReasons;
   return reasons?.[index]?.Code === "ConditionalCheckFailed";
 }
+
+/**
+ * Normalize a DynamoDB pagination cursor.
+ *
+ * `LastEvaluatedKey` is absent when a scan or query is exhausted, but an empty object is
+ * truthy — so `while (startKey)` never terminates if one is ever returned. Three copies
+ * of this guard existed under three names while seven drain loops used none of them.
+ */
+export function nextPageKey(
+  key: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  return key && Object.keys(key).length > 0 ? key : undefined;
+}

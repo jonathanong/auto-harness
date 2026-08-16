@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { API_BASE } from "../harness-endpoints.ts";
 
 test("unknown host-pane session id shows a not-found state", async ({ page }) => {
   await page.goto("/sessions/does-not-exist-xyz");
@@ -7,12 +8,12 @@ test("unknown host-pane session id shows a not-found state", async ({ page }) =>
 
 test("host-pane session detail reports a live refresh failure", async ({ page, request }) => {
   const suffix = `${test.info().parallelIndex}-${Date.now()}`;
-  const command = await request.post("http://127.0.0.1:7430/api/v1/commands", {
+  const command = await request.post(`${API_BASE}/api/v1/commands`, {
     data: { name: `pw-live-error-${suffix}`, argv: ["echo"], appendPrompt: true },
   });
   expect(command.ok()).toBe(true);
   const { id: commandId } = (await command.json()) as { id: string };
-  const created = await request.post("http://127.0.0.1:7430/api/v1/sessions", {
+  const created = await request.post(`${API_BASE}/api/v1/sessions`, {
     data: {
       repositoryId: `pw-live-error-repo-${suffix}`,
       prompt: "show refresh error",
