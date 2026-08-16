@@ -180,17 +180,17 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Environment variables (Lambda)
 
-| Variable                         | Required  | Purpose                                         |
-| -------------------------------- | --------- | ----------------------------------------------- |
-| `HARNESS_ADMINS`                 | ✓         | Base64 JSON admin bootstrap list                |
-| `HARNESS_SESSION_SECRET`         | ✓         | JWT signing for UI session cookies              |
-| `HARNESS_CURSOR_SECRET`          | ✓         | Shared HMAC key for stable session-list cursors |
-| `TABLE_*` or single table prefix | ✓         | DynamoDB table names (from CDK)                 |
-| `ARCHIVE_BUCKET`                 | ✓         | S3 bucket name                                  |
-| `WEB_ORIGIN`                     | ✓         | CORS allow-list origin                          |
-| `WS_API_ENDPOINT`                | ✓         | Management API endpoint for `postToConnection`  |
-| `KMS_KEY_ID`                     | for Slack | Encrypt integration secrets                     |
-| `AWS_REGION`                     | auto      | Region                                          |
+| Variable                           | Required  | Purpose                                                                                                                                                         |
+| ---------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_ADMINS_SSM_PARAM`         | ✓         | SSM SecureString parameter _name_ holding the base64 JSON admin bootstrap list — never the value itself; fetched at cold start ([deploy-aws.md](deploy-aws.md)) |
+| `HARNESS_SESSION_SECRET_SSM_PARAM` | ✓         | SSM SecureString parameter _name_ holding the UI session-cookie JWT signing secret                                                                              |
+| `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable session-list cursors                                                                   |
+| `TABLE_*` or single table prefix   | ✓         | DynamoDB table names (from CDK)                                                                                                                                 |
+| `ARCHIVE_BUCKET`                   | ✓         | S3 bucket name                                                                                                                                                  |
+| `WEB_ORIGIN`                       | ✓         | CORS allow-list origin                                                                                                                                          |
+| `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |
+| `KMS_KEY_ID`                       | for Slack | Encrypt integration secrets                                                                                                                                     |
+| `AWS_REGION`                       | auto      | Region                                                                                                                                                          |
 
 ---
 

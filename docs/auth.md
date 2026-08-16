@@ -6,11 +6,11 @@ How principals prove identity and what they can do. Security principles, transpo
 
 Auto Harness has three tiers of credentials:
 
-| Tier             | For                      | Auth method                      | Managed by           |
-| ---------------- | ------------------------ | -------------------------------- | -------------------- |
-| Admin accounts   | Platform administrators  | Username + password (env var)    | Environment variable |
-| User accounts    | Human operators          | Username + password (basic auth) | Admins               |
-| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins               |
+| Tier             | For                      | Auth method                      | Managed by                                                   |
+| ---------------- | ------------------------ | -------------------------------- | ------------------------------------------------------------ |
+| Admin accounts   | Platform administrators  | Username + password (env var)    | Local/VPS: env var. Lambda: [SSM parameter](#admin-accounts) |
+| User accounts    | Human operators          | Username + password (basic auth) | Admins                                                       |
+| Service accounts | Machines (CI/CD, agents) | API key (`hns_...`)              | Admins                                                       |
 
 ## Local authentication and public binds
 
@@ -47,25 +47,40 @@ on the `Users` table; that is not implemented.
 
 ### Admin accounts
 
-Admin accounts are bootstrapped via environment variable on the Lambda. This is the root credential — it exists before any database records.
+Admin accounts are bootstrapped outside the database — this is the root
+credential, and it exists before any database records. **Local/VPS mode**
+(`services/api/src/local-server.ts`) reads `HARNESS_ADMINS` directly from the
+process environment, same as `HARNESS_SESSION_SECRET` above. **Lambda mode**
+does not: the Lambda's own environment holds only the _name_ of an SSM
+`SecureString` parameter, not the admin JSON itself — see
+[deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit) for why a real
+secret never lands in a Lambda's environment configuration, and for the exact
+`aws ssm put-parameter` step.
 
-| Property    | Value                                                           |
-| ----------- | --------------------------------------------------------------- |
-| Source      | `HARNESS_ADMINS` environment variable on Lambda                 |
-| Format      | Base64-encoded JSON array of `{ username, password }` objects   |
-| Rotation    | Update the environment variable and redeploy via CDK            |
-| Storage     | Never stored in a database — only in Lambda environment         |
-| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`) |
+| Property    | Value                                                                                                             |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| Source      | Local/VPS: `HARNESS_ADMINS` env var. Lambda: SSM SecureString parameter, name given by `HARNESS_ADMINS_SSM_PARAM` |
+| Format      | Base64-encoded JSON array of `{ username, password }` objects                                                     |
+| Rotation    | Local/VPS: update the env var and restart. Lambda: `aws ssm put-parameter --overwrite` — no redeploy              |
+| Storage     | Never stored in a database                                                                                        |
+| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`)                                                   |
 
-**Setting the environment variable:**
+**Local/VPS mode — setting the environment variable:**
 
 ```bash
 # Create the admins JSON
 echo '[{"username":"admin","password":"your-secure-password-here"}]' | base64
 # Result: W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc3dvcmQtaGVyZSJ9XQ==
 
-# Set in CDK
 HARNESS_ADMINS=W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc3dvcmQtaGVyZSJ9XQ==
+```
+
+**Lambda mode — populate the SSM parameter instead:**
+
+```bash
+aws ssm put-parameter --type SecureString --overwrite \
+  --name /auto-harness/harness-admins \
+  --value W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc3dvcmQtaGVyZSJ9XQ==
 ```
 
 Multiple admins can be defined in the array. Passwords should be long, random strings.
@@ -148,7 +163,7 @@ sequenceDiagram
     participant DDB as DynamoDB
 
     Browser->>API: POST /auth/login { username, password }
-    API->>API: Check HARNESS_ADMINS env var
+    API->>API: Check bootstrap admins (env var locally, SSM-fetched value on Lambda)
     alt Admin account match
         API->>Browser: 200 + Set-Cookie: session=jwt (role: admin)
     else Not an admin
@@ -166,13 +181,13 @@ sequenceDiagram
 
 **Session cookie details:**
 
-| Property    | Value                                             |
-| ----------- | ------------------------------------------------- |
-| Name        | `auto_harness_session`                            |
-| Content     | Signed JWT with `{ userId, username, role, exp }` |
-| Flags       | `HttpOnly`, `Secure`, `SameSite=Strict`           |
-| Expiry      | 24 hours (configurable)                           |
-| Signing key | `HARNESS_SESSION_SECRET` env var on Lambda        |
+| Property    | Value                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name        | `auto_harness_session`                                                                                                                      |
+| Content     | Signed JWT with `{ userId, username, role, exp }`                                                                                           |
+| Flags       | `HttpOnly`, `Secure`, `SameSite=Strict`                                                                                                     |
+| Expiry      | 24 hours (configurable)                                                                                                                     |
+| Signing key | `HARNESS_SESSION_SECRET`: local/VPS env var, or Lambda's SSM-fetched value ([deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)) |
 
 ---
 

@@ -497,7 +497,11 @@ limits, statuses, sources, empty filter values, and duplicate filter parameters 
 For multi-worker deployments, set `HARNESS_CURSOR_SECRET` to the same stable secret on every API
 worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). If neither variable
 is set, a random process-local secret is used; cursors from that fallback are valid only in the
-same local-memory process and must not be used for a distributed deployment.
+same local-memory process and must not be used for a distributed deployment. Lambda mode always
+supplies a stable secret explicitly — every worker fetches the same value from the
+`HARNESS_CURSOR_SECRET_SSM_PARAM`-named SSM parameter at cold start
+([deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)) — so the random fallback never
+applies there.
 
 **Response:** `200 OK`
 

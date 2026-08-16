@@ -2,7 +2,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createLambdaHandlers, createLambdaRuntime } from "./lambda-handlers.ts";
+import {
+  createLambdaHandlers,
+  createLambdaRuntime,
+  loadBootstrapSecrets,
+  type LambdaRuntime,
+} from "./lambda-handlers.ts";
 
 function hostPrincipal(hostId = "host-1") {
   return {
@@ -357,6 +362,50 @@ describe("Lambda runtime adapters", () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it("retries construction on the next invocation instead of caching a failed cold start", async () => {
+    // A rejected promise is not null/undefined, so a bare `runtime ??= createRuntime()`
+    // would cache the failure forever — every invocation this container ever handles
+    // again would reject immediately, e.g. because an SSM bootstrap-secret parameter was
+    // not yet provisioned at the container's first cold start.
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("SSM parameter not found"))
+      .mockResolvedValueOnce({
+        cron: vi.fn(async () => ({
+          ackDeadlinesEnforced: 0,
+          queuedAssigned: 0,
+          scheduledAssigned: 0,
+          schedulesFired: 0,
+          staleHostsReclaimed: 0,
+        })),
+        rest: vi.fn(),
+        websocket: vi.fn(),
+      });
+    const handlers = createLambdaHandlers(create);
+
+    await expect(handlers.cron()).rejects.toThrow("SSM parameter not found");
+    await expect(handlers.cron()).resolves.toMatchObject({ schedulesFired: 0 });
+
+    expect(create).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a second concurrent caller of the same failed attempt", async () => {
+    let reject!: (error: Error) => void;
+    const create = vi.fn(() => new Promise<LambdaRuntime>((_resolve, r) => (reject = r)));
+    const handlers = createLambdaHandlers(create);
+
+    const first = handlers.cron();
+    const second = handlers.cron();
+    reject(new Error("SSM parameter not found"));
+
+    await expect(first).rejects.toThrow("SSM parameter not found");
+    await expect(second).rejects.toThrow("SSM parameter not found");
+    // Both callers shared the one in-flight attempt; construction still only ran once
+    // for this failure, and the *next* invocation after both have settled is what
+    // triggers the retry (covered above), not each concurrent caller individually.
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     const fixture = runtimeFixture();
     const order: string[] = [];
@@ -458,5 +507,96 @@ describe("Lambda runtime adapters", () => {
       if (previous === undefined) delete process.env.WS_API_ENDPOINT;
       else process.env.WS_API_ENDPOINT = previous;
     }
+  });
+});
+
+/**
+ * The plaintext env vars this replaced never touched an SDK client at all — they were
+ * just process.env reads. Now that the three bootstrap secrets come from SSM, this is
+ * the boundary where a wrong parameter name, a missing value, or a missing env var
+ * should fail loudly rather than silently constructing an AuthService with an empty
+ * secret.
+ */
+describe("loadBootstrapSecrets", () => {
+  const names = [
+    "HARNESS_ADMINS_SSM_PARAM",
+    "HARNESS_SESSION_SECRET_SSM_PARAM",
+    "HARNESS_CURSOR_SECRET_SSM_PARAM",
+  ] as const;
+
+  function withEnv<T>(values: Partial<Record<(typeof names)[number], string>>, run: () => T): T {
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      for (const name of names) {
+        if (values[name] === undefined) delete process.env[name];
+        else process.env[name] = values[name];
+      }
+      return run();
+    } finally {
+      for (const name of names) {
+        if (previous[name] === undefined) delete process.env[name];
+        else process.env[name] = previous[name];
+      }
+    }
+  }
+
+  it("fetches all three parameters by name, decrypted, and returns the fetched values", async () => {
+    const requests: string[] = [];
+    const client = {
+      send: vi.fn(async (command: { input: { Name: string; WithDecryption: boolean } }) => {
+        requests.push(command.input.Name);
+        expect(command.input.WithDecryption).toBe(true);
+        return { Parameter: { Value: `value-for-${command.input.Name}` } };
+      }),
+    };
+
+    const secrets = await withEnv(
+      {
+        HARNESS_ADMINS_SSM_PARAM: "/auto-harness/admins",
+        HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+        HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+      },
+      () => loadBootstrapSecrets(client as never),
+    );
+
+    expect(secrets).toEqual({
+      admins: "value-for-/auto-harness/admins",
+      sessionSecret: "value-for-/auto-harness/session-secret",
+      cursorSecret: "value-for-/auto-harness/cursor-secret",
+    });
+    expect(requests.toSorted()).toEqual([
+      "/auto-harness/admins",
+      "/auto-harness/cursor-secret",
+      "/auto-harness/session-secret",
+    ]);
+  });
+
+  it("fails loudly when a parameter name is not configured", async () => {
+    const client = { send: vi.fn() };
+
+    await expect(
+      withEnv(
+        {
+          HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+          HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+        },
+        () => loadBootstrapSecrets(client as never),
+      ),
+    ).rejects.toThrow("HARNESS_ADMINS_SSM_PARAM is required in the Lambda runtime");
+  });
+
+  it("fails loudly when SSM returns no value for a parameter", async () => {
+    const client = { send: vi.fn(async () => ({ Parameter: {} })) };
+
+    await expect(
+      withEnv(
+        {
+          HARNESS_ADMINS_SSM_PARAM: "/auto-harness/admins",
+          HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+          HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+        },
+        () => loadBootstrapSecrets(client as never),
+      ),
+    ).rejects.toThrow("SSM parameter /auto-harness/admins has no value");
   });
 });

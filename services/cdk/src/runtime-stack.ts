@@ -10,6 +10,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Construct } from "constructs";
 
+import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
 import type { FoundationResources } from "./foundation-stack.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 
@@ -37,23 +38,7 @@ export class AutoHarnessRuntimeStack extends Stack {
   constructor(scope: Construct, id: string, props: RuntimeStackProps) {
     super(scope, id, props);
 
-    const admins = new CfnParameter(this, "HarnessAdmins", {
-      description: "Base64-encoded HARNESS_ADMINS bootstrap JSON.",
-      noEcho: true,
-      type: "String",
-    });
-    const sessionSecret = new CfnParameter(this, "HarnessSessionSecret", {
-      description: "Signing secret for control-plane browser sessions.",
-      minLength: 32,
-      noEcho: true,
-      type: "String",
-    });
-    const cursorSecret = new CfnParameter(this, "HarnessCursorSecret", {
-      description: "Stable HMAC secret for paginated session cursors.",
-      minLength: 32,
-      noEcho: true,
-      type: "String",
-    });
+    const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
     const webOrigin = new CfnParameter(this, "WebOrigin", {
       description: "Exact browser origin allowed by control-plane CORS.",
       type: "String",
@@ -65,10 +50,10 @@ export class AutoHarnessRuntimeStack extends Stack {
 
     const commonEnvironment = {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
-      HARNESS_ADMINS: admins.valueAsString,
-      HARNESS_CURSOR_SECRET: cursorSecret.valueAsString,
+      HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
+      HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
-      HARNESS_SESSION_SECRET: sessionSecret.valueAsString,
+      HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
       KMS_KEY_ID: integrationKey.keyArn,
       WEB_ORIGIN: webOrigin.valueAsString,
     };
@@ -108,6 +93,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       fn.role!.addManagedPolicy(apiDataAccessPolicy);
       fn.role!.addManagedPolicy(archiveDataAccessPolicy);
       integrationKey.grantEncryptDecrypt(fn);
+      grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
     }
 
     const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {

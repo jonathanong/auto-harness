@@ -38,7 +38,7 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
-          HARNESS_CURSOR_SECRET: { Ref: "HarnessCursorSecret" },
+          HARNESS_CURSOR_SECRET_SSM_PARAM: { Ref: "HarnessCursorSecretSsmParam" },
           WS_API_ENDPOINT: Match.anyValue(),
         }),
       },
@@ -78,8 +78,8 @@ describe("AutoHarnessRuntimeStack", () => {
     const functions = Object.values(template.findResources("AWS::Lambda::Function"));
     for (const fn of functions) {
       expect(fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET).toBeDefined();
-      expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET).toEqual({
-        Ref: "HarnessCursorSecret",
+      expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
+        Ref: "HarnessCursorSecretSsmParam",
       });
     }
     const roles = Object.values(template.findResources("AWS::IAM::Role"));
@@ -110,11 +110,84 @@ describe("AutoHarnessRuntimeStack", () => {
     template.hasOutput("WebSocketUrl", {});
     expect(Object.keys(template.toJSON().Parameters)).toEqual(
       expect.arrayContaining([
-        "HarnessAdmins",
-        "HarnessCursorSecret",
-        "HarnessSessionSecret",
+        "HarnessAdminsSsmParam",
+        "HarnessCursorSecretSsmParam",
+        "HarnessSessionSecretSsmParam",
         "WebOrigin",
       ]),
+    );
+    // These parameters hold an SSM parameter *name*, not a secret value — unlike the
+    // plaintext CfnParameters they replaced, none require a minimum secret length.
+    const parameters = template.toJSON().Parameters as Record<
+      string,
+      { MinLength?: number; Type: string }
+    >;
+    for (const id of [
+      "HarnessAdminsSsmParam",
+      "HarnessSessionSecretSsmParam",
+      "HarnessCursorSecretSsmParam",
+    ]) {
+      expect(parameters[id]?.Type).toBe("String");
+      expect(parameters[id]?.MinLength).toBeUndefined();
+    }
+
+    template.resourcePropertiesCountIs(
+      "AWS::IAM::Policy",
+      {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({ Action: "ssm:GetParameter", Effect: "Allow" }),
+          ]),
+        },
+      },
+      3,
+    );
+    // Scoped beyond the resource ARN: kms:ViaService restricts the grant to SSM calling
+    // KMS on the Lambda's behalf, and the EncryptionContext:PARAMETER_ARN condition
+    // restricts it to decrypting these three parameters specifically, not any
+    // SecureString the account happens to encrypt under the same shared alias/aws/ssm key.
+    template.resourcePropertiesCountIs(
+      "AWS::IAM::Policy",
+      {
+        PolicyDocument: {
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: "kms:Decrypt",
+              Effect: "Allow",
+              Condition: {
+                StringEquals: {
+                  "kms:ViaService": Match.objectLike({
+                    "Fn::Join": [
+                      "",
+                      Match.arrayWith([Match.stringLikeRegexp("^ssm\\."), ".amazonaws.com"]),
+                    ],
+                  }),
+                  "kms:EncryptionContext:PARAMETER_ARN": Match.arrayWith([
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([Match.objectLike({ Ref: "HarnessAdminsSsmParam" })]),
+                      ]),
+                    }),
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([
+                          Match.objectLike({ Ref: "HarnessSessionSecretSsmParam" }),
+                        ]),
+                      ]),
+                    }),
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([Match.objectLike({ Ref: "HarnessCursorSecretSsmParam" })]),
+                      ]),
+                    }),
+                  ]),
+                },
+              },
+            }),
+          ]),
+        },
+      },
+      3,
     );
   });
 });
