@@ -65,7 +65,7 @@ describe("control-plane native resume", () => {
     const assignments = () =>
       messages.filter((message) => (message as { type?: string }).type === "session:assign");
     expect(assignments()[0]).toMatchObject({
-      resolvedArgv: ["codex", "exec", "first"],
+      resolvedArgv: ["codex", "exec", "--", "first"],
       resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
     });
     acknowledge(plane, "s1");
@@ -128,7 +128,7 @@ describe("control-plane native resume", () => {
     plane.assignQueued();
     expect(messages.at(-1)).toMatchObject({
       type: "session:assign",
-      resolvedArgv: ["tool", "run", "continue here"],
+      resolvedArgv: ["tool", "run", "--", "continue here"],
     });
     const resumedId = resumed.ok ? resumed.session.id : "";
     acknowledge(plane, resumedId);

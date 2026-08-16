@@ -122,8 +122,9 @@ function resolveNativeResumeRoute(
     ...(accountId ? { providerAccountId: accountId } : {}),
     resolvedArgv: spec.resumeArgvTemplate
       ? materializeResumeArgv(spec.resumeArgvTemplate, session.cliResumeRef!, session.prompt)
-      : spec.appendPrompt
-        ? [...spec.argv, session.prompt]
+      : // Same `--` separator as buildArgv, for the same reason.
+        spec.appendPrompt
+        ? [...spec.argv, "--", session.prompt]
         : [...spec.argv],
     resumeSpec: copyResumeSpec(spec),
   };
@@ -294,7 +295,10 @@ export function resolveScheduledSessionTarget(
 
 function buildArgv(command: CommandRecord | undefined, prompt: string): string[] | null {
   if (!command || command.argv.length === 0) return null;
-  return command.appendPrompt ? [...command.argv, prompt] : [...command.argv];
+  // `--` neutralizes a prompt that happens to start with `-`: an operator can target a
+  // catalog Command but cannot define one (D4), so without this a prompt like
+  // "--dangerously-skip-permissions" would be consumed as a CLI flag rather than input.
+  return command.appendPrompt ? [...command.argv, "--", prompt] : [...command.argv];
 }
 
 function commandResumeSpec(command: CommandRecord): SessionResumeSpec {

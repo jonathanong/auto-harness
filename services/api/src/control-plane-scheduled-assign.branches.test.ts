@@ -120,7 +120,7 @@ describe("scheduled assignment branch coverage", () => {
       type: "session:assign",
       sessionType: "scheduled",
       worktreeId: null,
-      resolvedArgv: ["echo", "run"],
+      resolvedArgv: ["echo", "--", "run"],
       ref: "main",
       metadata: { source: "test" },
     });

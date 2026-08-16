@@ -64,7 +64,7 @@ describe("resolveSessionTargetArgv", () => {
       session({ target: { commandId: "cmd-1" } }),
       worktree(),
     );
-    expect(argv).toEqual(["echo", "hello"]);
+    expect(argv).toEqual(["echo", "--", "hello"]);
   });
 
   it("resolves a standalone command without appending the prompt", () => {
@@ -166,7 +166,7 @@ describe("resolveSessionTargetArgv", () => {
       targetIndex: 0,
       providerAccountId: "acct-a",
       commandId: "cmd-provider",
-      resolvedArgv: ["claude", "--print", "hello"],
+      resolvedArgv: ["claude", "--print", "--", "hello"],
     });
 
     state.providerAccounts.get("acct-a")!.usageLimitedUntil = "2026-01-02T00:00:00.000Z";

@@ -86,7 +86,7 @@ describe("assignment residual coverage", () => {
     expect(state.sessions.get("s")).toMatchObject({
       status: "running",
       worktreeId: "w",
-      resolvedArgv: ["frozen", "run"],
+      resolvedArgv: ["frozen", "--", "run"],
     });
   });
 

@@ -203,11 +203,15 @@ describe("scheduled main-checkout dispatcher", () => {
     const messages: HostWireMessage[] = [];
     plane.state.onHostMessage = (_hostId, message) => messages.push(message);
     await plane.assignScheduledQueuedDurable();
-    expect(plane.getSession(session.id)?.resolvedArgv).toEqual(["claude", "scheduled:nightly"]);
+    expect(plane.getSession(session.id)?.resolvedArgv).toEqual([
+      "claude",
+      "--",
+      "scheduled:nightly",
+    ]);
     expect(messages[0]).toMatchObject({
       type: "session:assign",
       repositoryId: "repo-1",
-      resolvedArgv: ["claude", "scheduled:nightly"],
+      resolvedArgv: ["claude", "--", "scheduled:nightly"],
       worktreeId: null,
     });
     plane.handleHostMessage({
