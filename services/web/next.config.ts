@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-import { SECURITY_HEADERS } from "@auto-harness/shared";
+import { securityHeaders, wsOrigin } from "@auto-harness/shared";
 
 const apiUpstream = (
   process.env.HARNESS_API_HTTP ??
@@ -36,7 +36,17 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    return [{ source: "/(.*)", headers: [...SECURITY_HEADERS] }];
+    // The live-log viewer's WebSocket (viewerWebSocketUrl in src/lib/live-session-logs.ts)
+    // connects directly to the API's own origin, bypassing the rewrite above — a
+    // WebSocket upgrade can't be proxied the way a plain fetch() can. That origin is a
+    // different port than this page in every local/e2e layout, so connect-src needs it
+    // explicitly or the browser blocks the connection as cross-origin.
+    return [
+      {
+        source: "/(.*)",
+        headers: [...securityHeaders({ connectSrcOrigins: [wsOrigin(apiUpstream)] })],
+      },
+    ];
   },
 };
 

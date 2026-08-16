@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-import { SECURITY_HEADERS } from "@auto-harness/shared";
+import { securityHeaders, wsOrigin } from "@auto-harness/shared";
 
 const apiUpstream = (
   process.env.HARNESS_API_HTTP ??
@@ -31,7 +31,16 @@ const nextConfig: NextConfig = {
     ];
   },
   async headers() {
-    return [{ source: "/(.*)", headers: [...SECURITY_HEADERS] }];
+    // host-pane has no browser WebSocket of its own today, but it computes the same
+    // apiUpstream as services/web and shares the same control-plane API — allowing it
+    // here keeps both apps' CSP derived from one source rather than drifting if
+    // host-pane ever needs a direct connection too.
+    return [
+      {
+        source: "/(.*)",
+        headers: [...securityHeaders({ connectSrcOrigins: [wsOrigin(apiUpstream)] })],
+      },
+    ];
   },
 };
 

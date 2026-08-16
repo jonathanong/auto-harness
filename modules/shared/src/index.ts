@@ -163,4 +163,4 @@ export {
   type ShutdownHandle,
 } from "./process-lifecycle.ts";
 
-export { CONTENT_SECURITY_POLICY, SECURITY_HEADERS } from "./security-headers.ts";
+export { contentSecurityPolicy, securityHeaders, wsOrigin } from "./security-headers.ts";
