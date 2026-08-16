@@ -75,7 +75,8 @@ test("opens Clone & Edit without creating and submits only replayable source inp
 
   await page.getByTestId("nav-session-new").click();
   await expect(page).toHaveURL(/\/sessions\/new$/);
-  await expect(page.getByTestId("create-session-repository-id")).toHaveValue(repository.id);
+  await expect(page.getByTestId("session-clone-source")).toHaveCount(0);
+  await expect(page.getByTestId("create-session-repository-id")).toBeVisible();
   await expect(page.getByTestId("create-session-prompt")).toHaveValue("");
   await page.goto(`/sessions/${source.id}`);
   await page.getByTestId("session-clone-edit").click();

@@ -6,16 +6,21 @@ import {
   sendSessionForbidden,
 } from "./local-routes-session-access.ts";
 
-const RESUME_BODY_FIELDS = new Set(["prompt", "timeout", "priority"]);
+const RESUME_BODY_FIELDS = new Set(["prompt", "timeout", "priority", "concurrencyId"]);
 
-function validResumeBody(body: Record<string, unknown>): boolean {
+function validResumeBody(
+  body: Record<string, unknown>,
+  sourceConcurrencyId: string | undefined,
+): boolean {
   return (
     Object.keys(body).every((key) => RESUME_BODY_FIELDS.has(key)) &&
     (body.prompt === undefined || (typeof body.prompt === "string" && body.prompt.length > 0)) &&
     (body.timeout === undefined ||
       (typeof body.timeout === "number" && Number.isFinite(body.timeout) && body.timeout > 0)) &&
     (body.priority === undefined ||
-      (typeof body.priority === "number" && Number.isFinite(body.priority)))
+      (typeof body.priority === "number" && Number.isFinite(body.priority))) &&
+    (body.concurrencyId === undefined ||
+      (typeof body.concurrencyId === "string" && body.concurrencyId === sourceConcurrencyId))
   );
 }
 
@@ -75,7 +80,7 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: "invalid JSON body" } });
     return true;
   }
-  if (!validResumeBody(body)) {
+  if (!validResumeBody(body, existing.concurrencyId)) {
     if (
       !(await writeRouteAudit(ctx, {
         action: "session:resume",

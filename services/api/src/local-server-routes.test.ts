@@ -40,6 +40,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       target: { commandId: "cmd-echo" },
       timeout: 10,
       ref: "main",
+      concurrencyId: "filaments-pr-shepherd-1",
       metadata: { a: 1 },
     });
     expect(created.status).toBe(201);
@@ -142,6 +143,7 @@ describe("createLocalApp agent and scheduler routes", () => {
       prompt: "continue with the edge case",
       timeout: 20,
       priority: 4,
+      concurrencyId: "filaments-pr-shepherd-1",
     });
     expect(resumed.status).toBe(201);
     expect(resumed.json).toMatchObject({
@@ -149,7 +151,17 @@ describe("createLocalApp agent and scheduler routes", () => {
       timeout: 20,
       priority: 4,
     });
-    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", {})).status).toBe(201);
+    expect((await invoke("POST", "/api/v1/sessions/sess-1/resume", {})).status).toBe(200);
+    expect(
+      (
+        await invoke("POST", "/api/v1/sessions/sess-1/resume", {
+          concurrencyId: "different",
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (await invoke("POST", "/api/v1/sessions/sess-1/resume", { concurrencyId: 1 })).status,
+    ).toBe(400);
     expect(
       (await invoke("POST", "/api/v1/sessions/sess-1/resume", { commandId: "override" })).status,
     ).toBe(400);
