@@ -28,17 +28,6 @@ describe("ControlPlane API edges", () => {
     }
   });
 
-  it("lists agent command profiles for UI", () => {
-    const plane = new ControlPlane();
-    plane.registerHost({
-      hostId: "a1",
-      worktrees: [{ id: "wt", name: "wt", repositoryId: "r", path: "/p", labels: [] }],
-      commandProfiles: ["echo-prompt", "codex-fix"],
-    });
-    expect(plane.listCommandProfiles()).toEqual(["codex-fix", "echo-prompt"]);
-    expect(plane.listHosts()[0]?.online).toBe(true);
-  });
-
   it("evaluateCron creates scheduled sessions", () => {
     let n = 0;
     const plane = new ControlPlane({

@@ -22,7 +22,6 @@ import {
 import * as agents from "./control-plane-agents.ts";
 import * as assign from "./control-plane-assign.ts";
 import * as lifecycle from "./control-plane-lifecycle.ts";
-import { listCommandProfiles } from "./control-plane-command-profiles.ts";
 import * as messages from "./control-plane-messages.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
@@ -70,10 +69,6 @@ export class ControlPlaneBase {
     return agents.listHosts(this.state);
   }
 
-  listCommandProfiles(): string[] {
-    return listCommandProfiles(this.state);
-  }
-
   createSession(
     body: unknown,
   ): { ok: true; session: PublicSession } | { ok: false; error: string; code?: string } {
@@ -116,7 +111,6 @@ export class ControlPlaneBase {
       labels: string[];
     }>;
     repositories?: HostRepositoryRegistration[];
-    commandProfiles: string[];
     capabilities?: HostCapability[];
     daemonIdentity?: { instanceId: string; startedAt: string };
     replaceExisting?: boolean;

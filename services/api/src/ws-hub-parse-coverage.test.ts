@@ -14,7 +14,6 @@ const registration = {
   type: "host:register",
   hostId: "host-1",
   worktrees: [worktree],
-  commandProfiles: ["codex"],
 };
 
 describe("parseHostMessage exhaustive wire validation", () => {
@@ -93,9 +92,6 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, worktrees: [{ ...worktree, labels: null }] },
       { ...registration, worktrees: [{ ...worktree, labels: Array(101).fill("x") }] },
       { ...registration, worktrees: [{ ...worktree, labels: [""] }] },
-      { ...registration, commandProfiles: null },
-      { ...registration, commandProfiles: Array(1_001).fill("x") },
-      { ...registration, commandProfiles: [""] },
       { ...registration, capabilities: "drain" },
       { ...registration, capabilities: Array(20).fill("scheduled-main-checkout") },
       { ...registration, capabilities: ["unknown"] },

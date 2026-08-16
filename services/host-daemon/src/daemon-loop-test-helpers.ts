@@ -75,7 +75,6 @@ export async function makeRepo(): Promise<{
 
   const config: DaemonConfig = {
     hostId: "agent-loop",
-    logLevel: "info",
     repositories: [
       {
         id: "demo",
@@ -86,9 +85,6 @@ export async function makeRepo(): Promise<{
       },
     ],
     providerAccounts: [],
-    commandProfiles: {
-      "echo-prompt": { argv: ["printf", "%s"], appendPrompt: true },
-    },
   };
   return {
     root,

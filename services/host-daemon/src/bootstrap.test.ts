@@ -19,26 +19,14 @@ describe("httpBaseFromApiUrl", () => {
 
 describe("fetchHostInventory", () => {
   it("maps identity and host inventory", async () => {
-    const fetchFn = vi.fn(async () =>
-      Response.json({
-        repositories: valid.repositories,
-        commandProfiles: valid.commandProfiles,
-        logLevel: "warn",
-      }),
-    );
+    const fetchFn = vi.fn(async () => Response.json({ repositories: valid.repositories }));
     const config = await fetchHostInventory(
-      {
-        hostId: "local-1",
-        apiUrl: "ws://127.0.0.1:7420/ws",
-        apiKey: "hns_x",
-        logLevel: "debug",
-      },
+      { hostId: "local-1", apiUrl: "ws://127.0.0.1:7420/ws", apiKey: "hns_x" },
       { fetchFn: fetchFn as unknown as typeof fetch },
     );
     expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("ws://127.0.0.1:7420/ws");
     expect(config.apiKey).toBe("hns_x");
-    expect(config.logLevel).toBe("debug");
     expect(config.repositories[0]?.id).toBe("repo-1");
   });
 
@@ -47,41 +35,25 @@ describe("fetchHostInventory", () => {
       async () => new Response("nope", { status: 404, statusText: "Not Found" }),
     );
     const config = await fetchHostInventory(
-      { hostId: "a", apiUrl: "http://127.0.0.1:7420", logLevel: "info" },
+      { hostId: "a", apiUrl: "http://127.0.0.1:7420" },
       { fetchFn: fetchFn as unknown as typeof fetch },
     );
     expect(config.hostId).toBe("a");
     expect(config.repositories).toEqual([]);
-    expect(config.commandProfiles).toEqual({});
   });
 
   it("emptyDaemonConfig and inventoryFingerprint", () => {
-    const empty = emptyDaemonConfig({
-      hostId: "a",
-      apiUrl: "http://x",
-      apiKey: "k",
-      logLevel: "warn",
-    });
+    const empty = emptyDaemonConfig({ hostId: "a", apiUrl: "http://x", apiKey: "k" });
     expect(empty.repositories).toEqual([]);
     expect(empty.apiKey).toBe("k");
+    // Stable for identical repositories, and reflects repository content.
     expect(inventoryFingerprint(empty)).toBe(
-      inventoryFingerprint({
-        hostId: "a",
-        repositories: [],
-        providerAccounts: [],
-        commandProfiles: {},
-        logLevel: "info",
-      }),
+      inventoryFingerprint({ hostId: "a", repositories: [], providerAccounts: [] }),
     );
-    expect(
+    expect(inventoryFingerprint(empty)).not.toBe(
       inventoryFingerprint({
         ...empty,
-        commandProfiles: { z: { argv: ["z"] }, a: { argv: ["a"] } },
-      }),
-    ).toBe(
-      inventoryFingerprint({
-        ...empty,
-        commandProfiles: { a: { argv: ["a"] }, z: { argv: ["z"] } },
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
       }),
     );
   });
@@ -99,7 +71,7 @@ describe("fetchHostInventory", () => {
     });
     await expect(
       fetchHostInventory(
-        { hostId: "a", apiUrl: "http://x", logLevel: "info" },
+        { hostId: "a", apiUrl: "http://x" },
         { fetchFn: fetchFn as unknown as typeof fetch },
       ),
     ).rejects.toThrow(/bootstrap failed \(500\).*err/);
@@ -109,9 +81,9 @@ describe("fetchHostInventory", () => {
     const fetchFn = vi.fn(async () => Response.json("not-an-inventory"));
     vi.stubGlobal("fetch", fetchFn);
     try {
-      await expect(
-        fetchHostInventory({ hostId: "a", apiUrl: "http://x", logLevel: "info" }),
-      ).rejects.toThrow("config root must be an object");
+      await expect(fetchHostInventory({ hostId: "a", apiUrl: "http://x" })).rejects.toThrow(
+        "config root must be an object",
+      );
       expect(fetchFn).toHaveBeenCalledWith("http://x/api/v1/hosts/a/inventory", {
         headers: { accept: "application/json" },
       });
@@ -121,7 +93,7 @@ describe("fetchHostInventory", () => {
   });
 
   it("preserves a non-empty bootstrap error body and omits an absent API key", async () => {
-    const identity = { hostId: "a", apiUrl: "http://x", logLevel: "info" as const };
+    const identity = { hostId: "a", apiUrl: "http://x" };
     expect(emptyDaemonConfig(identity).apiKey).toBeUndefined();
     await expect(
       fetchHostInventory(identity, {

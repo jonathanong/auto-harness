@@ -20,7 +20,6 @@ function registration(daemonIdentity?: typeof FIRST) {
     hostId: "host",
     worktrees: [],
     repositories: [],
-    commandProfiles: [],
     replaceExisting: true,
     ...(daemonIdentity ? { daemonIdentity } : {}),
   };
@@ -60,20 +59,13 @@ describe("daemon restart observability", () => {
       lastRestartDetectedAt: now,
     });
 
-    expect(
-      plane.putHostInventory("host", {
-        repositories: [],
-        commandProfiles: {},
-        logLevel: "debug",
-      }).ok,
-    ).toBe(true);
+    expect(plane.putHostInventory("host", { repositories: [] }).ok).toBe(true);
     expect(plane.registerHost(registration()).ok).toBe(true);
     expect(plane.getHostInventory("host")).toMatchObject({
       daemonInstanceId: SECOND.instanceId,
       daemonStartedAt: SECOND.startedAt,
       restartCount: 1,
       lastRestartDetectedAt: "2026-08-12T00:00:01.000Z",
-      logLevel: "debug",
     });
     expect(plane.listHosts()).toContainEqual(
       expect.objectContaining({
@@ -91,7 +83,6 @@ describe("daemon restart observability", () => {
       hostId: "offline-host",
       repositories: [],
       providerAccounts: [],
-      commandProfiles: {},
       daemonInstanceId: SECOND.instanceId,
       daemonStartedAt: SECOND.startedAt,
       restartCount: 3,
@@ -139,15 +130,9 @@ describe("daemon restart observability", () => {
       connectionIdFactory: () => `restart-connection-${++connection}`,
     });
     await afterBaseline.hydrateFromStorage();
-    expect(
-      (
-        await afterBaseline.putHostInventoryDurable("host", {
-          repositories: [],
-          commandProfiles: {},
-          logLevel: "debug",
-        })
-      ).ok,
-    ).toBe(true);
+    expect((await afterBaseline.putHostInventoryDurable("host", { repositories: [] })).ok).toBe(
+      true,
+    );
     expect((await afterBaseline.registerHostDurable(registration(FIRST))).ok).toBe(true);
 
     expect((await staleReplacement.registerHostDurable(registration(SECOND))).ok).toBe(true);
@@ -159,7 +144,6 @@ describe("daemon restart observability", () => {
       daemonStartedAt: SECOND.startedAt,
       restartCount: 1,
       lastRestartDetectedAt: "2026-08-12T00:00:01.000Z",
-      logLevel: "debug",
     });
     await expect(hydrated.listHostsDurable()).resolves.toContainEqual(
       expect.objectContaining({

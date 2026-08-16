@@ -14,53 +14,49 @@ describe("getInventory / putInventory", () => {
     try {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toEqual([]);
-      expect(inv.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
+      expect(inv.providerAccounts).toEqual([]);
     } finally {
       globalThis.fetch = original;
     }
   });
 
-  it("getInventory narrows fields and round-trips a valid logLevel", async () => {
+  it("getInventory narrows repositories/providerAccounts and filters capabilities", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9101";
     const original = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
-          commandProfiles: { p: { argv: ["true"], appendPrompt: false } },
           capabilities: ["scheduled-main-checkout", "not-real"],
-          logLevel: "debug",
         }),
         { status: 200 },
       )) as typeof fetch;
     try {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
-      expect(inv.logLevel).toBe("debug");
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
     }
   });
 
-  it("getInventory drops an invalid logLevel and falls back to defaults for malformed fields", async () => {
+  it("getInventory falls back to defaults for malformed fields", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9102";
     const original = globalThis.fetch;
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ repositories: "nope", logLevel: "bogus" }), {
+      new Response(JSON.stringify({ repositories: "nope", providerAccounts: "nope" }), {
         status: 200,
       })) as typeof fetch;
     try {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toEqual([]);
-      expect(inv.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
-      expect(inv.logLevel).toBeUndefined();
+      expect(inv.providerAccounts).toEqual([]);
     } finally {
       globalThis.fetch = original;
     }
   });
 
-  it("putInventory sends repositories/commandProfiles/logLevel and reports failure text", async () => {
+  it("putInventory sends repositories/providerAccounts/capabilities and reports failure text", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9103";
     const original = globalThis.fetch;
     let sentBody: unknown;
@@ -72,17 +68,13 @@ describe("getInventory / putInventory", () => {
       const ok = await putInventory("host-1", {
         repositories: [],
         providerAccounts: [],
-        commandProfiles: {},
         capabilities: ["scheduled-main-checkout"],
-        logLevel: "warn",
       });
       expect(ok).toEqual({ ok: true });
       expect(sentBody).toEqual({
         repositories: [],
         providerAccounts: [],
-        commandProfiles: {},
         capabilities: ["scheduled-main-checkout"],
-        logLevel: "warn",
       });
     } finally {
       globalThis.fetch = original;
@@ -93,7 +85,6 @@ describe("getInventory / putInventory", () => {
       const failed = await putInventory("host-1", {
         repositories: [],
         providerAccounts: [],
-        commandProfiles: {},
       });
       expect(failed).toEqual({ ok: false, error: "bad request" });
     } finally {
@@ -117,7 +108,7 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 describe("mutateInventory", () => {
-  const empty = { repositories: [], providerAccounts: [], commandProfiles: {}, capabilities: [] };
+  const empty = { repositories: [], providerAccounts: [], capabilities: [] };
 
   it("sends the version it just read, not one from an earlier render", async () => {
     const original = globalThis.fetch;

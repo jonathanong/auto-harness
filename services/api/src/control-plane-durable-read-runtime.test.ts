@@ -64,15 +64,10 @@ describe("durable runtime read-through", () => {
   it("exposes cache-backed host read facades without storage", async () => {
     const plane = new ControlPlane();
     plane.seedWorktree({ ...worktree, currentSessionId: null, lastAssignedAt: null });
-    plane.registerHost({
-      hostId: "host",
-      worktrees: [],
-      commandProfiles: ["echo"],
-    });
+    plane.registerHost({ hostId: "host", worktrees: [] });
 
     await expect(plane.listWorktreesDurable()).resolves.toHaveLength(1);
     await expect(plane.listHostsDurable()).resolves.toHaveLength(1);
-    await expect(plane.listCommandProfilesDurable()).resolves.toEqual(["echo"]);
   });
 
   it("exposes every cache-backed session and schedule read facade", async () => {
@@ -165,7 +160,6 @@ describe("durable runtime read-through", () => {
             hostId: "host",
             connectedAt: "t",
             lastHeartbeatAt: "t",
-            commandProfiles: [],
           },
         ],
       } as never,

@@ -1,10 +1,3 @@
-export type CommandProfileConfig = {
-  /** Fixed argv prefix; never a shell string. */
-  argv: string[];
-  /** When true, session prompt is appended as the final argv element. */
-  appendPrompt: boolean;
-};
-
 /** Enable/command override for a provider account at a repository or worktree scope. */
 export type ProviderAccountOverride = {
   enabled?: boolean;
@@ -43,8 +36,6 @@ export type DaemonConfig = {
   apiKey?: string;
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
-  commandProfiles: Record<string, CommandProfileConfig>;
-  logLevel: "debug" | "info" | "warn" | "error";
 };
 
 /** Process identity only — the only values the agent binary needs from env. */
@@ -54,7 +45,6 @@ export type HostIdentity = {
   apiUrl: string;
   /** Service-account token (`hns_…`); optional for unsecured local stacks. */
   apiKey?: string;
-  logLevel: "debug" | "info" | "warn" | "error";
 };
 
 export function findRepository(

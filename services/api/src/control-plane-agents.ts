@@ -160,7 +160,6 @@ export function listHosts(state: ControlPlaneState): Array<{
   online: boolean;
   connectedAt: string | null;
   lastHeartbeatAt: string | null;
-  commandProfiles: string[];
   capabilities: HostCapability[];
   worktreeIds: string[];
   repositories: Array<{ id: string; path: string }>;
@@ -176,7 +175,6 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: boolean;
       connectedAt: string | null;
       lastHeartbeatAt: string | null;
-      commandProfiles: string[];
       capabilities: HostCapability[];
       worktreeIds: string[];
       repositories: Array<{ id: string; path: string }>;
@@ -192,7 +190,6 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: false,
       connectedAt: null,
       lastHeartbeatAt: null,
-      commandProfiles: [] as string[],
       capabilities: [],
       worktreeIds: [] as string[],
       repositories: [],
@@ -214,7 +211,6 @@ export function listHosts(state: ControlPlaneState): Array<{
       online: true,
       connectedAt: conn.connectedAt,
       lastHeartbeatAt: conn.lastHeartbeatAt,
-      commandProfiles: conn.commandProfiles,
       capabilities: normalizeHostCapabilities(conn.capabilities),
       worktreeIds: [] as string[],
       repositories: [],
@@ -226,7 +222,6 @@ export function listHosts(state: ControlPlaneState): Array<{
     cur.online = true;
     cur.connectedAt = conn.connectedAt;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
-    cur.commandProfiles = [...conn.commandProfiles];
     cur.capabilities = normalizeHostCapabilities(conn.capabilities);
     byHost.set(conn.hostId, cur);
   }
@@ -239,7 +234,6 @@ export function listHosts(state: ControlPlaneState): Array<{
         online: false,
         connectedAt: null,
         lastHeartbeatAt: null,
-        commandProfiles: Object.keys(host.commandProfiles),
         capabilities: normalizeHostCapabilities(host.capabilities),
         worktreeIds: host.repositories.flatMap((r) => r.worktrees.map((w) => w.id)),
         repositories: host.repositories.map(({ id, path }) => ({ id, path })),
@@ -279,7 +273,6 @@ export function registerHost(
       path: string;
       labels: string[];
     }>;
-    commandProfiles: string[];
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
@@ -340,7 +333,6 @@ export function registerHost(
     hostId: opts.hostId,
     connectedAt: at,
     lastHeartbeatAt: at,
-    commandProfiles: [...opts.commandProfiles],
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
   };
@@ -356,7 +348,6 @@ export function registerHost(
     opts.hostId,
     registeredRepositories,
     opts.worktrees,
-    previousInventory?.commandProfiles ?? {},
     conn.capabilities,
     at,
     previousInventory,
@@ -413,7 +404,6 @@ export async function registerHostDurable(
       path: string;
       labels: string[];
     }>;
-    commandProfiles: string[];
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
     runningSessions?: string[];
@@ -457,7 +447,6 @@ export async function registerHostDurable(
     hostId: opts.hostId,
     connectedAt: at,
     lastHeartbeatAt: at,
-    commandProfiles: [...opts.commandProfiles],
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
   };
@@ -561,7 +550,6 @@ export async function registerHostDurable(
     opts.hostId,
     registeredRepositories,
     opts.worktrees,
-    previousInventory?.commandProfiles ?? {},
     conn.capabilities,
     at,
     previousInventory,
@@ -599,7 +587,6 @@ export async function registerHostDurable(
         opts.hostId,
         registeredRepositories,
         opts.worktrees,
-        previousInventory?.commandProfiles ?? {},
         conn.capabilities,
         at,
         previousInventory,

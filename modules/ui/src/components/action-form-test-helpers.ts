@@ -23,7 +23,6 @@ export const router = {
 export const inventory: HostInventory = {
   repositories: [],
   providerAccounts: [],
-  commandProfiles: {},
   capabilities: [],
 };
 export const repo: HostRepository = {

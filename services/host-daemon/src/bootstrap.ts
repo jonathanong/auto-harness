@@ -27,8 +27,6 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
     apiUrl: identity.apiUrl,
     repositories: [],
     providerAccounts: [],
-    commandProfiles: {},
-    logLevel: identity.logLevel,
   };
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;
@@ -38,12 +36,7 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 
 /** Stable fingerprint of host inventory for change detection. */
 export function inventoryFingerprint(config: DaemonConfig): string {
-  return JSON.stringify({
-    repositories: config.repositories,
-    commandProfiles: Object.fromEntries(
-      Object.entries(config.commandProfiles).toSorted(([a], [b]) => a.localeCompare(b)),
-    ),
-  });
+  return JSON.stringify({ repositories: config.repositories });
 }
 
 /**
@@ -80,7 +73,5 @@ export async function fetchHostInventory(
   if (identity.apiKey) {
     config.apiKey = identity.apiKey;
   }
-  // Env log level always wins for local debugging.
-  config.logLevel = identity.logLevel;
   return config;
 }

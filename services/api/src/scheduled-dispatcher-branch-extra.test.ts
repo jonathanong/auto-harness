@@ -44,7 +44,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
 function inventory(state: ReturnType<typeof createControlPlaneState>) {
   state.hostInventories.set(
     "host",
-    buildRegisteredInventory("host", [{ id: "repo", path: "/repo" }], [], {}, [], NOW),
+    buildRegisteredInventory("host", [{ id: "repo", path: "/repo" }], [], [], NOW),
   );
 }
 

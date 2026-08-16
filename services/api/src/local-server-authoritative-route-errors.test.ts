@@ -66,7 +66,6 @@ describe("durable route storage errors", () => {
       ["GET", "/api/v1/host-inventories"],
       ["GET", "/api/v1/hosts/host/inventory"],
       ["GET", "/api/v1/hosts"],
-      ["GET", "/api/v1/command-profiles"],
       ["GET", "/api/v1/worktrees"],
       ["GET", "/api/v1/provider-accounts"],
       ["GET", "/api/v1/provider-accounts/account"],

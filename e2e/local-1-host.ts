@@ -59,9 +59,7 @@ type HostRepo = {
 
 async function getConfig(request: APIRequestContext) {
   const res = await request.get(`${API}/api/v1/hosts/local-1/inventory`);
-  return res.ok()
-    ? await res.json()
-    : { repositories: [], providerAccounts: [], commandProfiles: {} };
+  return res.ok() ? await res.json() : { repositories: [], providerAccounts: [] };
 }
 
 /** Caller must hold withLocalHostLock for the duration of use. */
@@ -75,10 +73,6 @@ export async function putHostRepo(request: APIRequestContext, repo: HostRepo): P
     data: {
       repositories,
       providerAccounts: cfg.providerAccounts ?? [],
-      commandProfiles: {
-        ...cfg.commandProfiles,
-        "echo-prompt": { argv: ["echo"], appendPrompt: true },
-      },
     },
   });
 }
@@ -91,7 +85,6 @@ export async function removeHostRepo(request: APIRequestContext, repoId: string)
     data: {
       repositories,
       providerAccounts: cfg.providerAccounts ?? [],
-      commandProfiles: cfg.commandProfiles ?? {},
     },
   });
 }

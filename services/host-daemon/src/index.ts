@@ -18,12 +18,10 @@ export {
 export type {
   DaemonConfig,
   HostIdentity,
-  CommandProfileConfig,
   LoadConfigOptions,
   RepositoryConfig,
   WorktreeConfig,
 } from "./config.ts";
-export { resolveCommandArgv, UnknownCommandProfileError } from "./command-profiles.ts";
 export { SpawnProcessRunner, runSetupScript } from "./executor.ts";
 export type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
 export { PtyProcessRunner } from "./pty-runner.ts";

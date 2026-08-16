@@ -16,10 +16,10 @@ describe("host-inventory", () => {
     expect(defaultWorktreePath("/repo/", "runner-1")).toBe("/repo/.worktrees/runner-1");
   });
 
-  it("emptyHostInventory seeds echo-prompt with no repos", () => {
+  it("emptyHostInventory has no repos", () => {
     const inv = emptyHostInventory();
     expect(inv.repositories).toEqual([]);
-    expect(inv.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
+    expect(inv.providerAccounts).toEqual([]);
   });
 
   it("upsertHostRepository creates repo with empty worktrees", () => {
@@ -30,7 +30,6 @@ describe("host-inventory", () => {
     });
     expect(next.repositories).toHaveLength(1);
     expect(next.repositories[0]?.worktrees).toEqual([]);
-    expect(next.commandProfiles["echo-prompt"]?.argv).toEqual(["echo"]);
   });
 
   it("upsertHostRepository preserves worktrees when path changes", () => {
@@ -194,20 +193,5 @@ describe("host-inventory", () => {
       setupScript: "npm run setup",
     });
     expect(inv.repositories[0]?.worktrees[0]?.setupScript).toBe("npm run setup");
-  });
-
-  it("cloneInventory (via any mutation) round-trips logLevel", () => {
-    const seeded = upsertHostRepository(
-      { repositories: [], providerAccounts: [], commandProfiles: {}, logLevel: "debug" },
-      { id: "demo", path: "/repo", defaultBranch: "main" },
-    );
-    expect(seeded.logLevel).toBe("debug");
-    const next = addHostWorktree(seeded, "demo", {
-      id: "wt-a",
-      name: "wt-a",
-      path: "/repo/wt-a",
-      labels: [],
-    });
-    expect(next.logLevel).toBe("debug");
   });
 });

@@ -18,11 +18,7 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
     plane.createCommand({ id: "cmd-echo", name: "echo", argv: ["echo"], providerId: null });
 
     // Register without worktrees so listHosts builds from connection only
-    const r1 = plane.registerHost({
-      hostId: "solo",
-      worktrees: [],
-      commandProfiles: ["p1"],
-    });
+    const r1 = plane.registerHost({ hostId: "solo", worktrees: [] });
     expect(r1.ok).toBe(true);
     expect(plane.listHosts().some((a) => a.hostId === "solo")).toBe(true);
 
@@ -32,7 +28,6 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
       ],
-      commandProfiles: ["p2"],
       replaceExisting: true,
     });
     expect(r2.ok).toBe(true);
@@ -53,11 +48,9 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       worktrees: [
         { id: "wt-extra", name: "wt-extra", repositoryId: "repo-1", path: "/e", labels: [] },
       ],
-      commandProfiles: ["p2"],
       replaceExisting: true,
     });
 
-    // offline agent profiles skipped
     plane.seedWorktree({
       id: "wt-off",
       name: "wt-off",
@@ -68,7 +61,6 @@ describe("ControlPlane coverage: register replace resume and missing status", ()
       status: "idle",
       online: false,
     });
-    expect(plane.listCommandProfiles()).toContain("p2");
     expect(plane.getWorktree("missing")).toBeNull();
 
     // lost claim: two idle worktrees; mark second busy mid-loop by monkeypatching

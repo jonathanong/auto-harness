@@ -44,7 +44,6 @@ function addHost(
     hostId,
     connectedAt: NOW,
     lastHeartbeatAt: NOW,
-    commandProfiles: [],
     capabilities: capabilities as never,
     repositoryIds: repositories,
   });
@@ -55,7 +54,6 @@ function addHost(
       hostId,
       repositories.map((id) => ({ id, path: `/${hostId}/${id}` })),
       [],
-      {},
       capabilities as never,
       NOW,
     ),

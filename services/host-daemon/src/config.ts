@@ -7,7 +7,6 @@ import { parseDaemonConfig } from "./config-parse.ts";
 export type {
   DaemonConfig,
   HostIdentity,
-  CommandProfileConfig,
   RepositoryConfig,
   WorktreeConfig,
 } from "./config-types.ts";
@@ -24,20 +23,12 @@ export {
  * Load process identity from environment.
  * Local defaults: HARNESS_HOST_ID=local-1, HARNESS_API_URL=http://127.0.0.1:7420
  * (HARNESS_API_HTTP is accepted as an alias for the API base).
- * Optional: HARNESS_API_KEY, HARNESS_LOG_LEVEL.
+ * Optional: HARNESS_API_KEY.
  */
 export function loadHostIdentity(env: NodeJS.ProcessEnv = process.env): HostIdentity {
   const hostId = env.HARNESS_HOST_ID?.trim() || LOCAL_HOST_ID;
   const apiUrl = env.HARNESS_API_URL?.trim() || env.HARNESS_API_HTTP?.trim() || LOCAL_API_HTTP;
-  const logLevelRaw = env.HARNESS_LOG_LEVEL;
-  const logLevel =
-    logLevelRaw === "debug" ||
-    logLevelRaw === "info" ||
-    logLevelRaw === "warn" ||
-    logLevelRaw === "error"
-      ? logLevelRaw
-      : "info";
-  const identity: HostIdentity = { hostId, apiUrl, logLevel };
+  const identity: HostIdentity = { hostId, apiUrl };
   if (env.HARNESS_API_KEY) {
     identity.apiKey = env.HARNESS_API_KEY;
   }
@@ -68,14 +59,6 @@ export async function loadDaemonConfig(options: LoadConfigOptions = {}): Promise
     }
     if (env.HARNESS_API_KEY) {
       config.apiKey = env.HARNESS_API_KEY;
-    }
-    if (
-      env.HARNESS_LOG_LEVEL === "debug" ||
-      env.HARNESS_LOG_LEVEL === "info" ||
-      env.HARNESS_LOG_LEVEL === "warn" ||
-      env.HARNESS_LOG_LEVEL === "error"
-    ) {
-      config.logLevel = env.HARNESS_LOG_LEVEL;
     }
     return config;
   }

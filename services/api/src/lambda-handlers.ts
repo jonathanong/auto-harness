@@ -229,7 +229,6 @@ export async function createLambdaRuntime(
             hostId: principal.boundHostId,
             connectedAt: new Date().toISOString(),
             lastHeartbeatAt: new Date().toISOString(),
-            commandProfiles: [],
             registered: false,
           });
           return { statusCode: 200 };

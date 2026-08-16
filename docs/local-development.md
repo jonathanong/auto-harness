@@ -132,7 +132,7 @@ curl -fsS -X PUT http://127.0.0.1:7420/api/v1/hosts/local-1/inventory \
 # or use the Hosts page: HARNESS_API_HTTP=http://127.0.0.1:7420 pnpm local:web → /hosts
 ```
 
-**Body fields:** `commandProfiles` (legacy, always `{}` — no longer used for session targeting), `providerAccounts[]` (attached Provider Accounts, optionally with a host-level command override), `repositories[]` with `id`, `path`, `worktrees[]`.
+**Body fields:** `providerAccounts[]` (attached Provider Accounts, optionally with a host-level command override), `repositories[]` with `id`, `path`, `worktrees[]`.
 
 3. `run-session --file` reads a `SessionAssign` JSON with an already-resolved `resolvedArgv` (see [examples/local/session.assign.json](../examples/local/session.assign.json)) — this bypasses the control plane's own Provider/Command resolution entirely (useful for testing `SessionRunner` in isolation), so there's no catalog setup needed for this specific path.
 

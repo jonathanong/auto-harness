@@ -15,7 +15,6 @@ export function deferred<T = void>() {
 export function makeRunner() {
   const config: DaemonConfig = {
     hostId: "h",
-    logLevel: "info",
     repositories: [
       {
         id: "r1",
@@ -27,7 +26,6 @@ export function makeRunner() {
       { id: "r2", path: "/repo-2", defaultBranch: "trunk", worktrees: [] },
     ],
     providerAccounts: [],
-    commandProfiles: {},
   };
   const checkouts: string[] = [];
   const hooks: string[] = [];

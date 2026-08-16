@@ -33,7 +33,6 @@ async function registeredPlane(connectionId: string) {
     hostId: HOST_ID,
     worktrees: [],
     repositories: [{ id: REPOSITORY_ID, path: "/repo", defaultBranch: "main" }],
-    commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
     replaceExisting: true,
   });
@@ -121,7 +120,6 @@ describe("durable scheduled cancellation races", () => {
         hostId: HOST_ID,
         worktrees: [],
         repositories: [{ id: REPOSITORY_ID, path: "/repo", defaultBranch: "main" }],
-        commandProfiles: [],
         capabilities: ["scheduled-main-checkout"],
         replaceExisting: true,
       }),

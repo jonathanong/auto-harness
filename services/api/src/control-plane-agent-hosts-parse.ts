@@ -122,43 +122,10 @@ export function parseHostBody(
     body.capabilities as import("@auto-harness/shared").HostCapability[] | undefined,
   );
 
-  if (!isRecord(body.commandProfiles)) {
-    throw new Error("commandProfiles must be an object");
-  }
-  const commandProfiles: HostInventoryRecord["commandProfiles"] = {};
-  for (const [name, profile] of Object.entries(body.commandProfiles)) {
-    if (!isRecord(profile)) {
-      throw new Error(`commandProfiles.${name} must be an object`);
-    }
-    if (
-      !Array.isArray(profile.argv) ||
-      profile.argv.length === 0 ||
-      !profile.argv.every((a) => typeof a === "string" && a.length > 0)
-    ) {
-      throw new Error(`commandProfiles.${name}.argv must be a non-empty string array`);
-    }
-    commandProfiles[name] = {
-      argv: profile.argv as string[],
-      appendPrompt: profile.appendPrompt !== false,
-    };
-  }
-
-  let logLevel: HostInventoryRecord["logLevel"];
-  if (
-    body.logLevel === "debug" ||
-    body.logLevel === "info" ||
-    body.logLevel === "warn" ||
-    body.logLevel === "error"
-  ) {
-    logLevel = body.logLevel;
-  }
-
   return {
     hostId,
     repositories,
     providerAccounts,
-    commandProfiles,
     capabilities,
-    ...(logLevel !== undefined ? { logLevel } : {}),
   };
 }

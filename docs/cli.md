@@ -38,7 +38,7 @@ pnpm local:e2e
 pnpm local:cli-e2e
 ```
 
-Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY` / `HARNESS_LOG_LEVEL`.
+Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_KEY`.
 
 ---
 
@@ -108,7 +108,6 @@ GET /api/v1/host-inventories
 
 ```json
 {
-  "commandProfiles": {},
   "providerAccounts": [{ "providerAccountId": "acct-1" }],
   "repositories": [
     {
@@ -129,10 +128,10 @@ GET /api/v1/host-inventories
 }
 ```
 
-`commandProfiles` is still accepted on this document for host-config compatibility, but nothing
-resolves session/schedule commands from it anymore — it's always safe to send `{}`. What a session
-actually runs is **named, fixed argv** (D4), resolved from the global Provider/Provider Account/
-Command catalogs, not from this document:
+What a session actually runs is **named, fixed argv** (D4), resolved from the global
+Provider/Provider Account/Command catalogs, not from this document — the document above no
+longer carries a `commandProfiles` field at all (removed; it never resolved anything once
+D4 landed):
 
 ```bash
 POST /api/v1/providers            # {name} — creates the provider AND its default command

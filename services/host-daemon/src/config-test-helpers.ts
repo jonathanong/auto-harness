@@ -1,8 +1,5 @@
 export const valid = {
   hostId: "local-1",
-  commandProfiles: {
-    "echo-prompt": { argv: ["echo"], appendPrompt: true },
-  },
   repositories: [
     {
       id: "repo-1",

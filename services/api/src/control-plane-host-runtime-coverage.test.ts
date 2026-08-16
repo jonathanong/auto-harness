@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { drainHostDurable } from "./control-plane-agents.ts";
-import { buildRegisteredInventory } from "./control-plane-agent-registration.ts";
 import { offlineHostAndRequeue } from "./control-plane-worktrees.ts";
 import { ControlPlane } from "./control-plane.ts";
 
@@ -161,21 +160,6 @@ describe("host management runtime coverage", () => {
     expect(plane.putHostInventory("host", { repositories: [], commandProfiles: {} })).toEqual({
       ok: false,
       error: "clock unavailable",
-    });
-  });
-
-  it("preserves a configured inventory log level across registration", () => {
-    const previous = {
-      hostId: "host",
-      repositories: [],
-      providerAccounts: [],
-      commandProfiles: {},
-      capabilities: [],
-      logLevel: "debug" as const,
-      updatedAt: "t0",
-    };
-    expect(buildRegisteredInventory("host", [], [], {}, [], "t1", previous)).toMatchObject({
-      logLevel: "debug",
     });
   });
 });

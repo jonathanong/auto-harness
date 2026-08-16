@@ -69,7 +69,6 @@ export {
 } from "./validation.ts";
 
 export {
-  DEFAULT_ECHO_PROFILE,
   addHostWorktree,
   defaultWorktreePath,
   emptyHostInventory,
@@ -101,7 +100,6 @@ export {
 export { apiBase, apiGet, resolveServerApiBase } from "./api-client.ts";
 
 export { getInventory, mutateInventory, putInventory } from "./host-inventory-api.ts";
-export { removeCommandProfile, setCommandProfile } from "./command-profiles.ts";
 export {
   attachProviderAccountToHost,
   detachProviderAccountFromHost,

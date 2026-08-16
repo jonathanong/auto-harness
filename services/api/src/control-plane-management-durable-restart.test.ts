@@ -146,7 +146,6 @@ describe("durable management restart visibility", () => {
               worktrees: [{ id: "worktree", name: "worktree", path: "/repository/wt", labels: [] }],
             },
           ],
-          commandProfiles: {},
         })
       ).ok,
     ).toBe(true);
@@ -173,15 +172,7 @@ describe("durable management restart visibility", () => {
     expect((await plane.updateScheduleDurable("schedule", { name: "schedule-updated" })).ok).toBe(
       true,
     );
-    expect(
-      (
-        await plane.putHostInventoryDurable("host", {
-          repositories: [],
-          commandProfiles: {},
-          logLevel: "debug",
-        })
-      ).ok,
-    ).toBe(true);
+    expect((await plane.putHostInventoryDurable("host", { repositories: [] })).ok).toBe(true);
 
     const restarted = new ControlPlane({ storage });
     await restarted.hydrateFromStorage();
@@ -190,7 +181,6 @@ describe("durable management restart visibility", () => {
     expect(restarted.getProvider("provider")?.name).toBe("provider-updated");
     expect(restarted.getProviderAccount("account")?.label).toBe("updated@example.test");
     expect(restarted.getSchedule("schedule")?.name).toBe("schedule-updated");
-    expect(restarted.getHostInventory("host")?.logLevel).toBe("debug");
     expect(restarted.listWorktrees().filter((worktree) => worktree.hostId === "host")).toEqual([]);
 
     expect((await plane.deleteScheduleDurable("schedule")).ok).toBe(true);

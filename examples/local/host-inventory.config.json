@@ -13,15 +13,5 @@
         }
       ]
     }
-  ],
-  "commandProfiles": {
-    "echo-prompt": {
-      "argv": ["echo"],
-      "appendPrompt": true
-    },
-    "true": {
-      "argv": ["true"],
-      "appendPrompt": false
-    }
-  }
+  ]
 }
