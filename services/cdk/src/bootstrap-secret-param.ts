@@ -58,6 +58,16 @@ function bootstrapSecretParam(
   const param = new CfnParameter(stack, definition.id, {
     default: definition.defaultName,
     description: definition.description,
+    // An SSM parameter ARN needs exactly one "/" between "parameter" and the name: a
+    // hierarchical name's own leading slash supplies it, but a flat name has none. The
+    // ARN below relies on the name supplying it, so a flat-name override would silently
+    // build a wrong ARN (":parameterharness-admins") that ssm:GetParameter never matches
+    // — every Lambda cold start would then fail closed on AccessDenied. Enforcing this
+    // here, in the one shared constructor, means no future call site can forget it the
+    // way an ARN-construction-side check could be.
+    allowedPattern: "^/.+",
+    constraintDescription:
+      "must start with / (SSM parameter names are always referenced by full path)",
     // The value is a parameter *name*, not a secret — noEcho here is defense-in-depth
     // against a future default being confused for the secret itself, and it silences
     // CloudFormation's "appears to be a password" heuristic on parameter ids containing
@@ -83,15 +93,24 @@ function bootstrapSecretParam(
  * The AWS-managed key (alias/aws/ssm) encrypts a SecureString parameter unless the
  * operator names a customer-managed key at put-parameter time; its default resource
  * policy already grants decrypt through IAM, so no key-policy edit is needed here.
+ *
+ * The decrypt grant is scoped two ways beyond the resource ARN, both standard AWS
+ * guidance for a Lambda-reads-SecureString pattern: `kms:ViaService` restricts it to
+ * calls SSM itself makes on the caller's behalf (not a direct kms:Decrypt using this
+ * key for something unrelated), and `kms:EncryptionContext:PARAMETER_ARN` — the fixed
+ * encryption-context key SSM always sets when it encrypts a SecureString — restricts it
+ * to decrypting *these three parameters specifically*, not any SecureString the account
+ * happens to encrypt with the same shared AWS-managed key.
  */
 export function grantBootstrapSecretsAccess(
   fn: NodejsFunction,
   params: BootstrapSecretParams,
 ): void {
+  const parameterArns = [params.admins.arn, params.sessionSecret.arn, params.cursorSecret.arn];
   fn.addToRolePolicy(
     new iam.PolicyStatement({
       actions: ["ssm:GetParameter"],
-      resources: [params.admins.arn, params.sessionSecret.arn, params.cursorSecret.arn],
+      resources: parameterArns,
     }),
   );
   fn.addToRolePolicy(
@@ -108,6 +127,12 @@ export function grantBootstrapSecretsAccess(
           ":alias/aws/ssm",
         ]),
       ],
+      conditions: {
+        StringEquals: {
+          "kms:ViaService": Fn.join("", ["ssm.", Aws.REGION, ".amazonaws.com"]),
+          "kms:EncryptionContext:PARAMETER_ARN": parameterArns,
+        },
+      },
     }),
   );
 }

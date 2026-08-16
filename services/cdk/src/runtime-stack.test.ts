@@ -142,12 +142,48 @@ describe("AutoHarnessRuntimeStack", () => {
       },
       3,
     );
+    // Scoped beyond the resource ARN: kms:ViaService restricts the grant to SSM calling
+    // KMS on the Lambda's behalf, and the EncryptionContext:PARAMETER_ARN condition
+    // restricts it to decrypting these three parameters specifically, not any
+    // SecureString the account happens to encrypt under the same shared alias/aws/ssm key.
     template.resourcePropertiesCountIs(
       "AWS::IAM::Policy",
       {
         PolicyDocument: {
           Statement: Match.arrayWith([
-            Match.objectLike({ Action: "kms:Decrypt", Effect: "Allow" }),
+            Match.objectLike({
+              Action: "kms:Decrypt",
+              Effect: "Allow",
+              Condition: {
+                StringEquals: {
+                  "kms:ViaService": Match.objectLike({
+                    "Fn::Join": [
+                      "",
+                      Match.arrayWith([Match.stringLikeRegexp("^ssm\\."), ".amazonaws.com"]),
+                    ],
+                  }),
+                  "kms:EncryptionContext:PARAMETER_ARN": Match.arrayWith([
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([Match.objectLike({ Ref: "HarnessAdminsSsmParam" })]),
+                      ]),
+                    }),
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([
+                          Match.objectLike({ Ref: "HarnessSessionSecretSsmParam" }),
+                        ]),
+                      ]),
+                    }),
+                    Match.objectLike({
+                      "Fn::Join": Match.arrayWith([
+                        Match.arrayWith([Match.objectLike({ Ref: "HarnessCursorSecretSsmParam" })]),
+                      ]),
+                    }),
+                  ]),
+                },
+              },
+            }),
           ]),
         },
       },
