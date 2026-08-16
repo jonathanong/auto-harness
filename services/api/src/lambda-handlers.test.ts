@@ -2,7 +2,11 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
-import { createLambdaHandlers, createLambdaRuntime } from "./lambda-handlers.ts";
+import {
+  createLambdaHandlers,
+  createLambdaRuntime,
+  loadBootstrapSecrets,
+} from "./lambda-handlers.ts";
 
 function hostPrincipal(hostId = "host-1") {
   return {
@@ -458,5 +462,96 @@ describe("Lambda runtime adapters", () => {
       if (previous === undefined) delete process.env.WS_API_ENDPOINT;
       else process.env.WS_API_ENDPOINT = previous;
     }
+  });
+});
+
+/**
+ * The plaintext env vars this replaced never touched an SDK client at all — they were
+ * just process.env reads. Now that the three bootstrap secrets come from SSM, this is
+ * the boundary where a wrong parameter name, a missing value, or a missing env var
+ * should fail loudly rather than silently constructing an AuthService with an empty
+ * secret.
+ */
+describe("loadBootstrapSecrets", () => {
+  const names = [
+    "HARNESS_ADMINS_SSM_PARAM",
+    "HARNESS_SESSION_SECRET_SSM_PARAM",
+    "HARNESS_CURSOR_SECRET_SSM_PARAM",
+  ] as const;
+
+  function withEnv<T>(values: Partial<Record<(typeof names)[number], string>>, run: () => T): T {
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    try {
+      for (const name of names) {
+        if (values[name] === undefined) delete process.env[name];
+        else process.env[name] = values[name];
+      }
+      return run();
+    } finally {
+      for (const name of names) {
+        if (previous[name] === undefined) delete process.env[name];
+        else process.env[name] = previous[name];
+      }
+    }
+  }
+
+  it("fetches all three parameters by name, decrypted, and returns the fetched values", async () => {
+    const requests: string[] = [];
+    const client = {
+      send: vi.fn(async (command: { input: { Name: string; WithDecryption: boolean } }) => {
+        requests.push(command.input.Name);
+        expect(command.input.WithDecryption).toBe(true);
+        return { Parameter: { Value: `value-for-${command.input.Name}` } };
+      }),
+    };
+
+    const secrets = await withEnv(
+      {
+        HARNESS_ADMINS_SSM_PARAM: "/auto-harness/admins",
+        HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+        HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+      },
+      () => loadBootstrapSecrets(client as never),
+    );
+
+    expect(secrets).toEqual({
+      admins: "value-for-/auto-harness/admins",
+      sessionSecret: "value-for-/auto-harness/session-secret",
+      cursorSecret: "value-for-/auto-harness/cursor-secret",
+    });
+    expect(requests.toSorted()).toEqual([
+      "/auto-harness/admins",
+      "/auto-harness/cursor-secret",
+      "/auto-harness/session-secret",
+    ]);
+  });
+
+  it("fails loudly when a parameter name is not configured", async () => {
+    const client = { send: vi.fn() };
+
+    await expect(
+      withEnv(
+        {
+          HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+          HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+        },
+        () => loadBootstrapSecrets(client as never),
+      ),
+    ).rejects.toThrow("HARNESS_ADMINS_SSM_PARAM is required in the Lambda runtime");
+  });
+
+  it("fails loudly when SSM returns no value for a parameter", async () => {
+    const client = { send: vi.fn(async () => ({ Parameter: {} })) };
+
+    await expect(
+      withEnv(
+        {
+          HARNESS_ADMINS_SSM_PARAM: "/auto-harness/admins",
+          HARNESS_SESSION_SECRET_SSM_PARAM: "/auto-harness/session-secret",
+          HARNESS_CURSOR_SECRET_SSM_PARAM: "/auto-harness/cursor-secret",
+        },
+        () => loadBootstrapSecrets(client as never),
+      ),
+    ).rejects.toThrow("SSM parameter /auto-harness/admins has no value");
   });
 });

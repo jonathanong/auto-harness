@@ -4,6 +4,7 @@ import {
   GoneException,
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
+import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
 import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 
@@ -50,9 +51,41 @@ export type LambdaRuntimeDependencies = {
   created?: PlaneBundle;
   management?: ManagementClient;
   refreshAuth?: () => Promise<void>;
+  ssmClient?: SsmClient;
 };
 
 export type { HttpApiEvent, HttpApiResponse } from "./lambda-http-adapter.ts";
+
+type SsmClient = Pick<SSMClient, "send">;
+
+type BootstrapSecrets = { admins: string; cursorSecret: string; sessionSecret: string };
+
+/**
+ * The three secrets AuthService and the session-cursor signer need. Lambda's environment
+ * carries only the SSM parameter *names* (see runtime-stack.ts) — putting the plaintext
+ * value directly in a Lambda environment variable would make it readable in cleartext by
+ * anyone with lambda:GetFunctionConfiguration and visible in CloudTrail's Lambda-config
+ * events. This is deliberately not cached at module scope: createLambdaHandlers already
+ * memoizes the whole createLambdaRuntime() call per container, so fetching once per call
+ * here is already "once per cold start" — and a function-local fetch is trivial to test,
+ * unlike module-level state that would leak between test cases.
+ */
+export async function loadBootstrapSecrets(client?: SsmClient): Promise<BootstrapSecrets> {
+  const ssm = client ?? new SSMClient({});
+  const [admins, sessionSecret, cursorSecret] = await Promise.all([
+    fetchSecureParameter(ssm, requiredEnv("HARNESS_ADMINS_SSM_PARAM")),
+    fetchSecureParameter(ssm, requiredEnv("HARNESS_SESSION_SECRET_SSM_PARAM")),
+    fetchSecureParameter(ssm, requiredEnv("HARNESS_CURSOR_SECRET_SSM_PARAM")),
+  ]);
+  return { admins, cursorSecret, sessionSecret };
+}
+
+async function fetchSecureParameter(client: SsmClient, name: string): Promise<string> {
+  const response = await client.send(new GetParameterCommand({ Name: name, WithDecryption: true }));
+  const value = response.Parameter?.Value;
+  if (!value) throw new Error(`SSM parameter ${name} has no value`);
+  return value;
+}
 
 function authenticationRequest(event: {
   headers?: HeaderMap;
@@ -102,11 +135,27 @@ async function postToHost(
 export async function createLambdaRuntime(
   dependencies: LambdaRuntimeDependencies = {},
 ): Promise<LambdaRuntime> {
-  /* v8 ignore next 2 -- production AWS client construction is an SDK boundary */
+  /* v8 ignore next 4 -- production SSM fetch is exercised through the shared bootstrap-secrets suite */
+  const bootstrapSecrets =
+    dependencies.created && dependencies.auth
+      ? undefined
+      : await loadBootstrapSecrets(dependencies.ssmClient);
+  /* v8 ignore next 7 -- production AWS client construction is an SDK boundary */
   const created =
-    dependencies.created ?? (await createControlPlane({ aws: true, skipEnsureTables: true }));
-  /* v8 ignore next -- production auth construction is exercised through the shared auth suite */
-  const auth = dependencies.auth ?? new AuthService({ mode: "required" });
+    dependencies.created ??
+    (await createControlPlane({
+      aws: true,
+      sessionCursorSecret: bootstrapSecrets!.cursorSecret,
+      skipEnsureTables: true,
+    }));
+  /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
+  const auth =
+    dependencies.auth ??
+    new AuthService({
+      admins: bootstrapSecrets!.admins,
+      mode: "required",
+      secret: bootstrapSecrets!.sessionSecret,
+    });
   /* v8 ignore next -- production hydration is exercised through the shared auth/storage suites */
   if (!dependencies.auth) await auth.hydrate(created.storage);
   const management =
