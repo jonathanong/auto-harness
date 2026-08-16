@@ -91,7 +91,7 @@ describe("GET /api/browse", () => {
   it("requires a current, correctly signed HS256 session only when authentication is enabled", async () => {
     const root = await createFixture();
     const { GET } = await loadRoute(root, { auth: true, secret: "test-secret" });
-    const valid = session("test-secret", { alg: "HS256", typ: "JWT" }, { exp: futureExpiry() });
+    const valid = session("test-secret", { alg: "HS256", typ: "JWT" }, sessionClaims());
     const cases = [
       undefined,
       "auto_harness_session=only.two",
@@ -100,11 +100,12 @@ describe("GET /api/browse", () => {
       "auto_harness_session=header.payload.",
       `auto_harness_session=${valid.slice(0, -1)}`,
       `auto_harness_session=${corruptSignature(valid)}`,
-      `auto_harness_session=${session("test-secret", { alg: "none", typ: "JWT" }, { exp: futureExpiry() })}`,
-      `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "other" }, { exp: futureExpiry() })}`,
+      `auto_harness_session=${session("test-secret", { alg: "none", typ: "JWT" }, sessionClaims())}`,
+      `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "other" }, sessionClaims())}`,
       `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "JWT" }, { exp: "future" })}`,
       `auto_harness_session=${signedRaw("test-secret", Buffer.from("{").toString("base64url"), Buffer.from("{}").toString("base64url"))}`,
-      `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "JWT" }, { exp: 0 })}`,
+      `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "JWT" }, { ...sessionClaims(), exp: 0 })}`,
+      `auto_harness_session=${session("test-secret", { alg: "HS256", typ: "JWT" }, { ...sessionClaims(), audience: "viewer" })}`,
     ];
 
     for (const cookie of cases) {
@@ -185,4 +186,15 @@ function corruptSignature(token: string): string {
 
 function futureExpiry(): number {
   return Date.now() / 1000 + 60;
+}
+
+function sessionClaims(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: "user:alice",
+    username: "alice",
+    role: "operator",
+    kind: "user",
+    exp: futureExpiry(),
+    ...overrides,
+  };
 }

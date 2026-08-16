@@ -164,3 +164,4 @@ export {
 } from "./process-lifecycle.ts";
 
 export { contentSecurityPolicy, securityHeaders, wsOrigin } from "./security-headers.ts";
+export { SESSION_COOKIE, hasValidSession, sessionCookieValue } from "./session-cookie.ts";

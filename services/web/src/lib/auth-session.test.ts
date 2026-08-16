@@ -30,6 +30,7 @@ describe("web auth session helpers", () => {
     expect(await hasValidSession(token({ id: 1 }), secret)).toBe(false);
     expect(await hasValidSession(token({ username: 1 }), secret)).toBe(false);
     expect(await hasValidSession(token({ role: "wrong" }), secret)).toBe(false);
+    expect(await hasValidSession(token({ audience: "viewer" }), secret)).toBe(false);
     expect(await hasValidSession(token({ role: "admin", kind: "admin" }), secret)).toBe(true);
     expect(
       await hasValidSession(token({ role: "read-only", kind: "service-account" }), secret),
