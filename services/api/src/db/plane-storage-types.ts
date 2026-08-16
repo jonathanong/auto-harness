@@ -155,6 +155,12 @@ export type HostInventoryRecord = {
   capabilities?: HostCapability[];
   logLevel?: "debug" | "info" | "warn" | "error";
   updatedAt: string;
+  /**
+   * Optimistic-concurrency counter. The inventory document is replaced whole by
+   * read-modify-write callers, so without this two concurrent editors silently discard
+   * one another's changes. Absent on rows written before versioning existed.
+   */
+  version?: number;
 };
 
 export function sessionToItem(session: SessionRecord): Record<string, unknown> {

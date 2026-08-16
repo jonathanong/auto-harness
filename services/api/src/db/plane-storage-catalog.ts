@@ -594,15 +594,46 @@ export async function listArchives(ctx: PlaneStorageCtx): Promise<ArchiveMetadat
   return records;
 }
 
+/**
+ * Replace a host's inventory document.
+ *
+ * `expectedVersion` makes the replace conditional on the document not having moved since
+ * the caller read it. Without it this was an unconditional whole-document Put, so the
+ * control plane adding a worktree while the host pane added another silently dropped one
+ * of them — and the worktree projection then deleted the orphaned Worktrees rows.
+ * Returns false when the condition fails so the caller can answer 409.
+ */
 export async function putHostInventory(
   ctx: PlaneStorageCtx,
   rec: HostInventoryRecord,
   markers?: readonly DeletionMarker[],
-): Promise<void> {
-  const write = { Put: { TableName: ctx.tables.hostInventories, Item: { ...rec } } };
-  await guardedWrite(ctx, markers, write, async () => {
-    await ctx.doc.send(new PutCommand(write.Put));
-  });
+  expectedVersion?: number,
+): Promise<boolean> {
+  const condition =
+    expectedVersion === undefined
+      ? {}
+      : expectedVersion === 0
+        ? {
+            // Version 0 means "the caller read a document with no version yet", which is
+            // either a pre-versioning row or no row at all.
+            ConditionExpression: "attribute_not_exists(version) OR version = :expected",
+            ExpressionAttributeValues: { ":expected": 0 },
+          }
+        : {
+            ConditionExpression: "version = :expected",
+            ExpressionAttributeValues: { ":expected": expectedVersion },
+          };
+  const write = {
+    Put: { TableName: ctx.tables.hostInventories, Item: { ...rec }, ...condition },
+  };
+  try {
+    await guardedWrite(ctx, markers, write, async () => {
+      await ctx.doc.send(new PutCommand(write.Put));
+    });
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
 }
 
 /** Publish inventory only while the registering connection still owns the host lease. */

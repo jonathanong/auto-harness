@@ -51,9 +51,9 @@ test.describe("host pane sessions", () => {
       try {
         await page.goto("/sessions");
         await page.evaluate(
-          ({ repositoryId, worktreeId }) =>
+          ({ repositoryId, worktreeId, wsBase }) =>
             new Promise<void>((resolve, reject) => {
-              const socket = new WebSocket(WS_BASE);
+              const socket = new WebSocket(wsBase);
               const timeout = setTimeout(() => reject(new Error("registration timed out")), 10_000);
               socket.addEventListener("message", (event) => {
                 const message = JSON.parse(String(event.data)) as {
@@ -89,7 +89,7 @@ test.describe("host pane sessions", () => {
                 );
               });
             }),
-          { repositoryId: repoId, worktreeId: wtId },
+          { repositoryId: repoId, worktreeId: wtId, wsBase: WS_BASE },
         );
 
         const command = await request.post(`${API}/api/v1/commands`, {

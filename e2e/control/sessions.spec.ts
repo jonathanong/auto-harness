@@ -368,9 +368,9 @@ test.describe("control plane sessions", () => {
 
     await page.goto("/sessions");
     await page.evaluate(
-      ({ hostId, repoId, worktreeId }) =>
+      ({ hostId, repoId, worktreeId, wsBase }) =>
         new Promise<void>((resolve, reject) => {
-          const socket = new WebSocket(WS_BASE);
+          const socket = new WebSocket(wsBase);
           const timeout = setTimeout(
             () => reject(new Error("host registration timed out")),
             10_000,
@@ -408,7 +408,7 @@ test.describe("control plane sessions", () => {
             );
           });
         }),
-      { hostId, repoId, worktreeId },
+      { hostId, repoId, worktreeId, wsBase: WS_BASE },
     );
 
     const created = await request.post(`${API_BASE}/api/v1/sessions`, {
@@ -542,9 +542,9 @@ test.describe("control plane sessions", () => {
       // origin) to exercise the same browser WebSocket policy as the real UI.
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repoId, worktreeId }) =>
+        ({ hostId, repoId, worktreeId, wsBase }) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket(WS_BASE);
+            const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
               () => reject(new Error("host registration timed out")),
               10_000,
@@ -585,7 +585,7 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repoId, worktreeId },
+        { hostId, repoId, worktreeId, wsBase: WS_BASE },
       );
 
       const created = await request.post(`${API_BASE}/api/v1/sessions`, {
@@ -744,9 +744,9 @@ test.describe("control plane sessions", () => {
 
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repositoryId, worktreeId }) =>
+        ({ hostId, repositoryId, worktreeId, wsBase }) =>
           new Promise<void>((resolve, reject) => {
-            const socket = new WebSocket(WS_BASE);
+            const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
               () => reject(new Error("host registration timed out")),
               10_000,
@@ -788,7 +788,7 @@ test.describe("control plane sessions", () => {
               );
             });
           }),
-        { hostId, repositoryId, worktreeId },
+        { hostId, repositoryId, worktreeId, wsBase: WS_BASE },
       );
 
       const created = await request.post(`${API_BASE}/api/v1/sessions`, {

@@ -636,11 +636,13 @@ export class DynamoPlaneStorageBase {
     return catalog.listArchives(this.ctx);
   }
 
+  /** Returns false when `expectedVersion` no longer matches the stored document. */
   putHostInventory(
     rec: HostInventoryRecord,
     markers?: readonly import("./plane-storage-deletion-markers.ts").DeletionMarker[],
-  ): Promise<void> {
-    return catalog.putHostInventory(this.ctx, rec, markers);
+    expectedVersion?: number,
+  ): Promise<boolean> {
+    return catalog.putHostInventory(this.ctx, rec, markers, expectedVersion);
   }
 
   putHostInventoryFenced(

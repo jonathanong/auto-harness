@@ -27,11 +27,11 @@ import {
   listCommands,
   listProviders,
   pageItems,
-  pageStartKey,
   putCommand,
   putProvider,
 } from "./plane-storage-catalog-providers.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
 let ctx: PlaneStorageCtx;
@@ -137,8 +137,8 @@ describe("DynamoDB Local provider catalog adapters", () => {
     expect(() => conditionalProviderWriteOrThrow(new Error("unavailable"))).toThrow("unavailable");
     expect(pageItems(undefined)).toEqual([]);
     expect(pageItems(["provider"])).toEqual(["provider"]);
-    expect(pageStartKey(undefined)).toBeUndefined();
-    expect(pageStartKey({})).toBeUndefined();
-    expect(pageStartKey({ id: "next" })).toEqual({ id: "next" });
+    expect(nextPageKey(undefined)).toBeUndefined();
+    expect(nextPageKey({})).toBeUndefined();
+    expect(nextPageKey({ id: "next" })).toEqual({ id: "next" });
   });
 });
