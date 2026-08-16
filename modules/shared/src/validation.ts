@@ -20,6 +20,16 @@ export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: s
  * with the rest of the session record.
  */
 const MAX_PROMPT_BYTES = 64 * 1024;
+/** Seven days. Longer would keep a host process in setTimeout indefinitely. */
+export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
+/** Thirty days. The default queue TTL is eight days. */
+export const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
+export const MAX_SESSION_PRIORITY = 10_000;
+export const MAX_REQUIRED_LABELS = 16;
+export const MAX_REQUIRED_LABEL_LENGTH = 64;
+export const MAX_METADATA_KEYS = 32;
+export const MAX_METADATA_KEY_LENGTH = 64;
+export const MAX_METADATA_STRING_LENGTH = 1_024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -102,11 +112,20 @@ export function validateCreateSessionInput(input: {
   if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {
     return { ok: false, error: "timeout must be a positive number of seconds" };
   }
+  if (input.timeout > MAX_SESSION_TIMEOUT_SECONDS) {
+    return { ok: false, error: `timeout must be at most ${MAX_SESSION_TIMEOUT_SECONDS} seconds` };
+  }
 
   let priority = 0;
   if (input.priority !== undefined) {
     if (typeof input.priority !== "number" || !Number.isFinite(input.priority)) {
       return { ok: false, error: "priority must be a number" };
+    }
+    if (Math.abs(input.priority) > MAX_SESSION_PRIORITY) {
+      return {
+        ok: false,
+        error: `priority must be between -${MAX_SESSION_PRIORITY} and ${MAX_SESSION_PRIORITY}`,
+      };
     }
     priority = input.priority;
   }
@@ -118,6 +137,18 @@ export function validateCreateSessionInput(input: {
       !input.requiredLabels.every((label) => typeof label === "string")
     ) {
       return { ok: false, error: "requiredLabels must be an array of strings" };
+    }
+    if (input.requiredLabels.length > MAX_REQUIRED_LABELS) {
+      return {
+        ok: false,
+        error: `requiredLabels must have at most ${MAX_REQUIRED_LABELS} entries`,
+      };
+    }
+    if (input.requiredLabels.some((label) => label.length > MAX_REQUIRED_LABEL_LENGTH)) {
+      return {
+        ok: false,
+        error: `requiredLabels entries must be at most ${MAX_REQUIRED_LABEL_LENGTH} characters`,
+      };
     }
     requiredLabels = input.requiredLabels;
   }
@@ -148,14 +179,9 @@ export function validateCreateSessionInput(input: {
 
   let metadata: Record<string, unknown> | undefined;
   if (input.metadata !== undefined) {
-    if (
-      typeof input.metadata !== "object" ||
-      input.metadata === null ||
-      Array.isArray(input.metadata)
-    ) {
-      return { ok: false, error: "metadata must be an object when set" };
-    }
-    metadata = input.metadata as Record<string, unknown>;
+    const parsed = parseSessionMetadata(input.metadata);
+    if (!parsed.ok) return parsed;
+    metadata = parsed.value;
   }
 
   if (input.type !== undefined && !isSessionType(input.type)) {
@@ -220,6 +246,9 @@ export function validateTargetRouting(input: {
   ) {
     return { ok: false, error: "queueTtlSeconds must be a positive integer" };
   }
+  if (queueTtlSeconds > MAX_QUEUE_TTL_SECONDS) {
+    return { ok: false, error: `queueTtlSeconds must be at most ${MAX_QUEUE_TTL_SECONDS}` };
+  }
   return { ok: true, value: { target: target.value, fallbacks, queueTtlSeconds } };
 }
 
@@ -248,6 +277,42 @@ function parseTarget(value: unknown, name: string): ValidationResult<TargetRef> 
 
 function targetKey(target: TargetRef): string {
   return "providerId" in target ? `provider:${target.providerId}` : `command:${target.commandId}`;
+}
+
+function parseSessionMetadata(value: unknown): ValidationResult<Record<string, unknown>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { ok: false, error: "metadata must be an object when set" };
+  }
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > MAX_METADATA_KEYS) {
+    return { ok: false, error: `metadata must have at most ${MAX_METADATA_KEYS} keys` };
+  }
+  for (const [key, field] of entries) {
+    if (key.length === 0 || key.length > MAX_METADATA_KEY_LENGTH) {
+      return {
+        ok: false,
+        error: `metadata keys must be 1-${MAX_METADATA_KEY_LENGTH} characters`,
+      };
+    }
+    if (field !== null && typeof field === "object") {
+      return { ok: false, error: "metadata values must be strings, numbers, booleans, or null" };
+    }
+    if (typeof field === "string" && field.length > MAX_METADATA_STRING_LENGTH) {
+      return {
+        ok: false,
+        error: `metadata string values must be at most ${MAX_METADATA_STRING_LENGTH} characters`,
+      };
+    }
+    if (
+      field !== null &&
+      typeof field !== "string" &&
+      typeof field !== "number" &&
+      typeof field !== "boolean"
+    ) {
+      return { ok: false, error: "metadata values must be strings, numbers, booleans, or null" };
+    }
+  }
+  return { ok: true, value: { ...(value as Record<string, unknown>) } };
 }
 
 /**

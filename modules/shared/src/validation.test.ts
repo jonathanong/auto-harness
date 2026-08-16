@@ -174,6 +174,30 @@ describe("validateCreateSessionInput", () => {
     expect(validateCreateSessionInput({ ...base, timeout: "x" as unknown as number }).ok).toBe(
       false,
     );
+    expect(validateCreateSessionInput({ ...base, timeout: 7 * 24 * 60 * 60 + 1 }).ok).toBe(false);
+  });
+
+  it("rejects oversized queue TTL, priority, labels, and metadata", () => {
+    expect(validateCreateSessionInput({ ...base, queueTtlSeconds: 30 * 24 * 60 * 60 + 1 }).ok).toBe(
+      false,
+    );
+    expect(validateCreateSessionInput({ ...base, priority: 10_001 }).ok).toBe(false);
+    expect(validateCreateSessionInput({ ...base, requiredLabels: Array(17).fill("x") }).ok).toBe(
+      false,
+    );
+    expect(validateCreateSessionInput({ ...base, requiredLabels: ["x".repeat(65)] }).ok).toBe(
+      false,
+    );
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        metadata: Object.fromEntries(Array.from({ length: 33 }, (_, i) => [`k${i}`, "v"])),
+      }).ok,
+    ).toBe(false);
+    expect(validateCreateSessionInput({ ...base, metadata: { nested: { a: 1 } } }).ok).toBe(false);
+    expect(validateCreateSessionInput({ ...base, metadata: { ok: "yes", n: 1, b: true } }).ok).toBe(
+      true,
+    );
   });
 
   it("rejects invalid priority", () => {

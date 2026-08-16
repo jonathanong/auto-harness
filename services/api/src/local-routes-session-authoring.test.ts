@@ -114,6 +114,27 @@ describe("session authoring is closed to host-bound credentials", () => {
     expect(created.status).toBe(201);
   });
 
+  it("ignores caller type and source on the public create path", async () => {
+    const { invoke, operatorKey } = await harness();
+
+    const created = await invoke(
+      "POST",
+      "/api/v1/sessions",
+      {
+        repositoryId: "repo-a",
+        prompt: "p",
+        target: { commandId: "cmd-a" },
+        timeout: 10,
+        type: "scheduled",
+        source: "schedule",
+      },
+      operatorKey,
+    );
+
+    expect(created.status).toBe(201);
+    expect(created.json).toMatchObject({ type: "prompt", source: "api" });
+  });
+
   it("leaves the agent's own reporting path open", async () => {
     const { invoke, hostKey } = await harness();
 

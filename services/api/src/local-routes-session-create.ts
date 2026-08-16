@@ -53,16 +53,22 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
     send(res, 400, { error: { code: "VALIDATION_ERROR", message: "metadata must be an object" } });
     return true;
   }
-  const input =
-    ctx.principal && sessionBody
-      ? {
-          ...sessionBody,
-          metadata: {
-            ...(sessionBody.metadata as Record<string, unknown> | undefined),
-            createdBy: ctx.principal.id,
-          },
-        }
-      : body;
+  const input = sessionBody
+    ? {
+        ...sessionBody,
+        // Callers cannot spoof scheduled/webhook provenance on the public create path.
+        type: "prompt",
+        source: sessionBody.source === "ui" ? "ui" : "api",
+        ...(ctx.principal
+          ? {
+              metadata: {
+                ...(sessionBody.metadata as Record<string, unknown> | undefined),
+                createdBy: ctx.principal.id,
+              },
+            }
+          : {}),
+      }
+    : body;
   try {
     const result = await plane.createSessionDurable(input);
     if (!result.ok) {
