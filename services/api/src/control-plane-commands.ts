@@ -61,7 +61,12 @@ function prepareCreateCommand(
     name: input.name,
     argv: argv.value,
     appendPrompt: input.appendPrompt !== false,
-    appendPromptSeparator: input.appendPromptSeparator === true,
+    // Prompts are attacker-influenced. Provider-backed CLIs are getopt-style;
+    // default `--` so a leading-dash prompt is data. Opt out for printf-like tools.
+    appendPromptSeparator:
+      input.appendPromptSeparator !== undefined
+        ? input.appendPromptSeparator === true
+        : input.appendPrompt !== false && Boolean(input.providerId),
     ...resume.value,
     providerId: input.providerId ?? null,
     createdAt: at,

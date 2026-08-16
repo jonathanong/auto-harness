@@ -24,6 +24,7 @@ describe("ControlPlane command CRUD", () => {
       name: "echo hello world",
       argv: ["echo", "hello"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: null,
     });
 
@@ -33,12 +34,15 @@ describe("ControlPlane command CRUD", () => {
     const owned = plane.createCommand({
       name: "claude-print",
       argv: ["claude", "-p"],
-      appendPrompt: false,
       providerId: "prov-1",
     });
     expect(owned.ok).toBe(true);
     if (owned.ok) {
-      expect(owned.command).toMatchObject({ appendPrompt: false, providerId: "prov-1" });
+      expect(owned.command).toMatchObject({
+        appendPrompt: true,
+        appendPromptSeparator: true,
+        providerId: "prov-1",
+      });
     }
 
     expect(plane.getCommand("cmd-1")?.name).toBe("echo hello world");
