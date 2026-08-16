@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { installCrashLogging, onShutdownSignal, type SessionAssign } from "@auto-harness/shared";
+import {
+  installCrashLogging,
+  onShutdownSignal,
+  type LifecycleLogger,
+  type SessionAssign,
+} from "@auto-harness/shared";
 
 import type { DaemonConfig } from "./config.ts";
 import { loadDaemonConfig } from "./config.ts";
@@ -16,6 +21,22 @@ function shutdownTimeoutMs(env: NodeJS.ProcessEnv): number {
   const raw = env.HARNESS_SHUTDOWN_TIMEOUT_MS;
   const parsed = raw === undefined ? Number.NaN : Number(raw);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 10 * 60_000;
+}
+
+/**
+ * Builds onShutdownSignal's logger from deps.error. A curried factory rather than an
+ * inline arrow at the call site: the returned function is a stable, named reference that
+ * a test can invoke directly, instead of a fresh closure per `runCli` call that only
+ * onShutdownSignal itself would ever call.
+ */
+export function shutdownLoggerFor(error: (msg: string) => void): LifecycleLogger {
+  return (message, err) => {
+    error(
+      err === undefined
+        ? message
+        : `${message}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  };
 }
 
 export function printUsage(log: (msg: string) => void = console.log): void {
@@ -164,12 +185,7 @@ export async function runCli(
           {
             timeoutMs: shutdownTimeoutMs(env),
             ...(deps.process ? { process: deps.process } : {}),
-            logger: (message, err) =>
-              deps.error(
-                err === undefined
-                  ? message
-                  : `${message}: ${err instanceof Error ? err.message : String(err)}`,
-              ),
+            logger: shutdownLoggerFor(deps.error),
           },
         );
       });

@@ -11,6 +11,7 @@ import {
   printUsage,
   runCli,
   setExitCode,
+  shutdownLoggerFor,
   type RunSessionDeps,
 } from "./cli.ts";
 
@@ -136,6 +137,26 @@ describe("isDirectInvocation / setExitCode", () => {
   });
 });
 
+describe("shutdownLoggerFor", () => {
+  it("passes a message through unchanged", () => {
+    const messages: string[] = [];
+    shutdownLoggerFor((m) => messages.push(m))("plain message");
+    expect(messages).toEqual(["plain message"]);
+  });
+
+  it("appends an Error's message", () => {
+    const messages: string[] = [];
+    shutdownLoggerFor((m) => messages.push(m))("failed", new Error("boom"));
+    expect(messages).toEqual(["failed: boom"]);
+  });
+
+  it("stringifies a non-Error thrown value", () => {
+    const messages: string[] = [];
+    shutdownLoggerFor((m) => messages.push(m))("failed", "not an error");
+    expect(messages).toEqual(["failed: not an error"]);
+  });
+});
+
 describe("printUsage / main / defaults", () => {
   it("covers helpers", () => {
     const lines: string[] = [];
@@ -156,6 +177,27 @@ describe("printUsage / main / defaults", () => {
     log.mockRestore();
     error.mockRestore();
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
+  });
+
+  it("default deps' ensureReady/runSession close over the real runtime functions", async () => {
+    // Not asserting on the outcome — ensureDaemonReady/runAssignedSession are exercised
+    // by runtime.ts's own tests. Only proving these wrapper closures forward to them.
+    const d = createDefaultRunSessionDeps();
+    const empty: DaemonConfig = { ...sampleConfig, repositories: [] };
+    await expect(d.ensureReady(empty)).resolves.toBeUndefined();
+    const result = await d.runSession(
+      empty,
+      {
+        sessionId: "s",
+        repositoryId: "missing",
+        prompt: "p",
+        resolvedArgv: ["echo"],
+        timeout: 1,
+        worktreeId: "missing",
+      },
+      () => undefined,
+    );
+    expect(result.status).toBe("failed");
   });
 
   it("main delegates", async () => {

@@ -137,25 +137,22 @@ export default defineConfig({
         "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
         // Real argv-parsing/dispatch logic, unlike the two thin cli.ts entrypoints this
         // module is not covering. `start`'s signal handling is exercised with a real
-        // startDaemon against a local WS harness and an injected process (see
-        // cli-start-signal.test.ts). Two residual gaps, both structural rather than
-        // missing test effort:
-        // - onShutdownSignal's `logger` callback only runs on a rejecting stop() or a
-        //   forced timeout. Post-#149, stop() tolerates a disconnected control plane by
-        //   waiting out its own drain deadline rather than rejecting, so triggering this
-        //   from a real startDaemon needs contrived failure injection into
-        //   start-daemon.ts's internals — onShutdownSignal's own catch/timeout paths are
-        //   already fully covered in modules/shared/process-lifecycle.test.ts.
-        // - `if (isDirectInvocation(...)) { installCrashLogging(); void main().then(setExitCode); }`
-        //   only runs when this file is the literal process entrypoint, which a unit test
-        //   importing the module cannot trigger without re-executing it as a real
-        //   subprocess — the same limitation the two thin cli.ts files are excluded for
-        //   entirely. Both isDirectInvocation and setExitCode are independently tested.
+        // startDaemon against a local WS harness and an injected process, and every
+        // closure — including onShutdownSignal's logger, extracted as the named
+        // shutdownLoggerFor so a test can invoke it directly — is unit-tested (see
+        // cli.test.ts and cli-start-signal.test.ts), so functions is a genuine 100.
+        // The one residual gap is lines/branches/statements only:
+        // `if (isDirectInvocation(...)) { installCrashLogging(); void main().then(setExitCode); }`
+        // runs only when this file is the literal process entrypoint, which a unit test
+        // importing the module cannot trigger without re-executing it as a real
+        // subprocess — the same limitation the two thin cli.ts files are excluded for
+        // entirely. isDirectInvocation and setExitCode are independently tested; only the
+        // statement calling them from the top-level guard is unreachable under import.
         "services/host-daemon/src/cli.ts": {
-          lines: 94,
-          branches: 82,
-          functions: 78,
-          statements: 94,
+          lines: 98,
+          branches: 85,
+          functions: 100,
+          statements: 98,
         },
         "services/host-pane/src/middleware.ts": { 100: true },
         "services/host-pane/src/lib/inventory.ts": { 100: true },
