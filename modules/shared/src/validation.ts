@@ -21,15 +21,15 @@ export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: s
  */
 const MAX_PROMPT_BYTES = 64 * 1024;
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */
-export const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
+const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */
-export const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
-export const MAX_SESSION_PRIORITY = 10_000;
-export const MAX_REQUIRED_LABELS = 16;
-export const MAX_REQUIRED_LABEL_LENGTH = 64;
-export const MAX_METADATA_KEYS = 32;
-export const MAX_METADATA_KEY_LENGTH = 64;
-export const MAX_METADATA_STRING_LENGTH = 1_024;
+const MAX_QUEUE_TTL_SECONDS = 30 * 24 * 60 * 60;
+const MAX_SESSION_PRIORITY = 10_000;
+const MAX_REQUIRED_LABELS = 16;
+const MAX_REQUIRED_LABEL_LENGTH = 64;
+const MAX_METADATA_KEYS = 32;
+const MAX_METADATA_KEY_LENGTH = 64;
+const MAX_METADATA_STRING_LENGTH = 1_024;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
