@@ -5,10 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import type { DaemonConfig } from "./config.ts";
 import {
   createDefaultRunSessionDeps,
+  isDirectInvocation,
   main,
   normalizeCliArgs,
   printUsage,
   runCli,
+  setExitCode,
   type RunSessionDeps,
 } from "./cli.ts";
 
@@ -112,6 +114,25 @@ describe("runCli", () => {
     });
     expect(await runCli(["node", "x", "start"], {}, a)).toBe(1);
     expect(a.errors[0]).toMatch(/no host config/);
+  });
+});
+
+describe("isDirectInvocation / setExitCode", () => {
+  it("recognizes only a literal cli.ts/cli.js entrypoint argv", () => {
+    expect(isDirectInvocation("/path/to/cli.ts")).toBe(true);
+    expect(isDirectInvocation("/path/to/cli.js")).toBe(true);
+    expect(isDirectInvocation("/path/to/other.ts")).toBe(false);
+    expect(isDirectInvocation(undefined)).toBe(false);
+  });
+
+  it("sets process.exitCode to the given value", () => {
+    const original = process.exitCode;
+    try {
+      setExitCode(0);
+      expect(process.exitCode).toBe(0);
+    } finally {
+      process.exitCode = original;
+    }
   });
 });
 

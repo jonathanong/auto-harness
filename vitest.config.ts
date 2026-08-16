@@ -136,14 +136,18 @@ export default defineConfig({
           },
         "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
         // Real argv-parsing/dispatch logic, unlike the two thin cli.ts entrypoints this
-        // module is not covering. `start`'s raw SIGINT/SIGTERM handling and the
-        // top-level direct-invocation guard are not exercised by unit tests today —
-        // threshold pinned at the currently-achieved value rather than 100.
+        // module is not covering. `start`'s signal handling is exercised with a real
+        // startDaemon against a local WS harness and an injected process; the top-level
+        // `if (isDirectInvocation(...)) { void main().then(setExitCode); }` body is the
+        // one line that only runs when this file is the literal process entrypoint, which
+        // a unit test importing the module cannot trigger without re-executing it as a
+        // real subprocess — the same limitation the two thin cli.ts files are excluded
+        // for entirely. Both branches of that condition are independently unit-tested.
         "services/host-daemon/src/cli.ts": {
-          lines: 86,
-          branches: 78,
-          functions: 72,
-          statements: 86,
+          lines: 98,
+          branches: 88,
+          functions: 84,
+          statements: 98,
         },
         "services/host-pane/src/middleware.ts": { 100: true },
         "services/host-pane/src/lib/inventory.ts": { 100: true },

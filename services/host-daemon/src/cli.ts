@@ -49,6 +49,8 @@ export type RunSessionDeps = {
   readFile: (path: string) => string;
   log: (msg: string) => void;
   error: (msg: string) => void;
+  /** Passed straight through to onShutdownSignal; defaults to the real process there. */
+  process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
 };
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
@@ -161,6 +163,7 @@ export async function runCli(
           },
           {
             timeoutMs: shutdownTimeoutMs(env),
+            ...(deps.process ? { process: deps.process } : {}),
             logger: (message, err) =>
               deps.error(
                 err === undefined
@@ -186,9 +189,16 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   return runCli(argv);
 }
 
-if (process.argv[1]?.endsWith("cli.ts") || process.argv[1]?.endsWith("cli.js")) {
+/** True only when this file is the literal entrypoint (`node cli.ts`/`cli.js`), not when a test imports it. */
+export function isDirectInvocation(argv1: string | undefined): boolean {
+  return argv1?.endsWith("cli.ts") === true || argv1?.endsWith("cli.js") === true;
+}
+
+export function setExitCode(code: number): void {
+  process.exitCode = code;
+}
+
+if (isDirectInvocation(process.argv[1])) {
   installCrashLogging();
-  void main().then((code) => {
-    process.exitCode = code;
-  });
+  void main().then(setExitCode);
 }
