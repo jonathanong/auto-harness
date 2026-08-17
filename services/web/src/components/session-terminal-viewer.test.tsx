@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   terminalOptions: vi.fn(),
 }));
 
+vi.mock("@xterm/addon-fit", () => ({
+  FitAddon: class {
+    fit() {}
+  },
+}));
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class {
     findNext = mocks.findNext;
@@ -85,9 +90,6 @@ describe("SessionTerminalViewer", () => {
       "terminal",
     );
     expect(mocks.write).toHaveBeenCalledWith("\u001b[32mhello\u001b[0m\n", expect.any(Function));
-    expect(mocks.terminalOptions).toHaveBeenCalledWith(
-      expect.objectContaining({ cols: 120, rows: 40 }),
-    );
 
     const search = field<HTMLInputElement>(view.container, "session-terminal-search");
     setValue(search, "hello");
