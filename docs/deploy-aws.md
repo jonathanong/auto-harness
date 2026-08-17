@@ -1,9 +1,8 @@
 # Deploy — AWS control plane
 
-**Runtime infrastructure available for synthesis.** `services/cdk` synthesizes
-the persistence foundation plus HTTP/WebSocket API Gateway, bundled Lambda
-adapters, and an EventBridge-triggered cron Lambda. An account-backed deployment
-proof remains future work; this repository deliberately provides no deploy command.
+`services/cdk` owns the supported AWS lifecycle for the persistence foundation,
+HTTP/WebSocket API Gateway, bundled Lambda adapters, and EventBridge-triggered
+cron Lambda. It exposes distinct `deploy`, `update`, and `teardown` commands.
 Architecture: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
@@ -12,21 +11,22 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                         | Status                                                            |
-| ---------------------------- | ----------------------------------------------------------------- |
-| Design / data model          | Documented in [aws.md](aws.md)                                    |
-| CDK package (`services/cdk`) | Synthesizable persistence + REST/WebSocket runtime stacks         |
-| Runtime deployment           | Not implemented; there is deliberately no package `deploy` script |
-
-Do not treat a successful synth as an AWS deployment claim. It validates the
-CloudFormation shape only.
+| Item                         | Status                                                                  |
+| ---------------------------- | ----------------------------------------------------------------------- |
+| Design / data model          | Documented in [aws.md](aws.md)                                          |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime stacks                             |
+| Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts              |
+| Account-backed proof         | Deploy → update → health → teardown passed in `us-west-2` on 2026-08-16 |
 
 ---
 
-## Prerequisites (for synthesis)
+## Prerequisites
 
 - Node ≥22.18 and pnpm
 - `pnpm install` from the repository root (the CDK CLI is a package development dependency)
+- AWS CLI credentials with access to CloudFormation, CDK bootstrap resources,
+  DynamoDB, S3, Lambda, API Gateway, EventBridge, IAM, KMS, and SSM
+- `AWS_REGION` (or `AWS_DEFAULT_REGION`) set to the target region
 
 ---
 
@@ -41,34 +41,22 @@ defeats the point of a secret. Instead, each Lambda's environment holds only the
 **name** of an SSM `SecureString` parameter; the Lambda fetches the actual value
 from SSM once per cold start.
 
-Populate the three SecureString parameters **before deployment, or at latest before
-the first Lambda invocation** (synthesis itself never reads a parameter value, so it
-does not need this step first; deploy and provisioning are independent of each other,
-but every cold start does need it). CloudFormation cannot create a `SecureString`
-parameter itself, so this is always a separate, out-of-band step, run once per
-environment:
+Create all three as `SecureString` values in the AWS Systems Manager Parameter
+Store UI before deploying. For an environment named `<environment>`, the default
+names are:
 
-```bash
-aws ssm put-parameter --type SecureString --overwrite \
-  --name /auto-harness/harness-admins --value "$(echo '[{"username":"admin","password":"..."}]' | base64)"
-aws ssm put-parameter --type SecureString --overwrite \
-  --name /auto-harness/harness-session-secret --value "$(openssl rand -base64 32)"
-aws ssm put-parameter --type SecureString --overwrite \
-  --name /auto-harness/harness-cursor-secret --value "$(openssl rand -base64 32)"
-```
+- `/auto-harness/<environment>/harness-admins`
+- `/auto-harness/<environment>/harness-session-secret`
+- `/auto-harness/<environment>/harness-cursor-secret`
 
-If a Lambda cold-starts before these are populated, that invocation fails — but the
-failure does not stick: the next invocation retries the fetch rather than reusing a
-cached failure for the rest of that container's lifetime, so provisioning late is a
-recoverable mistake, not one that needs a container recycle to clear.
+The admin value follows [the bootstrap-admin format](auth.md#admin-accounts), and
+both secret values must be independently generated high-entropy strings. The deploy
+and update commands verify that all three parameters exist before changing a stack.
+Their values are never passed to CDK, printed, or stored in source control.
 
-The stack parameters `HarnessAdminsSsmParam`, `HarnessSessionSecretSsmParam`,
-and `HarnessCursorSecretSsmParam` default to the parameter names above; override
-them at deploy time only if you name your parameters differently. CloudFormation
-rejects an override that does not start with `/` — an SSM parameter ARN always
-needs a leading slash, whether it comes from a hierarchical name's own `/` or one
-supplied separately, so this repo requires the former rather than guessing which
-case applies. Each Lambda's IAM role is granted `ssm:GetParameter` scoped to
+Override a default parameter name with `HARNESS_ADMINS_SSM_PARAM`,
+`HARNESS_SESSION_SECRET_SSM_PARAM`, or `HARNESS_CURSOR_SECRET_SSM_PARAM`. Each
+Lambda's IAM role is granted `ssm:GetParameter` scoped to
 exactly these three parameter ARNs, plus `kms:Decrypt` on the AWS-managed
 `alias/aws/ssm` key (the default encryption key for a `SecureString` created
 without specifying a customer-managed key) — scoped further with `kms:ViaService`
@@ -87,8 +75,8 @@ these three specific parameters).
 | `KMS_KEY_ID`           | Optional — Slack / integration secrets                                                                                                       |
 | Rate-limit variables   | `HARNESS_RATE_LIMIT_*`, `HARNESS_WS_RATE_LIMIT_PER_SECOND`, and `HARNESS_RATE_LIMIT_FAIL_MODE`; see [security.md](security.md#rate-limiting) |
 
-**Rotation:** `aws ssm put-parameter --overwrite` with the new value — no redeploy
-required. Existing warm Lambda containers keep the value they fetched at their own
+**Rotation:** replace the value in the Parameter Store UI; no redeploy is required.
+Existing warm Lambda containers keep the value they fetched at their own
 cold start until they naturally recycle; force an immediate rollover by updating
 any Lambda config field (a no-op environment variable touch is enough) to recycle
 containers early. Admin bootstrap rotation ([auth.md](auth.md)) is the same
@@ -96,34 +84,74 @@ containers early. Admin bootstrap rotation ([auth.md](auth.md)) is the same
 
 ---
 
-## Synthesize the control plane
+## Lifecycle configuration
+
+All lifecycle commands use the same settings. Environment names are lowercase,
+start with a letter, contain only letters, numbers, and dashes, and are at most 32
+characters.
+
+| Variable                        | Required             | Purpose                                                    |
+| ------------------------------- | -------------------- | ---------------------------------------------------------- |
+| `HARNESS_DEPLOY_ENVIRONMENT`    | Always               | Isolates stack, table, bucket, and SSM names               |
+| `AWS_REGION`                    | Always               | AWS deployment region                                      |
+| `HARNESS_DEPLOY_WEB_ORIGIN`     | Deploy and update    | Exact web UI origin, such as `https://harness.example.com` |
+| `HARNESS_DEPLOY_REMOVAL_POLICY` | No; default `retain` | `retain` for durable data or `destroy` for disposable data |
+| `AWS_ACCOUNT_ID`                | No                   | Avoids the STS account lookup when already known           |
+| `HARNESS_DEPLOY_CONFIRM`        | Teardown only        | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`            |
+
+The generated names are `AutoHarness-<environment>-Foundation`,
+`AutoHarness-<environment>-Runtime`, and `AutoHarness-<environment>-*` for tables.
+The names are generic and do not depend on any repository connected later in the UI.
+
+## Deploy a new environment
 
 ```bash
 pnpm install
-pnpm --filter @auto-harness/cdk synth
+export AWS_REGION=us-west-2
+export HARNESS_DEPLOY_ENVIRONMENT=production
+export HARNESS_DEPLOY_WEB_ORIGIN=https://harness.example.com
+pnpm --filter @auto-harness/cdk run deploy
 ```
 
-The app emits `AutoHarnessFoundation` and `AutoHarnessRuntime`. The foundation
-creates tables named `AutoHarness-*` and retains data resources on replacement
-and deletion. The runtime creates three Node.js 22 Lambdas, HTTP and WebSocket
-API Gateway APIs, a one-minute EventBridge rule, and a rotating KMS key for
-integration secrets. Lambda code
-is bundled locally with esbuild during synthesis.
-Use CDK context to create a deliberately named disposable environment:
+`deploy` refuses to run if either application stack already exists, verifies the
+three SSM parameters, bootstraps CDK in the selected account and region, deploys
+both stacks, and calls the unauthenticated REST `/health` endpoint. The shared
+`CDKToolkit` bootstrap stack remains available for later environments.
+
+For a disposable environment, set the removal policy before its first deploy:
 
 ```bash
-pnpm --filter @auto-harness/cdk synth -- \
-  -c tablePrefix=Review20 \
-  -c archiveBucketName=review-20-cdk-foundation-archives \
-  -c runtimeStackName=Review20Runtime \
-  -c removalPolicy=destroy
+export HARNESS_DEPLOY_REMOVAL_POLICY=destroy
+pnpm --filter @auto-harness/cdk run deploy
 ```
 
-### Teardown a disposable foundation
+## Update an environment
 
-The repository has no deploy or destroy script. If an operator independently
-deploys a foundation synthesized with `removalPolicy=destroy`, delete it with
-the same external deployment tool.
+Use the same environment, region, origin, removal policy, and any SSM overrides
+used for deployment:
+
+```bash
+pnpm --filter @auto-harness/cdk run update
+```
+
+`update` requires the foundation stack, applies the current CDK app to both
+stacks, and runs the REST health check. It also recreates a missing runtime stack
+after a retained teardown.
+
+## Teardown
+
+Drain connected hosts first. Then supply the exact environment confirmation:
+
+```bash
+export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
+pnpm --filter @auto-harness/cdk run teardown
+```
+
+With the default `retain` policy, teardown removes the runtime stack and leaves the
+managed foundation stack and data in place. Run `update` to restore the runtime.
+With `destroy`, teardown removes both application stacks and verifies their absence.
+The integration KMS key enters AWS's seven-day pending-deletion window. Teardown
+does not remove the account-level `CDKToolkit` stack or the three SSM parameters.
 
 `removalPolicy` accepts only `retain` (the default) or `destroy`. With
 `destroy`, CloudFormation still cannot remove a non-empty archive bucket; empty
@@ -132,14 +160,10 @@ enable CDK `autoDeleteObjects`, because that feature adds a custom-resource
 Lambda and would exceed this stack's no-runtime-resources boundary. Do not
 choose `destroy` for data that must survive a stack replacement.
 
-### Stack parameters and outputs
+## Stack parameters and outputs
 
-Deployment tooling must supply the runtime stack's `HarnessAdminsSsmParam`,
-`HarnessSessionSecretSsmParam`, and `HarnessCursorSecretSsmParam` parameters
-(SSM parameter names — default values point at the names used in the
-`put-parameter` commands above) and exact `WebOrigin`. The three secret values
-themselves are never CDK parameters and must never be stored in CDK context or
-source control — only in SSM.
+The lifecycle script supplies the runtime stack's SSM parameter names and exact
+`WebOrigin`. Secret values themselves are never CDK parameters or context.
 
 | Output                                                      | Consumer                                          |
 | ----------------------------------------------------------- | ------------------------------------------------- |
@@ -147,10 +171,6 @@ source control — only in SSM.
 | `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
 | `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
 | `RestApiUrl`, `WebSocketUrl`, `IntegrationKeyArn`           | Runtime clients and integration encryption        |
-
-Synth output is not a deployment claim. Before adding a repository deploy path,
-add bootstrap/account requirements, explicit deploy and rollback commands, and
-an account-backed REST/WebSocket/cron smoke test.
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance
@@ -182,7 +202,7 @@ Prefer **control plane first**, then agents, so old agents fail closed on unknow
 | When                           | Gate                                                                      |
 | ------------------------------ | ------------------------------------------------------------------------- |
 | Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests |
-| Before an AWS deployment claim | An implemented runtime deploy path and account-backed E2E proof           |
+| Before an AWS deployment claim | Deploy, update, REST health check, and teardown in an AWS account         |
 
 ---
 

@@ -9,6 +9,9 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "deploy": "node ../../scripts/aws-deployment.mts deploy",
+    "update": "node ../../scripts/aws-deployment.mts update",
+    "teardown": "node ../../scripts/aws-deployment.mts teardown",
     "synth": "cdk synth --app 'node src/cli.ts'",
     "diff": "cdk diff --app 'node src/cli.ts'"
   },

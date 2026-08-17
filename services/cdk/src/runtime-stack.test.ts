@@ -105,7 +105,13 @@ describe("AutoHarnessRuntimeStack", () => {
     );
     template.hasResourceProperties("AWS::KMS::Key", {
       EnableKeyRotation: true,
+      PendingWindowInDays: 7,
     });
+    expect(
+      Object.values(template.toJSON().Resources).find(
+        (resource) => resource.Type === "AWS::KMS::Key",
+      )?.DeletionPolicy,
+    ).toBe("Retain");
     template.hasOutput("RestApiUrl", {});
     template.hasOutput("WebSocketUrl", {});
     expect(Object.keys(template.toJSON().Parameters)).toEqual(

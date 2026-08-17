@@ -10,10 +10,9 @@ Auto-Harness is designed around two planes:
 | **Execution plane** | VPS — Node.js agent, git worktrees, AI CLIs                  | **[host-daemon.md](host-daemon.md)** |
 
 > **Maturity:** the control-plane and daemon behavior is implemented and exercised locally with
-> DynamoDB Local and local WebSockets. The AWS stack synthesizes REST, WebSocket, and cron Lambda
-> workers plus their DynamoDB and archive-bucket wiring. There is no live deployment or
-> account-backed end-to-end proof yet. The diagrams below describe the synthesized target cloud
-> topology, not a currently deployed service.
+> DynamoDB Local and local WebSockets. The AWS deploy, update, REST health, and teardown lifecycle
+> has also passed an account-backed proof. The diagrams below describe the deployable cloud
+> topology; no permanent production environment is implied by that disposable proof.
 
 ```mermaid
 graph TB

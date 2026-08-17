@@ -1,6 +1,15 @@
 import { fileURLToPath } from "node:url";
 
-import { Aws, CfnOutput, CfnParameter, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
+import {
+  Aws,
+  CfnOutput,
+  CfnParameter,
+  Duration,
+  Fn,
+  RemovalPolicy,
+  Stack,
+  type StackProps,
+} from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
@@ -15,6 +24,7 @@ import type { FoundationResources } from "./foundation-stack.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 
 export type RuntimeStackProps = StackProps & {
+  dataRemovalPolicy?: RemovalPolicy;
   foundation: FoundationResources;
   tablePrefix: string;
 };
@@ -46,7 +56,9 @@ export class AutoHarnessRuntimeStack extends Stack {
     const integrationKey = new kms.Key(this, "IntegrationKey", {
       description: "Encrypts Auto Harness integration credentials.",
       enableKeyRotation: true,
+      pendingWindow: Duration.days(7),
     });
+    integrationKey.applyRemovalPolicy(props.dataRemovalPolicy ?? RemovalPolicy.RETAIN);
 
     const commonEnvironment = {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
