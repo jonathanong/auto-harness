@@ -16,12 +16,13 @@ function removalPolicy(value: string | undefined): RemovalPolicy {
 
 const app = new App();
 const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
+const dataRemovalPolicy = removalPolicy(contextString(app, "removalPolicy"));
 const stack = new AutoHarnessFoundationStack(
   app,
   contextString(app, "stackName") ?? "AutoHarnessFoundation",
   {
     archiveBucketName: contextString(app, "archiveBucketName"),
-    dataRemovalPolicy: removalPolicy(contextString(app, "removalPolicy")),
+    dataRemovalPolicy,
     tablePrefix,
   },
 );
@@ -29,6 +30,6 @@ void stack;
 const runtime = new AutoHarnessRuntimeStack(
   app,
   contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
-  { foundation: stack.resources, tablePrefix },
+  { dataRemovalPolicy, foundation: stack.resources, tablePrefix },
 );
 runtime.addStackDependency(stack);

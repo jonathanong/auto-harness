@@ -448,9 +448,10 @@ CLI modes; it does not add an interactive user-input channel.
 **Status (code-complete, local parity):** `ControlPlane` implements exclusive claim (Inv 1),
 agent register uniqueness (Inv 3), cron `nextRunAt` claim (Inv 4), `timestampSeq` logs (Inv 5),
 session create with `ref`/`target`/`fallbacks`/`concurrencyId`/`metadata`/`url`.
-CDK table definitions plus synthesizable HTTP/WebSocket Lambda runtime resources live in
+CDK table definitions plus deployable HTTP/WebSocket Lambda runtime resources live in
 `services/cdk`, including an EventBridge rule and cron Lambda for durable scheduling sweeps.
-There is no deploy command or account-backed smoke test. The synthesized SessionLogs
+The explicit deploy, update, and teardown lifecycle and REST health check were verified against
+an AWS account in `us-west-2` on 2026-08-16. The SessionLogs
 table enables the `ttl` attribute, but runtime log records do not populate it and local table
 creation does not configure TTL, so current logs do not expire through TTL. Terminal archival
 retains bounded pointer/status metadata in the DynamoDB Archives table and writes JSONL objects to

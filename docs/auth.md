@@ -54,14 +54,14 @@ process environment, same as `HARNESS_SESSION_SECRET` above. **Lambda mode**
 does not: the Lambda's own environment holds only the _name_ of an SSM
 `SecureString` parameter, not the admin JSON itself — see
 [deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit) for why a real
-secret never lands in a Lambda's environment configuration, and for the exact
-`aws ssm put-parameter` step.
+secret never lands in a Lambda's environment configuration and how to create
+the environment-scoped parameter through the AWS UI.
 
 | Property    | Value                                                                                                             |
 | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | Source      | Local/VPS: `HARNESS_ADMINS` env var. Lambda: SSM SecureString parameter, name given by `HARNESS_ADMINS_SSM_PARAM` |
 | Format      | Base64-encoded JSON array of `{ username, password }` objects                                                     |
-| Rotation    | Local/VPS: update the env var and restart. Lambda: `aws ssm put-parameter --overwrite` — no redeploy              |
+| Rotation    | Local/VPS: update the env var and restart. Lambda: replace the Parameter Store value — no redeploy                |
 | Storage     | Never stored in a database                                                                                        |
 | Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`)                                                   |
 
@@ -75,13 +75,8 @@ echo '[{"username":"admin","password":"your-secure-password-here"}]' | base64
 HARNESS_ADMINS=W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc3dvcmQtaGVyZSJ9XQ==
 ```
 
-**Lambda mode — populate the SSM parameter instead:**
-
-```bash
-aws ssm put-parameter --type SecureString --overwrite \
-  --name /auto-harness/harness-admins \
-  --value W3sidXNlcm5hbWUiOiJhZG1pbiIsInBhc3N3b3JkIjoieW91ci1zZWN1cmUtcGFzc3dvcmQtaGVyZSJ9XQ==
-```
+**Lambda mode:** populate the environment-scoped SecureString in the AWS Systems
+Manager Parameter Store UI as described in the AWS deployment runbook.
 
 Multiple admins can be defined in the array. Passwords should be long, random strings.
 
