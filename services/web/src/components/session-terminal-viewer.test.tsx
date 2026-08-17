@@ -85,6 +85,8 @@ describe("SessionTerminalViewer", () => {
       "terminal",
     );
     expect(mocks.write).toHaveBeenCalledWith("\u001b[32mhello\u001b[0m\n", expect.any(Function));
+    // Grid must stay pinned to the real daemon PTY's fixed size (pty-runner.ts) — this is a
+    // closed-stream replay, not a live PTY, so reflowing the grid corrupts cursor-addressed output.
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({ cols: 120, rows: 40 }),
     );
@@ -129,6 +131,13 @@ describe("SessionTerminalViewer", () => {
   it("keeps the documented empty state", () => {
     const view = mountForm(<SessionTerminalViewer sessionId="empty" items={[]} />);
     expect(field(view.container, "session-logs-empty").textContent).toContain("No logs");
+  });
+
+  it("constructs at the current font size even if it changes before the dynamic import resolves", async () => {
+    const view = mountForm(<SessionTerminalViewer sessionId="racy" items={[]} />);
+    press(field(view.container, "session-terminal-font-increase"));
+    await settle();
+    expect(mocks.terminalOptions).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 14 }));
   });
 
   it("formats an appended system event for the live terminal", async () => {

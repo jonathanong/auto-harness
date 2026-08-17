@@ -3,7 +3,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 
 import type { LiveLogEntry } from "../lib/live-session-logs.ts";
-import { DEFAULT_TERMINAL_FONT_SIZE, terminalText } from "../lib/session-terminal.ts";
+import { terminalText } from "../lib/session-terminal.ts";
 
 type SessionTerminalRuntime = {
   terminal: Terminal;
@@ -12,6 +12,19 @@ type SessionTerminalRuntime = {
   renderedText: string;
 };
 
+/**
+ * The host can be temporarily hidden (0x0) while navigating or mid-fullscreen-transition,
+ * which makes a repaint throw — expected, not an error.
+ */
+function repaintTerminal(runtime: SessionTerminalRuntime | null): void {
+  if (!runtime) return;
+  try {
+    runtime.terminal.refresh(0, runtime.terminal.rows - 1);
+  } catch {
+    // See doc comment above.
+  }
+}
+
 export function useSessionTerminal(
   hostRef: RefObject<HTMLDivElement | null>,
   items: readonly LiveLogEntry[],
@@ -19,18 +32,13 @@ export function useSessionTerminal(
   fontSize: number,
 ) {
   const runtimeRef = useRef<SessionTerminalRuntime | null>(null);
+  const fontSizeRef = useRef(fontSize);
   const itemsRef = useRef(items);
   const textRef = useRef(text);
+  fontSizeRef.current = fontSize;
   itemsRef.current = items;
   textRef.current = text;
-  const refresh = useCallback(() => {
-    try {
-      const terminal = runtimeRef.current?.terminal;
-      if (terminal) terminal.refresh(0, terminal.rows - 1);
-    } catch {
-      // The host can be temporarily hidden while navigating or entering fullscreen.
-    }
-  }, []);
+  const refresh = useCallback(() => repaintTerminal(runtimeRef.current), []);
 
   useEffect(() => {
     let disposed = false;
@@ -40,12 +48,12 @@ export function useSessionTerminal(
         const terminal = new xterm.Terminal({
           allowTransparency: false,
           convertEol: false,
-          cursorBlink: false,
           cols: 120,
+          rows: 40,
+          cursorBlink: false,
           disableStdin: true,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          fontSize: DEFAULT_TERMINAL_FONT_SIZE,
-          rows: 40,
+          fontSize: fontSizeRef.current,
           screenReaderMode: true,
           scrollback: 10_000,
           theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
@@ -53,13 +61,14 @@ export function useSessionTerminal(
         const search = new searchModule.SearchAddon();
         terminal.loadAddon(search);
         terminal.open(hostRef.current);
-        runtimeRef.current = {
+        const runtime: SessionTerminalRuntime = {
           terminal,
           search,
           renderedText: textRef.current,
           renderedThrough: itemsRef.current.at(-1)?.timestampSeq ?? null,
         };
-        terminal.write(textRef.current, refresh);
+        runtimeRef.current = runtime;
+        terminal.write(textRef.current, () => repaintTerminal(runtime));
       },
     );
     return () => {
@@ -67,7 +76,7 @@ export function useSessionTerminal(
       runtimeRef.current?.terminal.dispose();
       runtimeRef.current = null;
     };
-  }, [hostRef, refresh]);
+  }, [hostRef]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -103,5 +112,5 @@ export function useSessionTerminal(
     }
   }, [fontSize, refresh]);
 
-  return { fit: refresh, runtimeRef };
+  return { refresh, runtimeRef };
 }
