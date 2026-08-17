@@ -149,11 +149,11 @@ describe("runDeployment", () => {
     ).rejects.toThrow("no application stacks");
 
     const deps = dependencies([true, true, true, true, true, true]);
-    deps.fetch = vi.fn(async () => new Response("no", { status: 503 }));
+    deps.fetch = async () => new Response("no", { status: 503 });
     await expect(runDeployment("update", config(), deps)).rejects.toThrow("HTTP 503");
 
     const unexpectedBody = dependencies([true, true, true, true, true, true]);
-    unexpectedBody.fetch = vi.fn(async () => new Response('{"ok":false}'));
+    unexpectedBody.fetch = async () => new Response('{"ok":false}');
     await expect(runDeployment("update", config(), unexpectedBody)).rejects.toThrow(
       "unexpected body",
     );
