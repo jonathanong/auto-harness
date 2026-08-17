@@ -74,6 +74,7 @@ describe("web authentication middleware", () => {
     expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
     expect(fetch).toHaveBeenCalledWith(new URL("https://api.example.test/api/v1/auth/me"), {
       headers: { cookie: "auto_harness_session=opaque" },
+      signal: expect.any(AbortSignal),
     });
 
     fetch.mockResolvedValueOnce(new Response("no", { status: 401 }));
@@ -82,6 +83,22 @@ describe("web authentication middleware", () => {
     expect((await middleware(request)).headers.get("location")).toContain("/login?");
     delete process.env.HARNESS_API_HTTP;
     expect((await middleware(request)).headers.get("location")).toContain("/login?");
+  });
+
+  it("fails closed when remote authentication times out", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    process.env.HARNESS_WEB_REMOTE_AUTH = "1";
+    process.env.HARNESS_API_HTTP = "https://api.example.test";
+    const fetch = vi.fn(async (_input: URL | RequestInfo, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      throw new DOMException("remote authentication timed out", "TimeoutError");
+    });
+    vi.stubGlobal("fetch", fetch);
+
+    const response = await middleware(new NextRequest("https://web.example.test/sessions"));
+
+    expect(response.headers.get("location")).toContain("/login?");
+    expect(fetch).toHaveBeenCalledOnce();
   });
 });
 

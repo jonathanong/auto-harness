@@ -79,6 +79,12 @@ export class AutoHarnessWebStack extends Stack {
       principal: new iam.ServicePrincipal("cloudfront.amazonaws.com"),
       sourceArn: distribution.distributionArn,
     });
+    webFunction.addPermission("CloudFrontInvokeFunctionUrl", {
+      action: "lambda:InvokeFunctionUrl",
+      functionUrlAuthType: lambda.FunctionUrlAuthType.AWS_IAM,
+      principal: new iam.ServicePrincipal("cloudfront.amazonaws.com"),
+      sourceArn: distribution.distributionArn,
+    });
 
     void new CfnOutput(this, "WebUrl", {
       value: Fn.join("", ["https://", distribution.distributionDomainName]),

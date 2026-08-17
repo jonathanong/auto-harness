@@ -7,6 +7,7 @@ async function hasRemoteSession(request: NextRequest): Promise<boolean> {
   try {
     const response = await fetch(new URL("api/v1/auth/me", `${api.replace(/\/$/u, "")}/`), {
       headers: { cookie: request.headers.get("cookie") ?? "" },
+      signal: AbortSignal.timeout(5_000),
     });
     return response.ok;
   } catch {

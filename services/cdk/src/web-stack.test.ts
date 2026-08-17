@@ -38,6 +38,12 @@ describe("AutoHarnessWebStack", () => {
       Principal: "cloudfront.amazonaws.com",
       SourceArn: Match.anyValue(),
     });
+    template.hasResourceProperties("AWS::Lambda::Permission", {
+      Action: "lambda:InvokeFunctionUrl",
+      FunctionUrlAuthType: "AWS_IAM",
+      Principal: "cloudfront.amazonaws.com",
+      SourceArn: Match.anyValue(),
+    });
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
       DistributionConfig: Match.objectLike({
         CacheBehaviors: Match.arrayWith([
