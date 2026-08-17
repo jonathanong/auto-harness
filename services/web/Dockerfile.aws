@@ -12,4 +12,5 @@ WORKDIR /var/task
 COPY --from=builder /build/services/web/.next/standalone ./
 COPY --from=builder /build/services/web/.next/static ./services/web/.next/static
 ENV AWS_LWA_PORT=8080 NODE_ENV=production PORT=8080
+USER node
 CMD ["node", "services/web/server.js"]
