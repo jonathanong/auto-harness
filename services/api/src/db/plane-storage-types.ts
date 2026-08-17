@@ -55,6 +55,21 @@ export type ConnectionRecord = {
   capabilities?: HostCapability[];
   /** False only for an authenticated API Gateway socket awaiting host:register. */
   registered?: false;
+  /** Present only for a browser viewer connection. */
+  viewerPrincipal?: {
+    id: string;
+    username: string;
+    role: "read-only" | "operator" | "admin";
+    kind: "admin" | "user";
+    allowedRepositoryIds?: string[];
+  };
+  /** Durable viewer subscriptions used across API Gateway Lambda invocations. */
+  viewerSubscriptions?: Array<{
+    sessionId: string;
+    repositoryId: string;
+    status: string;
+    after?: string;
+  }>;
 };
 
 export type ScheduleRecord = {

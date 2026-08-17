@@ -89,17 +89,17 @@ graph TB
 services/cdk/
 └── src/
     ├── cli.ts                  # CDK app; reads documented CDK context
-    ├── foundation-stack.ts      # DynamoDB, archive S3, and bounded IAM policies
-    ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, EventBridge cron, integration KMS key
+    ├── foundation-stack.ts      # DynamoDB, archive S3, KMS, and bounded IAM policies
+    ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, and EventBridge cron
     ├── web-stack.ts             # CloudFront + Next.js Lambda image
     ├── tables.ts                # durable-table catalog shared by synthesis metadata
     └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
 
-The CDK app emits a persistence foundation and a separately deployable runtime
-stack. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
-Lambda adapters, and a one-minute EventBridge scheduler rule. This repository
-does not expose a deploy command.
+The CDK app emits a persistence foundation and separately deployable runtime and
+web stacks. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
+Lambda adapters, and a one-minute EventBridge scheduler rule. The lifecycle CLI
+exposes deploy, update, and teardown commands; see [deploy-aws.md](deploy-aws.md).
 
 Foundation stack outputs:
 
@@ -107,6 +107,7 @@ Foundation stack outputs:
 | ------------------------------------------------------ | ----------------------------------------------------------------------- |
 | `TablePrefix` and one `*TableName` output per table    | Set `HARNESS_DDB_PREFIX` or explicit future runtime table configuration |
 | `ArchiveBucketName`, `ArchiveBucketArn`                | Future archival runtime configuration                                   |
+| `IntegrationKeyArn`                                    | Integration credential encryption that survives retained teardown       |
 | `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn` | Attach only to the corresponding future runtime role                    |
 
 ---
@@ -124,14 +125,16 @@ Route groups map 1:1 to handler modules under `services/api/src/handlers/rest/`.
 
 ### WebSocket (WSS)
 
-- Endpoint: `wss://…/ws` with `Authorization: Bearer …`
+- Agent endpoint: `wss://…/ws` with `Authorization: Bearer …`
+- Browser endpoint: `wss://…/ws/viewer?ticket=…` with a short-lived viewer ticket
 - Routes:
   - `$connect` — authenticate, write `Connections` row
   - `$disconnect` — delete connection; if agent, mark its worktrees offline / reconcile sessions
   - `$default` — parse JSON `{ type, … }`, dispatch by type
 - Two logical client kinds after connect:
   - **Agent** — first app message `host:register`
-  - **UI client** — first app message `client:register`
+  - **UI client** — sends `session:subscribe`; Lambda validates repository scope and replays a
+    bounded log page before delivering newly committed log records
 
 Keepalive is agent-initiated because Lambda has no persistent process timer.
 Each daemon sends periodic `host:keepalive` activity before API Gateway's idle

@@ -34,7 +34,7 @@ void stack;
 const runtime = new AutoHarnessRuntimeStack(
   app,
   contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
-  { dataRemovalPolicy, foundation: stack.resources, tablePrefix },
+  { foundation: stack.resources, tablePrefix },
 );
 runtime.addStackDependency(stack);
 const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "AutoHarnessWeb", {

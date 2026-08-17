@@ -72,6 +72,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
     },
+    async queryLogs() {
+      return [];
+    },
     async putHostInventory() {},
     async putHostInventoryFenced() {
       return { ok: true };
@@ -116,7 +119,16 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     now: () => "2026-08-12T00:00:00.000Z",
     storage: storage as never,
   });
-  const auth = { authenticate: vi.fn(async () => principal) };
+  const auth = {
+    authenticate: vi.fn(async () => principal),
+    authenticateViewerTicket: vi.fn(async () => ({
+      id: "user:viewer",
+      username: "viewer",
+      kind: "user" as const,
+      role: "operator" as const,
+      allowedRepositoryIds: ["repository-1"],
+    })),
+  };
   const management = { send: vi.fn(async () => ({})) };
   return {
     auth,
@@ -246,6 +258,55 @@ describe("Lambda runtime adapters", () => {
     expect(refreshAuth.mock.invocationCallOrder[0]).toBeLessThan(
       fixture.auth.authenticate.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it("routes viewer tickets and read-only messages through the Lambda viewer adapter", async () => {
+    const fixture = runtimeFixture();
+    fixture.sessions.set("session-1", {
+      id: "session-1",
+      repositoryId: "repository-1",
+      status: "running",
+    });
+    const runtime = await fixture.runtime;
+    await expect(
+      runtime.websocket({
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(fixture.connections.get("viewer-1")).toMatchObject({ type: "client" });
+    await expect(
+      runtime.websocket({
+        body: JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+        requestContext: { connectionId: "viewer-1", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(
+      JSON.parse(String(fixture.management.send.mock.calls.at(-1)?.[0].input.Data)),
+    ).toMatchObject({ type: "session:subscribed", sessionId: "session-1" });
+    fixture.management.send.mockClear();
+    fixture.plane.state.onLogCommitted?.({
+      sessionId: "session-1",
+      timestampSeq: "2026-08-12T00:00:01.000Z#0000000001",
+      seq: 1,
+      stream: "stdout",
+      content: "hosted log",
+      timestamp: "2026-08-12T00:00:01.000Z",
+    });
+    await vi.waitFor(() => expect(fixture.management.send).toHaveBeenCalledOnce());
+    expect(JSON.parse(String(fixture.management.send.mock.calls[0]?.[0].input.Data))).toMatchObject(
+      {
+        type: "session:log",
+        sessionId: "session-1",
+        content: "hosted log",
+      },
+    );
+    await expect(
+      runtime.websocket({
+        requestContext: { connectionId: "viewer-1", routeKey: "$disconnect" },
+      }),
+    ).resolves.toEqual({ statusCode: 200 });
+    expect(fixture.connections.has("viewer-1")).toBe(false);
   });
 
   it("awaits direct durable confirmations before completing an invocation", async () => {

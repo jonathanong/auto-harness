@@ -11,6 +11,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
+import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 
 import {
@@ -26,6 +27,7 @@ type HeaderMap = Record<string, string | undefined>;
 export type WebSocketEvent = {
   body?: string | null;
   headers?: HeaderMap;
+  queryStringParameters?: Record<string, string | undefined>;
   requestContext: { connectionId: string; routeKey: "$connect" | "$disconnect" | "$default" };
 };
 
@@ -162,18 +164,22 @@ export async function createLambdaRuntime(
     dependencies.management ??
     new ApiGatewayManagementApiClient({ endpoint: requiredEnv("WS_API_ENDPOINT") });
   const deliveryContext = new AsyncLocalStorage<Set<Promise<void>>>();
-  const trackDelivery = (hostId: string, message: HostWireMessage): void => {
+  const track = (delivery: Promise<void>): void => {
     const deliveries = deliveryContext.getStore();
-    const delivery = postToHost(created.plane, management, hostId, message).catch(
-      (error: unknown) => {
-        console.error("failed to deliver API Gateway WebSocket message", error);
-      },
-    );
     if (deliveries) {
       deliveries.add(delivery);
       void delivery.finally(() => deliveries.delete(delivery));
     }
   };
+  const trackDelivery = (hostId: string, message: HostWireMessage): void => {
+    const delivery = postToHost(created.plane, management, hostId, message).catch(
+      (error: unknown) => {
+        console.error("failed to deliver API Gateway WebSocket message", error);
+      },
+    );
+    track(delivery);
+  };
+  const viewerSockets = createLambdaViewerSockets({ auth, management, storage: created.storage });
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();
     return deliveryContext.run(deliveries, async () => {
@@ -185,6 +191,15 @@ export async function createLambdaRuntime(
   created.plane.setOnHostMessage((hostId, message) => {
     trackDelivery(hostId, message);
   });
+  const previousOnLogCommitted = created.plane.state.onLogCommitted;
+  created.plane.state.onLogCommitted = (record) => {
+    previousOnLogCommitted?.(record);
+    track(
+      viewerSockets.publishLog(record).catch((error: unknown) => {
+        console.error("failed to deliver API Gateway viewer message", error);
+      }),
+    );
+  };
   const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
 
   return {
@@ -221,6 +236,10 @@ export async function createLambdaRuntime(
             !dependencies.auth
           )
             await auth.hydrate(created.storage);
+          const viewerTicket = event.queryStringParameters?.ticket;
+          if (viewerTicket) {
+            return { statusCode: await viewerSockets.connect(connectionId, viewerTicket) };
+          }
           const principal = await auth.authenticate(authenticationRequest(event));
           if (!authenticatedHost(principal)) return { statusCode: 403 };
           await created.storage.putConnection({
@@ -235,12 +254,16 @@ export async function createLambdaRuntime(
         }
         const authenticated = await created.storage.getConnection(connectionId);
         if (routeKey === "$disconnect") {
+          if (await viewerSockets.disconnect(connectionId)) return { statusCode: 200 };
           if (authenticated?.registered === false)
             await created.storage.deleteConnection(connectionId);
           else await created.plane.disconnectHostDurable(connectionId);
           return { statusCode: 200 };
         }
+        const viewerStatus = await viewerSockets.message(connectionId, event.body ?? "");
+        if (viewerStatus !== undefined) return { statusCode: viewerStatus };
         if (!authenticated) return { statusCode: 401 };
+        if (authenticated.type !== "host") return { statusCode: 403 };
         const message = parseHostMessage(event.body ?? "");
         if (!message || !validHostMessage(message, authenticated.hostId))
           return { statusCode: 403 };

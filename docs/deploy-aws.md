@@ -151,8 +151,10 @@ With the default `retain` policy, teardown removes the web and runtime stacks an
 leaves the managed foundation stack and data in place. Run `update` to restore
 them. With `destroy`, teardown removes all three application stacks and verifies
 their absence.
-The integration KMS key enters AWS's seven-day pending-deletion window. Teardown
-does not remove the account-level `CDKToolkit` stack or the three SSM parameters.
+The integration KMS key belongs to the foundation, so retained teardown preserves
+the key needed to decrypt existing integration credentials. Under `destroy`, the
+key enters AWS's seven-day pending-deletion window. Teardown does not remove the
+account-level `CDKToolkit` stack or the three SSM parameters.
 
 `removalPolicy` accepts only `retain` (the default) or `destroy`. With
 `destroy`, CloudFormation still cannot remove a non-empty archive bucket; empty
@@ -171,7 +173,8 @@ values themselves are never CDK parameters or context.
 | `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration |
 | `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
 | `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
-| `RestApiUrl`, `WebSocketUrl`, `IntegrationKeyArn`           | Runtime clients and integration encryption        |
+| `IntegrationKeyArn`                                         | Foundation-owned integration encryption           |
+| `RestApiUrl`, `WebSocketUrl`                                | Runtime clients                                   |
 | `WebUrl`                                                    | Browser control-plane URL                         |
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
