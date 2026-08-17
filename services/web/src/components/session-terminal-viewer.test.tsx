@@ -133,6 +133,13 @@ describe("SessionTerminalViewer", () => {
     expect(field(view.container, "session-logs-empty").textContent).toContain("No logs");
   });
 
+  it("constructs at the current font size even if it changes before the dynamic import resolves", async () => {
+    const view = mountForm(<SessionTerminalViewer sessionId="racy" items={[]} />);
+    press(field(view.container, "session-terminal-font-increase"));
+    await settle();
+    expect(mocks.terminalOptions).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 14 }));
+  });
+
   it("formats an appended system event for the live terminal", async () => {
     vi.stubGlobal(
       "ResizeObserver",

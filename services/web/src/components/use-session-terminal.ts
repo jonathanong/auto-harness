@@ -3,7 +3,7 @@ import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 
 import type { LiveLogEntry } from "../lib/live-session-logs.ts";
-import { DEFAULT_TERMINAL_FONT_SIZE, terminalText } from "../lib/session-terminal.ts";
+import { terminalText } from "../lib/session-terminal.ts";
 
 type SessionTerminalRuntime = {
   terminal: Terminal;
@@ -32,8 +32,10 @@ export function useSessionTerminal(
   fontSize: number,
 ) {
   const runtimeRef = useRef<SessionTerminalRuntime | null>(null);
+  const fontSizeRef = useRef(fontSize);
   const itemsRef = useRef(items);
   const textRef = useRef(text);
+  fontSizeRef.current = fontSize;
   itemsRef.current = items;
   textRef.current = text;
   const refresh = useCallback(() => repaintTerminal(runtimeRef.current), []);
@@ -51,7 +53,7 @@ export function useSessionTerminal(
           cursorBlink: false,
           disableStdin: true,
           fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-          fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+          fontSize: fontSizeRef.current,
           screenReaderMode: true,
           scrollback: 10_000,
           theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
