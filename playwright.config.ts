@@ -10,6 +10,7 @@ import {
 
 const requiredAuthE2e = process.env.HARNESS_E2E_AUTH === "1";
 const controlOnly = process.env.HARNESS_E2E_CONTROL_ONLY === "1";
+const screenshots = process.env.HARNESS_SCREENSHOTS === "1";
 const apiPort = API_PORT;
 const controlPort = CONTROL_PORT;
 const hostPanePort = HOST_PANE_PORT;
@@ -76,6 +77,19 @@ export default defineConfig({
               ...devices["Desktop Chrome"],
               baseURL: `http://127.0.0.1:${controlPort}`,
             },
+          },
+        ]
+      : []),
+    // Design-review before/after screenshots (docs/e2e.md — "Design-review screenshots").
+    // Registered only under `pnpm screenshots` so CI's plain `playwright test` never touches
+    // it; specs navigate with absolute URLs rather than a single project baseURL since one
+    // spec may capture both apps.
+    ...(screenshots
+      ? [
+          {
+            name: "screenshots",
+            testMatch: "e2e/screenshots/**/*.spec.ts",
+            use: { ...devices["Desktop Chrome"] },
           },
         ]
       : []),

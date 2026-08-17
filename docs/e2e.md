@@ -325,6 +325,37 @@ parallel PR verification and does not change the default CI resource names.
 
 ---
 
+## Design-review screenshots
+
+`pnpm screenshots` runs a dedicated `screenshots` Playwright project
+(`e2e/screenshots/**/*.spec.ts`) against the same production `743x` stack as `pnpm test:e2e`.
+It is registered only when `HARNESS_SCREENSHOTS=1` (set by the `screenshots` script itself), so a
+bare `playwright test` in CI never picks it up — same pattern as the opt-in `real-cli` project.
+
+`e2e/screenshots/lib.ts` currently exports `CONTROL_BASE`/`HOST_PANE_BASE` and `shot()`; the smoke
+spec (`dashboard-smoke.spec.ts`) just navigates to each app's root — no fixture seeding yet. A spec
+that needs seeded state (e.g. a live session's log stream) should add its own connect/seed helpers
+to `lib.ts`, following the fake-host-over-real-WebSocket approach in
+`e2e/control/live-session-logs.spec.ts`, kept minimal per spec rather than pre-built (unused exports
+fail `pnpm knip`). Every spec calls `shot(page, "<finding-slug>")`, which strips animation/
+transition/caret variance and writes
+`docs/screenshots/<finding-slug>/<tag>.png`. `<tag>` comes from `HARNESS_SCREENSHOT_TAG` (default
+`current`) — capture a before/after pair for a design-review PR by running once on the pre-fix
+commit and once on the fix branch:
+
+```bash
+git checkout <base-commit>
+HARNESS_SCREENSHOT_TAG=before pnpm screenshots
+git checkout <fix-branch>
+HARNESS_SCREENSHOT_TAG=after pnpm screenshots
+```
+
+Specs navigate with absolute URLs (`CONTROL_BASE` / `HOST_PANE_BASE` from `lib.ts`) rather than a
+project `baseURL`, since one spec can capture both apps. Runs with `--workers=1` for deterministic,
+non-interleaved captures.
+
+---
+
 ## CI notes
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the required **`playwright`** job:
