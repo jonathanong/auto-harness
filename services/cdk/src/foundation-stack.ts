@@ -1,6 +1,7 @@
 import { CfnOutput, Duration, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as kms from "aws-cdk-lib/aws-kms";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 
@@ -19,6 +20,7 @@ export type FoundationResources = {
   archiveBucket: s3.Bucket;
   archiveDataAccessPolicy: iam.ManagedPolicy;
   apiDataAccessPolicy: iam.ManagedPolicy;
+  integrationKey: kms.Key;
   tables: Readonly<Record<string, dynamodb.Table>>;
 };
 
@@ -127,6 +129,12 @@ export class AutoHarnessFoundationStack extends Stack {
       removalPolicy,
     });
     archiveBucket.policy?.applyRemovalPolicy(removalPolicy);
+    const integrationKey = new kms.Key(this, "IntegrationKey", {
+      description: "Encrypts Auto Harness integration credentials.",
+      enableKeyRotation: true,
+      pendingWindow: Duration.days(7),
+    });
+    integrationKey.applyRemovalPolicy(removalPolicy);
 
     const tableResources = DYNAMO_TABLES.flatMap((definition) => {
       const table = tables[definition.name];
@@ -181,10 +189,17 @@ export class AutoHarnessFoundationStack extends Stack {
     });
     addOutput(this, "ArchiveBucketArn", { value: archiveBucket.bucketArn });
     addOutput(this, "ApiDataAccessPolicyArn", { value: apiDataAccessPolicy.managedPolicyArn });
+    addOutput(this, "IntegrationKeyArn", { value: integrationKey.keyArn });
     addOutput(this, "ArchiveDataAccessPolicyArn", {
       value: archiveDataAccessPolicy.managedPolicyArn,
     });
 
-    this.resources = { archiveBucket, archiveDataAccessPolicy, apiDataAccessPolicy, tables };
+    this.resources = {
+      archiveBucket,
+      archiveDataAccessPolicy,
+      apiDataAccessPolicy,
+      integrationKey,
+      tables,
+    };
   }
 }

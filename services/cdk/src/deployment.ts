@@ -4,7 +4,7 @@ import {
   bootstrapEnvironment,
   type DeploymentDependencies,
   destroyStacks,
-  smokeRestApi,
+  smokeDeployment,
   stackState,
   verifySecretParameters,
 } from "./deployment-support.ts";
@@ -15,8 +15,8 @@ async function requireCompleteDeployment(
   operation: "deployment" | "update",
 ): Promise<void> {
   const state = await stackState(config, dependencies);
-  if (!state.foundation || !state.runtime) {
-    throw new Error(`${operation} completed without both application stacks`);
+  if (!state.foundation || !state.runtime || !state.web) {
+    throw new Error(`${operation} completed without all application stacks`);
   }
 }
 
@@ -25,16 +25,16 @@ async function deploy(
   dependencies: DeploymentDependencies,
 ): Promise<void> {
   const state = await stackState(config, dependencies);
-  if (state.foundation || state.runtime) {
+  if (state.foundation || state.runtime || state.web) {
     throw new Error(
-      "deploy requires both foundation and runtime stacks to be absent; use update for an existing environment",
+      "deploy requires all application stacks to be absent; use update for an existing environment",
     );
   }
   await verifySecretParameters(config, dependencies);
   await bootstrapEnvironment(config, dependencies);
   await applyDeployment(config, dependencies);
   await requireCompleteDeployment(config, dependencies, "deployment");
-  await smokeRestApi(config, dependencies);
+  await smokeDeployment(config, dependencies);
 }
 
 async function update(
@@ -50,7 +50,7 @@ async function update(
   await verifySecretParameters(config, dependencies);
   await applyDeployment(config, dependencies);
   await requireCompleteDeployment(config, dependencies, "update");
-  await smokeRestApi(config, dependencies);
+  await smokeDeployment(config, dependencies);
 }
 
 async function teardown(
@@ -62,16 +62,17 @@ async function teardown(
       `teardown requires HARNESS_DEPLOY_CONFIRM=${config.environment}; data follows the deployed stack's retention policy`,
     );
   }
-  const { foundation, runtime } = await stackState(config, dependencies);
-  if (!foundation && !runtime) throw new Error("teardown found no application stacks");
+  const { foundation, runtime, web } = await stackState(config, dependencies);
+  if (!foundation && !runtime && !web) throw new Error("teardown found no application stacks");
   const stackNames = [
+    ...(web ? [config.webStackName] : []),
     ...(runtime ? [config.runtimeStackName] : []),
     ...(foundation && config.removalPolicy === "destroy" ? [config.foundationStackName] : []),
   ];
   if (stackNames.length > 0) await destroyStacks(config, dependencies, stackNames);
   const tornDown = await stackState(config, dependencies);
   const expectedFoundation = foundation && config.removalPolicy === "retain";
-  if (tornDown.runtime || tornDown.foundation !== expectedFoundation) {
+  if (tornDown.web || tornDown.runtime || tornDown.foundation !== expectedFoundation) {
     throw new Error("teardown completed with an unexpected application stack state");
   }
   dependencies.log(

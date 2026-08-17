@@ -171,6 +171,11 @@ describe("AutoHarnessFoundationStack", () => {
     template.hasOutput("TablePrefix", { Value: "AutoHarness" });
     template.hasOutput("ArchiveBucketName", {});
     template.hasOutput("ApiDataAccessPolicyArn", {});
+    template.hasOutput("IntegrationKeyArn", {});
+    template.hasResourceProperties("AWS::KMS::Key", {
+      EnableKeyRotation: true,
+      PendingWindowInDays: 7,
+    });
     template.resourceCountIs("AWS::Lambda::Function", 0);
     template.resourceCountIs("AWS::ApiGateway::RestApi", 0);
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 0);
@@ -191,7 +196,7 @@ describe("AutoHarnessFoundationStack", () => {
     });
     expect(
       Object.values(json.Resources).filter((resource) => resource.DeletionPolicy === "Delete"),
-    ).toHaveLength(23);
+    ).toHaveLength(24);
     expect(
       Object.values(json.Resources).filter(
         (resource) => resource.Type === "AWS::CloudFormation::CustomResource",

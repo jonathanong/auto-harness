@@ -22,7 +22,7 @@ describe("AutoHarnessRuntimeStack", () => {
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 2);
     template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
     template.resourceCountIs("AWS::ApiGatewayV2::Stage", 2);
-    template.resourceCountIs("AWS::KMS::Key", 1);
+    template.resourceCountIs("AWS::KMS::Key", 0);
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: Match.objectLike({
@@ -103,15 +103,6 @@ describe("AutoHarnessRuntimeStack", () => {
       },
       3,
     );
-    template.hasResourceProperties("AWS::KMS::Key", {
-      EnableKeyRotation: true,
-      PendingWindowInDays: 7,
-    });
-    expect(
-      Object.values(template.toJSON().Resources).find(
-        (resource) => resource.Type === "AWS::KMS::Key",
-      )?.DeletionPolicy,
-    ).toBe("Retain");
     template.hasOutput("RestApiUrl", {});
     template.hasOutput("WebSocketUrl", {});
     expect(Object.keys(template.toJSON().Parameters)).toEqual(
@@ -119,7 +110,6 @@ describe("AutoHarnessRuntimeStack", () => {
         "HarnessAdminsSsmParam",
         "HarnessCursorSecretSsmParam",
         "HarnessSessionSecretSsmParam",
-        "WebOrigin",
       ]),
     );
     // These parameters hold an SSM parameter *name*, not a secret value — unlike the

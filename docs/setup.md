@@ -36,19 +36,16 @@ pnpm check
 
 ---
 
-## AWS control plane (later phases)
+## AWS control plane
 
 Full AWS ops: **[deploy-aws.md](deploy-aws.md)**. Index: [deploy.md](deploy.md).
 
 Short checklist:
 
 1. `pnpm install`
-2. Configure secrets (do not commit):
-   - `HARNESS_ADMINS` — base64 JSON `[{ "username", "password" }]`
-   - `HARNESS_SESSION_SECRET` — long random string for UI JWTs
-   - `WEB_ORIGIN` — browser origin for CORS
-3. Deploy: `pnpm --filter @auto-harness/cdk deploy` (**only when the CDK app is fully implemented** — see [deploy-aws.md](deploy-aws.md))
-4. Create users / service accounts; bind agent API key; add repositories; install agents per [deploy-host-daemon.md](deploy-host-daemon.md)
+2. Create the three environment-scoped SecureStrings in the AWS Parameter Store UI as described in [deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit).
+3. Set `AWS_REGION` and `HARNESS_DEPLOY_ENVIRONMENT`, then run `pnpm --filter @auto-harness/cdk deploy`.
+4. Open the printed `WebUrl`. Use the UI to create accounts and repositories, then install agents per [deploy-host-daemon.md](deploy-host-daemon.md).
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 

@@ -3,21 +3,15 @@ import { Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 
 import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
-import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 
-describe("AutoHarnessRuntimeStack removal", () => {
-  it("deletes the integration key for a disposable runtime", () => {
+describe("AutoHarnessFoundationStack removal", () => {
+  it("deletes the integration key with a disposable foundation", () => {
     const app = new App();
     const foundation = new AutoHarnessFoundationStack(app, "DisposableFoundation", {
       dataRemovalPolicy: RemovalPolicy.DESTROY,
       tablePrefix: "DisposableRuntime",
     });
-    const runtime = new AutoHarnessRuntimeStack(app, "DisposableRuntime", {
-      dataRemovalPolicy: RemovalPolicy.DESTROY,
-      foundation: foundation.resources,
-      tablePrefix: "DisposableRuntime",
-    });
-    const key = Object.values(Template.fromStack(runtime).toJSON().Resources).find(
+    const key = Object.values(Template.fromStack(foundation).toJSON().Resources).find(
       (resource) => resource.Type === "AWS::KMS::Key",
     );
     expect(key?.DeletionPolicy).toBe("Delete");

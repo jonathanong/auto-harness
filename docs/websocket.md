@@ -161,6 +161,9 @@ Notes:
   flushes them before any later control/status frame, and persists the batch in one
   connection-fenced DynamoDB transaction before fan-out. The agent's `timestampSeq` order is
   unchanged; the server never renumbers or reorders chunks.
+- The AWS WebSocket Lambda stores viewer identity and subscriptions in DynamoDB. Each committed
+  log record is fanned out through the API Gateway Management API, so browser viewing does not
+  require a long-running server.
 
 ---
 

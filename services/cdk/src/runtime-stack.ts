@@ -1,20 +1,10 @@
 import { fileURLToPath } from "node:url";
 
-import {
-  Aws,
-  CfnOutput,
-  CfnParameter,
-  Duration,
-  Fn,
-  RemovalPolicy,
-  Stack,
-  type StackProps,
-} from "aws-cdk-lib";
+import { Aws, CfnOutput, Duration, Fn, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import type { Construct } from "constructs";
@@ -24,7 +14,6 @@ import type { FoundationResources } from "./foundation-stack.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 
 export type RuntimeStackProps = StackProps & {
-  dataRemovalPolicy?: RemovalPolicy;
   foundation: FoundationResources;
   tablePrefix: string;
 };
@@ -33,10 +22,11 @@ export type RuntimeResources = {
   cronFunction: nodejs.NodejsFunction;
   cronRule: events.Rule;
   httpApi: apigatewayv2.CfnApi;
-  integrationKey: kms.Key;
   restFunction: nodejs.NodejsFunction;
   websocketApi: apigatewayv2.CfnApi;
   websocketFunction: nodejs.NodejsFunction;
+  restApiUrl: string;
+  websocketUrl: string;
 };
 
 const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
@@ -49,25 +39,13 @@ export class AutoHarnessRuntimeStack extends Stack {
     super(scope, id, props);
 
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
-    const webOrigin = new CfnParameter(this, "WebOrigin", {
-      description: "Exact browser origin allowed by control-plane CORS.",
-      type: "String",
-    });
-    const integrationKey = new kms.Key(this, "IntegrationKey", {
-      description: "Encrypts Auto Harness integration credentials.",
-      enableKeyRotation: true,
-      pendingWindow: Duration.days(7),
-    });
-    integrationKey.applyRemovalPolicy(props.dataRemovalPolicy ?? RemovalPolicy.RETAIN);
-
     const commonEnvironment = {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
       HARNESS_CURSOR_SECRET_SSM_PARAM: cursorSecret.param.valueAsString,
       HARNESS_DDB_PREFIX: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
-      KMS_KEY_ID: integrationKey.keyArn,
-      WEB_ORIGIN: webOrigin.valueAsString,
+      KMS_KEY_ID: props.foundation.integrationKey.keyArn,
     };
     const functionProps = {
       bundling: { minify: true, sourceMap: true },
@@ -104,7 +82,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     for (const fn of [restFunction, websocketFunction, cronFunction]) {
       fn.role!.addManagedPolicy(apiDataAccessPolicy);
       fn.role!.addManagedPolicy(archiveDataAccessPolicy);
-      integrationKey.grantEncryptDecrypt(fn);
+      props.foundation.integrationKey.grantEncryptDecrypt(fn);
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
     }
 
@@ -190,22 +168,25 @@ export class AutoHarnessRuntimeStack extends Stack {
     });
     cronRule.addTarget(new targets.LambdaFunction(cronFunction));
 
-    void new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
+    const restApiUrl = httpApi.attrApiEndpoint;
+    const websocketUrl = Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]);
+    void new CfnOutput(this, "RestApiUrl", { value: restApiUrl });
     void new CfnOutput(this, "WebSocketUrl", {
-      value: Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]),
+      value: websocketUrl,
     });
     void new CfnOutput(this, "IntegrationKeyArn", {
-      value: integrationKey.keyArn,
+      value: props.foundation.integrationKey.keyArn,
     });
 
     this.resources = {
       cronFunction,
       cronRule,
       httpApi,
-      integrationKey,
       restFunction,
+      restApiUrl,
       websocketApi,
       websocketFunction,
+      websocketUrl,
     };
   }
 }

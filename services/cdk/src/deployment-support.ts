@@ -48,6 +48,8 @@ function cdkContext(config: DeploymentConfig): string[] {
     "-c",
     `runtimeStackName=${config.runtimeStackName}`,
     "-c",
+    `webStackName=${config.webStackName}`,
+    "-c",
     `tablePrefix=${config.tablePrefix}`,
     "-c",
     `removalPolicy=${config.removalPolicy}`,
@@ -105,6 +107,7 @@ export async function applyDeployment(
     "deploy",
     config.foundationStackName,
     config.runtimeStackName,
+    config.webStackName,
     ...cdkContext(config),
     "--require-approval",
     "never",
@@ -114,44 +117,57 @@ export async function applyDeployment(
     `${config.runtimeStackName}:HarnessSessionSecretSsmParam=${config.sessionSecretSsmParam}`,
     "--parameters",
     `${config.runtimeStackName}:HarnessCursorSecretSsmParam=${config.cursorSecretSsmParam}`,
-    "--parameters",
-    `${config.runtimeStackName}:WebOrigin=${config.webOrigin!}`,
   ]);
 }
 
-export async function smokeRestApi(
+async function stackOutput(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
-): Promise<void> {
-  const restApiUrl = await queryOk(
+  stackName: string,
+  outputKey: string,
+): Promise<string> {
+  const value = await queryOk(
     dependencies,
     "aws",
     awsArgs(config, [
       "cloudformation",
       "describe-stacks",
       "--stack-name",
-      config.runtimeStackName,
+      stackName,
       "--query",
-      "Stacks[0].Outputs[?OutputKey=='RestApiUrl'].OutputValue | [0]",
+      `Stacks[0].Outputs[?OutputKey=='${outputKey}'].OutputValue | [0]`,
       "--output",
       "text",
     ]),
   );
-  if (!restApiUrl || restApiUrl === "None") throw new Error("runtime stack has no RestApiUrl");
+  if (!value || value === "None") throw new Error(`${stackName} has no ${outputKey}`);
+  return value;
+}
+
+export async function smokeDeployment(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+): Promise<void> {
+  const restApiUrl = await stackOutput(config, dependencies, config.runtimeStackName, "RestApiUrl");
   const response = await dependencies.fetch(new URL("health", `${restApiUrl}/`));
   if (!response.ok) throw new Error(`REST health check failed with HTTP ${response.status}`);
   const body = (await response.json()) as { ok?: unknown };
   if (body.ok !== true) throw new Error("REST health check returned an unexpected body");
   dependencies.log(`REST health check passed: ${restApiUrl}`);
+  const webUrl = await stackOutput(config, dependencies, config.webStackName, "WebUrl");
+  const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`));
+  if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
+  dependencies.log(`Web health check passed: ${webUrl}`);
 }
 
 export async function stackState(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
-): Promise<{ foundation: boolean; runtime: boolean }> {
+): Promise<{ foundation: boolean; runtime: boolean; web: boolean }> {
   return {
     foundation: await stackExists(config, dependencies, config.foundationStackName),
     runtime: await stackExists(config, dependencies, config.runtimeStackName),
+    web: await stackExists(config, dependencies, config.webStackName),
   };
 }
 

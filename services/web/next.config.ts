@@ -17,6 +17,7 @@ const apiUpstream = (
 const effectiveViewerWsUrl =
   process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL ??
   apiUpstream.replace(/^http/, "ws") + "/ws/viewer";
+const cloudBuild = process.env.HARNESS_WEB_CLOUD === "1";
 
 function viewerWsOrigin(): string {
   try {
@@ -27,9 +28,9 @@ function viewerWsOrigin(): string {
 }
 
 const nextConfig: NextConfig = {
-  env: {
-    NEXT_PUBLIC_HARNESS_VIEWER_WS_URL: effectiveViewerWsUrl,
-  },
+  ...(cloudBuild
+    ? { output: "standalone" }
+    : { env: { NEXT_PUBLIC_HARNESS_VIEWER_WS_URL: effectiveViewerWsUrl } }),
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
     externalDir: true,
@@ -44,6 +45,7 @@ const nextConfig: NextConfig = {
   ...(process.env.HARNESS_E2E ? { distDir: ".next-e2e" } : {}),
   // Browser calls same origin (/api/v1/…) → Next proxies to control plane (no CORS).
   async rewrites() {
+    if (cloudBuild) return [];
     return [
       { source: "/api/:path*", destination: `${apiUpstream}/api/:path*` },
       { source: "/health", destination: `${apiUpstream}/health` },
@@ -59,7 +61,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/(.*)",
-        headers: [...securityHeaders({ connectSrcOrigins: [viewerWsOrigin()] })],
+        headers: [...securityHeaders({ connectSrcOrigins: cloudBuild ? [] : [viewerWsOrigin()] })],
       },
     ];
   },

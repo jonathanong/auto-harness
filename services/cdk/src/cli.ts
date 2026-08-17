@@ -1,7 +1,11 @@
 import { App, RemovalPolicy } from "aws-cdk-lib";
+import { Platform } from "aws-cdk-lib/aws-ecr-assets";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import { fileURLToPath } from "node:url";
 
 import { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 import { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
+import { AutoHarnessWebStack } from "./web-stack.ts";
 
 function contextString(app: App, key: string): string | undefined {
   const value = app.node.tryGetContext(key);
@@ -30,6 +34,15 @@ void stack;
 const runtime = new AutoHarnessRuntimeStack(
   app,
   contextString(app, "runtimeStackName") ?? "AutoHarnessRuntime",
-  { dataRemovalPolicy, foundation: stack.resources, tablePrefix },
+  { foundation: stack.resources, tablePrefix },
 );
 runtime.addStackDependency(stack);
+const web = new AutoHarnessWebStack(app, contextString(app, "webStackName") ?? "AutoHarnessWeb", {
+  imageCode: lambda.DockerImageCode.fromImageAsset(
+    fileURLToPath(new URL("../../..", import.meta.url)),
+    { file: "services/web/Dockerfile.aws", platform: Platform.LINUX_ARM64 },
+  ),
+  restApiUrl: runtime.resources.restApiUrl,
+  websocketUrl: runtime.resources.websocketUrl,
+});
+web.addStackDependency(runtime);
