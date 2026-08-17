@@ -2,11 +2,11 @@
 
 Ops is split by **surface**. Pick the doc for what you are running.
 
-| Surface                                                                          | Doc                                                | Maturity                                                                        |
-| -------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
-| **Local** — DynamoDB Local + API + optional web + agent                          | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                             |
-| **AWS control plane** — persistence plus REST, WebSocket, and scheduled runtimes | **[deploy-aws.md](deploy-aws.md)**                 | **Supported** deploy, update, and teardown lifecycle                            |
-| **VPS agent** — daemon, profiles, worktrees                                      | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run |
+| Surface                                                                         | Doc                                                | Maturity                                                                        |
+| ------------------------------------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Local** — DynamoDB Local + API + optional web + agent                         | **[deploy-local.md](deploy-local.md)**             | **Supported** today                                                             |
+| **AWS control plane** — serverless web, REST, WebSocket, schedules, and storage | **[deploy-aws.md](deploy-aws.md)**                 | **Supported** deploy, update, and teardown lifecycle                            |
+| **VPS agent** — daemon, profiles, worktrees                                     | **[deploy-host-daemon.md](deploy-host-daemon.md)** | **Packaged** unit validated locally/CI; production host install is operator-run |
 
 AWS releases use the account-backed gate in [deploy-aws.md](deploy-aws.md#gates).
 

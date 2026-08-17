@@ -10,6 +10,8 @@ export { AutoHarnessFoundationStack } from "./foundation-stack.ts";
 export type { FoundationResources, FoundationStackProps } from "./foundation-stack.ts";
 export { AutoHarnessRuntimeStack } from "./runtime-stack.ts";
 export type { RuntimeResources, RuntimeStackProps } from "./runtime-stack.ts";
+export { AutoHarnessWebStack } from "./web-stack.ts";
+export type { WebStackProps } from "./web-stack.ts";
 
 /** AWS CDK infrastructure service identity. */
 export const serviceName = "@auto-harness/cdk" as const;

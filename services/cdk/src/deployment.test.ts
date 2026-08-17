@@ -14,7 +14,7 @@ const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => 
   runtimeStackName: "AutoHarness-review-Runtime",
   sessionSecretSsmParam: "/auto-harness/review/harness-session-secret",
   tablePrefix: "AutoHarness-review",
-  webOrigin: "https://example.test",
+  webStackName: "AutoHarness-review-Web",
   ...overrides,
 });
 
@@ -54,7 +54,7 @@ function dependencies(stackStates: boolean[]): DeploymentDependencies & {
 
 describe("runDeployment", () => {
   it("bootstraps, deploys, verifies stacks, and health-checks a new environment", async () => {
-    const deps = dependencies([false, false, true, true]);
+    const deps = dependencies([false, false, false, true, true, true]);
     await runDeployment("deploy", config(), deps);
     expect(deps.runs[0]).toEqual([
       "pnpm",
@@ -68,30 +68,30 @@ describe("runDeployment", () => {
     );
     expect(deps.fetch).toHaveBeenCalledWith(new URL("https://api.example.test/health"));
 
-    const knownAccount = dependencies([false, false, true, true]);
+    const knownAccount = dependencies([false, false, false, true, true, true]);
     await runDeployment("deploy", config({ accountId: "210987654321" }), knownAccount);
     expect(knownAccount.runs[0]).toContain("aws://210987654321/us-west-2");
     expect(knownAccount.queries.flat()).not.toContain("get-caller-identity");
   });
 
   it("updates an existing environment and can restore a missing runtime", async () => {
-    const deps = dependencies([true, true, true, true]);
+    const deps = dependencies([true, true, true, true, true, true]);
     await runDeployment("update", config(), deps);
     expect(deps.runs).toHaveLength(1);
     expect(deps.runs[0]).toEqual(expect.arrayContaining(["deploy"]));
 
-    const restore = dependencies([true, false, true, true]);
+    const restore = dependencies([true, false, false, true, true, true]);
     await runDeployment("update", config(), restore);
     expect(restore.runs).toHaveLength(1);
   });
 
   it("rejects lifecycle misuse and unexpected AWS inspection failures", async () => {
-    await expect(runDeployment("deploy", config(), dependencies([true, true]))).rejects.toThrow(
-      "use update",
-    );
-    await expect(runDeployment("update", config(), dependencies([false, false]))).rejects.toThrow(
-      "use deploy",
-    );
+    await expect(
+      runDeployment("deploy", config(), dependencies([true, true, true])),
+    ).rejects.toThrow("use update");
+    await expect(
+      runDeployment("update", config(), dependencies([false, false, false])),
+    ).rejects.toThrow("use deploy");
     const deps = dependencies([]);
     deps.query = vi.fn(async () => ({ status: 1, stderr: "access denied", stdout: "" }));
     await expect(runDeployment("deploy", config(), deps)).rejects.toThrow("unable to inspect");
@@ -102,7 +102,7 @@ describe("runDeployment", () => {
   });
 
   it("stops when secret checks or post-deploy stack verification fail", async () => {
-    const secretFailure = dependencies([false, false]);
+    const secretFailure = dependencies([false, false, false]);
     const query = secretFailure.query;
     secretFailure.query = vi.fn(async (command, args) =>
       args.includes("get-parameter")
@@ -114,23 +114,24 @@ describe("runDeployment", () => {
     );
 
     await expect(
-      runDeployment("deploy", config(), dependencies([false, false, true, false])),
-    ).rejects.toThrow("without both application stacks");
+      runDeployment("deploy", config(), dependencies([false, false, false, true, false, true])),
+    ).rejects.toThrow("without all application stacks");
     await expect(
-      runDeployment("update", config(), dependencies([true, true, true, false])),
-    ).rejects.toThrow("without both application stacks");
+      runDeployment("update", config(), dependencies([true, true, true, true, false, true])),
+    ).rejects.toThrow("without all application stacks");
   });
 
   it("requires exact confirmation, destroys both stacks, and verifies absence", async () => {
-    await expect(runDeployment("teardown", config(), dependencies([true, true]))).rejects.toThrow(
-      "HARNESS_DEPLOY_CONFIRM=review",
-    );
+    await expect(
+      runDeployment("teardown", config(), dependencies([true, true, true])),
+    ).rejects.toThrow("HARNESS_DEPLOY_CONFIRM=review");
 
-    const deps = dependencies([true, true, false, false]);
+    const deps = dependencies([true, true, true, false, false, false]);
     await runDeployment("teardown", config({ teardownConfirmation: "review" }), deps);
     expect(deps.runs[0]).toEqual(
       expect.arrayContaining([
         "destroy",
+        "AutoHarness-review-Web",
         "AutoHarness-review-Runtime",
         "AutoHarness-review-Foundation",
         "--force",
@@ -143,22 +144,22 @@ describe("runDeployment", () => {
       runDeployment(
         "teardown",
         config({ teardownConfirmation: "review" }),
-        dependencies([false, false]),
+        dependencies([false, false, false]),
       ),
     ).rejects.toThrow("no application stacks");
 
-    const deps = dependencies([true, true, true, true]);
+    const deps = dependencies([true, true, true, true, true, true]);
     deps.fetch = vi.fn(async () => new Response("no", { status: 503 }));
     await expect(runDeployment("update", config(), deps)).rejects.toThrow("HTTP 503");
 
-    const unexpectedBody = dependencies([true, true, true, true]);
+    const unexpectedBody = dependencies([true, true, true, true, true, true]);
     unexpectedBody.fetch = vi.fn(async () => new Response('{"ok":false}'));
     await expect(runDeployment("update", config(), unexpectedBody)).rejects.toThrow(
       "unexpected body",
     );
 
     for (const output of ["", "None"]) {
-      const missingOutput = dependencies([true, true, true, true]);
+      const missingOutput = dependencies([true, true, true, true, true, true]);
       const query = missingOutput.query;
       missingOutput.query = vi.fn(async (command, args) =>
         args.includes("--query") && args.includes("describe-stacks")
@@ -172,18 +173,23 @@ describe("runDeployment", () => {
   });
 
   it("retains the foundation while tearing down runtime resources", async () => {
-    const deps = dependencies([true, true, true, false]);
+    const deps = dependencies([true, true, true, true, false, false]);
     await runDeployment(
       "teardown",
       config({ removalPolicy: "retain", teardownConfirmation: "review" }),
       deps,
     );
     expect(deps.runs[0]).toEqual(
-      expect.arrayContaining(["destroy", "AutoHarness-review-Runtime", "--force"]),
+      expect.arrayContaining([
+        "destroy",
+        "AutoHarness-review-Web",
+        "AutoHarness-review-Runtime",
+        "--force",
+      ]),
     );
     expect(deps.runs[0]).not.toContain("AutoHarness-review-Foundation");
 
-    const alreadyStopped = dependencies([true, false, true, false]);
+    const alreadyStopped = dependencies([true, false, false, true, false, false]);
     await runDeployment(
       "teardown",
       config({ removalPolicy: "retain", teardownConfirmation: "review" }),
@@ -197,7 +203,7 @@ describe("runDeployment", () => {
       runDeployment(
         "teardown",
         config({ teardownConfirmation: "review" }),
-        dependencies([true, true, true, true]),
+        dependencies([true, true, true, true, true, true]),
       ),
     ).rejects.toThrow("unexpected application stack state");
   });

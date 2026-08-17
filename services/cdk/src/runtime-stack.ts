@@ -1,15 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import {
-  Aws,
-  CfnOutput,
-  CfnParameter,
-  Duration,
-  Fn,
-  RemovalPolicy,
-  Stack,
-  type StackProps,
-} from "aws-cdk-lib";
+import { Aws, CfnOutput, Duration, Fn, RemovalPolicy, Stack, type StackProps } from "aws-cdk-lib";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
@@ -37,6 +28,8 @@ export type RuntimeResources = {
   restFunction: nodejs.NodejsFunction;
   websocketApi: apigatewayv2.CfnApi;
   websocketFunction: nodejs.NodejsFunction;
+  restApiUrl: string;
+  websocketUrl: string;
 };
 
 const lambdaEntry = fileURLToPath(new URL("../../api/src/lambda-handlers.ts", import.meta.url));
@@ -49,10 +42,6 @@ export class AutoHarnessRuntimeStack extends Stack {
     super(scope, id, props);
 
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
-    const webOrigin = new CfnParameter(this, "WebOrigin", {
-      description: "Exact browser origin allowed by control-plane CORS.",
-      type: "String",
-    });
     const integrationKey = new kms.Key(this, "IntegrationKey", {
       description: "Encrypts Auto Harness integration credentials.",
       enableKeyRotation: true,
@@ -67,7 +56,6 @@ export class AutoHarnessRuntimeStack extends Stack {
       HARNESS_DDB_PREFIX: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
       KMS_KEY_ID: integrationKey.keyArn,
-      WEB_ORIGIN: webOrigin.valueAsString,
     };
     const functionProps = {
       bundling: { minify: true, sourceMap: true },
@@ -190,9 +178,11 @@ export class AutoHarnessRuntimeStack extends Stack {
     });
     cronRule.addTarget(new targets.LambdaFunction(cronFunction));
 
-    void new CfnOutput(this, "RestApiUrl", { value: httpApi.attrApiEndpoint });
+    const restApiUrl = httpApi.attrApiEndpoint;
+    const websocketUrl = Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]);
+    void new CfnOutput(this, "RestApiUrl", { value: restApiUrl });
     void new CfnOutput(this, "WebSocketUrl", {
-      value: Fn.join("", [websocketApi.attrApiEndpoint, "/prod"]),
+      value: websocketUrl,
     });
     void new CfnOutput(this, "IntegrationKeyArn", {
       value: integrationKey.keyArn,
@@ -204,8 +194,10 @@ export class AutoHarnessRuntimeStack extends Stack {
       httpApi,
       integrationKey,
       restFunction,
+      restApiUrl,
       websocketApi,
       websocketFunction,
+      websocketUrl,
     };
   }
 }

@@ -15,6 +15,7 @@ The control plane owns:
 | ----------------------------- | -------------------------------------------------------------- |
 | Public REST API               | API Gateway HTTP API + Lambda                                  |
 | Real-time agent + UI channels | API Gateway WebSocket API + Lambda                             |
+| Browser UI                    | CloudFront + Next.js Lambda image                              |
 | Durable state                 | DynamoDB (on-demand)                                           |
 | Long-term log archives        | S3                                                             |
 | Session queue + assignment    | Scheduler service (invoked from REST/WS/cron)                  |
@@ -43,12 +44,15 @@ graph TB
         WS["WebSocket /ws"]
     end
 
+    CF["CloudFront"]
+
     subgraph Lambda
         RESTH["REST handlers"]
         WSH["WS $connect / $disconnect / $default"]
         Cron["Cron evaluator"]
         Sched["Scheduler service"]
         Archive["Archival helper"]
+        WebH["Next.js web UI"]
     end
 
     subgraph Data
@@ -59,8 +63,10 @@ graph TB
         EB["EventBridge 1-min"]
     end
 
-    WebUI --> REST
-    WebUI --> WS
+    WebUI --> CF
+    CF --> WebH
+    CF --> REST
+    CF --> WS
     CI --> REST
     Agent --> WS
     REST --> RESTH
@@ -85,6 +91,7 @@ services/cdk/
     ├── cli.ts                  # CDK app; reads documented CDK context
     ├── foundation-stack.ts      # DynamoDB, archive S3, and bounded IAM policies
     ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, EventBridge cron, integration KMS key
+    ├── web-stack.ts             # CloudFront + Next.js Lambda image
     ├── tables.ts                # durable-table catalog shared by synthesis metadata
     └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
@@ -187,7 +194,6 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable session-list cursors                                                                   |
 | `TABLE_*` or single table prefix   | ✓         | DynamoDB table names (from CDK)                                                                                                                                 |
 | `ARCHIVE_BUCKET`                   | ✓         | S3 bucket name                                                                                                                                                  |
-| `WEB_ORIGIN`                       | ✓         | CORS allow-list origin                                                                                                                                          |
 | `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |
 | `KMS_KEY_ID`                       | for Slack | Encrypt integration secrets                                                                                                                                     |
 | `AWS_REGION`                       | auto      | Region                                                                                                                                                          |

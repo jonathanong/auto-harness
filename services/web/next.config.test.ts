@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const originalApiHttp = process.env.HARNESS_API_HTTP;
 const originalApiUrl = process.env.HARNESS_API_URL;
 const originalViewerWsUrl = process.env.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL;
+const originalWebCloud = process.env.HARNESS_WEB_CLOUD;
 
 afterEach(() => {
   vi.resetModules();
   restoreEnv("HARNESS_API_HTTP", originalApiHttp);
   restoreEnv("HARNESS_API_URL", originalApiUrl);
   restoreEnv("NEXT_PUBLIC_HARNESS_VIEWER_WS_URL", originalViewerWsUrl);
+  restoreEnv("HARNESS_WEB_CLOUD", originalWebCloud);
 });
 
 function restoreEnv(name: string, value: string | undefined): void {
@@ -54,5 +56,17 @@ describe("services/web CSP connect-src", () => {
     expect(config.env!.NEXT_PUBLIC_HARNESS_VIEWER_WS_URL).toBe(
       "wss://viewer.example.com:9443/ws/viewer",
     );
+  });
+
+  it("uses same-origin CloudFront routes in a cloud build", async () => {
+    process.env.HARNESS_WEB_CLOUD = "1";
+    vi.resetModules();
+    const { default: config } = await import("./next.config.ts");
+    expect(config.output).toBe("standalone");
+    expect(config.env).toBeUndefined();
+    expect(await config.rewrites!()).toEqual([]);
+    const csp = await loadCspHeader();
+    expect(csp).toContain("connect-src 'self'");
+    expect(csp).not.toContain("ws://127.0.0.1:7420");
   });
 });

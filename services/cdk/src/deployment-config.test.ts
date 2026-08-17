@@ -8,7 +8,6 @@ describe("deploymentConfig", () => {
       deploymentConfig("deploy", {
         AWS_REGION: "us-west-2",
         HARNESS_DEPLOY_ENVIRONMENT: "production",
-        HARNESS_DEPLOY_WEB_ORIGIN: "https://harness.example.com",
       }),
     ).toMatchObject({
       adminsSsmParam: "/auto-harness/production/harness-admins",
@@ -16,6 +15,7 @@ describe("deploymentConfig", () => {
       removalPolicy: "retain",
       runtimeStackName: "AutoHarness-production-Runtime",
       tablePrefix: "AutoHarness-production",
+      webStackName: "AutoHarness-production-Web",
     });
   });
 
@@ -34,25 +34,8 @@ describe("deploymentConfig", () => {
     expect(() =>
       deploymentConfig("deploy", {
         HARNESS_DEPLOY_ENVIRONMENT: "ok",
-        HARNESS_DEPLOY_WEB_ORIGIN: "https://example.test",
       }),
     ).toThrow("AWS_REGION");
-    expect(() =>
-      deploymentConfig("deploy", {
-        AWS_REGION: "x",
-        HARNESS_DEPLOY_ENVIRONMENT: "ok",
-        HARNESS_DEPLOY_WEB_ORIGIN: "example.test/path",
-      }),
-    ).toThrow("absolute URL");
-    for (const origin of ["https://example.test/path", "ftp://example.test"]) {
-      expect(() =>
-        deploymentConfig("deploy", {
-          AWS_REGION: "x",
-          HARNESS_DEPLOY_ENVIRONMENT: "ok",
-          HARNESS_DEPLOY_WEB_ORIGIN: origin,
-        }),
-      ).toThrow("exact HTTP(S) origin");
-    }
   });
 
   it("does not require a web origin for teardown", () => {
@@ -75,7 +58,6 @@ describe("deploymentConfig", () => {
         HARNESS_CURSOR_SECRET_SSM_PARAM: "/custom/cursor",
         HARNESS_DEPLOY_CONFIRM: "review",
         HARNESS_DEPLOY_ENVIRONMENT: "review",
-        HARNESS_DEPLOY_WEB_ORIGIN: "http://localhost:7421",
         HARNESS_SESSION_SECRET_SSM_PARAM: "/custom/session",
       }),
     ).toMatchObject({

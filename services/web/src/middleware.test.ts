@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 import { middleware } from "./middleware.ts";
@@ -11,6 +11,9 @@ describe("web authentication middleware", () => {
   afterEach(() => {
     delete process.env.HARNESS_AUTH_MODE;
     delete process.env.HARNESS_SESSION_SECRET;
+    delete process.env.HARNESS_WEB_REMOTE_AUTH;
+    delete process.env.HARNESS_API_HTTP;
+    vi.unstubAllGlobals();
   });
 
   it("allows disabled mode and redirects missing, invalid, or expired sessions to login", async () => {
@@ -57,6 +60,28 @@ describe("web authentication middleware", () => {
         )
       ).headers.get("x-middleware-next"),
     ).toBe("1");
+  });
+
+  it("validates cloud sessions through the API without receiving the signing secret", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    process.env.HARNESS_WEB_REMOTE_AUTH = "1";
+    process.env.HARNESS_API_HTTP = "https://api.example.test/";
+    const fetch = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetch);
+    const request = new NextRequest("https://web.example.test/sessions", {
+      headers: { cookie: "auto_harness_session=opaque" },
+    });
+    expect((await middleware(request)).headers.get("x-middleware-next")).toBe("1");
+    expect(fetch).toHaveBeenCalledWith(new URL("https://api.example.test/api/v1/auth/me"), {
+      headers: { cookie: "auto_harness_session=opaque" },
+    });
+
+    fetch.mockResolvedValueOnce(new Response("no", { status: 401 }));
+    expect((await middleware(request)).headers.get("location")).toContain("/login?");
+    fetch.mockRejectedValueOnce(new Error("offline"));
+    expect((await middleware(request)).headers.get("location")).toContain("/login?");
+    delete process.env.HARNESS_API_HTTP;
+    expect((await middleware(request)).headers.get("location")).toContain("/login?");
   });
 });
 

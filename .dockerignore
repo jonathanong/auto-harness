@@ -1,0 +1,11 @@
+.git
+.next
+.next-e2e
+cdk.out
+coverage
+node_modules
+**/.next
+**/.next-e2e
+**/cdk.out
+**/coverage
+**/node_modules

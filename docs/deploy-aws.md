@@ -1,8 +1,9 @@
 # Deploy — AWS control plane
 
 `services/cdk` owns the supported AWS lifecycle for the persistence foundation,
-HTTP/WebSocket API Gateway, bundled Lambda adapters, and EventBridge-triggered
-cron Lambda. It exposes distinct `deploy`, `update`, and `teardown` commands.
+HTTP/WebSocket API Gateway, bundled Lambda adapters, EventBridge-triggered cron
+Lambda, and the browser UI on CloudFront + Lambda. It exposes distinct `deploy`,
+`update`, and `teardown` commands. There are no provisioned servers.
 Architecture: [aws.md](aws.md).
 
 Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.md). VPS agent: [deploy-host-daemon.md](deploy-host-daemon.md).
@@ -11,21 +12,21 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                         | Status                                                                  |
-| ---------------------------- | ----------------------------------------------------------------------- |
-| Design / data model          | Documented in [aws.md](aws.md)                                          |
-| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime stacks                             |
-| Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts              |
-| Account-backed proof         | Deploy → update → health → teardown passed in `us-west-2` on 2026-08-16 |
+| Item                         | Status                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| Design / data model          | Documented in [aws.md](aws.md)                                                   |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks                     |
+| Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                       |
+| Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17 |
 
 ---
 
 ## Prerequisites
 
-- Node ≥22.18 and pnpm
+- Node ≥22.18, pnpm, and Docker (used only to build the Lambda image)
 - `pnpm install` from the repository root (the CDK CLI is a package development dependency)
 - AWS CLI credentials with access to CloudFormation, CDK bootstrap resources,
-  DynamoDB, S3, Lambda, API Gateway, EventBridge, IAM, KMS, and SSM
+  DynamoDB, S3, Lambda, API Gateway, EventBridge, CloudFront, ECR, IAM, KMS, and SSM
 - `AWS_REGION` (or `AWS_DEFAULT_REGION`) set to the target region
 
 ---
@@ -68,7 +69,6 @@ these three specific parameters).
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | SSM: bootstrap secrets | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
-| `WEB_ORIGIN`           | CORS allow-list for the web UI origin                                                                                                        |
 | Table names / prefix   | From stack (see [aws.md](aws.md) env table)                                                                                                  |
 | `ARCHIVE_BUCKET`       | S3 archive bucket                                                                                                                            |
 | `WS_API_ENDPOINT`      | API Gateway Management API for `postToConnection`                                                                                            |
@@ -94,13 +94,13 @@ characters.
 | ------------------------------- | -------------------- | ---------------------------------------------------------- |
 | `HARNESS_DEPLOY_ENVIRONMENT`    | Always               | Isolates stack, table, bucket, and SSM names               |
 | `AWS_REGION`                    | Always               | AWS deployment region                                      |
-| `HARNESS_DEPLOY_WEB_ORIGIN`     | Deploy and update    | Exact web UI origin, such as `https://harness.example.com` |
 | `HARNESS_DEPLOY_REMOVAL_POLICY` | No; default `retain` | `retain` for durable data or `destroy` for disposable data |
 | `AWS_ACCOUNT_ID`                | No                   | Avoids the STS account lookup when already known           |
 | `HARNESS_DEPLOY_CONFIRM`        | Teardown only        | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`            |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
-`AutoHarness-<environment>-Runtime`, and `AutoHarness-<environment>-*` for tables.
+`AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
+`AutoHarness-<environment>-*` for tables.
 The names are generic and do not depend on any repository connected later in the UI.
 
 ## Deploy a new environment
@@ -109,13 +109,13 @@ The names are generic and do not depend on any repository connected later in the
 pnpm install
 export AWS_REGION=us-west-2
 export HARNESS_DEPLOY_ENVIRONMENT=production
-export HARNESS_DEPLOY_WEB_ORIGIN=https://harness.example.com
 pnpm --filter @auto-harness/cdk run deploy
 ```
 
-`deploy` refuses to run if either application stack already exists, verifies the
+`deploy` refuses to run if any application stack already exists, verifies the
 three SSM parameters, bootstraps CDK in the selected account and region, deploys
-both stacks, and calls the unauthenticated REST `/health` endpoint. The shared
+all three stacks, calls the REST `/health` endpoint, loads the hosted `/login`
+page, and prints both URLs. The shared
 `CDKToolkit` bootstrap stack remains available for later environments.
 
 For a disposable environment, set the removal policy before its first deploy:
@@ -127,16 +127,16 @@ pnpm --filter @auto-harness/cdk run deploy
 
 ## Update an environment
 
-Use the same environment, region, origin, removal policy, and any SSM overrides
+Use the same environment, region, removal policy, and any SSM overrides
 used for deployment:
 
 ```bash
 pnpm --filter @auto-harness/cdk run update
 ```
 
-`update` requires the foundation stack, applies the current CDK app to both
-stacks, and runs the REST health check. It also recreates a missing runtime stack
-after a retained teardown.
+`update` requires the foundation stack, applies the current CDK app to all three
+stacks, and runs the REST and web health checks. It also recreates missing runtime
+or web stacks after a retained teardown.
 
 ## Teardown
 
@@ -147,9 +147,10 @@ export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
 pnpm --filter @auto-harness/cdk run teardown
 ```
 
-With the default `retain` policy, teardown removes the runtime stack and leaves the
-managed foundation stack and data in place. Run `update` to restore the runtime.
-With `destroy`, teardown removes both application stacks and verifies their absence.
+With the default `retain` policy, teardown removes the web and runtime stacks and
+leaves the managed foundation stack and data in place. Run `update` to restore
+them. With `destroy`, teardown removes all three application stacks and verifies
+their absence.
 The integration KMS key enters AWS's seven-day pending-deletion window. Teardown
 does not remove the account-level `CDKToolkit` stack or the three SSM parameters.
 
@@ -162,8 +163,8 @@ choose `destroy` for data that must survive a stack replacement.
 
 ## Stack parameters and outputs
 
-The lifecycle script supplies the runtime stack's SSM parameter names and exact
-`WebOrigin`. Secret values themselves are never CDK parameters or context.
+The lifecycle script supplies the runtime stack's SSM parameter names. Secret
+values themselves are never CDK parameters or context.
 
 | Output                                                      | Consumer                                          |
 | ----------------------------------------------------------- | ------------------------------------------------- |
@@ -171,6 +172,7 @@ The lifecycle script supplies the runtime stack's SSM parameter names and exact
 | `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
 | `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
 | `RestApiUrl`, `WebSocketUrl`, `IntegrationKeyArn`           | Runtime clients and integration encryption        |
+| `WebUrl`                                                    | Browser control-plane URL                         |
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance
@@ -202,7 +204,7 @@ Prefer **control plane first**, then agents, so old agents fail closed on unknow
 | When                           | Gate                                                                      |
 | ------------------------------ | ------------------------------------------------------------------------- |
 | Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests |
-| Before an AWS deployment claim | Deploy, update, REST health check, and teardown in an AWS account         |
+| Before an AWS deployment claim | Deploy, update, REST/web health checks, and teardown in an AWS account    |
 
 ---
 

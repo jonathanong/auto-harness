@@ -119,7 +119,6 @@ describe("AutoHarnessRuntimeStack", () => {
         "HarnessAdminsSsmParam",
         "HarnessCursorSecretSsmParam",
         "HarnessSessionSecretSsmParam",
-        "WebOrigin",
       ]),
     );
     // These parameters hold an SSM parameter *name*, not a secret value — unlike the

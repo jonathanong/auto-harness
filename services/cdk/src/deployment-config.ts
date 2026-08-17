@@ -12,7 +12,7 @@ export type DeploymentConfig = {
   sessionSecretSsmParam: string;
   tablePrefix: string;
   teardownConfirmation?: string;
-  webOrigin?: string;
+  webStackName: string;
 };
 
 const environmentPattern = /^[a-z][a-z0-9-]{0,31}$/;
@@ -23,21 +23,8 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
-function parseWebOrigin(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("HARNESS_DEPLOY_WEB_ORIGIN must be an absolute URL");
-  }
-  if (url.origin !== value || !["http:", "https:"].includes(url.protocol)) {
-    throw new Error("HARNESS_DEPLOY_WEB_ORIGIN must be an exact HTTP(S) origin");
-  }
-  return value;
-}
-
 export function deploymentConfig(
-  operation: DeploymentOperation,
+  _operation: DeploymentOperation,
   env: NodeJS.ProcessEnv = process.env,
 ): DeploymentConfig {
   const environment = required(env, "HARNESS_DEPLOY_ENVIRONMENT");
@@ -65,12 +52,10 @@ export function deploymentConfig(
     sessionSecretSsmParam:
       env.HARNESS_SESSION_SECRET_SSM_PARAM?.trim() || `${base}/harness-session-secret`,
     tablePrefix: `AutoHarness-${environment}`,
+    webStackName: `AutoHarness-${environment}-Web`,
     ...(env.AWS_ACCOUNT_ID?.trim() ? { accountId: env.AWS_ACCOUNT_ID.trim() } : {}),
     ...(env.HARNESS_DEPLOY_CONFIRM?.trim()
       ? { teardownConfirmation: env.HARNESS_DEPLOY_CONFIRM.trim() }
       : {}),
-    ...(operation === "teardown"
-      ? {}
-      : { webOrigin: parseWebOrigin(required(env, "HARNESS_DEPLOY_WEB_ORIGIN")) }),
   };
 }
