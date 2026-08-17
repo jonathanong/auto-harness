@@ -332,9 +332,13 @@ parallel PR verification and does not change the default CI resource names.
 It is registered only when `HARNESS_SCREENSHOTS=1` (set by the `screenshots` script itself), so a
 bare `playwright test` in CI never picks it up — same pattern as the opt-in `real-cli` project.
 
-Each spec seeds a fixture (via `e2e/screenshots/lib.ts`'s `connectHost`/`logFrame`, the same
-fake-host-over-real-WebSocket approach as `e2e/control/live-session-logs.spec.ts`) and calls
-`shot(page, "<finding-slug>")`, which strips animation/transition/caret variance and writes
+`e2e/screenshots/lib.ts` currently exports `CONTROL_BASE`/`HOST_PANE_BASE` and `shot()`; the smoke
+spec (`dashboard-smoke.spec.ts`) just navigates to each app's root — no fixture seeding yet. A spec
+that needs seeded state (e.g. a live session's log stream) should add its own connect/seed helpers
+to `lib.ts`, following the fake-host-over-real-WebSocket approach in
+`e2e/control/live-session-logs.spec.ts`, kept minimal per spec rather than pre-built (unused exports
+fail `pnpm knip`). Every spec calls `shot(page, "<finding-slug>")`, which strips animation/
+transition/caret variance and writes
 `docs/screenshots/<finding-slug>/<tag>.png`. `<tag>` comes from `HARNESS_SCREENSHOT_TAG` (default
 `current`) — capture a before/after pair for a design-review PR by running once on the pre-fix
 commit and once on the fix branch:
