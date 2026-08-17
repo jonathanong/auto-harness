@@ -17,11 +17,6 @@ const mocks = vi.hoisted(() => ({
   terminalOptions: vi.fn(),
 }));
 
-vi.mock("@xterm/addon-fit", () => ({
-  FitAddon: class {
-    fit() {}
-  },
-}));
 vi.mock("@xterm/addon-search", () => ({
   SearchAddon: class {
     findNext = mocks.findNext;
@@ -90,6 +85,11 @@ describe("SessionTerminalViewer", () => {
       "terminal",
     );
     expect(mocks.write).toHaveBeenCalledWith("\u001b[32mhello\u001b[0m\n", expect.any(Function));
+    // Grid must stay pinned to the real daemon PTY's fixed size (pty-runner.ts) — this is a
+    // closed-stream replay, not a live PTY, so reflowing the grid corrupts cursor-addressed output.
+    expect(mocks.terminalOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ cols: 120, rows: 40 }),
+    );
 
     const search = field<HTMLInputElement>(view.container, "session-terminal-search");
     setValue(search, "hello");

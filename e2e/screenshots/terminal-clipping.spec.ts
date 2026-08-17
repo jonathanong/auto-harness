@@ -7,11 +7,15 @@ const LINE_COUNT = 60;
 
 /**
  * Regression coverage for the terminal-clipping fix (design review finding #1): the session
- * log viewer used to hardcode a 40-row xterm grid inside a shorter, `overflow-hidden` box, so
- * the bottom rows were rendered but physically invisible. Seeds numbered lines (not ANSI noise —
- * see docs/e2e.md) so a missing tail line is self-evident in the screenshot, and measures the
- * rendered terminal's height against its host container to lock the fix in as an assertion, not
- * just a visual.
+ * log viewer used to render its fixed 120x40 xterm grid — matching the daemon PTY's own fixed
+ * size (services/host-daemon/src/pty-runner.ts), which this is a closed-stream replay of and
+ * must not reflow — inside a shorter, `overflow-hidden` box, so the bottom rows were rendered
+ * but physically invisible. The fix is CSS-only (session-terminal-viewer.tsx): the container no
+ * longer caps its height, so it grows to the grid's natural size instead of clipping it. Seeds
+ * numbered lines (not ANSI noise — see docs/e2e.md) so a missing tail line is self-evident in the
+ * screenshot, and walks the DOM ancestor chain from the rendered `.xterm-screen` canvas looking
+ * for an `overflow: hidden` ancestor whose bottom edge cuts it off — the actual clipping
+ * mechanism, not a height comparison that goes trivially true once the box sizes to its content.
  */
 test.describe("terminal clipping", () => {
   test("renders every line within the visible viewport, nothing clipped", async ({
@@ -80,14 +84,20 @@ test.describe("terminal clipping", () => {
       await page.getByTestId("session-logs").scrollIntoViewIfNeeded();
       await shot(page, "terminal-clipping");
 
-      const geometry = await page.getByTestId("session-logs").evaluate((container) => {
+      const clippedBy = await page.getByTestId("session-logs").evaluate((container) => {
         const rendered = container.querySelector<HTMLElement>(".xterm-screen");
-        return {
-          containerHeight: container.clientHeight,
-          renderedHeight: rendered?.clientHeight ?? 0,
-        };
+        if (!rendered) return "no .xterm-screen rendered";
+        const targetBottom = rendered.getBoundingClientRect().bottom;
+        for (let node = rendered.parentElement; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (style.overflow !== "hidden" && style.overflowY !== "hidden") continue;
+          if (targetBottom > node.getBoundingClientRect().bottom + 0.5) {
+            return `${node.tagName.toLowerCase()}[data-pw="${node.getAttribute("data-pw") ?? ""}"]`;
+          }
+        }
+        return null;
       });
-      expect(geometry.renderedHeight).toBeLessThanOrEqual(geometry.containerHeight);
+      expect(clippedBy).toBeNull();
     } finally {
       if (host) await closeSocket(host.socket);
     }

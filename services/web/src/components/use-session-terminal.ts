@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
-import type { FitAddon } from "@xterm/addon-fit";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { Terminal } from "@xterm/xterm";
 
@@ -9,14 +8,13 @@ import { DEFAULT_TERMINAL_FONT_SIZE, terminalText } from "../lib/session-termina
 type SessionTerminalRuntime = {
   terminal: Terminal;
   search: SearchAddon;
-  fitAddon: FitAddon;
   renderedThrough: string | null;
   renderedText: string;
 };
 
 /**
  * The host can be temporarily hidden (0x0) while navigating or mid-fullscreen-transition,
- * which makes FitAddon's measurement (or a stale-rows repaint) throw — expected, not an error.
+ * which makes a repaint throw — expected, not an error.
  */
 function repaintTerminal(runtime: SessionTerminalRuntime | null): void {
   if (!runtime) return;
@@ -25,18 +23,6 @@ function repaintTerminal(runtime: SessionTerminalRuntime | null): void {
   } catch {
     // See doc comment above.
   }
-}
-
-/** Resizes the terminal's grid to fill its host element, then repaints. */
-function fitTerminal(runtime: SessionTerminalRuntime | null): void {
-  if (!runtime) return;
-  try {
-    runtime.fitAddon.fit();
-  } catch {
-    // See doc comment above.
-    return;
-  }
-  repaintTerminal(runtime);
 }
 
 export function useSessionTerminal(
@@ -50,49 +36,41 @@ export function useSessionTerminal(
   const textRef = useRef(text);
   itemsRef.current = items;
   textRef.current = text;
-  const fit = useCallback(() => fitTerminal(runtimeRef.current), []);
+  const refresh = useCallback(() => repaintTerminal(runtimeRef.current), []);
 
   useEffect(() => {
     let disposed = false;
-    let resizeObserver: ResizeObserver | undefined;
-    void Promise.all([
-      import("@xterm/xterm"),
-      import("@xterm/addon-fit"),
-      import("@xterm/addon-search"),
-    ]).then(([xterm, fitModule, searchModule]) => {
-      if (disposed || !hostRef.current) return;
-      const terminal = new xterm.Terminal({
-        allowTransparency: false,
-        convertEol: false,
-        cursorBlink: false,
-        disableStdin: true,
-        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-        fontSize: DEFAULT_TERMINAL_FONT_SIZE,
-        screenReaderMode: true,
-        scrollback: 10_000,
-        theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
-      });
-      const fitAddon = new fitModule.FitAddon();
-      const search = new searchModule.SearchAddon();
-      terminal.loadAddon(fitAddon);
-      terminal.loadAddon(search);
-      terminal.open(hostRef.current);
-      const runtime: SessionTerminalRuntime = {
-        terminal,
-        search,
-        fitAddon,
-        renderedText: textRef.current,
-        renderedThrough: itemsRef.current.at(-1)?.timestampSeq ?? null,
-      };
-      runtimeRef.current = runtime;
-      fitTerminal(runtime);
-      terminal.write(textRef.current, () => repaintTerminal(runtime));
-      resizeObserver = new ResizeObserver(() => fitTerminal(runtimeRef.current));
-      resizeObserver.observe(hostRef.current);
-    });
+    void Promise.all([import("@xterm/xterm"), import("@xterm/addon-search")]).then(
+      ([xterm, searchModule]) => {
+        if (disposed || !hostRef.current) return;
+        const terminal = new xterm.Terminal({
+          allowTransparency: false,
+          convertEol: false,
+          cols: 120,
+          rows: 40,
+          cursorBlink: false,
+          disableStdin: true,
+          fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+          fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+          screenReaderMode: true,
+          scrollback: 10_000,
+          theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
+        });
+        const search = new searchModule.SearchAddon();
+        terminal.loadAddon(search);
+        terminal.open(hostRef.current);
+        const runtime: SessionTerminalRuntime = {
+          terminal,
+          search,
+          renderedText: textRef.current,
+          renderedThrough: itemsRef.current.at(-1)?.timestampSeq ?? null,
+        };
+        runtimeRef.current = runtime;
+        terminal.write(textRef.current, () => repaintTerminal(runtime));
+      },
+    );
     return () => {
       disposed = true;
-      resizeObserver?.disconnect();
       runtimeRef.current?.terminal.dispose();
       runtimeRef.current = null;
     };
@@ -128,9 +106,9 @@ export function useSessionTerminal(
   useEffect(() => {
     if (runtimeRef.current) {
       runtimeRef.current.terminal.options.fontSize = fontSize;
-      fit();
+      refresh();
     }
-  }, [fontSize, fit]);
+  }, [fontSize, refresh]);
 
-  return { fit, runtimeRef };
+  return { refresh, runtimeRef };
 }

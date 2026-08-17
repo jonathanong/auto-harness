@@ -28,16 +28,16 @@ export function SessionTerminalViewer({
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState("Search logs");
 
-  const { fit, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize);
+  const { refresh, runtimeRef } = useSessionTerminal(hostRef, items, text, fontSize);
 
   useEffect(() => {
     const onFullscreenChange = () => {
       if (!document.fullscreenElement) setFullscreen(false);
-      requestAnimationFrame(fit);
+      requestAnimationFrame(refresh);
     };
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
-  }, [fit]);
+  }, [refresh]);
 
   const search = (direction: "next" | "previous") => {
     const found =
@@ -55,7 +55,7 @@ export function SessionTerminalViewer({
     }
     setFullscreen(true);
     void hostRef.current?.parentElement?.requestFullscreen?.().catch(() => undefined);
-    requestAnimationFrame(fit);
+    requestAnimationFrame(refresh);
   };
 
   const download = () => {
@@ -116,7 +116,7 @@ export function SessionTerminalViewer({
       </pre>
       <div
         ref={hostRef}
-        className={fullscreen ? "min-h-0 flex-1 overflow-hidden" : "h-[32rem] overflow-hidden"}
+        className={fullscreen ? "min-h-0 flex-1 overflow-auto" : "overflow-x-auto"}
         data-pw="session-logs"
         aria-label="Read-only ANSI session output"
       />
