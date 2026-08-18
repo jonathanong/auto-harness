@@ -29,7 +29,9 @@ type InventoryPollOptions = {
   pollMs: number;
   log: (line: string) => void;
   error: (line: string) => void;
-  fetchFn?: typeof fetch;
+  // `| undefined` (not just optional) so callers can pass through their own already-
+  // optional fetchFn without a conditional spread at every call site.
+  fetchFn?: typeof fetch | undefined;
 };
 
 function noopInventoryPollStop(): Promise<void> {
@@ -108,7 +110,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
-    ...(options.config.apiKey !== undefined ? { apiKey: options.config.apiKey } : {}),
+    apiKey: options.config.apiKey,
     onError: (err) => {
       error(`ws error: ${err.message}`);
     },
@@ -148,7 +150,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
       pollMs,
       log,
       error,
-      ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+      fetchFn: options.fetchFn,
     });
   }
 

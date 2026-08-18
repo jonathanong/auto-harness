@@ -9,7 +9,9 @@ import { writeWs, type RegisterMessage } from "./ws-wire.ts";
 type Options = {
   url: string;
   hostId?: string;
-  apiKey?: string;
+  // `| undefined` (not just optional) so callers can pass through their own already-
+  // optional apiKey without a conditional spread at the call site.
+  apiKey?: string | undefined;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (err: Error) => void;
