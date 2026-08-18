@@ -45,13 +45,20 @@ download/restart orchestration remains future work.
 
 ### Teardown
 
-| Surface                              | Where to look                                           |
-| ------------------------------------ | ------------------------------------------------------- |
-| Local processes + DynamoDB container | [deploy-local.md](deploy-local.md#teardown)             |
-| AWS control plane                    | [deploy-aws.md](deploy-aws.md#teardown)                 |
-| Single agent host                    | [deploy-host-daemon.md](deploy-host-daemon.md#teardown) |
+| Surface                                             | Where to look                                           |
+| --------------------------------------------------- | ------------------------------------------------------- |
+| Local processes + DynamoDB container                | [deploy-local.md](deploy-local.md#teardown)             |
+| AWS control plane (stacks only)                     | [deploy-aws.md](deploy-aws.md#teardown)                 |
+| AWS control plane (full decommission, irreversible) | [deploy-aws.md](deploy-aws.md#purge-irreversible)       |
+| Single agent host                                   | [deploy-host-daemon.md](deploy-host-daemon.md#teardown) |
 
 Always drain agents before destroying an AWS control plane.
+
+`teardown` alone does not remove a `retain`-policy environment's data or its
+three bootstrap SSM parameters — see
+[deploy-aws.md#purge-irreversible](deploy-aws.md#purge-irreversible) for the
+separate, irreversible `purge` operation that actually decommissions an
+environment.
 
 ---
 

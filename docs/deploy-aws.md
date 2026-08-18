@@ -12,12 +12,12 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                         | Status                                                                           |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| Design / data model          | Documented in [aws.md](aws.md)                                                   |
-| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks                     |
-| Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                       |
-| Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17 |
+| Item                         | Status                                                                                                                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Design / data model          | Documented in [aws.md](aws.md)                                                                                                                                                                                                                               |
+| CDK package (`services/cdk`) | Persistence + REST/WebSocket runtime + serverless web stacks                                                                                                                                                                                                 |
+| Runtime lifecycle            | Supported by explicit deploy, update, and teardown scripts                                                                                                                                                                                                   |
+| Account-backed proof         | Deploy → update → REST/web health → teardown passed in `us-west-2` on 2026-08-17. `purge` (including a real programmatic session created, dispatched, and completed in between) verified against a disposable `qa` environment in `us-west-2` on 2026-08-18. |
 
 ---
 
@@ -43,8 +43,8 @@ defeats the point of a secret. Instead, each Lambda's environment holds only the
 from SSM once per cold start.
 
 Create all three as `SecureString` values in the AWS Systems Manager Parameter
-Store UI before deploying. For an environment named `<environment>`, the default
-names are:
+Store UI before deploying, or with the AWS CLI. For an environment named
+`<environment>`, the default names are:
 
 - `/auto-harness/<environment>/harness-admins`
 - `/auto-harness/<environment>/harness-session-secret`
@@ -54,6 +54,33 @@ The admin value follows [the bootstrap-admin format](auth.md#admin-accounts), an
 both secret values must be independently generated high-entropy strings. The deploy
 and update commands verify that all three parameters exist before changing a stack.
 Their values are never passed to CDK, printed, or stored in source control.
+
+CLI form (verified against a real deploy):
+
+```bash
+environment=<environment>
+
+admins_b64=$(echo '[{"username":"admin","password":"'"$(openssl rand -base64 24)"'"}]' | base64)
+aws ssm put-parameter --type SecureString \
+  --name "/auto-harness/$environment/harness-admins" \
+  --value "$admins_b64"
+
+aws ssm put-parameter --type SecureString \
+  --name "/auto-harness/$environment/harness-session-secret" \
+  --value "$(openssl rand -base64 32)"
+
+aws ssm put-parameter --type SecureString \
+  --name "/auto-harness/$environment/harness-cursor-secret" \
+  --value "$(openssl rand -base64 32)"
+```
+
+Save the generated admin password somewhere you can read it back — it is not
+retrievable from SSM in plaintext form without another `get-parameter` call, and
+this is the only way to sign in until a user account exists. The parameter name
+must keep the `/auto-harness/<environment>/...` prefix (or the matching
+`*_SSM_PARAM` override) — the CDK-side parameter has `allowedPattern: "^/.+"`, and
+a flat name builds a broken ARN that fails every Lambda cold start closed on
+`AccessDenied`.
 
 Override a default parameter name with `HARNESS_ADMINS_SSM_PARAM`,
 `HARNESS_SESSION_SECRET_SSM_PARAM`, or `HARNESS_CURSOR_SECRET_SSM_PARAM`. Each
@@ -126,6 +153,17 @@ For a disposable environment, set the removal policy before its first deploy:
 export HARNESS_DEPLOY_REMOVAL_POLICY=destroy
 pnpm --filter @auto-harness/cdk run deploy
 ```
+
+**If a first deploy fails partway** (e.g. `ROLLBACK_COMPLETE`): `deploy` refuses to
+run again while any application stack exists, and `stackExists`
+(`services/cdk/src/deployment-support.ts`) treats a `ROLLBACK_COMPLETE` shell as
+existing — it only reports "absent" when the CloudFormation error text matches
+`does not exist`. `update` cannot repair a create-failed stack either, since it
+requires the foundation stack to already be healthy. Delete the failed stack(s)
+manually (CloudFormation console or `aws cloudformation delete-stack`) before
+retrying `deploy`. (This describes the code path; it was not deliberately
+triggered during this doc's most recent account-backed verification, which
+deployed cleanly on the first attempt.)
 
 ## Update an environment
 
@@ -207,6 +245,26 @@ Two things purge deliberately does **not** finish immediately:
   `HARNESS_DEPLOY_PURGE_SSM=1` is also set. They are hand-managed outside CDK and
   may be shared with another environment, so deleting them is never implied by the
   rest of purge.
+
+One thing purge does not finish **at all**, confirmed against a real purged
+environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is
+created by the Lambda service on first invocation, not by CDK**, so it is not a
+stack resource and `cdk destroy` never touches it. None of the three application
+stacks configure `logRetention`, so these log groups default to never-expire and
+outlive the environment they were created for indefinitely unless deleted by hand
+(`aws logs delete-log-group --log-group-name /aws/lambda/<function-name>`) — find
+them with `aws logs describe-log-groups --log-group-name-prefix
+/aws/lambda/AutoHarness-<environment>`. [costs.md](costs.md#cloudwatch) already
+recommends setting 7–14 day retention; no stack currently implements that
+recommendation.
+
+Purge also does not touch the account-level CDK bootstrap assets — the
+`cdk-hnb659fds-assets-*` S3 staging bucket and the
+`cdk-hnb659fds-container-assets-*` ECR repository. These are shared across every
+environment deployed with this CDK bootstrap in the account, not scoped to one
+environment, so purge deliberately leaves them for other environments to keep
+using; they are not environment-specific residue in the way the log groups above
+are.
 
 `purge` refuses to run if no application stack exists at all, and throws if any
 stack survives its destroy phases — it never reports success on a partial result.
