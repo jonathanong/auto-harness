@@ -62,4 +62,25 @@ describe("HostRepositoriesSection", () => {
     );
     view.unmount();
   });
+
+  it("shows retryable errors in place of the attach form and alongside worktree status", () => {
+    const view = mountForm(
+      <HostRepositoriesSection
+        hostId="host"
+        inventory={{ repositories: [], providerAccounts: [], commandProfiles: {} }}
+        namesById={{}}
+        unattachedCatalog={[]}
+        liveById={{}}
+        catalogError="GET /api/v1/repositories → 500"
+        worktreesError="GET /api/v1/worktrees → 500"
+      />,
+    );
+    expect(field(view.container, "host-repositories-catalog-error").textContent).toContain(
+      "Could not load the repository catalog",
+    );
+    expect(field(view.container, "host-repositories-worktree-status-error").textContent).toContain(
+      "Could not load live worktree status",
+    );
+    view.unmount();
+  });
 });

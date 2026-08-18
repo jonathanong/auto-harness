@@ -3,6 +3,7 @@ import {
   AddWorktreeForm,
   RemoveRepoButton,
   RemoveWorktreeButton,
+  SectionError,
   WorktreesHierarchy,
   type RepoCatalogEntry,
   type WorktreeRepoGroup,
@@ -19,12 +20,16 @@ export function HostRepositoriesSection({
   namesById,
   unattachedCatalog,
   liveById,
+  catalogError,
+  worktreesError,
 }: {
   hostId: string;
   inventory: HostInventory;
   namesById: Record<string, string>;
   unattachedCatalog: RepoCatalogEntry[];
   liveById: Record<string, LiveWorktree>;
+  catalogError?: string | null;
+  worktreesError?: string | null;
 }) {
   const groups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
@@ -47,10 +52,25 @@ export function HostRepositoriesSection({
     <div className="space-y-6" data-pw="host-repositories-section">
       <section className="space-y-2">
         <h3 className="text-lg font-medium">Attach a repository</h3>
-        <AddRepoForm hostId={hostId} inventory={inventory} catalog={unattachedCatalog} />
+        {catalogError ? (
+          <SectionError
+            resource="the repository catalog"
+            message={catalogError}
+            selector="host-repositories-catalog"
+          />
+        ) : (
+          <AddRepoForm hostId={hostId} inventory={inventory} catalog={unattachedCatalog} />
+        )}
       </section>
       <section className="space-y-3">
         <h3 className="text-lg font-medium">Attached repositories</h3>
+        {worktreesError ? (
+          <SectionError
+            resource="live worktree status"
+            message={worktreesError}
+            selector="host-repositories-worktree-status"
+          />
+        ) : null}
         <WorktreesHierarchy
           groups={groups}
           hrefBase="/worktrees"

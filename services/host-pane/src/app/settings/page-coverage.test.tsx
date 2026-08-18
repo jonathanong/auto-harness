@@ -61,6 +61,39 @@ describe("host-pane settings route", () => {
 
     expect(markup).toContain("Advanced: raw host inventory JSON");
     expect(markup).toContain("&quot;repositories&quot;: []");
+    expect(markup).toContain('data-pw="provider-accounts-readonly-catalog-error"');
+    expect(markup).toContain("Could not load the provider catalog");
+  });
+
+  it("stringifies a non-Error rejection from the catalog fetch", async () => {
+    setApiTransportForTests(async (input) => {
+      if (String(input).endsWith("/inventory")) return Response.json({});
+      throw "catalog exploded";
+    });
+
+    const markup = render(await SettingsPage());
+
+    expect(markup).toContain('data-pw="provider-accounts-readonly-catalog-error"');
+    expect(markup).toContain("catalog exploded");
+  });
+
+  it("surfaces the catalog failure alongside a non-empty provider-accounts table", async () => {
+    setApiTransportForTests(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/inventory")) {
+        return Response.json({
+          repositories: [],
+          providerAccounts: [{ providerAccountId: "account-a" }],
+        });
+      }
+      throw new Error("catalog unavailable");
+    });
+
+    const markup = render(await SettingsPage());
+
+    expect(markup).toContain('data-pw="provider-accounts-readonly-catalog-error"');
+    expect(markup).toContain('data-pw="provider-accounts-readonly"');
+    expect(markup).toContain("account-a");
   });
 
   it("uses empty catalog collections when successful responses omit their items", async () => {

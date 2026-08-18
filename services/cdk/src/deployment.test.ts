@@ -67,6 +67,12 @@ describe("runDeployment", () => {
       expect.arrayContaining(["deploy", "AutoHarness-review-Foundation", "--parameters"]),
     );
     expect(deps.fetch).toHaveBeenCalledWith(new URL("https://api.example.test/health"));
+    // The agent endpoint is derived from WebUrl, not printed from the runtime stack's raw
+    // WebSocketUrl output — a host daemon must never be handed the execute-api hostname.
+    expect(deps.log).toHaveBeenCalledWith("Agent WebSocket endpoint: wss://api.example.test/ws");
+    expect(deps.log).toHaveBeenCalledWith(
+      "Set on each host: HARNESS_API_URL=https://api.example.test",
+    );
 
     const knownAccount = dependencies([false, false, false, true, true, true]);
     await runDeployment("deploy", config({ accountId: "210987654321" }), knownAccount);

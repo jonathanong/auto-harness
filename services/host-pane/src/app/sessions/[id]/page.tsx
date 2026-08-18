@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { SessionLogs, type SessionSummary } from "@auto-harness/ui";
+import { SectionError, SessionLogs, type SessionSummary } from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { ApiError, apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +12,15 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
 
   let session: SessionSummary | undefined;
+  let sessionError: string | null = null;
   try {
     session = await apiGet<SessionSummary>(`/api/v1/sessions/${encodeURIComponent(id)}`);
-  } catch {
-    /* treated as not found below */
+  } catch (error) {
+    // A 404 genuinely means the session doesn't exist. Anything else is a real
+    // failure and must not be reported to the user as "no session found".
+    if (!(error instanceof ApiError && error.status === 404)) {
+      sessionError = error instanceof Error ? error.message : String(error);
+    }
   }
 
   if (!session) {
@@ -24,21 +29,30 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
         <Link href="/sessions" className="text-sm text-muted-foreground hover:underline">
           ← Back to sessions
         </Link>
-        <p className="text-sm text-muted-foreground">
-          No session <code className="font-mono">{id}</code> found.
-        </p>
+        {sessionError ? (
+          <SectionError
+            resource={`session ${id}`}
+            message={sessionError}
+            selector="session-detail-lookup"
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No session <code className="font-mono">{id}</code> found.
+          </p>
+        )}
       </div>
     );
   }
 
   let logs: LogEntry[] = [];
+  let logsError: string | null = null;
   try {
     const data = await apiGet<{ items: LogEntry[] }>(
       `/api/v1/sessions/${encodeURIComponent(id)}/logs?limit=10000`,
     );
     logs = data.items ?? [];
-  } catch {
-    /* ignore — logs section stays empty */
+  } catch (error) {
+    logsError = error instanceof Error ? error.message : String(error);
   }
 
   return (
@@ -46,7 +60,11 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
       <SessionLiveDetail initialSession={session}>
         <div className="space-y-2">
           <h3 className="text-lg font-medium">Logs</h3>
-          <SessionLogs items={logs} />
+          {logsError ? (
+            <SectionError resource="session logs" message={logsError} selector="session-logs" />
+          ) : (
+            <SessionLogs items={logs} />
+          )}
         </div>
       </SessionLiveDetail>
     </div>

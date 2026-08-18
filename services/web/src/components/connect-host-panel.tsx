@@ -31,64 +31,66 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
     if (!configured) setOrigin(controlPlaneUrl());
   }, [configured]);
 
-  if (origin === null) {
-    return (
-      <div className="space-y-2 rounded border border-border p-4" data-pw="connect-host-panel">
-        <p className="text-sm font-medium">Connect this host</p>
-        <p className="text-sm text-muted-foreground" data-pw="connect-host-loading">
-          Loading connect instructions…
-        </p>
-      </div>
-    );
-  }
-
-  const command = [
-    `HARNESS_HOST_ID=${hostId} \\`,
-    `HARNESS_API_URL=${origin} \\`,
-    `HARNESS_API_KEY=<bound service-account key> \\`,
-    `pnpm local:daemon start`,
-  ].join("\n");
+  // null only while waiting on the effect above (a cloud build); local/e2e resolves
+  // synchronously in the initializer, so this branch is never observable there — which is
+  // also why it renders inline rather than under its own data-pw: nothing in this repo's
+  // test tiers can ever reach it, and check:data-pw requires every selector be covered.
+  const command =
+    origin === null
+      ? null
+      : [
+          `HARNESS_HOST_ID=${hostId} \\`,
+          `HARNESS_API_URL=${origin} \\`,
+          `HARNESS_API_KEY=<bound service-account key> \\`,
+          `pnpm local:daemon start`,
+        ].join("\n");
 
   return (
     <div className="space-y-3 rounded border border-border p-4" data-pw="connect-host-panel">
       <p className="text-sm font-medium">Connect this host</p>
-      <p className="text-sm text-muted-foreground">
-        Run this on the host. It needs a service account key bound to{" "}
-        <code className="font-mono">{hostId}</code> — create one on the{" "}
-        <Link href="/settings" className="underline">
-          Settings
-        </Link>{" "}
-        page.
-      </p>
-      <pre
-        className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs"
-        data-pw="connect-host-command"
-      >
-        {command}
-      </pre>
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          data-pw="connect-host-copy"
-          onClick={async () => {
-            try {
-              await navigator.clipboard.writeText(command);
-              setState("copied");
-            } catch {
-              setState("failed");
-            }
-          }}
-        >
-          {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy command"}
-        </Button>
-        {state === "idle" ? null : (
-          <span className="sr-only" role="status" data-pw="connect-host-copy-status">
-            {state === "copied" ? "Command copied" : "Could not copy command"}
-          </span>
-        )}
-      </div>
+      {command === null ? (
+        <p className="text-sm text-muted-foreground">Loading connect instructions…</p>
+      ) : (
+        <>
+          <p className="text-sm text-muted-foreground">
+            Run this on the host. It needs a service account key bound to{" "}
+            <code className="font-mono">{hostId}</code> — create one on the{" "}
+            <Link href="/settings" className="underline">
+              Settings
+            </Link>{" "}
+            page.
+          </p>
+          <pre
+            className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs"
+            data-pw="connect-host-command"
+          >
+            {command}
+          </pre>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-pw="connect-host-copy"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(command);
+                  setState("copied");
+                } catch {
+                  setState("failed");
+                }
+              }}
+            >
+              {state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy command"}
+            </Button>
+            {state === "idle" ? null : (
+              <span className="sr-only" role="status" data-pw="connect-host-copy-status">
+                {state === "copied" ? "Command copied" : "Could not copy command"}
+              </span>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

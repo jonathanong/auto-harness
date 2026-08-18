@@ -100,4 +100,22 @@ describe("HostProviderAccountsSection", () => {
     ]);
     view.unmount();
   });
+
+  it("replaces the attach form with a retryable error when the catalog fetch failed", () => {
+    const view = mountForm(
+      <HostProviderAccountsSection
+        hostId="host"
+        inventory={baseInventory}
+        accountsById={{}}
+        providersById={{}}
+        commandsById={{}}
+        catalogError="GET /api/v1/providers → 500"
+      />,
+    );
+    expect(field(view.container, "host-provider-accounts-catalog-error").textContent).toContain(
+      "Could not load provider accounts",
+    );
+    expect(view.container.querySelector('[data-pw="attach-provider-account-select"]')).toBeNull();
+    view.unmount();
+  });
 });

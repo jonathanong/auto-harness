@@ -68,7 +68,7 @@ graph TB
     CF --> REST
     CF --> WS
     CI --> REST
-    Agent --> WS
+    Agent --> CF
     REST --> RESTH
     WS --> WSH
     RESTH --> Sched
@@ -125,8 +125,18 @@ Route groups map 1:1 to handler modules under `services/api/src/handlers/rest/`.
 
 ### WebSocket (WSS)
 
-- Agent endpoint: `wss://…/ws` with `Authorization: Bearer …`
-- Browser endpoint: `wss://…/ws/viewer?ticket=…` with a short-lived viewer ticket
+API Gateway v2 fixes `protocolType` at creation, so REST and WebSocket are necessarily two
+separate APIs (`RestApiUrl`, `WebSocketUrl` — see
+[deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) with different hostnames. CloudFront (`WebUrl`) fronts both under one hostname — `/api/*` to REST,
+`/ws*` to WebSocket — and is the **only** endpoint given to a host daemon or a browser; the raw
+`WebSocketUrl`/`RestApiUrl` outputs are deploy-verification/debug values, not runtime client
+configuration. `services/host-daemon/src/ws-url.ts` rejects a raw
+`*.execute-api.*.amazonaws.com` value passed as `HARNESS_API_URL` for exactly this reason — a
+single control-plane env var cannot address two different hostnames, so it must be the one that
+fronts both.
+
+- Agent endpoint: `wss://<WebUrl>/ws` with `Authorization: Bearer …`
+- Browser endpoint: `wss://<WebUrl>/ws/viewer?ticket=…` with a short-lived viewer ticket
 - Routes:
   - `$connect` — authenticate, write `Connections` row
   - `$disconnect` — delete connection; if agent, mark its worktrees offline / reconcile sessions

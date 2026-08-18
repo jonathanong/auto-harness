@@ -16,7 +16,7 @@ describe("ConnectHostPanel", () => {
     process.env.NEXT_PUBLIC_HARNESS_CONTROL_PLANE_URL = "https://d111.cloudfront.net";
     const view = mountForm(<ConnectHostPanel hostId="mac-1" />);
     // Configured (local/e2e build): resolves synchronously, no loading state.
-    expect(view.container.querySelector('[data-pw="connect-host-loading"]')).toBeNull();
+    expect(view.container.textContent).not.toContain("Loading connect instructions");
     const command = field(view.container, "connect-host-command").textContent;
     expect(command).toContain("HARNESS_HOST_ID=mac-1");
     expect(command).toContain("HARNESS_API_URL=https://d111.cloudfront.net");
@@ -32,7 +32,7 @@ describe("ConnectHostPanel", () => {
     // never fall back to controlPlaneUrl()'s server-side 127.0.0.1 default once mounted in a
     // real browser.
     const view = mountForm(<ConnectHostPanel hostId="mac-1" />);
-    expect(view.container.querySelector('[data-pw="connect-host-loading"]')).toBeNull();
+    expect(view.container.textContent).not.toContain("Loading connect instructions");
     const command = field(view.container, "connect-host-command").textContent;
     expect(command).toContain(`HARNESS_API_URL=${window.location.origin}`);
     expect(command).not.toContain("127.0.0.1:7420");
