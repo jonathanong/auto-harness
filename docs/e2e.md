@@ -383,6 +383,13 @@ Specs navigate with absolute URLs (`CONTROL_BASE` / `HOST_PANE_BASE` from `lib.t
 project `baseURL`, since one spec can capture both apps. Runs with `--workers=1` for deterministic,
 non-interleaved captures.
 
+**These PNGs are never committed** — `.gitignore` excludes all raster image formats repo-wide.
+`docs/screenshots/` is scratch output only, not a tracked directory: generate the before/after
+pair locally, then attach them directly to the PR description (or hand them to whoever's opening
+the PR to attach). This reverses an earlier decision in this repo's history to commit them as
+binaries under `docs/screenshots/` — that bloated the repo for images that only ever needed to
+live in one PR description.
+
 ---
 
 ## CI notes
