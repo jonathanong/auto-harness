@@ -94,11 +94,16 @@ test.describe("status badges", () => {
         )
         .toBe("busy");
 
-      // The worktree only reads "busy" while this session is assigned and unfinished.
+      // The worktree only reads "busy" while this session is assigned and unfinished. Scoped
+      // to each row (not a page-wide getByText) so repeated runs against the same long-lived
+      // e2e database — which accumulate prior runs' idle/busy worktrees — can't turn this into
+      // a strict-mode multiple-match failure.
       await page.goto(`${CONTROL_BASE}/worktrees`);
-      await expect(page.getByTestId(`worktree-link-${busyWorktreeId}`)).toBeVisible({
-        timeout: 15_000,
-      });
+      const busyRow = page.getByTestId(`worktree-row-${busyWorktreeId}`);
+      const idleRow = page.getByTestId(`worktree-row-${idleWorktreeId}`);
+      await expect(busyRow).toBeVisible({ timeout: 15_000 });
+      await expect(busyRow.getByText("busy", { exact: true })).toBeVisible();
+      await expect(idleRow.getByText("idle", { exact: true })).toBeVisible();
       await shot(page, "status-badges-worktrees");
 
       // No repository/worktree ever exists for this one, so it stays queued.
@@ -111,6 +116,7 @@ test.describe("status badges", () => {
         },
       });
       expect(queuedSession.ok()).toBe(true);
+      const queuedSessionId = ((await queuedSession.json()) as { id: string }).id;
 
       // Mirrors services/host-daemon/src/daemon-loop.ts's real "session:status" wire message —
       // the same message a real daemon sends after its own timeout enforcement fires.
@@ -127,9 +133,11 @@ test.describe("status badges", () => {
 
       await page.goto(`${CONTROL_BASE}/sessions`);
       const timedOutRow = page.locator(`[data-pw="session-row-${timedOutSessionId}"]`);
+      const queuedRow = page.locator(`[data-pw="session-row-${queuedSessionId}"]`);
       await expect(timedOutRow.getByText("timed_out", { exact: false })).toBeVisible({
         timeout: 15_000,
       });
+      await expect(queuedRow.getByText("queued", { exact: true })).toBeVisible();
       await shot(page, "status-badges-sessions");
     } finally {
       if (host) await closeSocket(host.socket);
