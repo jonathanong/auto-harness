@@ -15,7 +15,8 @@ test.describe("control plane hosts", () => {
     await expect(page).toHaveURL(/online=online/);
   });
 
-  test("add host creates empty host inventory slot", async ({ page }) => {
+  test("add host creates empty host inventory slot", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     const id = `pw-host-${test.info().parallelIndex}-${Date.now()}`;
     await page.goto("/hosts");
     await page.getByTestId("add-host-id").fill(id);
@@ -31,6 +32,21 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId("host-detail-repo-count")).toHaveText("0");
     await expect(page.getByTestId("host-detail-worktree-count")).toHaveText("0");
     await expect(page.getByTestId("host-detail-back")).toHaveAttribute("href", "/hosts");
+
+    // A newly created, still-offline host shows a real, working connect command — not the
+    // old flash-then-navigate-away message pointing at a nonexistent `pnpm local:agent`.
+    await expect(page.getByTestId("connect-host-panel")).toBeVisible();
+    const command = await page.getByTestId("connect-host-command").innerText();
+    expect(command).toContain(`HARNESS_HOST_ID='${id}'`);
+    expect(command).toContain(`HARNESS_API_URL='${API_BASE}'`);
+    expect(command).toContain("pnpm local:daemon start");
+    expect(command).not.toContain("local:agent");
+    expect(command).not.toContain("execute-api");
+    await page.getByTestId("connect-host-copy").click();
+    await expect(page.getByTestId("connect-host-copy")).toHaveText("Copied");
+    await expect(page.getByTestId("connect-host-copy-status")).toHaveText("Command copied");
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(command);
+
     await page.goto("/hosts");
     await expect(page.getByTestId("page-hosts")).toBeVisible();
     await expect(page.getByTestId(`host-row-${id}`)).toBeVisible();

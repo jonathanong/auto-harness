@@ -56,9 +56,11 @@ export function AddHostForm() {
             return;
           }
           flushSync(() => {
-            setOk(
-              `Host slot ${hostId} created (empty inventory). Run: HARNESS_HOST_ID=${hostId} pnpm local:agent start`,
-            );
+            // Connect instructions live on the host's own page (see ConnectHostPanel), not
+            // here: this message is about to be replaced by the navigation below, so a
+            // command shown only in this paragraph would rarely be visible long enough to
+            // read or copy.
+            setOk(`Host slot ${hostId} created (empty inventory).`);
             form.reset();
           });
           router.replace(

@@ -9,7 +9,7 @@ describe("documented CLI local path", () => {
     expect(existsSync(join(process.cwd(), "scripts/local-cli-e2e.mts"))).toBe(true);
   });
 
-  it("runs pnpm local:agent [--] run-session with ref main", async () => {
+  it("runs pnpm local:daemon [--] run-session with ref main", async () => {
     const result = await runCommand("pnpm", ["exec", "node", "scripts/local-cli-e2e.mts"], {
       cwd: process.cwd(),
     });

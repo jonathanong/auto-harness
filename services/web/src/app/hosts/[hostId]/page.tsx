@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
+import { ConnectHostPanel } from "../../../components/connect-host-panel.tsx";
 import { HostDetailHeader } from "../../../components/host-detail-header.tsx";
 import { HostOverviewTab } from "../../../components/host-overview-tab.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
@@ -156,12 +157,15 @@ export default async function HostDetailPage({
             key: "overview",
             label: "Overview",
             content: (
-              <HostOverviewTab
-                online={agent?.online ?? false}
-                agentsError={agentsError}
-                repoCount={repoCount}
-                worktreeCount={worktreeCount}
-              />
+              <div className="space-y-4">
+                <HostOverviewTab
+                  online={agent?.online ?? false}
+                  agentsError={agentsError}
+                  repoCount={repoCount}
+                  worktreeCount={worktreeCount}
+                />
+                {agent?.online ? null : <ConnectHostPanel hostId={hostId} />}
+              </div>
             ),
           },
           {
