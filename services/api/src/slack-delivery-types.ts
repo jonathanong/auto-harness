@@ -18,14 +18,14 @@ export type SlackSessionSnapshot = {
   url: string;
   status: SessionStatus;
   createdAt: string;
-  startedAt?: string;
-  completedAt?: string;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
   hostId?: string | null;
   worktreeId?: string | null;
-  exitCode?: number | null;
-  errorCode?: string;
-  errorMessage?: string;
-  stderrTail?: string[];
+  exitCode?: number | null | undefined;
+  errorCode?: string | undefined;
+  errorMessage?: string | undefined;
+  stderrTail?: string[] | undefined;
 };
 
 export type SlackDeliveryOperation = "post-root" | "post-reply" | "update-root";

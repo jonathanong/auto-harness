@@ -14,7 +14,6 @@ import * as durableSessions from "./control-plane-sessions-durable.ts";
 export type {
   ArchiveMetadata,
   ArchiveObject,
-  ArchiveMetadata,
   ConnectionRecord,
   ControlPlaneOptions,
   LogRecord,

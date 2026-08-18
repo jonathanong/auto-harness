@@ -20,7 +20,8 @@ export type HostWorktree = {
   name: string;
   path: string;
   labels: string[];
-  setupScript?: string;
+  // `| undefined` since callers commonly forward an already-optional value verbatim.
+  setupScript?: string | undefined;
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
@@ -29,8 +30,8 @@ export type HostRepository = {
   path: string;
   defaultBranch: string;
   worktrees: HostWorktree[];
-  setupScript?: string;
-  terminalHookScript?: string;
+  setupScript?: string | undefined;
+  terminalHookScript?: string | undefined;
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
@@ -45,7 +46,7 @@ export type HostInventory = {
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
   /** Optional features this host daemon explicitly supports. */
-  capabilities?: HostCapability[];
+  capabilities?: HostCapability[] | undefined;
 };
 
 /** Suggested path only — never auto-persist without explicit worktree create. */

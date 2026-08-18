@@ -96,6 +96,7 @@ export async function invokeRepositoryRoute(
     method,
     principal: {
       id: "user:scoped",
+      username: "scoped",
       kind: "service-account",
       role: "admin",
       allowedRepositoryIds: ["other"],

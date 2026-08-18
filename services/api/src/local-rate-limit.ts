@@ -25,7 +25,8 @@ type RateLimitContext = {
   res: ServerResponse;
   method: string;
   pathname: string;
-  principal?: import("./auth.ts").Principal;
+  // `| undefined` since callers commonly forward an already-optional principal verbatim.
+  principal?: import("./auth.ts").Principal | undefined;
   bucket: RateLimitBucket;
   trustProxy: boolean;
 };

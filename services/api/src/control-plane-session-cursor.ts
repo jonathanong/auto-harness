@@ -12,9 +12,9 @@ export type SessionListSort = "latest" | "oldest" | "priority_desc" | "priority_
 
 export type SessionListScope = {
   /** Repository allow-list from the authenticated principal. */
-  repositoryIds?: readonly string[];
+  repositoryIds?: readonly string[] | undefined;
   /** Host binding from the authenticated principal. */
-  hostId?: string;
+  hostId?: string | undefined;
 };
 
 export type ListSessionsPageQuery = {
@@ -29,7 +29,7 @@ export type ListSessionsPageQuery = {
   concurrencyId?: string;
   scheduleId?: string;
   source?: string;
-  scope?: SessionListScope;
+  scope?: SessionListScope | undefined;
 };
 
 export type CursorPosition = { createdAt: string; id: string; priority: number };

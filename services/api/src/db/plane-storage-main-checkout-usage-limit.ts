@@ -16,7 +16,7 @@ export async function requeueMainCheckoutUsageLimitedSession(
     queueShard: number;
     now: string;
     usageLimitedUntil: string;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
   },
 ): Promise<boolean> {
   try {

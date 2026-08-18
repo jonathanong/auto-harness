@@ -186,10 +186,12 @@ const noop = (): void => undefined;
 
 export function queueWrite(
   state: ControlPlaneState,
-  write: (storage: DynamoPlaneStorage | undefined) => Promise<void>,
+  // Most storage calls resolve to a status/record value queueWrite deliberately never reads
+  // (it only tracks completion/failure) — Promise<unknown> lets callers pass those directly.
+  write: (storage: DynamoPlaneStorage | undefined) => Promise<unknown>,
 ): Promise<void> {
   const storage = state.storage;
-  const queued = state.writeTail.then(() => write(storage));
+  const queued: Promise<void> = state.writeTail.then(() => write(storage)).then(() => undefined);
   // Preserve the failure on `queued` for settleStorage, but recover the tail
   // so one failed asynchronous write does not permanently poison the queue.
   state.writeTail = queued.catch(() => undefined);

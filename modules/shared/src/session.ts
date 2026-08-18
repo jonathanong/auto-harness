@@ -13,8 +13,9 @@ export type SessionResumeSpec = CommandResumeSpec & {
   /** Frozen normal command argv, without an appended prompt. */
   argv: string[];
   appendPrompt: boolean;
-  /** See Command.appendPromptSeparator. */
-  appendPromptSeparator?: boolean;
+  /** See Command.appendPromptSeparator. Explicit `| undefined` since callers commonly
+   * forward a Command's own already-optional field verbatim. */
+  appendPromptSeparator?: boolean | undefined;
 };
 
 /** Payload used when assigning work to an agent (control plane → agent). */
@@ -122,7 +123,9 @@ export type HostWireMessage =
   | { type: "session:cancel"; sessionId: string }
   /** Durable acknowledgement of an agent-initiated drain request. */
   | { type: "host:draining"; hostId: string }
-  | { type: "host:drain" };
+  | { type: "host:drain" }
+  /** Confirms a `host:register` was accepted; opens the daemon's registration barrier. */
+  | { type: "host:registered"; hostId: string; connectionId?: string | undefined };
 
 export type HostToServerMessage =
   | {

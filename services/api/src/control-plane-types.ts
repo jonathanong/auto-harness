@@ -52,7 +52,7 @@ export type ControlPlaneOptions = {
    */
   storage?: DynamoPlaneStorage;
   /** KMS-backed boundary; absent means integration writes fail closed. */
-  secretEncryptor?: SecretEncryptor;
+  secretEncryptor?: SecretEncryptor | undefined;
   publicBaseUrl?: string;
   now?: () => string;
   idFactory?: () => string;
@@ -72,7 +72,7 @@ export type ControlPlaneOptions = {
   usageLimitRetryCeiling?: number;
   archivePrefix?: string;
   /** Optional object-store boundary. Dynamo archive metadata remains durable separately. */
-  archiveWriter?: ArchiveWriter;
+  archiveWriter?: ArchiveWriter | undefined;
   /** HMAC secret used to sign session-list cursors across API workers. */
   sessionCursorSecret?: string;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;

@@ -759,7 +759,7 @@ export async function cancelQueuedSession(
  */
 export async function clearResumePin(
   ctx: PlaneStorageCtx,
-  opts: { sessionId: string; pinnedHostId: string; pinExpiresAt?: string },
+  opts: { sessionId: string; pinnedHostId: string; pinExpiresAt?: string | undefined },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -801,10 +801,10 @@ export async function releaseCancelledSessionWorktree(
     /** A late terminal report from a healthy socket frees the worktree for
      * another assignment; only disconnect cleanup offlines it. */
     online: boolean;
-    cliResumeRef?: string;
-    fence?: { hostId: string; connectionId: string };
+    cliResumeRef?: string | undefined;
+    fence?: { hostId: string; connectionId: string } | undefined;
     attemptId: string;
-    concurrencyId?: string;
+    concurrencyId?: string | undefined;
   },
 ): Promise<boolean> {
   try {

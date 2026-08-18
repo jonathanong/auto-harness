@@ -166,9 +166,11 @@ export function classifyRateLimitBucket(
 }
 
 export function clientSourceKey(
+  // Structurally compatible with node:http's IncomingMessage, whose own
+  // socket.remoteAddress is `string | undefined`, not just optional.
   req: {
     headers?: Record<string, string | string[] | undefined>;
-    socket?: { remoteAddress?: string };
+    socket?: { remoteAddress?: string | undefined };
   },
   trustProxy: boolean,
 ): string {
