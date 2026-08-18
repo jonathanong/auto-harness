@@ -11,7 +11,7 @@
     "test": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --coverage",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
-    "test:shard": "vitest run --coverage --reporter=blob",
+    "test:shard": "VITEST_SKIP_COVERAGE_THRESHOLDS=1 vitest run --coverage --reporter=blob",
     "test:merge": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --mergeReports --coverage",
     "check:coverage:dynamo-adapters": "node scripts/check-dynamo-adapters-coverage.mts",
     "test:watch": "vitest",

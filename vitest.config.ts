@@ -117,91 +117,99 @@ export default defineConfig({
         "**/next.config.ts",
         "**/tailwind.config.ts",
       ],
-      thresholds: {
-        // Unit tests use process cache; DynamoDB Local write-through is covered by dynamo.test.ts
-        lines: 98,
-        branches: 97,
-        functions: 100,
-        statements: 98,
-        "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,repository-url-copy.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}":
-          { 100: true },
-        "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx":
-          { 100: true },
-        "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx":
-          { 100: true },
-        "services/web/src/components/schedule-enabled-toggle.tsx": { 100: true },
-        "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx}":
-          { 100: true },
-        "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
-        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,session-status-badge,worktree-status-badge,tip-text,tip-link}.tsx":
-          {
-            100: true,
+      // Vitest checks thresholds on every `--coverage` run, including a single CI shard's
+      // partial subset of files — there's no built-in "skip on shard, enforce once merged"
+      // behavior. `pnpm test:shard` sets this so each shard only collects coverage; `pnpm
+      // test:merge` (no env var set) is where thresholds are actually enforced, against the
+      // merged, whole-suite coverage.
+      thresholds: process.env.VITEST_SKIP_COVERAGE_THRESHOLDS
+        ? undefined
+        : {
+            // Unit tests use process cache; DynamoDB Local write-through is covered by dynamo.test.ts
+            lines: 98,
+            branches: 97,
+            functions: 100,
+            statements: 98,
+            "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,repository-url-copy.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}":
+              { 100: true },
+            "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx":
+              { 100: true },
+            "services/web/src/components/{provider-default-command-form,provider-scope-table,scope-provider-command-form,scope-provider-enabled-form,repository-provider-accounts-tab,host-provider-accounts-section}.tsx":
+              { 100: true },
+            "services/web/src/components/schedule-enabled-toggle.tsx": { 100: true },
+            "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx}":
+              { 100: true },
+            "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
+            "modules/ui/src/components/{badge,button,card,input,label,table,textarea,session-status-badge,worktree-status-badge,tip-text,tip-link}.tsx":
+              {
+                100: true,
+              },
+            "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx":
+              { 100: true },
+            "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx":
+              { 100: true },
+            "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx":
+              {
+                100: true,
+              },
+            "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
+              { 100: true },
+            "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":
+              { 100: true },
+            "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
+              { 100: true },
+            "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
+              { 100: true },
+            "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx":
+              { 100: true },
+            "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport,ws-url}.ts":
+              {
+                100: true,
+              },
+            "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
+            // Real argv-parsing/dispatch logic, unlike the two thin cli.ts entrypoints this
+            // module is not covering. `start`'s signal handling is exercised with a real
+            // startDaemon against a local WS harness and an injected process, and every
+            // closure — including onShutdownSignal's logger, extracted as the named
+            // shutdownLoggerFor so a test can invoke it directly — is unit-tested (see
+            // cli.test.ts and cli-start-signal.test.ts), so functions is a genuine 100.
+            // The one residual gap is lines/branches/statements only:
+            // `if (isDirectInvocation(...)) { installCrashLogging(); void main().then(setExitCode); }`
+            // runs only when this file is the literal process entrypoint, which a unit test
+            // importing the module cannot trigger without re-executing it as a real
+            // subprocess — the same limitation the two thin cli.ts files are excluded for
+            // entirely. isDirectInvocation and setExitCode are independently tested; only the
+            // statement calling them from the top-level guard is unreachable under import.
+            "services/host-daemon/src/cli.ts": {
+              lines: 98,
+              branches: 85,
+              functions: 100,
+              statements: 98,
+            },
+            "services/host-pane/src/middleware.ts": { 100: true },
+            "services/host-pane/src/lib/inventory.ts": { 100: true },
+            // headers()'s success path (forwarding a real cookie/authorization pair) needs a
+            // Next.js request context this test environment does not provide; only the
+            // no-context catch branch is exercised.
+            "services/host-pane/src/lib/api.ts": {
+              lines: 94,
+              branches: 60,
+              functions: 100,
+              statements: 94,
+            },
+            "services/host-pane/src/app/layout.tsx": { 100: true },
+            "services/host-pane/src/app/page.tsx": { 100: true },
+            "services/host-pane/src/app/repositories/page.tsx": { 100: true },
+            "services/host-pane/src/app/settings/page.tsx": { 100: true },
+            "services/host-pane/src/app/api/browse/route.ts": { 100: true },
+            "services/web/src/app/commands/**/page.tsx": { 100: true },
+            "services/web/src/app/providers/**/page.tsx": { 100: true },
+            "services/web/src/app/repositories/**/page.tsx": { 100: true },
+            "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
+            "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
+            "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
+            "services/api/src/db/plane-storage-sessions.ts": { 100: true },
           },
-        "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx":
-          { 100: true },
-        "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx":
-          { 100: true },
-        "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx": {
-          100: true,
-        },
-        "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
-          { 100: true },
-        "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":
-          { 100: true },
-        "services/web/src/components/{add-provider-account-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
-          { 100: true },
-        "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
-          { 100: true },
-        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx":
-          { 100: true },
-        "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport,ws-url}.ts":
-          {
-            100: true,
-          },
-        "services/api/src/{local-routes-host-inventory,ws-hub}.ts": { 100: true },
-        // Real argv-parsing/dispatch logic, unlike the two thin cli.ts entrypoints this
-        // module is not covering. `start`'s signal handling is exercised with a real
-        // startDaemon against a local WS harness and an injected process, and every
-        // closure — including onShutdownSignal's logger, extracted as the named
-        // shutdownLoggerFor so a test can invoke it directly — is unit-tested (see
-        // cli.test.ts and cli-start-signal.test.ts), so functions is a genuine 100.
-        // The one residual gap is lines/branches/statements only:
-        // `if (isDirectInvocation(...)) { installCrashLogging(); void main().then(setExitCode); }`
-        // runs only when this file is the literal process entrypoint, which a unit test
-        // importing the module cannot trigger without re-executing it as a real
-        // subprocess — the same limitation the two thin cli.ts files are excluded for
-        // entirely. isDirectInvocation and setExitCode are independently tested; only the
-        // statement calling them from the top-level guard is unreachable under import.
-        "services/host-daemon/src/cli.ts": {
-          lines: 98,
-          branches: 85,
-          functions: 100,
-          statements: 98,
-        },
-        "services/host-pane/src/middleware.ts": { 100: true },
-        "services/host-pane/src/lib/inventory.ts": { 100: true },
-        // headers()'s success path (forwarding a real cookie/authorization pair) needs a
-        // Next.js request context this test environment does not provide; only the
-        // no-context catch branch is exercised.
-        "services/host-pane/src/lib/api.ts": {
-          lines: 94,
-          branches: 60,
-          functions: 100,
-          statements: 94,
-        },
-        "services/host-pane/src/app/layout.tsx": { 100: true },
-        "services/host-pane/src/app/page.tsx": { 100: true },
-        "services/host-pane/src/app/repositories/page.tsx": { 100: true },
-        "services/host-pane/src/app/settings/page.tsx": { 100: true },
-        "services/host-pane/src/app/api/browse/route.ts": { 100: true },
-        "services/web/src/app/commands/**/page.tsx": { 100: true },
-        "services/web/src/app/providers/**/page.tsx": { 100: true },
-        "services/web/src/app/repositories/**/page.tsx": { 100: true },
-        "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
-        "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
-        "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },
-        "services/api/src/db/plane-storage-sessions.ts": { 100: true },
-      },
       reporter: ["text", "lcov", "json-summary"],
     },
   },
