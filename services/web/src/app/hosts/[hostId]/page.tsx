@@ -3,6 +3,7 @@ import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-ha
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
 import { ConnectHostPanel } from "../../../components/connect-host-panel.tsx";
+import { HostAdvancedTab } from "../../../components/host-advanced-tab.tsx";
 import { HostDetailHeader } from "../../../components/host-detail-header.tsx";
 import { HostOverviewTab } from "../../../components/host-overview-tab.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
@@ -28,10 +29,10 @@ export default async function HostDetailPage({
   const { hostId } = await params;
   const { tab } = await searchParams;
 
-  let inventory: HostInventory | null = null;
+  let inventory: (HostInventory & { version?: number }) | null = null;
   let inventoryError: string | null = null;
   try {
-    inventory = await apiGet<HostInventory>(
+    inventory = await apiGet<HostInventory & { version?: number }>(
       `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
     );
   } catch (error) {
@@ -98,6 +99,12 @@ export default async function HostDetailPage({
     // despite the type saying it's required — never crash on stale storage data.
     providerAccounts: inventory?.providerAccounts ?? [],
   };
+  const inventoryVersion = inventory?.version ?? 0;
+  const inventoryJson = JSON.stringify(
+    { repositories: inv.repositories, providerAccounts: inv.providerAccounts },
+    null,
+    2,
+  );
 
   let catalog: RepoCatalogEntry[] = [];
   let catalogError: string | null = null;
@@ -194,6 +201,17 @@ export default async function HostDetailPage({
                 providersById={providersById}
                 commandsById={commandsById}
                 catalogError={providerCatalogError}
+              />
+            ),
+          },
+          {
+            key: "advanced",
+            label: "Advanced",
+            content: (
+              <HostAdvancedTab
+                hostId={hostId}
+                initialJson={inventoryJson}
+                initialVersion={inventoryVersion}
               />
             ),
           },

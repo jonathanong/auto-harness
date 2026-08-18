@@ -1,16 +1,15 @@
 import { type Command, type Provider, type ProviderAccount } from "@auto-harness/shared";
-import { DrainButton } from "@auto-harness/ui";
+import { DrainButton, HostConfigForm } from "@auto-harness/ui";
 
-import { HostConfigForm } from "../../components/host-config-form.tsx";
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
 import { hostId, apiGet } from "../../lib/api.ts";
-import { loadHostInventory } from "../../lib/inventory.ts";
+import { loadHostInventoryWithVersion } from "../../lib/inventory.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const id = hostId();
-  const inventory = await loadHostInventory(id);
+  const { inventory, version } = await loadHostInventoryWithVersion(id);
 
   let providers: Provider[] = [];
   let providerAccounts: ProviderAccount[] = [];
@@ -81,7 +80,7 @@ export default async function SettingsPage() {
           Power-user edit of full inventory (bulk worktrees). Prefer the forms on Repositories when
           possible.
         </p>
-        <HostConfigForm hostId={id} initialJson={initialJson} />
+        <HostConfigForm hostId={id} initialJson={initialJson} initialVersion={version} />
       </div>
     </div>
   );

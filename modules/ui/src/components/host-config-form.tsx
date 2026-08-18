@@ -2,23 +2,39 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import { Alert } from "./alert.tsx";
+import { Button } from "./button.tsx";
+import { Label } from "./label.tsx";
 import type { RequestFunction } from "./request-types.ts";
+import { Textarea } from "./textarea.tsx";
+import { WithTooltip } from "./tooltip.tsx";
 
+/**
+ * A full-document JSON replace can't be expressed as a mutateInventory() updater (there's no
+ * "current inventory" to transform — the user's typed text *is* the whole next document), so
+ * this keeps its own read-version-then-PUT path instead. `initialVersion` is the version the
+ * displayed `initialJson` was read at; sending it makes the write conditional, and a 409 means
+ * someone else saved a change since this page loaded — surfaced as distinct conflict UI rather
+ * than folded into the generic error, since blindly retrying would silently reapply this user's
+ * possibly-stale full document over the other editor's newer one.
+ */
 export function HostConfigForm({
   hostId,
   initialJson,
+  initialVersion,
   request = fetch,
 }: {
   hostId: string;
   initialJson: string;
+  initialVersion: number;
   request?: RequestFunction;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
   const [ok, setOk] = useState(false);
 
   return (
@@ -28,11 +44,16 @@ export function HostConfigForm({
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
+        setConflict(false);
         setOk(false);
         const raw = String(new FormData(e.currentTarget).get("configJson") ?? "");
-        let body: unknown;
+        let body: Record<string, unknown>;
         try {
-          body = JSON.parse(raw) as unknown;
+          const parsed = JSON.parse(raw) as unknown;
+          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+            throw new Error("must be a JSON object");
+          }
+          body = parsed as Record<string, unknown>;
         } catch {
           setError("Invalid JSON");
           return;
@@ -43,10 +64,14 @@ export function HostConfigForm({
             {
               method: "PUT",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify(body),
+              body: JSON.stringify({ ...body, version: initialVersion }),
             },
           );
           if (!res.ok) {
+            if (res.status === 409) {
+              setConflict(true);
+              return;
+            }
             setError(await res.text());
             return;
           }
@@ -76,6 +101,12 @@ export function HostConfigForm({
         <p className="text-sm text-red-700" data-pw="host-config-error">
           {error}
         </p>
+      ) : null}
+      {conflict ? (
+        <Alert variant="warning" data-pw="host-config-conflict">
+          This host's inventory changed since you loaded this page — reload to see the latest, then
+          reapply your edit.
+        </Alert>
       ) : null}
       {ok ? (
         <p className="text-sm text-emerald-700" data-pw="host-config-ok">

@@ -119,6 +119,19 @@ describe("host detail route", () => {
     expect(html).not.toContain('data-pw="form-add-local-repo"');
   });
 
+  it("renders the Advanced tab with the raw inventory JSON editor", async () => {
+    stubApi(catalogOk);
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "advanced" }),
+      }),
+    );
+    expect(html).toContain('data-pw="form-host-config-json"');
+    expect(html).toContain('data-pw="host-config-json"');
+    expect(html).toContain("repo-a");
+  });
+
   it("surfaces an agent-status failure on the Overview tab without hiding the page", async () => {
     stubApi({ ...catalogOk, "/api/v1/hosts": jsonResponse({}, 503) });
     const html = await renderPage(

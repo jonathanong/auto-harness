@@ -2,4 +2,4 @@
 export type RequestFunction = (
   input: RequestInfo | URL,
   init?: RequestInit,
-) => Promise<Pick<Response, "ok" | "json" | "text">>;
+) => Promise<Pick<Response, "ok" | "json" | "text" | "status">>;
