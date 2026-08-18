@@ -47,10 +47,12 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "GET" && url.pathname === "/api/v1/worktrees") {
+    const hostId = url.searchParams.get("hostId");
     try {
       send(res, 200, {
         items: (await plane.listWorktreesDurable()).filter(
           (worktree) =>
+            (hostId === null || worktree.hostId === hostId) &&
             mayAccessHost(ctx.principal, worktree.hostId) &&
             (!ctx.principal || mayAccessRepository(ctx.principal, worktree.repositoryId)),
         ),

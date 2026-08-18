@@ -72,14 +72,10 @@ describe("hosts fleet route", () => {
     expect(html).toContain("No worktrees configured.");
     expect(html).toContain('data-pw="host-connected-at-host/a"');
     expect(html).toContain('dateTime="2026-08-12T00:00:00.000Z"');
-    expect(html).toContain('data-pw="host-connected-at-empty">—');
-    expect(html).toContain('data-pw="host-restart-count-host/a">2 restarts detected');
-    expect(html).toContain('data-pw="host-daemon-started-at-host/a"');
-    expect(html).toContain('dateTime="2026-08-11T23:00:00.000Z"');
-    expect(html).toContain('data-pw="host-last-restart-host/a"');
-    expect(html).toContain('data-pw="host-restart-count-empty">0 restarts detected');
-    expect(html).toContain('data-pw="host-restart-count-single">1 restart detected');
-    expect(html).toContain('data-pw="host-daemon-started-at-empty">legacy/unknown');
+    // Restart count and daemon start time moved to the host detail page's Overview tab (#17) —
+    // the fleet list only needs online/offline, not restart-observability detail.
+    expect(html).not.toContain("restart");
+    expect(html).not.toContain("host-daemon-started-at");
   });
 
   it("keeps the filtered empty result when no hosts match", async () => {
@@ -92,7 +88,7 @@ describe("hosts fleet route", () => {
       HostsPage({ searchParams: Promise.resolve({ online: "online" }) }),
     );
     expect(html).toContain("No hosts match filters");
-    expect(html).toContain('colSpan="9"');
+    expect(html).toContain('colSpan="7"');
   });
 
   it("surfaces a host fleet read failure", async () => {

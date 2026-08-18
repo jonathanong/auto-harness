@@ -8,6 +8,16 @@ The UI runs against the supported local control plane. Cloud-hosted UI/API behav
 target until the AWS runtime has a deploy path and account-backed verification. Sections that say
 **Target** retain the intended product behavior without claiming it is already shipped.
 
+### Shell & Navigation
+
+The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, New session,
+Sessions, Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts),
+and **Settings** — one horizontally-scrolling row, not a wrapping grid, so it never pushes page
+content down at narrow widths. The theme toggle, keyboard-shortcuts button, logout, and the page
+subtitle live in a slim secondary row below title+nav, not competing with navigation for space in
+the primary header row. The host pane's own shell reuses the same chrome with a flat (ungrouped)
+nav, since its 3-item nav doesn't need grouping.
+
 ## Authentication
 
 UI-facing login behavior below. Server-side credential types, auth priority, and JWT cookie details: [auth.md](auth.md).
@@ -381,17 +391,28 @@ Fleet-wide worktrees view, grouped by repository. Each worktree's detail page ha
 ### Host List
 
 The connected-host fleet table shows each host id, online/offline status, attached repository count,
-whether host configuration exists, connection time, daemon start time, detected restart count and
-last detection time, worktree count, busy worktrees, and drain control. A daemon process keeps one
-opaque instance id across WebSocket reconnects; the control plane counts a restart only when a later
-registration changes a previously known instance id. Legacy daemons establish no baseline. This is
-local API/UI observability, not an outbound alert and not permission to restart a host. Expand a
-host's worktree summary to inspect each worktree's path, labels, status, current session, and links
-to its repository, worktree, and active session details.
+whether host configuration exists, connection time (relative, full timestamp on hover), worktree
+count, busy worktrees, and drain control — a scanning view, not a drill-down one. Detected restart
+count and daemon start time live on that host's own detail page (Overview tab) instead, since a
+list row showing more facts than its own detail page is backwards. Expand a host's worktree summary
+to inspect each worktree's path, labels, status, current session, and links to its repository,
+worktree, and active session details.
 
 ### Host Detail
 
-Tabs: **Overview** (status, repository/worktree counts) · **Repositories & Worktrees** (attach/detach, add worktrees) · **Provider accounts** · **Advanced** (raw inventory JSON editor).
+Tabs: **Overview** (status, repository/worktree counts, connection time, and daemon restart
+observability) · **Repositories & Worktrees** (attach/detach, add worktrees) · **Provider accounts**
+· **Advanced** (raw inventory JSON editor).
+
+The Overview tab's Daemon block shows the detected restart count, daemon start time, and last-restart
+time (all relative, full timestamp on hover). A daemon process keeps one opaque instance id across
+WebSocket reconnects; the control plane counts a restart only when a later registration changes a
+previously known instance id. Legacy daemons establish no baseline. This is local API/UI
+observability, not an outbound alert and not permission to restart a host.
+
+Worktree status for this tab's Repositories & Worktrees section comes from `GET
+/api/v1/worktrees?hostId=<id>` — filtered server-side, not fetched unfiltered and grouped in JS —
+the same filter host pane's own repository/worktree pages use for their single host.
 
 The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one. An account's usage-limit cooldown is global across hosts; clearing it on the Provider page makes it eligible everywhere immediately.
 

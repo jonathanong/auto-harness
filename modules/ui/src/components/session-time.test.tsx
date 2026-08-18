@@ -4,7 +4,12 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatDuration, formatRelativeTime, sessionDurationMs } from "./session-time.tsx";
+import {
+  formatDuration,
+  formatRelativeTime,
+  RelativeTime,
+  sessionDurationMs,
+} from "./session-time.tsx";
 import { type SessionRow, SessionsTable } from "./sessions-table.tsx";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -105,6 +110,34 @@ describe("session list times", () => {
       container.querySelector('[data-pw="session-duration-completed"] time')?.lastElementChild
         ?.textContent,
     ).toBe("1h 1m 1s");
+    act(() => root.unmount());
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("RelativeTime ticks its own 60-second clock and falls back to an em dash", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+
+    act(() => root.render(<RelativeTime value="2026-08-12T11:00:00.000Z" label="Connected" />));
+    const time = container.querySelector("time")!;
+    expect(time.lastElementChild?.textContent).toBe("1 hour ago");
+    expect(time.querySelector(".sr-only")?.textContent).toBe(
+      "Connected 2026-08-12T11:00:00.000Z. ",
+    );
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(container.querySelector("time")?.lastElementChild?.textContent).toBe("1 hour ago");
+
+    act(() => root.render(<RelativeTime value="2026-08-12T11:00:00.000Z" />));
+    expect(container.querySelector("time")?.querySelector(".sr-only")).toBeNull();
+
+    act(() => root.render(<RelativeTime value={null} />));
+    expect(container.textContent).toBe("—");
+
     act(() => root.unmount());
     expect(vi.getTimerCount()).toBe(0);
   });

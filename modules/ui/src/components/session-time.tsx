@@ -67,17 +67,57 @@ export function useSessionClock(hasRunningSession: boolean): number {
   return nowMs;
 }
 
-export function SessionCreatedTime({ value, nowMs }: { value?: string | null; nowMs: number }) {
+function RelativeTimeDisplay({
+  value,
+  nowMs,
+  label,
+  pw,
+}: {
+  value?: string | null | undefined;
+  nowMs: number;
+  label?: string | undefined;
+  pw?: string | undefined;
+}) {
   const parsed = timestampMs(value);
   const relative = formatRelativeTime(value, nowMs);
-  if (parsed == null || relative == null) return <span>—</span>;
+  if (parsed == null || relative == null) return <span data-pw={pw}>—</span>;
   const full = new Date(parsed).toISOString();
   return (
-    <time dateTime={full} title={full}>
-      <span className="sr-only">Created {full}. </span>
+    <time dateTime={full} title={full} data-pw={pw}>
+      {label ? (
+        <span className="sr-only">
+          {label} {full}.{" "}
+        </span>
+      ) : null}
       <span suppressHydrationWarning>{relative}</span>
     </time>
   );
+}
+
+export function SessionCreatedTime({ value, nowMs }: { value?: string | null; nowMs: number }) {
+  return <RelativeTimeDisplay value={value} nowMs={nowMs} label="Created" />;
+}
+
+/**
+ * Self-contained relative time for callers with no shared clock to pass in (a handful of rows,
+ * unlike the sessions table's single ticking clock shared across many). Ticks on its own
+ * 60-second interval — no caller needs per-second precision for a connection or daemon-start time.
+ */
+export function RelativeTime({
+  value,
+  label,
+  pw,
+}: {
+  value?: string | null;
+  label?: string;
+  pw?: string;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const interval = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+  return <RelativeTimeDisplay value={value} nowMs={nowMs} label={label} pw={pw} />;
 }
 
 export function SessionDuration({

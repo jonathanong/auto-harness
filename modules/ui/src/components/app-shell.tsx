@@ -16,14 +16,21 @@ export type NavItem = {
   tip?: string;
 };
 
+/** A labeled cluster of nav items (e.g. "Operate", "Catalog") — rendered in one scrolling row. */
+export type NavGroup = {
+  label?: string;
+  items: NavItem[];
+};
+
 export type AppShellProps = {
   title: string;
   subtitle?: string;
   titleTip?: string;
   subtitleTip?: string;
-  /** Rendered inline next to the title (e.g. an online/offline badge). */
+  /** Rendered in a slim secondary row below title+nav (e.g. theme toggle, shortcuts, logout). */
   titleBadge?: React.ReactNode;
-  nav: NavItem[];
+  /** A flat list (rendered as one ungrouped cluster) or pre-grouped for a large nav. */
+  nav: NavItem[] | NavGroup[];
   /** Current path for active nav highlighting */
   pathname?: string;
   children: React.ReactNode;
@@ -31,6 +38,14 @@ export type AppShellProps = {
   /** Root data-pw (e.g. control-shell / host-shell) */
   pw?: string;
 };
+
+function isNavGroups(nav: NavItem[] | NavGroup[]): nav is NavGroup[] {
+  return nav[0] !== undefined && "items" in nav[0];
+}
+
+function navGroups(nav: NavItem[] | NavGroup[]): NavGroup[] {
+  return isNavGroups(nav) ? nav : [{ items: nav }];
+}
 
 function matchesRoute(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -42,10 +57,10 @@ function matchesRoute(pathname: string, href: string): boolean {
  * every href against the whole set and keeping only the longest match means a shorter
  * sibling href never wins once a more specific one also matches.
  */
-function activeNavHref(pathname: string | undefined, nav: NavItem[]): string | null {
+function activeNavHref(pathname: string | undefined, groups: NavGroup[]): string | null {
   if (!pathname) return null;
   let best: string | null = null;
-  for (const item of nav) {
+  for (const item of groups.flatMap((g) => g.items)) {
     if (!matchesRoute(pathname, item.href)) continue;
     if (best === null || item.href.length > best.length) best = item.href;
   }
@@ -65,72 +80,90 @@ export function AppShell({
   className,
   pw,
 }: AppShellProps) {
-  const activeHref = activeNavHref(pathname, nav);
+  const groups = navGroups(nav);
+  const activeHref = activeNavHref(pathname, groups);
+  const titleEl = titleTip ? (
+    <WithTooltip tip={titleTip}>
+      <h1 className="inline-block cursor-help text-lg font-semibold tracking-tight">{title}</h1>
+    </WithTooltip>
+  ) : (
+    <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+  );
+
   return (
     <TooltipProvider>
       <div className={cn("min-h-screen bg-background", className)} data-pw={pw}>
         <header className="border-b border-border" data-pw="app-header">
-          <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                {titleTip ? (
-                  <WithTooltip tip={titleTip}>
-                    <h1
-                      className="inline-block cursor-help text-lg font-semibold tracking-tight"
-                      data-pw="app-title"
-                    >
-                      {title}
-                    </h1>
-                  </WithTooltip>
+          <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link href="/" data-pw="app-title" className="shrink-0 hover:opacity-80">
+              {titleEl}
+            </Link>
+            <nav className="flex flex-nowrap items-center gap-1 overflow-x-auto" data-pw="app-nav">
+              {groups.map((group, groupIndex) => (
+                <React.Fragment key={group.label ?? groupIndex}>
+                  {groupIndex > 0 ? (
+                    <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+                  ) : null}
+                  {group.label ? (
+                    <span className="shrink-0 whitespace-nowrap px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      {group.label}
+                    </span>
+                  ) : null}
+                  {group.items.map((item) => {
+                    const active = item.href === activeHref;
+                    const link = (
+                      <Link
+                        href={item.href}
+                        data-pw={
+                          item.pw ??
+                          `nav-${item.href.replace(/\//g, "-").replace(/^-/, "") || "home"}`
+                        }
+                        className={cn(
+                          "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                          active
+                            ? "bg-muted text-foreground"
+                            : "text-muted-foreground hover:bg-muted/60",
+                        )}
+                        prefetch={false}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                    return (
+                      <span key={item.href} className="inline-flex shrink-0">
+                        {item.tip ? <WithTooltip tip={item.tip}>{link}</WithTooltip> : link}
+                      </span>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </nav>
+          </div>
+          {subtitle || titleBadge ? (
+            <div className="border-t border-border/60 bg-muted/30">
+              <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-1.5">
+                {subtitle ? (
+                  subtitleTip ? (
+                    <WithTooltip tip={subtitleTip}>
+                      <p
+                        className="cursor-help text-xs text-muted-foreground"
+                        data-pw="app-subtitle"
+                      >
+                        {subtitle}
+                      </p>
+                    </WithTooltip>
+                  ) : (
+                    <p className="text-xs text-muted-foreground" data-pw="app-subtitle">
+                      {subtitle}
+                    </p>
+                  )
                 ) : (
-                  <h1 className="text-lg font-semibold tracking-tight" data-pw="app-title">
-                    {title}
-                  </h1>
+                  <span />
                 )}
                 {titleBadge}
               </div>
-              {subtitle ? (
-                subtitleTip ? (
-                  <WithTooltip tip={subtitleTip}>
-                    <p className="cursor-help text-sm text-muted-foreground" data-pw="app-subtitle">
-                      {subtitle}
-                    </p>
-                  </WithTooltip>
-                ) : (
-                  <p className="text-sm text-muted-foreground" data-pw="app-subtitle">
-                    {subtitle}
-                  </p>
-                )
-              ) : null}
             </div>
-            <nav className="flex flex-wrap gap-1" data-pw="app-nav">
-              {nav.map((item) => {
-                const active = item.href === activeHref;
-                const link = (
-                  <Link
-                    href={item.href}
-                    data-pw={
-                      item.pw ?? `nav-${item.href.replace(/\//g, "-").replace(/^-/, "") || "home"}`
-                    }
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                      active
-                        ? "bg-muted text-foreground"
-                        : "text-muted-foreground hover:bg-muted/60",
-                    )}
-                    prefetch={false}
-                  >
-                    {item.label}
-                  </Link>
-                );
-                return (
-                  <span key={item.href} className="inline-flex">
-                    {item.tip ? <WithTooltip tip={item.tip}>{link}</WithTooltip> : link}
-                  </span>
-                );
-              })}
-            </nav>
-          </div>
+          ) : null}
         </header>
         <main className="mx-auto max-w-5xl px-4 py-6" data-pw="app-main">
           {children}

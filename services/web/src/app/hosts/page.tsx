@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   DrainButton,
   OnlineStatusBadge,
+  RelativeTime,
   Table,
   TableBody,
   TableCell,
@@ -13,7 +14,6 @@ import {
 
 import { AddHostForm } from "../../components/add-host-form.tsx";
 import { HostFilters } from "../../components/host-filters.tsx";
-import { HostRestartDetails } from "../../components/host-restart-details.tsx";
 import {
   HostWorktreeDetails,
   type FleetWorktree,
@@ -27,9 +27,6 @@ type Host = {
   hostId: string;
   online: boolean;
   connectedAt?: string | null;
-  daemonStartedAt?: string | null;
-  restartCount?: number;
-  lastRestartDetectedAt?: string | null;
   worktreeIds?: string[];
 };
 
@@ -109,13 +106,12 @@ export default async function HostsPage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>hostId</TableHead>
-              <TableHead>online</TableHead>
-              <TableHead>repos</TableHead>
-              <TableHead>host config</TableHead>
-              <TableHead>connected</TableHead>
-              <TableHead>daemon</TableHead>
-              <TableHead>worktrees</TableHead>
+              <TableHead>Host</TableHead>
+              <TableHead>Online</TableHead>
+              <TableHead>Repos</TableHead>
+              <TableHead>Host config</TableHead>
+              <TableHead>Connected</TableHead>
+              <TableHead>Worktrees</TableHead>
               <TableHead />
             </TableRow>
           </TableHeader>
@@ -145,21 +141,7 @@ export default async function HostsPage({
                     className="whitespace-nowrap text-xs"
                     data-pw={`host-connected-at-${h.hostId}`}
                   >
-                    {h.connectedAt ? (
-                      <time dateTime={h.connectedAt} title={h.connectedAt}>
-                        {h.connectedAt}
-                      </time>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <HostRestartDetails
-                      hostId={h.hostId}
-                      daemonStartedAt={h.daemonStartedAt}
-                      restartCount={h.restartCount}
-                      lastRestartDetectedAt={h.lastRestartDetectedAt}
-                    />
+                    <RelativeTime value={h.connectedAt} label="Connected" />
                   </TableCell>
                   <TableCell>
                     <HostWorktreeDetails
@@ -175,7 +157,7 @@ export default async function HostsPage({
             })}
             {rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-muted-foreground">
+                <TableCell colSpan={7} className="text-muted-foreground">
                   No hosts match filters. Add a host above or start a daemon.
                 </TableCell>
               </TableRow>
