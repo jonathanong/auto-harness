@@ -105,3 +105,4 @@ export {
   DialogDescription,
 } from "./components/dialog.tsx";
 export { RetryToast, Toast, withToast } from "./components/toast.tsx";
+export { ThemeToggle, THEME_CHANGE_EVENT, THEME_INIT_SCRIPT } from "./components/theme-toggle.tsx";

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SearchAddon } from "@xterm/addon-search";
-import type { Terminal } from "@xterm/xterm";
+import type { ITheme, Terminal } from "@xterm/xterm";
+import { THEME_CHANGE_EVENT } from "@auto-harness/ui";
 
 import type { LiveLogEntry } from "../lib/live-session-logs.ts";
 import { terminalText } from "../lib/session-terminal.ts";
@@ -11,6 +12,25 @@ type SessionTerminalRuntime = {
   renderedThrough: string | null;
   renderedText: string;
 };
+
+/**
+ * Reads the live --terminal-* custom properties rather than hardcoding colors, so the panel
+ * responds to the light/dark toggle instead of being permanently dark regardless of theme.
+ * Falls back to the light-mode literal if a variable is somehow unset (e.g. in a test
+ * environment with no stylesheet loaded).
+ */
+function readTerminalTheme(): ITheme {
+  const style = getComputedStyle(document.documentElement);
+  const read = (name: string, fallback: string) => {
+    const value = style.getPropertyValue(name).trim();
+    return value ? `hsl(${value})` : fallback;
+  };
+  return {
+    background: read("--terminal-background", "#090f1f"),
+    foreground: read("--terminal-foreground", "#e5e7eb"),
+    cursor: read("--terminal-cursor", "#e5e7eb"),
+  };
+}
 
 /**
  * The host can be temporarily hidden (0x0) while navigating or mid-fullscreen-transition,
@@ -56,7 +76,7 @@ export function useSessionTerminal(
           fontSize: fontSizeRef.current,
           screenReaderMode: true,
           scrollback: 10_000,
-          theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
+          theme: readTerminalTheme(),
         });
         const search = new searchModule.SearchAddon();
         terminal.loadAddon(search);
@@ -111,6 +131,18 @@ export function useSessionTerminal(
       refresh();
     }
   }, [fontSize, refresh]);
+
+  useEffect(() => {
+    const onThemeChange = () => {
+      if (!runtimeRef.current) return;
+      // xterm only picks up a `theme` reassignment on reference change, not mutation —
+      // a fresh object is required even though every key is being replaced with itself.
+      runtimeRef.current.terminal.options.theme = readTerminalTheme();
+      refresh();
+    };
+    window.addEventListener(THEME_CHANGE_EVENT, onThemeChange);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, onThemeChange);
+  }, [refresh]);
 
   return { refresh, runtimeRef };
 }

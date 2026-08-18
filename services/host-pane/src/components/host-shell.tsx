@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { AppShell, OnlineStatusBadge, WithTooltip } from "@auto-harness/ui";
+import { AppShell, OnlineStatusBadge, ThemeToggle, WithTooltip } from "@auto-harness/ui";
 
 const NAV = [
   {
@@ -41,13 +41,16 @@ export function HostShell({
       title="Host pane"
       titleTip="Per-host UI for one agent identity (HARNESS_HOST_ID)"
       titleBadge={
-        online === undefined ? null : (
-          <WithTooltip tip="Live WebSocket connection to the control plane">
-            <span data-pw="host-shell-online">
-              <OnlineStatusBadge online={online} />
-            </span>
-          </WithTooltip>
-        )
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          {online === undefined ? null : (
+            <WithTooltip tip="Live WebSocket connection to the control plane">
+              <span data-pw="host-shell-online">
+                <OnlineStatusBadge online={online} />
+              </span>
+            </WithTooltip>
+          )}
+        </div>
       }
       subtitle={`Host UI for ${hostId}`}
       subtitleTip={`Managing hostId “${hostId}”. Repos/worktrees here must exist on this machine.`}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "@auto-harness/ui/globals.css";
+import { THEME_INIT_SCRIPT } from "@auto-harness/ui";
 
 import { HostShell } from "../components/host-shell.tsx";
 import { hostId, apiGet } from "../lib/api.ts";
@@ -26,6 +27,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en">
       <body>
+        {/* Runs before paint so the stored/system theme is applied before hydration — without
+            this, every page load flashes light before React could catch up. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <HostShell hostId={id} online={online}>
           {children}
         </HostShell>

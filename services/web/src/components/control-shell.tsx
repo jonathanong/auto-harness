@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { AppShell } from "@auto-harness/ui";
+import { AppShell, ThemeToggle } from "@auto-harness/ui";
 
 import { LogoutButton } from "./logout-button.tsx";
 import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
@@ -81,6 +81,7 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
       subtitleTip="Hosts self-register over the API/WebSocket; configure host paths on the host pane"
       titleBadge={
         <div className="flex items-center gap-1">
+          <ThemeToggle />
           <KeyboardShortcuts />
           <LogoutButton />
         </div>
