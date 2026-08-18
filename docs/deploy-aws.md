@@ -168,14 +168,21 @@ choose `destroy` for data that must survive a stack replacement.
 The lifecycle script supplies the runtime stack's SSM parameter names. Secret
 values themselves are never CDK parameters or context.
 
-| Output                                                      | Consumer                                          |
-| ----------------------------------------------------------- | ------------------------------------------------- |
-| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration |
-| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration             |
-| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                   |
-| `IntegrationKeyArn`                                         | Foundation-owned integration encryption           |
-| `RestApiUrl`, `WebSocketUrl`                                | Runtime clients                                   |
-| `WebUrl`                                                    | Browser control-plane URL                         |
+| Output                                                      | Consumer                                                                                           |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `TablePrefix`; `UsersTableName` through `CommandsTableName` | Current storage naming / future API configuration                                                  |
+| `ArchiveBucketName`, `ArchiveBucketArn`                     | Future archival runtime configuration                                                              |
+| `ApiDataAccessPolicyArn`, `ArchiveDataAccessPolicyArn`      | Future runtime-role attachments                                                                    |
+| `IntegrationKeyArn`                                         | Foundation-owned integration encryption                                                            |
+| `RestApiUrl`, `WebSocketUrl`                                | Deploy-time health checks and debugging only — **not** a value to hand to a host daemon; see below |
+| `WebUrl`                                                    | Browser control-plane URL **and** the value to set as `HARNESS_API_URL` on every host daemon       |
+
+`RestApiUrl` and `WebSocketUrl` are two different hostnames — API Gateway v2 fixes
+`protocolType` at creation, so REST and WebSocket are necessarily separate APIs (see
+[aws.md](aws.md#websocket-wss)). A host daemon's `HARNESS_API_URL` derives both its REST base
+and its WebSocket target from one value, so it must be `WebUrl` (CloudFront), the one hostname
+that fronts both APIs. `smokeDeployment` logs the agent endpoint derived from `WebUrl` at the
+end of `deploy`/`update` for exactly this reason.
 
 > **Concurrency identity rename:** if an existing deployment used the legacy
 > `concurrencyKey` attribute, perform this migration as a short maintenance

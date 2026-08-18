@@ -14,6 +14,11 @@ wss://<api-domain>/ws                  host control with `Authorization: Bearer 
 wss://<api-domain>/ws/viewer?ticket=… browser log viewing with a short-lived viewer ticket
 ```
 
+`<api-domain>` is the local API (`127.0.0.1:7420`) in dev, or — on AWS — the CloudFront `WebUrl`
+from the deploy output, **not** the raw `WebSocketUrl`/`RestApiUrl` API Gateway domains. See
+[aws.md](aws.md#topology) and [deploy-host-daemon.md](deploy-host-daemon.md) for why AWS always
+has two separate API Gateway APIs behind that one CloudFront hostname.
+
 | Connection | Credential                                                                          | First message       |
 | ---------- | ----------------------------------------------------------------------------------- | ------------------- |
 | VPS agent  | Service account API key (`hns_…`) bound to `hostId`                                 | `host:register`     |

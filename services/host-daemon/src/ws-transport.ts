@@ -111,7 +111,10 @@ export function createWsTransport(options: Options): DaemonTransport & {
     // on the same 1s/2s/4s boundaries — the reconnect storm lands exactly when the
     // control plane can least absorb it.
     const wait = Math.round(delay * (0.5 + random()));
-    delay = Math.min(delay * 2, 60_000);
+    // Capped at 30s (not 60s): the wait is jittered up to 1.5x the pre-doubled delay, so a
+    // 60s cap could produce a 90s wait — past the control plane's 75s reconnectGraceMs, which
+    // requeues any session still running on this host. 30s keeps the worst case at 45s.
+    delay = Math.min(delay * 2, 30_000);
     retry = timers.setTimeout(() => {
       retry = undefined;
       connect();

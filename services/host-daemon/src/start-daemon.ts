@@ -3,6 +3,7 @@ import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
 import { DaemonLoop } from "./daemon-loop.ts";
 import { createWsTransport } from "./ws-transport.ts";
+import { resolveWsUrl } from "./ws-url.ts";
 
 type StartDaemonOptions = {
   config: DaemonConfig;
@@ -99,15 +100,10 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   if (!baseUrl) {
     throw new Error("apiUrl (or --ws) is required for start; e.g. ws://127.0.0.1:7420/ws");
   }
-  let wsUrl = baseUrl;
-  if (wsUrl.startsWith("http://")) {
-    wsUrl = `ws://${wsUrl.slice("http://".length)}`;
-  } else if (wsUrl.startsWith("https://")) {
-    wsUrl = `wss://${wsUrl.slice("https://".length)}`;
-  }
-  if (!wsUrl.includes("/ws")) {
-    wsUrl = wsUrl.replace(/\/$/, "") + "/ws";
-  }
+  // An explicit --ws override is allowed to target a raw API Gateway WebSocket endpoint
+  // directly (a deploy-day escape hatch); HARNESS_API_URL is not, since the deployed
+  // topology's one supported endpoint is the CloudFront URL. See ws-url.ts.
+  const wsUrl = resolveWsUrl(baseUrl, { allowApiGatewayEndpoint: options.wsUrl !== undefined });
 
   const transport = createWsTransport({
     url: wsUrl,
