@@ -6,8 +6,116 @@ projects:
     type: nextjs
     root: services/host-pane
 
-# No `rules:` here. Applying playwright-coverage/playwright-unique-test-ids for both
-# projects in one config cross-contaminates findings (see
-# https://github.com/jonathanong/no-mistakes/issues/624) — each project's rules run
-# from its own isolated config instead. See .no-mistakes.control.yml and
-# .no-mistakes.host-pane.yml, run together via `pnpm check:data-pw`.
+# Bind each Playwright project to one Next.js app. A single config is safe
+# after no-mistakes#626 (0.40+); the earlier split-config workaround is gone.
+# frontendRoot/selectorRoots stay explicit so src/app route detection and
+# src/components selector coverage cannot silently regress (#625).
+tests:
+  playwright:
+    configs: playwright.config.ts
+    selectorExclude:
+      - "**/*.test.ts"
+      - "**/*.test.tsx"
+    selectors:
+      testIds:
+        - data-pw
+      componentTestIds:
+        dataPw: data-pw
+    apps:
+      control:
+        project: control-web
+        frontendRoot: services/web/src/app
+        selectorRoots:
+          - services/web/src
+      host-pane:
+        project: host-pane
+        frontendRoot: services/host-pane/src/app
+        selectorRoots:
+          - services/host-pane/src
+
+rules:
+  - rule: playwright-unique-test-ids
+    projects: [control-web]
+    tests:
+      playwright: [control]
+  - rule: playwright-coverage
+    projects: [control-web]
+    tests:
+      playwright: [control]
+  - rule: playwright-prefer-test-id-locators
+    projects: [control-web]
+    tests:
+      playwright: [control]
+  - rule: playwright-unique-test-ids
+    projects: [host-pane]
+    tests:
+      playwright: [host-pane]
+  - rule: playwright-coverage
+    projects: [host-pane]
+    tests:
+      playwright: [host-pane]
+  - rule: playwright-prefer-test-id-locators
+    projects: [host-pane]
+    tests:
+      playwright: [host-pane]
+
+  - rule: lockfile-allowlist
+    scope: repository
+    options:
+      allowed: [pnpm-lock.yaml]
+  - rule: package-json-workspace-coverage
+    scope: repository
+    options:
+      packageRoots: [modules, services]
+      requireNamedPackage: true
+  - rule: package-json-registry-only
+    scope: repository
+    options:
+      lockfile: pnpm-lock.yaml
+  - rule: agents-md-max-size
+    scope: repository
+    options:
+      maxLines: 200
+      maxChars: 12000
+  - rule: no-empty-or-comments-only-files
+    scope: repository
+    exclude:
+      - "**/next-env.d.ts"
+  - rule: file-extension-policy
+    scope: repository
+    options:
+      scopes:
+        - path: modules
+          bannedExtensions: [".js", ".jsx"]
+        - path: services
+          bannedExtensions: [".js", ".jsx"]
+  - rule: workspace-package-cycles
+    scope: repository
+    options:
+      dependencyTypes: [dependencies, devDependencies]
+  - rule: markdown-mermaid-validation
+    scope: repository
+    include: ["**/*.md"]
+
+  - rule: nextjs-no-api-routes
+    projects: [control-web]
+  - rule: nextjs-no-caching
+    projects: [control-web]
+  - rule: nextjs-no-caching
+    projects: [host-pane]
+  - rule: banned-paths
+    scope: repository
+    options:
+      bannedPaths:
+        - glob: services/web/src/app/api/**
+          message: Control-plane API routes belong in services/api, not the Next.js app.
+        - glob: services/web/src/pages/**
+          message: Next.js pages router files are not allowed.
+        - glob: services/host-pane/src/pages/**
+          message: Next.js pages router files are not allowed.
+
+  - rule: integration-test-no-mocks
+    include:
+      - integration/**/*.test.ts
+    options:
+      forbiddenCalls: [vi.mock, vi.spyOn]

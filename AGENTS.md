@@ -32,6 +32,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm depcruise`              | Architecture import boundaries                                                                                                                |
 | `pnpm links`                  | lychee markdown link check                                                                                                                    |
 | `pnpm check`                  | Full local CI gate                                                                                                                            |
+| `pnpm check:no-mistakes`      | no-mistakes rules (Playwright `data-pw`, Next.js, repo hygiene)                                                                               |
 | `pnpm test:e2e`               | Build production UIs + Playwright E2E (`next start`; [docs/e2e.md](docs/e2e.md))                                                              |
 | `pnpm local:e2e:isolated`     | Isolated e2e in this worktree's own port range + DynamoDB container (multi-worktree safe; see `pnpm local:e2e:isolated -- <playwright args>`) |
 | `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                                                                                         |

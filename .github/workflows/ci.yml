@@ -76,8 +76,8 @@ jobs:
       - name: Dependency cruiser
         run: pnpm depcruise
 
-      - name: Playwright selector coverage
-        run: pnpm check:data-pw
+      - name: no-mistakes
+        run: pnpm check:no-mistakes
 
       - name: systemd service contract
         run: pnpm check:systemd
