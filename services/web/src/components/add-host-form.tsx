@@ -32,40 +32,48 @@ export function AddHostForm() {
         }
         setPending(true);
         void (async () => {
-          const existing = await fetch(
-            `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
-            { cache: "no-store" },
-          );
-          if (existing.ok) {
-            setOk(`Host slot ${hostId} already exists — left its inventory untouched.`);
-            form.reset();
-            router.refresh();
-            return;
-          }
-          const res = await fetch(
-            `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
-            {
-              method: "PUT",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify(emptyHostInventory()),
-            },
-          );
-          if (!res.ok) {
-            setError(await res.text());
+          try {
+            const existing = await fetch(
+              `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+              { cache: "no-store" },
+            );
+            if (existing.ok) {
+              setOk(`Host slot ${hostId} already exists — left its inventory untouched.`);
+              form.reset();
+              setPending(false);
+              router.refresh();
+              return;
+            }
+            const res = await fetch(
+              `${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
+              {
+                method: "PUT",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify(emptyHostInventory()),
+              },
+            );
+            if (!res.ok) {
+              setError(await res.text());
+              setPending(false);
+              return;
+            }
+            flushSync(() => {
+              // Connect instructions live on the host's own page (see ConnectHostPanel), not
+              // here: this message is about to be replaced by the navigation below, so a
+              // command shown only in this paragraph would rarely be visible long enough to
+              // read or copy.
+              setOk(`Host slot ${hostId} created (empty inventory).`);
+              form.reset();
+            });
+            // Stays disabled through the navigation below to prevent a double-submit — the
+            // page is about to be replaced, so there's no "stuck" state for the user to see.
+            router.replace(
+              withToast(`/hosts/${encodeURIComponent(hostId)}`, `Host slot ${hostId} created.`),
+            );
+          } catch (reason) {
+            setError(reason instanceof Error ? reason.message : String(reason));
             setPending(false);
-            return;
           }
-          flushSync(() => {
-            // Connect instructions live on the host's own page (see ConnectHostPanel), not
-            // here: this message is about to be replaced by the navigation below, so a
-            // command shown only in this paragraph would rarely be visible long enough to
-            // read or copy.
-            setOk(`Host slot ${hostId} created (empty inventory).`);
-            form.reset();
-          });
-          router.replace(
-            withToast(`/hosts/${encodeURIComponent(hostId)}`, `Host slot ${hostId} created.`),
-          );
         })();
       }}
     >
