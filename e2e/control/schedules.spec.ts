@@ -30,14 +30,17 @@ test.describe("control plane schedules", () => {
     const repoId = `pw-sched-repo-${test.info().parallelIndex}-${Date.now()}`;
     const name = `pw-sched-${test.info().parallelIndex}-${Date.now()}`;
     const commandName = `echo-prompt-${test.info().parallelIndex}-${Date.now()}`;
-    await request.post("/api/v1/repositories", {
+    const repository = await request.post("/api/v1/repositories", {
       data: {
-        id: repoId,
         name: repoId,
         url: `/tmp/${repoId}`,
         defaultBranch: "main",
       },
     });
+    // The schedule form's repository field is a <select> populated from the real catalog —
+    // it can only select a repository by its actual server-assigned id, not the client-chosen
+    // name used above for uniqueness.
+    const catalogRepoId = ((await repository.json()) as { id: string }).id;
     const commandResponse = await request.post("/api/v1/commands", {
       data: { name: commandName, argv: ["echo"], appendPrompt: true, providerId: null },
     });
@@ -51,7 +54,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("schedules-heading")).toHaveText("Schedules");
     await expect(page.getByTestId("form-create-schedule")).toBeVisible();
     await expect(page.getByTestId("schedule-error")).toBeHidden();
-    await page.getByTestId("schedule-repository-id").fill(repoId);
+    await page.getByTestId("schedule-repository-id").selectOption(catalogRepoId);
     await page.getByTestId("schedule-name").fill(name);
     await page.getByTestId("schedule-target").selectOption(`command:${commandId}`);
     await page.getByTestId("schedule-cron").fill("0 * * * *");
@@ -65,7 +68,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("edit-schedule-queue-ttl")).toHaveValue("1234");
     const detailUrl = page.url();
     await expect(page.getByTestId("schedule-history-table")).toContainText("No runs yet.");
-    await expect(page.getByTestId("edit-schedule-repository-id")).toHaveValue(repoId);
+    await expect(page.getByTestId("edit-schedule-repository-id")).toHaveValue(catalogRepoId);
     await expect(page.getByTestId("edit-schedule-name")).toHaveValue(name);
     await expect(page.getByTestId("edit-schedule-cron")).toHaveValue("0 * * * *");
     await expect(page.getByTestId("edit-schedule-timeout")).toHaveValue("600");

@@ -7,6 +7,7 @@ import { field, json, mountForm, router, setValue, submit } from "./form-test-he
 import { ScheduleCreateForm } from "./schedule-create-form.tsx";
 
 const targets = [{ kind: "command" as const, id: "cmd/1", label: "Review" }];
+const repositories = [{ id: "repo-1", name: "Repo" }];
 const schedule = {
   id: "schedule/1",
   repositoryId: "repo-1",
@@ -30,7 +31,7 @@ describe("ScheduleCreateForm", () => {
   it("validates and creates a schedule, including routing fields", async () => {
     const fetch = vi.fn().mockResolvedValue(json({ id: "schedule/1" }));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<ScheduleCreateForm targets={targets} />);
+    const view = mountForm(<ScheduleCreateForm targets={targets} repositories={repositories} />);
     const form = field<HTMLFormElement>(view.container, "form-create-schedule");
     expect(form.checkValidity()).toBe(false);
     fill(view);
@@ -56,7 +57,7 @@ describe("ScheduleCreateForm", () => {
   it("resets and refreshes when creation returns no id", async () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(json({})));
     vi.stubGlobal("fetch", fetch);
-    const view = mountForm(<ScheduleCreateForm targets={targets} />);
+    const view = mountForm(<ScheduleCreateForm targets={targets} repositories={repositories} />);
     fill(view);
     submit(field(view.container, "form-create-schedule"));
     await act(async () => Promise.resolve());
@@ -75,7 +76,7 @@ describe("ScheduleCreateForm", () => {
       "fetch",
       vi.fn(() => new Promise<Response>((resolve) => (finish = resolve))),
     );
-    const view = mountForm(<ScheduleCreateForm targets={targets} />);
+    const view = mountForm(<ScheduleCreateForm targets={targets} repositories={repositories} />);
     fill(view);
     submit(field(view.container, "form-create-schedule"));
     expect(field<HTMLButtonElement>(view.container, "schedule-submit").disabled).toBe(true);
@@ -84,14 +85,16 @@ describe("ScheduleCreateForm", () => {
     expect(field(view.container, "schedule-error").textContent).toBe("cron rejected");
     view.unmount();
 
-    const empty = mountForm(<ScheduleCreateForm targets={[]} />);
+    const empty = mountForm(<ScheduleCreateForm targets={[]} repositories={repositories} />);
     expect(field<HTMLButtonElement>(empty.container, "schedule-submit").disabled).toBe(true);
     empty.unmount();
   });
 
   it("renders edit-mode defaults and uses its edit selector", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({ id: "schedule/1" })));
-    const view = mountForm(<ScheduleCreateForm targets={targets} schedule={schedule} />);
+    const view = mountForm(
+      <ScheduleCreateForm targets={targets} repositories={repositories} schedule={schedule} />,
+    );
     expect(field(view.container, "form-edit-schedule-schedule/1")).toBeTruthy();
     expect(field<HTMLInputElement>(view.container, "schedule-name").value).toBe("Nightly");
     expect(
