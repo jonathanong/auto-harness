@@ -112,7 +112,10 @@ export function AppShell({
   className,
   pw,
 }: AppShellProps) {
-  const groups = navGroups(nav);
+  // A flat NavItem[] gets wrapped in a new array literal by navGroups() on every call —
+  // memoized so useNavOverflow's effect (which unconditionally calls setState) doesn't
+  // rerun, and therefore doesn't loop, on every render.
+  const groups = React.useMemo(() => navGroups(nav), [nav]);
   const activeHref = activeNavHref(pathname, groups);
   const navRef = React.useRef<HTMLElement>(null);
   const overflow = useNavOverflow(navRef, groups);
