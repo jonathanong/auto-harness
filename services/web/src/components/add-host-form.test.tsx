@@ -28,6 +28,20 @@ describe("AddHostForm", () => {
     });
     expect(field(view.container, "add-host-ok").textContent).toContain("already exists");
     expect(router.refresh).toHaveBeenCalledOnce();
+    // Regression: this early-return path used to skip setPending(false), leaving the submit
+    // button stuck on "Creating…" forever even though nothing is actually pending anymore.
+    expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(false);
+    view.unmount();
+  });
+
+  it("re-enables the submit button and reports an error after a network failure", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network unreachable")));
+    const view = mountForm(<AddHostForm />);
+    setValue(field(view.container, "add-host-id"), "new-host");
+    submit(field(view.container, "form-add-host"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "add-host-error").textContent).toBe("network unreachable");
+    expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(false);
     view.unmount();
   });
 
