@@ -36,6 +36,10 @@ checks:
       command: [pnpm, --dir, services/api, exec, tsc, --noEmit]
       fileArgs: none
       always: true
+    - name: typecheck-ui
+      command: [pnpm, --dir, modules/ui, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
 
 tests:
   vitest:
