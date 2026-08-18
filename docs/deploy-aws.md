@@ -322,6 +322,10 @@ Prefer **control plane first**, then agents, so old agents fail closed on unknow
 | Before merge                   | `pnpm --filter @auto-harness/cdk synth` and deterministic synthesis tests |
 | Before an AWS deployment claim | Deploy, update, REST/web health checks, and teardown in an AWS account    |
 
+[qa-deployment.md](qa-deployment.md) is the copy-pasteable script for the second row —
+deploy through a real programmatic session to purge, with the traps that aren't obvious
+from this doc alone.
+
 ---
 
 ## Related
