@@ -7,6 +7,8 @@ import {
   isSessionErrorCode,
   isSessionStatus,
   isTerminalSessionStatus,
+  isUserRole,
+  isWorktreeStatus,
   validateCreateSessionInput,
 } from "./validation.ts";
 
@@ -37,6 +39,32 @@ describe("isActiveSessionStatus", () => {
     expect(isActiveSessionStatus("running")).toBe(true);
     expect(isActiveSessionStatus("completed")).toBe(false);
     expect(isActiveSessionStatus(null)).toBe(false);
+  });
+});
+
+describe("isUserRole", () => {
+  it("accepts known roles", () => {
+    expect(isUserRole("admin")).toBe(true);
+    expect(isUserRole("operator")).toBe(true);
+    expect(isUserRole("read-only")).toBe(true);
+  });
+
+  it("rejects unknown roles", () => {
+    expect(isUserRole("owner")).toBe(false);
+    expect(isUserRole(1)).toBe(false);
+  });
+});
+
+describe("isWorktreeStatus", () => {
+  it("accepts known worktree statuses", () => {
+    expect(isWorktreeStatus("idle")).toBe(true);
+    expect(isWorktreeStatus("busy")).toBe(true);
+    expect(isWorktreeStatus("error")).toBe(true);
+  });
+
+  it("rejects unknown worktree statuses", () => {
+    expect(isWorktreeStatus("offline")).toBe(false);
+    expect(isWorktreeStatus(null)).toBe(false);
   });
 });
 

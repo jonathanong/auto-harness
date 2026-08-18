@@ -1,6 +1,6 @@
 # Claude
 
-Read and follow [AGENTS.md](./AGENTS.md).
+Read and follow [AGENTS.md](./AGENTS.md). Product and contributor entry points: [README.md](./README.md), [docs/README.md](docs/README.md).
 
 ## Invariant: the control plane must do everything; the host pane is debug-only
 

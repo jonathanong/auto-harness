@@ -36,14 +36,17 @@ describe("required CI check contract", () => {
     expect(staticAnalysis).toContain("modules/*/tsconfig.tsbuildinfo");
     expect(staticAnalysis).toContain("services/*/tsconfig.tsbuildinfo");
     expect(staticAnalysis.indexOf("name: Cache tsc incremental\n")).toBeLessThan(
-      staticAnalysis.indexOf("run: pnpm typecheck"),
+      staticAnalysis.indexOf("pnpm --dir modules/shared exec tsc --noEmit"),
     );
-    expect(staticAnalysis).toContain("run: pnpm typecheck");
+    expect(staticAnalysis).toContain("pnpm --dir modules/shared exec tsc --noEmit");
+    expect(staticAnalysis).toContain("pnpm --dir services/api exec tsc --noEmit");
     expect(staticAnalysis).toContain("run: pnpm knip");
     expect(staticAnalysis).toContain("run: pnpm depcruise");
     expect(staticAnalysis).toContain("run: pnpm check:no-mistakes");
     expect(staticAnalysis).toContain("run: pnpm check:systemd");
-    expect(staticAnalysis).toContain("uses: lycheeverse/lychee-action@v2");
+    expect(staticAnalysis).toContain(
+      "uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2",
+    );
     expect(staticAnalysis).not.toContain("run: pnpm test");
 
     const shard = job("vitest-shard");

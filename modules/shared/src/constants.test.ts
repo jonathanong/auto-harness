@@ -15,6 +15,8 @@ import {
   SESSION_ERROR_CODES,
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
+  USER_ROLES,
+  WORKTREE_STATUSES,
 } from "./constants.ts";
 
 describe("constants", () => {
@@ -31,6 +33,8 @@ describe("constants", () => {
     expect(TERMINAL_SESSION_STATUSES).not.toContain("queued");
     expect(ACTIVE_SESSION_STATUSES).toEqual(["queued", "running"]);
     expect(SESSION_ERROR_CODES).toContain("usage_limit");
+    expect(USER_ROLES).toEqual(["admin", "operator", "read-only"]);
+    expect(WORKTREE_STATUSES).toEqual(["idle", "busy", "error"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");
   });

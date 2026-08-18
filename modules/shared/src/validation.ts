@@ -6,9 +6,18 @@ import {
   SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
   SESSION_TYPES,
+  USER_ROLES,
+  WORKTREE_STATUSES,
   DEFAULT_QUEUE_TTL_SECONDS,
 } from "./constants.ts";
-import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
+import type {
+  SessionErrorCode,
+  SessionSource,
+  SessionStatus,
+  SessionType,
+  UserRole,
+  WorktreeStatus,
+} from "./types.ts";
 import { isValidScheduledBranchRef, isValidSessionRef } from "./scheduled-branch-ref.ts";
 import type { SessionActiveStatus, SessionTerminalStatus, TargetRef } from "./session.ts";
 
@@ -61,6 +70,14 @@ export function isSessionType(value: unknown): value is SessionType {
 
 export function isSessionSource(value: unknown): value is SessionSource {
   return typeof value === "string" && (SESSION_SOURCES as readonly string[]).includes(value);
+}
+
+export function isUserRole(value: unknown): value is UserRole {
+  return typeof value === "string" && (USER_ROLES as readonly string[]).includes(value);
+}
+
+export function isWorktreeStatus(value: unknown): value is WorktreeStatus {
+  return typeof value === "string" && (WORKTREE_STATUSES as readonly string[]).includes(value);
 }
 
 /** Internal deletion leases share the concurrency-lock table but reserve this namespace. */
