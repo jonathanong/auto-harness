@@ -184,9 +184,30 @@ jobs:
             pnpm exec playwright install --with-deps chromium
           fi
 
+      - name: Clean e2e build output
+        # Same wipe pnpm build:web:e2e does, run as its own step so it happens *before* the
+        # cache restore below repopulates .next-e2e/cache — restoring first would just get
+        # deleted by this rm -rf.
+        run: rm -rf services/web/.next-e2e services/host-pane/.next-e2e
+
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            services/web/.next-e2e/cache
+            services/host-pane/.next-e2e/cache
+          # Source-hash key so a same-source rerun hits fully; restore-keys falls back to the
+          # last lockfile-matched cache on a source change, since Next.js's cache is
+          # per-file/incremental, not all-or-nothing — a partial hit still beats a cold build.
+          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'services/host-pane/src/**/*.[jt]s', 'services/host-pane/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}
+          restore-keys: |
+            nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: Build (e2e)
         # Production next build for control + host-pane into .next-e2e — see docs/e2e.md.
-        run: pnpm build:web:e2e
+        # Calls each app's build:e2e directly (not the pnpm build:web:e2e wrapper), since that
+        # wrapper's own rm -rf already ran above.
+        run: pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/host-pane build:e2e
 
       - name: Playwright E2E
         # CI is set by Actions → no server reuse, 2 workers, retries, github reporter
@@ -204,7 +225,7 @@ jobs:
           if-no-files-found: ignore
 
   playwright-auth:
-    name: playwright (required auth)
+    name: playwright-auth
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -250,8 +271,21 @@ jobs:
             pnpm exec playwright install --with-deps chromium
           fi
 
+      - name: Clean e2e build output
+        run: rm -rf services/web/.next-e2e
+
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: services/web/.next-e2e/cache
+          key: nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}
+          restore-keys: |
+            nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: Build (e2e, auth)
-        run: pnpm build:web:auth-e2e
+        # Calls build:e2e directly (not the pnpm build:web:auth-e2e wrapper), since that
+        # wrapper's own rm -rf already ran above.
+        run: pnpm --filter @auto-harness/web build:e2e
 
       - name: Playwright E2E (required auth)
         run: pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control
