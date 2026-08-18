@@ -324,7 +324,10 @@ is exactly how two concurrent runs collide, or how a stale build silently points
 wrong backend — see [`scripts/worktree-e2e-env.mts`](../scripts/worktree-e2e-env.mts),
 which derives a deterministic, worktree-specific port block and DynamoDB container name
 from the worktree's directory name, so the same worktree always gets the same ports (safe
-to reuse across runs) and different worktrees never collide:
+to reuse across runs). A hash of the directory name is only the _starting_ candidate — it
+probes those ports for real occupancy (and restarts its own container if that container
+exists but is stopped) before using them, walking to the next candidate block on a genuine
+collision rather than assuming the hash alone is collision-free:
 
 ```bash
 # Print the env for this worktree (source it, or read the values off individually):

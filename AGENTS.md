@@ -42,6 +42,18 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 
 Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/local-development.md](docs/local-development.md). **Pre-deploy E2E:** [docs/host-daemon-e2e-testing.md](docs/host-daemon-e2e-testing.md). **Deploy:** [docs/deploy.md](docs/deploy.md) → [local](docs/deploy-local.md) / [AWS](docs/deploy-aws.md) / [agent](docs/deploy-host-daemon.md).
 
+## Working in a git worktree, or alongside other agents
+
+This repo is regularly checked out into several git worktrees at once, each possibly running its
+own agent, dev server, or e2e run concurrently. **Never guess a port offset or reuse another
+run's DynamoDB container by hand** — two worktrees on the same fixed ports silently corrupt each
+other's runs, or point a stale build at the wrong backend. Use
+[`scripts/worktree-e2e-env.mts`](scripts/worktree-e2e-env.mts) (`pnpm local:e2e:isolated`; see
+[docs/e2e.md#isolated-focused-control-runs](docs/e2e.md#isolated-focused-control-runs)) — it
+derives a deterministic, worktree-specific port block from the worktree's own directory name and
+probes it for real collisions before use, so concurrent worktrees don't collide and the same
+worktree gets stable, reusable ports across runs.
+
 ## Testing
 
 - Framework: **vitest**.

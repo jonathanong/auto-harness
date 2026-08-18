@@ -1,15 +1,18 @@
 /**
  * Give each git worktree its own e2e port range and DynamoDB container, so parallel agents
  * working in sibling worktrees never guess at a shared `HARNESS_E2E_PORT_OFFSET` and collide —
- * or, worse, silently succeed against someone else's stack. See docs/worktrees.md.
+ * or, worse, silently succeed against someone else's stack. See docs/e2e.md.
  *
- * The offset (and therefore every derived port) is a deterministic hash of the worktree's
- * directory name, not random or incrementing — the same worktree always gets the same ports
- * across runs, so its DynamoDB container and `.next-e2e` build stay reusable.
+ * The starting port block is a deterministic hash of the worktree's directory name, not random
+ * or incrementing — the same worktree gets the same starting block across runs, so its DynamoDB
+ * container and `.next-e2e` build stay reusable. Two worktree names can still hash to the same
+ * starting block (2000 buckets is not a birthday-paradox-safe space once dozens of worktrees
+ * exist), so every real invocation probes the candidate ports and walks forward to the next
+ * block on a genuine collision — see `findAvailablePorts`.
  *
  * Usage:
  *   node scripts/worktree-e2e-env.mts               # print `export KEY=value` lines
- *   node scripts/worktree-e2e-env.mts --ensure-db    # create/reuse this worktree's DynamoDB container
+ *   node scripts/worktree-e2e-env.mts --ensure-db    # create/reuse/restart this worktree's DynamoDB container
  *   node scripts/worktree-e2e-env.mts --run -- <playwright args>
  *                                                     # ensure the container, build web + host-pane
  *                                                     # e2e bundles with the matching HARNESS_API_HTTP
@@ -18,6 +21,7 @@
  *                                                     # to stop anyone getting wrong by hand.
  */
 import { spawnSync } from "node:child_process";
+import { connect } from "node:net";
 import path from "node:path";
 
 /** FNV-1a, 32-bit. Deterministic, well-distributed, no external dependency. */
@@ -43,13 +47,17 @@ export type WorktreePorts = {
   containerName: string;
 };
 
+export function bucketFor(slug: string): number {
+  return fnv1a(slug) % OFFSET_BUCKETS;
+}
+
 /**
  * `10 + bucket * 4` keeps every worktree's 4-port block (api/control/host-pane/dynamo) aligned
  * the same way the default 7430-7433 block is, and starts past offset 0 so an isolated worktree
  * run can never collide with the shared default stack (`pnpm test:e2e`'s own 743x range).
  */
-export function computePorts(slug: string): WorktreePorts {
-  const offset = 10 + (fnv1a(slug) % OFFSET_BUCKETS) * 4;
+export function portsForBucket(slug: string, bucket: number): WorktreePorts {
+  const offset = 10 + (bucket % OFFSET_BUCKETS) * 4;
   return {
     slug,
     offset,
@@ -59,6 +67,11 @@ export function computePorts(slug: string): WorktreePorts {
     dynamoPort: 7433 + offset,
     containerName: `${slug}-dynamodb-e2e`,
   };
+}
+
+/** The deterministic starting candidate for `slug` — see `findAvailablePorts` for collision handling. */
+export function computePorts(slug: string): WorktreePorts {
+  return portsForBucket(slug, bucketFor(slug));
 }
 
 export function worktreeSlug(cwd: string = process.cwd()): string {
@@ -75,9 +88,72 @@ function envFor(ports: WorktreePorts): Record<string, string> {
   };
 }
 
+/** Whether something is listening on 127.0.0.1:port right now. */
+function isPortOccupied(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host: "127.0.0.1", port, timeout: 300 });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once("error", () => resolve(false));
+  });
+}
+
+type ContainerState = "missing" | "running" | "stopped";
+
+function containerState(name: string): ContainerState {
+  const inspect = spawnSync("docker", ["inspect", "-f", "{{.State.Running}}", name], {
+    encoding: "utf8",
+  });
+  if (inspect.status !== 0) return "missing";
+  return inspect.stdout.trim() === "true" ? "running" : "stopped";
+}
+
+/**
+ * Walk forward from this worktree's hash-seeded bucket until every one of the 4 ports is
+ * either free, or (for the DynamoDB port only) already bound to this exact worktree's own
+ * container — reusing that container is the whole point, not a collision. A port genuinely
+ * occupied by anything else (another worktree that landed on the same bucket, or a leftover
+ * process) means this candidate block is unusable; try the next one.
+ */
+export async function findAvailablePorts(
+  slug: string,
+  maxAttempts = OFFSET_BUCKETS,
+): Promise<WorktreePorts> {
+  let bucket = bucketFor(slug);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const ports = portsForBucket(slug, bucket);
+    const dynamoIsOurs = containerState(ports.containerName) !== "missing";
+    const [dynamoFree, apiFree, controlFree, hostPaneFree] = await Promise.all([
+      dynamoIsOurs ? Promise.resolve(true) : isPortOccupied(ports.dynamoPort).then((b) => !b),
+      isPortOccupied(ports.apiPort).then((b) => !b),
+      isPortOccupied(ports.controlPort).then((b) => !b),
+      isPortOccupied(ports.hostPanePort).then((b) => !b),
+    ]);
+    if (dynamoFree && apiFree && controlFree && hostPaneFree) return ports;
+    bucket = (bucket + 1) % OFFSET_BUCKETS;
+  }
+  throw new Error(
+    `Could not find a free e2e port block for worktree "${slug}" — every candidate is occupied.`,
+  );
+}
+
 function ensureDynamo(ports: WorktreePorts): void {
-  const inspect = spawnSync("docker", ["inspect", ports.containerName], { stdio: "ignore" });
-  if (inspect.status === 0) return; // Already exists — reused as-is, matching e2e's in-memory-DB reset-on-recreate contract.
+  const state = containerState(ports.containerName);
+  if (state === "running") return;
+  if (state === "stopped") {
+    const start = spawnSync("docker", ["start", ports.containerName], { stdio: "inherit" });
+    if (start.status !== 0) {
+      console.error(`Failed to restart stopped container ${ports.containerName}.`);
+      process.exit(1);
+    }
+    return;
+  }
   const run = spawnSync(
     "docker",
     [
@@ -122,7 +198,7 @@ const invokedDirectly =
   process.argv[1] !== undefined && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 
 if (invokedDirectly) {
-  const ports = computePorts(worktreeSlug());
+  const ports = await findAvailablePorts(worktreeSlug());
   const [mode, ...rest] = process.argv.slice(2);
   if (mode === "--ensure-db") {
     ensureDynamo(ports);
