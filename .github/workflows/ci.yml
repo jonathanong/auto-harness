@@ -22,15 +22,15 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
           node-version: "22.18"
@@ -52,7 +52,7 @@ jobs:
       # build — runtime is still Node type-stripping. Restored so the gate stays cheap
       # as remaining packages join the filter.
       - name: Cache tsc incremental
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             modules/*/tsconfig.tsbuildinfo
@@ -68,7 +68,16 @@ jobs:
       # check before. Bring it in as a follow-up rather than block this gate on fixing it
       # first.
       - name: Typecheck
-        run: pnpm typecheck
+        # Static `pnpm --dir <pkg> exec tsc --noEmit` so tsconfig-gate-coverage can
+        # see each package project. Same set as `pnpm typecheck` (modules/ui is still
+        # excluded — pre-existing violations).
+        run: >
+          pnpm --dir modules/shared exec tsc --noEmit
+          && pnpm --dir services/cdk exec tsc --noEmit
+          && pnpm --dir services/host-pane exec tsc --noEmit
+          && pnpm --dir services/web exec tsc --noEmit
+          && pnpm --dir services/host-daemon exec tsc --noEmit
+          && pnpm --dir services/api exec tsc --noEmit
 
       - name: Knip
         run: pnpm knip
@@ -83,7 +92,7 @@ jobs:
         run: pnpm check:systemd
 
       - name: Install lychee
-        uses: lycheeverse/lychee-action@v2
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2
         with:
           args: --config lychee.toml README.md AGENTS.md CLAUDE.md docs
           fail: true
@@ -110,15 +119,15 @@ jobs:
           - 7423:8000
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
           node-version: "22.18"
@@ -139,7 +148,7 @@ jobs:
         run: pnpm test:shard --shard=${{ matrix.shard }}/2 --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
 
       - name: Upload coverage blob
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: vitest-blob-${{ matrix.shard }}
           path: .vitest-reports/
@@ -163,15 +172,15 @@ jobs:
           exit 1
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22.18"
           cache: pnpm
@@ -180,7 +189,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download coverage blobs
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: vitest-blob-*
           path: .vitest-reports
@@ -200,15 +209,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22.18"
           cache: pnpm
@@ -217,7 +226,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -240,7 +249,7 @@ jobs:
         run: rm -rf services/web/.next-e2e services/host-pane/.next-e2e
 
       - name: Cache Next.js build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             services/web/.next-e2e/cache
@@ -264,7 +273,7 @@ jobs:
 
       - name: Upload Playwright artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report
           path: |
@@ -288,15 +297,15 @@ jobs:
       HARNESS_ADMINS: W3sidXNlcm5hbWUiOiJhdXRoLWFkbWluIiwicGFzc3dvcmQiOiJhdXRoLXBhc3N3b3JkIn1d
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22.18"
           cache: pnpm
@@ -305,7 +314,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: playwright-cache
         with:
           path: ~/.cache/ms-playwright
@@ -324,7 +333,7 @@ jobs:
         run: rm -rf services/web/.next-e2e
 
       - name: Cache Next.js build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: services/web/.next-e2e/cache
           key: nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}-${{ hashFiles('services/web/next.config.ts', 'services/web/tsconfig.json', 'services/web/tailwind.config.ts', 'services/web/postcss.config.mjs', 'services/web/package.json') }}
@@ -341,7 +350,7 @@ jobs:
 
       - name: Upload Playwright artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report-auth
           path: |

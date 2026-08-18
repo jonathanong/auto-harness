@@ -1,4 +1,11 @@
-import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
+import type {
+  SessionErrorCode,
+  SessionSource,
+  SessionStatus,
+  SessionType,
+  UserRole,
+  WorktreeStatus,
+} from "./types.ts";
 
 export const SESSION_STATUSES = [
   "queued",
@@ -36,6 +43,14 @@ export const SESSION_SOURCES = [
   "webhook",
   "schedule",
 ] as const satisfies readonly SessionSource[];
+
+export const USER_ROLES = ["admin", "operator", "read-only"] as const satisfies readonly UserRole[];
+
+export const WORKTREE_STATUSES = [
+  "idle",
+  "busy",
+  "error",
+] as const satisfies readonly WorktreeStatus[];
 /** Default max usage_limit auto-retries (docs/plan.md Invariant 6). */
 
 /** A queued session has this long to find capacity before failing. */

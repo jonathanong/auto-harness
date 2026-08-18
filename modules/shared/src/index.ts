@@ -52,6 +52,8 @@ export {
   SESSION_STATUSES,
   SESSION_TYPES,
   TERMINAL_SESSION_STATUSES,
+  USER_ROLES,
+  WORKTREE_STATUSES,
 } from "./constants.ts";
 export { validateTargetRouting } from "./validation.ts";
 export { isValidUtcTimestamp, nextCronOccurrence, parseCron } from "./cron.ts";
@@ -63,6 +65,8 @@ export {
   isReservedConcurrencyId,
   isSessionErrorCode,
   isSessionStatus,
+  isUserRole,
+  isWorktreeStatus,
   isSessionType,
   isActiveSessionStatus,
   isTerminalSessionStatus,

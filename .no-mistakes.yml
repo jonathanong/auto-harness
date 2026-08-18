@@ -10,7 +10,47 @@ projects:
 # after no-mistakes#626 (0.40+); the earlier split-config workaround is gone.
 # frontendRoot/selectorRoots stay explicit so src/app route detection and
 # src/components selector coverage cannot silently regress (#625).
+checks:
+  commands:
+    - name: typecheck-shared
+      command: [pnpm, --dir, modules/shared, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+    - name: typecheck-cdk
+      command: [pnpm, --dir, services/cdk, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+    - name: typecheck-host-pane
+      command: [pnpm, --dir, services/host-pane, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+    - name: typecheck-web
+      command: [pnpm, --dir, services/web, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+    - name: typecheck-host-daemon
+      command: [pnpm, --dir, services/host-daemon, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+    - name: typecheck-api
+      command: [pnpm, --dir, services/api, exec, tsc, --noEmit]
+      fileArgs: none
+      always: true
+
 tests:
+  vitest:
+    configs: vitest.config.ts
+    projects:
+      unit:
+        include:
+          - modules/**/*.test.ts
+          - modules/**/*.test.tsx
+          - services/**/*.test.ts
+          - services/**/*.test.tsx
+          - scripts/**/*.test.ts
+      integration:
+        include:
+          - integration/**/*.test.ts
   playwright:
     configs: playwright.config.ts
     selectorExclude:
@@ -119,3 +159,84 @@ rules:
       - integration/**/*.test.ts
     options:
       forbiddenCalls: [vi.mock, vi.spyOn]
+
+  - rule: github-actions-pinned-hash
+    scope: repository
+  - rule: markdown-reachability
+    scope: repository
+    include: ["**/*.md"]
+    options:
+      rootFilenames: [CLAUDE.md, AGENTS.md]
+      indexFilenames: [README.md, docs/README.md]
+      maxDepth: 2
+  - rule: production-dependency-declarations
+    scope: repository
+    options:
+      workspaceRoots: [modules, services]
+  - rule: finite-set-consistency
+    scope: repository
+    options:
+      sets:
+        - name: sessionStatusType
+          file: modules/shared/src/types.ts
+          kind: ts-string-union
+          target: SessionStatus
+        - name: sessionStatusConst
+          file: modules/shared/src/constants.ts
+          kind: ts-array-literal
+          target: SESSION_STATUSES
+        - name: sessionSourceType
+          file: modules/shared/src/types.ts
+          kind: ts-string-union
+          target: SessionSource
+        - name: sessionSourceConst
+          file: modules/shared/src/constants.ts
+          kind: ts-array-literal
+          target: SESSION_SOURCES
+        - name: sessionErrorType
+          file: modules/shared/src/types.ts
+          kind: ts-string-union
+          target: SessionErrorCode
+        - name: sessionErrorConst
+          file: modules/shared/src/constants.ts
+          kind: ts-array-literal
+          target: SESSION_ERROR_CODES
+        - name: userRoleType
+          file: modules/shared/src/types.ts
+          kind: ts-string-union
+          target: UserRole
+        - name: userRoleConst
+          file: modules/shared/src/constants.ts
+          kind: ts-array-literal
+          target: USER_ROLES
+        - name: worktreeStatusType
+          file: modules/shared/src/types.ts
+          kind: ts-string-union
+          target: WorktreeStatus
+        - name: worktreeStatusConst
+          file: modules/shared/src/constants.ts
+          kind: ts-array-literal
+          target: WORKTREE_STATUSES
+      comparisons:
+        - left: sessionStatusType
+          right: sessionStatusConst
+        - left: sessionSourceType
+          right: sessionSourceConst
+        - left: sessionErrorType
+          right: sessionErrorConst
+        - left: userRoleType
+          right: userRoleConst
+        - left: worktreeStatusType
+          right: worktreeStatusConst
+  - rule: tsconfig-gate-coverage
+    scope: repository
+    options:
+      allowProjects:
+        tsconfig.json: Root editor include set; packages typecheck via their own tsconfig.json.
+        tsconfig.base.json: Shared compilerOptions only; not a tsc project.
+        modules/ui/tsconfig.json: Pre-existing violations; not yet in pnpm typecheck (see CI typecheck comment).
+  - rule: vitest-project-mapping
+    scope: repository
+    options:
+      testExtensions: [.test.ts, .test.tsx]
+      explicitProjectsOnly: true
