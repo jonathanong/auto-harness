@@ -401,13 +401,28 @@ live in one PR description.
 
 ## CI notes
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the required **`playwright`** job:
+GitHub Actions (`.github/workflows/ci.yml`) runs two independent, parallel jobs rather than
+one combined job — the required-auth suite is a handful of spec files with its own build, so
+running it after the full suite in the same job only added serial wall-clock time for no
+correctness reason:
+
+**`playwright`** — the full suite:
 
 1. `pnpm install --frozen-lockfile`
 2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
-3. `pnpm test:e2e` — `build:web:e2e` (production `next build` into `.next-e2e`), then Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
-4. `pnpm test:e2e:auth` — rebuilds the production control UI with required authentication and runs the login, human-account, and service-account suites against a fresh required-auth stack with fixed test-only credentials
-5. On failure, uploads `playwright-report/` and `test-results/` as artifacts (7-day retention)
+3. `pnpm build:web:e2e` (production `next build` into `.next-e2e` for control + host-pane)
+4. `pnpm exec playwright test` — Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
+5. On failure, uploads `playwright-report/` and `test-results/` as the `playwright-report` artifact (7-day retention)
+
+**`playwright-auth`** — the required-auth suite, same steps 1–2, then:
+
+3. `pnpm build:web:auth-e2e` (production `next build` into `.next-e2e` for control only), with `HARNESS_E2E_AUTH`/`HARNESS_AUTH_MODE`/`HARNESS_SESSION_SECRET`/`HARNESS_ADMINS` set at job level
+4. `pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control` against a fresh required-auth stack with fixed test-only credentials
+5. On failure, uploads the same paths as the `playwright-report-auth` artifact
+
+Both jobs build before testing — `pnpm test:e2e`/`pnpm test:e2e:auth` still do this in one
+step for local runs, but CI runs the build and the test as separate named steps so each
+phase's duration is visible on its own in the Actions UI.
 
 GitHub sets `CI=true`, so config applies:
 

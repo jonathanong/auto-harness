@@ -71,6 +71,17 @@ jobs:
     name: vitest
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Native job service container instead of `docker compose up` as a step: GitHub Actions
+    # starts and links it before any step runs (in parallel with checkout/setup), and tears it
+    # down with the runner — no docker-compose.yml dependency in CI at all. No --health-cmd:
+    # the image has no curl/wget to run one with, and `pnpm local:dynamodb:ready` below already
+    # polls the real DynamoDB client (waitForDynamo, up to 30s) before creating tables, which is
+    # a more accurate readiness gate than a container-level health check would be anyway.
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:2.5.2
+        ports:
+          - 7423:8000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,9 +101,10 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # DynamoDB Local so write-through / createControlPlane branches hit coverage thresholds
-      - name: Start DynamoDB Local
-        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
+      # Waits for the services: container above, then creates control-plane tables — needed
+      # so write-through / createControlPlane branches hit coverage thresholds.
+      - name: Bootstrap DynamoDB tables
+        run: pnpm local:dynamodb:ready
 
       - name: Test with coverage
         run: pnpm test
@@ -104,6 +116,11 @@ jobs:
     name: integration
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:2.5.2
+        ports:
+          - 7423:8000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -122,8 +139,8 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Start DynamoDB Local
-        run: pnpm local:dynamodb && pnpm local:dynamodb:ready
+      - name: Bootstrap DynamoDB tables
+        run: pnpm local:dynamodb:ready
 
       - name: Integration tests
         run: pnpm test:integration
@@ -131,7 +148,7 @@ jobs:
   playwright:
     name: playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -167,19 +184,83 @@ jobs:
             pnpm exec playwright install --with-deps chromium
           fi
 
+      - name: Build (e2e)
+        # Production next build for control + host-pane into .next-e2e — see docs/e2e.md.
+        run: pnpm build:web:e2e
+
       - name: Playwright E2E
         # CI is set by Actions → no server reuse, 2 workers, retries, github reporter
-        run: pnpm test:e2e
-
-      - name: Playwright E2E (required auth)
-        # Production control UI with required auth and fixed test-only credentials
-        run: pnpm test:e2e:auth
+        run: pnpm exec playwright test
 
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  playwright-auth:
+    name: playwright (required auth)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Production control UI with required auth and fixed test-only credentials — see
+      # docs/e2e.md. Set at job level: middleware.ts/api.ts read HARNESS_AUTH_MODE and
+      # HARNESS_SESSION_SECRET at request time inside the webServer-started `next start`
+      # process, so the Playwright test step needs them, not just the build step.
+      HARNESS_E2E_AUTH: "1"
+      HARNESS_AUTH_MODE: required
+      HARNESS_SESSION_SECRET: auth-e2e-session-secret-auth-e2e-session-secret
+      HARNESS_ADMINS: W3sidXNlcm5hbWUiOiJhdXRoLWFkbWluIiwicGFzc3dvcmQiOiJhdXRoLXBhc3N3b3JkIn1d
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Install Playwright Chromium
+        timeout-minutes: 5
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm exec playwright install-deps chromium
+          else
+            pnpm exec playwright install --with-deps chromium
+          fi
+
+      - name: Build (e2e, auth)
+        run: pnpm build:web:auth-e2e
+
+      - name: Playwright E2E (required auth)
+        run: pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-auth
           path: |
             playwright-report/
             test-results/
