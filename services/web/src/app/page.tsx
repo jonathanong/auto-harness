@@ -13,10 +13,10 @@ import { apiGet } from "../lib/api.ts";
 export const dynamic = "force-dynamic";
 
 async function getSessionCount(status: "running" | "queued"): Promise<SessionCount> {
-  const page = await apiGet<{ items: unknown[]; nextCursor: string | null }>(
+  const page = await apiGet<{ items?: unknown[]; nextCursor?: string | null }>(
     `/api/v1/sessions?status=${status}&limit=100`,
   );
-  return { count: page.items.length, atLimit: page.nextCursor !== null };
+  return { count: page.items?.length ?? 0, atLimit: (page.nextCursor ?? null) !== null };
 }
 
 export default async function DashboardPage() {
