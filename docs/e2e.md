@@ -318,6 +318,32 @@ control-plane run can avoid an already-running shared stack by setting
 endpoint and invoke Playwright with the same variables. This is intended for
 parallel PR verification and does not change the default CI resource names.
 
+**Multiple git worktrees, or multiple agents working in parallel, must not pick these
+values by hand.** Doing so by guessing (or reusing a port from a previous, unrelated run)
+is exactly how two concurrent runs collide, or how a stale build silently points at the
+wrong backend — see [`scripts/worktree-e2e-env.mts`](../scripts/worktree-e2e-env.mts),
+which derives a deterministic, worktree-specific port block and DynamoDB container name
+from the worktree's directory name, so the same worktree always gets the same ports (safe
+to reuse across runs) and different worktrees never collide:
+
+```bash
+# Print the env for this worktree (source it, or read the values off individually):
+node scripts/worktree-e2e-env.mts
+
+# Create/reuse this worktree's own DynamoDB Local container:
+node scripts/worktree-e2e-env.mts --ensure-db
+
+# Do the whole thing in one shot — ensure the container, rebuild the e2e bundles with
+# the matching HARNESS_API_HTTP baked in (the step manual runs get wrong most often),
+# then run Playwright with the isolated env:
+node scripts/worktree-e2e-env.mts --run -- e2e/control/hosts.spec.ts --project=control
+```
+
+`--run` exists specifically because `next build`'s rewrite target is baked in at build
+time, not read at `next start` time (see `playwright.config.ts`'s own comment on this) —
+building with one `HARNESS_API_HTTP` and testing against another offset produces
+`ECONNREFUSED` proxy errors that look like application bugs but are only a stale build.
+
 - Config file: [`playwright.config.ts`](../playwright.config.ts)
 - Test dir: `e2e/`
 - Reporter: `list` locally; `github` + `list` when `CI` is set

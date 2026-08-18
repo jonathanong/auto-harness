@@ -20,24 +20,25 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 
 ## Tooling
 
-| Command                       | Purpose                                                                          |
-| ----------------------------- | -------------------------------------------------------------------------------- |
-| `pnpm install`                | Install workspace                                                                |
-| `pnpm lint`                   | oxlint                                                                           |
-| `pnpm fmt` / `pnpm fmt:check` | oxfmt                                                                            |
-| `pnpm test`                   | vitest with coverage thresholds (98/97/100/98 global; 100% per-file overrides)   |
-| `pnpm knip`                   | Unused exports/deps                                                              |
-| `pnpm depcruise`              | Architecture import boundaries                                                   |
-| `pnpm links`                  | lychee markdown link check                                                       |
-| `pnpm check`                  | Full local CI gate                                                               |
-| `pnpm test:e2e`               | Build production UIs + Playwright E2E (`next start`; [docs/e2e.md](docs/e2e.md)) |
-| `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                            |
-| `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)                                           |
-| `pnpm local:web`              | Control-plane Next.js UI on `:7421`                                              |
-| `pnpm local:host-pane`        | Host-pane Next.js UI on `:7422`                                                  |
-| `pnpm local:dynamodb`         | DynamoDB Local on host `:7423`                                                   |
-| `pnpm local:daemon`           | Agent CLI (`status`, `run-session`, `start`)                                     |
-| `pnpm local:tmux`             | Above (minus DynamoDB, which stays in Docker), one tmux window each              |
+| Command                       | Purpose                                                                                                                                       |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm install`                | Install workspace                                                                                                                             |
+| `pnpm lint`                   | oxlint                                                                                                                                        |
+| `pnpm fmt` / `pnpm fmt:check` | oxfmt                                                                                                                                         |
+| `pnpm test`                   | vitest with coverage thresholds (98/97/100/98 global; 100% per-file overrides)                                                                |
+| `pnpm knip`                   | Unused exports/deps                                                                                                                           |
+| `pnpm depcruise`              | Architecture import boundaries                                                                                                                |
+| `pnpm links`                  | lychee markdown link check                                                                                                                    |
+| `pnpm check`                  | Full local CI gate                                                                                                                            |
+| `pnpm test:e2e`               | Build production UIs + Playwright E2E (`next start`; [docs/e2e.md](docs/e2e.md))                                                              |
+| `pnpm local:e2e:isolated`     | Isolated e2e in this worktree's own port range + DynamoDB container (multi-worktree safe; see `pnpm local:e2e:isolated -- <playwright args>`) |
+| `pnpm local:e2e`              | Phase 1 create→run on a temp git repo                                                                                                         |
+| `pnpm local:api`              | Local API on `:7420` (Node + DynamoDB)                                                                                                        |
+| `pnpm local:web`              | Control-plane Next.js UI on `:7421`                                                                                                           |
+| `pnpm local:host-pane`        | Host-pane Next.js UI on `:7422`                                                                                                               |
+| `pnpm local:dynamodb`         | DynamoDB Local on host `:7423`                                                                                                                |
+| `pnpm local:daemon`           | Agent CLI (`status`, `run-session`, `start`)                                                                                                  |
+| `pnpm local:tmux`             | Above (minus DynamoDB, which stays in Docker), one tmux window each                                                                           |
 
 Package manager: **pnpm** only (see `packageManager` in root `package.json`). Local runbook: [docs/local-development.md](docs/local-development.md). **Pre-deploy E2E:** [docs/host-daemon-e2e-testing.md](docs/host-daemon-e2e-testing.md). **Deploy:** [docs/deploy.md](docs/deploy.md) → [local](docs/deploy-local.md) / [AWS](docs/deploy-aws.md) / [agent](docs/deploy-host-daemon.md).
 
