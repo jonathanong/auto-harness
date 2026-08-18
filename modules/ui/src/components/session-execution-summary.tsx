@@ -1,5 +1,7 @@
 import { isTerminalSessionStatus } from "@auto-harness/shared";
 
+import { Alert } from "./alert.tsx";
+
 export type SessionExecutionSummaryProps = {
   status: string;
   resolvedArgv?: string[] | null;
@@ -34,11 +36,7 @@ export function SessionExecutionSummary({
         </div>
       ) : null}
       {showError ? (
-        <p
-          className="rounded-md border border-destructive/40 bg-red-50 p-3 text-sm text-red-900"
-          data-pw="session-detail-error"
-          role={terminal ? "alert" : "status"}
-        >
+        <Alert variant="danger" data-pw="session-detail-error" role={terminal ? "alert" : "status"}>
           {errorCode ? (
             <span className="font-semibold">
               {errorCode}
@@ -46,17 +44,14 @@ export function SessionExecutionSummary({
             </span>
           ) : null}
           {errorMessage || "Session ended with this error code."}
-        </p>
+        </Alert>
       ) : null}
       {resumeFallback ? (
-        <p
-          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-          data-pw="session-detail-resume-fallback"
-        >
+        <Alert variant="warning" data-pw="session-detail-resume-fallback">
           Native resume was unavailable; this session ran as a fresh attempt through the configured
           route.
           {resumedFromSessionId ? ` Resumed from ${resumedFromSessionId}.` : ""}
-        </p>
+        </Alert>
       ) : null}
     </>
   );

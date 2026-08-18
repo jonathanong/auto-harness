@@ -1,7 +1,7 @@
 "use client";
 
 import { isTerminalSessionStatus } from "@auto-harness/shared";
-import { SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
+import { Alert, SessionActions, SessionDetail, type SessionSummary } from "@auto-harness/ui";
 import { type ReactNode, useEffect, useState } from "react";
 
 import { apiFetch } from "../lib/client-api.ts";
@@ -95,17 +95,13 @@ export function SessionLiveDetail({
       worktreeHrefBase="/worktrees"
     >
       {offline ? (
-        <div
-          className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"
-          data-pw="session-agent-offline"
-          role="alert"
-        >
+        <Alert variant="warning" className="p-4" data-pw="session-agent-offline" role="alert">
           <p className="font-medium">Agent disconnected — session may be stale.</p>
           <p className="mt-1">
             Force-cancel updates the control-plane session, but cannot confirm that the remote
             process stopped while the agent is offline.
           </p>
-        </div>
+        </Alert>
       ) : null}
       {refreshFailed ? (
         <p className="text-sm text-amber-800" data-pw="session-live-state-error" role="status">

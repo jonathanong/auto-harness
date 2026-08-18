@@ -2,7 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, WithTooltip } from "@auto-harness/ui";
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  WithTooltip,
+} from "@auto-harness/ui";
 
 import {
   buildSlackConfigBody,
@@ -68,14 +76,10 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div
-          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-          role="note"
-          data-pw="slack-delivery-warning"
-        >
+        <Alert variant="warning" role="note" data-pw="slack-delivery-warning">
           Configuration alone does not send Slack messages. OAuth, delivery, inbound verification,
           and session threads are separate capabilities and are not enabled here.
-        </div>
+        </Alert>
 
         <SlackConfiguredState config={config} />
         <form

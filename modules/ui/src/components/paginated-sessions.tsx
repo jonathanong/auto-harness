@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { SessionListQuery } from "@auto-harness/shared";
 
+import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
 import { SessionsTable, type SessionRow } from "./sessions-table.tsx";
 import { usePaginatedSessions } from "./use-paginated-sessions.ts";
@@ -57,10 +58,11 @@ export function PaginatedSessions({
     <div className="space-y-3">
       {pollMs ? (
         pollError ? (
-          <div
+          <Alert
+            variant="warning"
             role="alert"
             data-pw="sessions-live-error"
-            className="flex items-center justify-between rounded-md border border-yellow-500/50 bg-yellow-50 p-3 text-sm"
+            className="flex items-center justify-between gap-3"
           >
             <span>Live updates paused ({pollError}).</span>
             <button
@@ -70,7 +72,7 @@ export function PaginatedSessions({
             >
               Retry
             </button>
-          </div>
+          </Alert>
         ) : (
           <p
             className="text-xs text-muted-foreground"
@@ -97,10 +99,11 @@ export function PaginatedSessions({
         />
       )}
       {loadError ? (
-        <div
+        <Alert
+          variant="warning"
           role="alert"
           data-pw="sessions-load-more-error"
-          className="flex items-center justify-between rounded-md border border-yellow-500/50 bg-yellow-50 p-3 text-sm"
+          className="flex items-center justify-between gap-3"
         >
           <span>Could not load more sessions ({loadError}).</span>
           <button
@@ -111,7 +114,7 @@ export function PaginatedSessions({
           >
             Retry
           </button>
-        </div>
+        </Alert>
       ) : null}
       {nextCursor ? (
         <div className="flex justify-center">
