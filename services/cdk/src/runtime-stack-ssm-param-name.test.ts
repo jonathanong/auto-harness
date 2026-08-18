@@ -31,10 +31,13 @@ describe("bootstrap-secret SSM parameter name validation", () => {
       { AllowedPattern?: string; Default?: string }
     >;
 
+    // Same guard applies to the public-base-url parameter (public-base-url-param.ts) even
+    // though it isn't a bootstrap secret — it shares the exact ARN-construction hazard.
     for (const id of [
       "HarnessAdminsSsmParam",
       "HarnessSessionSecretSsmParam",
       "HarnessCursorSecretSsmParam",
+      "HarnessPublicBaseUrlSsmParam",
     ]) {
       const pattern = parameters[id]?.AllowedPattern;
       expect(pattern).toBeDefined();

@@ -93,9 +93,25 @@ without specifying a customer-managed key) — scoped further with `kms:ViaServi
 `EncryptionContext:PARAMETER_ARN` condition (so it only applies to decrypting
 these three specific parameters).
 
+A fourth, non-secret parameter — `/auto-harness/<environment>/public-base-url` by
+default, overridable with `HARNESS_PUBLIC_BASE_URL_SSM_PARAM` — holds the
+CloudFront `WebUrl` this environment answers on. Unlike the three bootstrap
+secrets, an operator never creates this one: the deploy lifecycle script writes
+it itself (a plain `String`, not `SecureString` — see `--type String` in
+`aws ssm put-parameter`), only after the Web stack deploys and its health check
+passes, since Runtime cannot know Web's CloudFront domain at synth time (Web
+depends on Runtime, not the reverse). Each Lambda's IAM role gets a separate
+`ssm:GetParameter` grant scoped to just this parameter — no `kms:Decrypt`, since
+a plain `String` parameter is never SSE-encrypted. A REST Lambda cold start that
+finds this parameter missing or unreadable falls back to ControlPlane's own
+`http://localhost:7421` default rather than failing — it only affects a
+session's informational `url` field and the Slack integration's deep link, never
+a security boundary.
+
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | SSM: bootstrap secrets | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
+| SSM: public base URL   | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written by the deploy script after Web deploys, fetched at cold start, falls back gracefully        |
 | Table names / prefix   | From stack (see [aws.md](aws.md) env table)                                                                                                  |
 | `ARCHIVE_BUCKET`       | S3 archive bucket                                                                                                                            |
 | `WS_API_ENDPOINT`      | API Gateway Management API for `postToConnection`                                                                                            |
@@ -117,15 +133,15 @@ All lifecycle commands use the same settings. Environment names are lowercase,
 start with a letter, contain only letters, numbers, and dashes, and are at most 32
 characters.
 
-| Variable                             | Required             | Purpose                                                      |
-| ------------------------------------ | -------------------- | ------------------------------------------------------------ |
-| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                 |
-| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                        |
-| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data   |
-| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known             |
-| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`              |
-| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`       |
-| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete the three bootstrap SSM parameters |
+| Variable                             | Required             | Purpose                                                                                           |
+| ------------------------------------ | -------------------- | ------------------------------------------------------------------------------------------------- |
+| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                                                      |
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                                                             |
+| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data                                        |
+| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known                                                  |
+| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`                                                   |
+| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`                                            |
+| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete all four SSM parameters (three bootstrap secrets + the public base URL) |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
@@ -241,10 +257,10 @@ Two things purge deliberately does **not** finish immediately:
 - **The integration KMS key** enters AWS's seven-day pending-deletion window —
   CloudFormation can only schedule deletion; seven days is the AWS minimum, and
   the key is not actually gone until that window elapses.
-- **The three bootstrap SSM parameters** are left in place unless
-  `HARNESS_DEPLOY_PURGE_SSM=1` is also set. They are hand-managed outside CDK and
-  may be shared with another environment, so deleting them is never implied by the
-  rest of purge.
+- **All four SSM parameters** (the three bootstrap secrets, hand-managed outside
+  CDK and possibly shared with another environment, plus the deploy-script-managed
+  public base URL) are left in place unless `HARNESS_DEPLOY_PURGE_SSM=1` is also
+  set — deleting any of them is never implied by the rest of purge.
 
 One thing purge does not finish **at all**, confirmed against a real purged
 environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is

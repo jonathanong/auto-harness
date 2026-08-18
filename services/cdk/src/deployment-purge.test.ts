@@ -13,6 +13,7 @@ const config: DeploymentConfig = {
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",
   foundationStackName: "AutoHarness-review-Foundation",
+  publicBaseUrlSsmParam: "/auto-harness/review/public-base-url",
   purgeSsmParameters: false,
   region: "us-west-2",
   removalPolicy: "retain",
@@ -193,6 +194,7 @@ describe("deleteSecretParameters", () => {
         "/auto-harness/review/harness-admins",
         "/auto-harness/review/harness-cursor-secret",
         "/auto-harness/review/harness-session-secret",
+        "/auto-harness/review/public-base-url",
       ]),
     );
     expect(deps.log).toHaveBeenCalledWith(

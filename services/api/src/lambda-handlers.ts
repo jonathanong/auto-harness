@@ -89,6 +89,29 @@ async function fetchSecureParameter(client: SsmClient, name: string): Promise<st
   return value;
 }
 
+/**
+ * The CloudFront URL this environment answers on, published to SSM by the deploy
+ * lifecycle script only after the Web stack deploys (see
+ * services/cdk/src/deployment-support.ts smokeDeployment and
+ * services/cdk/src/public-base-url-param.ts). Unlike the three bootstrap secrets above,
+ * a missing parameter name, a missing value, or a failed SSM call all fall back to
+ * `undefined` here — ControlPlane's own http://localhost:7421 default then applies —
+ * rather than failing the Lambda cold start. This value only ever displays in a
+ * session's `url` field and feeds the Slack integration's deep link; it is never a
+ * security boundary the way the bootstrap secrets are, so failing open is correct.
+ */
+export async function fetchPublicBaseUrl(client?: SsmClient): Promise<string | undefined> {
+  const name = process.env.PUBLIC_BASE_URL_SSM_PARAM;
+  if (!name) return undefined;
+  const ssm = client ?? new SSMClient({});
+  try {
+    const response = await ssm.send(new GetParameterCommand({ Name: name }));
+    return response.Parameter?.Value;
+  } catch {
+    return undefined;
+  }
+}
+
 function authenticationRequest(event: {
   headers?: HeaderMap;
 }): import("node:http").IncomingMessage {
@@ -142,13 +165,18 @@ export async function createLambdaRuntime(
     dependencies.created && dependencies.auth
       ? undefined
       : await loadBootstrapSecrets(dependencies.ssmClient);
-  /* v8 ignore next 7 -- production AWS client construction is an SDK boundary */
+  /* v8 ignore next 2 -- production SSM fetch is exercised through the public-base-url suite */
+  const publicBaseUrl = dependencies.created
+    ? undefined
+    : await fetchPublicBaseUrl(dependencies.ssmClient);
+  /* v8 ignore next 8 -- production AWS client construction is an SDK boundary */
   const created =
     dependencies.created ??
     (await createControlPlane({
       aws: true,
       sessionCursorSecret: bootstrapSecrets!.cursorSecret,
       skipEnsureTables: true,
+      ...(publicBaseUrl !== undefined ? { publicBaseUrl } : {}),
     }));
   /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
   const auth =

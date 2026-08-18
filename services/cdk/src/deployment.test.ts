@@ -15,7 +15,12 @@ describe("runDeployment", () => {
       "aws://123456789012/us-west-2",
     ]);
     expect(deps.runs[1]).toEqual(
-      expect.arrayContaining(["deploy", "AutoHarness-review-Foundation", "--parameters"]),
+      expect.arrayContaining([
+        "deploy",
+        "AutoHarness-review-Foundation",
+        "--parameters",
+        "AutoHarness-review-Runtime:HarnessPublicBaseUrlSsmParam=/auto-harness/review/public-base-url",
+      ]),
     );
     expect(deps.fetch).toHaveBeenCalledWith(new URL("https://api.example.test/health"));
     // The agent endpoint is derived from WebUrl, not printed from the runtime stack's raw
@@ -23,6 +28,26 @@ describe("runDeployment", () => {
     expect(deps.log).toHaveBeenCalledWith("Agent WebSocket endpoint: wss://api.example.test/ws");
     expect(deps.log).toHaveBeenCalledWith(
       "Set on each host: HARNESS_API_URL=https://api.example.test",
+    );
+    // Runtime cannot know WebUrl at synth/deploy time (Web depends on Runtime, not the
+    // reverse), so the resolved value is published to SSM only after Web is confirmed
+    // healthy — not passed as a CDK deploy parameter like the three bootstrap secrets.
+    expect(deps.runs).toContainEqual([
+      "aws",
+      "ssm",
+      "put-parameter",
+      "--type",
+      "String",
+      "--overwrite",
+      "--name",
+      "/auto-harness/review/public-base-url",
+      "--value",
+      "https://api.example.test",
+      "--region",
+      "us-west-2",
+    ]);
+    expect(deps.log).toHaveBeenCalledWith(
+      "Published public base URL to /auto-harness/review/public-base-url",
     );
 
     const knownAccount = dependencies([false, false, false, true, true, true]);
@@ -34,12 +59,15 @@ describe("runDeployment", () => {
   it("updates an existing environment and can restore a missing runtime", async () => {
     const deps = dependencies([true, true, true, true, true, true]);
     await runDeployment("update", config(), deps);
-    expect(deps.runs).toHaveLength(1);
+    // [0] cdk deploy, [1] the post-health-check publish of the public base URL to SSM
+    // (smokeDeployment runs on update too, same as deploy).
+    expect(deps.runs).toHaveLength(2);
     expect(deps.runs[0]).toEqual(expect.arrayContaining(["deploy"]));
+    expect(deps.runs[1]).toEqual(expect.arrayContaining(["ssm", "put-parameter"]));
 
     const restore = dependencies([true, false, false, true, true, true]);
     await runDeployment("update", config(), restore);
-    expect(restore.runs).toHaveLength(1);
+    expect(restore.runs).toHaveLength(2);
   });
 
   it("rejects lifecycle misuse and unexpected AWS inspection failures", async () => {

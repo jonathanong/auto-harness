@@ -8,6 +8,7 @@ export const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentCon
   cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
   environment: "review",
   foundationStackName: "AutoHarness-review-Foundation",
+  publicBaseUrlSsmParam: "/auto-harness/review/public-base-url",
   purgeSsmParameters: false,
   region: "us-west-2",
   removalPolicy: "destroy",

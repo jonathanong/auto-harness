@@ -117,6 +117,8 @@ export async function applyDeployment(
     `${config.runtimeStackName}:HarnessSessionSecretSsmParam=${config.sessionSecretSsmParam}`,
     "--parameters",
     `${config.runtimeStackName}:HarnessCursorSecretSsmParam=${config.cursorSecretSsmParam}`,
+    "--parameters",
+    `${config.runtimeStackName}:HarnessPublicBaseUrlSsmParam=${config.publicBaseUrlSsmParam}`,
   ]);
 }
 
@@ -158,6 +160,26 @@ export async function smokeDeployment(
   const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`));
   if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
   dependencies.log(`Web health check passed: ${webUrl}`);
+  // Runtime cannot know WebUrl at synth/deploy time — Web depends on Runtime, not the
+  // reverse, so CloudFront's domain doesn't exist yet when Runtime's Lambdas are created.
+  // Publish it here, now that Web is confirmed healthy, so a session's `url` field and the
+  // Slack integration's deep link point at the real control plane instead of
+  // ControlPlane's http://localhost:7421 default. See public-base-url-param.ts.
+  await dependencies.run(
+    "aws",
+    awsArgs(config, [
+      "ssm",
+      "put-parameter",
+      "--type",
+      "String",
+      "--overwrite",
+      "--name",
+      config.publicBaseUrlSsmParam,
+      "--value",
+      webUrl,
+    ]),
+  );
+  dependencies.log(`Published public base URL to ${config.publicBaseUrlSsmParam}`);
   // The runtime stack's raw WebSocketUrl output (a different execute-api hostname) is
   // deliberately not read or printed here: it is not a value to hand to a host daemon.
   // CloudFront (WebUrl) fronts both the REST and WebSocket API Gateway APIs on one hostname,

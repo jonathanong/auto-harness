@@ -5,6 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 import {
   createLambdaHandlers,
   createLambdaRuntime,
+  fetchPublicBaseUrl,
   loadBootstrapSecrets,
   type LambdaRuntime,
 } from "./lambda-handlers.ts";
@@ -659,5 +660,69 @@ describe("loadBootstrapSecrets", () => {
         () => loadBootstrapSecrets(client as never),
       ),
     ).rejects.toThrow("SSM parameter /auto-harness/admins has no value");
+  });
+});
+
+/**
+ * Unlike loadBootstrapSecrets, a missing name, a missing value, and a failed SSM call
+ * all fall back to undefined here — this value only ever displays in a session's `url`
+ * field and feeds the Slack integration's deep link, never a security boundary, so
+ * failing open (ControlPlane's own http://localhost:7421 default then applies) is
+ * correct where the bootstrap secrets deliberately fail closed instead.
+ */
+function withPublicBaseUrlParamEnv<T>(value: string | undefined, run: () => T): T {
+  const previous = process.env.PUBLIC_BASE_URL_SSM_PARAM;
+  try {
+    if (value === undefined) delete process.env.PUBLIC_BASE_URL_SSM_PARAM;
+    else process.env.PUBLIC_BASE_URL_SSM_PARAM = value;
+    return run();
+  } finally {
+    if (previous === undefined) delete process.env.PUBLIC_BASE_URL_SSM_PARAM;
+    else process.env.PUBLIC_BASE_URL_SSM_PARAM = previous;
+  }
+}
+
+describe("fetchPublicBaseUrl", () => {
+  it("fetches the published URL by name, without decryption", async () => {
+    const client = {
+      send: vi.fn(async (command: { input: { Name: string; WithDecryption?: boolean } }) => {
+        expect(command.input.Name).toBe("/auto-harness/qa/public-base-url");
+        expect(command.input.WithDecryption).toBeUndefined();
+        return { Parameter: { Value: "https://d1234.cloudfront.net" } };
+      }),
+    };
+
+    const url = await withPublicBaseUrlParamEnv("/auto-harness/qa/public-base-url", () =>
+      fetchPublicBaseUrl(client as never),
+    );
+
+    expect(url).toBe("https://d1234.cloudfront.net");
+  });
+
+  it("returns undefined when the parameter name is not configured", async () => {
+    const client = { send: vi.fn() };
+
+    const url = await withPublicBaseUrlParamEnv(undefined, () =>
+      fetchPublicBaseUrl(client as never),
+    );
+
+    expect(url).toBeUndefined();
+    expect(client.send).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when SSM has no value, or the call fails", async () => {
+    const noValue = { send: vi.fn(async () => ({ Parameter: {} })) };
+    await expect(
+      withPublicBaseUrlParamEnv("/auto-harness/qa/public-base-url", () =>
+        fetchPublicBaseUrl(noValue as never),
+      ),
+    ).resolves.toBeUndefined();
+
+    const failing = { send: vi.fn(async () => Promise.reject(new Error("ParameterNotFound"))) };
+    await expect(
+      withPublicBaseUrlParamEnv("/auto-harness/qa/public-base-url", () =>
+        fetchPublicBaseUrl(failing as never),
+      ),
+    ).resolves.toBeUndefined();
   });
 });
