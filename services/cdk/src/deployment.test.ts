@@ -1,56 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { DeploymentConfig } from "./deployment-config.ts";
-import type { DeploymentDependencies } from "./deployment-support.ts";
+import { config, dependencies } from "./deployment-test-helpers.ts";
 import { runDeployment } from "./deployment.ts";
-
-const config = (overrides: Partial<DeploymentConfig> = {}): DeploymentConfig => ({
-  adminsSsmParam: "/auto-harness/review/harness-admins",
-  cursorSecretSsmParam: "/auto-harness/review/harness-cursor-secret",
-  environment: "review",
-  foundationStackName: "AutoHarness-review-Foundation",
-  region: "us-west-2",
-  removalPolicy: "destroy",
-  runtimeStackName: "AutoHarness-review-Runtime",
-  sessionSecretSsmParam: "/auto-harness/review/harness-session-secret",
-  tablePrefix: "AutoHarness-review",
-  webStackName: "AutoHarness-review-Web",
-  ...overrides,
-});
-
-function dependencies(stackStates: boolean[]): DeploymentDependencies & {
-  queries: string[][];
-  runs: string[][];
-} {
-  const queries: string[][] = [];
-  const runs: string[][] = [];
-  let stackIndex = 0;
-  return {
-    fetch: vi.fn(async () => new Response('{"ok":true}', { status: 200 })),
-    log: vi.fn(),
-    queries,
-    query: vi.fn(async (command, args) => {
-      queries.push([command, ...args]);
-      if (args.includes("describe-stacks")) {
-        if (args.includes("--query")) {
-          return { status: 0, stderr: "", stdout: "https://api.example.test\n" };
-        }
-        const exists = stackStates[stackIndex++] ?? false;
-        return exists
-          ? { status: 0, stderr: "", stdout: "stack" }
-          : { status: 255, stderr: "ValidationError: stack does not exist", stdout: "" };
-      }
-      if (args.includes("get-caller-identity")) {
-        return { status: 0, stderr: "", stdout: "123456789012\n" };
-      }
-      return { status: 0, stderr: "", stdout: "ok\n" };
-    }),
-    run: vi.fn(async (command, args) => {
-      runs.push([command, ...args]);
-    }),
-    runs,
-  };
-}
 
 describe("runDeployment", () => {
   it("bootstraps, deploys, verifies stacks, and health-checks a new environment", async () => {

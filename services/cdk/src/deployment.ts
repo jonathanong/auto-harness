@@ -1,10 +1,16 @@
 import type { DeploymentConfig, DeploymentOperation } from "./deployment-config.ts";
 import {
+  deleteSecretParameters,
+  emptyArchiveBucket,
+  retargetFoundationForDeletion,
+} from "./deployment-purge.ts";
+import {
   applyDeployment,
   bootstrapEnvironment,
   type DeploymentDependencies,
   destroyStacks,
   smokeDeployment,
+  stackOutput,
   stackState,
   verifySecretParameters,
 } from "./deployment-support.ts";
@@ -82,6 +88,74 @@ async function teardown(
   );
 }
 
+function expectedPurgeConfirmation(config: DeploymentConfig): string {
+  return `destroy-all-data-in-${config.environment}`;
+}
+
+/**
+ * Irreversibly removes everything teardown leaves behind. Two independent,
+ * non-guessable confirmations are required — teardown's own HARNESS_DEPLOY_CONFIRM plus a
+ * purge-specific value naming the environment again — so neither can be set once and
+ * forgotten. Order matters: web and runtime (the archive bucket's only writers — the
+ * cron Lambda archives session logs on a 1-minute schedule) are destroyed *before* the
+ * bucket's deletion policy is retargeted or its contents are removed, so nothing can write
+ * back into a bucket mid-empty.
+ */
+async function purge(
+  config: DeploymentConfig,
+  dependencies: DeploymentDependencies,
+): Promise<void> {
+  if (config.teardownConfirmation !== config.environment) {
+    throw new Error(`purge requires HARNESS_DEPLOY_CONFIRM=${config.environment}`);
+  }
+  const expectedPurge = expectedPurgeConfirmation(config);
+  if (config.purgeConfirmation !== expectedPurge) {
+    throw new Error(`purge requires HARNESS_DEPLOY_PURGE_CONFIRM=${expectedPurge}`);
+  }
+  const state = await stackState(config, dependencies);
+  if (!state.foundation && !state.runtime && !state.web) {
+    throw new Error("purge found no application stacks");
+  }
+
+  const runtimeAndWeb = [
+    ...(state.web ? [config.webStackName] : []),
+    ...(state.runtime ? [config.runtimeStackName] : []),
+  ];
+  if (runtimeAndWeb.length > 0) await destroyStacks(config, dependencies, runtimeAndWeb);
+
+  if (state.foundation) {
+    await retargetFoundationForDeletion(config, dependencies);
+    const bucketName = await stackOutput(
+      config,
+      dependencies,
+      config.foundationStackName,
+      "ArchiveBucketName",
+    );
+    await emptyArchiveBucket(config, dependencies, bucketName);
+    await destroyStacks(config, dependencies, [config.foundationStackName]);
+  }
+
+  if (config.purgeSsmParameters) await deleteSecretParameters(config, dependencies);
+
+  const remaining = await stackState(config, dependencies);
+  if (remaining.foundation || remaining.runtime || remaining.web) {
+    throw new Error("purge completed with a surviving application stack");
+  }
+  const destroyed = [
+    ...(state.web ? ["web"] : []),
+    ...(state.runtime ? ["runtime"] : []),
+    ...(state.foundation ? ["foundation"] : []),
+  ];
+  dependencies.log(
+    `Purge complete for environment ${config.environment}: destroyed ${destroyed.join(", ")}. ` +
+      "The integration KMS key is scheduled for deletion after its 7-day pending window, " +
+      "not deleted immediately." +
+      (config.purgeSsmParameters
+        ? ""
+        : " SSM parameters were left in place (opt in with HARNESS_DEPLOY_PURGE_SSM=1)."),
+  );
+}
+
 export async function runDeployment(
   operation: DeploymentOperation,
   config: DeploymentConfig,
@@ -89,5 +163,6 @@ export async function runDeployment(
 ): Promise<void> {
   if (operation === "deploy") return deploy(config, dependencies);
   if (operation === "update") return update(config, dependencies);
+  if (operation === "purge") return purge(config, dependencies);
   return teardown(config, dependencies);
 }

@@ -90,13 +90,15 @@ All lifecycle commands use the same settings. Environment names are lowercase,
 start with a letter, contain only letters, numbers, and dashes, and are at most 32
 characters.
 
-| Variable                        | Required             | Purpose                                                    |
-| ------------------------------- | -------------------- | ---------------------------------------------------------- |
-| `HARNESS_DEPLOY_ENVIRONMENT`    | Always               | Isolates stack, table, bucket, and SSM names               |
-| `AWS_REGION`                    | Always               | AWS deployment region                                      |
-| `HARNESS_DEPLOY_REMOVAL_POLICY` | No; default `retain` | `retain` for durable data or `destroy` for disposable data |
-| `AWS_ACCOUNT_ID`                | No                   | Avoids the STS account lookup when already known           |
-| `HARNESS_DEPLOY_CONFIRM`        | Teardown only        | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`            |
+| Variable                        | Required             | Purpose                                                      |
+| ------------------------------- | -------------------- | ------------------------------------------------------------ |
+| `HARNESS_DEPLOY_ENVIRONMENT`    | Always               | Isolates stack, table, bucket, and SSM names                 |
+| `AWS_REGION`                    | Always               | AWS deployment region                                        |
+| `HARNESS_DEPLOY_REMOVAL_POLICY` | No; default `retain` | `retain` for durable data or `destroy` for disposable data   |
+| `AWS_ACCOUNT_ID`                | No                   | Avoids the STS account lookup when already known             |
+| `HARNESS_DEPLOY_CONFIRM`        | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`              |
+| `HARNESS_DEPLOY_PURGE_CONFIRM`  | Purge only           | Must exactly match `destroy-all-data-in-<environment>`       |
+| `HARNESS_DEPLOY_PURGE_SSM`      | No; default off      | Set to `1` to also delete the three bootstrap SSM parameters |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
@@ -162,6 +164,50 @@ it explicitly before deleting the stack. The foundation deliberately does not
 enable CDK `autoDeleteObjects`, because that feature adds a custom-resource
 Lambda and would exceed this stack's no-runtime-resources boundary. Do not
 choose `destroy` for data that must survive a stack replacement.
+
+## Purge (irreversible)
+
+Teardown alone cannot fully remove an environment deployed with the default
+`retain` policy: the live CloudFormation template still carries
+`DeletionPolicy: Retain` on the tables, archive bucket, and KMS key regardless of
+what `HARNESS_DEPLOY_REMOVAL_POLICY` is set to at teardown time — that variable only
+affects a stack's _next_ deploy, not resources already provisioned. Setting it to
+`destroy` and re-running teardown does not retroactively change an already-deployed
+stack's deletion policies, and teardown never removes the three bootstrap SSM
+parameters.
+
+`purge` is a separate, irreversible operation for actually decommissioning an
+environment — including its data. It requires **two independent, non-guessable**
+confirmations, neither of which alone is enough:
+
+```bash
+export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
+export HARNESS_DEPLOY_PURGE_CONFIRM="destroy-all-data-in-$HARNESS_DEPLOY_ENVIRONMENT"
+pnpm --filter @auto-harness/cdk run purge
+```
+
+In order: it destroys the web and runtime stacks (the archive bucket's only
+writers — the runtime's scheduled Lambda archives session logs on a 1-minute
+cron), retargets the foundation stack's resources to `DeletionPolicy: Delete` by
+deploying the foundation alone with `removalPolicy=destroy` forced regardless of
+the environment's configured policy, empties the archive bucket (including
+noncurrent versions and delete markers — `aws s3 rm --recursive` alone is not
+enough for a versioned bucket, and `cdk destroy` fails with `BucketNotEmpty`
+otherwise), then destroys the foundation stack. It verifies afterward that no
+application stack survives.
+
+Two things purge deliberately does **not** finish immediately:
+
+- **The integration KMS key** enters AWS's seven-day pending-deletion window —
+  CloudFormation can only schedule deletion; seven days is the AWS minimum, and
+  the key is not actually gone until that window elapses.
+- **The three bootstrap SSM parameters** are left in place unless
+  `HARNESS_DEPLOY_PURGE_SSM=1` is also set. They are hand-managed outside CDK and
+  may be shared with another environment, so deleting them is never implied by the
+  rest of purge.
+
+`purge` refuses to run if no application stack exists at all, and throws if any
+stack survives its destroy phases — it never reports success on a partial result.
 
 ## Stack parameters and outputs
 

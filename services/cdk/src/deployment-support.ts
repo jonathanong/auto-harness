@@ -9,11 +9,11 @@ export type DeploymentDependencies = {
   run: (command: string, args: string[]) => Promise<void>;
 };
 
-function awsArgs(config: DeploymentConfig, args: string[]): string[] {
+export function awsArgs(config: DeploymentConfig, args: string[]): string[] {
   return [...args, "--region", config.region];
 }
 
-async function queryOk(
+export async function queryOk(
   dependencies: DeploymentDependencies,
   command: string,
   args: string[],
@@ -39,7 +39,7 @@ async function stackExists(
   throw new Error(`unable to inspect stack ${stackName}: ${result.stderr || result.stdout}`);
 }
 
-function cdkContext(config: DeploymentConfig): string[] {
+export function cdkContext(config: DeploymentConfig): string[] {
   return [
     "--app",
     "node src/cli.ts",
@@ -120,7 +120,7 @@ export async function applyDeployment(
   ]);
 }
 
-async function stackOutput(
+export async function stackOutput(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
   stackName: string,

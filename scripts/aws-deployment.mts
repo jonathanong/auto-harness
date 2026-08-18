@@ -11,8 +11,10 @@ import type {
 } from "../services/cdk/src/deployment-support.ts";
 
 function operation(value: string | undefined): DeploymentOperation {
-  if (value === "deploy" || value === "update" || value === "teardown") return value;
-  throw new Error("usage: aws-deployment.mts <deploy|update|teardown>");
+  if (value === "deploy" || value === "update" || value === "teardown" || value === "purge") {
+    return value;
+  }
+  throw new Error("usage: aws-deployment.mts <deploy|update|teardown|purge>");
 }
 
 const query = (command: string, args: string[]): Promise<DeploymentQueryResult> =>
