@@ -12,7 +12,9 @@ type WsBufferOptions = {
 type CapacitySignal = { promise: Promise<void>; resolve: () => void };
 
 function capacitySignal(): CapacitySignal {
-  let resolve: () => void;
+  // The Promise executor runs synchronously, so `resolve` is always assigned
+  // by the time the constructor returns below.
+  let resolve!: () => void;
   const promise = new Promise<void>((next) => {
     resolve = next;
   });
@@ -122,7 +124,9 @@ export class WsOutboundBuffer {
     // lane is itself saturated we intentionally retain it: silently rejecting
     // an ack/status would strand server state. Producers observe backpressure
     // through the unresolved delivery promise until the socket recovers.
-    let item: WsBufferItem;
+    // The Promise executor below runs synchronously, so `item` is always
+    // assigned by the time it's read after the constructor returns.
+    let item!: WsBufferItem;
     const delivery = new Promise<void>((resolve, reject) => {
       let settled = false;
       const abort = () => {

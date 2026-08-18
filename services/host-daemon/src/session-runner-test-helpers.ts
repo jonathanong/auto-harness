@@ -9,6 +9,7 @@ import { WorktreeManager } from "./worktree-manager.ts";
 export function baseAssign(over: Partial<SessionAssign> = {}): SessionAssign {
   return {
     sessionId: "sess-1",
+    attemptId: "attempt-1",
     repositoryId: "repo-1",
     prompt: "hello",
     resolvedArgv: ["echo", "hello"],

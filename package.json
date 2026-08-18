@@ -8,7 +8,7 @@
     "lint:ast": "ast-grep scan --config sgconfig.yml .",
     "fmt": "oxfmt .",
     "fmt:check": "oxfmt --check .",
-    "typecheck": "pnpm --filter @auto-harness/shared --filter @auto-harness/cdk --filter @auto-harness/host-pane --filter @auto-harness/web run typecheck",
+    "typecheck": "pnpm --filter @auto-harness/shared --filter @auto-harness/cdk --filter @auto-harness/host-pane --filter @auto-harness/web --filter @auto-harness/host-daemon run typecheck",
     "test": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --coverage",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",

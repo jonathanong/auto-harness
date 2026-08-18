@@ -5,7 +5,13 @@ import WebSocket from "ws";
 import { createWsTransport } from "./ws-transport.ts";
 
 export class FakeSocket extends EventEmitter {
-  readyState = WebSocket.CONNECTING;
+  // Without an explicit union, TS infers the literal `0` from this initializer alone,
+  // rejecting the OPEN/CLOSED assignments below.
+  readyState:
+    | typeof WebSocket.CONNECTING
+    | typeof WebSocket.OPEN
+    | typeof WebSocket.CLOSING
+    | typeof WebSocket.CLOSED = WebSocket.CONNECTING;
   readonly sent: Array<Record<string, unknown>> = [];
   throwNext = false;
   failNext: Error | undefined;

@@ -108,7 +108,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   const transport = createWsTransport({
     url: wsUrl,
     hostId: options.config.hostId,
-    apiKey: options.config.apiKey,
+    ...(options.config.apiKey !== undefined ? { apiKey: options.config.apiKey } : {}),
     onError: (err) => {
       error(`ws error: ${err.message}`);
     },
@@ -148,7 +148,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
       pollMs,
       log,
       error,
-      fetchFn: options.fetchFn,
+      ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
     });
   }
 
