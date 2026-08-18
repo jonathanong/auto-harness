@@ -22,6 +22,8 @@
   --danger-foreground: 0 86% 97%;
   --info: 214 80% 30%;
   --info-foreground: 210 100% 97%;
+  --timeout: 24 85% 31%;
+  --timeout-foreground: 24 90% 96%;
   --ring: 222.2 84% 4.9%;
   --radius: 0.5rem;
 }

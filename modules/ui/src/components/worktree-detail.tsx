@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
-import { StatusBadge } from "./status-badge.tsx";
+import { WorktreeStatusBadge } from "./worktree-status-badge.tsx";
 import { WorktreeLabels } from "./worktree-labels.tsx";
 import type { WorktreeRow } from "./worktrees-hierarchy.tsx";
 
@@ -109,7 +109,7 @@ export function WorktreeDetailsCard({
           ) : null}
           <div>
             <dt className="text-xs uppercase text-muted-foreground">Status</dt>
-            <dd>{worktree.status ? <StatusBadge status={worktree.status} /> : "—"}</dd>
+            <dd>{worktree.status ? <WorktreeStatusBadge status={worktree.status} /> : "—"}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase text-muted-foreground">Online</dt>

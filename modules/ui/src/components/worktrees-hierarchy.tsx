@@ -3,8 +3,8 @@ import Link from "next/link";
 
 import { RepositoryUrlCopy } from "./repository-url-copy.tsx";
 import { RepositoryObservabilityCounts } from "./repository-observability-counts.tsx";
-import { StatusBadge } from "./status-badge.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
+import { WorktreeStatusBadge } from "./worktree-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 import { WorktreeLabels } from "./worktree-labels.tsx";
 
@@ -159,7 +159,9 @@ export function WorktreesHierarchy({
                       <TableCell className="max-w-xs truncate font-mono text-xs">
                         {wt.path}
                       </TableCell>
-                      <TableCell>{wt.status ? <StatusBadge status={wt.status} /> : "—"}</TableCell>
+                      <TableCell>
+                        {wt.status ? <WorktreeStatusBadge status={wt.status} /> : "—"}
+                      </TableCell>
                       <TableCell>
                         {wt.online === undefined ? (
                           "—"

@@ -9,12 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 import { OnlineStatusBadge } from "./online-status-badge.tsx";
-import { StatusBadge } from "./status-badge.tsx";
+import { SessionStatusBadge } from "./session-status-badge.tsx";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table.tsx";
 import { Textarea } from "./textarea.tsx";
 import { TipLink } from "./tip-link.tsx";
 import { TipText } from "./tip-text.tsx";
 import { TooltipProvider } from "./tooltip.tsx";
+import { WorktreeStatusBadge } from "./worktree-status-badge.tsx";
 import { cn } from "../lib/utils.ts";
 
 function render(node: ReactNode) {
@@ -33,6 +34,7 @@ describe("shared display primitives", () => {
       "warning",
       "danger",
       "info",
+      "timeout",
     ] as const) {
       const markup = render(
         <Badge variant={variant} className="marker">
@@ -148,19 +150,26 @@ describe("shared display primitives", () => {
     expect(table).toContain("body-marker");
     expect(table).toContain("cell-marker");
 
-    expect(render(<StatusBadge status="QUEUED" />)).toContain("bg-warning/10");
-    const running = render(<StatusBadge status="running" />);
+    expect(render(<SessionStatusBadge status="QUEUED" />)).toContain("bg-warning/10");
+    const running = render(<SessionStatusBadge status="running" />);
     expect(running).toContain("bg-primary");
     expect(running).toContain("animate-pulse");
     expect(running).toContain("motion-reduce:animate-none");
     expect(running).toContain('role="status"');
     expect(running).toContain('aria-label="running, live"');
     expect(running).toContain('data-pw="status-running-live"');
-    expect(render(<StatusBadge status="completed" />)).toContain("bg-success/10");
-    expect(render(<StatusBadge status="failed" />)).toContain("bg-danger/10");
-    expect(render(<StatusBadge status="cancelled" />)).toContain("bg-muted");
-    expect(render(<StatusBadge status="unknown" />)).toContain("text-foreground");
-    expect(render(<StatusBadge status="unknown" />)).not.toContain("animate-pulse");
+    expect(render(<SessionStatusBadge status="completed" />)).toContain("bg-success/10");
+    expect(render(<SessionStatusBadge status="failed" />)).toContain("bg-danger/10");
+    expect(render(<SessionStatusBadge status="cancelled" />)).toContain("bg-muted");
+    // Distinct from `queued`'s warning — see docs/web.md's session status table.
+    expect(render(<SessionStatusBadge status="timed_out" />)).toContain("bg-timeout/10");
+    expect(render(<SessionStatusBadge status="unknown" />)).toContain("text-foreground");
+    expect(render(<SessionStatusBadge status="unknown" />)).not.toContain("animate-pulse");
+
+    expect(render(<WorktreeStatusBadge status="idle" />)).toContain("bg-muted");
+    expect(render(<WorktreeStatusBadge status="BUSY" />)).toContain("bg-info/10");
+    expect(render(<WorktreeStatusBadge status="error" />)).toContain("bg-danger/10");
+    expect(render(<WorktreeStatusBadge status="unknown" />)).toContain("text-foreground");
     expect(render(<OnlineStatusBadge online pw="host-online-a" />)).toContain(
       'data-pw="host-online-a">Online',
     );
