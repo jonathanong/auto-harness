@@ -37,8 +37,8 @@ test.describe("control plane hosts", () => {
     // old flash-then-navigate-away message pointing at a nonexistent `pnpm local:agent`.
     await expect(page.getByTestId("connect-host-panel")).toBeVisible();
     const command = await page.getByTestId("connect-host-command").innerText();
-    expect(command).toContain(`HARNESS_HOST_ID=${id}`);
-    expect(command).toContain(`HARNESS_API_URL=${API_BASE}`);
+    expect(command).toContain(`HARNESS_HOST_ID='${id}'`);
+    expect(command).toContain(`HARNESS_API_URL='${API_BASE}'`);
     expect(command).toContain("pnpm local:daemon start");
     expect(command).not.toContain("local:agent");
     expect(command).not.toContain("execute-api");

