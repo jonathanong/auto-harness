@@ -21,7 +21,10 @@ export function resolveServerApiBase(): string {
  * Server (RSC): absolute control-plane URL via HARNESS_API_HTTP / HARNESS_API_URL.
  */
 export function apiBase(): string {
-  if (typeof window !== "undefined") {
+  // No `window` reference (not `typeof window`) so this stays portable to consumers
+  // whose tsconfig has no DOM lib — this module is reachable (though never called
+  // for this) from services/host-daemon via the shared package's barrel export.
+  if (typeof (globalThis as { window?: unknown }).window !== "undefined") {
     return "";
   }
   return resolveServerApiBase();
@@ -29,7 +32,9 @@ export function apiBase(): string {
 
 /** GET JSON from the control plane, resolving the base for either runtime. */
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${apiBase()}${path}`, { cache: "no-store" });
+  // `cache` is a browser fetch option outside @types/node's RequestInit; this path
+  // only ever runs in the browser/RSC, never from a non-DOM consumer like the daemon.
+  const res = await fetch(`${apiBase()}${path}`, { cache: "no-store" } as RequestInit);
   if (!res.ok) {
     throw new Error(`GET ${path} → ${res.status}`);
   }

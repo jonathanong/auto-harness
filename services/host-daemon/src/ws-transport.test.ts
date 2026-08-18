@@ -66,6 +66,9 @@ describe("createWsTransport", () => {
             assignedAt: "t",
           }),
         );
+        // host:draining carries hostId, not sessionId — covers the other side of the
+        // isHostScopedMessage-style narrowing that session:assign/session:acknowledged exercise.
+        sock.send(JSON.stringify({ type: "host:draining", hostId: "a1" }));
       });
     });
     await new Promise<void>((resolve, reject) => {
@@ -85,15 +88,15 @@ describe("createWsTransport", () => {
     });
     await transport.ready;
     let assignSeen = false;
+    let drainingSeen = false;
     let resolveAssign!: () => void;
     const assignReceived = new Promise<void>((resolve) => {
       resolveAssign = resolve;
     });
     transport.onMessage((m) => {
-      if (m.type === "session:assign") {
-        assignSeen = true;
-        resolveAssign();
-      }
+      if (m.type === "session:assign") assignSeen = true;
+      if (m.type === "host:draining") drainingSeen = true;
+      if (assignSeen && drainingSeen) resolveAssign();
     });
     await transport.send({
       type: "host:register",
@@ -104,6 +107,7 @@ describe("createWsTransport", () => {
     await assignReceived;
     expect(got.some((m) => (m as { type: string }).type === "host:register")).toBe(true);
     expect(assignSeen).toBe(true);
+    expect(drainingSeen).toBe(true);
     transport.close();
     wss.close();
     await new Promise<void>((resolve, reject) => {

@@ -18,9 +18,11 @@ export async function getInventory(hostId: string): Promise<HostInventory> {
 async function readInventory(
   hostId: string,
 ): Promise<{ inventory: HostInventory; version: number }> {
+  // `cache` is a browser fetch option outside @types/node's RequestInit; this path
+  // only ever runs in the browser/RSC, never from a non-DOM consumer like the daemon.
   const res = await fetch(`${apiBase()}/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`, {
     cache: "no-store",
-  });
+  } as RequestInit);
   if (!res.ok) {
     return { inventory: emptyHostInventory(), version: 0 };
   }

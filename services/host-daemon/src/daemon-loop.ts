@@ -47,7 +47,9 @@ type InflightSession = {
   work: Promise<void>;
   /** Set only by a server `session:acknowledged` wire message. */
   acknowledged: boolean;
-  resolveAcknowledgement?: () => void;
+  // Cleared back to undefined once fired, not deleted, so both states need an
+  // explicit type under exactOptionalPropertyTypes.
+  resolveAcknowledgement?: (() => void) | undefined;
 };
 const MAX_INFLIGHT_SESSIONS = 64;
 export class DaemonLoop {

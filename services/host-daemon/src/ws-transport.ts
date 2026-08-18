@@ -9,11 +9,17 @@ import { writeWs, type RegisterMessage } from "./ws-wire.ts";
 type Options = {
   url: string;
   hostId?: string;
-  apiKey?: string;
+  // `| undefined` (not just optional) so callers can pass through their own already-
+  // optional apiKey without a conditional spread at the call site.
+  apiKey?: string | undefined;
   onOpen?: () => void;
   onClose?: () => void;
   onError?: (err: Error) => void;
-  socketFactory?: (url: string, options?: ConstructorParameters<typeof WebSocket>[1]) => WebSocket;
+  // WebSocket's overloads put `options` in different positions depending on whether
+  // `protocols` is present; ConstructorParameters<typeof WebSocket> only sees the last
+  // overload (address, protocols, options), which isn't the two-argument form actually
+  // used here. Naming the options type directly avoids picking up the wrong parameter.
+  socketFactory?: (url: string, options?: WebSocket.ClientOptions) => WebSocket;
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Injectable for deterministic reconnect-jitter tests. */
   random?: () => number;
@@ -247,7 +253,8 @@ export function createWsTransport(options: Options): DaemonTransport & {
           target.close(1008, "registration rejected");
         } else if (
           registered &&
-          ((message.type === "session:acknowledged" &&
+          (("sessionId" in message &&
+            message.type === "session:acknowledged" &&
             typeof message.sessionId === "string" &&
             message.sessionId.length > 0 &&
             message.sessionId.length <= 512) ||

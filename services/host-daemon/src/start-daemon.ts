@@ -29,7 +29,9 @@ type InventoryPollOptions = {
   pollMs: number;
   log: (line: string) => void;
   error: (line: string) => void;
-  fetchFn?: typeof fetch;
+  // `| undefined` (not just optional) so callers can pass through their own already-
+  // optional fetchFn without a conditional spread at every call site.
+  fetchFn?: typeof fetch | undefined;
 };
 
 function noopInventoryPollStop(): Promise<void> {

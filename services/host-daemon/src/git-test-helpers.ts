@@ -20,6 +20,7 @@ export function scripted(
         throw new Error(`unexpected git ${opts.argv.slice(1).join(" ")}`);
       }
       const [hit] = queue.splice(idx, 1);
+      if (!hit) throw new Error("unreachable: splice at a matched index always returns an entry");
       if (hit.stdout) {
         opts.onChunk({ stream: "stdout", data: hit.stdout });
       }
