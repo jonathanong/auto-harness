@@ -103,12 +103,14 @@ export class AuthService {
   private refreshing: Promise<void> | undefined;
 
   constructor(
+    // `| undefined` on each field since callers commonly forward their own
+    // already-optional options verbatim (e.g. LocalServerOptions.authMode).
     options: {
-      mode?: AuthMode;
-      secret?: string;
-      admins?: string;
-      cacheTtlMs?: number;
-      now?: () => number;
+      mode?: AuthMode | undefined;
+      secret?: string | undefined;
+      admins?: string | undefined;
+      cacheTtlMs?: number | undefined;
+      now?: (() => number) | undefined;
     } = {},
   ) {
     this.mode = options.mode ?? authModeFromEnv();

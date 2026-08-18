@@ -10,7 +10,7 @@ import {
 
 export function rateLimitTableDefinition(
   name: string,
-): ConstructorParameters<typeof CreateTableCommand>[0] {
+): ConstructorParameters<typeof CreateTableCommand>[0] & { TableName: string } {
   return {
     TableName: name,
     BillingMode: BillingMode.PAY_PER_REQUEST,

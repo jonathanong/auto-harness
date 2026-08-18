@@ -41,7 +41,7 @@ export function webhookProcessStore(fields: Partial<WebhookOutboxStore> = {}): W
       }),
     ),
     completeWebhookDelivery: vi.fn(async () => true),
-    failWebhookDelivery: vi.fn(async () => "pending"),
+    failWebhookDelivery: vi.fn<WebhookOutboxStore["failWebhookDelivery"]>(async () => "pending"),
     deadLetterExhaustedWebhookDelivery: vi.fn(async () => false),
     ...fields,
   };

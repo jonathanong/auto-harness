@@ -18,7 +18,9 @@ export type AuditLogRecord = {
   action: string;
   resourceType: string;
   resourceId: string;
-  repositoryId?: string;
+  // `| undefined` since callers commonly forward an already-optional value verbatim
+  // (e.g. a possibly-null resource's repositoryId, or a parsed query-string param).
+  repositoryId?: string | undefined;
   outcome: AuditOutcome;
   metadata: AuditMetadata;
 };
@@ -29,16 +31,16 @@ export type AuditLogInput = Omit<AuditLogRecord, "id" | "createdAt" | "metadata"
 
 export type AuditLogListQuery = {
   limit?: number;
-  cursor?: string;
-  actorId?: string;
-  action?: string;
-  resourceType?: string;
-  resourceId?: string;
-  repositoryId?: string;
+  cursor?: string | undefined;
+  actorId?: string | undefined;
+  action?: string | undefined;
+  resourceType?: string | undefined;
+  resourceId?: string | undefined;
+  repositoryId?: string | undefined;
   outcome?: AuditOutcome;
 };
 
 export type AuditLogPage = {
   items: AuditLogRecord[];
-  nextCursor?: string;
+  nextCursor?: string | undefined;
 };

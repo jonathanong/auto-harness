@@ -22,13 +22,17 @@ export type SessionRecord = {
     attemptId: string;
   };
   /** Immutable token for the current or most recent assignment. */
-  attemptId?: string;
+  attemptId?: string | undefined;
   /** Providerless target indexes that reported a usage limit for this session. */
   suppressedTargetIndexes?: number[];
+  /** Consecutive usage_limit retries so far (Invariant 6's exponential backoff). */
+  retryCount?: number;
+  /** Backoff deadline before a usage_limit retry may be scheduled again. */
+  retryAfter?: string;
   /** Final argv, resolved once assigned to a worktree (cascade walk + prompt append). */
   resolvedArgv?: string[];
   /** Frozen native-resume configuration from the first assignment. */
-  resumeSpec?: SessionResumeSpec;
+  resumeSpec?: SessionResumeSpec | undefined;
   timeout: number;
   priority: number;
   requiredLabels: string[];
@@ -38,33 +42,33 @@ export type SessionRecord = {
   ref?: string;
   worktreeId?: string | null;
   hostId?: string | null;
-  concurrencyId?: string;
+  concurrencyId?: string | undefined;
   /** Schedule provenance; distinct from the possibly shared concurrency identity. */
   scheduleId?: string;
   metadata?: Record<string, unknown>;
-  errorCode?: string;
-  errorMessage?: string;
+  errorCode?: string | undefined;
+  errorMessage?: string | undefined;
   url?: string;
-  type?: string;
-  source?: string;
-  startedAt?: string;
-  completedAt?: string;
+  type?: string | undefined;
+  source?: string | undefined;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
   ackReceivedAt?: string;
   /** Exact host lease that claimed this running assignment. */
-  assignmentConnectionId?: string;
+  assignmentConnectionId?: string | undefined;
   /** Durable assignment timestamp used to reclaim an unacknowledged scheduled run after restart. */
   assignmentSentAt?: string;
   /** Deadline after an acknowledged daemon disconnects before this work is requeued. */
   reconnectDeadlineAt?: string;
-  exitCode?: number | null;
-  cliResumeRef?: string;
+  exitCode?: number | null | undefined;
+  cliResumeRef?: string | undefined;
   resumedFromSessionId?: string;
   pinnedHostId?: string | null;
   pinnedProviderAccountId?: string | null;
   /** Exact route components required for a native CLI resume. */
   pinnedTargetIndex?: number;
   pinnedCommandId?: string;
-  pinExpiresAt?: string;
+  pinExpiresAt?: string | undefined;
   resumeFallback?: boolean;
   /** The repository main checkout is held by this scheduled session. */
   mainCheckoutLease?: boolean;

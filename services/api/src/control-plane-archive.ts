@@ -54,7 +54,9 @@ export async function retrySessionArchiveIfNeeded(
 }
 
 export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
-  state.pendingPersists.push(archiveSessionLogs(state, sessionId));
+  // pendingPersists only tracks completion (drain waits on it), never the resolved
+  // ArchiveObject — void it explicitly rather than pushing the value-carrying promise.
+  state.pendingPersists.push(archiveSessionLogs(state, sessionId).then(() => undefined));
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {

@@ -67,7 +67,7 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
     return agents.listHosts(this.state);
   }
 
-  async getSessionDurable(id: string): Promise<PublicSession | null> {
+  override async getSessionDurable(id: string): Promise<PublicSession | null> {
     const session = await durableRuntime.getSessionDurable(this.state, id);
     return session ? toPublic(this.state, session) : null;
   }

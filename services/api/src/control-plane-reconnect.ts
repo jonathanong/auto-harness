@@ -145,9 +145,13 @@ export async function reclaimReconnectDeadlines(
     )
       continue;
     if (await reclaimScheduledReconnect(state, session, requeued)) continue;
+    // The guard above allows a mainCheckoutLease session with no worktreeId through; the
+    // lookup below correctly finds nothing for it and the !worktree check skips it, same
+    // as before this session's worktreeId ever went missing.
+    const worktreeId = session.worktreeId ?? "";
     const worktree = state.storage
-      ? await state.storage.getWorktree(session.worktreeId)
-      : state.worktrees.get(session.worktreeId);
+      ? await state.storage.getWorktree(worktreeId)
+      : state.worktrees.get(worktreeId);
     if (!worktree || !session.hostId) continue;
     const connectionId = state.storage
       ? await state.storage.getHostLock(session.hostId)

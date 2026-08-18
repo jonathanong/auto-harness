@@ -69,7 +69,10 @@ export function parseLogQuery(searchParams: URLSearchParams): LogQueryParseResul
     ok: true,
     query: {
       ...(streamValue !== null ? { stream: streamValue } : {}),
-      ...(since !== undefined ? { since } : {}),
+      // since is `string | null` (never actually undefined once we get here — the guard
+      // above already rejected an invalid, non-null sinceValue) — `!== undefined` alone
+      // never excludes the null case, so it was a no-op check.
+      ...(since !== null && since !== undefined ? { since } : {}),
       limit,
     },
   };

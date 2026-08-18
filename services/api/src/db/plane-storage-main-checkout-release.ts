@@ -10,16 +10,16 @@ type ReleaseMainCheckoutOptions = {
   connectionId: string;
   status: string;
   queueShard: number;
-  reason?: string;
-  completedAt?: string;
-  exitCode?: number | null;
-  errorCode?: string;
-  cliResumeRef?: string;
+  reason?: string | undefined;
+  completedAt?: string | undefined;
+  exitCode?: number | null | undefined;
+  errorCode?: string | undefined;
+  cliResumeRef?: string | undefined;
   retryCount?: number;
   retryAfter?: string;
   expectedStatus?: "running" | "cancelled";
   attemptId?: string;
-  concurrencyId?: string;
+  concurrencyId?: string | undefined;
   /** Used by the assignment ACK deadline only: do not release a run whose
    * acknowledgement committed after this scheduler read its local cache. */
   requireUnacknowledged?: boolean;

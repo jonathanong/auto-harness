@@ -5,8 +5,16 @@ import bcrypt from "bcryptjs";
 import type { AuthAccountRecord } from "./db/plane-storage.ts";
 import type { Principal, Role } from "./auth-types.ts";
 
-export type User = Principal & { passwordHash: string };
-export type ServiceAccount = Principal & { keyHash: string; name: string; createdAt: string };
+// Narrows Principal's shared `kind` field per variant (bootstrap admins are User-shaped,
+// carrying passwordHash like any other user — see auth.ts's HARNESS_ADMINS parsing) so
+// `kind` actually discriminates the union instead of both sides accepting all three values.
+export type User = Omit<Principal, "kind"> & { kind: "admin" | "user"; passwordHash: string };
+export type ServiceAccount = Omit<Principal, "kind"> & {
+  kind: "service-account";
+  keyHash: string;
+  name: string;
+  createdAt: string;
+};
 export type AuthStorage = {
   listAuthAccounts(): Promise<AuthAccountRecord[]>;
   getAuthAccount?(id: string): Promise<AuthAccountRecord | null>;
@@ -131,7 +139,10 @@ function toRecord(value: User | ServiceAccount, createdAt?: string): AuthAccount
     ...(value.kind === "service-account"
       ? { name: value.name, apiKeyHash: value.keyHash }
       : { passwordHash: value.passwordHash }),
-    kind: value.kind,
+    // Both call sites only ever pass a database-backed account (never a bootstrap admin,
+    // which is env-loaded and never persisted via storage.putAuthAccount), so this is
+    // never actually "admin" — AuthAccountRecord.kind deliberately excludes it.
+    kind: value.kind as "user" | "service-account",
     role: value.role,
     ...(value.allowedRepositoryIds ? { allowedRepositoryIds: value.allowedRepositoryIds } : {}),
     ...(value.boundHostId ? { boundHostId: value.boundHostId } : {}),

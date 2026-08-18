@@ -57,7 +57,10 @@ export async function cancelSessionDurable(
     session.completedAt = completedAt;
     session.reconnectDeadlineAt = deadlineAt;
     state.sessions.set(id, { ...session });
-    state.onHostMessage?.(session.hostId, { type: "session:cancel", sessionId: id });
+    // assignment.hostId (not session.hostId) — the guard above validated this exact
+    // value as the host that actually holds the lease being cancelled; session is the
+    // separately-fetched fresh record and isn't guaranteed to agree in a race.
+    state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
     return { ok: true, session: toPublic(state, session) };
   }
 

@@ -397,7 +397,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
             action: "schedule:trigger",
             resourceType: "schedule",
             resourceId: schedTrigger[1]!,
-            repositoryId: triggerExisting.repositoryId,
+            // Missing (not just unauthorized) when !canAuthorSessions(ctx) alone triggered
+            // this branch — a direct .repositoryId here would throw on that path.
+            repositoryId: triggerExisting?.repositoryId,
             outcome: "denied",
           }))
         )
@@ -499,7 +501,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           action: `schedule:${method === "DELETE" ? "delete" : "update"}`,
           resourceType: "schedule",
           resourceId: id,
-          repositoryId: existing.repositoryId,
+          // Missing (not just unauthorized) when the first OR-clause alone triggered this
+          // branch — a direct .repositoryId here would throw on that path.
+          repositoryId: existing?.repositoryId,
           outcome: "denied",
         }))
       )

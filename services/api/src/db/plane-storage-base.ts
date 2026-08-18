@@ -194,16 +194,16 @@ export class DynamoPlaneStorageBase {
     connectionId: string;
     status: string;
     queueShard: number;
-    reason?: string;
-    completedAt?: string;
-    exitCode?: number | null;
-    errorCode?: string;
-    cliResumeRef?: string;
+    reason?: string | undefined;
+    completedAt?: string | undefined;
+    exitCode?: number | null | undefined;
+    errorCode?: string | undefined;
+    cliResumeRef?: string | undefined;
     retryCount?: number;
     retryAfter?: string;
     expectedStatus?: "running" | "cancelled";
     attemptId?: string;
-    concurrencyId?: string;
+    concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
@@ -219,7 +219,7 @@ export class DynamoPlaneStorageBase {
     queueShard: number;
     now: string;
     usageLimitedUntil: string;
-    errorMessage?: string;
+    errorMessage?: string | undefined;
   }): Promise<boolean> {
     return mainCheckout.requeueMainCheckoutUsageLimitedSession(this.ctx, opts);
   }
@@ -268,7 +268,7 @@ export class DynamoPlaneStorageBase {
   clearResumePin(opts: {
     sessionId: string;
     pinnedHostId: string;
-    pinExpiresAt?: string;
+    pinExpiresAt?: string | undefined;
   }): Promise<boolean> {
     return sessions.clearResumePin(this.ctx, opts);
   }
@@ -299,10 +299,10 @@ export class DynamoPlaneStorageBase {
      * cleanup deliberately sets this false. Make the distinction explicit at
      * every callsite instead of deriving it from the terminal session. */
     online: boolean;
-    cliResumeRef?: string;
-    fence?: { hostId: string; connectionId: string };
+    cliResumeRef?: string | undefined;
+    fence?: { hostId: string; connectionId: string } | undefined;
     attemptId: string;
-    concurrencyId?: string;
+    concurrencyId?: string | undefined;
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -446,10 +446,13 @@ export class DynamoPlaneStorageBase {
     return sessions.setWorktreeOnlineFenced(this.ctx, worktreeId, connectionId, online, fence);
   }
 
+  // `draining?: boolean | undefined` since callers commonly forward an already-optional
+  // registration option verbatim.
   tryAcquireHostLock(opts: {
     hostId: string;
     connectionId: string;
     replaceExisting: boolean;
+    draining?: boolean | undefined;
   }): Promise<boolean> {
     return locks.tryAcquireHostLock(this.ctx, opts);
   }
@@ -460,6 +463,7 @@ export class DynamoPlaneStorageBase {
     replaceExisting: boolean;
     existingConnectionId?: string;
     consumePendingConnection?: boolean;
+    draining?: boolean | undefined;
   }): Promise<boolean> {
     return locks.tryRegisterHost(this.ctx, opts);
   }

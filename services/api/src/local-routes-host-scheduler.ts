@@ -116,7 +116,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         )
           return true;
         const missing = result.error === "session not found";
-        const conflict = /stale|changed|fence|connection/i.test(result.error);
+        const conflict =
+          result.error !== undefined && /stale|changed|fence|connection/i.test(result.error);
         send(res, missing ? 404 : conflict ? 409 : 400, {
           error: {
             code: missing ? "NOT_FOUND" : conflict ? "CONFLICT" : "AGENT_MESSAGE_ERROR",

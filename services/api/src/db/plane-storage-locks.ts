@@ -32,7 +32,12 @@ export function connectionPageItems(items: ConnectionRecord[] | undefined): Conn
  */
 export async function tryAcquireHostLock(
   ctx: PlaneStorageCtx,
-  opts: { hostId: string; connectionId: string; replaceExisting: boolean; draining?: boolean },
+  opts: {
+    hostId: string;
+    connectionId: string;
+    replaceExisting: boolean;
+    draining?: boolean | undefined;
+  },
 ): Promise<boolean> {
   if (opts.replaceExisting) {
     await ctx.doc.send(
@@ -81,7 +86,7 @@ export async function tryRegisterHost(
     replaceExisting: boolean;
     existingConnectionId?: string;
     consumePendingConnection?: boolean;
-    draining?: boolean;
+    draining?: boolean | undefined;
   },
 ): Promise<boolean> {
   try {

@@ -151,21 +151,23 @@ export type HostInventoryRecord = {
     id: string;
     path: string;
     defaultBranch: string;
-    setupScript?: string;
-    terminalHookScript?: string;
+    // `| undefined` since callers commonly forward an already-optional value verbatim
+    // (e.g. modules/shared's HostRepository/HostWorktree, which use the same idiom).
+    setupScript?: string | undefined;
+    terminalHookScript?: string | undefined;
     providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     worktrees: Array<{
       id: string;
       name: string;
       path: string;
       labels: string[];
-      setupScript?: string;
+      setupScript?: string | undefined;
       providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     }>;
   }>;
   providerAccounts: Array<{ providerAccountId: string; commandId?: string }>;
   /** Empty/absent means an older daemon supports no optional capabilities. */
-  capabilities?: HostCapability[];
+  capabilities?: HostCapability[] | undefined;
   updatedAt: string;
   /**
    * Optimistic-concurrency counter. The inventory document is replaced whole by
