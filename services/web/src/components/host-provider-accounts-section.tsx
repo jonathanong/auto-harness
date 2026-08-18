@@ -1,4 +1,12 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
+import {
+  SectionError,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@auto-harness/ui";
 import {
   resolveProviderAccountCommandId,
   type Command,
@@ -19,12 +27,14 @@ export function HostProviderAccountsSection({
   accountsById,
   providersById,
   commandsById,
+  catalogError,
 }: {
   hostId: string;
   inventory: HostInventory;
   accountsById: Record<string, ProviderAccount>;
   providersById: Record<string, Provider>;
   commandsById: Record<string, Command>;
+  catalogError?: string | null;
 }) {
   const catalog: ProviderCatalog = { providers: providersById, providerAccounts: accountsById };
   const attachedIds = new Set(inventory.providerAccounts.map((a) => a.providerAccountId));
@@ -115,7 +125,15 @@ export function HostProviderAccountsSection({
           </TableBody>
         </Table>
       )}
-      <AttachProviderAccountToHostForm hostId={hostId} availableAccounts={availableAccounts} />
+      {catalogError ? (
+        <SectionError
+          resource="provider accounts"
+          message={catalogError}
+          selector="host-provider-accounts-catalog"
+        />
+      ) : (
+        <AttachProviderAccountToHostForm hostId={hostId} availableAccounts={availableAccounts} />
+      )}
     </div>
   );
 }

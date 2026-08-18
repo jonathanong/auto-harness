@@ -2,6 +2,7 @@ export { cn } from "./lib/utils.ts";
 export { Button, type ButtonProps } from "./components/button.tsx";
 export { Badge, type BadgeProps } from "./components/badge.tsx";
 export { Alert, type AlertProps } from "./components/alert.tsx";
+export { SectionError, type SectionErrorProps } from "./components/section-error.tsx";
 export { Card, CardContent, CardHeader, CardTitle } from "./components/card.tsx";
 export { Input, type InputProps } from "./components/input.tsx";
 export { PathInput, type PathInputProps } from "./components/path-input.tsx";

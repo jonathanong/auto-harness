@@ -15,6 +15,7 @@ export default async function SettingsPage() {
   let providers: Provider[] = [];
   let providerAccounts: ProviderAccount[] = [];
   let commands: Command[] = [];
+  let catalogError: string | null = null;
   try {
     const [p, a, c] = await Promise.all([
       apiGet<{ items: Provider[] }>("/api/v1/providers"),
@@ -24,8 +25,8 @@ export default async function SettingsPage() {
     providers = p.items ?? [];
     providerAccounts = a.items ?? [];
     commands = c.items ?? [];
-  } catch {
-    /* ignore — provider accounts table shows raw ids only */
+  } catch (error) {
+    catalogError = error instanceof Error ? error.message : String(error);
   }
   const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
   const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
@@ -70,6 +71,7 @@ export default async function SettingsPage() {
           accountsById={providerAccountsById}
           providersById={providersById}
           commandsById={commandsById}
+          catalogError={catalogError}
         />
       </div>
 
