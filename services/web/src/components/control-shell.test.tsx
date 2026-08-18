@@ -12,8 +12,14 @@ describe("ControlShell", () => {
       pathname: "/sessions/session-1",
     });
     expect(field(view.container, "control-shell")).toBeInstanceOf(HTMLDivElement);
-    expect(field(view.container, "app-title").textContent).toBe("Control plane");
+    const titleLink = field<HTMLAnchorElement>(view.container, "app-title");
+    expect(titleLink.textContent).toBe("Control plane");
+    expect(titleLink.tagName).toBe("A");
+    expect(titleLink.getAttribute("href")).toBe("/");
     expect(field(view.container, "app-subtitle").textContent).toContain("host fleet");
+    expect(view.container.textContent).toContain("Operate");
+    expect(view.container.textContent).toContain("Catalog");
+    expect(view.container.textContent).toContain("Fleet");
     expect(field(view.container, "app-main").textContent).toContain("Current sessions");
     expect(field<HTMLAnchorElement>(view.container, "nav-sessions").className).toContain(
       "bg-muted",

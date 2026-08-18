@@ -274,4 +274,36 @@ describe("createLocalApp agent and scheduler routes", () => {
       ).status,
     ).toBe(409);
   });
+
+  it("filters GET /worktrees by ?hostId= instead of forcing every caller to fetch the whole fleet", async () => {
+    const plane = new ControlPlane({
+      idFactory: (() => {
+        let n = 0;
+        return () => `sess-${++n}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+      publicBaseUrl: "http://ui",
+      shardCount: 1,
+    });
+    plane.registerHost({
+      hostId: "host-a",
+      worktrees: [{ id: "wt-a", name: "wt-a", repositoryId: "r1", path: "/a", labels: [] }],
+    });
+    plane.registerHost({
+      hostId: "host-b",
+      worktrees: [{ id: "wt-b", name: "wt-b", repositoryId: "r1", path: "/b", labels: [] }],
+    });
+    const { handler } = createLocalApp({ plane });
+    const invoke = (path: string) => invokeHandler(handler as never, "GET", path);
+
+    const scoped = await invoke("/api/v1/worktrees?hostId=host-a");
+    expect(scoped.status).toBe(200);
+    expect(scoped.json).toMatchObject({ items: [expect.objectContaining({ id: "wt-a" })] });
+
+    const unscoped = await invoke("/api/v1/worktrees");
+    expect((unscoped.json as { items: unknown[] }).items).toHaveLength(2);
+
+    const none = await invoke("/api/v1/worktrees?hostId=host-missing");
+    expect((none.json as { items: unknown[] }).items).toHaveLength(0);
+  });
 });

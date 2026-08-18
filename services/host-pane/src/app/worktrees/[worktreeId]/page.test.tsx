@@ -17,7 +17,7 @@ describe("worktree detail route", () => {
     process.env.HARNESS_HOST_ID = "host/one";
     setApiReplies({
       "/api/v1/hosts/host%2Fone/inventory": inventory,
-      "/api/v1/worktrees": { items: [{ id: "wt/one", hostId: "host/one", status: "idle" }] },
+      "/api/v1/worktrees?hostId=host%2Fone": { items: [{ id: "wt/one", status: "idle" }] },
       "/api/v1/repositories": { items: [{ id: "repo/one", name: "One" }] },
       "/api/v1/sessions?hostId=host%2Fone&limit=100": {
         items: [
@@ -44,7 +44,7 @@ describe("worktree detail route", () => {
     expect(sessions).not.toContain("excluded");
     setApiReplies({
       "/api/v1/hosts/host%2Fone/inventory": inventory,
-      "/api/v1/worktrees": {},
+      "/api/v1/worktrees?hostId=host%2Fone": {},
       "/api/v1/repositories": {},
       "/api/v1/sessions?hostId=host%2Fone&limit=100": 500,
     });
@@ -58,7 +58,7 @@ describe("worktree detail route", () => {
     ).toContain("No recent sessions in this worktree.");
     setApiReplies({
       "/api/v1/hosts/host%2Fone/inventory": inventory,
-      "/api/v1/worktrees": {},
+      "/api/v1/worktrees?hostId=host%2Fone": {},
       "/api/v1/repositories": {},
       "/api/v1/sessions?hostId=host%2Fone&limit=100": {},
     });

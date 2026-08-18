@@ -9,13 +9,11 @@ type LiveWorktree = { status?: string; online?: boolean };
 export async function loadLiveWorktreesById(hostId: string): Promise<Record<string, LiveWorktree>> {
   try {
     const data = await apiGet<{
-      items: Array<{ id: string; hostId?: string; status?: string; online?: boolean }>;
-    }>("/api/v1/worktrees");
+      items: Array<{ id: string; status?: string; online?: boolean }>;
+    }>(`/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}`);
     const out: Record<string, LiveWorktree> = {};
     for (const w of data.items ?? []) {
-      if (w.hostId === hostId) {
-        out[w.id] = { status: w.status, online: w.online };
-      }
+      out[w.id] = { status: w.status, online: w.online };
     }
     return out;
   } catch {

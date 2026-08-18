@@ -10,7 +10,7 @@ const catalogOk = {
   },
   "/api/v1/hosts": { items: [{ hostId: "host-a", online: true }] },
   "/api/v1/repositories": { items: [{ id: "repo-a", name: "Repo A" }] },
-  "/api/v1/worktrees": { items: [] },
+  "/api/v1/worktrees?hostId=host-a": { items: [] },
   "/api/v1/providers": { items: [] },
   "/api/v1/provider-accounts": { items: [] },
   "/api/v1/commands": { items: [] },
@@ -75,7 +75,7 @@ describe("host detail route", () => {
   });
 
   it("surfaces a live-worktree-status failure alongside the attached hierarchy", async () => {
-    stubApi({ ...catalogOk, "/api/v1/worktrees": jsonResponse({}, 500) });
+    stubApi({ ...catalogOk, "/api/v1/worktrees?hostId=host-a": jsonResponse({}, 500) });
     const html = await renderPage(
       HostDetailPage({
         params: Promise.resolve({ hostId: "host-a" }),

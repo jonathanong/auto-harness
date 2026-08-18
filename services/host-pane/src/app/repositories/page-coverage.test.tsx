@@ -33,9 +33,9 @@ describe("host-pane repositories route", () => {
           ],
         });
       }
-      if (url.endsWith("/worktrees")) {
+      if (url.includes("/worktrees?hostId=")) {
         return Response.json({
-          items: [{ id: "live", hostId: "host-a", status: "busy", online: true }],
+          items: [{ id: "live", status: "busy", online: true }],
         });
       }
       return Response.json({ items: [{ id: "repo-known", name: "Known repo" }] });

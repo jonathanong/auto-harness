@@ -740,7 +740,9 @@ it neither opens a WebSocket live tail nor reads S3 archives in the current rele
 
 #### `GET /worktrees`
 
-List all worktrees across all connected agents.
+List all worktrees across all connected agents. Optional `?hostId=<id>` filters server-side to a
+single host — callers that only need one host's worktrees (a host detail page, a host pane) should
+filter here rather than fetching the whole fleet and filtering in JS.
 
 **Response:** `200 OK`
 

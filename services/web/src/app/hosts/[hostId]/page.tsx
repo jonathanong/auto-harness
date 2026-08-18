@@ -1,11 +1,10 @@
-import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
-import { ConnectHostPanel } from "../../../components/connect-host-panel.tsx";
 import { HostAdvancedTab } from "../../../components/host-advanced-tab.tsx";
 import { HostDetailHeader } from "../../../components/host-detail-header.tsx";
-import { HostOverviewTab } from "../../../components/host-overview-tab.tsx";
+import { HostNotFound } from "../../../components/host-not-found.tsx";
+import { HostOverviewSection } from "../../../components/host-overview-section.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
@@ -16,7 +15,14 @@ function errorMessage(error: unknown): string {
 
 export const dynamic = "force-dynamic";
 
-type Agent = { hostId: string; online: boolean };
+type Agent = {
+  hostId: string;
+  online: boolean;
+  connectedAt?: string | null;
+  daemonStartedAt?: string | null;
+  restartCount?: number;
+  lastRestartDetectedAt?: string | null;
+};
 type LiveWorktree = { id: string; hostId?: string; status?: string; online?: boolean };
 
 export default async function HostDetailPage({
@@ -54,24 +60,7 @@ export default async function HostDetailPage({
   const agent = agents.find((a) => a.hostId === hostId);
 
   if (!inventory && !agent) {
-    return (
-      <div className="space-y-4" data-pw="page-host-detail-not-found">
-        <Link href="/hosts" className="text-sm text-muted-foreground hover:underline">
-          ← Back to hosts
-        </Link>
-        {inventoryError || agentsError ? (
-          <SectionError
-            resource={`host ${hostId}`}
-            message={inventoryError ?? agentsError ?? ""}
-            selector="host-detail-lookup"
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            No host <code className="font-mono">{hostId}</code> known to the control plane.
-          </p>
-        )}
-      </div>
-    );
+    return <HostNotFound hostId={hostId} message={inventoryError ?? agentsError} />;
   }
 
   if (inventoryError) {
@@ -121,8 +110,10 @@ export default async function HostDetailPage({
   let liveWorktrees: LiveWorktree[] = [];
   let worktreesError: string | null = null;
   try {
-    const data = await apiGet<{ items: LiveWorktree[] }>("/api/v1/worktrees");
-    liveWorktrees = (data.items ?? []).filter((w) => w.hostId === hostId);
+    const data = await apiGet<{ items: LiveWorktree[] }>(
+      `/api/v1/worktrees?hostId=${encodeURIComponent(hostId)}`,
+    );
+    liveWorktrees = data.items ?? [];
   } catch (error) {
     worktreesError = errorMessage(error);
   }
@@ -164,15 +155,13 @@ export default async function HostDetailPage({
             key: "overview",
             label: "Overview",
             content: (
-              <div className="space-y-4">
-                <HostOverviewTab
-                  online={agent?.online ?? false}
-                  agentsError={agentsError}
-                  repoCount={repoCount}
-                  worktreeCount={worktreeCount}
-                />
-                {agent?.online ? null : <ConnectHostPanel hostId={hostId} />}
-              </div>
+              <HostOverviewSection
+                hostId={hostId}
+                agent={agent}
+                agentsError={agentsError}
+                repoCount={repoCount}
+                worktreeCount={worktreeCount}
+              />
             ),
           },
           {

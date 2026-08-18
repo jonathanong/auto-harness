@@ -16,10 +16,15 @@ export {
   TableHeader,
   TableRow,
 } from "./components/table.tsx";
-export { AppShell, type AppShellProps, type NavItem } from "./components/app-shell.tsx";
+export {
+  AppShell,
+  type AppShellProps,
+  type NavGroup,
+  type NavItem,
+} from "./components/app-shell.tsx";
 export { SessionStatusBadge } from "./components/session-status-badge.tsx";
 export { WorktreeStatusBadge } from "./components/worktree-status-badge.tsx";
-export { formatDuration } from "./components/session-time.tsx";
+export { formatDuration, RelativeTime } from "./components/session-time.tsx";
 export {
   OnlineStatusBadge,
   type OnlineStatusBadgeProps,

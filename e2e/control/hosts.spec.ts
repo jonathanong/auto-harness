@@ -108,7 +108,10 @@ test.describe("control plane hosts", () => {
 
     try {
       socket = await registerObservedHost(hostId, randomUUID(), firstStartedAt);
-      await page.goto("/hosts");
+      // Restart/connection details live on the host detail page's Overview tab, not the fleet
+      // list — the list only needs to say a host is online, not how many times its daemon
+      // restarted.
+      await page.goto(`/hosts/${hostId}`);
       await expect(page.getByTestId(`host-restart-count-${hostId}`)).toHaveText(
         "0 restarts detected",
       );

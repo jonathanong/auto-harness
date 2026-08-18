@@ -1,3 +1,5 @@
+import { RelativeTime } from "@auto-harness/ui";
+
 type HostRestartDetailsProps = {
   hostId: string;
   daemonStartedAt?: string | null;
@@ -20,13 +22,7 @@ export function HostRestartDetails({
       <div className="text-muted-foreground">
         Started:{" "}
         {daemonStartedAt ? (
-          <time
-            dateTime={daemonStartedAt}
-            title={daemonStartedAt}
-            data-pw={`host-daemon-started-at-${hostId}`}
-          >
-            {daemonStartedAt}
-          </time>
+          <RelativeTime value={daemonStartedAt} pw={`host-daemon-started-at-${hostId}`} />
         ) : (
           <span data-pw={`host-daemon-started-at-${hostId}`}>legacy/unknown</span>
         )}
@@ -34,13 +30,7 @@ export function HostRestartDetails({
       {lastRestartDetectedAt ? (
         <div className="text-muted-foreground">
           Last detected:{" "}
-          <time
-            dateTime={lastRestartDetectedAt}
-            title={lastRestartDetectedAt}
-            data-pw={`host-last-restart-${hostId}`}
-          >
-            {lastRestartDetectedAt}
-          </time>
+          <RelativeTime value={lastRestartDetectedAt} pw={`host-last-restart-${hostId}`} />
         </div>
       ) : null}
     </div>
