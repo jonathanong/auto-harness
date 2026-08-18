@@ -30,6 +30,12 @@ test.describe("control plane dashboard", () => {
     await page.route("**/api/v1/worktrees", async (route) => {
       await route.fulfill({ json: { items: [{ id: "busy", status: "busy", online: true }] } });
     });
+    await page.route("**/api/v1/sessions?status=running&limit=100", async (route) => {
+      await route.fulfill({ json: { items: [{ id: "live-dashboard" }], nextCursor: null } });
+    });
+    await page.route("**/api/v1/sessions?status=queued&limit=100", async (route) => {
+      await route.fulfill({ json: { items: [], nextCursor: null } });
+    });
     await expect(page.getByTestId("stat-running-value")).toHaveText("1", { timeout: 10_000 });
     await expect(page.getByTestId("stat-worktree-utilization-value")).toHaveText("1/1 busy");
 
