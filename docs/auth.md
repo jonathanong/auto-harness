@@ -222,6 +222,31 @@ The `boundHostId` is stored on the service account record. On WebSocket connect 
 
 If any check fails, the connection is rejected with an error message and closed.
 
+### A bound key cannot create sessions
+
+A service account with `boundHostId` set can register a host over WebSocket, but
+**cannot** author sessions — `POST /api/v1/sessions` (and `/sessions/:id/clone`,
+`/sessions/:id/resume`, and schedule writes) all check `canAuthorSessions`
+(`services/api/src/local-routes-session-access.ts`), which requires the
+principal to have **no** `boundHostId`. This is deliberate: without it, a stolen
+daemon key could create a session for any repository it can reach, and the
+scheduler has no notion of who authored a session, so it could place that
+session on a **different** host — turning one host compromise into execution
+across the fleet.
+
+A bound key attempting to create a session gets a bare
+`404 {"error":{"code":"NOT_FOUND","message":"resource not found"}}` —
+deliberately not `403`, and with **no mention of `boundHostId` anywhere in the
+response** (confirmed against a real deployment). If a session-authoring call
+unexpectedly 404s, check whether the key used is the daemon's bound key.
+
+Practically, this means every host needs **two** service accounts, not one:
+
+- a **bound** one (`boundHostId` set) for the host daemon's `HARNESS_API_KEY`
+  ([deploy-host-daemon.md](deploy-host-daemon.md))
+- an **unbound** `operator` (or `admin`) one for anything that creates sessions —
+  a CI trigger, a webhook consumer, a scheduled-task caller
+
 ### Connection flow
 
 ```mermaid
