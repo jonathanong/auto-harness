@@ -1,10 +1,15 @@
 import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
-import { DrainButton, OnlineStatusBadge, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
+import { DrainButton, SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
+import { HostOverviewTab } from "../../../components/host-overview-tab.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { ApiError, apiGet } from "../../../lib/api.ts";
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -22,20 +27,26 @@ export default async function HostDetailPage({
   const { tab } = await searchParams;
 
   let inventory: HostInventory | null = null;
+  let inventoryError: string | null = null;
   try {
     inventory = await apiGet<HostInventory>(
       `/api/v1/hosts/${encodeURIComponent(hostId)}/inventory`,
     );
-  } catch {
-    /* no config yet — may still be a live/known agent below */
+  } catch (error) {
+    // A 404 genuinely means "no config yet" — may still be a live/known agent below.
+    // Anything else is a real failure, not evidence the host doesn't exist.
+    if (!(error instanceof ApiError && error.status === 404)) {
+      inventoryError = errorMessage(error);
+    }
   }
 
   let agents: Agent[] = [];
+  let agentsError: string | null = null;
   try {
     const data = await apiGet<{ items: Agent[] }>("/api/v1/hosts");
     agents = data.items ?? [];
-  } catch {
-    /* ignore — status shows unknown */
+  } catch (error) {
+    agentsError = errorMessage(error);
   }
   const agent = agents.find((a) => a.hostId === hostId);
 
@@ -45,9 +56,17 @@ export default async function HostDetailPage({
         <Link href="/hosts" className="text-sm text-muted-foreground hover:underline">
           ← Back to hosts
         </Link>
-        <p className="text-sm text-muted-foreground">
-          No host <code className="font-mono">{hostId}</code> known to the control plane.
-        </p>
+        {inventoryError || agentsError ? (
+          <SectionError
+            resource={`host ${hostId}`}
+            message={inventoryError ?? agentsError ?? ""}
+            selector="host-detail-lookup"
+          />
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No host <code className="font-mono">{hostId}</code> known to the control plane.
+          </p>
+        )}
       </div>
     );
   }
@@ -61,28 +80,31 @@ export default async function HostDetailPage({
   };
 
   let catalog: RepoCatalogEntry[] = [];
+  let catalogError: string | null = null;
   try {
     const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
     catalog = (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
-  } catch {
-    /* ignore — attach form shows no options */
+  } catch (error) {
+    catalogError = errorMessage(error);
   }
   const namesById = Object.fromEntries(catalog.map((r) => [r.id, r.name]));
   const attachedIds = new Set(inv.repositories.map((r) => r.id));
   const unattachedCatalog = catalog.filter((r) => !attachedIds.has(r.id));
 
   let liveWorktrees: LiveWorktree[] = [];
+  let worktreesError: string | null = null;
   try {
     const data = await apiGet<{ items: LiveWorktree[] }>("/api/v1/worktrees");
     liveWorktrees = (data.items ?? []).filter((w) => w.hostId === hostId);
-  } catch {
-    /* ignore — worktree status shows unknown */
+  } catch (error) {
+    worktreesError = errorMessage(error);
   }
   const liveById = Object.fromEntries(liveWorktrees.map((w) => [w.id, w]));
 
   let providers: Provider[] = [];
   let providerAccounts: ProviderAccount[] = [];
   let commands: Command[] = [];
+  let providerCatalogError: string | null = null;
   try {
     const [p, a, c] = await Promise.all([
       apiGet<{ items: Provider[] }>("/api/v1/providers"),
@@ -92,8 +114,8 @@ export default async function HostDetailPage({
     providers = p.items ?? [];
     providerAccounts = a.items ?? [];
     commands = c.items ?? [];
-  } catch {
-    /* ignore — provider accounts section shows nothing to attach */
+  } catch (error) {
+    providerCatalogError = errorMessage(error);
   }
   const providersById = Object.fromEntries(providers.map((p) => [p.id, p]));
   const providerAccountsById = Object.fromEntries(providerAccounts.map((a) => [a.id, a]));
@@ -129,26 +151,12 @@ export default async function HostDetailPage({
             key: "overview",
             label: "Overview",
             content: (
-              <dl className="grid gap-4 sm:grid-cols-3" data-pw="host-detail-overview">
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Status</dt>
-                  <dd data-pw="host-detail-status">
-                    <OnlineStatusBadge online={agent?.online ?? false} />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Repositories</dt>
-                  <dd className="text-sm" data-pw="host-detail-repo-count">
-                    {repoCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Worktrees</dt>
-                  <dd className="text-sm" data-pw="host-detail-worktree-count">
-                    {worktreeCount}
-                  </dd>
-                </div>
-              </dl>
+              <HostOverviewTab
+                online={agent?.online ?? false}
+                agentsError={agentsError}
+                repoCount={repoCount}
+                worktreeCount={worktreeCount}
+              />
             ),
           },
           {
@@ -161,6 +169,8 @@ export default async function HostDetailPage({
                 namesById={namesById}
                 unattachedCatalog={unattachedCatalog}
                 liveById={liveById}
+                catalogError={catalogError}
+                worktreesError={worktreesError}
               />
             ),
           },
@@ -174,6 +184,7 @@ export default async function HostDetailPage({
                 accountsById={providerAccountsById}
                 providersById={providersById}
                 commandsById={commandsById}
+                catalogError={providerCatalogError}
               />
             ),
           },
