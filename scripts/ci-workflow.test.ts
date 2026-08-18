@@ -30,6 +30,7 @@ describe("required CI check contract", () => {
     expect(staticAnalysis).toContain("run: pnpm lint");
     expect(staticAnalysis).toContain("run: pnpm lint:ast");
     expect(staticAnalysis).toContain("run: pnpm fmt:check");
+    expect(staticAnalysis).toContain("run: pnpm typecheck");
     expect(staticAnalysis).toContain("run: pnpm knip");
     expect(staticAnalysis).toContain("run: pnpm depcruise");
     expect(staticAnalysis).toContain("run: pnpm check:data-pw");

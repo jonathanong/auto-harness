@@ -11,6 +11,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
     "node-pty": "^1.1.0",

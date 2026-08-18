@@ -21,11 +21,12 @@ function removalPolicy(value: string | undefined): RemovalPolicy {
 const app = new App();
 const tablePrefix = contextString(app, "tablePrefix") ?? "AutoHarness";
 const dataRemovalPolicy = removalPolicy(contextString(app, "removalPolicy"));
+const archiveBucketName = contextString(app, "archiveBucketName");
 const stack = new AutoHarnessFoundationStack(
   app,
   contextString(app, "stackName") ?? "AutoHarnessFoundation",
   {
-    archiveBucketName: contextString(app, "archiveBucketName"),
+    ...(archiveBucketName !== undefined ? { archiveBucketName } : {}),
     dataRemovalPolicy,
     tablePrefix,
   },

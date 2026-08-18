@@ -10,7 +10,7 @@ import {
 } from "./constants.ts";
 import type { SessionErrorCode, SessionSource, SessionStatus, SessionType } from "./types.ts";
 import { isValidScheduledBranchRef, isValidSessionRef } from "./scheduled-branch-ref.ts";
-import type { TargetRef } from "./session.ts";
+import type { SessionActiveStatus, SessionTerminalStatus, TargetRef } from "./session.ts";
 
 export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -39,13 +39,13 @@ export function isSessionStatus(value: unknown): value is SessionStatus {
   return typeof value === "string" && (SESSION_STATUSES as readonly string[]).includes(value);
 }
 
-export function isTerminalSessionStatus(value: unknown): value is SessionStatus {
+export function isTerminalSessionStatus(value: unknown): value is SessionTerminalStatus {
   return (
     typeof value === "string" && (TERMINAL_SESSION_STATUSES as readonly string[]).includes(value)
   );
 }
 
-export function isActiveSessionStatus(value: unknown): value is SessionStatus {
+export function isActiveSessionStatus(value: unknown): value is SessionActiveStatus {
   return (
     typeof value === "string" && (ACTIVE_SESSION_STATUSES as readonly string[]).includes(value)
   );

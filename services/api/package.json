@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@auto-harness/shared": "workspace:*",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1108.0",

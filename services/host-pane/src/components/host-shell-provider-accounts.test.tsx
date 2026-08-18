@@ -139,7 +139,7 @@ const account: ProviderAccount = {
 };
 
 function inventory(providerAccounts: HostInventory["providerAccounts"]): HostInventory {
-  return { repositories: [], providerAccounts, commandProfiles: {} };
+  return { repositories: [], providerAccounts };
 }
 
 describe("read-only provider accounts", () => {

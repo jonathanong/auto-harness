@@ -4,6 +4,7 @@ import { AuthService, type Principal } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
 import { errorMessage } from "./local-route-errors.ts";
+import { handleHostSchedulerRoutes } from "./local-routes-host-scheduler.ts";
 import { handleRepositoryRoutes } from "./local-routes-repos-schedules.ts";
 import { createLocalApp, startLocalServer } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
@@ -87,6 +88,42 @@ describe("local route authorization and outcomes", () => {
     expect(rejected).toMatchObject({
       status: 400,
       json: { error: { code: "AGENT_MESSAGE_ERROR" } },
+    });
+  });
+
+  it("authorizes a bound daemon's own host:status draining message by hostId, not sessionId", async () => {
+    // Regression: host:status carries hostId, not sessionId, like host:register/host:keepalive
+    // — but a bound principal used to fall through to the sessionId-based branch for it,
+    // looking up a session with an undefined id and always 404ing even for its own host.
+    const plane = new ControlPlane({ now: () => NOW });
+    plane.registerHost({ hostId: "host-a", worktrees: [], commandProfiles: [] });
+    plane.registerHost({ hostId: "host-b", worktrees: [], commandProfiles: [] });
+    const principal: Principal = {
+      id: "service:host-a-daemon",
+      kind: "service-account",
+      role: "operator",
+      boundHostId: "host-a",
+    };
+    const invoke = (hostId: string) =>
+      invokeHandler(
+        (req, res) =>
+          handleHostSchedulerRoutes({
+            plane,
+            req: req as never,
+            res: res as never,
+            url: new URL("/api/v1/host/messages", "http://localhost"),
+            method: "POST",
+            principal,
+          }),
+        "POST",
+        "/api/v1/host/messages",
+        { type: "host:status", hostId, draining: true },
+      );
+
+    expect(await invoke("host-a")).toMatchObject({ status: 200, json: { ok: true } });
+    expect(await invoke("host-b")).toMatchObject({
+      status: 404,
+      json: { error: { code: "NOT_FOUND" } },
     });
   });
 
