@@ -15,9 +15,25 @@ import {
 import { ProviderDefaultCommandForm } from "./provider-default-command-form.tsx";
 
 const commands = [
-  { id: "command/one", name: "Claude", argv: ["claude"], appendPrompt: true, providerId: "p" },
-  { id: "command/two", name: "Codex", argv: ["codex"], appendPrompt: true, providerId: "p" },
-] as const;
+  {
+    id: "command/one",
+    name: "Claude",
+    argv: ["claude"],
+    appendPrompt: true,
+    providerId: "p",
+    createdAt: "now",
+    updatedAt: "now",
+  },
+  {
+    id: "command/two",
+    name: "Codex",
+    argv: ["codex"],
+    appendPrompt: true,
+    providerId: "p",
+    createdAt: "now",
+    updatedAt: "now",
+  },
+];
 
 describe("ProviderDefaultCommandForm", () => {
   it("renders the default selection and saves a command", async () => {

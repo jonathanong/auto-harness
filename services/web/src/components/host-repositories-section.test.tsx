@@ -11,7 +11,7 @@ describe("HostRepositoriesSection", () => {
     const view = mountForm(
       <HostRepositoriesSection
         hostId="host"
-        inventory={{ repositories: [], providerAccounts: [], commandProfiles: {} }}
+        inventory={{ repositories: [], providerAccounts: [] }}
         namesById={{}}
         unattachedCatalog={[]}
         liveById={{}}
@@ -32,12 +32,12 @@ describe("HostRepositoriesSection", () => {
         {
           id: "repo-one",
           path: "/repos/one",
+          defaultBranch: "main",
           worktrees: [{ id: "worktree-one", name: "one", path: "/repos/one/wt", labels: ["fast"] }],
         },
-        { id: "deleted-repo", path: "/repos/deleted", worktrees: [] },
+        { id: "deleted-repo", path: "/repos/deleted", defaultBranch: "main", worktrees: [] },
       ],
       providerAccounts: [],
-      commandProfiles: {},
     };
     const view = mountForm(
       <HostRepositoriesSection
@@ -67,7 +67,7 @@ describe("HostRepositoriesSection", () => {
     const view = mountForm(
       <HostRepositoriesSection
         hostId="host"
-        inventory={{ repositories: [], providerAccounts: [], commandProfiles: {} }}
+        inventory={{ repositories: [], providerAccounts: [] }}
         namesById={{}}
         unattachedCatalog={[]}
         liveById={{}}

@@ -130,7 +130,9 @@ describe("EditWorktreeForm", () => {
 
   it("uses missing-label fallbacks and displays a pending request failure", async () => {
     const { finish } = stubDeferredPut(inventory);
-    const view = mountForm(form({ ...worktree, labels: undefined } as typeof worktree));
+    // Deliberately simulates malformed data (missing labels) to exercise the component's
+    // `worktree.labels ?? []` fallback — the real HostWorktree type always has labels.
+    const view = mountForm(form({ ...worktree, labels: undefined } as unknown as typeof worktree));
     press(field(view.container, "worktree-edit-open"));
     field<HTMLInputElement>(view.container, "worktree-edit-labels").remove();
     submit(field(view.container, "form-edit-worktree"));

@@ -54,7 +54,9 @@ export function mountForm(
   return { container, unmount };
 }
 
-export function field<T extends HTMLElement>(container: Element, pw: string): T {
+// ParentNode (not Element) so callers can pass `document` itself, not just an element —
+// both implement querySelector via the same mixin interface.
+export function field<T extends HTMLElement>(container: ParentNode, pw: string): T {
   const element = container.querySelector(`[data-pw="${pw}"]`);
   if (!element) throw new Error(`missing ${pw}`);
   return element as T;

@@ -7,12 +7,19 @@ import { field, json, mountForm, setValue, submit } from "./form-test-helpers.ts
 import { HostProviderAccountCommandForm } from "./host-provider-account-command-form.tsx";
 
 const commands = [
-  { id: "command-1", name: "fast", argv: ["fast"], appendPrompt: true, providerId: "p" },
+  {
+    id: "command-1",
+    name: "fast",
+    argv: ["fast"],
+    appendPrompt: true,
+    providerId: "p",
+    createdAt: "now",
+    updatedAt: "now",
+  },
 ];
 const inventory = {
   repositories: [],
   providerAccounts: [{ providerAccountId: "account" }],
-  commandProfiles: {},
 };
 
 describe("HostProviderAccountCommandForm", () => {
