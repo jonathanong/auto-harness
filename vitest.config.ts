@@ -1,13 +1,39 @@
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  // Next preserves JSX for its own compiler; direct server-component tests need
-  // Vite to use the same automatic React runtime.
-  esbuild: { jsx: "automatic" },
   test: {
-    include: ["modules/**/*.test.{ts,tsx}", "services/**/*.test.{ts,tsx}", "scripts/**/*.test.ts"],
-    testTimeout: 60_000,
-    hookTimeout: 60_000,
+    // GitHub-hosted standard runners give 2 vCPUs; pin the shared worker pool to match instead
+    // of letting Vitest's default (`availableParallelism() - 1`) over-subscribe and thrash.
+    maxWorkers: process.env.CI ? 2 : undefined,
+    minWorkers: process.env.CI ? 2 : undefined,
+    projects: [
+      {
+        // Next preserves JSX for its own compiler; direct server-component tests need
+        // Vite to use the same automatic React runtime.
+        esbuild: { jsx: "automatic" },
+        test: {
+          name: "unit",
+          include: [
+            "modules/**/*.test.{ts,tsx}",
+            "services/**/*.test.{ts,tsx}",
+            "scripts/**/*.test.ts",
+          ],
+          testTimeout: 60_000,
+          hookTimeout: 60_000,
+        },
+      },
+      {
+        // Full-stack integration tests: real HTTP+WS servers, a real agent daemon, real git —
+        // as opposed to the unit project's mocked-boundary tests or e2e/*.spec.ts's UI-driven
+        // Playwright tests. No coverage gate of its own: these verify end-to-end behavior, not
+        // line coverage. See docs/e2e.md.
+        test: {
+          name: "integration",
+          include: ["integration/**/*.test.ts"],
+          testTimeout: 60_000,
+        },
+      },
+    ],
     coverage: {
       provider: "v8",
       include: [

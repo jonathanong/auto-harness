@@ -70,7 +70,10 @@ describe("packaged host daemon lifecycle", () => {
     await git(repositoryPath, ["commit", "-m", "initial"]);
     await git(repositoryPath, ["branch", "-M", "main"]);
 
-    const port = 22_000 + Math.floor(Math.random() * 1_000);
+    // Distinct band from services/api/src/local-server-webhook-worker.test.ts's 22_000+ —
+    // unit and integration tests now share one Vitest worker pool (see vitest.config.ts's
+    // "unit"/"integration" projects), so their random port ranges must not overlap.
+    const port = 25_000 + Math.floor(Math.random() * 1_000);
     server = await startLocalServer({
       port,
       useDynamo: false,

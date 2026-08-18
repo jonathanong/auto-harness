@@ -257,7 +257,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web
 ```
 
-`pnpm check` runs oxlint, oxfmt, vitest (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs), the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and the `data-pw` selector gate.
+`pnpm check` runs oxlint, oxfmt, vitest — both the unit project (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs) and the integration project (`integration/`, no coverage gate of its own) — the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and the `data-pw` selector gate.
 
 `pnpm check:data-pw` runs [`no-mistakes`](https://github.com/jonathanong/no-mistakes) against both Next.js apps, checking `data-pw` selector uniqueness and Playwright coverage (every route/selector exercised by an `e2e/` spec). It's split into two invocations (`.no-mistakes.control.yml`, `.no-mistakes.host-pane.yml`) — running both projects from the single root `.no-mistakes.yml` cross-contaminates findings ([no-mistakes#624](https://github.com/jonathanong/no-mistakes/issues/624)). Each config also sets `frontendRoot`/`selectorRoots` explicitly to work around `src/app` layout misdetection ([no-mistakes#625](https://github.com/jonathanong/no-mistakes/issues/625)).
 
