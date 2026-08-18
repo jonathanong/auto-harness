@@ -90,15 +90,15 @@ All lifecycle commands use the same settings. Environment names are lowercase,
 start with a letter, contain only letters, numbers, and dashes, and are at most 32
 characters.
 
-| Variable                        | Required             | Purpose                                                      |
-| ------------------------------- | -------------------- | ------------------------------------------------------------ |
-| `HARNESS_DEPLOY_ENVIRONMENT`    | Always               | Isolates stack, table, bucket, and SSM names                 |
-| `AWS_REGION`                    | Always               | AWS deployment region                                        |
-| `HARNESS_DEPLOY_REMOVAL_POLICY` | No; default `retain` | `retain` for durable data or `destroy` for disposable data   |
-| `AWS_ACCOUNT_ID`                | No                   | Avoids the STS account lookup when already known             |
-| `HARNESS_DEPLOY_CONFIRM`        | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`              |
-| `HARNESS_DEPLOY_PURGE_CONFIRM`  | Purge only           | Must exactly match `destroy-all-data-in-<environment>`       |
-| `HARNESS_DEPLOY_PURGE_SSM`      | No; default off      | Set to `1` to also delete the three bootstrap SSM parameters |
+| Variable                             | Required             | Purpose                                                      |
+| ------------------------------------ | -------------------- | ------------------------------------------------------------ |
+| `HARNESS_DEPLOY_ENVIRONMENT`         | Always               | Isolates stack, table, bucket, and SSM names                 |
+| `AWS_REGION` or `AWS_DEFAULT_REGION` | One required         | AWS deployment region                                        |
+| `HARNESS_DEPLOY_REMOVAL_POLICY`      | No; default `retain` | `retain` for durable data or `destroy` for disposable data   |
+| `AWS_ACCOUNT_ID`                     | No                   | Avoids the STS account lookup when already known             |
+| `HARNESS_DEPLOY_CONFIRM`             | Teardown/purge only  | Must exactly match `HARNESS_DEPLOY_ENVIRONMENT`              |
+| `HARNESS_DEPLOY_PURGE_CONFIRM`       | Purge only           | Must exactly match `destroy-all-data-in-<environment>`       |
+| `HARNESS_DEPLOY_PURGE_SSM`           | No; default off      | Set to `1` to also delete the three bootstrap SSM parameters |
 
 The generated names are `AutoHarness-<environment>-Foundation`,
 `AutoHarness-<environment>-Runtime`, `AutoHarness-<environment>-Web`, and
@@ -177,8 +177,10 @@ stack's deletion policies, and teardown never removes the three bootstrap SSM
 parameters.
 
 `purge` is a separate, irreversible operation for actually decommissioning an
-environment — including its data. It requires **two independent, non-guessable**
-confirmations, neither of which alone is enough:
+environment — including its data. It requires **two separate explicit
+confirmations**, neither of which alone is enough — not as access control (both are
+deterministic from the environment name, so they are not secret), but so a single
+already-set variable can't silently authorize deleting everything:
 
 ```bash
 export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"

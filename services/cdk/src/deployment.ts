@@ -93,13 +93,14 @@ function expectedPurgeConfirmation(config: DeploymentConfig): string {
 }
 
 /**
- * Irreversibly removes everything teardown leaves behind. Two independent,
- * non-guessable confirmations are required — teardown's own HARNESS_DEPLOY_CONFIRM plus a
- * purge-specific value naming the environment again — so neither can be set once and
- * forgotten. Order matters: web and runtime (the archive bucket's only writers — the
- * cron Lambda archives session logs on a 1-minute schedule) are destroyed *before* the
- * bucket's deletion policy is retargeted or its contents are removed, so nothing can write
- * back into a bucket mid-empty.
+ * Irreversibly removes everything teardown leaves behind. Two separate explicit
+ * confirmations are required — teardown's own HARNESS_DEPLOY_CONFIRM plus a purge-specific
+ * value naming the environment again — so a single already-set variable (e.g. left over from
+ * a prior teardown) can't silently authorize this too; both are still deterministic from the
+ * environment name, not a secret or an access-control check. Order matters: web and runtime
+ * (the archive bucket's only writers — the cron Lambda archives session logs on a 1-minute
+ * schedule) are destroyed *before* the bucket's deletion policy is retargeted or its contents
+ * are removed, so nothing can write back into a bucket mid-empty.
  */
 async function purge(
   config: DeploymentConfig,

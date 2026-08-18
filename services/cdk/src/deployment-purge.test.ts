@@ -128,6 +128,45 @@ describe("emptyArchiveBucket", () => {
       "Emptied 1002 object version(s) from review-archive-bucket.",
     );
   });
+
+  it("throws on a per-object delete failure instead of reporting the bucket empty", async () => {
+    // delete-objects exits 0 even when some objects failed — the failure is only visible in
+    // the response body's Errors array, not the CLI status queryOk() checks.
+    const query = vi.fn(async (_command: string, args: string[]) => {
+      if (args.includes("list-object-versions")) {
+        return {
+          status: 0,
+          stderr: "",
+          stdout: JSON.stringify({
+            Versions: [
+              { Key: "sessions/a.log", VersionId: "v1" },
+              { Key: "sessions/b.log", VersionId: "v2" },
+            ],
+          }),
+        };
+      }
+      if (args.includes("delete-objects")) {
+        return {
+          status: 0,
+          stderr: "",
+          stdout: JSON.stringify({
+            // A second, fieldless entry covers the "AWS omitted this field" fallback path —
+            // documented as possible in the DeleteObjects API but not the common case.
+            Errors: [{ Code: "AccessDenied", Key: "sessions/b.log", VersionId: "v2" }, {}],
+          }),
+        };
+      }
+      return { status: 0, stderr: "", stdout: "" };
+    });
+    const deps = dependencies(query);
+    await expect(emptyArchiveBucket(config, deps, "review-archive-bucket")).rejects.toThrow(
+      "sessions/b.log@v2: AccessDenied, (unknown)@(unknown): unknown",
+    );
+    // Pagination must not continue past a batch that failed to delete.
+    expect(
+      query.mock.calls.filter(([, args]) => args.includes("list-object-versions")),
+    ).toHaveLength(1);
+  });
 });
 
 describe("deleteSecretParameters", () => {

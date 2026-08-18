@@ -13,6 +13,9 @@ type S3ListObjectVersionsResponse = {
   Versions?: S3ObjectVersion[];
 };
 type SsmDeleteParametersResponse = { DeletedParameters?: string[]; InvalidParameters?: string[] };
+type S3DeleteObjectsResponse = {
+  Errors?: { Code?: string; Key?: string; VersionId?: string }[];
+};
 
 /**
  * Deploys only the foundation stack, forcing removalPolicy=destroy regardless of the
@@ -70,7 +73,7 @@ async function deleteObjectVersions(
 ): Promise<void> {
   for (let start = 0; start < objects.length; start += MAX_DELETE_OBJECTS_PER_CALL) {
     const batch = objects.slice(start, start + MAX_DELETE_OBJECTS_PER_CALL);
-    await queryOk(
+    const stdout = await queryOk(
       dependencies,
       "aws",
       awsArgs(config, [
@@ -81,10 +84,22 @@ async function deleteObjectVersions(
         "--delete",
         JSON.stringify({
           Objects: batch.map((object) => ({ Key: object.Key, VersionId: object.VersionId })),
+          // Quiet suppresses per-success reporting only — a failed delete still appears in
+          // Errors below, and delete-objects itself exits 0 even when some objects failed.
           Quiet: true,
         }),
       ]),
     );
+    const result: S3DeleteObjectsResponse = stdout ? JSON.parse(stdout) : {};
+    if (result.Errors?.length) {
+      const failed = result.Errors.map(
+        ({ Code, Key, VersionId }) =>
+          `${Key ?? "(unknown)"}@${VersionId ?? "(unknown)"}: ${Code ?? "unknown"}`,
+      );
+      throw new Error(
+        `failed to delete ${String(failed.length)} object version(s) from ${bucketName}: ${failed.join(", ")}`,
+      );
+    }
   }
 }
 

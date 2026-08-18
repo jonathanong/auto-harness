@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { config, dependencies } from "./deployment-test-helpers.ts";
 import { runDeployment } from "./deployment.ts";
@@ -155,5 +155,46 @@ describe("runDeployment purge", () => {
         deps,
       ),
     ).rejects.toThrow("surviving application stack");
+  });
+
+  it("never destroys the foundation when emptying its archive bucket fails", async () => {
+    const deps = dependencies([true, true, true, false, false, false]);
+    const query = deps.query;
+    deps.query = vi.fn(async (command, args) => {
+      if (args.includes("delete-objects")) {
+        return {
+          status: 0,
+          stderr: "",
+          stdout: JSON.stringify({
+            Errors: [{ Code: "AccessDenied", Key: "sessions/a.log", VersionId: "v1" }],
+          }),
+        };
+      }
+      if (args.includes("list-object-versions")) {
+        return {
+          status: 0,
+          stderr: "",
+          stdout: JSON.stringify({ Versions: [{ Key: "sessions/a.log", VersionId: "v1" }] }),
+        };
+      }
+      return query(command, args);
+    });
+    await expect(
+      runDeployment(
+        "purge",
+        config({
+          purgeConfirmation: "destroy-all-data-in-review",
+          teardownConfirmation: "review",
+        }),
+        deps,
+      ),
+    ).rejects.toThrow("AccessDenied");
+    // web+runtime and the retarget deploy ran, but the foundation destroy never did.
+    expect(deps.runs).toHaveLength(2);
+    expect(
+      deps.runs.some(
+        (run) => run.includes("destroy") && run.includes("AutoHarness-review-Foundation"),
+      ),
+    ).toBe(false);
   });
 });
