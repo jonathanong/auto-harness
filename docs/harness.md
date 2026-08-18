@@ -306,8 +306,8 @@ sequenceDiagram
   participant Slack
 
   Agent->>AH: usage_limit detected
-  AH->>Slack: Account paused; fallback assignment queued
-  AH->>AH: Try next account / explicit fallback
+  AH->>Slack: Account paused, fallback assignment queued
+  AH->>AH: Try next account or explicit fallback
   Note over AH: Cooldown expiry or manual clear makes the account eligible again
 ```
 

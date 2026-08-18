@@ -38,8 +38,8 @@ importers:
         specifier: ^5.61.3
         version: 5.88.1(@types/node@22.20.1)(typescript@5.9.3)
       no-mistakes:
-        specifier: ^0.41.0
-        version: 0.41.0
+        specifier: ^0.44.0
+        version: 0.44.0
       oxfmt:
         specifier: ^0.26.0
         version: 0.26.0
@@ -2478,8 +2478,8 @@ packages:
       sass:
         optional: true
 
-  no-mistakes@0.41.0:
-    resolution: {integrity: sha512-gmunFTWnrjohoqGrAg/0OORFFhjf152CklpqgnI9fwy/WfSa9dVkPLDSpoa0Ie8swR/Ms5KFRLUSNy6HWCDbbA==}
+  no-mistakes@0.44.0:
+    resolution: {integrity: sha512-jiHMYY8D2eZwP9N4tKKUg9mWjoDCM6HAIsFmuFeupFTZ95gjjpo6Aajow/JYs7g12mezq3xeoXdgb39LOHygfw==}
     hasBin: true
 
   node-addon-api@7.1.1:
@@ -5130,7 +5130,7 @@ snapshots:
       - '@babel/core'
       - babel-plugin-macros
 
-  no-mistakes@0.41.0: {}
+  no-mistakes@0.44.0: {}
 
   node-addon-api@7.1.1: {}
 
