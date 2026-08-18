@@ -27,9 +27,12 @@ Architecture: [aws.md](aws.md). Auth: [auth.md](auth.md).
 
 ### AWS control-plane deployment
 
-1. Create the three environment-scoped SecureStrings in the AWS Parameter Store UI
+1. Create the three environment-scoped SecureStrings — Parameter Store UI or CLI, see
+   [deploy-aws.md#secrets-and-config-never-commit](deploy-aws.md#secrets-and-config-never-commit)
 2. [deploy-aws.md](deploy-aws.md#deploy-a-new-environment) — deploy and health-check the control plane
 3. Connect hosts through the product UI
+4. [qa-deployment.md](qa-deployment.md) — copy-pasteable script to prove the whole thing end to end
+   (host connect, a real programmatic session, purge) before trusting a new deployment
 
 ### Updates
 
@@ -64,11 +67,12 @@ environment.
 
 ## Related
 
-| Doc                                                      | Role                                       |
-| -------------------------------------------------------- | ------------------------------------------ |
-| [deploy-local.md](deploy-local.md)                       | Local deploy / update / teardown           |
-| [deploy-aws.md](deploy-aws.md)                           | AWS deploy, update, and teardown lifecycle |
-| [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown      |
-| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy E2E checklist                   |
-| [local-development.md](local-development.md)             | Local runbook                              |
-| [setup.md](setup.md)                                     | Install overview                           |
+| Doc                                                      | Role                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------- |
+| [deploy-local.md](deploy-local.md)                       | Local deploy / update / teardown                     |
+| [deploy-aws.md](deploy-aws.md)                           | AWS deploy, update, and teardown lifecycle           |
+| [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown                |
+| [qa-deployment.md](qa-deployment.md)                     | Agentic QA runbook: cold account → deployed → purged |
+| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy E2E checklist                             |
+| [local-development.md](local-development.md)             | Local runbook                                        |
+| [setup.md](setup.md)                                     | Install overview                                     |
