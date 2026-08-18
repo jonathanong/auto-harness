@@ -89,6 +89,15 @@ describe("AddWorktreeForm success flow", () => {
     act(() => path.blur());
     act(() => path.focus());
     expect(select).not.toHaveBeenCalled();
+
+    // A custom path can coincidentally equal what the suggestion would be for a later name —
+    // comparing against a freshly computed suggestion would wrongly treat that as "unedited".
+    input(path, "/src/repo/.worktrees/renamed");
+    input(name, "renamed");
+    select.mockClear();
+    act(() => path.blur());
+    act(() => path.focus());
+    expect(select).not.toHaveBeenCalled();
     select.mockRestore();
   });
 });
