@@ -223,7 +223,9 @@ pnpm local:daemon start
 
 # Validate bootstrap
 pnpm local:daemon status
-# expect hostId, repositories, providerAccounts from the control plane
+# expect hostId and repositories (with their worktrees) from the control plane.
+# providerAccounts is NOT in this output — confirmed against a real deployment
+# with an account already attached — see docs/cli.md#status.
 ```
 
 **Health checks:**

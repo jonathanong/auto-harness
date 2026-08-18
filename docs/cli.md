@@ -46,7 +46,10 @@ Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_K
 
 ### `status`
 
-Bootstraps host inventory from the control plane, then prints agent id, repositories, worktrees, and attached provider accounts.
+Bootstraps host inventory from the control plane, then prints `hostId` and
+`repositories` (each with its `worktrees`). It does **not** print attached provider
+accounts — confirmed against a real deployment with a provider account already
+attached to the host; `cli.ts`'s `status` handler only ever reads `config.repositories`.
 
 ```bash
 export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420

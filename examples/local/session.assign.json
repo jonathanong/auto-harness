@@ -1,5 +1,6 @@
 {
   "sessionId": "sess-local-1",
+  "attemptId": "attempt-local-1",
   "repositoryId": "demo",
   "prompt": "hello from local session",
   "resolvedArgv": ["echo", "hello from local session"],
