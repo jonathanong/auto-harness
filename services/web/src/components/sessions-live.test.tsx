@@ -12,11 +12,13 @@ afterEach(() => vi.useRealTimers());
 const listState: SessionListQuery = {
   concurrencyId: "",
   cursor: "",
+  hostId: "",
   limit: 50,
   q: "",
   repositoryId: "",
   scheduleId: "",
   sort: "latest",
+  source: "",
   status: "all",
 };
 

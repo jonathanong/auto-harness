@@ -64,7 +64,11 @@ describe("EditRepoForm", () => {
 
   it("sends empty optional scripts, disables save while pending, and reports request errors", async () => {
     let finish!: (res: Response) => void;
-    const fetch = vi.fn(() => new Promise<Response>((resolve) => (finish = resolve)));
+    // Typed explicitly so .mock.calls reflects fetch's real (input, init) signature —
+    // inferring it from this zero-arg implementation would give an empty-tuple call type.
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      () => new Promise<Response>((resolve) => (finish = resolve)),
+    );
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<EditRepoForm repository={{ id: "repo", url: null }} />);
     press(field(view.container, "edit-repo-open"));

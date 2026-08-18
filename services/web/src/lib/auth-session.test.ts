@@ -37,8 +37,8 @@ describe("web auth session helpers", () => {
     ).toBe(true);
     expect(await hasValidSession(token({}, { alg: "none", typ: "JWT" }), secret)).toBe(false);
     expect(await hasValidSession(`${valid}x`, secret)).toBe(false);
-    expect(await hasValidSession(malformedHeaderToken())).toBe(false);
-    expect(await hasValidSession(malformedPayloadToken())).toBe(false);
+    expect(await hasValidSession(malformedHeaderToken(), secret)).toBe(false);
+    expect(await hasValidSession(malformedPayloadToken(), secret)).toBe(false);
     expect(await hasValidSession(`${valid.slice(0, valid.lastIndexOf(".") + 1)}%`, secret)).toBe(
       false,
     );

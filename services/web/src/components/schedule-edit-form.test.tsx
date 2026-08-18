@@ -21,7 +21,6 @@ const schedule: EditableSchedule = {
   enabled: true,
   timeout: 900,
   queueTtlSeconds: 3600,
-  nextRunAt: "2026-08-11T01:00:00.000Z",
   ref: "main",
   concurrencyId: "nightly",
   activeSessionId: null,

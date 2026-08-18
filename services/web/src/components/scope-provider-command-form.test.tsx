@@ -12,8 +12,16 @@ const inventory = {
   commandProfiles: {},
 };
 const commands = [
-  { id: "command/one", name: "Claude", argv: ["claude"], appendPrompt: true, providerId: "p" },
-] as const;
+  {
+    id: "command/one",
+    name: "Claude",
+    argv: ["claude"],
+    appendPrompt: true,
+    providerId: "p",
+    createdAt: "now",
+    updatedAt: "now",
+  },
+];
 
 describe("ScopeProviderCommandForm", () => {
   it("selects and saves a provider command", async () => {
