@@ -63,4 +63,32 @@ describe("AddWorktreeForm success flow", () => {
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(view.container.querySelector("form")).toBeNull();
   });
+
+  it("selects the auto-suggested path on focus, but not once the user has edited it", () => {
+    const select = vi.spyOn(HTMLInputElement.prototype, "select");
+    const view = mount(<AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" />);
+    act(() =>
+      (
+        view.container.querySelector('[data-pw="add-worktree-open-repo-1"]') as HTMLButtonElement
+      ).click(),
+    );
+    const name = view.container.querySelector(
+      '[data-pw="add-worktree-name-repo-1"]',
+    ) as HTMLInputElement;
+    const path = view.container.querySelector(
+      '[data-pw="add-worktree-path-repo-1"]',
+    ) as HTMLInputElement;
+    input(name, "runner-1");
+    // Still the live suggestion — focusing in should select it all, so typing replaces it.
+    act(() => path.focus());
+    expect(select).toHaveBeenCalledOnce();
+
+    // Once the user has customized the path, focusing back in must not wipe their own edit.
+    input(path, "/src/repo/custom");
+    select.mockClear();
+    act(() => path.blur());
+    act(() => path.focus());
+    expect(select).not.toHaveBeenCalled();
+    select.mockRestore();
+  });
 });

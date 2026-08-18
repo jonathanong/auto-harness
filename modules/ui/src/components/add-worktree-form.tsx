@@ -123,6 +123,14 @@ export function AddWorktreeForm({
         <PathInput
           value={path}
           onChange={(e) => setPath(e.target.value)}
+          onFocus={(e) => {
+            // Select the auto-suggested path on focus so typing replaces it outright — without
+            // this, typing a different absolute path inserts into the suggestion instead of
+            // overwriting it (e.g. producing "/tmp/foo//tmp/bar"). Only while the field still
+            // holds the live suggestion; once the user has edited it, focusing back in to fix a
+            // typo shouldn't wipe out their own text.
+            if (path && path === defaultWorktreePath(repo.path, name)) e.target.select();
+          }}
           required
           placeholder={defaultWorktreePath(repo.path, "my-wt")}
           data-pw={`add-worktree-path-${repo.id}`}
