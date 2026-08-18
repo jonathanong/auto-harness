@@ -1,5 +1,4 @@
 import {
-  AddRepoForm,
   AddWorktreeForm,
   RemoveRepoButton,
   RemoveWorktreeButton,
@@ -10,6 +9,7 @@ import {
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
 
+import { HostAddRepoForm } from "./host-add-repo-form.tsx";
 import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 
 type LiveWorktree = { status?: string; online?: boolean };
@@ -59,7 +59,7 @@ export function HostRepositoriesSection({
             selector="host-repositories-catalog"
           />
         ) : (
-          <AddRepoForm hostId={hostId} catalog={unattachedCatalog} />
+          <HostAddRepoForm hostId={hostId} catalog={unattachedCatalog} />
         )}
       </section>
       <section className="space-y-3">

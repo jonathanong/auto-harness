@@ -67,6 +67,38 @@ function activeNavHref(pathname: string | undefined, groups: NavGroup[]): string
   return best;
 }
 
+/**
+ * Whether `el` has more nav content past its left/right edge right now — recomputed on
+ * scroll and on resize, since the grouped nav can overflow at perfectly ordinary desktop
+ * widths and a scrollable-but-unmarked row is easy to miss (nothing about a `<nav>` hints
+ * "there's more, scroll me" the way a `<select>` or carousel usually does).
+ */
+function useNavOverflow(ref: React.RefObject<HTMLElement | null>, groups: NavGroup[]) {
+  const [overflow, setOverflow] = React.useState({ left: false, right: false });
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      setOverflow({
+        left: el.scrollLeft > 0,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+    // `groups` isn't read inside the effect, but a nav-content change can change whether
+    // the row overflows, so re-measure whenever the rendered items change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ref, groups]);
+  return overflow;
+}
+
 /** Shared chrome for control-plane and host pane apps. */
 export function AppShell({
   title,
@@ -80,8 +112,13 @@ export function AppShell({
   className,
   pw,
 }: AppShellProps) {
-  const groups = navGroups(nav);
+  // A flat NavItem[] gets wrapped in a new array literal by navGroups() on every call —
+  // memoized so useNavOverflow's effect (which unconditionally calls setState) doesn't
+  // rerun, and therefore doesn't loop, on every render.
+  const groups = React.useMemo(() => navGroups(nav), [nav]);
   const activeHref = activeNavHref(pathname, groups);
+  const navRef = React.useRef<HTMLElement>(null);
+  const overflow = useNavOverflow(navRef, groups);
   const titleEl = titleTip ? (
     <WithTooltip tip={titleTip}>
       <h1 className="inline-block cursor-help text-lg font-semibold tracking-tight">{title}</h1>
@@ -98,46 +135,66 @@ export function AppShell({
             <Link href="/" data-pw="app-title" className="shrink-0 hover:opacity-80">
               {titleEl}
             </Link>
-            <nav className="flex flex-nowrap items-center gap-1 overflow-x-auto" data-pw="app-nav">
-              {groups.map((group, groupIndex) => (
-                <React.Fragment key={group.label ?? groupIndex}>
-                  {groupIndex > 0 ? (
-                    <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
-                  ) : null}
-                  {group.label ? (
-                    <span className="shrink-0 whitespace-nowrap px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {group.label}
-                    </span>
-                  ) : null}
-                  {group.items.map((item) => {
-                    const active = item.href === activeHref;
-                    const link = (
-                      <Link
-                        href={item.href}
-                        data-pw={
-                          item.pw ??
-                          `nav-${item.href.replace(/\//g, "-").replace(/^-/, "") || "home"}`
-                        }
-                        className={cn(
-                          "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                          active
-                            ? "bg-muted text-foreground"
-                            : "text-muted-foreground hover:bg-muted/60",
-                        )}
-                        prefetch={false}
-                      >
-                        {item.label}
-                      </Link>
-                    );
-                    return (
-                      <span key={item.href} className="inline-flex shrink-0">
-                        {item.tip ? <WithTooltip tip={item.tip}>{link}</WithTooltip> : link}
+            <div className="relative min-w-0">
+              <nav
+                ref={navRef}
+                className="flex flex-nowrap items-center gap-1 overflow-x-auto"
+                data-pw="app-nav"
+              >
+                {groups.map((group, groupIndex) => (
+                  <React.Fragment key={group.label ?? groupIndex}>
+                    {groupIndex > 0 ? (
+                      <span className="mx-1 h-4 w-px shrink-0 bg-border" aria-hidden="true" />
+                    ) : null}
+                    {group.label ? (
+                      <span className="shrink-0 whitespace-nowrap px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {group.label}
                       </span>
-                    );
-                  })}
-                </React.Fragment>
-              ))}
-            </nav>
+                    ) : null}
+                    {group.items.map((item) => {
+                      const active = item.href === activeHref;
+                      const link = (
+                        <Link
+                          href={item.href}
+                          data-pw={
+                            item.pw ??
+                            `nav-${item.href.replace(/\//g, "-").replace(/^-/, "") || "home"}`
+                          }
+                          className={cn(
+                            "shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                            active
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground hover:bg-muted/60",
+                          )}
+                          prefetch={false}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                      return (
+                        <span key={item.href} className="inline-flex shrink-0">
+                          {item.tip ? <WithTooltip tip={item.tip}>{link}</WithTooltip> : link}
+                        </span>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </nav>
+              {overflow.left ? (
+                <div
+                  className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background to-transparent"
+                  aria-hidden="true"
+                  data-pw="app-nav-fade-left"
+                />
+              ) : null}
+              {overflow.right ? (
+                <div
+                  className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
+                  aria-hidden="true"
+                  data-pw="app-nav-fade-right"
+                />
+              ) : null}
+            </div>
           </div>
           {subtitle || titleBadge ? (
             <div className="border-t border-border/60 bg-muted/30">

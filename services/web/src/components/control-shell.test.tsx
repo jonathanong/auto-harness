@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
-import React from "react";
-import { describe, expect, it } from "vitest";
+import React, { act } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { field, mountForm } from "./form-test-helpers.tsx";
 import { ControlShell } from "./control-shell.tsx";
@@ -46,6 +46,33 @@ describe("ControlShell", () => {
     expect(field<HTMLAnchorElement>(view.container, "nav-sessions").className).not.toContain(
       "bg-muted text-foreground",
     );
+    view.unmount();
+  });
+
+  it("shows a scroll-fade hint only on the edge with more nav content off-screen", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: "/" });
+    const nav = view.container.querySelector('[data-pw="app-nav"]') as HTMLElement;
+    Object.defineProperty(nav, "scrollWidth", { configurable: true, value: 900 });
+    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 400 });
+    Object.defineProperty(nav, "scrollLeft", { configurable: true, value: 0, writable: true });
+
+    act(() => nav.dispatchEvent(new Event("scroll")));
+    expect(view.container.querySelector('[data-pw="app-nav-fade-left"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="app-nav-fade-right"]')).not.toBeNull();
+
+    act(() => {
+      (nav as unknown as { scrollLeft: number }).scrollLeft = 250;
+      nav.dispatchEvent(new Event("scroll"));
+    });
+    expect(view.container.querySelector('[data-pw="app-nav-fade-left"]')).not.toBeNull();
+    expect(view.container.querySelector('[data-pw="app-nav-fade-right"]')).not.toBeNull();
     view.unmount();
   });
 
