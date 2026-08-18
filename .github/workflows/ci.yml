@@ -8,7 +8,12 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # github.ref is refs/heads/main for every push to main, so an unconditional
+  # cancel-in-progress here cancels one merge's still-running CI the moment the
+  # next merge lands — leaving that commit's CI status permanently incomplete.
+  # Only cancel superseded runs on a PR branch, where new pushes to the same ref
+  # really do make the previous run stale.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   static-code-analysis:
