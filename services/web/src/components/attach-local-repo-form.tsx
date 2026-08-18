@@ -21,8 +21,8 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
         No hosts yet. Use <strong>Add host</strong> on the{" "}
         <Link href="/hosts" className="underline">
           Hosts page
-        </Link>
-        , or start <code>pnpm local:agent start</code>, then refresh.
+        </Link>{" "}
+        — it shows the exact command to connect a daemon once the slot exists — then refresh.
       </p>
     );
   }

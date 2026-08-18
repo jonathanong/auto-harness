@@ -1,5 +1,5 @@
 /**
- * Host pane: host config is API-owned; UI is Next.js (local:agent-web).
+ * Host pane: host config is API-owned; UI is Next.js (local:host-pane).
  * Unit-level coverage hits control-plane host config + agent identity env.
  */
 import { describe, expect, it } from "vitest";

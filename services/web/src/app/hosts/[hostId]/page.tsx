@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { DrainButton, OnlineStatusBadge, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
+import { ConnectHostPanel } from "../../../components/connect-host-panel.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { apiGet } from "../../../lib/api.ts";
@@ -129,26 +130,29 @@ export default async function HostDetailPage({
             key: "overview",
             label: "Overview",
             content: (
-              <dl className="grid gap-4 sm:grid-cols-3" data-pw="host-detail-overview">
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Status</dt>
-                  <dd data-pw="host-detail-status">
-                    <OnlineStatusBadge online={agent?.online ?? false} />
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Repositories</dt>
-                  <dd className="text-sm" data-pw="host-detail-repo-count">
-                    {repoCount}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase text-muted-foreground">Worktrees</dt>
-                  <dd className="text-sm" data-pw="host-detail-worktree-count">
-                    {worktreeCount}
-                  </dd>
-                </div>
-              </dl>
+              <div className="space-y-4" data-pw="host-detail-overview">
+                <dl className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <dt className="text-xs uppercase text-muted-foreground">Status</dt>
+                    <dd data-pw="host-detail-status">
+                      <OnlineStatusBadge online={agent?.online ?? false} />
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase text-muted-foreground">Repositories</dt>
+                    <dd className="text-sm" data-pw="host-detail-repo-count">
+                      {repoCount}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase text-muted-foreground">Worktrees</dt>
+                    <dd className="text-sm" data-pw="host-detail-worktree-count">
+                      {worktreeCount}
+                    </dd>
+                  </div>
+                </dl>
+                {agent?.online ? null : <ConnectHostPanel hostId={hostId} />}
+              </div>
             ),
           },
           {

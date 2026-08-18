@@ -107,7 +107,7 @@ export async function runRealCliSession(opts: {
     });
     expect(configRes.ok(), `attach account to host failed: ${await configRes.text()}`).toBeTruthy();
 
-    // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:agent start`.
+    // Real bootstrap fetch (GET /api/v1/hosts/:id/inventory), same as `pnpm local:daemon start`.
     const config = await fetchHostInventory({
       hostId,
       apiUrl: WS_BASE,

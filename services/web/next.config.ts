@@ -30,7 +30,17 @@ function viewerWsOrigin(): string {
 const nextConfig: NextConfig = {
   ...(cloudBuild
     ? { output: "standalone" }
-    : { env: { NEXT_PUBLIC_HARNESS_VIEWER_WS_URL: effectiveViewerWsUrl } }),
+    : {
+        env: {
+          NEXT_PUBLIC_HARNESS_VIEWER_WS_URL: effectiveViewerWsUrl,
+          // Local-only, same reasoning as the viewer URL above: web (:7421) and the API
+          // (:7420 by default) are different origins locally, so a host daemon setup command
+          // needs this baked in. Omitted from a cloud build — src/lib/control-plane-url.ts
+          // then falls back to window.location.origin, correct because CloudFront serves the
+          // web app and the REST/WebSocket API Gateway APIs from the same hostname there.
+          NEXT_PUBLIC_HARNESS_CONTROL_PLANE_URL: apiUpstream,
+        },
+      }),
   transpilePackages: ["@auto-harness/ui", "@auto-harness/shared"],
   experimental: {
     externalDir: true,
