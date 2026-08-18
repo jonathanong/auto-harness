@@ -76,10 +76,14 @@ jobs:
           fail: true
           jobSummary: true
 
-  vitest:
-    name: vitest
+  vitest-shard:
+    name: vitest-${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     # Native job service container instead of `docker compose up` as a step: GitHub Actions
     # starts and links it before any step runs (in parallel with checkout/setup), and tears it
     # down with the runner — no docker-compose.yml dependency in CI at all. No --health-cmd:
@@ -115,22 +119,36 @@ jobs:
       - name: Bootstrap DynamoDB tables
         run: pnpm local:dynamodb:ready
 
-      - name: Test with coverage
-        run: pnpm test
+      # Both the unit and integration vitest projects (vitest.config.ts) are split across
+      # shards together and recombined in the vitest fan-in job below — one blob report per
+      # shard, no coverage thresholds evaluated here (that happens once, on merged data).
+      - name: Test (shard ${{ matrix.shard }}/2)
+        run: pnpm test:shard --shard=${{ matrix.shard }}/2 --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
 
-      - name: Verify exact Dynamo adapter coverage
-        run: pnpm check:coverage:dynamo-adapters
+      - name: Upload coverage blob
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-blob-${{ matrix.shard }}
+          path: .vitest-reports/
+          include-hidden-files: true
+          retention-days: 1
 
-  integration:
-    name: integration
+  vitest:
+    name: vitest
+    needs: vitest-shard
+    # Runs even if a shard failed, so this required check reports red instead of being
+    # skipped (a plain `needs:` leaves a dependent job — and its required-check status —
+    # unreported when a dependency fails).
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    services:
-      dynamodb:
-        image: amazon/dynamodb-local:2.5.2
-        ports:
-          - 7423:8000
+    timeout-minutes: 15
     steps:
+      - name: Fail if a shard failed
+        if: needs.vitest-shard.result != 'success'
+        run: |
+          echo "a vitest shard failed or was cancelled (result: ${{ needs.vitest-shard.result }})"
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -148,14 +166,23 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      - name: Bootstrap DynamoDB tables
-        run: pnpm local:dynamodb:ready
+      - name: Download coverage blobs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-blob-*
+          path: .vitest-reports
+          merge-multiple: true
 
-      - name: Integration tests
-        run: pnpm test:integration
+      # Recomputes coverage from the merged shard blobs and enforces the 98/97/100/98
+      # thresholds (plus every per-file override) — the load-bearing coverage gate.
+      - name: Merge shards and verify coverage
+        run: pnpm test:merge
 
-  playwright:
-    name: playwright
+      - name: Verify exact Dynamo adapter coverage
+        run: pnpm check:coverage:dynamo-adapters
+
+  playwright-e2e:
+    name: playwright-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -309,3 +336,20 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  playwright:
+    name: playwright
+    needs: [playwright-e2e, playwright-auth]
+    # Runs even if a dependency failed, so this required check reports red instead of being
+    # skipped (a plain `needs:` leaves a dependent job — and its required-check status —
+    # unreported when a dependency fails).
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if playwright-e2e or playwright-auth failed
+        if: needs.playwright-e2e.result != 'success' || needs.playwright-auth.result != 'success'
+        run: |
+          echo "playwright-e2e: ${{ needs.playwright-e2e.result }}"
+          echo "playwright-auth: ${{ needs.playwright-auth.result }}"
+          exit 1

@@ -54,7 +54,11 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
     await git(repo, ["commit", "-m", "init"]);
     await git(repo, ["branch", "-M", "main"]);
 
-    const port = 19000 + Math.floor(Math.random() * 2000);
+    // Distinct band from services/api/src/local-server-options-coverage.test.ts's 19_000+ and
+    // local-server-slack-worker.test.ts's 20_000+ — unit and integration tests now share one
+    // Vitest worker pool (see vitest.config.ts's "unit"/"integration" projects), so their random
+    // port ranges must not overlap.
+    const port = 26000 + Math.floor(Math.random() * 2000);
     const server = await startLocalServer({
       port,
       useDynamo: false,

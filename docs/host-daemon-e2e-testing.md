@@ -32,10 +32,9 @@ There is **no `tsc` build**. Runtime is Node type stripping (`node …/*.ts`).
 Run from repo root. These exercise **shipped** scripts and modules — not re-implementations.
 
 ```bash
-pnpm check                 # lint, fmt, tests+coverage, knip, depcruise, links
+pnpm check                 # lint, fmt, tests+coverage (unit + integration), knip, depcruise, links
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
-pnpm test:integration      # real HTTP+WS + daemon + CLI, including durable scheduler/restart proof
 pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
 pnpm local:cli-e2e         # documented pnpm local:daemon run-session (ref: main)
 pnpm local:api-smoke       # POST /sessions → 201 queued
@@ -44,13 +43,14 @@ pnpm local:cloud-e2e       # DaemonLoop loopback
 pnpm local:manage-verify   # repos/schedules/cancel/drain + thin web routes
 ```
 
-`pnpm test:integration` (config: `vitest.integration.config.ts`, tests under `integration/`) is its
-own CI job, separate from the unit-test coverage gate. It keeps the fast `useDynamo: false`
-orchestration check and also runs a durable proof against DynamoDB Local: repository, command, and
-host inventory setup over HTTP; real daemon bootstrap and WebSocket registration; automatic local
-scheduler dispatch; a real git worktree and subprocess; log/result reads; and an API restart that
-re-reads the terminal session and logs from DynamoDB. The sections below remain the full manual and
-real-vendor-CLI pass.
+`pnpm test:integration` (the `integration` project in `vitest.config.ts`, tests under
+`integration/`) is folded into `pnpm test`/`pnpm check` alongside the unit project — one vitest
+run, no separate CI job — but stays available on its own for a focused pass. It keeps the fast
+`useDynamo: false` orchestration check and also runs a durable proof against DynamoDB Local:
+repository, command, and host inventory setup over HTTP; real daemon bootstrap and WebSocket
+registration; automatic local scheduler dispatch; a real git worktree and subprocess; log/result
+reads; and an API restart that re-reads the terminal session and logs from DynamoDB. The sections
+below remain the full manual and real-vendor-CLI pass.
 
 **Pass criteria (each):** exit 0; JSON includes `"ok": true` and/or documented HTTP status (`201` for smoke).
 

@@ -79,7 +79,10 @@ function launch(base: string, hostId: string) {
 
 describe("daemon restart observability integration", () => {
   it("distinguishes a packaged daemon relaunch from its initial registration", async () => {
-    const port = 23_000 + Math.floor(Math.random() * 1_000);
+    // Distinct band from services/api/src/local-server-webhook-worker.test.ts's 23_000+ —
+    // unit and integration tests now share one Vitest worker pool (see vitest.config.ts's
+    // "unit"/"integration" projects), so their random port ranges must not overlap.
+    const port = 24_000 + Math.floor(Math.random() * 1_000);
     server = await startLocalServer({
       port,
       useDynamo: false,

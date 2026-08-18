@@ -404,9 +404,11 @@ live in one PR description.
 GitHub Actions (`.github/workflows/ci.yml`) runs two independent, parallel jobs rather than
 one combined job — the required-auth suite is a handful of spec files with its own build, so
 running it after the full suite in the same job only added serial wall-clock time for no
-correctness reason:
+correctness reason. A required, no-op `playwright` job fans both back in (`needs: [playwright-e2e,
+playwright-auth]`, `if: always()`) so branch protection has a single stable check name to require
+regardless of which of the two jobs — or both — actually ran the work:
 
-**`playwright`** — the full suite:
+**`playwright-e2e`** — the full suite:
 
 1. `pnpm install --frozen-lockfile`
 2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
