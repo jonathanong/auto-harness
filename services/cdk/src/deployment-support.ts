@@ -158,6 +158,16 @@ export async function smokeDeployment(
   const webResponse = await dependencies.fetch(new URL("login", `${webUrl}/`));
   if (!webResponse.ok) throw new Error(`web health check failed with HTTP ${webResponse.status}`);
   dependencies.log(`Web health check passed: ${webUrl}`);
+  // The runtime stack's raw WebSocketUrl output (a different execute-api hostname) is
+  // deliberately not read or printed here: it is not a value to hand to a host daemon.
+  // CloudFront (WebUrl) fronts both the REST and WebSocket API Gateway APIs on one hostname,
+  // which is the only endpoint a single HARNESS_API_URL can serve both from. See
+  // docs/aws.md#websocket-wss.
+  const agentEndpoint = new URL(webUrl);
+  agentEndpoint.protocol = "wss:";
+  agentEndpoint.pathname = "/ws";
+  dependencies.log(`Agent WebSocket endpoint: ${agentEndpoint.toString()}`);
+  dependencies.log(`Set on each host: HARNESS_API_URL=${webUrl}`);
 }
 
 export async function stackState(

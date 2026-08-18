@@ -49,12 +49,18 @@ On the agent host:
 5. Set daemon identity/runtime values and only explicitly allowlisted child credentials on the host.
    Inventory remains in the control plane, not this file:
 
-| Variable                      | Role                                                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `HARNESS_HOST_ID`             | Required agent id                                                                                             |
-| `HARNESS_API_URL`             | Control plane base (`https://…` or `wss://…/ws`)                                                              |
-| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                       |
-| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`) |
+| Variable                      | Role                                                                                                                                                                                                                                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                    |
+| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss) |
+| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                              |
+| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`)                                                                                                                                                                                        |
+
+If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
+supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
+`ExecStart` in `auto-harness-host-daemon.service`. That flag overrides only the WebSocket
+target and accepts the raw API Gateway endpoint directly; REST still resolves from
+`HARNESS_API_URL`, which must stay set to `WebUrl`.
 
 6. Install the environment file and checked-in unit. Populate the copied environment file before starting;
    never commit it:
@@ -122,10 +128,10 @@ for (const path of [
 NODE
 ```
 
-The verifier reads the root-only environment file without echoing its API key, converts either an
-HTTP(S) base or WS(S) `/ws` endpoint to the REST base, and authenticates every request. Keep the
-installed file in the example's unquoted `KEY=value` form; systemd environment files are not shell
-scripts.
+The verifier reads the root-only environment file without echoing its API key, tolerates a
+`ws(s)://…/ws`-shaped value even though `HARNESS_API_URL` is expected to be the plain
+`https://` `WebUrl`, and authenticates every request. Keep the installed file in the example's
+unquoted `KEY=value` form; systemd environment files are not shell scripts.
 
 Host inventory template: [examples/local/host-inventory.config.json](../examples/local/host-inventory.config.json). Runbooks: [local-development.md](local-development.md), [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md).
 

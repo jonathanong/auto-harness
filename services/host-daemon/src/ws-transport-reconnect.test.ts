@@ -48,19 +48,21 @@ describe("reconnecting WebSocket transport", () => {
     transport.close();
   });
 
-  it("backs off 1/2/4 through a 60-second cap and ignores stale epochs", async () => {
+  it("backs off 1/2/4 through a 30-second cap and ignores stale epochs", async () => {
     vi.useFakeTimers();
     const sockets: FakeSocket[] = [];
     const transport = transportFor(sockets);
     await transport.send(register());
-    const waits = [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000];
-    for (const wait of waits) {
+    // The cap repeats at 30s (steps 6 and 7), so index by position rather than by value —
+    // Array#indexOf would collapse both occurrences to the first index.
+    const waits = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000];
+    for (const [index, wait] of waits.entries()) {
       const current = sockets.at(-1)!;
       current.close();
       await vi.advanceTimersByTimeAsync(wait - 1);
-      expect(sockets).toHaveLength(waits.indexOf(wait) + 1);
+      expect(sockets).toHaveLength(index + 1);
       await vi.advanceTimersByTimeAsync(1);
-      expect(sockets).toHaveLength(waits.indexOf(wait) + 2);
+      expect(sockets).toHaveLength(index + 2);
       current.open();
       await settle();
       expect(current.sent).toEqual([]);
