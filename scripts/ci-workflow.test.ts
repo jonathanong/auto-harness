@@ -32,6 +32,12 @@ describe("required CI check contract", () => {
     expect(staticAnalysis).toContain("run: pnpm lint");
     expect(staticAnalysis).toContain("run: pnpm lint:ast");
     expect(staticAnalysis).toContain("run: pnpm fmt:check");
+    expect(staticAnalysis).toContain("name: Cache tsc incremental\n");
+    expect(staticAnalysis).toContain("modules/*/tsconfig.tsbuildinfo");
+    expect(staticAnalysis).toContain("services/*/tsconfig.tsbuildinfo");
+    expect(staticAnalysis.indexOf("name: Cache tsc incremental\n")).toBeLessThan(
+      staticAnalysis.indexOf("run: pnpm typecheck"),
+    );
     expect(staticAnalysis).toContain("run: pnpm typecheck");
     expect(staticAnalysis).toContain("run: pnpm knip");
     expect(staticAnalysis).toContain("run: pnpm depcruise");
@@ -105,6 +111,8 @@ describe("required CI check contract", () => {
     for (let i = 1; i < steps.length; i++) {
       expect(tests.indexOf(steps[i - 1])).toBeLessThan(tests.indexOf(steps[i]));
     }
+    expect(tests).toContain("services/web/next.config.ts");
+    expect(tests).toContain("services/host-pane/next.config.ts");
     expect(tests).toContain(
       "run: pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/host-pane build:e2e\n",
     );
@@ -126,6 +134,7 @@ describe("required CI check contract", () => {
     for (let i = 1; i < steps.length; i++) {
       expect(tests.indexOf(steps[i - 1])).toBeLessThan(tests.indexOf(steps[i]));
     }
+    expect(tests).toContain("services/web/next.config.ts");
     expect(tests).toContain("run: pnpm --filter @auto-harness/web build:e2e\n");
     expect(tests).toContain(
       "run: pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control\n",

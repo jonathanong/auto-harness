@@ -48,6 +48,19 @@ jobs:
       - name: Format check
         run: pnpm fmt:check
 
+      # Incremental .tsbuildinfo for `pnpm typecheck` (`tsc --noEmit`). Not a tsc emit
+      # build — runtime is still Node type-stripping. Restored so the gate stays cheap
+      # as remaining packages join the filter.
+      - name: Cache tsc incremental
+        uses: actions/cache@v4
+        with:
+          path: |
+            modules/*/tsconfig.tsbuildinfo
+            services/*/tsconfig.tsbuildinfo
+          key: tsc-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'tsconfig.base.json', '**/tsconfig.json') }}
+          restore-keys: |
+            tsc-${{ runner.os }}-
+
       # Native type stripping means tsc never runs as part of a normal build — this is the
       # only place types are actually checked. Scoped to modules/shared, services/cdk,
       # services/host-pane, services/web, and services/host-daemon for now: services/api
@@ -235,7 +248,7 @@ jobs:
           # Source-hash key so a same-source rerun hits fully; restore-keys falls back to the
           # last lockfile-matched cache on a source change, since Next.js's cache is
           # per-file/incremental, not all-or-nothing — a partial hit still beats a cold build.
-          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'services/host-pane/src/**/*.[jt]s', 'services/host-pane/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}
+          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'services/host-pane/src/**/*.[jt]s', 'services/host-pane/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}-${{ hashFiles('services/web/next.config.ts', 'services/host-pane/next.config.ts', 'services/web/tsconfig.json', 'services/host-pane/tsconfig.json', 'services/web/tailwind.config.ts', 'services/host-pane/tailwind.config.ts', 'services/web/postcss.config.mjs', 'services/host-pane/postcss.config.mjs', 'services/web/package.json', 'services/host-pane/package.json') }}
           restore-keys: |
             nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
@@ -314,7 +327,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: services/web/.next-e2e/cache
-          key: nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}
+          key: nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}-${{ hashFiles('services/web/next.config.ts', 'services/web/tsconfig.json', 'services/web/tailwind.config.ts', 'services/web/postcss.config.mjs', 'services/web/package.json') }}
           restore-keys: |
             nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 

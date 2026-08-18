@@ -412,19 +412,24 @@ regardless of which of the two jobs — or both — actually ran the work:
 
 1. `pnpm install --frozen-lockfile`
 2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
-3. `pnpm build:web:e2e` (production `next build` into `.next-e2e` for control + host-pane)
+3. Wipe `.next-e2e`, restore `.next-e2e/cache` (webpack / Next incremental; keyed on lockfile + source + Next config), then `next build` for control + host-pane
 4. `pnpm exec playwright test` — Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
 5. On failure, uploads `playwright-report/` and `test-results/` as the `playwright-report` artifact (7-day retention)
 
 **`playwright-auth`** — the required-auth suite, same steps 1–2, then:
 
-3. `pnpm build:web:auth-e2e` (production `next build` into `.next-e2e` for control only), with `HARNESS_E2E_AUTH`/`HARNESS_AUTH_MODE`/`HARNESS_SESSION_SECRET`/`HARNESS_ADMINS` set at job level
+3. Same wipe + `.next-e2e/cache` restore (separate auth key), then `next build` for control only, with `HARNESS_E2E_AUTH`/`HARNESS_AUTH_MODE`/`HARNESS_SESSION_SECRET`/`HARNESS_ADMINS` set at job level
 4. `pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control` against a fresh required-auth stack with fixed test-only credentials
 5. On failure, uploads the same paths as the `playwright-report-auth` artifact
 
 Both jobs build before testing — `pnpm test:e2e`/`pnpm test:e2e:auth` still do this in one
 step for local runs, but CI runs the build and the test as separate named steps so each
-phase's duration is visible on its own in the Actions UI.
+phase's duration is visible on its own in the Actions UI. The full `.next-e2e` output is
+never cached (rewrites are baked at `next build` time); only `.next-e2e/cache` is.
+
+The `static-code-analysis` job also restores per-package `tsconfig.tsbuildinfo` files
+before `pnpm typecheck` (`tsc --noEmit` incremental). That is the typecheck gate only —
+runtime is still Node type-stripping, not a `tsc` emit build.
 
 GitHub sets `CI=true`, so config applies:
 

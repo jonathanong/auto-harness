@@ -20,6 +20,9 @@
     // Runtime is Node native type-stripping (no emit / no tsc build).
     // .ts import extensions match what Node resolves at runtime.
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // Speeds up `pnpm typecheck` (`tsc --noEmit`). CI restores the resulting
+    // tsconfig.tsbuildinfo files; they are gitignored, not an emit build.
+    "incremental": true
   }
 }
