@@ -53,6 +53,12 @@ The dashboard refreshes a bounded sessions/hosts/worktrees snapshot every five s
 session, and utilization changes appear without a page reload; a paused banner retains the last
 successful snapshot when polling fails and offers an immediate retry.
 
+Running and Queued counts come from dedicated `GET /sessions?status=running&limit=100` /
+`?status=queued&limit=100` requests, not from filtering the "Recent sessions" list — so a
+long-queued session is still counted even after enough newer sessions have pushed it out of the
+recent-activity window. Each count is exact up to 100; past that bound the card shows "100+"
+instead of a number that would otherwise look precise but isn't.
+
 ### Empty States
 
 First-time users or empty views show contextual guidance instead of blank pages:

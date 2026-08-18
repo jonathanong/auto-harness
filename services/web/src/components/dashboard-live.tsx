@@ -12,31 +12,30 @@ import {
   TipText,
 } from "@auto-harness/ui";
 
-import { apiFetch } from "../lib/client-api.ts";
+import {
+  formatSessionCount,
+  getItems,
+  getSessionCount,
+  type DashboardHost,
+  type DashboardSession,
+  type DashboardSnapshot,
+  type DashboardWorktree,
+} from "../lib/dashboard-metrics.ts";
 import { DashboardEmptyStates } from "./dashboard-empty-states.tsx";
 
-export type DashboardSession = { id: string; status: string; prompt?: string };
-export type DashboardHost = { hostId: string; online: boolean };
-export type DashboardWorktree = { id: string; status?: string; online?: boolean };
-
-export type DashboardSnapshot = {
-  sessions: DashboardSession[];
-  hosts: DashboardHost[];
-  worktrees: DashboardWorktree[];
-};
+export type {
+  DashboardHost,
+  DashboardSession,
+  DashboardSnapshot,
+  DashboardWorktree,
+  SessionCount,
+} from "../lib/dashboard-metrics.ts";
 
 type DashboardLiveProps = {
   initial: DashboardSnapshot;
   initialError?: string | null;
   pollMs?: number;
 };
-
-async function getItems<T>(path: string): Promise<T[]> {
-  const response = await apiFetch(path);
-  if (!response.ok) throw new Error(`request failed (${response.status})`);
-  const data = (await response.json()) as { items?: T[] };
-  return data.items ?? [];
-}
 
 export function DashboardLive({
   initial,
@@ -50,12 +49,14 @@ export function DashboardLive({
     if (refreshing.current) return;
     refreshing.current = true;
     try {
-      const [sessions, hosts, worktrees] = await Promise.all([
+      const [sessions, hosts, worktrees, running, queued] = await Promise.all([
         getItems<DashboardSession>("/api/v1/sessions"),
         getItems<DashboardHost>("/api/v1/hosts"),
         getItems<DashboardWorktree>("/api/v1/worktrees"),
+        getSessionCount("running"),
+        getSessionCount("queued"),
       ]);
-      setSnapshot({ sessions, hosts, worktrees });
+      setSnapshot({ sessions, hosts, worktrees, running, queued });
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -79,14 +80,12 @@ export function DashboardLive({
   }, [pollMs, refresh]);
 
   const metrics = useMemo(() => {
-    const running = snapshot.sessions.filter((item) => item.status === "running").length;
-    const queued = snapshot.sessions.filter((item) => item.status === "queued").length;
     const onlineHosts = snapshot.hosts.filter((item) => item.online).length;
     const onlineWorktrees = snapshot.worktrees.filter((item) => item.online !== false);
     const busy = onlineWorktrees.filter((item) => item.status === "busy").length;
     const idle = onlineWorktrees.filter((item) => item.status === "idle").length;
     const unavailable = snapshot.worktrees.length - busy - idle;
-    return { busy, idle, onlineHosts, queued, running, unavailable };
+    return { busy, idle, onlineHosts, unavailable };
   }, [snapshot]);
 
   return (
@@ -121,13 +120,13 @@ export function DashboardLive({
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-pw="dashboard-stats">
         <MetricCard
           label="Running"
-          value={String(metrics.running)}
+          value={formatSessionCount(snapshot.running)}
           tip="Sessions currently executing on a host"
           pw="stat-running"
         />
         <MetricCard
           label="Queued"
-          value={String(metrics.queued)}
+          value={formatSessionCount(snapshot.queued)}
           tip="Sessions waiting for an available host worktree"
           pw="stat-queued"
         />
