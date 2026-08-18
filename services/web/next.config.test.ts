@@ -21,7 +21,8 @@ function restoreEnv(name: string, value: string | undefined): void {
 async function loadCspHeader(): Promise<string> {
   vi.resetModules();
   const { default: config } = await import("./next.config.ts");
-  const [{ headers }] = await config.headers!();
+  const headerSets = await config.headers!();
+  const headers = headerSets.find((entry) => entry.source === "/(.*)")!.headers;
   return headers.find((h) => h.key === "Content-Security-Policy")!.value;
 }
 
@@ -65,6 +66,11 @@ describe("services/web CSP connect-src", () => {
     expect(config.output).toBe("standalone");
     expect(config.env).toBeUndefined();
     expect(await config.rewrites!()).toEqual([]);
+    const headerSets = await config.headers!();
+    expect(headerSets).toContainEqual({
+      source: "/_next/static/:path*",
+      headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+    });
     const csp = await loadCspHeader();
     expect(csp).toContain("connect-src 'self'");
     expect(csp).not.toContain("ws://127.0.0.1:7420");

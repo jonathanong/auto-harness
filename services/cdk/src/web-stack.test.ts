@@ -46,10 +46,27 @@ describe("AutoHarnessWebStack", () => {
     });
     template.hasResourceProperties("AWS::CloudFront::Distribution", {
       DistributionConfig: Match.objectLike({
+        DefaultCacheBehavior: Match.objectLike({
+          CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+        }),
         CacheBehaviors: Match.arrayWith([
-          Match.objectLike({ PathPattern: "/health" }),
-          Match.objectLike({ PathPattern: "/api/*" }),
-          Match.objectLike({ PathPattern: "/ws*" }),
+          Match.objectLike({
+            PathPattern: "/_next/static/*",
+            CachePolicyId: "658327ea-f89d-4fab-a63d-7e88639e58f6",
+            OriginRequestPolicyId: Match.absent(),
+          }),
+          Match.objectLike({
+            PathPattern: "/health",
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+          }),
+          Match.objectLike({
+            PathPattern: "/api/*",
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+          }),
+          Match.objectLike({
+            PathPattern: "/ws*",
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+          }),
         ]),
         Enabled: true,
       }),

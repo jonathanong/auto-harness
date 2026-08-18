@@ -70,6 +70,10 @@ const nextConfig: NextConfig = {
     // the browser blocks the connection as cross-origin.
     return [
       {
+        source: "/_next/static/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
+      {
         source: "/(.*)",
         headers: [...securityHeaders({ connectSrcOrigins: cloudBuild ? [] : [viewerWsOrigin()] })],
       },

@@ -41,6 +41,7 @@ export class AutoHarnessWebStack extends Stack {
         "function handler(event) { event.request.uri = '/'; return event.request; }",
       ),
     });
+    const webOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(functionUrl);
     const uncached = {
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
@@ -50,9 +51,16 @@ export class AutoHarnessWebStack extends Stack {
     const distribution = new cloudfront.Distribution(this, "Distribution", {
       defaultBehavior: {
         ...uncached,
-        origin: origins.FunctionUrlOrigin.withOriginAccessControl(functionUrl),
+        origin: webOrigin,
       },
       additionalBehaviors: {
+        "/_next/static/*": {
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+          cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+          compress: true,
+          origin: webOrigin,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
         "/health": {
           ...uncached,
           origin: new origins.HttpOrigin(apiDomain),

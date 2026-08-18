@@ -15,7 +15,7 @@ The control plane owns:
 | ----------------------------- | -------------------------------------------------------------- |
 | Public REST API               | API Gateway HTTP API + Lambda                                  |
 | Real-time agent + UI channels | API Gateway WebSocket API + Lambda                             |
-| Browser UI                    | CloudFront + Next.js Lambda image                              |
+| Browser UI                    | CloudFront + Next.js Lambda image; `/_next/static/*` is cached |
 | Durable state                 | DynamoDB (on-demand)                                           |
 | Long-term log archives        | S3                                                             |
 | Session queue + assignment    | Scheduler service (invoked from REST/WS/cron)                  |
@@ -91,7 +91,7 @@ services/cdk/
     ├── cli.ts                  # CDK app; reads documented CDK context
     ├── foundation-stack.ts      # DynamoDB, archive S3, KMS, and bounded IAM policies
     ├── runtime-stack.ts         # HTTP/WS APIs, Lambdas, and EventBridge cron
-    ├── web-stack.ts             # CloudFront + Next.js Lambda image
+    ├── web-stack.ts             # CloudFront + Next.js Lambda image; caches /_next/static/*
     ├── tables.ts                # durable-table catalog shared by synthesis metadata
     └── foundation-stack.test.ts # deterministic CloudFormation assertions
 ```
@@ -100,6 +100,19 @@ The CDK app emits a persistence foundation and separately deployable runtime and
 web stacks. The runtime contains HTTP/WebSocket API Gateway APIs, three bundled
 Lambda adapters, and a one-minute EventBridge scheduler rule. The lifecycle CLI
 exposes deploy, update, and teardown commands; see [deploy-aws.md](deploy-aws.md).
+
+CloudFront cache behaviors on the web stack:
+
+| Path                | Origin                      | Cache                                                             |
+| ------------------- | --------------------------- | ----------------------------------------------------------------- |
+| `/_next/static/*`   | Next.js Lambda Function URL | `CACHING_OPTIMIZED` — content-hashed JS/CSS; no cookies forwarded |
+| `*` (default)       | Next.js Lambda Function URL | `CACHING_DISABLED` — cookie-authenticated HTML/RSC                |
+| `/api/*`, `/health` | API Gateway HTTP            | `CACHING_DISABLED`                                                |
+| `/ws*`              | API Gateway WebSocket       | `CACHING_DISABLED`                                                |
+
+Hashed filenames are new cache keys after a deploy, so the web stack does not
+invalidate CloudFront. The Next.js origin also sends
+`Cache-Control: public, max-age=31536000, immutable` on `/_next/static/*`.
 
 Foundation stack outputs:
 
