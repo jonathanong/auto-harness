@@ -154,6 +154,7 @@ jobs:
 
       - name: Install Playwright Chromium
         # --with-deps always for system libs; skip browser download when cache hit
+        timeout-minutes: 5
         run: |
           if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
             pnpm exec playwright install-deps chromium
