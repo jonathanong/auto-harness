@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { putInventory, upsertHostRepository, type HostInventory } from "@auto-harness/shared";
+import { mutateInventory, upsertHostRepository } from "@auto-harness/shared";
 
 import { Button } from "./button.tsx";
 import { Input } from "./input.tsx";
@@ -15,18 +15,16 @@ export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: strin
 
 export function AddRepoForm({
   hostId,
-  inventory,
   catalog,
   browseEndpoint,
-  writeInventory = putInventory,
+  mutate = mutateInventory,
 }: {
   hostId: string;
-  inventory: HostInventory;
   catalog: RepoCatalogEntry[];
   /** Filesystem browse endpoint for the path field (host pane only). */
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
-  writeInventory?: typeof putInventory;
+  mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -57,8 +55,9 @@ export function AddRepoForm({
           return;
         }
         start(async () => {
-          const next = upsertHostRepository(inventory, { id, path, defaultBranch });
-          const r = await writeInventory(hostId, next);
+          const r = await mutate(hostId, (current) =>
+            upsertHostRepository(current, { id, path, defaultBranch }),
+          );
           if (!r.ok) {
             setError(r.error);
             return;

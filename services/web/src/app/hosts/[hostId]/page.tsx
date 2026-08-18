@@ -76,9 +76,9 @@ export default async function HostDetailPage({
   if (inventoryError) {
     // The agent is known (the not-found branch above didn't fire) but the inventory
     // itself failed to load for a real reason. Never fabricate an empty inventory here —
-    // AddRepoForm/AddWorktreeForm/AttachProviderAccountToHostForm all submit the page-load
-    // inventory verbatim via a non-conditional PUT, so a fabricated empty one would
-    // silently wipe the host's real repositories and provider accounts on the next save.
+    // every mutation on this page now re-reads and conditions its write on the current
+    // inventory (mutateInventory), but a fabricated empty list would still mislead the UI
+    // into showing "no repositories/provider accounts attached" when the truth is unknown.
     return (
       <div className="space-y-6">
         <HostDetailHeader hostId={hostId} />

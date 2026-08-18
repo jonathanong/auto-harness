@@ -9,7 +9,6 @@ import {
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { emptyHostInventory } from "@auto-harness/shared";
 import { TooltipProvider } from "@auto-harness/ui";
 import { AddRepoDialog } from "./add-repo-dialog.tsx";
 import { HostConfigForm } from "./host-config-form.tsx";
@@ -61,8 +60,6 @@ function createRequestFake(...replies: Reply[]) {
   return { request, requests, enqueue: (...next: Reply[]) => queue.push(...next) };
 }
 
-const inventory = emptyHostInventory();
-
 afterEach(() => {
   for (const unmount of mountedRoots) unmount();
   document.body.replaceChildren();
@@ -72,13 +69,7 @@ afterEach(() => {
 describe("host-pane repository dialog", () => {
   it("opens the real dialog and renders the local attachment form", () => {
     const view = mount(
-      withRouter(
-        <AddRepoDialog
-          hostId="host-1"
-          inventory={inventory}
-          catalog={[{ id: "repo-1", name: "Harness" }]}
-        />,
-      ),
+      withRouter(<AddRepoDialog hostId="host-1" catalog={[{ id: "repo-1", name: "Harness" }]} />),
     );
     const open = view.container.querySelector('[data-pw="add-repo-open"]') as HTMLButtonElement;
     expect(open).not.toBeNull();

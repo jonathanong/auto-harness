@@ -2,24 +2,21 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { HostInventory } from "@auto-harness/shared";
 
 import { AddRepoForm } from "./add-repo-form.tsx";
-import { input, inventory, mount, reset, router, submit } from "./action-form-test-helpers.ts";
+import { input, mount, reset, router, submit } from "./action-form-test-helpers.ts";
 
 afterEach(reset);
 
+const empty: HostInventory = { repositories: [], providerAccounts: [] };
+
 describe("AddRepoForm", () => {
   it("shows catalog prerequisites and validates every missing field fallback", async () => {
-    const empty = mount(<AddRepoForm hostId="host-1" inventory={inventory} catalog={[]} />);
-    expect(empty.container.textContent).toContain("No unattached catalog repositories");
-    empty.unmount();
-    const view = mount(
-      <AddRepoForm
-        hostId="host-1"
-        inventory={inventory}
-        catalog={[{ id: "repo-1", name: "Repo" }]}
-      />,
-    );
+    const emptyCatalog = mount(<AddRepoForm hostId="host-1" catalog={[]} />);
+    expect(emptyCatalog.container.textContent).toContain("No unattached catalog repositories");
+    emptyCatalog.unmount();
+    const view = mount(<AddRepoForm hostId="host-1" catalog={[{ id: "repo-1", name: "Repo" }]} />);
     const form = view.container.querySelector("form") as HTMLFormElement;
     const select = view.container.querySelector("select") as HTMLSelectElement;
     const path = view.container.querySelector('[data-pw="add-repo-path"]') as HTMLInputElement;
@@ -44,14 +41,25 @@ describe("AddRepoForm", () => {
 
   it("handles pending, success defaults, and write errors", async () => {
     let release!: (value: { ok: true }) => void;
-    const writeInventory = vi.fn(() => new Promise<{ ok: true }>((done) => (release = done)));
+    // Invoke the transform mutate() receives, rather than only asserting the component reacts
+    // to a stubbed ok/error result — this actually exercises upsertHostRepository through the
+    // form's own boundary.
+    const mutate = vi.fn(
+      (_hostId: string, transform: (current: HostInventory) => HostInventory) =>
+        new Promise<{ ok: true }>((done) => {
+          expect(transform(empty).repositories[0]).toMatchObject({
+            defaultBranch: "main",
+            path: "/src/repo",
+          });
+          release = done;
+        }),
+    );
     const view = mount(
       <AddRepoForm
         hostId="host-1"
-        inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
         browseEndpoint="/browse"
-        writeInventory={writeInventory}
+        mutate={mutate}
       />,
     );
     input(
@@ -67,10 +75,6 @@ describe("AddRepoForm", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(writeInventory.mock.calls[0]?.[1].repositories[0]).toMatchObject({
-      defaultBranch: "main",
-      path: "/src/repo",
-    });
     expect(router.push).toHaveBeenCalledWith(
       expect.stringContaining("Repository+attached+with+no+worktrees."),
     );
@@ -79,9 +83,8 @@ describe("AddRepoForm", () => {
     const missing = mount(
       <AddRepoForm
         hostId="host-1"
-        inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
-        writeInventory={writeInventory}
+        mutate={vi.fn().mockResolvedValueOnce({ ok: true })}
       />,
     );
     input(
@@ -91,23 +94,20 @@ describe("AddRepoForm", () => {
     (
       missing.container.querySelector('[data-pw="add-repo-branch"]') as HTMLInputElement
     ).removeAttribute("name");
-    writeInventory.mockResolvedValueOnce({ ok: true });
     await submit(missing.container.querySelector("form") as HTMLFormElement);
     missing.unmount();
 
     const failed = mount(
       <AddRepoForm
         hostId="host-1"
-        inventory={inventory}
         catalog={[{ id: "repo-1", name: "Repo" }]}
-        writeInventory={writeInventory}
+        mutate={vi.fn().mockResolvedValueOnce({ ok: false, error: "unavailable" })}
       />,
     );
     input(
       failed.container.querySelector('[data-pw="add-repo-path"]') as HTMLInputElement,
       "/src/repo",
     );
-    writeInventory.mockResolvedValueOnce({ ok: false, error: "unavailable" });
     await submit(failed.container.querySelector("form") as HTMLFormElement);
     expect(failed.container.querySelector('[data-pw="add-repo-error"]')?.textContent).toBe(
       "unavailable",

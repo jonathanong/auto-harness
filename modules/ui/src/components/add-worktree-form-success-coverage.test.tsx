@@ -4,30 +4,16 @@ import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
-import {
-  input,
-  inventory,
-  mount,
-  repo,
-  reset,
-  router,
-  submit,
-} from "./action-form-test-helpers.ts";
+import { input, mount, repo, reset, router, submit } from "./action-form-test-helpers.ts";
 
 afterEach(reset);
 
 describe("AddWorktreeForm success flow", () => {
   it("opens, cancels, suggests paths, saves labels, and exposes pending state", async () => {
     let release!: (value: { ok: true }) => void;
-    const writeInventory = vi.fn(() => new Promise<{ ok: true }>((done) => (release = done)));
+    const mutate = vi.fn(() => new Promise<{ ok: true }>((done) => (release = done)));
     const view = mount(
-      <AddWorktreeForm
-        hostId="host-1"
-        inventory={{ ...inventory, repositories: [repo] }}
-        repo={repo}
-        repoName="Repo"
-        writeInventory={writeInventory}
-      />,
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
     );
     act(() =>
       (

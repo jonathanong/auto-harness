@@ -1,6 +1,5 @@
 "use client";
 
-import type { HostInventory } from "@auto-harness/shared";
 import {
   AddRepoForm,
   Button,
@@ -15,11 +14,9 @@ import {
 
 export function AddRepoDialog({
   hostId,
-  inventory,
   catalog,
 }: {
   hostId: string;
-  inventory: HostInventory;
   catalog: RepoCatalogEntry[];
 }) {
   return (
@@ -37,12 +34,7 @@ export function AddRepoDialog({
             repository, use the control plane's Repositories page first.
           </DialogDescription>
         </DialogHeader>
-        <AddRepoForm
-          hostId={hostId}
-          inventory={inventory}
-          catalog={catalog}
-          browseEndpoint="/api/browse"
-        />
+        <AddRepoForm hostId={hostId} catalog={catalog} browseEndpoint="/api/browse" />
       </DialogContent>
     </Dialog>
   );
