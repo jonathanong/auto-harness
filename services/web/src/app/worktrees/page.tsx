@@ -55,8 +55,8 @@ export default async function WorktreesPage() {
           Worktrees
         </h2>
         <p className="text-sm text-muted-foreground">
-          Fleet worktrees grouped by repository. Edit host paths and add worktrees on each host
-          pane.
+          Fleet worktrees grouped by repository. Edit host paths and add worktrees from a host's
+          detail page (Repositories &amp; Worktrees tab).
         </p>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
