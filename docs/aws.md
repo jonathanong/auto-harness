@@ -217,27 +217,27 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                  | PK                | SK             | GSIs                    | Primary access patterns             |
-| ---------------------- | ----------------- | -------------- | ----------------------- | ----------------------------------- |
-| Users                  | `id`              | —              | `username`              | Login by username                   |
-| Repositories           | `id`              | —              | —                       | CRUD by id                          |
-| Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees           |
-| Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                 |
-| HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock    |
-| ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock        |
-| SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; `ttl` is enabled |
-| Schedules              | `id`              | —              | —                       | CRUD by id                          |
-| Connections            | `connectionId`    | —              | —                       | Connection state                    |
-| Archives               | `key`             | —              | —                       | Archive metadata                    |
-| HostInventories        | `hostId`          | —              | —                       | Host inventory                      |
-| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query      |
-| RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL  |
-| Providers              | `id`              | —              | —                       | Provider catalog                    |
-| ProviderAccounts       | `id`              | —              | —                       | Provider account catalog            |
-| Commands               | `id`              | —              | —                       | Command catalog                     |
-| Integrations           | `id`              | —              | —                       | Encrypted integration configuration |
-| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox      |
-| WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry   |
+| Table                  | PK                | SK             | GSIs                    | Primary access patterns                                                |
+| ---------------------- | ----------------- | -------------- | ----------------------- | ---------------------------------------------------------------------- |
+| Users                  | `id`              | —              | `username`              | Login by username                                                      |
+| Repositories           | `id`              | —              | —                       | CRUD by id                                                             |
+| Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees                                              |
+| Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                                                    |
+| HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock                                       |
+| ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock                                           |
+| SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; TTL attribute configured on the table, unused today |
+| Schedules              | `id`              | —              | —                       | CRUD by id                                                             |
+| Connections            | `connectionId`    | —              | —                       | Connection state                                                       |
+| Archives               | `key`             | —              | —                       | Archive metadata                                                       |
+| HostInventories        | `hostId`          | —              | —                       | Host inventory                                                         |
+| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query                                         |
+| RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL                                     |
+| Providers              | `id`              | —              | —                       | Provider catalog                                                       |
+| ProviderAccounts       | `id`              | —              | —                       | Provider account catalog                                               |
+| Commands               | `id`              | —              | —                       | Command catalog                                                        |
+| Integrations           | `id`              | —              | —                       | Encrypted integration configuration                                    |
+| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox                                         |
+| WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry                                      |
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
@@ -250,8 +250,11 @@ writes are conditional inserts; no lifecycle code deletes or updates records.
 
 ### SessionLogs retention and archival
 
-1. Session log rows currently have no automatic expiry. A future retention change may add a
-   **7-day** DynamoDB TTL after the deletion policy is explicitly approved.
+1. Session log rows currently have no automatic expiry, even though the table itself has a DynamoDB
+   TTL attribute (`ttl`) configured (`services/cdk/src/tables.ts`) — table-level TTL only deletes
+   items that carry that attribute with a past Unix-epoch value, and no write path sets it today
+   (see [costs.md](costs.md#sessionlogs-cost-control)). A future retention change may start writing
+   it, targeting a **7-day** window, after the deletion policy is explicitly approved.
 2. The foundation provides the encrypted, versioned bucket and a narrowly scoped
    archive policy. The synthesized REST/WebSocket/cron workers receive the bucket name and this
    write policy; terminal-session processing:
@@ -442,14 +445,14 @@ If a `session:assign` was in flight when drain started, the agent nacks or fails
 
 ## S3 archival
 
-| Item          | Value                                                      |
-| ------------- | ---------------------------------------------------------- |
-| Bucket        | `auto-harness-archives-{account-id}`                       |
-| Object key    | `sessions/{sessionId}/logs.jsonl`                          |
-| Format        | One JSON object per line: `{ timestamp, stream, content }` |
-| Encryption    | SSE-S3 (or SSE-KMS if required)                            |
-| Lifecycle     | Standard → IA @ 30d → Glacier @ 90d                        |
-| Public access | Blocked                                                    |
+| Item          | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bucket        | CDK-generated (no `bucketName` is ever passed to the S3 construct in `services/cdk/src/foundation-stack.ts`) — read the actual name from the `ArchiveBucketName` stack output, not from a fixed pattern. Confirmed against a real deployment: a bucket named `auto-harness-archives-{account-id}` does not exist; the real name looked like `autoharness-<environment>-foundation-sessionarchivebucket<hash>-<suffix>`. This is operationally load-bearing — [deploy-aws.md](deploy-aws.md#teardown) says to empty the archive bucket manually before a `destroy`-policy teardown, and the documented name here won't find it. |
+| Object key    | `sessions/{sessionId}/logs.jsonl`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Format        | One JSON object per line: `{ timestamp, stream, content }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Encryption    | SSE-S3 (or SSE-KMS if required)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Lifecycle     | Standard → IA @ 30d → Glacier @ 90d                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Public access | Blocked                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 IAM: only archival Lambda role can `s3:PutObject`; optional read role for UI “download archive”.
 
