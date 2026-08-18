@@ -65,10 +65,11 @@ jobs:
       # only place types are actually checked. Every workspace package is now covered.
       - name: Typecheck
         # Static `pnpm --dir <pkg> exec tsc --noEmit` so tsconfig-gate-coverage can
-        # see each package project. Same set as `pnpm typecheck` (modules/ui is still
-        # excluded — pre-existing violations).
+        # see each package project. Same set as `pnpm typecheck` — every workspace
+        # package's tsconfig.json.
         run: >
           pnpm --dir modules/shared exec tsc --noEmit
+          && pnpm --dir modules/ui exec tsc --noEmit
           && pnpm --dir services/cdk exec tsc --noEmit
           && pnpm --dir services/host-pane exec tsc --noEmit
           && pnpm --dir services/web exec tsc --noEmit

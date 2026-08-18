@@ -234,7 +234,6 @@ rules:
       allowProjects:
         tsconfig.json: Root editor include set; packages typecheck via their own tsconfig.json.
         tsconfig.base.json: Shared compilerOptions only; not a tsc project.
-        modules/ui/tsconfig.json: Pre-existing violations; not yet in pnpm typecheck (see CI typecheck comment).
   - rule: vitest-project-mapping
     scope: repository
     options:

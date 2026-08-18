@@ -94,7 +94,13 @@ function RelativeTimeDisplay({
   );
 }
 
-export function SessionCreatedTime({ value, nowMs }: { value?: string | null; nowMs: number }) {
+export function SessionCreatedTime({
+  value,
+  nowMs,
+}: {
+  value?: string | null | undefined;
+  nowMs: number;
+}) {
   return <RelativeTimeDisplay value={value} nowMs={nowMs} label="Created" />;
 }
 
