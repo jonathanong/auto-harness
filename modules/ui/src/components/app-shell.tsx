@@ -32,6 +32,26 @@ export type AppShellProps = {
   pw?: string;
 };
 
+function matchesRoute(pathname: string, href: string): boolean {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * The single most specific nav href matching `pathname`, or null. A blind per-item prefix
+ * check would light up both "/sessions" and "/sessions/new" on `/sessions/new` — comparing
+ * every href against the whole set and keeping only the longest match means a shorter
+ * sibling href never wins once a more specific one also matches.
+ */
+function activeNavHref(pathname: string | undefined, nav: NavItem[]): string | null {
+  if (!pathname) return null;
+  let best: string | null = null;
+  for (const item of nav) {
+    if (!matchesRoute(pathname, item.href)) continue;
+    if (best === null || item.href.length > best.length) best = item.href;
+  }
+  return best;
+}
+
 /** Shared chrome for control-plane and host pane apps. */
 export function AppShell({
   title,
@@ -45,6 +65,7 @@ export function AppShell({
   className,
   pw,
 }: AppShellProps) {
+  const activeHref = activeNavHref(pathname, nav);
   return (
     <TooltipProvider>
       <div className={cn("min-h-screen bg-background", className)} data-pw={pw}>
@@ -84,7 +105,7 @@ export function AppShell({
             </div>
             <nav className="flex flex-wrap gap-1" data-pw="app-nav">
               {nav.map((item) => {
-                const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+                const active = item.href === activeHref;
                 const link = (
                   <Link
                     href={item.href}

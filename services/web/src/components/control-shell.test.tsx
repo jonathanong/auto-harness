@@ -30,6 +30,19 @@ describe("ControlShell", () => {
     view.unmount();
   });
 
+  it("highlights only New session, not Sessions, on /sessions/new", () => {
+    const view = mountForm(<ControlShell>New session</ControlShell>, {
+      pathname: "/sessions/new",
+    });
+    expect(field<HTMLAnchorElement>(view.container, "nav-session-new").className).toContain(
+      "bg-muted text-foreground",
+    );
+    expect(field<HTMLAnchorElement>(view.container, "nav-sessions").className).not.toContain(
+      "bg-muted text-foreground",
+    );
+    view.unmount();
+  });
+
   it("uses the dashboard route when Next has no pathname", () => {
     const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: null });
     expect(field<HTMLAnchorElement>(view.container, "nav-dashboard").className).toContain(
