@@ -59,7 +59,7 @@ export function HostRepositoriesSection({
             selector="host-repositories-catalog"
           />
         ) : (
-          <AddRepoForm hostId={hostId} inventory={inventory} catalog={unattachedCatalog} />
+          <AddRepoForm hostId={hostId} catalog={unattachedCatalog} />
         )}
       </section>
       <section className="space-y-3">
@@ -83,7 +83,6 @@ export function HostRepositoriesSection({
                 <div className="flex gap-2">
                   <AddWorktreeForm
                     hostId={hostId}
-                    inventory={inventory}
                     repo={repo}
                     repoName={namesById[repo.id] ?? repo.id}
                   />

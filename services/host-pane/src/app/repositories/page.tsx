@@ -44,11 +44,7 @@ export default async function RepositoriesPage() {
             repository's own detail page (Worktrees tab).
           </p>
         </div>
-        <AddRepoDialog
-          hostId={id}
-          inventory={inventory}
-          catalog={catalog.filter((r) => !attachedIds.has(r.id))}
-        />
+        <AddRepoDialog hostId={id} catalog={catalog.filter((r) => !attachedIds.has(r.id))} />
       </div>
       <WorktreesHierarchy
         groups={worktreeGroups}

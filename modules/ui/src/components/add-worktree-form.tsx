@@ -5,9 +5,8 @@ import { useState, useTransition } from "react";
 import {
   addHostWorktree,
   defaultWorktreePath,
+  mutateInventory,
   newId,
-  putInventory,
-  type HostInventory,
   type HostRepository,
 } from "@auto-harness/shared";
 
@@ -19,20 +18,18 @@ import { WithTooltip } from "./tooltip.tsx";
 
 export function AddWorktreeForm({
   hostId,
-  inventory,
   repo,
   repoName,
   browseEndpoint,
-  writeInventory = putInventory,
+  mutate = mutateInventory,
 }: {
   hostId: string;
-  inventory: HostInventory;
   repo: HostRepository;
   repoName: string;
   /** Filesystem browse endpoint for the path field (host pane only). */
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
-  writeInventory?: typeof putInventory;
+  mutate?: typeof mutateInventory;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -71,18 +68,21 @@ export function AddWorktreeForm({
           setError("worktree name and absolute path are required");
           return;
         }
+        const id = newId();
+        const requestedLabels = labels
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
         start(async () => {
           try {
-            const next = addHostWorktree(inventory, repo.id, {
-              id: newId(),
-              name: wtName,
-              path: wtPath,
-              labels: labels
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
-            });
-            const r = await writeInventory(hostId, next);
+            const r = await mutate(hostId, (current) =>
+              addHostWorktree(current, repo.id, {
+                id,
+                name: wtName,
+                path: wtPath,
+                labels: requestedLabels,
+              }),
+            );
             if (!r.ok) {
               setError(r.error);
               return;

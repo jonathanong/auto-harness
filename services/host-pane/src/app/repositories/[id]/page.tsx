@@ -102,7 +102,6 @@ export default async function RepositoryDetailPage({
             {activeTab === "worktrees" ? (
               <AddWorktreeForm
                 hostId={agent}
-                inventory={inventory}
                 repo={repo}
                 repoName={repoName}
                 browseEndpoint="/api/browse"
