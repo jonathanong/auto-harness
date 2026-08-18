@@ -27,6 +27,9 @@ describe("ProviderCreateForm", () => {
     expect(field<HTMLInputElement>(view.container, "provider-catalog-append-prompt").checked).toBe(
       true,
     );
+    expect(
+      field<HTMLInputElement>(view.container, "provider-catalog-append-prompt-separator").checked,
+    ).toBe(true);
     fill(view);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
@@ -35,10 +38,36 @@ describe("ProviderCreateForm", () => {
       name: "codex-run",
       argv: ["codex", "-p"],
       appendPrompt: true,
+      appendPromptSeparator: true,
       providerId: "p/1",
     });
     expect(fetch.mock.calls[2]?.[0]).toBe("/api/v1/providers/p%2F1");
     expect(router.push).toHaveBeenCalledWith("/providers/p/1?toast=Provider+created.");
+    view.unmount();
+  });
+
+  it("submits appendPromptSeparator: false once unchecked, for tools like printf that treat -- as data", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ id: "p/1" }))
+      .mockResolvedValueOnce(json({ id: "c/1" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<ProviderCreateForm />);
+    fill(view);
+    const separator = field<HTMLInputElement>(
+      view.container,
+      "provider-catalog-append-prompt-separator",
+    );
+    act(() => {
+      separator.click();
+    });
+    expect(separator.checked).toBe(false);
+    submit(field(view.container, "form-provider-catalog"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toMatchObject({
+      appendPromptSeparator: false,
+    });
     view.unmount();
   });
 

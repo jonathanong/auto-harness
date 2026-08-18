@@ -37,6 +37,7 @@ export function ProviderCreateForm() {
           .map((s) => s.trim())
           .filter(Boolean);
         const appendPrompt = fd.get("appendPrompt") === "on";
+        const appendPromptSeparator = fd.get("appendPromptSeparator") === "on";
         start(async () => {
           const providerRes = await fetch(`${apiBase()}/api/v1/providers`, {
             method: "POST",
@@ -56,6 +57,7 @@ export function ProviderCreateForm() {
               name: commandName,
               argv,
               appendPrompt,
+              appendPromptSeparator,
               providerId: provider.id,
             }),
           });
@@ -128,6 +130,16 @@ export function ProviderCreateForm() {
           data-pw="provider-catalog-append-prompt"
         />
         append session prompt as the final argv element
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="appendPromptSeparator"
+          defaultChecked
+          data-pw="provider-catalog-append-prompt-separator"
+        />
+        insert -- before the prompt (on by default — uncheck for tools like printf that treat -- as
+        data)
       </label>
       {error ? (
         <p className="text-sm text-red-700" data-pw="provider-catalog-error">

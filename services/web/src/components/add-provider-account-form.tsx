@@ -50,7 +50,7 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
           id="label"
           name="label"
           required
-          placeholder="jonathanrichardong@gmail.com"
+          placeholder="you@example.com"
           data-pw="provider-account-label"
         />
       </div>

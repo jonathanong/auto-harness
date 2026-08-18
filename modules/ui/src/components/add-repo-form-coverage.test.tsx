@@ -112,5 +112,26 @@ describe("AddRepoForm", () => {
     expect(failed.container.querySelector('[data-pw="add-repo-error"]')?.textContent).toBe(
       "unavailable",
     );
+    failed.unmount();
+  });
+
+  it("calls onSuccess with the attached repository id instead of navigating, when provided", async () => {
+    const onSuccess = vi.fn();
+    const view = mount(
+      <AddRepoForm
+        hostId="host-1"
+        catalog={[{ id: "repo-1", name: "Repo" }]}
+        mutate={vi.fn().mockResolvedValueOnce({ ok: true })}
+        onSuccess={onSuccess}
+      />,
+    );
+    input(
+      view.container.querySelector('[data-pw="add-repo-path"]') as HTMLInputElement,
+      "/src/repo",
+    );
+    await submit(view.container.querySelector("form") as HTMLFormElement);
+    expect(onSuccess).toHaveBeenCalledWith("repo-1");
+    expect(router.push).not.toHaveBeenCalled();
+    view.unmount();
   });
 });

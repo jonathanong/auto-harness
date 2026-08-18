@@ -18,6 +18,7 @@ export function AddRepoForm({
   catalog,
   browseEndpoint,
   mutate = mutateInventory,
+  onSuccess,
 }: {
   hostId: string;
   catalog: RepoCatalogEntry[];
@@ -25,6 +26,13 @@ export function AddRepoForm({
   browseEndpoint?: string | undefined;
   /** Inventory persistence boundary; injectable for in-memory consumers and tests. */
   mutate?: typeof mutateInventory;
+  /**
+   * Called with the attached repository's id instead of the default navigation (to that
+   * repository's own catalog page) — for a caller already on that host's own management
+   * surface, jumping away on success breaks the attach-repo → add-worktree → attach-account
+   * flow than staying put does.
+   */
+  onSuccess?: (repositoryId: string) => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -60,6 +68,10 @@ export function AddRepoForm({
           );
           if (!r.ok) {
             setError(r.error);
+            return;
+          }
+          if (onSuccess) {
+            onSuccess(id);
             return;
           }
           router.push(withToast(`/repositories/${id}`, "Repository attached with no worktrees."));
