@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
-import { DrainButton, SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
+import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
+import { HostDetailHeader } from "../../../components/host-detail-header.tsx";
 import { HostOverviewTab } from "../../../components/host-overview-tab.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
@@ -71,6 +72,24 @@ export default async function HostDetailPage({
     );
   }
 
+  if (inventoryError) {
+    // The agent is known (the not-found branch above didn't fire) but the inventory
+    // itself failed to load for a real reason. Never fabricate an empty inventory here —
+    // AddRepoForm/AddWorktreeForm/AttachProviderAccountToHostForm all submit the page-load
+    // inventory verbatim via a non-conditional PUT, so a fabricated empty one would
+    // silently wipe the host's real repositories and provider accounts on the next save.
+    return (
+      <div className="space-y-6">
+        <HostDetailHeader hostId={hostId} />
+        <SectionError
+          resource={`host ${hostId}'s inventory`}
+          message={inventoryError}
+          selector="host-detail-inventory"
+        />
+      </div>
+    );
+  }
+
   const inv: HostInventory = {
     repositories: [],
     ...inventory,
@@ -126,21 +145,7 @@ export default async function HostDetailPage({
 
   return (
     <div className="space-y-6" data-pw="page-host-detail">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link
-            href="/hosts"
-            className="text-sm text-muted-foreground hover:underline"
-            data-pw="host-detail-back"
-          >
-            ← Back to hosts
-          </Link>
-          <h2 className="text-2xl font-semibold tracking-tight" data-pw="host-detail-id">
-            {hostId}
-          </h2>
-        </div>
-        <DrainButton hostId={hostId} pw="host-detail-drain" />
-      </div>
+      <HostDetailHeader hostId={hostId} />
 
       <Tabs
         basePath={`/hosts/${encodeURIComponent(hostId)}`}
