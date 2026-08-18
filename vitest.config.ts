@@ -49,7 +49,7 @@ export default defineConfig({
         "modules/ui/src/components/{session-search.ts,detail-header.tsx,provider-account-health.tsx,repository-url-copy.tsx,session-execution-summary.tsx,session-exit-code.tsx,session-sort-head.tsx,session-route-summary.tsx,session-status-cell.tsx,session-time.tsx,session-timeout-progress.tsx,sessions-table.tsx,tabs.tsx}",
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
-        "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx",
+        "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle,host-config-form}.tsx",
         "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx",
         // Host settings forms are exercised in happy-dom with real React and Next contexts.
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
@@ -59,7 +59,7 @@ export default defineConfig({
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
         // Settings state and fields are exercised in happy-dom; complete workflows stay in Playwright.
         "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
-        "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx",
+        "services/host-pane/src/components/{add-repo-dialog,host-shell,provider-accounts-readonly,sessions-live}.tsx",
         "services/host-pane/src/app/{layout,page,repositories/page,settings/page}.tsx",
         "services/host-pane/src/lib/{api,inventory}.ts",
         "services/host-pane/src/middleware.ts",
@@ -146,7 +146,7 @@ export default defineConfig({
               },
             "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx":
               { 100: true },
-            "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx":
+            "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle,host-config-form}.tsx":
               { 100: true },
             "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx":
               {
@@ -160,7 +160,7 @@ export default defineConfig({
               { 100: true },
             "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
               { 100: true },
-            "services/host-pane/src/components/{add-repo-dialog,host-config-form,host-shell,provider-accounts-readonly,sessions-live}.tsx":
+            "services/host-pane/src/components/{add-repo-dialog,host-shell,provider-accounts-readonly,sessions-live}.tsx":
               { 100: true },
             "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport,ws-url}.ts":
               {

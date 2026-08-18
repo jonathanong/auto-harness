@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { test, expect } from "@playwright/test";
 
 import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
-import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
+import { API_BASE } from "../harness-endpoints.ts";
+import { closeSocket, registerObservedHost } from "../host-websocket-helpers.ts";
 
 test.describe("control plane hosts", () => {
   test("hosts page loads with filters and add form", async ({ page }) => {
@@ -137,6 +138,42 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId("page-host-detail-not-found")).toBeVisible();
   });
 
+  test("host detail Advanced tab saves raw inventory JSON, and surfaces a real version conflict", async ({
+    page,
+    request,
+  }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const id = `pw-advanced-host-${suffix}`;
+    await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
+      data: { repositories: [], providerAccounts: [] },
+    });
+
+    await page.goto(`/hosts/${id}?tab=advanced`);
+    await expect(page.getByTestId("form-host-config-json")).toBeVisible();
+    const textarea = page.getByTestId("host-config-json");
+    await expect(textarea).toHaveValue(/"repositories": \[\]/);
+
+    // A real optimistic-concurrency conflict, not a mocked one: this PUT lands after the page
+    // above read its version, so the browser's next save is conditioned on a now-stale version.
+    await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
+      data: { repositories: [], providerAccounts: [] },
+    });
+
+    await page.getByTestId("host-config-submit").click();
+    await expect(page.getByTestId("host-config-conflict")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("host-config-conflict")).toContainText(
+      "changed since you loaded this page",
+    );
+    await expect(page.getByTestId("host-config-error")).toHaveCount(0);
+    await expect(page.getByTestId("host-config-ok")).toHaveCount(0);
+
+    // Reloading (a fresh version read) lets the same edit save cleanly.
+    await page.reload();
+    await page.getByTestId("host-config-submit").click();
+    await expect(page.getByTestId("host-config-ok")).toHaveText("Saved.", { timeout: 15_000 });
+    await expect(page.getByTestId("host-config-conflict")).toHaveCount(0);
+  });
+
   test("host repository tab exposes attachment settings controls", async ({ page, request }) => {
     await withLocalHostLock(async () => {
       const repoId = `pw-host-repo-${test.info().parallelIndex}-${Date.now()}`;
@@ -178,40 +215,3 @@ test.describe("control plane hosts", () => {
     });
   });
 });
-
-async function registerObservedHost(
-  hostId: string,
-  daemonInstanceId: string,
-  daemonStartedAt: string,
-) {
-  const socket = new WebSocket(WS_BASE);
-  await new Promise<void>((resolve, reject) => {
-    socket.addEventListener("message", (event) => {
-      const message = JSON.parse(String(event.data)) as { type?: string; message?: string };
-      if (message.type === "host:registered") resolve();
-      if (message.type === "error") reject(new Error(message.message));
-    });
-    socket.addEventListener("error", () => reject(new Error("host WebSocket failed")));
-    socket.addEventListener("open", () =>
-      socket.send(
-        JSON.stringify({
-          type: "host:register",
-          hostId,
-          daemonInstanceId,
-          daemonStartedAt,
-          worktrees: [],
-          commandProfiles: [],
-        }),
-      ),
-    );
-  });
-  return socket;
-}
-
-async function closeSocket(socket: WebSocket): Promise<void> {
-  if (socket.readyState === WebSocket.CLOSED) return;
-  await new Promise<void>((resolve) => {
-    socket.addEventListener("close", () => resolve(), { once: true });
-    socket.close();
-  });
-}
