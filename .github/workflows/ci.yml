@@ -62,11 +62,7 @@ jobs:
             tsc-${{ runner.os }}-
 
       # Native type stripping means tsc never runs as part of a normal build — this is the
-      # only place types are actually checked. Scoped to modules/shared, services/cdk,
-      # services/host-pane, services/web, services/host-daemon, and services/api for now:
-      # modules/ui has pre-existing violations accumulated from never having run this
-      # check before. Bring it in as a follow-up rather than block this gate on fixing it
-      # first.
+      # only place types are actually checked. Every workspace package is now covered.
       - name: Typecheck
         # Static `pnpm --dir <pkg> exec tsc --noEmit` so tsconfig-gate-coverage can
         # see each package project. Same set as `pnpm typecheck` (modules/ui is still
