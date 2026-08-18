@@ -99,7 +99,6 @@ describe("shared path and destructive action controls", () => {
     const current: HostInventory = {
       repositories: [{ id: "repo-1", path: "/src/repo-1", defaultBranch: "main", worktrees: [] }],
       providerAccounts: [],
-      commandProfiles: {},
     };
     const mutate = vi.fn(
       (
@@ -151,7 +150,6 @@ describe("shared path and destructive action controls", () => {
         },
       ],
       providerAccounts: [],
-      commandProfiles: {},
     };
     const mutate = vi.fn(
       (

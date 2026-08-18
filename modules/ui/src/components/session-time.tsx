@@ -30,8 +30,8 @@ export function formatRelativeTime(value: string | null | undefined, nowMs: numb
 export function sessionDurationMs(
   session: {
     status: string;
-    startedAt?: string | null;
-    completedAt?: string | null;
+    startedAt?: string | null | undefined;
+    completedAt?: string | null | undefined;
   },
   nowMs: number,
 ): number | null {

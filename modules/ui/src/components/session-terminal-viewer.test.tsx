@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // ("Cannot access '__vi_import_N__' before initialization"), not a real circular dependency.
 import { field, mount, press, reset as resetHelper, setValue } from "./action-form-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
+import type { TerminalLogEntry } from "../lib/session-terminal.ts";
 
 const mocks = vi.hoisted(() => ({
   findNext: vi.fn(() => true),
@@ -195,9 +196,9 @@ describe("SessionTerminalViewer", () => {
       | ((items: Array<Parameters<typeof SessionTerminalViewer>[0]["items"][number]>) => void)
       | undefined;
     function SlidingWindow() {
-      const [items, setItems] = useState([
-        { timestampSeq: "a", seq: 1, stream: "stdout" as const, content: "one", timestamp: "now" },
-        { timestampSeq: "b", seq: 2, stream: "stdout" as const, content: "two", timestamp: "now" },
+      const [items, setItems] = useState<TerminalLogEntry[]>([
+        { timestampSeq: "a", seq: 1, stream: "stdout", content: "one", timestamp: "now" },
+        { timestampSeq: "b", seq: 2, stream: "stdout", content: "two", timestamp: "now" },
       ]);
       replaceItems = setItems;
       return <SessionTerminalViewer sessionId="sliding" items={items} />;

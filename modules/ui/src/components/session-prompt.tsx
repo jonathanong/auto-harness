@@ -8,7 +8,7 @@ export function SessionPrompt({
   prompt,
 }: {
   sessionId: string;
-  prompt?: string | null;
+  prompt?: string | null | undefined;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (prompt == null) {

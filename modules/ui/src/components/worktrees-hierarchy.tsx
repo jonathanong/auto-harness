@@ -13,10 +13,10 @@ export type WorktreeRow = {
   name: string;
   repositoryId: string;
   path: string;
-  status?: string;
-  online?: boolean;
-  hostId?: string;
-  labels?: string[];
+  status?: string | undefined;
+  online?: boolean | undefined;
+  hostId?: string | undefined;
+  labels?: string[] | undefined;
 };
 
 export type WorktreeRepoGroup = {

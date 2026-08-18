@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 type SessionQueueDeadlineProps = {
   status: string;
-  queueExpiresAt?: string | null;
+  queueExpiresAt?: string | null | undefined;
   initialNow?: number;
 };
 

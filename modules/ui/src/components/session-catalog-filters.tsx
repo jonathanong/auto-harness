@@ -50,8 +50,8 @@ export function SessionCatalogFilters({
   repositoryId: string;
   hostId: string;
   source: string;
-  repositories?: Option[];
-  hosts?: Option[];
+  repositories?: Option[] | undefined;
+  hosts?: Option[] | undefined;
   onChange: (next: { repositoryId?: string; hostId?: string; source?: string }) => void;
 }) {
   return (

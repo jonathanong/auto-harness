@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 
 type SessionTimeoutProgressProps = {
   status: string;
-  ackReceivedAt?: string | null;
-  timeout?: number | null;
+  ackReceivedAt?: string | null | undefined;
+  timeout?: number | null | undefined;
 };
 
 type TimeoutProgress = {

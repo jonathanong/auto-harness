@@ -17,19 +17,19 @@ export type SessionRow = SearchableSession;
 export type SessionsTableProps = {
   items: SessionRow[];
   /** Show hostId column (control plane fleet view). */
-  showHost?: boolean;
-  emptyMessage?: string;
+  showHost?: boolean | undefined;
+  emptyMessage?: string | undefined;
   /** When set, the session id links to `${hrefBase}/${encodeURIComponent(id)}`. */
-  hrefBase?: string;
+  hrefBase?: string | undefined;
   /** Client-side search over the rows loaded on this page only. */
-  search?: string;
+  search?: string | undefined;
   /** Stable catalog labels keyed by repository id. */
-  repositoryNames?: Readonly<Record<string, string>>;
+  repositoryNames?: Readonly<Record<string, string>> | undefined;
   /** When set, repository ids link to this detail-route base. */
-  repositoryHrefBase?: string;
+  repositoryHrefBase?: string | undefined;
   /** Current server-backed list ordering. */
-  sort?: SessionListQuery["sort"];
-  sortHrefs?: { priority?: string; created?: string };
+  sort?: SessionListQuery["sort"] | undefined;
+  sortHrefs?: { priority?: string; created?: string } | undefined;
 };
 
 /** Shared sessions table for control plane and host pane. */

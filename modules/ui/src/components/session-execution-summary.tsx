@@ -4,11 +4,11 @@ import { Alert } from "./alert.tsx";
 
 export type SessionExecutionSummaryProps = {
   status: string;
-  resolvedArgv?: string[] | null;
-  errorCode?: string | null;
-  errorMessage?: string | null;
-  resumeFallback?: boolean | null;
-  resumedFromSessionId?: string | null;
+  resolvedArgv?: string[] | null | undefined;
+  errorCode?: string | null | undefined;
+  errorMessage?: string | null | undefined;
+  resumeFallback?: boolean | null | undefined;
+  resumedFromSessionId?: string | null | undefined;
 };
 
 /** Render execution output metadata and terminal/fresh-resume notices. */

@@ -21,7 +21,7 @@ export type ConfirmButtonProps = {
   tip?: string;
   /** Returning a failure keeps the dialog open and displays the message for retry. */
   onConfirm: () => Promise<void | { ok: false; error: string }>;
-  pw?: string;
+  pw?: string | undefined;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];
   disabled?: boolean;
