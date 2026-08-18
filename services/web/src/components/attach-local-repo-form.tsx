@@ -111,7 +111,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
       <div className="space-y-1">
         <Label
           htmlFor="path"
-          tip="Absolute path on the host machine (must exist there). Worktrees are added separately on the host pane."
+          tip="Absolute path on the host machine (must exist there). Add worktrees separately, from this host's detail page."
         >
           absolute path on host
         </Label>
