@@ -11,11 +11,11 @@ export function SessionDetailTiming({
   status,
   initialNow = Date.now(),
 }: {
-  createdAt?: string | null;
-  startedAt?: string | null;
-  completedAt?: string | null;
+  createdAt?: string | null | undefined;
+  startedAt?: string | null | undefined;
+  completedAt?: string | null | undefined;
   status: string;
-  initialNow?: number;
+  initialNow?: number | undefined;
 }) {
   const running = status === "running";
   const [now, setNow] = useState(initialNow);
@@ -47,7 +47,15 @@ export function SessionDetailTiming({
   );
 }
 
-function TimeField({ label, value, pw }: { label: string; value?: string | null; pw: string }) {
+function TimeField({
+  label,
+  value,
+  pw,
+}: {
+  label: string;
+  value?: string | null | undefined;
+  pw: string;
+}) {
   const timestamp = parseDate(value);
   return (
     <div>

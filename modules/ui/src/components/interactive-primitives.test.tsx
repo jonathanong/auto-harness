@@ -194,7 +194,9 @@ describe("interactive shared UI primitives", () => {
     expect(middle).toContain('data-pw="pagination-prev"');
     expect(middle).toContain('data-pw="pagination-next"');
 
-    const last = renderToStaticMarkup(<CursorPagination prevHref="/sessions?cursor=prev" />);
+    const last = renderToStaticMarkup(
+      <CursorPagination prevHref="/sessions?cursor=prev" nextHref={null} />,
+    );
     expect(last).toContain('data-pw="pagination-next-disabled"');
     expect(renderToStaticMarkup(<CursorPagination nextHref={null} prevHref={null} />)).toBe("");
   });

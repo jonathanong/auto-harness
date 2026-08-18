@@ -11,7 +11,7 @@ export function SessionSortHead({
 }: {
   kind: "created" | "priority";
   sort: SessionListQuery["sort"];
-  href?: string;
+  href?: string | undefined;
 }) {
   const active =
     kind === "created"

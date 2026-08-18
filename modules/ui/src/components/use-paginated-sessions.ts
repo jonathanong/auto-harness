@@ -19,7 +19,7 @@ export function usePaginatedSessions({
   initialPollError: string | null;
   path: string;
   fetchPage: SessionPageFetcher;
-  pollMs?: number;
+  pollMs?: number | undefined;
 }) {
   const [pages, setPagesState] = useState<SessionPage[]>(() => [
     makePage(path, initialItems, initialNextCursor),
@@ -65,7 +65,9 @@ export function usePaginatedSessions({
     const snapshot = pagesRef.current;
     try {
       const refreshed: SessionPage[] = [];
-      let cursor = snapshot[0].cursor;
+      // pages always holds at least one page (state is seeded with makePage(...) and never
+      // emptied), so this index is guaranteed present.
+      let cursor = snapshot[0]!.cursor;
       for (let index = 0; index < snapshot.length; index += 1) {
         const page = await requestPage(fetchPage, pagePath(path, cursor));
         refreshed.push({ ...page, cursor });

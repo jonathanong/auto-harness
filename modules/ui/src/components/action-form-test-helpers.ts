@@ -54,7 +54,7 @@ export function mount(node: React.ReactNode) {
 }
 
 export function response(ok: boolean, body: unknown = "write failed") {
-  return { ok, json: async () => body, text: async () => String(body) };
+  return { ok, status: ok ? 200 : 500, json: async () => body, text: async () => String(body) };
 }
 
 export function input(element: HTMLInputElement, value: string) {

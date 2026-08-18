@@ -2,7 +2,7 @@ export type SearchableSession = {
   id: string;
   status: string;
   repositoryId?: string | null;
-  repositoryName?: string | null;
+  repositoryName?: string | null | undefined;
   prompt?: string | null;
   targetLabel?: string | null;
   targetLabels?: string[] | null;

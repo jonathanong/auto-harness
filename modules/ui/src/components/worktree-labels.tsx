@@ -4,7 +4,7 @@ export function WorktreeLabels({
   labels = [],
   worktreeId,
 }: {
-  labels?: string[];
+  labels?: string[] | undefined;
   worktreeId: string;
 }) {
   const unique = [...new Set(labels)].toSorted();

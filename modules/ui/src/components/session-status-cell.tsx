@@ -13,7 +13,7 @@ export function SessionStatusCell({
   sessionId,
 }: {
   status: string;
-  errorCode?: string | null;
+  errorCode?: string | null | undefined;
   sessionId: string;
 }) {
   const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
@@ -37,7 +37,7 @@ export function SessionStatusDetail({
   errorCode,
 }: {
   status: string;
-  errorCode?: string | null;
+  errorCode?: string | null | undefined;
 }) {
   const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
   return (

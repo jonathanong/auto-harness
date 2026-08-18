@@ -1,6 +1,6 @@
 import { Badge } from "./badge.tsx";
 
-export function SessionExitCode({ exitCode }: { exitCode?: number | null }) {
+export function SessionExitCode({ exitCode }: { exitCode?: number | null | undefined }) {
   if (exitCode === null || exitCode === undefined) {
     return <span data-pw="session-detail-exit-code">—</span>;
   }
