@@ -44,6 +44,7 @@ test.describe("control plane providers", () => {
     await page.getByTestId("provider-catalog-command-name").fill(commandName);
     await page.getByTestId("provider-catalog-argv").fill("claude\n-p");
     await expect(page.getByTestId("provider-catalog-append-prompt")).toBeChecked();
+    await expect(page.getByTestId("provider-catalog-append-prompt-separator")).toBeChecked();
     await page.getByTestId("provider-catalog-submit").click();
 
     // One submit creates both the provider and its default command (the footgun guard) —
