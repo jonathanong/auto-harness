@@ -83,7 +83,8 @@ export {
   type SessionExecutionSummaryProps,
 } from "./components/session-execution-summary.tsx";
 export { SessionActions, type SessionActionsProps } from "./components/session-actions.tsx";
-export { SessionLogs, type LogEntry, type SessionLogsProps } from "./components/session-logs.tsx";
+export { SessionTerminalViewer } from "./components/session-terminal-viewer.tsx";
+export { type TerminalLogEntry } from "./lib/session-terminal.ts";
 export { SessionFilters, type SessionFiltersProps } from "./components/session-filters.tsx";
 export {
   ProviderAccountHealth,

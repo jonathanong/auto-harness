@@ -64,6 +64,29 @@ export function input(element: HTMLInputElement, value: string) {
   });
 }
 
+export function field<T extends HTMLElement>(container: Element, pw: string): T {
+  const element = container.querySelector(`[data-pw="${pw}"]`);
+  if (!element) throw new Error(`missing ${pw}`);
+  return element as T;
+}
+
+export function setValue(
+  element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string,
+) {
+  act(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), "value");
+    if (!descriptor?.set) throw new Error("missing native value setter");
+    descriptor.set.call(element, value);
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
+export function press(element: HTMLElement) {
+  act(() => element.click());
+}
+
 export async function submit(form: HTMLFormElement) {
   await act(async () => {
     form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));

@@ -1,16 +1,18 @@
 // @vitest-environment happy-dom
 
-import React, { act, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { act, useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, setValue } from "./form-test-helpers.tsx";
+// `reset` is aliased — importing it under its own name here triggers a Vitest mock-hoisting bug
+// ("Cannot access '__vi_import_N__' before initialization"), not a real circular dependency.
+import { field, mount, press, reset as resetHelper, setValue } from "./action-form-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
 
 const mocks = vi.hoisted(() => ({
   findNext: vi.fn(() => true),
   findPrevious: vi.fn(() => false),
   write: vi.fn((_text: string, callback?: () => void) => callback?.()),
-  reset: vi.fn(),
+  terminalReset: vi.fn(),
   scrollToBottom: vi.fn(),
   dispose: vi.fn(),
   refresh: vi.fn(),
@@ -31,7 +33,7 @@ vi.mock("@xterm/xterm", () => ({
     loadAddon() {}
     open() {}
     write = mocks.write;
-    reset = mocks.reset;
+    reset = mocks.terminalReset;
     refresh = mocks.refresh;
     scrollToBottom = mocks.scrollToBottom;
     dispose = mocks.dispose;
@@ -40,6 +42,8 @@ vi.mock("@xterm/xterm", () => ({
     }
   },
 }));
+
+afterEach(resetHelper);
 
 async function settle(): Promise<void> {
   await act(async () => {
@@ -66,7 +70,7 @@ describe("SessionTerminalViewer", () => {
     vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
 
-    const view = mountForm(
+    const view = mount(
       <SessionTerminalViewer
         sessionId="session/1"
         items={[
@@ -129,12 +133,12 @@ describe("SessionTerminalViewer", () => {
   });
 
   it("keeps the documented empty state", () => {
-    const view = mountForm(<SessionTerminalViewer sessionId="empty" items={[]} />);
+    const view = mount(<SessionTerminalViewer sessionId="empty" items={[]} />);
     expect(field(view.container, "session-logs-empty").textContent).toContain("No logs");
   });
 
   it("constructs at the current font size even if it changes before the dynamic import resolves", async () => {
-    const view = mountForm(<SessionTerminalViewer sessionId="racy" items={[]} />);
+    const view = mount(<SessionTerminalViewer sessionId="racy" items={[]} />);
     press(field(view.container, "session-terminal-font-increase"));
     await settle();
     expect(mocks.terminalOptions).toHaveBeenCalledWith(expect.objectContaining({ fontSize: 14 }));
@@ -158,7 +162,7 @@ describe("SessionTerminalViewer", () => {
       append = setItems;
       return <SessionTerminalViewer sessionId="lifecycle" items={items} />;
     }
-    mountForm(<Lifecycle />);
+    mount(<Lifecycle />);
     await settle();
     mocks.write.mockClear();
     act(() =>
@@ -199,10 +203,10 @@ describe("SessionTerminalViewer", () => {
       return <SessionTerminalViewer sessionId="sliding" items={items} />;
     }
 
-    mountForm(<SlidingWindow />);
+    mount(<SlidingWindow />);
     await settle();
     mocks.write.mockClear();
-    mocks.reset.mockClear();
+    mocks.terminalReset.mockClear();
     act(() =>
       replaceItems?.([
         { timestampSeq: "b", seq: 2, stream: "stdout", content: "two", timestamp: "now" },
@@ -210,7 +214,7 @@ describe("SessionTerminalViewer", () => {
       ]),
     );
 
-    expect(mocks.reset).not.toHaveBeenCalled();
+    expect(mocks.terminalReset).not.toHaveBeenCalled();
     expect(mocks.write).toHaveBeenCalledWith("three", expect.any(Function));
   });
 });
