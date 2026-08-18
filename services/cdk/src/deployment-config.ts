@@ -1,4 +1,4 @@
-export type DeploymentOperation = "deploy" | "teardown" | "update";
+export type DeploymentOperation = "deploy" | "purge" | "teardown" | "update";
 
 export type DeploymentConfig = {
   accountId?: string;
@@ -6,6 +6,8 @@ export type DeploymentConfig = {
   cursorSecretSsmParam: string;
   environment: string;
   foundationStackName: string;
+  purgeConfirmation?: string;
+  purgeSsmParameters: boolean;
   region: string;
   removalPolicy: "destroy" | "retain";
   runtimeStackName: string;
@@ -46,6 +48,7 @@ export function deploymentConfig(
       env.HARNESS_CURSOR_SECRET_SSM_PARAM?.trim() || `${base}/harness-cursor-secret`,
     environment,
     foundationStackName: `AutoHarness-${environment}-Foundation`,
+    purgeSsmParameters: env.HARNESS_DEPLOY_PURGE_SSM?.trim() === "1",
     region,
     removalPolicy,
     runtimeStackName: `AutoHarness-${environment}-Runtime`,
@@ -56,6 +59,9 @@ export function deploymentConfig(
     ...(env.AWS_ACCOUNT_ID?.trim() ? { accountId: env.AWS_ACCOUNT_ID.trim() } : {}),
     ...(env.HARNESS_DEPLOY_CONFIRM?.trim()
       ? { teardownConfirmation: env.HARNESS_DEPLOY_CONFIRM.trim() }
+      : {}),
+    ...(env.HARNESS_DEPLOY_PURGE_CONFIRM?.trim()
+      ? { purgeConfirmation: env.HARNESS_DEPLOY_PURGE_CONFIRM.trim() }
       : {}),
   };
 }

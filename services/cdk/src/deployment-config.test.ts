@@ -48,6 +48,32 @@ describe("deploymentConfig", () => {
     ).toMatchObject({ region: "us-east-1", teardownConfirmation: "review" });
   });
 
+  it("parses purge confirmation and the SSM opt-in strictly", () => {
+    expect(
+      deploymentConfig("purge", {
+        AWS_REGION: "us-west-2",
+        HARNESS_DEPLOY_CONFIRM: "review",
+        HARNESS_DEPLOY_ENVIRONMENT: "review",
+        HARNESS_DEPLOY_PURGE_CONFIRM: "destroy-all-data-in-review",
+        HARNESS_DEPLOY_PURGE_SSM: "1",
+      }),
+    ).toMatchObject({
+      purgeConfirmation: "destroy-all-data-in-review",
+      purgeSsmParameters: true,
+      teardownConfirmation: "review",
+    });
+
+    // Unset or anything other than the literal "1" is treated as opt-out, not an error —
+    // this is a deliberate default-safe opt-in, not a boolean parse.
+    const unopted = deploymentConfig("purge", {
+      AWS_REGION: "us-west-2",
+      HARNESS_DEPLOY_ENVIRONMENT: "review",
+      HARNESS_DEPLOY_PURGE_SSM: "true",
+    });
+    expect(unopted.purgeConfirmation).toBeUndefined();
+    expect(unopted.purgeSsmParameters).toBe(false);
+  });
+
   it("accepts explicit account and parameter-name overrides", () => {
     expect(
       deploymentConfig("deploy", {
