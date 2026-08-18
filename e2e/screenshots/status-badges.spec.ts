@@ -78,6 +78,22 @@ test.describe("status badges", () => {
         }),
       );
 
+      // The ack above lands over the WebSocket asynchronously — poll the real API (not the
+      // page) until the worktree actually flips to "busy" before rendering the page, or the
+      // screenshot can win the race and capture a stale "idle" snapshot instead.
+      await expect
+        .poll(
+          async () => {
+            const worktrees = await request.get(`${API_BASE}/api/v1/worktrees`);
+            const items = (
+              (await worktrees.json()) as { items: Array<{ id: string; status?: string }> }
+            ).items;
+            return items.find((wt) => wt.id === busyWorktreeId)?.status;
+          },
+          { timeout: 15_000 },
+        )
+        .toBe("busy");
+
       // The worktree only reads "busy" while this session is assigned and unfinished.
       await page.goto(`${CONTROL_BASE}/worktrees`);
       await expect(page.getByTestId(`worktree-link-${busyWorktreeId}`)).toBeVisible({
