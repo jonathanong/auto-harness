@@ -7,6 +7,7 @@ import type { Config } from "tailwindcss";
  * is fine for an internal monorepo preset but wouldn't be if this were ever published.
  */
 export const preset: Partial<Config> = {
+  darkMode: "class",
   content: ["./src/**/*.{ts,tsx}", "../../modules/ui/src/**/*.{ts,tsx}"],
   theme: {
     extend: {
@@ -49,6 +50,10 @@ export const preset: Partial<Config> = {
         timeout: {
           DEFAULT: "hsl(var(--timeout))",
           foreground: "hsl(var(--timeout-foreground))",
+        },
+        terminal: {
+          DEFAULT: "hsl(var(--terminal-background))",
+          foreground: "hsl(var(--terminal-foreground))",
         },
         ring: "hsl(var(--ring))",
       },

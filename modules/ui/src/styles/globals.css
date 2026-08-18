@@ -26,6 +26,42 @@
   --timeout-foreground: 24 90% 96%;
   --ring: 222.2 84% 4.9%;
   --radius: 0.5rem;
+  /* The terminal keeps its own dark-panel aesthetic (a light-on-dark grid is the readable
+     default for ANSI/PTY output) rather than following --background/--foreground directly —
+     but it's still a themed token pair, not a hardcoded literal, and gets its own .dark
+     variant below so it visibly responds to the toggle instead of being frozen forever. */
+  --terminal-background: 224 55% 8%;
+  --terminal-foreground: 220 13% 91%;
+  --terminal-cursor: 220 13% 91%;
+}
+
+.dark {
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --primary: 210 40% 98%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --border: 217.2 32.6% 17.5%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --success: 158 64% 52%;
+  --success-foreground: 158 64% 12%;
+  --warning: 32 81% 55%;
+  --warning-foreground: 32 81% 12%;
+  --danger: 0 70% 60%;
+  --danger-foreground: 0 70% 12%;
+  --info: 214 80% 65%;
+  --info-foreground: 214 80% 12%;
+  --timeout: 24 85% 58%;
+  --timeout-foreground: 24 85% 12%;
+  --ring: 212.7 26.8% 83.9%;
+  /* A touch lighter than --background so the panel still reads as its own surface. */
+  --terminal-background: 224 30% 12%;
+  --terminal-foreground: 220 13% 91%;
+  --terminal-cursor: 220 13% 91%;
 }
 
 body {
