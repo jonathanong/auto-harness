@@ -78,7 +78,7 @@ describe("shared data display composites", () => {
     expect(markup).toContain("Could not run");
     expect(markup).toContain("Resumed from old-session.");
     expect(render(<SessionExecutionSummary status="failed" errorMessage="Failed" />)).toContain(
-      ">Failed</p>",
+      ">Failed</div>",
     );
     const codeOnly = render(<SessionExecutionSummary status="failed" errorCode="queue_expired" />);
     expect(codeOnly).toContain('role="alert"');

@@ -14,6 +14,14 @@
   --border: 214.3 31.8% 91.4%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
+  --success: 158 64% 24%;
+  --success-foreground: 152 81% 96%;
+  --warning: 32 81% 25%;
+  --warning-foreground: 48 96% 96%;
+  --danger: 0 70% 32%;
+  --danger-foreground: 0 86% 97%;
+  --info: 214 80% 30%;
+  --info-foreground: 210 100% 97%;
   --ring: 222.2 84% 4.9%;
   --radius: 0.5rem;
 }

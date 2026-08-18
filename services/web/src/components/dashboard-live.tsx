@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle, StatusBadge, TipText } from "@auto-harness/ui";
+import {
+  Alert,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  StatusBadge,
+  TipText,
+} from "@auto-harness/ui";
 
 import { apiFetch } from "../lib/client-api.ts";
 import { DashboardEmptyStates } from "./dashboard-empty-states.tsx";
@@ -84,8 +92,9 @@ export function DashboardLive({
   return (
     <>
       {error ? (
-        <div
-          className="flex items-center justify-between gap-3 rounded-md border border-yellow-500/50 bg-yellow-50 p-3 text-sm text-yellow-950"
+        <Alert
+          variant="warning"
+          className="flex items-center justify-between gap-3"
           role="alert"
           data-pw="live-updates-paused"
         >
@@ -93,7 +102,7 @@ export function DashboardLive({
           <button className="font-medium underline" type="button" onClick={() => void refresh()}>
             Retry
           </button>
-        </div>
+        </Alert>
       ) : (
         <p
           className="text-xs text-muted-foreground"

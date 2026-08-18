@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
+import { Alert } from "./alert.tsx";
 import { Badge } from "./badge.tsx";
 import { Button } from "./button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
@@ -31,6 +32,7 @@ describe("shared display primitives", () => {
       "success",
       "warning",
       "danger",
+      "info",
     ] as const) {
       const markup = render(
         <Badge variant={variant} className="marker">
@@ -40,6 +42,18 @@ describe("shared display primitives", () => {
       expect(markup).toContain(`>${variant}</div>`);
       expect(markup).toContain("marker");
     }
+
+    for (const variant of ["success", "warning", "danger", "info"] as const) {
+      const markup = render(
+        <Alert variant={variant} role="status" data-pw="alert-marker">
+          {variant} message
+        </Alert>,
+      );
+      expect(markup).toContain(`>${variant} message</div>`);
+      expect(markup).toContain('role="status"');
+      expect(markup).toContain('data-pw="alert-marker"');
+    }
+    expect(render(<Alert>default variant</Alert>)).toContain("border-info/30");
 
     for (const variant of ["default", "outline", "ghost", "destructive"] as const) {
       for (const size of ["default", "sm", "lg"] as const) {
@@ -134,7 +148,7 @@ describe("shared display primitives", () => {
     expect(table).toContain("body-marker");
     expect(table).toContain("cell-marker");
 
-    expect(render(<StatusBadge status="QUEUED" />)).toContain("bg-amber-100");
+    expect(render(<StatusBadge status="QUEUED" />)).toContain("bg-warning/10");
     const running = render(<StatusBadge status="running" />);
     expect(running).toContain("bg-primary");
     expect(running).toContain("animate-pulse");
@@ -142,8 +156,8 @@ describe("shared display primitives", () => {
     expect(running).toContain('role="status"');
     expect(running).toContain('aria-label="running, live"');
     expect(running).toContain('data-pw="status-running-live"');
-    expect(render(<StatusBadge status="completed" />)).toContain("bg-emerald-100");
-    expect(render(<StatusBadge status="failed" />)).toContain("bg-red-100");
+    expect(render(<StatusBadge status="completed" />)).toContain("bg-success/10");
+    expect(render(<StatusBadge status="failed" />)).toContain("bg-danger/10");
     expect(render(<StatusBadge status="cancelled" />)).toContain("bg-muted");
     expect(render(<StatusBadge status="unknown" />)).toContain("text-foreground");
     expect(render(<StatusBadge status="unknown" />)).not.toContain("animate-pulse");

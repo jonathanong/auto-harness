@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert } from "@auto-harness/ui";
 
 import {
   lastLiveCursor,
@@ -142,8 +143,9 @@ export function SessionLiveLogs({
         </p>
       ) : null}
       {connectionState === "reconnecting" ? (
-        <div
-          className="flex items-center justify-between gap-3 rounded-md border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm text-yellow-950"
+        <Alert
+          variant="warning"
+          className="flex items-center justify-between gap-3"
           data-pw="session-logs-reconnect-banner"
           role="status"
         >
@@ -156,7 +158,7 @@ export function SessionLiveLogs({
           >
             Reconnect now
           </button>
-        </div>
+        </Alert>
       ) : null}
       <SessionTerminalViewer sessionId={sessionId} items={items} />
     </div>
