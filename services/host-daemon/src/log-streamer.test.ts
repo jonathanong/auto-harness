@@ -138,4 +138,29 @@ describe("LogStreamer", () => {
     expect(Buffer.byteLength(chunks.join(""), "utf8")).toBe(7);
     expect(last).toEqual(expect.objectContaining({ content: "g" }));
   });
+
+  it("keeps the default wire budget under API Gateway's 32 KB per-frame limit even for worst-case JSON-escaped content", () => {
+    const chunks: string[] = [];
+    const streamer = new LogStreamer("sess-1", (chunk) => chunks.push(chunk.content));
+    // Every char here JSON-escapes to a six-byte \u00XX sequence — the adversarial case
+    // the default budget is sized against, not typical CLI/terminal output.
+    const controlByte = String.fromCharCode(1);
+    streamer.write("stdout", controlByte.repeat(200_000));
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const content of chunks) {
+      const envelope = {
+        type: "session:log",
+        sessionId: "sess-1",
+        stream: "stdout",
+        content,
+        timestamp: "2026-08-01T12:00:00.000Z",
+        seq: 0,
+      };
+      // API Gateway closes the connection with code 1009 above this per-frame limit, and
+      // the `ws` client sends every outbound payload as exactly one frame (see
+      // ws-transport.ts / ws-wire.ts) — so the serialized message, not just the raw
+      // content, must stay under it.
+      expect(Buffer.byteLength(JSON.stringify(envelope), "utf8")).toBeLessThan(32 * 1024);
+    }
+  });
 });
