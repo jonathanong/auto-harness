@@ -139,6 +139,13 @@ write _after_ your own write already verified fine. See that file's own comment 
 reasoning, and `putHostRepo`/`removeHostRepo`/`attachRepoViaUi` for the safe-to-reuse helpers.
 Everything else should keep using its own uniquely-named entity with no lock at all.
 
+The lock file lives under `os.tmpdir()` (a single machine-wide directory) but its name is keyed
+by `API_PORT`, so two isolated runs from different worktrees — each with its own port block from
+`worktree-e2e-env.mts` — never contend on the same lock. Confirmed live: running
+`pnpm local:e2e:isolated` from one worktree while a second worktree had its own instance of this
+same test suite active caused every `local-1`-touching spec to fail with
+`withLocalHostLock: timed out waiting for the local-1 host-config lock` before this fix.
+
 Do **not** use `test.describe.configure({ mode: "serial" })` unless a file truly cannot parallelize.
 
 ---

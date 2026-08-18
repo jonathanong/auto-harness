@@ -2,10 +2,16 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
-import { API_BASE } from "./harness-endpoints.ts";
+import { API_BASE, API_PORT } from "./harness-endpoints.ts";
 
 const API = API_BASE;
-const LOCK_DIR = join(tmpdir(), "auto-harness-e2e-local-1.lock");
+// Keyed by API_PORT, not a fixed name: os.tmpdir() is a single machine-wide directory, and
+// worktree-e2e-env.mts gives each worktree's isolated e2e run its own HARNESS_E2E_PORT_OFFSET
+// (hence its own API_PORT). A fixed lock name would serialize unrelated control-plane instances
+// against each other across worktrees running concurrently, timing out for no reason — this
+// still correctly serializes the Playwright worker *processes* of one run, which all share the
+// same API_PORT and are exactly what the lock is meant to protect (see withLocalHostLock below).
+const LOCK_DIR = join(tmpdir(), `auto-harness-e2e-local-1-${API_PORT}.lock`);
 
 /**
  * "local-1" is the one agent both e2e projects seed against — the host pane's UI is
