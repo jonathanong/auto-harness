@@ -396,7 +396,14 @@ blocking `{ kind, id, status? }` dependencies; deletion never cascades.
 
 #### `POST /sessions`
 
-Create a new session. This is the main endpoint for triggering AI work. **Operator or admin.**
+Create a new session. This is the main endpoint for triggering AI work. **Operator or
+admin — and the principal must NOT have `boundHostId` set.** A bound service account
+(the kind a host daemon uses) gets `404 {"error":{"code":"NOT_FOUND","message":"resource
+not found"}}` here, confirmed against a real deployment — deliberately not `403`, and
+with no mention of `boundHostId` in the response. See
+[auth.md#a-bound-key-cannot-create-sessions](auth.md#a-bound-key-cannot-create-sessions).
+A host needs two service accounts: one bound (for `HARNESS_API_KEY` on the daemon) and
+one unbound (for anything that creates sessions).
 
 **Request:**
 
@@ -934,6 +941,18 @@ Standard CRUD. Create/update accepts `usageLimitCooldownSeconds` (default `18000
 **Request:** `{ "name": "claude-print", "argv": ["claude", "-p"], "appendPrompt": true, "providerId": "prov-1" }` (`providerId: null` for standalone)
 
 **Response:** `201 Created` — `{ "id", "name", "argv", "appendPrompt", "providerId", "createdAt", "updatedAt" }`. `argv` must be a non-empty array of non-empty strings — never a shell string.
+
+`appendPromptSeparator` controls whether a `--` element is inserted before the appended
+prompt: `[...command.argv, "--", prompt]` vs `[...command.argv, prompt]`
+(`services/api/src/control-plane-session-target.ts`). If not given explicitly, it
+**defaults to `true` whenever the command has a non-null `providerId`** and `appendPrompt`
+is not `false` (`services/api/src/control-plane-commands.ts`) — a providerless command
+defaults to `false`. So `{"argv":["claude","-p"],"appendPrompt":true,"providerId":"prov-1"}`
+actually spawns `claude -p -- "<prompt>"`, not `claude -p "<prompt>"` — confirmed against a
+real session's `resolvedArgv`. This is harmless for CLIs that treat `--` as
+"end of options" (`claude`, `codex`), but will break any provider-owned command whose
+binary does not accept `--`, or a naive `printf "%s"`-style invocation where a prompt
+starting with `-` would otherwise be misread as a flag.
 
 #### `GET /commands`, `GET /commands/:id`, `PUT /commands/:id`, `DELETE /commands/:id`
 
