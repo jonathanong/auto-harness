@@ -37,6 +37,10 @@ export function AddWorktreeForm({
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
+  // Tracks whether the user has typed into the path field directly, independent of its current
+  // value — comparing the value against a freshly computed suggestion isn't reliable, since a
+  // custom path can coincidentally match what the suggestion would be for the current name.
+  const [pathEdited, setPathEdited] = useState(false);
   const [labels, setLabels] = useState("echo");
 
   if (!open) {
@@ -90,6 +94,7 @@ export function AddWorktreeForm({
             setOpen(false);
             setName("");
             setPath("");
+            setPathEdited(false);
             router.refresh();
           } catch (err) {
             setError(err instanceof Error ? err.message : String(err));
@@ -122,7 +127,18 @@ export function AddWorktreeForm({
         </Label>
         <PathInput
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => {
+            setPath(e.target.value);
+            setPathEdited(true);
+          }}
+          onFocus={(e) => {
+            // Select the auto-suggested path on focus so typing replaces it outright — without
+            // this, typing a different absolute path inserts into the suggestion instead of
+            // overwriting it (e.g. producing "/tmp/foo//tmp/bar"). Only while the field still
+            // holds the live, un-edited suggestion; once the user has typed into it directly,
+            // focusing back in to fix a typo shouldn't wipe out their own text.
+            if (path && !pathEdited) e.target.select();
+          }}
           required
           placeholder={defaultWorktreePath(repo.path, "my-wt")}
           data-pw={`add-worktree-path-${repo.id}`}
