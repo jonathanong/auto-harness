@@ -6,7 +6,7 @@ import {
 } from "../../../components/schedule-edit-form.tsx";
 import { ScheduleHistoryTime } from "../../../components/schedule-history-time.tsx";
 import {
-  StatusBadge,
+  SessionStatusBadge,
   Table,
   TableBody,
   TableCell,
@@ -127,7 +127,7 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
                     </Link>
                   </TableCell>
                   <TableCell data-pw={`schedule-history-status-${session.id}`}>
-                    <StatusBadge status={session.status} />
+                    <SessionStatusBadge status={session.status} />
                   </TableCell>
                   <TableCell>
                     <ScheduleHistoryTime

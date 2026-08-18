@@ -48,7 +48,7 @@ export default defineConfig({
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
         // Shared, framework-independent display primitives are covered by server renders.
-        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx",
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,session-status-badge,worktree-status-badge,tip-text,tip-link}.tsx",
       ],
       exclude: [
         "**/*.test.{ts,tsx}",
@@ -107,7 +107,7 @@ export default defineConfig({
         "modules/ui/src/{lib/utils.ts,components/{tooltip,dialog,confirm-button,toast,cursor-pagination,paginated-sessions}.tsx}":
           { 100: true },
         "modules/ui/src/components/use-paginated-sessions.ts": { 100: true },
-        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,status-badge,tip-text,tip-link}.tsx":
+        "modules/ui/src/components/{badge,button,card,input,label,table,textarea,session-status-badge,worktree-status-badge,tip-text,tip-link}.tsx":
           {
             100: true,
           },

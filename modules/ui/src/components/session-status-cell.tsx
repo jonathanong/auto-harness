@@ -1,4 +1,4 @@
-import { StatusBadge } from "./status-badge.tsx";
+import { SessionStatusBadge } from "./session-status-badge.tsx";
 
 export function sessionStatusReason(errorCode?: string | null): string | null {
   if (errorCode === "usage_limit") return "Usage limit";
@@ -19,7 +19,7 @@ export function SessionStatusCell({
   const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
   return (
     <div className="space-y-1" data-pw={`session-status-${sessionId}`}>
-      <StatusBadge status={status} />
+      <SessionStatusBadge status={status} />
       {reason ? (
         <div
           className="text-xs text-muted-foreground"
@@ -42,7 +42,7 @@ export function SessionStatusDetail({
   const reason = status === "failed" ? sessionStatusReason(errorCode) : null;
   return (
     <div className="space-y-1" data-pw="session-detail-status">
-      <StatusBadge status={status} />
+      <SessionStatusBadge status={status} />
       {reason ? (
         <div className="text-xs text-muted-foreground" data-pw="session-detail-status-reason">
           {reason}

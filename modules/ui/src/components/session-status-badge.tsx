@@ -1,18 +1,16 @@
-import { Badge } from "./badge.tsx";
+import { Badge, type BadgeProps } from "./badge.tsx";
 
-const MAP: Record<string, "default" | "secondary" | "success" | "warning" | "danger" | "outline"> =
-  {
-    queued: "warning",
-    running: "default",
-    completed: "success",
-    failed: "danger",
-    cancelled: "secondary",
-    timed_out: "warning",
-    true: "success",
-    false: "secondary",
-  };
+const MAP: Record<string, NonNullable<BadgeProps["variant"]>> = {
+  queued: "warning",
+  running: "default",
+  completed: "success",
+  failed: "danger",
+  cancelled: "secondary",
+  // Distinct from `queued`'s warning — see docs/web.md's session status table.
+  timed_out: "timeout",
+};
 
-export function StatusBadge({ status }: { status: string }) {
+export function SessionStatusBadge({ status }: { status: string }) {
   const key = status.toLowerCase();
   const variant = MAP[key] ?? "outline";
   const running = key === "running";

@@ -46,6 +46,10 @@ export const preset: Partial<Config> = {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
         },
+        timeout: {
+          DEFAULT: "hsl(var(--timeout))",
+          foreground: "hsl(var(--timeout-foreground))",
+        },
         ring: "hsl(var(--ring))",
       },
       borderRadius: {

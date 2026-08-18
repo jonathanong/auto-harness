@@ -8,7 +8,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  StatusBadge,
+  SessionStatusBadge,
   TipText,
 } from "@auto-harness/ui";
 
@@ -161,7 +161,7 @@ export function DashboardLive({
               >
                 {session.id}
               </Link>
-              <StatusBadge status={session.status} />
+              <SessionStatusBadge status={session.status} />
             </div>
           ))}
           {snapshot.sessions.length === 0 ? (
