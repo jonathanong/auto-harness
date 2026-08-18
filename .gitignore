@@ -20,3 +20,13 @@ coverage/
 /blob-report/
 /playwright/.cache/
 cdk.out/
+
+# Raster images are never committed — screenshots belong in PR descriptions, not the repo.
+# UI icons must be SVGs, which this rule doesn't touch.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.ico
