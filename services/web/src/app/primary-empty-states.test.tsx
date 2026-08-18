@@ -42,7 +42,7 @@ describe("primary control-plane empty states", () => {
     expect(html).toContain('data-pw="repositories-empty-add"');
     expect(html).toContain("No repositories configured");
 
-    stubApi({ "/api/v1/schedules": {}, "/api/v1/session-targets": {} });
+    stubApi({ "/api/v1/schedules": {}, "/api/v1/session-targets": {}, "/api/v1/repositories": {} });
     html = await renderPage(SchedulesPage(emptySearchParams));
     expect(html).toContain('data-pw="schedules-empty"');
     expect(html).toContain('data-pw="schedules-empty-create"');
@@ -73,7 +73,11 @@ describe("primary control-plane empty states", () => {
     expect(html).not.toContain('data-pw="dashboard-empty-sessions"');
     expect(html).not.toContain('data-pw="dashboard-empty-hosts"');
 
-    stubApi({ "/api/v1/schedules": "__throw_string__", "/api/v1/session-targets": {} });
+    stubApi({
+      "/api/v1/schedules": "__throw_string__",
+      "/api/v1/session-targets": {},
+      "/api/v1/repositories": {},
+    });
     html = await renderPage(SchedulesPage(emptySearchParams));
     expect(html).toContain("offline");
     expect(html).not.toContain('data-pw="schedules-empty"');

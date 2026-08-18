@@ -26,9 +26,11 @@ type ScheduleFormValue = {
 
 export function ScheduleCreateForm({
   targets,
+  repositories,
   schedule,
 }: {
   targets: SessionTarget[];
+  repositories: Array<{ id: string; name: string }>;
   schedule?: ScheduleFormValue;
 }) {
   const router = useRouter();
@@ -84,14 +86,27 @@ export function ScheduleCreateForm({
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="repositoryId">repositoryId</Label>
-        <Input
+        <Label
+          htmlFor="repositoryId"
+          tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
+        >
+          repository
+        </Label>
+        <select
           id="repositoryId"
           name="repositoryId"
           required
-          defaultValue={schedule?.repositoryId ?? "demo"}
           data-pw="schedule-repository-id"
-        />
+          defaultValue={schedule?.repositoryId ?? repositories[0]?.id ?? ""}
+          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
+        >
+          {repositories.length === 0 ? <option value="">(none — add a repository)</option> : null}
+          {repositories.map((repository) => (
+            <option key={repository.id} value={repository.id}>
+              {repository.name}
+            </option>
+          ))}
+        </select>
       </div>
       <div className="space-y-1">
         <Label htmlFor="name">name</Label>

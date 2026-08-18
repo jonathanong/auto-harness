@@ -39,19 +39,28 @@ export default async function SchedulesPage({
   const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
   let items: Schedule[] = [];
   let targets: SessionTarget[] = [];
+  let repositories: Array<{ id: string; name: string }> = [];
   let error: string | null = null;
   try {
-    const [schedulesData, targetsData] = await Promise.all([
+    const [schedulesData, targetsData, repositoriesData] = await Promise.all([
       apiGet<{ items: Schedule[] }>("/api/v1/schedules"),
       apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
+      apiGet<{ items: Array<{ id: string; name: string }> }>("/api/v1/repositories"),
     ]);
     items = schedulesData.items ?? [];
     targets = targetsData.items ?? [];
+    repositories = repositoriesData.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
 
   const editing = editId ? items.find((schedule) => schedule.id === editId) : undefined;
+  // A schedule can reference a repository since removed from the catalog — keep it selectable
+  // rather than letting the <select> silently fall back to the first real option and rewrite
+  // the schedule's repositoryId out from under the user on save.
+  if (editing && !repositories.some((repository) => repository.id === editing.repositoryId)) {
+    repositories = [{ id: editing.repositoryId, name: editing.repositoryId }, ...repositories];
+  }
 
   return (
     <div className="space-y-6" data-pw="page-schedules">
@@ -174,7 +183,7 @@ export default async function SchedulesPage({
             <h3 className="mb-2 text-lg font-medium">
               {editing ? `Edit ${editing.name}` : "Add schedule"}
             </h3>
-            <ScheduleCreateForm targets={targets} schedule={editing} />
+            <ScheduleCreateForm targets={targets} repositories={repositories} schedule={editing} />
           </div>
         </>
       )}

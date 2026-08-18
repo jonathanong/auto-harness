@@ -64,6 +64,7 @@ describe("primary list page states", () => {
     stubApi({
       "/api/v1/schedules": jsonResponse({}, 503),
       "/api/v1/session-targets": { items: [] },
+      "/api/v1/repositories": { items: [] },
     });
     const html = await renderPage(SchedulesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="schedules-api-error"');
