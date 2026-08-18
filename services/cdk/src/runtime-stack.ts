@@ -11,6 +11,7 @@ import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
 import type { FoundationResources } from "./foundation-stack.ts";
+import { grantPublicBaseUrlAccess, publicBaseUrlParam } from "./public-base-url-param.ts";
 import { addLambdaIntegration } from "./runtime-api-integration.ts";
 
 export type RuntimeStackProps = StackProps & {
@@ -39,6 +40,7 @@ export class AutoHarnessRuntimeStack extends Stack {
     super(scope, id, props);
 
     const { admins, cursorSecret, sessionSecret } = bootstrapSecretParams(this);
+    const publicBaseUrl = publicBaseUrlParam(this);
     const commonEnvironment = {
       ARCHIVE_BUCKET: props.foundation.archiveBucket.bucketName,
       HARNESS_ADMINS_SSM_PARAM: admins.param.valueAsString,
@@ -46,6 +48,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       HARNESS_DDB_PREFIX: props.tablePrefix,
       HARNESS_SESSION_SECRET_SSM_PARAM: sessionSecret.param.valueAsString,
       KMS_KEY_ID: props.foundation.integrationKey.keyArn,
+      PUBLIC_BASE_URL_SSM_PARAM: publicBaseUrl.param.valueAsString,
     };
     const functionProps = {
       bundling: { minify: true, sourceMap: true },
@@ -84,6 +87,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       fn.role!.addManagedPolicy(archiveDataAccessPolicy);
       props.foundation.integrationKey.grantEncryptDecrypt(fn);
       grantBootstrapSecretsAccess(fn, { admins, cursorSecret, sessionSecret });
+      grantPublicBaseUrlAccess(fn, publicBaseUrl);
     }
 
     const httpApi = new apigatewayv2.CfnApi(this, "HttpApi", {

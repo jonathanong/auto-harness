@@ -147,7 +147,12 @@ export async function deleteSecretParameters(
   config: DeploymentConfig,
   dependencies: DeploymentDependencies,
 ): Promise<void> {
-  const names = [config.adminsSsmParam, config.sessionSecretSsmParam, config.cursorSecretSsmParam];
+  const names = [
+    config.adminsSsmParam,
+    config.sessionSecretSsmParam,
+    config.cursorSecretSsmParam,
+    config.publicBaseUrlSsmParam,
+  ];
   const stdout = await queryOk(
     dependencies,
     "aws",

@@ -110,6 +110,7 @@ describe("AutoHarnessRuntimeStack", () => {
         "HarnessAdminsSsmParam",
         "HarnessCursorSecretSsmParam",
         "HarnessSessionSecretSsmParam",
+        "HarnessPublicBaseUrlSsmParam",
       ]),
     );
     // These parameters hold an SSM parameter *name*, not a secret value — unlike the
@@ -122,6 +123,7 @@ describe("AutoHarnessRuntimeStack", () => {
       "HarnessAdminsSsmParam",
       "HarnessSessionSecretSsmParam",
       "HarnessCursorSecretSsmParam",
+      "HarnessPublicBaseUrlSsmParam",
     ]) {
       expect(parameters[id]?.Type).toBe("String");
       expect(parameters[id]?.MinLength).toBeUndefined();

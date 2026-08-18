@@ -6,6 +6,7 @@ export type DeploymentConfig = {
   cursorSecretSsmParam: string;
   environment: string;
   foundationStackName: string;
+  publicBaseUrlSsmParam: string;
   purgeConfirmation?: string;
   purgeSsmParameters: boolean;
   region: string;
@@ -48,6 +49,8 @@ export function deploymentConfig(
       env.HARNESS_CURSOR_SECRET_SSM_PARAM?.trim() || `${base}/harness-cursor-secret`,
     environment,
     foundationStackName: `AutoHarness-${environment}-Foundation`,
+    publicBaseUrlSsmParam:
+      env.HARNESS_PUBLIC_BASE_URL_SSM_PARAM?.trim() || `${base}/public-base-url`,
     purgeSsmParameters: env.HARNESS_DEPLOY_PURGE_SSM?.trim() === "1",
     region,
     removalPolicy,

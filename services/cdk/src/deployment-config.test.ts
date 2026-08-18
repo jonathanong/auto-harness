@@ -12,6 +12,7 @@ describe("deploymentConfig", () => {
     ).toMatchObject({
       adminsSsmParam: "/auto-harness/production/harness-admins",
       foundationStackName: "AutoHarness-production-Foundation",
+      publicBaseUrlSsmParam: "/auto-harness/production/public-base-url",
       removalPolicy: "retain",
       runtimeStackName: "AutoHarness-production-Runtime",
       tablePrefix: "AutoHarness-production",
@@ -84,12 +85,14 @@ describe("deploymentConfig", () => {
         HARNESS_CURSOR_SECRET_SSM_PARAM: "/custom/cursor",
         HARNESS_DEPLOY_CONFIRM: "review",
         HARNESS_DEPLOY_ENVIRONMENT: "review",
+        HARNESS_PUBLIC_BASE_URL_SSM_PARAM: "/custom/public-base-url",
         HARNESS_SESSION_SECRET_SSM_PARAM: "/custom/session",
       }),
     ).toMatchObject({
       accountId: "123456789012",
       adminsSsmParam: "/custom/admins",
       cursorSecretSsmParam: "/custom/cursor",
+      publicBaseUrlSsmParam: "/custom/public-base-url",
       sessionSecretSsmParam: "/custom/session",
       teardownConfirmation: "review",
     });
