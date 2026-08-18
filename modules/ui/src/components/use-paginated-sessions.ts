@@ -65,9 +65,9 @@ export function usePaginatedSessions({
     const snapshot = pagesRef.current;
     try {
       const refreshed: SessionPage[] = [];
-      const firstPage = snapshot[0];
-      if (!firstPage) throw new Error("unreachable: pages always holds at least one page");
-      let cursor = firstPage.cursor;
+      // pages always holds at least one page (state is seeded with makePage(...) and never
+      // emptied), so this index is guaranteed present.
+      let cursor = snapshot[0]!.cursor;
       for (let index = 0; index < snapshot.length; index += 1) {
         const page = await requestPage(fetchPage, pagePath(path, cursor));
         refreshed.push({ ...page, cursor });
