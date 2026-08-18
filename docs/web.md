@@ -203,11 +203,19 @@ The initial prompt is displayed in a highlighted, read-only block below the head
 
 Below the prompt, a terminal-like log viewer displays session output. This is the core feature of the session detail view.
 
-**Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer renders the assigned
-CLI's merged PTY-backed log chunks, including ANSI colors and cursor control sequences, and
-live-tails over the viewer WebSocket. Search, selectable text, scrollback, font sizing, fullscreen,
-and `.txt` download controls are available. The viewer remains deliberately non-interactive: it
-does not send browser input to the running process. Git, setup, and hook output remains pipe-based.
+**Current implementation:** a read-only [xterm.js](https://xtermjs.org/) viewer (`SessionTerminalViewer`,
+shared from `modules/ui`) renders the assigned CLI's merged PTY-backed log chunks, including ANSI
+colors and cursor control sequences, and live-tails over the viewer WebSocket. Search, selectable
+text, scrollback, font sizing, fullscreen, and `.txt` download controls are available. The viewer
+remains deliberately non-interactive: it does not send browser input to the running process. Git,
+setup, and hook output remains pipe-based.
+
+The host pane's session detail view (`:7422`) uses the same viewer for the same reason — a plain-text
+log dump can't render ANSI colors or cursor-addressed output (progress bars, TUI redraws), so
+assigned CLI output there used to print as literal escape bytes. Host pane fetches logs once at page
+load rather than live-tailing (it has no WebSocket viewer infrastructure), so its controls work
+against a static snapshot — search, font sizing, fullscreen, and download all function identically,
+there's just no live update after the initial fetch.
 
 **Behavior:**
 

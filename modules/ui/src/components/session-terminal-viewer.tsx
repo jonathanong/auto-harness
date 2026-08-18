@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { LiveLogEntry } from "../lib/live-session-logs.ts";
 import {
   adjustedTerminalFontSize,
   DEFAULT_TERMINAL_FONT_SIZE,
   terminalDownloadName,
   terminalShortcut,
   terminalText,
+  type TerminalLogEntry,
 } from "../lib/session-terminal.ts";
 import { SessionTerminalControls } from "./session-terminal-controls.tsx";
 import { useSessionTerminal } from "./use-session-terminal.ts";
@@ -18,7 +18,7 @@ export function SessionTerminalViewer({
   items,
 }: {
   sessionId: string;
-  items: LiveLogEntry[];
+  items: TerminalLogEntry[];
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);

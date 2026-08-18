@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { SectionError, SessionLogs, type SessionSummary } from "@auto-harness/ui";
+import { SectionError, SessionTerminalViewer, type SessionSummary } from "@auto-harness/ui";
 
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
-type LogEntry = { seq: number; stream: string; content: string; timestamp: string };
+type LogEntry = {
+  timestampSeq: string;
+  seq: number;
+  stream: string;
+  content: string;
+  timestamp: string;
+};
 
 export default async function SessionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -63,7 +69,7 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
           {logsError ? (
             <SectionError resource="session logs" message={logsError} selector="session-logs" />
           ) : (
-            <SessionLogs items={logs} />
+            <SessionTerminalViewer sessionId={id} items={logs} />
           )}
         </div>
       </SessionLiveDetail>

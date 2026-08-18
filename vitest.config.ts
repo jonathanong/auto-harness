@@ -24,7 +24,7 @@ export default defineConfig({
         "services/web/src/components/{repo-create-form,edit-repo-form,provider-create-form,edit-provider-form,command-create-form,edit-command-form}.tsx",
         "modules/ui/src/components/{repository-detail,session-detail,worktree-detail,worktrees-hierarchy}.tsx",
         "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx",
-        "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters,session-logs}.tsx",
+        "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx",
         // Host settings forms are exercised in happy-dom with real React and Next contexts.
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
         // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
@@ -115,10 +115,9 @@ export default defineConfig({
           { 100: true },
         "modules/ui/src/components/{add-repo-form,add-worktree-form,path-input,drain-button,remove-repo-button,remove-worktree-button,section-error,theme-toggle}.tsx":
           { 100: true },
-        "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters,session-logs}.tsx":
-          {
-            100: true,
-          },
+        "modules/ui/src/components/{session-actions,session-catalog-filters,session-filters}.tsx": {
+          100: true,
+        },
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx":
           { 100: true },
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":

@@ -1,5 +1,6 @@
-import { Button } from "@auto-harness/ui";
 import type { RefObject } from "react";
+
+import { Button } from "./button.tsx";
 
 export function SessionTerminalControls({
   sessionId,

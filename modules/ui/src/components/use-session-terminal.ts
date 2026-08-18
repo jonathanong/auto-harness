@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { SearchAddon } from "@xterm/addon-search";
 import type { ITheme, Terminal } from "@xterm/xterm";
-import { THEME_CHANGE_EVENT } from "@auto-harness/ui";
 
-import type { LiveLogEntry } from "../lib/live-session-logs.ts";
-import { terminalText } from "../lib/session-terminal.ts";
+import { terminalText, type TerminalLogEntry } from "../lib/session-terminal.ts";
+import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 
 type SessionTerminalRuntime = {
   terminal: Terminal;
@@ -47,7 +46,7 @@ function repaintTerminal(runtime: SessionTerminalRuntime | null): void {
 
 export function useSessionTerminal(
   hostRef: RefObject<HTMLDivElement | null>,
-  items: readonly LiveLogEntry[],
+  items: readonly TerminalLogEntry[],
   text: string,
   fontSize: number,
 ) {

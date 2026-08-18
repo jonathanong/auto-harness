@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import "@auto-harness/ui/globals.css";
-import "@xterm/xterm/css/xterm.css";
 import { THEME_INIT_SCRIPT } from "@auto-harness/ui";
 
 import { ControlShell } from "../components/control-shell.tsx";

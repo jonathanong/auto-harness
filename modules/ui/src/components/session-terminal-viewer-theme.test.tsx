@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 
-import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
-import { THEME_CHANGE_EVENT } from "@auto-harness/ui";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mountForm } from "./form-test-helpers.tsx";
+import { mount, reset } from "./action-form-test-helpers.ts";
 import { SessionTerminalViewer } from "./session-terminal-viewer.tsx";
+import { THEME_CHANGE_EVENT } from "./theme-toggle.tsx";
 
 type MockTerminalOptions = { fontSize?: number; theme?: unknown };
 
@@ -57,6 +57,8 @@ async function settle(): Promise<void> {
   });
 }
 
+afterEach(reset);
+
 describe("SessionTerminalViewer theme", () => {
   it("reads terminal colors from CSS variables and rebuilds them live on a theme change", async () => {
     stubComputedTerminalTheme({
@@ -65,7 +67,7 @@ describe("SessionTerminalViewer theme", () => {
       "--terminal-cursor": "220 13% 91%",
     });
 
-    const view = mountForm(<SessionTerminalViewer sessionId="theme" items={[]} />);
+    mount(<SessionTerminalViewer sessionId="theme" items={[]} />);
     await settle();
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -92,18 +94,16 @@ describe("SessionTerminalViewer theme", () => {
       cursor: "hsl(220 13% 91%)",
     });
     expect(mocks.refresh).toHaveBeenCalled();
-    view.unmount();
   });
 
   it("falls back to the light-mode literal when a CSS variable is unset", async () => {
     stubComputedTerminalTheme({});
-    const view = mountForm(<SessionTerminalViewer sessionId="theme-fallback" items={[]} />);
+    mount(<SessionTerminalViewer sessionId="theme-fallback" items={[]} />);
     await settle();
     expect(mocks.terminalOptions).toHaveBeenCalledWith(
       expect.objectContaining({
         theme: { background: "#090f1f", foreground: "#e5e7eb", cursor: "#e5e7eb" },
       }),
     );
-    view.unmount();
   });
 });

@@ -26,8 +26,8 @@ describe("session detail route", () => {
       },
       "/api/v1/sessions/session%2Fone/logs?limit=10000": {
         items: [
-          { seq: 2, stream: "stderr", content: "later", timestamp: "two" },
-          { seq: 1, stream: "stdout", content: "first", timestamp: "one" },
+          { timestampSeq: "b", seq: 2, stream: "stderr", content: "later", timestamp: "two" },
+          { timestampSeq: "a", seq: 1, stream: "stdout", content: "first", timestamp: "one" },
         ],
       },
     });
