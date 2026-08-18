@@ -48,10 +48,15 @@ Auto Harness AWS infrastructure is designed to be nearly free to operate. Costs 
 
 ## AWS cost model (not yet estimated)
 
-The repository has not deployed or account-tested the AWS runtime. A credible monthly estimate
-requires a representative long-running CLI transcript; log chunks affect WebSocket messages,
-Lambda invocations, DynamoDB writes, archive bytes, and CloudWatch volume at once. Those inputs
-have not been measured, so there is no supported aggregate monthly-cost estimate yet.
+The AWS runtime has been deployed and account-tested — see the Maturity table in
+[deploy-aws.md](deploy-aws.md#maturity) — but a credible monthly estimate still
+requires a representative **long-running** CLI transcript, not a smoke test. Log
+chunks affect WebSocket messages, Lambda invocations, DynamoDB writes, archive
+bytes, and CloudWatch volume all at once, and those inputs scale with session
+length and chattiness far more than with session _count_. A handful of short
+`claude -p` sessions (each a single quick reply, a few seconds end to end) is not
+enough workload to produce those inputs — there is still no supported aggregate
+monthly-cost estimate.
 
 Unit prices are illustrative inputs, not pinned contract terms; verify the current AWS pricing
 pages for the deployment region before approving a budget.
@@ -138,12 +143,16 @@ chunks in one connection-fenced transaction, flushing before any later control/s
 before disconnect. This reduces API calls and fence checks, not billed item writes; DynamoDB
 capacity is charged per item and transactional items use transactional capacity pricing.
 SessionLogs records do not carry a `ttl`; local table creation does not configure TTL, while the
-synthesized AWS table's TTL setting has nothing to expire without that attribute. On terminal
-status, the API serializes one
+synthesized AWS table's TTL setting has nothing to expire without that attribute (see
+[aws.md#sessionlogs-retention-and-archival](aws.md#sessionlogs-retention-and-archival)). On
+terminal status, the API serializes one
 JSONL object, retains only bounded pointer/status metadata in DynamoDB, and uploads through the
 configured private S3 adapter. A pending metadata row makes interrupted uploads retryable without
-putting the body in DynamoDB. No account-backed archive measurements exist. Consequently, the totals above and the
-optimized comparison below must be recalculated before an AWS launch.
+putting the body in DynamoDB. The archive path has been functionally exercised — a real purge run
+against a real account emptied 3 archived object versions from the session archive bucket after 3
+short test sessions completed — but no byte-size or cost measurements exist from that or any other
+run. Consequently, the totals above and the optimized comparison below must be recalculated before
+an AWS launch.
 
 **Target mitigation strategies:**
 
