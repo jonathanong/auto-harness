@@ -51,7 +51,7 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
       : [
           `HARNESS_HOST_ID=${shellQuote(hostId)} \\`,
           `HARNESS_API_URL=${shellQuote(origin)} \\`,
-          `HARNESS_API_KEY=<bound service-account key> \\`,
+          `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY' \\`,
           `pnpm local:daemon start`,
         ].join("\n");
 

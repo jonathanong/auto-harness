@@ -23,6 +23,12 @@ describe("ConnectHostPanel", () => {
     expect(command).toContain("pnpm local:daemon start");
     expect(command).not.toContain("local:agent");
     expect(command).not.toContain("execute-api");
+    // Regression: an earlier version rendered `HARNESS_API_KEY=<bound service-account key>`
+    // — bash parses an unquoted `<word` as a stdin redirect from a file named "word", so
+    // pasting the command verbatim failed with "bound: No such file or directory" instead of
+    // any indication a placeholder needed replacing.
+    expect(command).toContain("HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'");
+    expect(command).not.toMatch(/HARNESS_API_KEY=</);
     view.unmount();
   });
 
