@@ -138,6 +138,7 @@ export class AutoHarnessFoundationStack extends Stack {
 
     const tableResources = DYNAMO_TABLES.flatMap((definition) => {
       const table = tables[definition.name];
+      if (!table) throw new Error(`missing DynamoDB table definition: ${definition.name}`);
       return [table.tableArn, ...(definition.gsis?.length ? [`${table.tableArn}/index/*`] : [])];
     });
     const apiDataAccessPolicy = new iam.ManagedPolicy(this, "ApiDataAccessPolicy", {
@@ -160,6 +161,7 @@ export class AutoHarnessFoundationStack extends Stack {
       ],
     });
     const sessionLogs = tables.SessionLogs;
+    if (!sessionLogs) throw new Error("missing DynamoDB table definition: SessionLogs");
     const archiveDataAccessPolicy = new iam.ManagedPolicy(this, "ArchiveDataAccessPolicy", {
       description: "Least-privilege session-log archive access for a future archival runtime.",
       statements: [

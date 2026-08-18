@@ -18,6 +18,7 @@ export type {
   SessionResumeSpec,
   SessionLogChunk,
   SessionStatusUpdate,
+  SessionActiveStatus,
   SessionTerminalStatus,
 } from "./session.ts";
 

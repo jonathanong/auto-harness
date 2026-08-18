@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "typecheck": "tsc --noEmit",
     "dev": "node ../../scripts/validate-bind.mts HARNESS_WEB_HOST && next dev --hostname ${HARNESS_WEB_HOST:-127.0.0.1} --port 7421",
     "build": "next build",
     "build:e2e": "HARNESS_E2E=1 HARNESS_API_HTTP=${HARNESS_API_HTTP:-http://127.0.0.1:7430} next build",

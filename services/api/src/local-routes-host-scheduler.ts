@@ -1,8 +1,25 @@
+import type { HostToServerMessage } from "@auto-harness/shared";
+
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { handleSchedulerRoutes } from "./local-routes-scheduler.ts";
+
+/**
+ * The only three variants carrying `hostId` instead of `sessionId` — kept as one predicate
+ * so every call site narrows the same way; a `.startsWith("host:")` string check (the
+ * previous approach in the audit calls below) happens to classify these identically but
+ * isn't a real discriminant, so a future new "host:*" variant could silently fall through
+ * the wrong branch here without TypeScript ever catching it.
+ */
+function isHostScopedMessage(
+  msg: HostToServerMessage,
+): msg is Extract<HostToServerMessage, { hostId: string }> {
+  return (
+    msg.type === "host:register" || msg.type === "host:status" || msg.type === "host:keepalive"
+  );
+}
 
 /** Hosts, worktrees, profiles, host messages, and scheduler routes. */
 export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean> {
@@ -58,7 +75,7 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       return true;
     }
     try {
-      if (body.type === "host:register" || body.type === "host:keepalive") {
+      if (isHostScopedMessage(body)) {
         if (!mayAccessHost(ctx.principal, body.hostId)) {
           send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
           return true;
@@ -84,13 +101,15 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
         });
         return true;
       }
+      // Every session:* variant returned above, so only host:register/host:status/
+      // host:keepalive can reach here — body is always host-scoped from this point on.
       const result = await plane.handleHostMessageDurable(body);
       if (!result.ok) {
         if (
           !(await writeRouteAudit(ctx, {
             action: "host:message",
-            resourceType: body.type.startsWith("host:") ? "host" : "session",
-            resourceId: body.type.startsWith("host:") ? body.hostId : body.sessionId,
+            resourceType: "host",
+            resourceId: body.hostId,
             outcome: "failed",
             metadata: { type: body.type },
           }))
@@ -109,8 +128,8 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       if (
         !(await writeRouteAudit(ctx, {
           action: "host:message",
-          resourceType: body.type.startsWith("host:") ? "host" : "session",
-          resourceId: body.type.startsWith("host:") ? body.hostId : body.sessionId,
+          resourceType: "host",
+          resourceId: body.hostId,
           metadata: { type: body.type },
         }))
       )

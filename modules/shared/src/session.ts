@@ -55,6 +55,8 @@ export type SessionTerminalStatus = Extract<
   "completed" | "failed" | "cancelled" | "timed_out"
 >;
 
+export type SessionActiveStatus = Extract<SessionStatus, "queued" | "running">;
+
 export type SessionStatusUpdate = {
   sessionId: string;
   status: SessionStatus;

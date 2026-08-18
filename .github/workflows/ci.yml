@@ -48,6 +48,15 @@ jobs:
       - name: Format check
         run: pnpm fmt:check
 
+      # Native type stripping means tsc never runs as part of a normal build — this is the
+      # only place types are actually checked. Scoped to modules/shared, services/cdk, and
+      # services/host-pane for now: the other four packages (services/api, services/web,
+      # services/host-daemon, modules/ui) have pre-existing violations accumulated from
+      # never having run this check before. See the tracking follow-up to bring them in one
+      # at a time rather than block this gate on fixing all of them at once.
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Knip
         run: pnpm knip
 
