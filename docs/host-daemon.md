@@ -16,15 +16,15 @@ Internals of the VPS daemon: process model, worktrees, executor, recovery.
 
 The agent owns:
 
-| Concern                   | Implementation                                                    |
-| ------------------------- | ----------------------------------------------------------------- |
-| Outbound control channel  | Persistent WebSocket client to the control plane                  |
-| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)          |
-| Process execution         | `node-pty` / `child_process` for setup scripts and AI CLIs        |
-| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions               |
-| Live output               | Buffered stdout/stderr/system log streaming                       |
-| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS) |
-| Inventory reporting       | Worktree list + status on register and on change                  |
+| Concern                   | Implementation                                                              |
+| ------------------------- | --------------------------------------------------------------------------- |
+| Outbound control channel  | Persistent WebSocket client to the control plane                            |
+| Workspace concurrency     | Pre-provisioned git worktrees (one session per worktree)                    |
+| Process execution         | `child_process.spawn` (no PTY; stdin ignored) for setup scripts and AI CLIs |
+| Main-checkout maintenance | Serial lock per repository for `scheduled` sessions                         |
+| Live output               | Buffered stdout/stderr/system log streaming                                 |
+| Local secrets             | AI vendor keys, git credentials, `.env` files (never sent to AWS)           |
+| Inventory reporting       | Worktree list + status on register and on change                            |
 
 The agent **does not** implement the global queue, multi-agent round-robin, or durable session storage. Those live in the [AWS layer](aws.md).
 
@@ -221,16 +221,16 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 
 #### Command execution model
 
-| Piece             | Rule                                                                                                                                                                                                                                                                                                                                      |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spawn             | Prefer **argv array** / `node-pty` spawn **without** `shell: true`                                                                                                                                                                                                                                                                        |
-| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from the selected target/fallback (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero provider/account/command resolution — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`). |
-| Route metadata    | Optional non-secret `targetIndex`, `commandId`, and `providerAccountId` breadcrumbs for logs and UI diagnostics. They are never used to select a command or credentials.                                                                                                                                                                  |
-| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — **never** interpolated into a shell string                                                                                                                                                                                               |
-| Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                   |
-| Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts.                                                                                                  |
-| Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                              |
-| Cancel            | `session:cancel` aborts setup or the primary command through the same SIGTERM → 5s → SIGKILL chain; report exactly one `cancelled` terminal status.                                                                                                                                                                                       |
+| Piece             | Rule                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spawn             | **argv array** via `child_process.spawn` **without** `shell: true`, stdin `ignore`, no PTY                                                                                                                                                                                                                                                                        |
+| `resolvedArgv`    | From `session:assign` — already resolved control-plane-side from the selected target/fallback (**non-interactive CLI** form, e.g. `codex exec` / print flags, `claude -p`, not an Agent SDK process). The agent does zero provider/account/command resolution — an empty `resolvedArgv` is a defensive error (`unknown_command_profile`).                         |
+| Route metadata    | Optional non-secret `targetIndex`, `commandId`, and `providerAccountId` breadcrumbs for logs and UI diagnostics. They are never used to select a command or credentials.                                                                                                                                                                                          |
+| `prompt`          | Already appended as the final `resolvedArgv` element when the Command's `appendPrompt` is true — **never** interpolated into a shell string                                                                                                                                                                                                                       |
+| Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                           |
+| Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts. Vendor CLI keys that are not stored under `$HOME` (e.g. `CURSOR_API_KEY`, `XAI_API_KEY`) must be named on the allowlist. |
+| Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                                                      |
+| Cancel            | `session:cancel` aborts setup or the primary command through the same SIGTERM → 5s → SIGKILL chain; report exactly one `cancelled` terminal status.                                                                                                                                                                                                               |
 
 Example (illustrative):
 
@@ -238,8 +238,8 @@ Example (illustrative):
 assign.resolvedArgv = ["codex", "exec", "Fix the failing test"]  // computed control-plane-side
 
 → argv: ["codex", "exec", "Fix the failing test"]  // spawned as-is, no further resolution
-→ cwd:  /home/harness/repos/my-app/.worktrees/wt-1
-→ pty:  yes (cols/rows default 120x40)
+→ cwd:  /home/harness/repos/my-app/.codex/worktrees/wt-1
+→ pty:  no (stdin ignored; stdout/stderr piped)
 ```
 
 If a site needs a full shell pipeline for maintenance, use a **scheduled** session whose `command` is a fixed script path on disk (e.g. `/home/harness/scripts/daily-update.sh`) rather than untrusted prompt text.
@@ -364,13 +364,17 @@ Non-zero exit → session `failed`, worktree released.
 ├── repos/
 │   └── my-app/                   # main checkout (paths configured via API/UI)
 │       ├── .git/
-│       └── .worktrees/
+│       ├── .claude/worktrees/    # suggested when labels include claude
+│       ├── .codex/worktrees/
+│       ├── .cursor/worktrees/
+│       ├── .grok/worktrees/
+│       └── .worktrees/           # fallback (echo / unknown labels)
 │           ├── wt-1/
 │           └── wt-2/
 └── harness/                      # cloned auto-harness monorepo (agent code)
 ```
 
-Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the Agents UI. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
+Host inventory (repo paths, worktrees, attached Provider Accounts) is **not** a local file — configure with `PUT /api/v1/hosts/:hostId/inventory` or the control-plane Hosts page. Commands themselves live in the global Provider/Provider Account/Command catalog, not host inventory.
 
 ---
 

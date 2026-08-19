@@ -21,8 +21,8 @@ Identity (env; local defaults shown):
   HARNESS_LOG_LEVEL  optional (debug|info|warn|error)
   HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
 
-Host inventory (repos, worktrees, commandProfiles) is configured via
-API/UI: PUT /api/v1/hosts/:hostId/inventory — not a local config file.
+Host inventory (repos, worktrees, providerAccounts) is configured via
+the control plane Hosts page or PUT /api/v1/hosts/:hostId/inventory — not a local config file.
 `);
 }
 
@@ -98,6 +98,7 @@ export async function runCli(
             })),
           })),
           commandProfiles: Object.keys(config.commandProfiles),
+          providerAccounts: config.providerAccounts.map((account) => account.providerAccountId),
         },
         null,
         2,

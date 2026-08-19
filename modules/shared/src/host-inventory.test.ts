@@ -14,6 +14,7 @@ import {
 describe("host-inventory", () => {
   it("builds default worktree path as a suggestion only", () => {
     expect(defaultWorktreePath("/repo/", "runner-1")).toBe("/repo/.worktrees/runner-1");
+    expect(defaultWorktreePath("/repo", "wt-1", ["claude"])).toBe("/repo/.claude/worktrees/wt-1");
   });
 
   it("emptyHostInventory seeds echo-prompt with no repos", () => {

@@ -19,7 +19,7 @@ async function git(cwd: string, args: string[]): Promise<string> {
  * subprocess) instead of faking the agent side over REST like every other
  * e2e/*.spec.ts test — proves browser -> API -> WS -> daemon -> subprocess ->
  * WS -> API -> browser actually works end to end, not just each half
- * independently. See docs/agent-e2e-testing.md.
+ * independently. See docs/host-daemon-e2e-testing.md.
  */
 test.describe("real orchestration", () => {
   test("browser-created session runs on a real agent and completes", async ({ page, request }) => {

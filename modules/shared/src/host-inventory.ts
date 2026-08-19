@@ -1,4 +1,5 @@
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
+import { vendorWorktreeDir } from "./cli-recipes.ts";
 import type { HostCapability } from "./host-capabilities.ts";
 
 /**
@@ -55,8 +56,12 @@ export const DEFAULT_ECHO_PROFILE: HostInventory["commandProfiles"] = {
 };
 
 /** Suggested path only — never auto-persist without explicit worktree create. */
-export function defaultWorktreePath(repoPath: string, worktreeName: string): string {
-  return `${repoPath.replace(/\/$/, "")}/.worktrees/${worktreeName}`;
+export function defaultWorktreePath(
+  repoPath: string,
+  worktreeName: string,
+  labels: readonly string[] = [],
+): string {
+  return `${repoPath.replace(/\/$/, "")}/${vendorWorktreeDir(labels)}/${worktreeName}`;
 }
 
 function seedProfiles(
@@ -213,7 +218,7 @@ export function mergeHostRepository(
     {
       id: entry.worktreeId,
       name: entry.worktreeName,
-      path: defaultWorktreePath(entry.path, entry.worktreeName),
+      path: defaultWorktreePath(entry.path, entry.worktreeName, entry.labels ?? ["echo"]),
       labels: entry.labels ?? ["echo"],
     },
   ];

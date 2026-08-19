@@ -96,7 +96,7 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
   "id": "wt-1",
   "name": "codex-1",
   "repositoryId": "repo-abc",
-  "path": "/home/harness/repos/my-app/.worktrees/wt-1",
+  "path": "/home/harness/repos/my-app/.codex/worktrees/wt-1",
   "labels": ["codex", "claude"]
 }
 ```

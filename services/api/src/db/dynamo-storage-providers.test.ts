@@ -117,6 +117,7 @@ describe("DynamoDB Local storage — providers/provider-accounts/commands", () =
       }),
     ).toBe(true);
     expect(sent[0]?.input?.UpdateExpression).toContain("SET updatedAt = :updatedAt");
+    expect(sent[0]?.input?.UpdateExpression).toContain("REMOVE usageLimitedUntil");
     expect(sent[0]?.input?.ConditionExpression).toBe(
       "attribute_exists(id) AND updatedAt = :expectedUpdatedAt",
     );
@@ -148,7 +149,7 @@ describe("DynamoDB Local storage — providers/provider-accounts/commands", () =
       }),
     ).toBe(true);
     expect(sent.at(-1)?.input?.ConditionExpression).toContain(
-      "usageLimitedUntil = :expectedUsageLimitedUntil",
+      "attribute_not_exists(usageLimitedUntil)",
     );
 
     fakeCtx.doc.send.mockImplementationOnce(async () => {

@@ -234,7 +234,7 @@ UI connections store `type: "client"` and `userId` from the authenticated princi
   "name": "codex-1",
   "hostId": "vps-prod-1",
   "repositoryId": "repo-abc",
-  "path": "/home/harness/repos/my-app/.worktrees/wt-1",
+  "path": "/home/harness/repos/my-app/.codex/worktrees/wt-1",
   "labels": ["codex", "claude"],
   "status": "idle",
   "currentSessionId": null,

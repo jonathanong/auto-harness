@@ -12,7 +12,7 @@ Run and test Auto Harness on your machine **without an AWS account**. Install/pr
 | pnpm                                    | workspaces (`packageManager` in root `package.json`)                     |
 | Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)                             |
 | Git 2.20+                               | worktrees                                                                |
-| AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions                    |
+| AI CLIs (optional for local echo demos) | Codex / Claude / Grok / cursor-agent on agent host for real sessions     |
 
 ```bash
 pnpm install
@@ -76,6 +76,7 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 | `pnpm local:host-pane`      | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                                      |
 | `pnpm local:daemon`         | Agent CLI (`status`, `run-session`, `start`)                                             |
 | `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)            |
+| `pnpm local:tmux:down`      | Kill that tmux session, free `:7420-7422`, stop DynamoDB Local                           |
 | `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                              |
 | `pnpm local:cli-e2e`        | Documented `pnpm local:daemon` path with `ref: main`                                     |
 | `pnpm local:api-smoke`      | `POST /sessions` → 201                                                                   |

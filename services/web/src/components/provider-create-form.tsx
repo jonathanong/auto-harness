@@ -4,12 +4,18 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, CLI_RECIPES, cliRecipeByProvider } from "@auto-harness/shared";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
   return body?.error?.message ?? `request failed (${res.status})`;
 }
+
+const claudeRecipe = cliRecipeByProvider("claude");
+const argvPlaceholder = (claudeRecipe?.argv ?? ["claude", "-p"]).join("\n");
+const recipeHint = CLI_RECIPES.map(
+  (recipe) => `${recipe.providerName}: ${recipe.argv.join(" ")}`,
+).join("; ");
 
 /**
  * Creates a Provider and its default Command in one submit. A Provider with no default
@@ -102,12 +108,15 @@ export function ProviderCreateForm() {
           id="commandName"
           name="commandName"
           required
-          placeholder="claude-print"
+          placeholder={claudeRecipe?.commandName ?? "claude-print"}
           data-pw="provider-catalog-command-name"
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="argv" tip="One argv element per line — never a shell string">
+        <Label
+          htmlFor="argv"
+          tip={`One argv element per line — never a shell string. Recipes: ${recipeHint}`}
+        >
           default command argv (one per line)
         </Label>
         <Textarea
@@ -115,7 +124,7 @@ export function ProviderCreateForm() {
           name="argv"
           required
           rows={3}
-          placeholder={"claude\n-p"}
+          placeholder={argvPlaceholder}
           className="font-mono text-xs"
           data-pw="provider-catalog-argv"
         />
