@@ -50,6 +50,7 @@ export function ProviderCreateForm() {
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean);
+        const submittedCommandName = commandName.trim();
         start(async () => {
           const providerRes = await fetch(`${apiBase()}/api/v1/providers`, {
             method: "POST",
@@ -66,7 +67,7 @@ export function ProviderCreateForm() {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              name: commandName.trim(),
+              name: submittedCommandName,
               argv,
               appendPrompt,
               appendPromptSeparator,
@@ -91,7 +92,7 @@ export function ProviderCreateForm() {
           );
           if (!linkRes.ok) {
             setError(
-              `provider "${name}" and command "${commandName}" created, but linking the default failed: ${await errorMessage(linkRes)}`,
+              `provider "${name}" and command "${submittedCommandName}" created, but linking the default failed: ${await errorMessage(linkRes)}`,
             );
             return;
           }
