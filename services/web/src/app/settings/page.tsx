@@ -70,18 +70,19 @@ export default async function SettingsPage() {
           </Card>
         )
       ) : null}
-      <UserAccountSettings canManage={canManageAccounts(principal)} />
-      <ServiceAccountSettings canManage={canManageAccounts(principal)} />
+      {principal ? (
+        <>
+          <UserAccountSettings canManage={canManageAccounts(principal)} />
+          <ServiceAccountSettings canManage={canManageAccounts(principal)} />
+        </>
+      ) : null}
       <SettingsPageClient />
     </div>
   );
 }
 
-function canManageAccounts(principal: Principal | undefined): boolean {
+function canManageAccounts(principal: Principal): boolean {
   return (
-    !principal ||
-    (principal.role === "admin" &&
-      !principal.allowedRepositoryIds?.length &&
-      !principal.boundHostId)
+    principal.role === "admin" && !principal.allowedRepositoryIds?.length && !principal.boundHostId
   );
 }

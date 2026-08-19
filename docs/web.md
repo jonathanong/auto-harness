@@ -13,10 +13,10 @@ target until the AWS runtime has a deploy path and account-backed verification. 
 The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, New session,
 Sessions, Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts),
 and **Settings** — one horizontally-scrolling row, not a wrapping grid, so it never pushes page
-content down at narrow widths. The theme toggle, keyboard-shortcuts button, logout, and the page
-subtitle live in a slim secondary row below title+nav, not competing with navigation for space in
-the primary header row. The host pane's own shell reuses the same chrome with a flat (ungrouped)
-nav, since its 3-item nav doesn't need grouping.
+content down at narrow widths. The theme toggle, keyboard-shortcuts button, logout (only when
+`HARNESS_AUTH_MODE=required`), and the page subtitle live in a slim secondary row below title+nav,
+not competing with navigation for space in the primary header row. The host pane's own shell reuses
+the same chrome with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping.
 
 ## Authentication
 
@@ -45,7 +45,7 @@ Users can change their password from the Settings page. Admin accounts (env var)
 
 ### Session
 
-The session cookie expires after 24 hours. When it expires, the user is redirected to the login page. A "Logout" button in the top nav calls `POST /auth/logout` to clear the cookie.
+The session cookie expires after 24 hours. When it expires, the user is redirected to the login page. When `HARNESS_AUTH_MODE=required`, a "Logout" button in the top nav calls `POST /auth/logout` to clear the cookie. The button is hidden when authentication is disabled.
 
 ---
 
@@ -450,7 +450,10 @@ Authenticated users retain access to the control-plane Settings page, account
 details, password controls, and the Settings nav item. Only the Slack panel is
 restricted to an unscoped admin; it renders an accessible permission error for a
 valid but unauthorized account. Missing authentication redirects to `/login`
-with only a relative, validated `returnTo` path.
+with only a relative, validated `returnTo` path. When authentication is disabled
+(`HARNESS_AUTH_MODE` unset or not `required`), Settings shows an "Authentication
+disabled" card and does not render user-account or service-account management
+chrome.
 
 ### Slack configuration
 
@@ -481,6 +484,14 @@ separate capabilities and are not enabled by this UI.
 - Delete a user account with explicit confirmation
 - Only unscoped admins can manage users; other authenticated users see a permission boundary
 - Users change their own password after signing in; passwords and hashes are never displayed
+
+---
+
+## Hosts
+
+The fleet list shows each host slot's online/offline status. When any host is offline, a notice
+explains that host slots persist in Foundation tables across `teardown` (not `purge`), so a restore
+can show leftover offline slots. Delete unused hosts, or purge the environment to wipe them.
 
 ---
 

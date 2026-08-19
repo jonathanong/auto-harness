@@ -89,7 +89,13 @@ const NAV: NavGroup[] = [
   },
 ];
 
-export function ControlShell({ children }: { children: React.ReactNode }) {
+export function ControlShell({
+  children,
+  authRequired = false,
+}: {
+  children: React.ReactNode;
+  authRequired?: boolean;
+}) {
   const pathname = usePathname() ?? "/";
   if (pathname === "/login") return <>{children}</>;
   return (
@@ -103,7 +109,7 @@ export function ControlShell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-1">
           <ThemeToggle />
           <KeyboardShortcuts />
-          <LogoutButton />
+          {authRequired ? <LogoutButton /> : null}
         </div>
       }
       nav={NAV}
