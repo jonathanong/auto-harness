@@ -15,7 +15,7 @@ test.describe("real CLI: claude", () => {
     page,
     request,
   }) => {
-    // Empirically verified (see docs/agent-e2e-testing.md §5.2): no extra flags needed,
+    // Empirically verified (see docs/host-daemon-e2e-testing.md §5.2): no extra flags needed,
     // exit 0, prints exactly the reply with no banner noise around it.
     await runRealCliSession({
       page,

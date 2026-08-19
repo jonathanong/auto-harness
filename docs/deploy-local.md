@@ -86,7 +86,13 @@ Local API drain: `POST /api/v1/hosts/drain` with `{ "hostId": "…" }`. Agent dr
 ## Teardown
 
 ```bash
-# Stop agent, web, API (if you saved PIDs)
+pnpm local:tmux:down
+# equivalent: tmux kill-session -t auto-harness-local, free :7420-7422, pnpm local:dynamodb:down
+```
+
+Or if you started processes separately:
+
+```bash
 kill "$(cat /path/to/agent.pid)" 2>/dev/null || true
 kill "$(cat /path/to/web.pid)" 2>/dev/null || true
 kill "$(cat /path/to/api.pid)" 2>/dev/null || true

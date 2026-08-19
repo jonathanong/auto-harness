@@ -2,7 +2,7 @@
 
 **Audience:** coding agents (and humans) validating Auto Harness **locally** before any cloud deploy.
 
-**Bar:** the full control-plane + agent + (optional) web path works with **real** DynamoDB Local, **real** HTTP/WS, **real** git worktrees, and a **real non-interactive CLI** command (e.g. `grok`, `codex`, `claude`, or `echo` for a dry run). Do not claim “ready to deploy” after unit tests alone.
+**Bar:** the full control-plane + agent + (optional) web path works with **real** DynamoDB Local, **real** HTTP/WS, **real** git worktrees, and a **real non-interactive CLI** command (e.g. `grok`, `codex`, `claude`, `cursor-agent`, or `echo` for a dry run). Do not claim “ready to deploy” after unit tests alone.
 
 Related: [local-development.md](local-development.md) (runbook), [deploy-local.md](deploy-local.md) (local ops), [deploy.md](deploy.md) (ops index), [cli.md](cli.md) (agent CLI), [api.md](api.md) (REST), [websocket.md](websocket.md), [plan.md](plan.md) (acceptance criteria).
 
@@ -10,13 +10,13 @@ Related: [local-development.md](local-development.md) (runbook), [deploy-local.m
 
 ## 0. Preconditions
 
-| Need            | Check                                                                   |
-| --------------- | ----------------------------------------------------------------------- |
-| Node.js ≥ 22.18 | `node -v`                                                               |
-| pnpm            | `pnpm -v` (see root `packageManager`)                                   |
-| Docker          | for DynamoDB Local                                                      |
-| Git ≥ 2.20      | worktrees                                                               |
-| Optional AI CLI | `which grok` / `which codex` / `which claude` / etc. for a real command |
+| Need            | Check                                                                                   |
+| --------------- | --------------------------------------------------------------------------------------- |
+| Node.js ≥ 22.18 | `node -v`                                                                               |
+| pnpm            | `pnpm -v` (see root `packageManager`)                                                   |
+| Docker          | for DynamoDB Local                                                                      |
+| Git ≥ 2.20      | worktrees                                                                               |
+| Optional AI CLI | `which grok` / `which codex` / `which claude` / `which cursor-agent` for a real command |
 
 ```bash
 cd /path/to/auto-harness
@@ -92,7 +92,7 @@ lsof -iTCP:7423 -sTCP:LISTEN || true  # DynamoDB Local
 Create a **throwaway** git repo and worktree paths with **absolute** paths (agent config does not expand `~`).
 
 ```bash
-WORK="$PWD/.local-agent-e2e"   # gitignored pattern: prefer under .local-* or /tmp
+WORK="$PWD/.local-agent-e2e"   # gitignored
 rm -rf "$WORK"
 mkdir -p "$WORK/repo" "$WORK/worktrees/wt-1" "$WORK/config" "$WORK/logs"
 
@@ -108,16 +108,17 @@ git add . && git commit -m "init"
 GROK_BIN="$(command -v grok || true)"
 CODEX_BIN="$(command -v codex || true)"
 CLAUDE_BIN="$(command -v claude || true)"
+CURSOR_AGENT_BIN="$(command -v cursor-agent || true)"
 ```
 
 ### Providers, Provider Accounts, and Commands (D4)
 
 Sessions target a **Provider** (which selects a healthy attached account from its pool) or a **Command** (which selects that exact command; provider-owned commands use their provider's account pool). A Command with `providerId: null` is a providerless pure CLI and runs ungated on any worktree. Either way the resolved `argv` is always a **named, fixed array** — never a free-form shell string. There is no host-inventory `commandProfiles` map to author by hand anymore; catalog entries are created once via REST, then accounts are attached to the host.
 
-| Catalog entry                                          | Purpose                                                      |
-| ------------------------------------------------------ | ------------------------------------------------------------ |
-| standalone `echo`                                      | Always available; proves assign/checkout/logs without AI     |
-| `grok` / `codex` / `claude` Provider + default Command | Real non-interactive CLI (optional but preferred pre-deploy) |
+| Catalog entry                                                           | Purpose                                                      |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------ |
+| standalone `echo`                                                       | Always available; proves assign/checkout/logs without AI     |
+| `grok` / `codex` / `claude` / `cursor-agent` Provider + default Command | Real non-interactive CLI (optional but preferred pre-deploy) |
 
 Create the catalog entries against the running API (Terminal B in §4 must already be up — or run these right after starting it, before creating any session):
 
@@ -144,7 +145,7 @@ if [ -n "$GROK_BIN" ]; then
 fi
 ```
 
-Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`) and `claude` (`argv: ["$CLAUDE_BIN", "-p"]`) — see §5.2 for the exact commands.
+Same shape for `codex` (`argv: ["$CODEX_BIN", "exec"]`), `claude` (`argv: ["$CLAUDE_BIN", "-p"]`), and `cursor-agent` (`argv: ["$CURSOR_AGENT_BIN", "-p", "--trust"]`) — see §5.2. Do **not** pass Cursor's `--worktree` flag; Auto Harness already creates the git worktree and sets cwd. `agent` on PATH may be Grok's binary, not Cursor — use `cursor-agent`.
 
 Then attach the host's repositories/worktrees **and** any Provider Accounts you created (`providerAccounts` replaces the old `commandProfiles` map — it is a list of `{providerAccountId}` attachments, not fixed argv):
 
@@ -332,17 +333,19 @@ curl -sS "http://127.0.0.1:7420/api/v1/sessions/$SID/logs"
 **Fail hard if:**
 
 - Assign returns a **different** `sessionId` than the one you just created → queue pollution; re-run §2 clear.
-- Session stays `queued` forever → agent offline, wrong `requiredLabels`, worktree busy/offline, or the Provider Account isn't attached to that host (`resolveSessionTargetArgv` returns `null` for that worktree — see `provider-cascade.ts`).
+- Session stays `queued` forever → agent offline, wrong `requiredLabels`, worktree busy/offline, or the Provider Account isn't attached to that host (`resolveSessionTargetArgv` returns `null` for that worktree — see `provider-cascade.ts`). Provider-owned sessions that never assign while `GET /session-targets` shows `available: true` used to mean DynamoDB stored `usageLimitedUntil: null` (JS treated it as unlimited; the assign transaction did not). The assign condition now treats a missing or NULL cooldown as healthy.
 - Account not in `GET /session-targets` → not attached to any host, or its provider has no default command.
 
-#### Claude and Codex — empirically confirmed flags
+#### Claude, Codex, cursor-agent, and Grok — empirically confirmed flags
 
 Verified live (throwaway git repo, prompt `"Reply with exactly: hello world. Do not use any tools."`):
 
 - **`claude -p "<prompt>"`** — exit 0, printed exactly `hello world`. No directory-trust prompt, no extra flags needed. Command: `argv: ["claude", "-p"], appendPrompt: true`.
 - **`codex exec "<prompt>"`** — exit 0, printed `hello world` plus codex's own session banner/token-count lines on stdout — assert a case-insensitive **substring** match (`/hello world/i`), not an exact line match. No sandbox/approval flag needed: default `approval: on-request` never triggers for a reply-only prompt that needs no tool calls, and stdin doesn't hang it (codex reads to EOF and proceeds once stdin is closed/empty, same as `spawn`'s default `"ignore"` stdio). Command: `argv: ["codex", "exec"], appendPrompt: true`. (`-p` on codex means `--profile`, unrelated to the prompt.)
+- **`cursor-agent -p --trust "<prompt>"`** — exit 0, printed exactly `hello world`. No PTY required (daemon spawn with stdin ignored). `--trust` skips the workspace trust prompt on new worktrees; a previously trusted dir also works without it. Do **not** pass `--worktree` (that creates `~/.cursor/worktrees/<repo>/<name>` and fights Auto Harness cwd). HOME login is enough; `CURSOR_API_KEY` is optional. Command: `argv: ["cursor-agent", "-p", "--trust"], appendPrompt: true`. Suggested worktree path: `$REPO/.cursor/worktrees/<name>`.
+- **`grok --always-approve --max-turns 3 --output-format plain -p "<prompt>"`** — needs a signed-in grok CLI (or `XAI_API_KEY` on `HARNESS_CHILD_ENV_ALLOWLIST`). Missing headless flags hang in an interactive TUI.
 
-Create their Providers/Commands the same way as Grok in §3 (`argv: ["$CLAUDE_BIN", "-p"]` / `argv: ["$CODEX_BIN", "exec"]`), attach an account to the host, then repeat the §5.2 flow with that account's id and prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`.
+Create their Providers/Commands the same way as Grok in §3, attach an account to the host, then repeat the §5.2 flow with prompt `"Reply with exactly: hello world. Do not use any tools. Do not read, create, or modify any files."`. Assert stdout matches `/hello world/i`. Prefer vendor worktree paths (`.claude/worktrees`, `.codex/worktrees`, `.cursor/worktrees`, `.grok/worktrees`) so labels match the CLI.
 
 ### 5.3 Negative: unknown Provider / Command
 
@@ -408,17 +411,8 @@ Copy into the PR or agent final report:
 ## 8. Teardown
 
 ```bash
-# Stop background PIDs if you saved them
-kill "$(cat "$WORK/logs/agent.pid")" 2>/dev/null || true
-kill "$(cat "$WORK/logs/web.pid")" 2>/dev/null || true
-kill "$(cat "$WORK/logs/api.pid")" 2>/dev/null || true
-
-# Or free ports
-for p in 7420 7421; do
-  for pid in $(lsof -tiTCP:$p -sTCP:LISTEN 2>/dev/null || true); do kill "$pid" || true; done
-done
-
-pnpm local:dynamodb:down   # optional — stops DynamoDB container
+pnpm local:tmux:down
+# or: stop PIDs, free :7420-7422, pnpm local:dynamodb:down
 rm -rf "$WORK"             # optional — drop demo workspace
 ```
 
@@ -429,7 +423,9 @@ rm -rf "$WORK"             # optional — drop demo workspace
 | Symptom                                  | Likely cause                                                 | Fix                                                                                                 |
 | ---------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
 | Assign returns wrong / older `sessionId` | Stale queue in DynamoDB                                      | §2 `clearAll` on `AutoHarness` tables; restart API                                                  |
-| Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /agents`, `requiredLabels` vs worktree `labels`, agent log                               |
+| Session stuck `queued`                   | Agent not registered; labels mismatch; worktree offline/busy | Check `GET /api/v1/hosts`, `requiredLabels` vs worktree `labels`, agent log                         |
+| Grok / Claude "not signed in" / OAuth    | Child env has `HOME` but not vendor API keys                 | Sign in on the host, or `HARNESS_CHILD_ENV_ALLOWLIST=XAI_API_KEY,CURSOR_API_KEY`                    |
+| `agent` is not Cursor                    | Grok also ships an `agent` binary                            | Use `cursor-agent` as argv[0]                                                                       |
 | `EADDRINUSE` :7420                       | Previous API still running                                   | Kill listener on port; restart                                                                      |
 | Target missing from dropdown             | Provider account not attached to any host, or agent offline  | Attach it on the host detail page's Provider accounts tab, or `POST /commands` for a standalone one |
 | Grok hangs / interactive TUI             | Missing headless flags                                       | Use `-p` / `--single` + `--always-approve` + non-interactive output format                          |
