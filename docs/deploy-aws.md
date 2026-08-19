@@ -265,14 +265,10 @@ Two things purge deliberately does **not** finish immediately:
 One thing purge does not finish **at all**, confirmed against a real purged
 environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is
 created by the Lambda service on first invocation, not by CDK**, so it is not a
-stack resource and `cdk destroy` never touches it. None of the three application
-stacks configure `logRetention`, so these log groups default to never-expire and
-outlive the environment they were created for indefinitely unless deleted by hand
-(`aws logs delete-log-group --log-group-name /aws/lambda/<function-name>`) — find
-them with `aws logs describe-log-groups --log-group-name-prefix
-/aws/lambda/AutoHarness-<environment>`. [costs.md](costs.md#cloudwatch) already
-recommends setting 7–14 day retention; no stack currently implements that
-recommendation.
+stack resource and `cdk destroy` never touches it. Runtime and web Lambdas now
+set 14-day CloudWatch log retention, so leftover
+`/aws/lambda/AutoHarness-<environment>*` groups expire after that window instead
+of living forever.
 
 Purge also does not touch the account-level CDK bootstrap assets — the
 `cdk-hnb659fds-assets-*` S3 staging bucket and the

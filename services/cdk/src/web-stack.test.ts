@@ -17,7 +17,8 @@ describe("AutoHarnessWebStack", () => {
     });
     const template = Template.fromStack(stack);
 
-    template.resourceCountIs("AWS::Lambda::Function", 1);
+    template.resourceCountIs("AWS::Lambda::Function", 2);
+    template.hasResourceProperties("Custom::LogRetention", { RetentionInDays: 14 });
     template.hasResourceProperties("AWS::Lambda::Function", {
       Environment: {
         Variables: {

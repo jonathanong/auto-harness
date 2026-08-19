@@ -7,6 +7,7 @@ import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 import { bootstrapSecretParams, grantBootstrapSecretsAccess } from "./bootstrap-secret-param.ts";
@@ -54,6 +55,7 @@ export class AutoHarnessRuntimeStack extends Stack {
       bundling: { minify: true, sourceMap: true },
       entry: lambdaEntry,
       environment: commonEnvironment,
+      logRetention: RetentionDays.TWO_WEEKS,
       memorySize: 256,
       runtime: lambda.Runtime.NODEJS_22_X,
     } satisfies Partial<nodejs.NodejsFunctionProps>;
