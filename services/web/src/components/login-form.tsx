@@ -1,14 +1,13 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "@auto-harness/ui";
 
-import { safeReturnPath } from "../lib/auth-session.ts";
+import { navigateAfterLogin } from "../lib/auth-session.ts";
 import { apiFetch } from "../lib/client-api.ts";
 
 export function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +41,7 @@ export function LoginForm() {
                 setError("Invalid username or password.");
                 return;
               }
-              router.replace(safeReturnPath(searchParams.get("returnTo")));
-              router.refresh();
+              navigateAfterLogin(searchParams.get("returnTo"));
             });
           }}
         >
