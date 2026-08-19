@@ -292,8 +292,8 @@ export async function tryAssignSession(
                     Key: { id: opts.providerAccountId },
                     UpdateExpression: "SET lastAssignedAt = :now, updatedAt = :now",
                     ConditionExpression:
-                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR usageLimitedUntil <= :now)",
-                    ExpressionAttributeValues: { ":now": opts.now },
+                      "attribute_exists(id) AND (attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType) OR usageLimitedUntil <= :now)",
+                    ExpressionAttributeValues: { ":now": opts.now, ":nullType": "NULL" },
                   },
                 },
               ]

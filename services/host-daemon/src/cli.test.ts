@@ -13,7 +13,7 @@ import {
 const sampleConfig: DaemonConfig = {
   hostId: "a1",
   logLevel: "info",
-  providerAccounts: [],
+  providerAccounts: [{ providerAccountId: "acct-1" }],
   commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },
   repositories: [
     {
@@ -79,6 +79,7 @@ describe("runCli", () => {
     const a = deps();
     expect(await runCli(["node", "x", "--", "status"], {}, a)).toBe(0);
     expect(a.logs[0]).toContain("a1");
+    expect(a.logs[0]).toContain("acct-1");
   });
 
   it("status uses env-bootstrapped config", async () => {
@@ -118,6 +119,7 @@ describe("printUsage / main / defaults", () => {
     const lines: string[] = [];
     printUsage((m) => lines.push(m));
     expect(lines[0]).toMatch(/local-1/);
+    expect(lines[0]).toMatch(/Hosts page/);
     const d = createDefaultRunSessionDeps();
     expect(typeof d.loadConfig).toBe("function");
   });

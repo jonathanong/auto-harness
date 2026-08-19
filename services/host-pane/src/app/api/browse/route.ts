@@ -3,6 +3,8 @@ import { readdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, basename, join, relative, resolve } from "node:path";
 
+import { vendorWorktreeRootNames } from "@auto-harness/shared";
+
 export const dynamic = "force-dynamic";
 
 const MAX_RESULTS = 20;
@@ -42,10 +44,11 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ items: [] });
   }
 
+  const vendorRoots = new Set(vendorWorktreeRootNames());
   const items = entries
     .filter((e) => e.isDirectory())
     .filter((e) => e.name.toLowerCase().startsWith(prefix))
-    .filter((e) => prefix.startsWith(".") || !e.name.startsWith("."))
+    .filter((e) => prefix.startsWith(".") || !e.name.startsWith(".") || vendorRoots.has(e.name))
     .map((e) => e.name)
     .toSorted((a, b) => a.localeCompare(b))
     .slice(0, MAX_RESULTS)
