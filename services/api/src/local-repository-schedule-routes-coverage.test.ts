@@ -63,10 +63,11 @@ describe("repository and schedule route coverage", () => {
     for (const body of [
       { ...base, ref: 1 },
       { ...base, nextRunAt: 1 },
+      { ...base, prompt: 1 },
     ]) {
       expect((await invoke(plane, "POST", "/api/v1/schedules", body)).status).toBe(400);
     }
-    for (const body of [{ ref: 1 }, { nextRunAt: 1 }]) {
+    for (const body of [{ ref: 1 }, { nextRunAt: 1 }, { prompt: 1 }]) {
       expect((await invoke(plane, "PATCH", "/api/v1/schedules/schedule", body)).status).toBe(400);
     }
   });
@@ -100,8 +101,10 @@ describe("repository and schedule route coverage", () => {
       enabled: false,
       ref: "feature/test",
       concurrencyId: "group",
+      prompt: "  review the repo  ",
     });
     expect(created.status).toBe(201);
+    expect(created.json).toMatchObject({ prompt: "review the repo" });
     const updated = await invoke(plane, "PATCH", "/api/v1/schedules/second-schedule", {
       repositoryId: "repository",
       name: "changed",
@@ -114,8 +117,15 @@ describe("repository and schedule route coverage", () => {
       enabled: true,
       ref: "feature/changed",
       concurrencyId: "changed-group",
+      prompt: "lint the tree",
     });
     expect(updated.status).toBe(200);
+    expect(updated.json).toMatchObject({ prompt: "lint the tree" });
+    const triggered = await invoke(plane, "POST", "/api/v1/schedules/second-schedule/trigger", {});
+    expect(triggered).toMatchObject({
+      status: 201,
+      json: { prompt: "lint the tree", type: "scheduled", source: "schedule" },
+    });
   });
 
   it("maps an otherwise valid trigger failure to TRIGGER_ERROR", async () => {

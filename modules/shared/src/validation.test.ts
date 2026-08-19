@@ -123,6 +123,15 @@ describe("validateCreateSessionInput", () => {
   it("rejects missing prompt", () => {
     const result = validateCreateSessionInput({ ...base, prompt: "" });
     expect(result).toEqual({ ok: false, error: "prompt is required" });
+    expect(validateCreateSessionInput({ ...base, prompt: 1 })).toEqual({
+      ok: false,
+      error: "prompt is required",
+    });
+  });
+
+  it("allows an empty prompt for scheduled sessions", () => {
+    const result = validateCreateSessionInput({ ...base, prompt: "", type: "scheduled" });
+    expect(result).toMatchObject({ ok: true, value: { prompt: "", type: "scheduled" } });
   });
 
   it("requires one tagged target", () => {

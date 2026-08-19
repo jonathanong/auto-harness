@@ -28,6 +28,7 @@ type Schedule = {
   lastRunAt: string | null;
   concurrencyId?: string | null;
   activeSessionId?: string | null;
+  prompt?: string;
 };
 
 export default async function SchedulesPage({

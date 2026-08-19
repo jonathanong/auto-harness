@@ -24,6 +24,8 @@ export type ScheduleRecord = {
   createdAt: string;
   ref?: string;
   concurrencyId?: string;
+  /** Prompt passed to the CLI when this schedule fires. Missing/blank stays empty. */
+  prompt?: string;
   /** Computed for API responses; never persisted. */
   activeSessionId?: string | null;
 };

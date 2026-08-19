@@ -11,6 +11,7 @@ import {
   listSchedulesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -266,7 +267,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
   return {
     id,
     repositoryId: schedule.repositoryId,
-    prompt: `scheduled:${schedule.name}`,
+    prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: [...schedule.fallbacks],
     targetLabels: [...schedule.targetLabels],
@@ -308,7 +309,7 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
 } {
   return {
     repositoryId: schedule.repositoryId,
-    prompt: `scheduled:${schedule.name}`,
+    prompt: scheduledSessionPrompt(schedule),
     target: schedule.target,
     fallbacks: schedule.fallbacks,
     timeout: schedule.timeout,

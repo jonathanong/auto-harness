@@ -10,6 +10,7 @@ import {
   type SessionTarget,
   type SessionTargetSelection,
 } from "../session-target.ts";
+import { SchedulePromptField } from "./schedule-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 
 export type EditableSchedule = {
@@ -26,6 +27,7 @@ export type EditableSchedule = {
   ref?: string;
   concurrencyId?: string | null;
   activeSessionId?: string | null;
+  prompt?: string;
 };
 
 export function ScheduleEditForm({
@@ -59,6 +61,7 @@ export function ScheduleEditForm({
           enabled: fd.get("enabled") === "on",
           ref: String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim(),
+          prompt: String(fd.get("prompt") ?? ""),
         };
         start(async () => {
           const res = await fetch(
@@ -101,6 +104,7 @@ export function ScheduleEditForm({
           data-pw="edit-schedule-name"
         />
       </div>
+      <SchedulePromptField defaultValue={schedule.prompt} />
       <SessionRoutingFields
         targets={targets}
         prefix="schedule"

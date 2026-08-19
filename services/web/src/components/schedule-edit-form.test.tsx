@@ -24,6 +24,7 @@ const schedule: EditableSchedule = {
   ref: "main",
   concurrencyId: "nightly",
   activeSessionId: null,
+  prompt: "review the repo",
 };
 
 describe("ScheduleEditForm", () => {
@@ -49,6 +50,7 @@ describe("ScheduleEditForm", () => {
       fallbacks: [{ commandId: "c1" }],
       enabled: false,
       concurrencyId: "stable",
+      prompt: "review the repo",
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();

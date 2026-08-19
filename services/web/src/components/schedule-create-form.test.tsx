@@ -19,6 +19,7 @@ const schedule = {
   queueTtlSeconds: 3600,
   nextRunAt: "2026-08-11T01:00:00.000Z",
   ref: "main",
+  prompt: "review the repo",
 };
 
 function fill(view: ReturnType<typeof mountForm>) {
@@ -36,6 +37,7 @@ describe("ScheduleCreateForm", () => {
     expect(form.checkValidity()).toBe(false);
     fill(view);
     setValue(field(view.container, "schedule-concurrency-id"), "  nightly  ");
+    setValue(field(view.container, "schedule-prompt"), "review the repo");
     expect(form.checkValidity()).toBe(true);
     submit(form);
     await act(async () => Promise.resolve());
@@ -49,6 +51,7 @@ describe("ScheduleCreateForm", () => {
       target: { commandId: "cmd/1" },
       fallbacks: [],
       concurrencyId: "nightly",
+      prompt: "review the repo",
     });
     expect(router.push).toHaveBeenCalledWith("/schedules/schedule%2F1?toast=Schedule+created.");
     view.unmount();
@@ -97,6 +100,9 @@ describe("ScheduleCreateForm", () => {
     );
     expect(field(view.container, "form-edit-schedule-schedule/1")).toBeTruthy();
     expect(field<HTMLInputElement>(view.container, "schedule-name").value).toBe("Nightly");
+    expect(field<HTMLTextAreaElement>(view.container, "schedule-prompt").value).toBe(
+      "review the repo",
+    );
     expect(
       field<HTMLButtonElement>(view.container, "schedule-edit-submit-schedule/1").textContent,
     ).toBe("Save schedule");

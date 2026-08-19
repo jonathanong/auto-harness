@@ -56,6 +56,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("schedule-error")).toBeHidden();
     await page.getByTestId("schedule-repository-id").selectOption(catalogRepoId);
     await page.getByTestId("schedule-name").fill(name);
+    await page.getByTestId("schedule-prompt").fill("review the repo");
     await page.getByTestId("schedule-target").selectOption(`command:${commandId}`);
     await page.getByTestId("schedule-cron").fill("0 * * * *");
     await page.getByTestId("schedule-queue-ttl").fill("1234");
@@ -65,6 +66,7 @@ test.describe("control plane schedules", () => {
     await expect(page.getByTestId("page-schedule-detail")).toBeVisible();
     await expect(page.getByTestId("schedule-detail-name")).toHaveText(name);
     await expect(page.getByTestId("form-edit-schedule")).toBeVisible();
+    await expect(page.getByTestId("schedule-prompt")).toHaveValue("review the repo");
     await expect(page.getByTestId("edit-schedule-queue-ttl")).toHaveValue("1234");
     const detailUrl = page.url();
     await expect(page.getByTestId("schedule-history-table")).toContainText("No runs yet.");

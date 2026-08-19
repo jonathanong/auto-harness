@@ -107,6 +107,7 @@ describe("ControlPlane operator management", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
       ref: "main",
       enabled: true,
+      prompt: "run nightly checks",
     });
     expect(sched.id).toBe("sched-1");
     expect(plane.getSchedule("sched-1")?.name).toBe("nightly");
@@ -145,7 +146,7 @@ describe("ControlPlane operator management", () => {
       expect(fired.session.source).toBe("schedule");
       expect(fired.session.targetLabels).toEqual(["codex-fix"]);
       expect(fired.session.ref).toBe("develop");
-      expect(fired.session.prompt).toBe("scheduled:nightly2");
+      expect(fired.session.prompt).toBe("run nightly checks");
     }
     expect(plane.getSchedule("sched-1")?.lastRunAt).toBe("2026-01-02T00:00:00.000Z");
     expect(plane.getSchedule("sched-1")?.nextRunAt).toBe("2026-01-02T01:00:00.000Z");

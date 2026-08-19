@@ -10,6 +10,7 @@ import {
   type SessionTarget,
   type SessionTargetSelection,
 } from "../session-target.ts";
+import { SchedulePromptField } from "./schedule-prompt-field.tsx";
 import { SessionRoutingFields } from "./session-routing-fields.tsx";
 
 type ScheduleFormValue = {
@@ -22,6 +23,7 @@ type ScheduleFormValue = {
   timeout: number;
   queueTtlSeconds: number;
   ref?: string;
+  prompt?: string;
 };
 
 export function ScheduleCreateForm({
@@ -57,6 +59,7 @@ export function ScheduleCreateForm({
           timeout: Number(fd.get("timeout") ?? 600),
           ref: String(fd.get("ref") ?? "") || undefined,
           concurrencyId: String(fd.get("concurrencyId") ?? "").trim() || undefined,
+          prompt: String(fd.get("prompt") ?? ""),
         };
         start(async () => {
           const res = await fetch(
@@ -118,6 +121,7 @@ export function ScheduleCreateForm({
           data-pw="schedule-name"
         />
       </div>
+      <SchedulePromptField defaultValue={schedule?.prompt} />
       <SessionRoutingFields
         targets={targets}
         prefix="schedule"

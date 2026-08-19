@@ -219,6 +219,7 @@ export class ControlPlaneBase {
     enabled?: boolean;
     ref?: string;
     concurrencyId?: string;
+    prompt?: string;
     id?: string;
   }): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
     return schedules.putSchedule(this.state, input);
