@@ -46,6 +46,38 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
+  it("applies grok catalog defaults without a -- separator or --output-format plain", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(json({ id: "p/1" }))
+      .mockResolvedValueOnce(json({ id: "c/1" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<ProviderCreateForm />);
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok");
+    });
+    expect(field<HTMLInputElement>(view.container, "provider-catalog-command-name").value).toBe(
+      "grok-print",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "provider-catalog-argv").value).toBe(
+      "grok\n--always-approve\n--max-turns\n3\n-p",
+    );
+    expect(
+      field<HTMLInputElement>(view.container, "provider-catalog-append-prompt-separator").checked,
+    ).toBe(false);
+    submit(field(view.container, "form-provider-catalog"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      name: "grok-print",
+      argv: ["grok", "--always-approve", "--max-turns", "3", "-p"],
+      appendPrompt: true,
+      appendPromptSeparator: false,
+      providerId: "p/1",
+    });
+    view.unmount();
+  });
+
   it("submits appendPromptSeparator: false once unchecked, for tools like printf that treat -- as data", async () => {
     const fetch = vi
       .fn()
