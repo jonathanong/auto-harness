@@ -1,4 +1,4 @@
-export type CatalogCommandDefaults = {
+type CatalogCommandDefaults = {
   commandName: string;
   argv: string[];
   appendPrompt: boolean;
