@@ -6,9 +6,11 @@ import { PrimaryEmptyState } from "./primary-empty-state.tsx";
 export function DashboardEmptyStates({
   showHosts,
   showSessions,
+  hasOnlineHost = false,
 }: {
   showHosts: boolean;
   showSessions: boolean;
+  hasOnlineHost?: boolean;
 }) {
   return (
     <>
@@ -21,9 +23,15 @@ export function DashboardEmptyStates({
               </Action>
             </li>
             <li>
-              <Action href="/hosts" pw="dashboard-empty-connect-host">
-                Connect a host
-              </Action>
+              {hasOnlineHost ? (
+                <Action href="/hosts" pw="dashboard-empty-attach-host-repo">
+                  Attach a repository to a host
+                </Action>
+              ) : (
+                <Action href="/hosts" pw="dashboard-empty-connect-host">
+                  Connect a host
+                </Action>
+              )}
             </li>
             <li>
               <Action href="/sessions/new" pw="dashboard-empty-create-session">
