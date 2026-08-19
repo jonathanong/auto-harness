@@ -115,6 +115,7 @@ describe("durable schedule management updates", () => {
       expect(input.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
       expect(input.UpdateExpression).toContain("#ref = :ref");
       expect(input.UpdateExpression).toContain("concurrencyId = :concurrencyId");
+      expect(input.UpdateExpression).toContain("prompt = :prompt");
       return {
         Attributes: { ...schedule("main"), nextRunAt: "fresh-next", lastRunAt: "fresh-last" },
       };
@@ -123,7 +124,7 @@ describe("durable schedule management updates", () => {
     await expect(
       updateScheduleManagement(
         storage,
-        { ...schedule("main"), concurrencyId: "schedule-1" },
+        { ...schedule("main"), concurrencyId: "schedule-1", prompt: "review the repo" },
         "old-next",
       ),
     ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });

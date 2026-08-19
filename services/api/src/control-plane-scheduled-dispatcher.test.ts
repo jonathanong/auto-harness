@@ -198,6 +198,7 @@ describe("scheduled main-checkout dispatcher", () => {
     const session = trigger(plane, {
       id: "provider-schedule",
       target: { providerId: "provider" },
+      prompt: "review the repository",
     });
 
     const messages: HostWireMessage[] = [];
@@ -206,12 +207,12 @@ describe("scheduled main-checkout dispatcher", () => {
     expect(plane.getSession(session.id)?.resolvedArgv).toEqual([
       "claude",
       "--",
-      "scheduled:nightly",
+      "review the repository",
     ]);
     expect(messages[0]).toMatchObject({
       type: "session:assign",
       repositoryId: "repo-1",
-      resolvedArgv: ["claude", "--", "scheduled:nightly"],
+      resolvedArgv: ["claude", "--", "review the repository"],
       worktreeId: null,
     });
     plane.handleHostMessage({

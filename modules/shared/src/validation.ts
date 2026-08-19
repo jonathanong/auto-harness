@@ -118,7 +118,11 @@ export function validateCreateSessionInput(input: {
   if (!isNonEmptyString(input.repositoryId)) {
     return { ok: false, error: "repositoryId is required" };
   }
-  if (!isNonEmptyString(input.prompt)) {
+  if (typeof input.prompt !== "string") {
+    return { ok: false, error: "prompt is required" };
+  }
+  // Scheduled fires use the stored schedule prompt, which may be blank.
+  if (!input.prompt && input.type !== "scheduled") {
     return { ok: false, error: "prompt is required" };
   }
   if (new TextEncoder().encode(input.prompt).length > MAX_PROMPT_BYTES) {

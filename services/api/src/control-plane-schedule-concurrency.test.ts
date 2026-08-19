@@ -26,7 +26,7 @@ function makeDurableSchedulePlane() {
   const active = {
     id: "active-session",
     repositoryId: "repo-1",
-    prompt: "scheduled:nightly",
+    prompt: "run nightly checks",
     target: { commandId: "cmd-base" },
     fallbacks: [],
     targetLabels: ["base"],

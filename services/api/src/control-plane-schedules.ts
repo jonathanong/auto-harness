@@ -16,6 +16,11 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import {
+  applyStoredPrompt,
+  storedSchedulePrompt,
+  type ScheduleInput,
+} from "./control-plane-schedule-prompt.ts";
 
 export {
   evaluateCron,
@@ -25,22 +30,6 @@ export {
   tryClaimScheduleFire,
   tryClaimScheduleFireDurable,
 } from "./control-plane-schedule-fire.ts";
-
-type ScheduleInput = {
-  repositoryId: string;
-  name: string;
-  target: unknown;
-  fallbacks?: unknown;
-  cron: string;
-  timeout: number;
-  queueTtlSeconds?: number;
-  /** Legacy client input. The server validates it but always derives the cursor. */
-  nextRunAt?: string;
-  enabled?: boolean;
-  ref?: string;
-  concurrencyId?: string;
-  id?: string;
-};
 
 export function putSchedule(
   state: ControlPlaneState,
@@ -79,6 +68,7 @@ function preparePutSchedule(
   const labels = resolveTargetLabels(state, routing.value.target, routing.value.fallbacks);
   if (!labels.ok) return labels;
   const id = input.id ?? state.scheduleIdFactory();
+  const prompt = storedSchedulePrompt(input.prompt);
   const rec: ScheduleRecord = {
     id,
     repositoryId: input.repositoryId,
@@ -95,6 +85,7 @@ function preparePutSchedule(
     createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId: input.concurrencyId?.trim() || `schedule-${id}`,
+    ...(prompt !== undefined ? { prompt } : {}),
   };
   return { ok: true, schedule: rec };
 }
@@ -189,6 +180,7 @@ export function prepareUpdateSchedule(
       ? { concurrencyId: patch.concurrencyId.trim() || `schedule-${id}` }
       : {}),
   };
+  if (patch.prompt !== undefined) applyStoredPrompt(next, patch.prompt);
   return { ok: true, schedule: next };
 }
 

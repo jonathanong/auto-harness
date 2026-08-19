@@ -796,18 +796,19 @@ Create a scheduled task. **Operator or admin.**
 }
 ```
 
-| Field             | Type     | Required | Description                                                                                                                           |
-| ----------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `repositoryId`    | string   | ✓        | Target repository                                                                                                                     |
-| `name`            | string   | ✓        | Human-readable name for the schedule                                                                                                  |
-| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                    |
-| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                  |
-| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                 |
-| `cron`            | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).            |
-| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                     |
-| `enabled`         | boolean  | ✗        | Default: `true`                                                                                                                       |
-| `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                 |
-| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is. |
+| Field             | Type     | Required | Description                                                                                                                                        |
+| ----------------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryId`    | string   | ✓        | Target repository                                                                                                                                  |
+| `name`            | string   | ✓        | Human-readable name for the schedule                                                                                                               |
+| `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target                                                                                                 |
+| `fallbacks`       | object[] | ✗        | Ordered fallback targets; same semantics as sessions                                                                                               |
+| `queueTtlSeconds` | number   | ✗        | Absolute queue lifetime for each fire; default 8 days                                                                                              |
+| `cron`            | string   | ✓        | Strict five-field UTC cron. Numeric wildcards, lists, ranges, and steps are supported (for example `0,30 6-18/2 * * 1-5`).                         |
+| `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                                  |
+| `enabled`         | boolean  | ✗        | Default: `true`                                                                                                                                    |
+| `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                              |
+| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is.              |
+| `prompt`          | string   | ✗        | Prompt passed to the CLI when this schedule fires. Trimmed on write. Missing or blank stays empty — the server does not invent `scheduled:<name>`. |
 
 The server derives `nextRunAt` from `cron` and its UTC clock; clients cannot choose the
 cursor. A create or update resets the cursor to the first matching minute strictly after the

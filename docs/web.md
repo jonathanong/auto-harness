@@ -337,7 +337,7 @@ Displays all configured schedules in a table:
 
 ### Schedule Detail
 
-- Edit schedule fields (name, target, cron, enabled)
+- Edit schedule fields (name, prompt, target, cron, enabled)
 - Run history — list of past sessions created by this schedule, filtered by persisted `scheduleId`
   provenance rather than a concurrency ID that may be shared with other task sources. Each row uses the
   shared semantic status badge, an exact UTC creation timestamp, and terminal duration when available.
@@ -346,15 +346,16 @@ Displays all configured schedules in a table:
 
 ### Create/Edit Schedule Form
 
-| Field      | Type         | Required | Description                                                                              |
-| ---------- | ------------ | -------- | ---------------------------------------------------------------------------------------- |
-| Repository | Text input   | ✓        | Target repository id                                                                     |
-| Name       | Text input   | ✓        | Human-readable schedule name                                                             |
-| Target     | Dropdown     | ✓        | Same `SessionTargetSelect` as Create Session — Provider or Command, never a shell string |
-| Fallbacks  | Ordered list | ✗        | Ordered fallback Provider/Command targets                                                |
-| Queue TTL  | Number input | ✗        | Per-fire absolute queue lifetime; default 8 days                                         |
-| Cron       | Text input   | ✓        | Raw 5-field cron expression                                                              |
-| Enabled    | Toggle       | ✗        | Default: enabled                                                                         |
+| Field      | Type         | Required | Description                                                                                 |
+| ---------- | ------------ | -------- | ------------------------------------------------------------------------------------------- |
+| Repository | Text input   | ✓        | Target repository id                                                                        |
+| Name       | Text input   | ✓        | Human-readable schedule name                                                                |
+| Prompt     | Textarea     | ✗        | Prompt sent to the CLI on each fire. Missing or blank stays empty; never `scheduled:<name>` |
+| Target     | Dropdown     | ✓        | Same `SessionTargetSelect` as Create Session — Provider or Command, never a shell string    |
+| Fallbacks  | Ordered list | ✗        | Ordered fallback Provider/Command targets                                                   |
+| Queue TTL  | Number input | ✗        | Per-fire absolute queue lifetime; default 8 days                                            |
+| Cron       | Text input   | ✓        | Raw 5-field cron expression                                                                 |
+| Enabled    | Toggle       | ✗        | Default: enabled                                                                            |
 
 ---
 

@@ -88,6 +88,8 @@ export type ScheduleRecord = {
   createdAt: string;
   ref?: string;
   concurrencyId?: string;
+  /** Prompt passed to the CLI when this schedule fires. Missing/blank stays empty. */
+  prompt?: string;
 };
 
 export const LOG_STREAMS = ["stdout", "stderr", "system"] as const;

@@ -117,6 +117,7 @@ describe("createLocalApp operator management REST", () => {
       nextRunAt: "2026-01-01T00:00:00.000Z",
       ref: "main",
       enabled: true,
+      prompt: "run nightly checks",
     });
     expect(sched.status).toBe(201);
     expect(sched.json).toMatchObject({ id: "sched-1", name: "nightly" });
@@ -164,7 +165,7 @@ describe("createLocalApp operator management REST", () => {
     expect(triggered.json).toMatchObject({
       type: "scheduled",
       source: "schedule",
-      prompt: "scheduled:nightly2",
+      prompt: "run nightly checks",
       targetLabels: ["codex-fix"],
     });
     expect((await invoke("PATCH", "/api/v1/schedules/sched-1", { enabled: false })).status).toBe(

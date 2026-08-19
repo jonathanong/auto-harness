@@ -298,6 +298,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         });
         return true;
       }
+      if (body.prompt !== undefined && typeof body.prompt !== "string") {
+        send(res, 400, {
+          error: { code: "VALIDATION_ERROR", message: "prompt must be a string" },
+        });
+        return true;
+      }
       if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
         send(res, 400, {
           error: {
@@ -342,6 +348,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.enabled === "boolean" ? { enabled: body.enabled } : {}),
         ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
+        ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
       });
       if (!result.ok) {
@@ -537,6 +544,12 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           });
           return true;
         }
+        if (body.prompt !== undefined && typeof body.prompt !== "string") {
+          send(res, 400, {
+            error: { code: "VALIDATION_ERROR", message: "prompt must be a string" },
+          });
+          return true;
+        }
         if (body.nextRunAt !== undefined && typeof body.nextRunAt !== "string") {
           send(res, 400, {
             error: {
@@ -571,6 +584,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.ref === "string" ? { ref: body.ref } : {}),
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
+          ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         });
         if (!result.ok) {
           if (

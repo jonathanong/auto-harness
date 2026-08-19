@@ -262,6 +262,8 @@ export async function updateScheduleManagement(
     else set.push("#ref = :ref");
     if (rec.concurrencyId === undefined) remove.push("concurrencyId");
     else set.push("concurrencyId = :concurrencyId");
+    if (rec.prompt === undefined) remove.push("prompt");
+    else set.push("prompt = :prompt");
     const update = {
       TableName: ctx.tables.schedules,
       Key: { id: rec.id },
@@ -283,6 +285,7 @@ export async function updateScheduleManagement(
         ":createdAt": rec.createdAt,
         ...(rec.ref === undefined ? {} : { ":ref": rec.ref }),
         ...(rec.concurrencyId === undefined ? {} : { ":concurrencyId": rec.concurrencyId }),
+        ...(rec.prompt === undefined ? {} : { ":prompt": rec.prompt }),
       },
     };
     if (markers?.length) {
