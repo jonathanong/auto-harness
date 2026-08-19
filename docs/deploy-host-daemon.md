@@ -19,7 +19,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 ## Prerequisites
 
 - Node ≥ 22.18, Git 2.20+
-- Target AI CLIs on `PATH` (`grok`, `codex`, …) for real profiles
+- Target AI CLIs on `PATH` (`grok`, `codex`, `claude`, `cursor-agent`, …) for real profiles
 - Control plane reachable (local [deploy-local.md](deploy-local.md) or AWS [deploy-aws.md](deploy-aws.md))
 - Bound service-account API key when talking to a secured control plane ([auth.md](auth.md#vps-agent-authentication))
 
@@ -35,13 +35,13 @@ On the agent host:
 4. **Configure host inventory via API/UI** (not a local file): absolute repo/worktree paths, plus which catalog Provider Accounts are attached to this host. Commands resolve to named, fixed argv (D4 — no free-form shell) from the global Provider/Provider Account/Command catalogs, not a per-host profile map.
 5. Set **only** identity env vars on the host:
 
-| Variable                      | Role                                                                                                          |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `HARNESS_HOST_ID`             | Required agent id                                                                                             |
-| `HARNESS_API_URL`             | Control plane base (`https://…` or `wss://…/ws`)                                                              |
-| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                       |
-| `HARNESS_LOG_LEVEL`           | Optional (`info` default)                                                                                     |
-| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`) |
+| Variable                      | Role                                                                                                                                                                              |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                 |
+| `HARNESS_API_URL`             | Control plane base (`https://…` or `wss://…/ws`)                                                                                                                                  |
+| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                           |
+| `HARNESS_LOG_LEVEL`           | Optional (`info` default)                                                                                                                                                         |
+| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`, `CURSOR_API_KEY`, `XAI_API_KEY`). HOME-login CLIs do not need this. |
 
 6. Start daemon:
 

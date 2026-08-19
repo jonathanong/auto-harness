@@ -38,7 +38,11 @@ export async function putProviderAccount(
   ctx: PlaneStorageCtx,
   rec: ProviderAccountRecord,
 ): Promise<void> {
-  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.providerAccounts, Item: { ...rec } }));
+  const item: Record<string, unknown> = { ...rec };
+  for (const key of ["usageLimitedUntil", "lastUsageLimitedAt", "lastAssignedAt"] as const) {
+    if (item[key] == null) delete item[key];
+  }
+  await ctx.doc.send(new PutCommand({ TableName: ctx.tables.providerAccounts, Item: item }));
 }
 
 /**
@@ -63,6 +67,7 @@ export async function updateProviderAccount(
   },
 ): Promise<boolean> {
   const sets: string[] = ["updatedAt = :updatedAt"];
+  const removes: string[] = [];
   const values: Record<string, unknown> = {
     ":expectedUpdatedAt": opts.expectedUpdatedAt,
     ":updatedAt": opts.updatedAt,
@@ -80,15 +85,22 @@ export async function updateProviderAccount(
     values[":usageLimitCooldownSeconds"] = opts.patch.usageLimitCooldownSeconds;
   }
   if (opts.patch.usageLimitedUntil !== undefined) {
-    sets.push("usageLimitedUntil = :usageLimitedUntil");
-    values[":usageLimitedUntil"] = opts.patch.usageLimitedUntil;
+    if (opts.patch.usageLimitedUntil === null) {
+      removes.push("usageLimitedUntil");
+    } else {
+      sets.push("usageLimitedUntil = :usageLimitedUntil");
+      values[":usageLimitedUntil"] = opts.patch.usageLimitedUntil;
+    }
   }
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.providerAccounts,
         Key: { id: opts.id },
-        UpdateExpression: `SET ${sets.join(", ")}`,
+        UpdateExpression:
+          removes.length > 0
+            ? `SET ${sets.join(", ")} REMOVE ${removes.join(", ")}`
+            : `SET ${sets.join(", ")}`,
         ConditionExpression: "attribute_exists(id) AND updatedAt = :expectedUpdatedAt",
         ExpressionAttributeValues: values,
       }),
@@ -120,21 +132,23 @@ export async function clearProviderAccountUsageLimit(
   const expectedCooldown = opts.expectedUsageLimitedUntil;
   const values: Record<string, unknown> = { ":expectedUpdatedAt": opts.expectedUpdatedAt };
   const cooldownCondition =
-    expectedCooldown === undefined
-      ? "attribute_not_exists(usageLimitedUntil)"
+    expectedCooldown == null
+      ? "(attribute_not_exists(usageLimitedUntil) OR attribute_type(usageLimitedUntil, :nullType))"
       : "usageLimitedUntil = :expectedUsageLimitedUntil";
-  if (expectedCooldown !== undefined) values[":expectedUsageLimitedUntil"] = expectedCooldown;
+  if (expectedCooldown !== undefined && expectedCooldown !== null) {
+    values[":expectedUsageLimitedUntil"] = expectedCooldown;
+  }
+  if (expectedCooldown == null) values[":nullType"] = "NULL";
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.providerAccounts,
         Key: { id: opts.id },
-        UpdateExpression: "SET usageLimitedUntil = :usageLimitedUntil, updatedAt = :updatedAt",
+        UpdateExpression: "REMOVE usageLimitedUntil SET updatedAt = :updatedAt",
         ConditionExpression: `attribute_exists(id) AND updatedAt = :expectedUpdatedAt AND ${cooldownCondition}`,
         ExpressionAttributeValues: {
           ...values,
           ":updatedAt": opts.updatedAt,
-          ":usageLimitedUntil": null,
         },
       }),
     );
@@ -159,7 +173,14 @@ export async function getProviderAccount(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.providerAccounts, Key: { id } }),
   );
-  return (res.Item as ProviderAccountRecord | undefined) ?? null;
+  const item = res.Item;
+  if (!item) return null;
+  return {
+    ...(item as ProviderAccountRecord),
+    usageLimitedUntil: (item.usageLimitedUntil as string | null | undefined) ?? null,
+    lastUsageLimitedAt: (item.lastUsageLimitedAt as string | null | undefined) ?? null,
+    lastAssignedAt: (item.lastAssignedAt as string | null | undefined) ?? null,
+  };
 }
 
 export async function listProviderAccounts(ctx: PlaneStorageCtx): Promise<ProviderAccountRecord[]> {
