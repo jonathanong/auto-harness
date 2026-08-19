@@ -78,6 +78,23 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
+  it("keeps edited grok argv when the name only gains trailing whitespace", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-argv"), "grok\n-p\n--custom");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok ");
+    });
+    expect(field<HTMLTextAreaElement>(view.container, "provider-catalog-argv").value).toBe(
+      "grok\n-p\n--custom",
+    );
+    view.unmount();
+  });
+
   it("submits appendPromptSeparator: false once unchecked, for tools like printf that treat -- as data", async () => {
     const fetch = vi
       .fn()

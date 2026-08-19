@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { catalogCommandDefaults, isSuggestedCommandName } from "./catalog-command-defaults.ts";
+import {
+  catalogCommandDefaults,
+  catalogProviderKey,
+  isSuggestedCommandName,
+} from "./catalog-command-defaults.ts";
 
 describe("catalogCommandDefaults", () => {
   it("returns grok -p defaults without a -- separator or --output-format plain", () => {
@@ -25,6 +29,12 @@ describe("catalogCommandDefaults", () => {
   it("returns null for unknown provider names", () => {
     expect(catalogCommandDefaults("codex")).toBeNull();
     expect(catalogCommandDefaults("")).toBeNull();
+  });
+
+  it("normalizes catalog keys so trailing spaces do not look like a new provider", () => {
+    expect(catalogProviderKey(" Grok ")).toBe("grok");
+    expect(catalogProviderKey("grok")).toBe("grok");
+    expect(catalogProviderKey("codex")).toBeNull();
   });
 });
 

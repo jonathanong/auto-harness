@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
 
-import { catalogCommandDefaults, isSuggestedCommandName } from "../lib/catalog-command-defaults.ts";
+import {
+  catalogCommandDefaults,
+  catalogProviderKey,
+  isSuggestedCommandName,
+} from "../lib/catalog-command-defaults.ts";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -27,8 +31,13 @@ export function ProviderCreateForm() {
   const [argvText, setArgvText] = useState("");
   const [appendPrompt, setAppendPrompt] = useState(true);
   const [appendPromptSeparator, setAppendPromptSeparator] = useState(true);
+  const lastCatalogKey = useRef<string | null>(null);
 
   function applyNameDefaults(name: string): void {
+    const key = catalogProviderKey(name);
+    if (key === lastCatalogKey.current) return;
+    lastCatalogKey.current = key;
+    if (key === null) return;
     const defaults = catalogCommandDefaults(name);
     if (!defaults) return;
     setCommandName((current) => (isSuggestedCommandName(current) ? defaults.commandName : current));

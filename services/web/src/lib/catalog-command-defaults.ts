@@ -10,6 +10,12 @@ export type CatalogCommandDefaults = {
  * name the operator typed. Grok's `-p`/`--single` takes the prompt as its option
  * value, so a `--` separator makes grok 1.0.5 exit 2.
  */
+/** Normalized catalog key, or null when the name has no preset. */
+export function catalogProviderKey(name: string): string | null {
+  const key = name.trim().toLowerCase();
+  return catalogCommandDefaults(name) ? key : null;
+}
+
 export function catalogCommandDefaults(name: string): CatalogCommandDefaults | null {
   const key = name.trim().toLowerCase();
   if (key === "grok") {
