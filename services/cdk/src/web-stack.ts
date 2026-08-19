@@ -3,6 +3,7 @@ import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
 import type { Construct } from "constructs";
 
 export type WebStackProps = StackProps & {
@@ -27,6 +28,7 @@ export class AutoHarnessWebStack extends Stack {
         HARNESS_AUTH_MODE: "required",
         HARNESS_WEB_REMOTE_AUTH: "1",
       },
+      logRetention: RetentionDays.TWO_WEEKS,
       memorySize: 1024,
       timeout: Duration.seconds(30),
     });
