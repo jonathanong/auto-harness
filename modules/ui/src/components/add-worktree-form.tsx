@@ -17,6 +17,18 @@ import { Label } from "./label.tsx";
 import { PathInput } from "./path-input.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
+function parseLabels(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function suggestedPath(repoPath: string, worktreeName: string, labelsRaw: string): string {
+  const name = worktreeName.trim();
+  return name ? defaultWorktreePath(repoPath, name, parseLabels(labelsRaw)) : "";
+}
+
 export function AddWorktreeForm({
   hostId,
   inventory,
@@ -74,10 +86,7 @@ export function AddWorktreeForm({
               id: newId(),
               name: wtName,
               path: wtPath,
-              labels: labels
-                .split(",")
-                .map((s) => s.trim())
-                .filter(Boolean),
+              labels: parseLabels(labels),
             });
             const r = await putInventory(hostId, next);
             if (!r.ok) {
@@ -104,8 +113,8 @@ export function AddWorktreeForm({
           onChange={(e) => {
             const v = e.target.value;
             setName(v);
-            if (!path || path === defaultWorktreePath(repo.path, name)) {
-              setPath(v.trim() ? defaultWorktreePath(repo.path, v.trim()) : "");
+            if (!path || path === suggestedPath(repo.path, name, labels)) {
+              setPath(suggestedPath(repo.path, v, labels));
             }
           }}
           required
@@ -121,18 +130,24 @@ export function AddWorktreeForm({
           value={path}
           onChange={(e) => setPath(e.target.value)}
           required
-          placeholder={defaultWorktreePath(repo.path, "my-wt")}
+          placeholder={suggestedPath(repo.path, "my-wt", labels)}
           data-pw={`add-worktree-path-${repo.id}`}
           browseEndpoint={browseEndpoint}
         />
       </div>
       <div className="space-y-1">
-        <Label tip="Scheduler labels (e.g. echo) used when matching work to worktrees">
+        <Label tip="Scheduler labels (e.g. echo, claude, cursor-agent). The first known vendor label suggests $REPO/.<vendor>/worktrees/<name>.">
           labels (comma-separated)
         </Label>
         <Input
           value={labels}
-          onChange={(e) => setLabels(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!path || path === suggestedPath(repo.path, name, labels)) {
+              setPath(suggestedPath(repo.path, name, v));
+            }
+            setLabels(v);
+          }}
           data-pw={`add-worktree-labels-${repo.id}`}
         />
       </div>

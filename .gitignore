@@ -1,5 +1,9 @@
 .claude/worktrees/
 .codex/worktrees/
+.cursor/worktrees/
+.grok/worktrees/
+.worktrees/
+.local-agent-e2e/
 node_modules/
 dist/
 coverage/

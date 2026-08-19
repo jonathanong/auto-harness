@@ -10,18 +10,16 @@
           "name": "wt-1",
           "path": "/ABS/PATH/TO/YOUR/REPO/.worktrees/wt-1",
           "labels": ["echo"]
+        },
+        {
+          "id": "wt-cursor",
+          "name": "cursor-1",
+          "path": "/ABS/PATH/TO/YOUR/REPO/.cursor/worktrees/cursor-1",
+          "labels": ["cursor-agent"]
         }
       ]
     }
   ],
-  "commandProfiles": {
-    "echo-prompt": {
-      "argv": ["echo"],
-      "appendPrompt": true
-    },
-    "true": {
-      "argv": ["true"],
-      "appendPrompt": false
-    }
-  }
+  "providerAccounts": [],
+  "commandProfiles": {}
 }

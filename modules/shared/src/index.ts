@@ -68,6 +68,17 @@ export {
 } from "./validation.ts";
 
 export {
+  CLI_RECIPES,
+  FALLBACK_WORKTREE_DIR,
+  VENDOR_WORKTREE_DIRS,
+  cliRecipeByProvider,
+  vendorWorktreeDir,
+  vendorWorktreeRootNames,
+  type CliRecipe,
+  type VendorWorktreeLabel,
+} from "./cli-recipes.ts";
+
+export {
   DEFAULT_ECHO_PROFILE,
   addHostWorktree,
   defaultWorktreePath,

@@ -26,14 +26,15 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 
 ### Repo harness owns (out of scope for Auto Harness)
 
-| Concern                              | Typical home in the product repo                                                               |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Event triggers                       | `workflow_run`, `issue_comment`, cron                                                          |
-| Policy before create                 | Transient CI triage, dedup, comment authz                                                      |
-| Prompt content                       | `docs/prompts/…`, render actions                                                               |
-| Trusted publish / write-token policy | If any — not the fire-and-forget create path                                                   |
-| Usage-limit policy                   | Auto Harness pauses the account and tries ordered fallbacks; callers may still resume manually |
-| Host sandbox / CLI hooks             | `.codex/`, bubblewrap, runner disk health                                                      |
+| Concern                              | Typical home in the product repo                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| Event triggers                       | `workflow_run`, `issue_comment`, cron                                                              |
+| Policy before create                 | Transient CI triage, dedup, comment authz                                                          |
+| Prompt content                       | `docs/prompts/…`, render actions                                                                   |
+| Trusted publish / write-token policy | If any — not the fire-and-forget create path                                                       |
+| Usage-limit policy                   | Auto Harness pauses the account and tries ordered fallbacks; callers may still resume manually     |
+| Host sandbox / CLI hooks             | `.codex/`, bubblewrap, runner disk health                                                          |
+| Gitignore Auto Harness worktrees     | `.claude/worktrees/`, `.grok/worktrees/`, `.cursor/worktrees/`, `.codex/worktrees/`, `.worktrees/` |
 
 ### Human observation (not the trigger job)
 
@@ -154,6 +155,7 @@ Illustrative step (after prompt is in `$PROMPT`):
     HARNESS_API_URL: ${{ secrets.HARNESS_API_URL }}
     HARNESS_TOKEN: ${{ secrets.HARNESS_TOKEN }}
     HARNESS_REPO_ID: ${{ secrets.HARNESS_REPO_ID }}
+    HARNESS_CODEX_PROVIDER_ID: ${{ secrets.HARNESS_CODEX_PROVIDER_ID }}
     PROMPT: ${{ steps.render.outputs.prompt }}
   run: |
     curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions" \
@@ -162,10 +164,11 @@ Illustrative step (after prompt is in `$PROMPT`):
       -d "$(jq -n \
         --arg repositoryId "$HARNESS_REPO_ID" \
         --arg prompt "$PROMPT" \
+        --arg providerId "$HARNESS_CODEX_PROVIDER_ID" \
         '{
           repositoryId: $repositoryId,
           prompt: $prompt,
-          command: "codex -p",
+          target: { providerId: $providerId },
           timeout: 6300,
           priority: 20,
           requiredLabels: ["codex"],

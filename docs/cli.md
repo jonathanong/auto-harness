@@ -122,12 +122,33 @@ GET /api/v1/host-inventories
           "name": "wt-1",
           "path": "/abs/path/to/repo/.worktrees/wt-1",
           "labels": ["echo"]
+        },
+        {
+          "id": "wt-cursor",
+          "name": "cursor-1",
+          "path": "/abs/path/to/repo/.cursor/worktrees/cursor-1",
+          "labels": ["cursor-agent"]
         }
       ]
     }
   ]
 }
 ```
+
+Suggested worktree path is `$REPO/.<vendor>/worktrees/<name>` when labels include a known vendor
+(`claude`, `grok`, `cursor` / `cursor-agent`, `codex`); otherwise `$REPO/.worktrees/<name>`.
+The daemon `git worktree add`s whatever absolute path you store.
+
+Empirically verified non-interactive Command argv (`appendPrompt: true`; prompt is the last
+element). These are recipes, not a seeded catalog — operators still create Provider/Command
+entries. Do **not** pass Cursor's `--worktree`.
+
+| Provider       | argv                                                                                 | Worktree dir        |
+| -------------- | ------------------------------------------------------------------------------------ | ------------------- |
+| `claude`       | `["claude", "-p"]`                                                                   | `.claude/worktrees` |
+| `codex`        | `["codex", "exec"]`                                                                  | `.codex/worktrees`  |
+| `grok`         | `["grok", "--always-approve", "--max-turns", "3", "--output-format", "plain", "-p"]` | `.grok/worktrees`   |
+| `cursor-agent` | `["cursor-agent", "-p", "--trust"]`                                                  | `.cursor/worktrees` |
 
 `commandProfiles` is still accepted on this document for host-config compatibility, but nothing
 resolves session/schedule commands from it anymore — it's always safe to send `{}`. What a session
