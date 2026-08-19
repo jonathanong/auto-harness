@@ -55,7 +55,7 @@ pnpm local:web
 pnpm local:host-pane
 # → http://127.0.0.1:7422
 pnpm local:daemon start
-# registers online; then add local repos at http://127.0.0.1:7422/repositories
+# registers online; then attach repos from the control plane Hosts page (:7421/hosts)
 ```
 
 Or run everything above — except DynamoDB Local, which stays in Docker — in one tmux session (one window each): `pnpm local:tmux`.
