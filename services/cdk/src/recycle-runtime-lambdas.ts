@@ -1,10 +1,18 @@
 import type { DeploymentConfig } from "./deployment-config.ts";
-import type { DeploymentDependencies } from "./deployment-support.ts";
+
+type RecycleDependencies = {
+  log: (message: string) => void;
+  query: (
+    command: string,
+    args: string[],
+  ) => Promise<{ status: number | null; stderr: string; stdout: string }>;
+  run: (command: string, args: string[]) => Promise<void>;
+};
 
 /** Force runtime Lambdas to cold-start so they re-read PUBLIC_BASE_URL_SSM_PARAM. */
 export async function recycleRuntimeLambdas(
   config: DeploymentConfig,
-  dependencies: DeploymentDependencies,
+  dependencies: RecycleDependencies,
 ): Promise<void> {
   const result = await dependencies.query("aws", [
     "cloudformation",
