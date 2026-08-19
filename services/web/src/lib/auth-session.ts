@@ -11,3 +11,13 @@ export function safeReturnPath(value: string | null | undefined): string {
 export function loginPath(returnTo: string): string {
   return `/login?${new URLSearchParams({ returnTo: safeReturnPath(returnTo) }).toString()}`;
 }
+
+/** Full navigation after login so CloudFront/App Router cannot leave "Signing in…" stuck. */
+export function navigateAfterLogin(
+  returnTo: string | null | undefined,
+  assign: (href: string) => void = (href) => {
+    globalThis.location.assign(href);
+  },
+): void {
+  assign(safeReturnPath(returnTo));
+}

@@ -1,8 +1,8 @@
 import { createHmac } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { hasValidSession, loginPath, safeReturnPath } from "./auth-session.ts";
+import { hasValidSession, loginPath, navigateAfterLogin, safeReturnPath } from "./auth-session.ts";
 
 const secret = "a".repeat(32);
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -15,6 +15,22 @@ describe("web auth session helpers", () => {
     expect(safeReturnPath("/\\example.com")).toBe("/");
     expect(safeReturnPath(null)).toBe("/");
     expect(loginPath("//example.com")).toBe("/login?returnTo=%2F");
+  });
+
+  it("navigates to a safe in-app path after login instead of a client router replace", () => {
+    const assign = vi.fn();
+    navigateAfterLogin("/hosts", assign);
+    navigateAfterLogin("https://evil.example", assign);
+    expect(assign).toHaveBeenNthCalledWith(1, "/hosts");
+    expect(assign).toHaveBeenNthCalledWith(2, "/");
+  });
+
+  it("defaults to location.assign so a successful login hard-navigates", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign });
+    navigateAfterLogin("/sessions");
+    expect(assign).toHaveBeenCalledWith("/sessions");
+    vi.unstubAllGlobals();
   });
 
   it("accepts only fresh signed session claims", async () => {
