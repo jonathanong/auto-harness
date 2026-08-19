@@ -9,7 +9,7 @@ import { apiBase } from "@auto-harness/shared";
 import {
   catalogCommandDefaults,
   catalogProviderKey,
-  isSuggestedCommandName,
+  retainOrSuggestCommandName,
 } from "../lib/catalog-command-defaults.ts";
 
 async function errorMessage(res: Response): Promise<string> {
@@ -39,7 +39,7 @@ export function ProviderCreateForm() {
     lastCatalogKey.current = key;
     if (key === null) return;
     const defaults = catalogCommandDefaults(name)!;
-    setCommandName((current) => (isSuggestedCommandName(current) ? defaults.commandName : current));
+    setCommandName(retainOrSuggestCommandName(commandName, defaults.commandName));
     setArgvText(defaults.argv.join("\n"));
     setAppendPrompt(defaults.appendPrompt);
     setAppendPromptSeparator(defaults.appendPromptSeparator);

@@ -98,6 +98,43 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
+  it("keeps a custom command name when switching catalog providers", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-command-name"), "my-cli");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "claude");
+    });
+    expect(field<HTMLInputElement>(view.container, "provider-catalog-command-name").value).toBe(
+      "my-cli",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "provider-catalog-argv").value).toBe(
+      "claude\n-p",
+    );
+    view.unmount();
+  });
+
+  it("clears catalog defaults when the name no longer matches a preset", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "codex");
+    });
+    expect(field<HTMLInputElement>(view.container, "provider-catalog-command-name").value).toBe(
+      "grok-print",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "provider-catalog-argv").value).toBe(
+      "grok\n--always-approve\n--max-turns\n3\n-p",
+    );
+    view.unmount();
+  });
+
   it("keeps edited grok argv when the name only gains trailing whitespace", () => {
     const view = mountForm(<ProviderCreateForm />);
     act(() => {
@@ -124,13 +161,16 @@ describe("ProviderCreateForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<ProviderCreateForm />);
     fill(view);
+    const appendPrompt = field<HTMLInputElement>(view.container, "provider-catalog-append-prompt");
     const separator = field<HTMLInputElement>(
       view.container,
       "provider-catalog-append-prompt-separator",
     );
     act(() => {
+      appendPrompt.click();
       separator.click();
     });
+    expect(appendPrompt.checked).toBe(false);
     expect(separator.checked).toBe(false);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());

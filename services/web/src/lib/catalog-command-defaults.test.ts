@@ -4,6 +4,7 @@ import {
   catalogCommandDefaults,
   catalogProviderKey,
   isSuggestedCommandName,
+  retainOrSuggestCommandName,
 } from "./catalog-command-defaults.ts";
 
 describe("catalogCommandDefaults", () => {
@@ -44,5 +45,10 @@ describe("isSuggestedCommandName", () => {
     expect(isSuggestedCommandName(" grok-print ")).toBe(true);
     expect(isSuggestedCommandName("claude-print")).toBe(true);
     expect(isSuggestedCommandName("my-print")).toBe(false);
+  });
+
+  it("replaces suggested names and keeps custom ones", () => {
+    expect(retainOrSuggestCommandName("grok-print", "claude-print")).toBe("claude-print");
+    expect(retainOrSuggestCommandName("my-cli", "claude-print")).toBe("my-cli");
   });
 });

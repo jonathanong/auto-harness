@@ -42,3 +42,8 @@ export function isSuggestedCommandName(value: string): boolean {
   const trimmed = value.trim();
   return trimmed === "" || trimmed === "grok-print" || trimmed === "claude-print";
 }
+
+/** Keep a custom command name; only replace empty or catalog-suggested values. */
+export function retainOrSuggestCommandName(current: string, suggested: string): string {
+  return isSuggestedCommandName(current) ? suggested : current;
+}
