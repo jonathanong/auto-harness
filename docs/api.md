@@ -983,7 +983,9 @@ Unified picker source for session/schedule creation: all Providers and Commands,
 
 `PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md)) carries
 `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an
-optional host-level command override per account. Per-repository and per-worktree overrides
+optional host-level command override per account. Each `providerAccountId` must already exist in
+the catalog; unknown ids return `400 VALIDATION_ERROR` (`unknown providerAccountId: …`). An empty
+`providerAccounts` list remains valid. Per-repository and per-worktree overrides
 (`enabled?`, `commandId?`) live on the corresponding entries inside that same document's
 `repositories[].providerAccountOverrides` / `repositories[].worktrees[].providerAccountOverrides`.
 

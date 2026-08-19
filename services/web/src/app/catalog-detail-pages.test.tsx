@@ -94,6 +94,9 @@ describe("control catalog detail routes", () => {
       );
       expect(html).toContain('data-pw="page-provider-detail"');
       expect(html).toContain("Claude");
+      if (!tab) {
+        expect(html).not.toContain('data-pw="provider-account-unattached-warning"');
+      }
     }
     stubApi({ "/api/v1/providers/missing": jsonResponse({}, 404) });
     const missing = await renderPage(
@@ -103,6 +106,23 @@ describe("control catalog detail routes", () => {
       }),
     );
     expect(missing).toContain('data-pw="page-provider-detail-not-found"');
+  });
+
+  it("warns when a provider account is attached to no host", async () => {
+    stubApi({
+      "/api/v1/providers/p-1": { id: "p-1", name: "Claude", defaultCommandId: null },
+      "/api/v1/provider-accounts": { items: [{ id: "a-1", providerId: "p-1", label: "work" }] },
+      "/api/v1/commands": { items: [] },
+      "/api/v1/host-inventories": { items: [{ hostId: "host-1", providerAccounts: [] }] },
+    });
+    const html = await renderPage(
+      ProviderDetailPage({
+        params: Promise.resolve({ providerId: "p-1" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain('data-pw="provider-account-unattached-warning"');
+    expect(html).toContain("work is not attached to any host");
   });
 
   it("keeps provider detail tabs empty when supporting APIs fail", async () => {

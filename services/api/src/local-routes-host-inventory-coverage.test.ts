@@ -221,6 +221,22 @@ describe("host inventory route outcomes", () => {
     });
   });
 
+  it("rejects a PUT that attaches an unknown providerAccountId", async () => {
+    const plane = new ControlPlane();
+    expect(
+      await invoke(plane, "PUT", "/api/v1/hosts/host-1/inventory", {
+        repositories: [],
+        providerAccounts: [{ providerAccountId: "garbage" }],
+        commandProfiles: {},
+      }),
+    ).toMatchObject({
+      status: 400,
+      json: {
+        error: { code: "VALIDATION_ERROR", message: "unknown providerAccountId: garbage" },
+      },
+    });
+  });
+
   it("answers 409 when the write loses to a concurrent edit", async () => {
     const plane = new ControlPlane();
     // A conflict is not a bad request: the body was valid, the document simply moved.

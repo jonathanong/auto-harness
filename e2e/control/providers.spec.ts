@@ -60,9 +60,12 @@ test.describe("control plane providers", () => {
     await page.getByTestId("provider-account-label").fill(`${name}@example.com`);
     await page.getByTestId("provider-account-cooldown-seconds").fill("1234");
     await page.getByTestId("provider-account-submit").click();
-    await expect(page.getByText(`${name}@example.com`)).toBeVisible();
     const accountRow = page.locator('[data-pw^="provider-account-row-"]').first();
     await expect(accountRow).toBeVisible();
+    await expect(page.getByTestId("provider-account-unattached-warning")).toBeVisible();
+    await expect(page.getByTestId("provider-account-unattached-warning")).toContainText(
+      "is not attached to any host",
+    );
     const accountId = (await accountRow.getAttribute("data-pw"))!.replace(
       "provider-account-row-",
       "",
@@ -127,7 +130,10 @@ test.describe("control plane providers", () => {
     await page.goto(`/providers/${providerId}`);
     await page.getByTestId(`provider-account-remove-${accountId}`).click();
     await page.getByTestId(`provider-account-remove-${accountId}-confirm-submit`).click();
-    await expect(page.getByText(`${name}@example.com`)).toBeHidden({ timeout: 15_000 });
+    await expect(page.locator('[data-pw^="provider-account-row-"]')).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("provider-account-unattached-warning")).toBeHidden();
 
     // deleteCommand only refuses while the command is some provider's default (checked by
     // defaultCommandId, independent of the command's own providerId) — clear that first.

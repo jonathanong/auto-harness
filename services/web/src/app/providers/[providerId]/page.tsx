@@ -15,6 +15,7 @@ import { AddProviderAccountForm } from "../../../components/add-provider-account
 import { CommandCreateForm } from "../../../components/command-create-form.tsx";
 import { DeleteProviderButton } from "../../../components/delete-provider-button.tsx";
 import { EditProviderForm } from "../../../components/edit-provider-form.tsx";
+import { ProviderAccountUnattachedWarning } from "../../../components/provider-account-unattached-warning.tsx";
 import { ProviderDefaultCommandForm } from "../../../components/provider-default-command-form.tsx";
 import { RemoveProviderAccountButton } from "../../../components/remove-provider-account-button.tsx";
 import { ProviderAccountCooldownForm } from "../../../components/provider-account-cooldown-form.tsx";
@@ -75,6 +76,9 @@ export default async function ProviderDetailPage({
     agentHosts.filter((h) =>
       (h.providerAccounts ?? []).some((pa) => pa.providerAccountId === accountId),
     ).length;
+  const unattachedLabels = accounts
+    .filter((account) => attachedHostCount(account.id) === 0)
+    .map((account) => account.label);
 
   return (
     <div className="space-y-6" data-pw="page-provider-detail">
@@ -93,6 +97,7 @@ export default async function ProviderDetailPage({
             label: "Accounts",
             content: (
               <div className="space-y-4" data-pw="provider-accounts-tab">
+                <ProviderAccountUnattachedWarning labels={unattachedLabels} />
                 <Table>
                   <TableHeader>
                     <TableRow>
