@@ -46,13 +46,10 @@ export function ProviderCreateForm() {
         setError(null);
         const fd = new FormData(e.currentTarget);
         const name = String(fd.get("name") ?? "").trim();
-        const commandName = String(fd.get("commandName") ?? "").trim();
         const argv = String(fd.get("argv") ?? "")
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean);
-        const appendPrompt = fd.get("appendPrompt") === "on";
-        const appendPromptSeparator = fd.get("appendPromptSeparator") === "on";
         start(async () => {
           const providerRes = await fetch(`${apiBase()}/api/v1/providers`, {
             method: "POST",
@@ -69,7 +66,7 @@ export function ProviderCreateForm() {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              name: commandName,
+              name: commandName.trim(),
               argv,
               appendPrompt,
               appendPromptSeparator,
