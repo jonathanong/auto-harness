@@ -130,7 +130,10 @@ test.describe("control plane providers", () => {
     await page.goto(`/providers/${providerId}`);
     await page.getByTestId(`provider-account-remove-${accountId}`).click();
     await page.getByTestId(`provider-account-remove-${accountId}-confirm-submit`).click();
-    await expect(page.getByText(`${name}@example.com`)).toBeHidden({ timeout: 15_000 });
+    await expect(page.locator('[data-pw^="provider-account-row-"]')).toHaveCount(0, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("provider-account-unattached-warning")).toBeHidden();
 
     // deleteCommand only refuses while the command is some provider's default (checked by
     // defaultCommandId, independent of the command's own providerId) — clear that first.
