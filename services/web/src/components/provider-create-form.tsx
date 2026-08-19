@@ -38,8 +38,7 @@ export function ProviderCreateForm() {
     if (key === lastCatalogKey.current) return;
     lastCatalogKey.current = key;
     if (key === null) return;
-    const defaults = catalogCommandDefaults(name);
-    if (!defaults) return;
+    const defaults = catalogCommandDefaults(name)!;
     setCommandName((current) => (isSuggestedCommandName(current) ? defaults.commandName : current));
     setArgvText(defaults.argv.join("\n"));
     setAppendPrompt(defaults.appendPrompt);

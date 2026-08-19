@@ -78,6 +78,26 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
+  it("switches from grok defaults to claude defaults when the provider name changes", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "grok");
+    });
+    act(() => {
+      setValue(field(view.container, "provider-catalog-name"), "claude");
+    });
+    expect(field<HTMLInputElement>(view.container, "provider-catalog-command-name").value).toBe(
+      "claude-print",
+    );
+    expect(field<HTMLTextAreaElement>(view.container, "provider-catalog-argv").value).toBe(
+      "claude\n-p",
+    );
+    expect(
+      field<HTMLInputElement>(view.container, "provider-catalog-append-prompt-separator").checked,
+    ).toBe(true);
+    view.unmount();
+  });
+
   it("keeps edited grok argv when the name only gains trailing whitespace", () => {
     const view = mountForm(<ProviderCreateForm />);
     act(() => {
