@@ -25,6 +25,14 @@ describe("web auth session helpers", () => {
     expect(assign).toHaveBeenNthCalledWith(2, "/");
   });
 
+  it("defaults to location.assign so a successful login hard-navigates", () => {
+    const assign = vi.fn();
+    vi.stubGlobal("location", { assign });
+    navigateAfterLogin("/sessions");
+    expect(assign).toHaveBeenCalledWith("/sessions");
+    vi.unstubAllGlobals();
+  });
+
   it("accepts only fresh signed session claims", async () => {
     const valid = token({ exp: Math.floor(Date.now() / 1000) + 60 });
     expect(await hasValidSession(valid, secret)).toBe(true);
