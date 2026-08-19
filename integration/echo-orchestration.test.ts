@@ -15,7 +15,7 @@ import { runCommandOk } from "../scripts/lib/run-command.mts";
  * end: a real HTTP+WS server, a real agent daemon connected over a real
  * `ws://` socket, and a real `echo` subprocess in a real git worktree — as
  * opposed to e2e/*.spec.ts, which fake out the agent side over REST since
- * Playwright never starts a daemon. See docs/agent-e2e-testing.md.
+ * Playwright never starts a daemon. See docs/host-daemon-e2e-testing.md.
  */
 
 async function git(cwd: string, args: string[]): Promise<string> {
