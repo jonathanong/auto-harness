@@ -44,6 +44,24 @@ describe("host-pane root routes", () => {
 
     expect(emptyMarkup).not.toContain("host-shell-online");
     expect(errorMarkup).not.toContain("host-shell-online");
+    expect(errorMarkup).toContain("host-shell");
+    expect(errorMarkup).not.toContain("This is the debug host pane");
+
+    setApiTransportForTests(async () => new Response("nope", { status: 500 }));
+    const serverErrorMarkup = renderToStaticMarkup(await RootLayout({ children: "Server error" }));
+    expect(serverErrorMarkup).toContain("host-shell");
+    expect(serverErrorMarkup).not.toContain("This is the debug host pane");
+  });
+
+  it("shows a readable 401 instead of a half-empty shell", async () => {
+    setApiTransportForTests(async () => new Response("authentication required", { status: 401 }));
+    const markup = renderToStaticMarkup(await RootLayout({ children: <main>Child content</main> }));
+
+    expect(markup).toContain("This is the debug host pane");
+    expect(markup).toMatch(/debug/i);
+    expect(markup).toMatch(/control plane/i);
+    expect(markup).not.toContain("Child content");
+    expect(markup).not.toContain("host-shell");
   });
 
   it("redirects the host-pane home route to sessions", () => {

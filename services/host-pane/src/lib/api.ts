@@ -23,6 +23,10 @@ export class ApiError extends Error {
   }
 }
 
+export function isUnauthenticatedError(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const forwarded = await incomingAuthHeaders();
   const res = await transport(`${apiBase()}${path}`, {
