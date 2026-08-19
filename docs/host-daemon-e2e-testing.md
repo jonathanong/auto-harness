@@ -138,7 +138,7 @@ if [ -n "$GROK_BIN" ]; then
   PROV=$(curl -fsS -X POST "$API/api/v1/providers" -H 'content-type: application/json' -d '{"name":"grok"}')
   PID=$(printf '%s' "$PROV" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   CMD=$(curl -fsS -X POST "$API/api/v1/commands" -H 'content-type: application/json' \
-    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_BIN\",\"--always-approve\",\"--max-turns\",\"3\",\"--output-format\",\"plain\",\"-p\"],\"appendPrompt\":true,\"providerId\":\"$PID\"}")
+    -d "{\"name\":\"grok-print\",\"argv\":[\"$GROK_BIN\",\"--always-approve\",\"--max-turns\",\"3\",\"-p\"],\"appendPrompt\":true,\"appendPromptSeparator\":false,\"providerId\":\"$PID\"}")
   CID=$(printf '%s' "$CMD" | node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>console.log(JSON.parse(s).id))")
   curl -fsS -X PATCH "$API/api/v1/providers/$PID" -H 'content-type: application/json' -d "{\"defaultCommandId\":\"$CID\"}"
   ACCT=$(curl -fsS -X POST "$API/api/v1/provider-accounts" -H 'content-type: application/json' \

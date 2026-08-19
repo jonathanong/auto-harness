@@ -1,10 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+
+import {
+  catalogCommandDefaults,
+  catalogProviderKey,
+  retainOrSuggestCommandName,
+} from "../lib/catalog-command-defaults.ts";
 
 async function errorMessage(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
@@ -21,6 +27,23 @@ export function ProviderCreateForm() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [commandName, setCommandName] = useState("");
+  const [argvText, setArgvText] = useState("");
+  const [appendPrompt, setAppendPrompt] = useState(true);
+  const [appendPromptSeparator, setAppendPromptSeparator] = useState(true);
+  const lastCatalogKey = useRef<string | null>(null);
+
+  function applyNameDefaults(name: string): void {
+    const key = catalogProviderKey(name);
+    if (key === lastCatalogKey.current) return;
+    lastCatalogKey.current = key;
+    if (key === null) return;
+    const defaults = catalogCommandDefaults(name)!;
+    setCommandName(retainOrSuggestCommandName(commandName, defaults.commandName));
+    setArgvText(defaults.argv.join("\n"));
+    setAppendPrompt(defaults.appendPrompt);
+    setAppendPromptSeparator(defaults.appendPromptSeparator);
+  }
 
   return (
     <form
@@ -31,13 +54,11 @@ export function ProviderCreateForm() {
         setError(null);
         const fd = new FormData(e.currentTarget);
         const name = String(fd.get("name") ?? "").trim();
-        const commandName = String(fd.get("commandName") ?? "").trim();
         const argv = String(fd.get("argv") ?? "")
           .split("\n")
           .map((s) => s.trim())
           .filter(Boolean);
-        const appendPrompt = fd.get("appendPrompt") === "on";
-        const appendPromptSeparator = fd.get("appendPromptSeparator") === "on";
+        const submittedCommandName = commandName.trim();
         start(async () => {
           const providerRes = await fetch(`${apiBase()}/api/v1/providers`, {
             method: "POST",
@@ -54,7 +75,7 @@ export function ProviderCreateForm() {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
-              name: commandName,
+              name: submittedCommandName,
               argv,
               appendPrompt,
               appendPromptSeparator,
@@ -79,7 +100,7 @@ export function ProviderCreateForm() {
           );
           if (!linkRes.ok) {
             setError(
-              `provider "${name}" and command "${commandName}" created, but linking the default failed: ${await errorMessage(linkRes)}`,
+              `provider "${name}" and command "${submittedCommandName}" created, but linking the default failed: ${await errorMessage(linkRes)}`,
             );
             return;
           }
@@ -94,7 +115,13 @@ export function ProviderCreateForm() {
         >
           name
         </Label>
-        <Input id="name" name="name" required data-pw="provider-catalog-name" />
+        <Input
+          id="name"
+          name="name"
+          required
+          data-pw="provider-catalog-name"
+          onChange={(event) => applyNameDefaults(event.currentTarget.value)}
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="commandName" tip="Name for this provider's default command">
@@ -106,6 +133,8 @@ export function ProviderCreateForm() {
           required
           placeholder="claude-print"
           data-pw="provider-catalog-command-name"
+          value={commandName}
+          onChange={(event) => setCommandName(event.currentTarget.value)}
         />
       </div>
       <div className="space-y-1">
@@ -120,13 +149,16 @@ export function ProviderCreateForm() {
           placeholder={"claude\n-p"}
           className="font-mono text-xs"
           data-pw="provider-catalog-argv"
+          value={argvText}
+          onChange={(event) => setArgvText(event.currentTarget.value)}
         />
       </div>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
           name="appendPrompt"
-          defaultChecked
+          checked={appendPrompt}
+          onChange={(event) => setAppendPrompt(event.currentTarget.checked)}
           data-pw="provider-catalog-append-prompt"
         />
         append session prompt as the final argv element
@@ -135,11 +167,12 @@ export function ProviderCreateForm() {
         <input
           type="checkbox"
           name="appendPromptSeparator"
-          defaultChecked
+          checked={appendPromptSeparator}
+          onChange={(event) => setAppendPromptSeparator(event.currentTarget.checked)}
           data-pw="provider-catalog-append-prompt-separator"
         />
-        insert -- before the prompt (on by default — uncheck for tools like printf that treat -- as
-        data)
+        insert -- before the prompt (on by default; grok&apos;s -p takes the prompt as its value —
+        leave this off for grok)
       </label>
       {error ? (
         <p className="text-sm text-red-700" data-pw="provider-catalog-error">

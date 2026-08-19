@@ -6,30 +6,43 @@ import { describe, expect, it, vi } from "vitest";
 import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
 import { ProviderCreateForm } from "./provider-create-form.tsx";
 
-function fill(view: ReturnType<typeof mountForm>) {
+type View = ReturnType<typeof mountForm>;
+
+function fill(view: View) {
   setValue(field(view.container, "provider-catalog-name"), " codex ");
   setValue(field(view.container, "provider-catalog-command-name"), " codex-run ");
   setValue(field(view.container, "provider-catalog-argv"), " codex \n -p \n");
 }
 
+function input<T extends HTMLElement>(view: View, pw: string) {
+  return field<T>(view.container, pw);
+}
+
+function setName(view: View, value: string) {
+  act(() => setValue(input<HTMLInputElement>(view, "provider-catalog-name"), value));
+}
+
+function mockCreate() {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(json({ id: "p/1" }))
+    .mockResolvedValueOnce(json({ id: "c/1" }))
+    .mockResolvedValueOnce(new Response(null, { status: 204 }));
+  vi.stubGlobal("fetch", fetch);
+  return fetch;
+}
+
 describe("ProviderCreateForm", () => {
   it("keeps accessible provider command fields and creates then links the default command", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json({ id: "p/1" }))
-      .mockResolvedValueOnce(json({ id: "c/1" }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
-    expect(
-      field<HTMLInputElement>(view.container, "provider-catalog-name").labels?.[0]?.textContent,
-    ).toBe("name");
-    expect(field<HTMLInputElement>(view.container, "provider-catalog-append-prompt").checked).toBe(
+    expect(input<HTMLInputElement>(view, "provider-catalog-name").labels?.[0]?.textContent).toBe(
+      "name",
+    );
+    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt").checked).toBe(true);
+    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
       true,
     );
-    expect(
-      field<HTMLInputElement>(view.container, "provider-catalog-append-prompt-separator").checked,
-    ).toBe(true);
     fill(view);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
@@ -46,22 +59,88 @@ describe("ProviderCreateForm", () => {
     view.unmount();
   });
 
+  it("applies grok catalog defaults without a -- separator or --output-format plain", async () => {
+    const fetch = mockCreate();
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "grok");
+    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("grok-print");
+    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(
+      "grok\n--always-approve\n--max-turns\n3\n-p",
+    );
+    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
+      false,
+    );
+    submit(field(view.container, "form-provider-catalog"));
+    await act(async () => Promise.resolve());
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      name: "grok-print",
+      argv: ["grok", "--always-approve", "--max-turns", "3", "-p"],
+      appendPrompt: true,
+      appendPromptSeparator: false,
+      providerId: "p/1",
+    });
+    view.unmount();
+  });
+
+  it("switches from grok defaults to claude defaults when the provider name changes", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "grok");
+    setName(view, "claude");
+    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe(
+      "claude-print",
+    );
+    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe("claude\n-p");
+    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
+      true,
+    );
+    view.unmount();
+  });
+
+  it("keeps a custom command name when switching catalog providers", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "grok");
+    act(() => setValue(input<HTMLInputElement>(view, "provider-catalog-command-name"), "my-cli"));
+    setName(view, "claude");
+    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("my-cli");
+    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe("claude\n-p");
+    view.unmount();
+  });
+
+  it("does not wipe grok defaults when the name becomes a non-catalog value", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "grok");
+    setName(view, "codex");
+    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("grok-print");
+    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(
+      "grok\n--always-approve\n--max-turns\n3\n-p",
+    );
+    view.unmount();
+  });
+
+  it("keeps edited grok argv when the name only gains trailing whitespace", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "grok");
+    act(() =>
+      setValue(input<HTMLTextAreaElement>(view, "provider-catalog-argv"), "grok\n-p\n--custom"),
+    );
+    setName(view, "grok ");
+    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(
+      "grok\n-p\n--custom",
+    );
+    view.unmount();
+  });
+
   it("submits appendPromptSeparator: false once unchecked, for tools like printf that treat -- as data", async () => {
-    const fetch = vi
-      .fn()
-      .mockResolvedValueOnce(json({ id: "p/1" }))
-      .mockResolvedValueOnce(json({ id: "c/1" }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    vi.stubGlobal("fetch", fetch);
+    const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
     fill(view);
-    const separator = field<HTMLInputElement>(
-      view.container,
-      "provider-catalog-append-prompt-separator",
-    );
+    const appendPrompt = input<HTMLInputElement>(view, "provider-catalog-append-prompt");
+    const separator = input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator");
     act(() => {
+      appendPrompt.click();
       separator.click();
     });
+    expect(appendPrompt.checked).toBe(false);
     expect(separator.checked).toBe(false);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
@@ -112,9 +191,9 @@ describe("ProviderCreateForm", () => {
     );
     const view = mountForm(<ProviderCreateForm />);
     const form = field<HTMLFormElement>(view.container, "form-provider-catalog");
-    form.querySelectorAll("input, textarea").forEach((input) => input.remove());
+    form.querySelectorAll("input, textarea").forEach((el) => el.remove());
     submit(form);
-    expect(field<HTMLButtonElement>(view.container, "provider-catalog-submit").disabled).toBe(true);
+    expect(input<HTMLButtonElement>(view, "provider-catalog-submit").disabled).toBe(true);
     await act(async () => finish(new Response("", { status: 500 })));
     expect(field(view.container, "provider-catalog-error").textContent).toBe(
       "request failed (500)",
