@@ -7,12 +7,13 @@ Short entry points. Prefer the focused pages over mega-guides.
 | Doc                                                      | Contents                                                    |
 | -------------------------------------------------------- | ----------------------------------------------------------- |
 | [local-development.md](local-development.md)             | Local stack: DynamoDB Local, `pnpm local:*`, e2e, manage UI |
-| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | **Pre-deploy E2E** for coding agents (stack + real CLI)     |
+| [host-daemon-e2e-testing.md](host-daemon-e2e-testing.md) | Pre-deploy technical checklist (stack + real CLI)           |
+| [qa-local.md](qa-local.md)                               | **Local E2E QA** — gates, UI, real CLIs, schedule, teardown |
+| [qa-production.md](qa-production.md)                     | **Production QA** — AWS restore/deploy, UI, host, purge     |
 | [deploy.md](deploy.md)                                   | Deploy index → local / AWS / VPS agent                      |
 | [deploy-local.md](deploy-local.md)                       | Local stack deploy / update / teardown                      |
 | [deploy-aws.md](deploy-aws.md)                           | AWS control plane deploy / update / teardown                |
 | [deploy-host-daemon.md](deploy-host-daemon.md)           | VPS agent install / update / teardown                       |
-| [qa-deployment.md](qa-deployment.md)                     | Agentic QA runbook: cold account → deployed → purged        |
 | [setup.md](setup.md)                                     | Install, AWS deploy overview, VPS agent production shape    |
 | [cli.md](cli.md)                                         | `auto-harness-agent` commands                               |
 | [harness.md](harness.md)                                 | Repo harness hookup examples, requirements                  |
