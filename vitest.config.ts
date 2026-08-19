@@ -55,7 +55,7 @@ export default defineConfig({
         "services/web/src/components/{add-host-form,attach-local-repo-form,attach-provider-account-to-host-form,connect-host-panel,host-provider-account-command-form,host-repo-settings-form,provider-account-cooldown-form}.tsx",
         // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
-        "services/web/src/components/{add-provider-account-form,host-add-repo-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
+        "services/web/src/components/{add-provider-account-form,host-add-repo-form,host-repositories-section,provider-account-unattached-warning,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
         // Settings state and fields are exercised in happy-dom; complete workflows stay in Playwright.
         "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
@@ -156,7 +156,7 @@ export default defineConfig({
               { 100: true },
             "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx":
               { 100: true },
-            "services/web/src/components/{add-provider-account-form,host-add-repo-form,host-repositories-section,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
+            "services/web/src/components/{add-provider-account-form,host-add-repo-form,host-repositories-section,provider-account-unattached-warning,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
               { 100: true },
             "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
               { 100: true },

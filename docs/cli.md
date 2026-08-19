@@ -101,7 +101,7 @@ No auto-dispatch to the agent yet — bridge with a session assign file for `run
 
 ## Host inventory (API/UI)
 
-Repositories, worktrees, and which Provider Accounts (plus their per-repo/per-worktree enable/command overrides) are available on this host.
+Repositories, worktrees, and which Provider Accounts (plus their per-repo/per-worktree enable/command overrides) are available on this host. Each attached `providerAccountId` must already exist in the catalog.
 
 ```bash
 PUT /api/v1/hosts/:hostId/inventory

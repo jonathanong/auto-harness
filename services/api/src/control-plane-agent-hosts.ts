@@ -94,6 +94,12 @@ function prepareHostInventory(
 ): { ok: true; config: HostInventoryRecord } | { ok: false; error: string } {
   try {
     const parsed = parseHostBody(hostId, body);
+    const unknownAccount = parsed.providerAccounts.find(
+      (account) => !state.providerAccounts.has(account.providerAccountId),
+    );
+    if (unknownAccount) {
+      return { ok: false, error: `unknown providerAccountId: ${unknownAccount.providerAccountId}` };
+    }
     const collision = findWorktreeNameCollision(state, hostId, parsed);
     if (collision) return { ok: false, error: collision };
     return {

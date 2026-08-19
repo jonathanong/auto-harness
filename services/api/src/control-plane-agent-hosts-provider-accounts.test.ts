@@ -1,10 +1,23 @@
 import { describe, expect, it } from "vitest";
 
+import { putHostInventory, putHostInventoryDurable } from "./control-plane-agent-hosts.ts";
 import { ControlPlane } from "./control-plane.ts";
+
+function planeWithAccounts() {
+  const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+  expect(plane.createProvider({ id: "prov-1", name: "claude" }).ok).toBe(true);
+  expect(plane.createProviderAccount({ id: "acct-1", providerId: "prov-1", label: "one" }).ok).toBe(
+    true,
+  );
+  expect(plane.createProviderAccount({ id: "acct-2", providerId: "prov-1", label: "two" }).ok).toBe(
+    true,
+  );
+  return plane;
+}
 
 describe("agent host inventory providerAccounts", () => {
   it("round-trips top-level providerAccounts and per-scope overrides", () => {
-    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    const plane = planeWithAccounts();
     const put = plane.putHostInventory("local-1", {
       repositories: [
         {
@@ -95,5 +108,31 @@ describe("agent host inventory providerAccounts", () => {
       commandProfiles: {},
     });
     expect(put.ok).toBe(false);
+  });
+
+  it("putHostInventory and putHostInventoryDurable accept a known account and reject an unknown id", async () => {
+    const plane = planeWithAccounts();
+    const known = {
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "acct-1" }],
+      commandProfiles: {},
+    };
+    const unknown = {
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "garbage" }],
+      commandProfiles: {},
+    };
+    expect(putHostInventory(plane.state, "local-1", known)).toMatchObject({ ok: true });
+    expect(await putHostInventoryDurable(plane.state, "local-1", known)).toMatchObject({
+      ok: true,
+    });
+    expect(putHostInventory(plane.state, "local-1", unknown)).toEqual({
+      ok: false,
+      error: "unknown providerAccountId: garbage",
+    });
+    expect(await putHostInventoryDurable(plane.state, "local-1", unknown)).toEqual({
+      ok: false,
+      error: "unknown providerAccountId: garbage",
+    });
   });
 });
