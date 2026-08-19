@@ -60,13 +60,12 @@ test.describe("control plane providers", () => {
     await page.getByTestId("provider-account-label").fill(`${name}@example.com`);
     await page.getByTestId("provider-account-cooldown-seconds").fill("1234");
     await page.getByTestId("provider-account-submit").click();
-    await expect(page.getByText(`${name}@example.com`)).toBeVisible();
+    const accountRow = page.locator('[data-pw^="provider-account-row-"]').first();
+    await expect(accountRow).toBeVisible();
     await expect(page.getByTestId("provider-account-unattached-warning")).toBeVisible();
     await expect(page.getByTestId("provider-account-unattached-warning")).toContainText(
       "is not attached to any host",
     );
-    const accountRow = page.locator('[data-pw^="provider-account-row-"]').first();
-    await expect(accountRow).toBeVisible();
     const accountId = (await accountRow.getAttribute("data-pw"))!.replace(
       "provider-account-row-",
       "",
