@@ -106,7 +106,9 @@ a plain `String` parameter is never SSE-encrypted. A REST Lambda cold start that
 finds this parameter missing or unreadable falls back to ControlPlane's own
 `http://localhost:7421` default rather than failing — it only affects a
 session's informational `url` field and the Slack integration's deep link, never
-a security boundary.
+a security boundary. After writing the parameter, `deploy`/`update` recycle the
+runtime Lambdas (a no-op `update-function-configuration`) so already-warm
+containers re-read WebUrl instead of keeping the localhost fallback.
 
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

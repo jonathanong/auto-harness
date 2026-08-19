@@ -47,6 +47,9 @@ export function dependencies(stackStates: boolean[]): DeploymentDependencies & {
           ? { status: 0, stderr: "", stdout: "stack" }
           : { status: 255, stderr: "ValidationError: stack does not exist", stdout: "" };
       }
+      if (args.includes("list-stack-resources")) {
+        return { status: 0, stderr: "", stdout: "" };
+      }
       if (args.includes("get-caller-identity")) {
         return { status: 0, stderr: "", stdout: "123456789012\n" };
       }
