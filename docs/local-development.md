@@ -18,6 +18,8 @@ Run and test Auto Harness on your machine **without an AWS account**. Install/pr
 pnpm install
 ```
 
+Each git worktree needs its **own** `pnpm install`. Do not symlink another checkout's `node_modules` — `pnpm check` typecheck then fails with `TS7016: Could not find a declaration file for module 'react-dom/client'` even though `@types/react-dom` is declared on `@auto-harness/ui`. CI already typechecks that package; this is a local install trap, not a missing types dep.
+
 There is **no compile step**. Scripts and CLIs run TypeScript directly via Node type stripping (`node …/*.ts`).
 
 ---
@@ -257,7 +259,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web
 ```
 
-`pnpm check` runs oxlint, oxfmt, vitest — both the unit project (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs) and the integration project (`integration/`, no coverage gate of its own) — the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes).
+`pnpm check` runs oxlint, oxfmt, typecheck, vitest — both the unit project (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs) and the integration project (`integration/`, no coverage gate of its own) — the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes).
 
 `pnpm check:no-mistakes` (`pnpm check:data-pw` is an alias) runs the root `.no-mistakes.yml`. That config binds the `control` and `host-pane` Playwright projects to `services/web` and `services/host-pane` so selector coverage stays app-scoped, then checks Playwright `data-pw` uniqueness/coverage, prefers test-id locators, bans control-plane Next.js API routes and Next.js caching, and enforces repo hygiene (pnpm-only lockfile, workspace package coverage, registry-only deps, `AGENTS.md` size, no empty files, no `.js`/`.jsx` under `modules/`/`services/`, no workspace package cycles, valid Mermaid, no mocks in `integration/`). `frontendRoot`/`selectorRoots` stay explicit so `src/app` route detection and `src/components` selector coverage cannot silently regress.
 
