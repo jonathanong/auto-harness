@@ -75,9 +75,11 @@ describe("host-pane shell", () => {
         "/repositories/repo-1",
       ),
     );
-    expect(view.container.querySelector('[data-pw="host-shell"]')?.textContent).toContain(
-      "Host UI for host-1",
-    );
+    const text = view.container.querySelector('[data-pw="host-shell"]')?.textContent ?? "";
+    expect(text).toContain("Host UI for host-1");
+    expect(text).toContain("Debug-only");
+    expect(text).toContain("operators should use the control plane");
+    expect(view.container.querySelector('[data-pw="host-shell-debug-only"]')).not.toBeNull();
     expect(view.container.querySelector('[data-pw="host-shell-online"]')).not.toBeNull();
     expect(view.container.querySelector('[data-pw="nav-repositories"]')?.className).toContain(
       "bg-muted",

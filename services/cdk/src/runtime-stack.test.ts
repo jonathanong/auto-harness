@@ -17,7 +17,8 @@ describe("AutoHarnessRuntimeStack", () => {
     });
     const template = Template.fromStack(runtime);
 
-    template.resourceCountIs("AWS::Lambda::Function", 3);
+    template.resourceCountIs("AWS::Lambda::Function", 4);
+    template.resourcePropertiesCountIs("Custom::LogRetention", { RetentionInDays: 14 }, 3);
     template.resourceCountIs("AWS::Events::Rule", 1);
     template.resourceCountIs("AWS::ApiGatewayV2::Api", 2);
     template.resourceCountIs("AWS::ApiGatewayV2::Route", 4);
@@ -75,19 +76,20 @@ describe("AutoHarnessRuntimeStack", () => {
     for (const integration of integrations) {
       expect(JSON.stringify(integration.Properties?.IntegrationUri)).toContain(":lambda:");
     }
-    const functions = Object.values(template.findResources("AWS::Lambda::Function"));
+    const functions = Object.values(template.findResources("AWS::Lambda::Function")).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET,
+    );
+    expect(functions).toHaveLength(3);
     for (const fn of functions) {
       expect(fn.Properties?.Environment?.Variables?.ARCHIVE_BUCKET).toBeDefined();
       expect(fn.Properties?.Environment?.Variables?.HARNESS_CURSOR_SECRET_SSM_PARAM).toEqual({
         Ref: "HarnessCursorSecretSsmParam",
       });
     }
-    const roles = Object.values(template.findResources("AWS::IAM::Role"));
-    for (const role of roles) {
-      expect(JSON.stringify(role.Properties?.ManagedPolicyArns)).toContain(
-        "ArchiveDataAccessPolicy",
-      );
-    }
+    const roles = Object.values(template.findResources("AWS::IAM::Role")).filter((role) =>
+      JSON.stringify(role.Properties?.ManagedPolicyArns ?? []).includes("ArchiveDataAccessPolicy"),
+    );
+    expect(roles).toHaveLength(3);
     template.resourcePropertiesCountIs(
       "AWS::IAM::Policy",
       {

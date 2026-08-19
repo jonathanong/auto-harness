@@ -7,6 +7,7 @@ test.describe("host pane settings", () => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/sessions$/);
     await expect(page.getByTestId("host-shell")).toBeVisible();
+    await expect(page.getByTestId("host-shell-debug-only")).toHaveText("Debug-only");
     await expect(page.getByTestId("nav-repositories")).toBeVisible();
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
     await expect(page.getByTestId("nav-settings")).toBeVisible();

@@ -29,6 +29,60 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
   DynamoDB, S3, Lambda, API Gateway, EventBridge, CloudFront, ECR, IAM, KMS, and SSM
 - `AWS_REGION` (or `AWS_DEFAULT_REGION`) set to the target region
 
+### macOS: isolate Docker credentials from the keychain
+
+`deploy` / `update` build the Web Lambda image and run `docker login` against
+the account's CDK ECR repository. On a Mac whose default credential helper is
+the keychain, a non-interactive session (CI, an agent, a headless tmux pane)
+fails with `User interaction is not allowed. (-25308)` after Foundation has
+already updated. Isolate Docker credentials into a file-backed helper **before**
+retrying — do **not** set `HOME` to a fake directory to dodge the keychain;
+that also hides `~/.aws` and the next AWS call fails with
+`Unable to locate credentials`.
+
+```bash
+cfg=$(mktemp -d /tmp/ah-docker-cfg.XXXXXX)
+bin=$(mktemp -d /tmp/ah-docker-bin.XXXXXX)
+store=$(mktemp /tmp/ah-docker-creds.XXXXXX)
+
+cat > "$bin/docker-credential-none" <<'PY'
+#!/usr/bin/env python3
+import json, pathlib, sys
+store = pathlib.Path(__import__("os").environ["AH_DOCKER_CREDS"])
+cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+existing = json.loads(store.read_text()) if store.exists() else {}
+if cmd == "store":
+    data = json.load(sys.stdin)
+    existing[data["ServerURL"]] = data
+    store.write_text(json.dumps(existing))
+elif cmd == "get":
+    url = sys.stdin.read().strip()
+    rec = existing.get(url)
+    if rec is None:
+        for key, val in existing.items():
+            if url in key or key in url:
+                rec = val
+                break
+    if rec is None:
+        sys.exit(1)
+    json.dump({"Username": rec["Username"], "Secret": rec["Secret"]}, sys.stdout)
+elif cmd == "erase":
+    url = sys.stdin.read().strip()
+    existing.pop(url, None)
+    store.write_text(json.dumps(existing))
+elif cmd == "list":
+    json.dump({k: v.get("Username", "") for k, v in existing.items()}, sys.stdout)
+PY
+chmod +x "$bin/docker-credential-none"
+printf '%s\n' '{"credsStore":"none"}' > "$cfg/config.json"
+export DOCKER_CONFIG="$cfg"
+export AH_DOCKER_CREDS="$store"
+export PATH="$bin:$PATH"
+```
+
+Then retry `pnpm --filter @auto-harness/cdk run update` (or `deploy`) in the
+same shell.
+
 ---
 
 ## Secrets and config (never commit)
@@ -106,7 +160,9 @@ a plain `String` parameter is never SSE-encrypted. A REST Lambda cold start that
 finds this parameter missing or unreadable falls back to ControlPlane's own
 `http://localhost:7421` default rather than failing — it only affects a
 session's informational `url` field and the Slack integration's deep link, never
-a security boundary.
+a security boundary. After writing the parameter, `deploy`/`update` recycle the
+runtime Lambdas (a no-op `update-function-configuration`) so already-warm
+containers re-read WebUrl instead of keeping the localhost fallback.
 
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -265,14 +321,10 @@ Two things purge deliberately does **not** finish immediately:
 One thing purge does not finish **at all**, confirmed against a real purged
 environment: each Lambda's `/aws/lambda/<function>` **CloudWatch log group is
 created by the Lambda service on first invocation, not by CDK**, so it is not a
-stack resource and `cdk destroy` never touches it. None of the three application
-stacks configure `logRetention`, so these log groups default to never-expire and
-outlive the environment they were created for indefinitely unless deleted by hand
-(`aws logs delete-log-group --log-group-name /aws/lambda/<function-name>`) — find
-them with `aws logs describe-log-groups --log-group-name-prefix
-/aws/lambda/AutoHarness-<environment>`. [costs.md](costs.md#cloudwatch) already
-recommends setting 7–14 day retention; no stack currently implements that
-recommendation.
+stack resource and `cdk destroy` never touches it. Runtime and web Lambdas now
+set 14-day CloudWatch log retention, so leftover
+`/aws/lambda/AutoHarness-<environment>*` groups expire after that window instead
+of living forever.
 
 Purge also does not touch the account-level CDK bootstrap assets — the
 `cdk-hnb659fds-assets-*` S3 staging bucket and the

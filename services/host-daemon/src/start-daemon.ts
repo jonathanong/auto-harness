@@ -136,7 +136,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
   log(
     `agent ${options.config.hostId} registered` +
       (repoCount === 0
-        ? " (no host inventory yet — add local repos in the host pane UI)"
+        ? " (no host inventory yet — attach repositories from the control plane Hosts page)"
         : ` (${repoCount} repo(s))`),
   );
 

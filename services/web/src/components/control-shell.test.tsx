@@ -17,6 +17,7 @@ describe("ControlShell", () => {
     expect(titleLink.tagName).toBe("A");
     expect(titleLink.getAttribute("href")).toBe("/");
     expect(field(view.container, "app-subtitle").textContent).toContain("host fleet");
+    expect(view.container.innerHTML.toLowerCase()).not.toContain("host pane");
     expect(view.container.textContent).toContain("Operate");
     expect(view.container.textContent).toContain("Catalog");
     expect(view.container.textContent).toContain("Fleet");

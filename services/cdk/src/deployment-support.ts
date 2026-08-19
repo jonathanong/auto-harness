@@ -1,4 +1,5 @@
 import type { DeploymentConfig } from "./deployment-config.ts";
+import { recycleRuntimeLambdas } from "./recycle-runtime-lambdas.ts";
 
 export type DeploymentQueryResult = { status: number | null; stderr: string; stdout: string };
 
@@ -180,6 +181,10 @@ export async function smokeDeployment(
     ]),
   );
   dependencies.log(`Published public base URL to ${config.publicBaseUrlSsmParam}`);
+  // Lambdas that already cold-started fetched SSM before this write and still have
+  // ControlPlane's localhost fallback. Touching configuration recycles them so the
+  // next session.url uses WebUrl. See fetchPublicBaseUrl in lambda-handlers.ts.
+  await recycleRuntimeLambdas(config, dependencies);
   // The runtime stack's raw WebSocketUrl output (a different execute-api hostname) is
   // deliberately not read or printed here: it is not a value to hand to a host daemon.
   // CloudFront (WebUrl) fronts both the REST and WebSocket API Gateway APIs on one hostname,

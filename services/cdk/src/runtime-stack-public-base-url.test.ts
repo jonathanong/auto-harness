@@ -24,7 +24,9 @@ describe("AutoHarnessRuntimeStack public-base-url wiring", () => {
     });
     const template = Template.fromStack(runtime);
 
-    const functions = Object.values(template.findResources("AWS::Lambda::Function"));
+    const functions = Object.values(template.findResources("AWS::Lambda::Function")).filter(
+      (fn) => fn.Properties?.Environment?.Variables?.PUBLIC_BASE_URL_SSM_PARAM,
+    );
     expect(functions).toHaveLength(3);
     for (const fn of functions) {
       expect(fn.Properties?.Environment?.Variables?.PUBLIC_BASE_URL_SSM_PARAM).toEqual({

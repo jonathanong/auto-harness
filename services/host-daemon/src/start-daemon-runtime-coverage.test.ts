@@ -29,7 +29,12 @@ describe("startDaemon runtime wiring", () => {
         log: (line) => lines.push(line),
       });
       expect(lines).toContain(`connected and registered ws://127.0.0.1:${harness.port}/ws`);
-      expect(lines.some((line) => line.includes("no host inventory yet"))).toBe(true);
+      expect(
+        lines.some((line) =>
+          line.includes("attach repositories from the control plane Hosts page"),
+        ),
+      ).toBe(true);
+      expect(lines.some((line) => line.includes("host pane"))).toBe(false);
       expect(daemon.loop.inflightCount()).toBe(0);
     } finally {
       await harness.close();
