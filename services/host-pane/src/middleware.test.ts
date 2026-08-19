@@ -20,7 +20,14 @@ describe("host-pane authentication middleware", () => {
 
     process.env.HARNESS_AUTH_MODE = "required";
     process.env.HARNESS_SESSION_SECRET = secret;
-    expect((await middleware(request)).status).toBe(401);
+    const denied = await middleware(request);
+    expect(denied.status).toBe(401);
+    expect(denied.headers.get("content-type")).toMatch(/text\/html/);
+    const body = await denied.text();
+    expect(body).toMatch(/<!DOCTYPE html>/i);
+    expect(body).toMatch(/debug/i);
+    expect(body).toMatch(/control plane/i);
+    expect(body).not.toBe("authentication required");
     const forged = new NextRequest("http://localhost/api/browse", {
       headers: { cookie: "auto_harness_session=signed" },
     });

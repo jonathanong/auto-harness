@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { AppShell, OnlineStatusBadge, ThemeToggle, WithTooltip } from "@auto-harness/ui";
+import { AppShell, Badge, OnlineStatusBadge, ThemeToggle, WithTooltip } from "@auto-harness/ui";
+
+import { HOST_PANE_DEBUG_ONLY_LABEL } from "../lib/unauthenticated.ts";
 
 const NAV = [
   {
@@ -39,9 +41,16 @@ export function HostShell({
     <AppShell
       pw="host-shell"
       title="Host pane"
-      titleTip="Per-host UI for one agent identity (HARNESS_HOST_ID)"
+      titleTip="Debug-only local UI for one host identity (HARNESS_HOST_ID). Operators should use the control plane."
       titleBadge={
         <div className="flex items-center gap-1">
+          <WithTooltip tip="This UI is debug-only. Operators should use the control plane.">
+            <span>
+              <Badge variant="warning" data-pw="host-shell-debug-only">
+                {HOST_PANE_DEBUG_ONLY_LABEL}
+              </Badge>
+            </span>
+          </WithTooltip>
           <ThemeToggle />
           {online === undefined ? null : (
             <WithTooltip tip="Live WebSocket connection to the control plane">
@@ -52,7 +61,7 @@ export function HostShell({
           )}
         </div>
       }
-      subtitle={`Host UI for ${hostId}`}
+      subtitle={`Debug-only — operators should use the control plane. Host UI for ${hostId}`}
       subtitleTip={`Managing hostId “${hostId}”. Repos/worktrees here must exist on this machine.`}
       nav={NAV}
       pathname={pathname}

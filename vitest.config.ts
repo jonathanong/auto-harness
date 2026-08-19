@@ -188,6 +188,7 @@ export default defineConfig({
             },
             "services/host-pane/src/middleware.ts": { 100: true },
             "services/host-pane/src/lib/inventory.ts": { 100: true },
+            "services/host-pane/src/lib/unauthenticated.ts": { 100: true },
             // headers()'s success path (forwarding a real cookie/authorization pair) needs a
             // Next.js request context this test environment does not provide; only the
             // no-context catch branch is exercised.

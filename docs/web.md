@@ -16,7 +16,13 @@ and **Settings** — one horizontally-scrolling row, not a wrapping grid, so it 
 content down at narrow widths. The theme toggle, keyboard-shortcuts button, logout, and the page
 subtitle live in a slim secondary row below title+nav, not competing with navigation for space in
 the primary header row. The host pane's own shell reuses the same chrome with a flat (ungrouped)
-nav, since its 3-item nav doesn't need grouping.
+nav, since its 3-item nav doesn't need grouping. That pane is **debug-only**
+and has no login form — a visible badge and subtitle tell operators to use
+the control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or
+a 401 from `/api/v1/hosts` (typical when opening a remote `WebUrl` whose
+cookies live on the CloudFront control-plane domain) renders a short HTML
+explanation instead of a raw `authentication required` body or a half-empty
+shell.
 
 ## Authentication
 
