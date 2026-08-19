@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import {
+  Alert,
   DrainButton,
   OnlineStatusBadge,
   RelativeTime,
@@ -103,6 +104,12 @@ export default async function HostsPage({
           <HostFilters />
         </Suspense>
         {error ? <p className="text-sm text-red-700">{error}</p> : null}
+        {hosts.some((host) => !host.online) ? (
+          <Alert variant="info" role="note" data-pw="hosts-retained-data-notice">
+            Host slots persist in Foundation tables across teardown (not purge), so a restore can
+            show leftover offline slots. Delete unused hosts, or purge the environment to wipe them.
+          </Alert>
+        ) : null}
         <Table>
           <TableHeader>
             <TableRow>

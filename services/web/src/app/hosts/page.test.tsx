@@ -76,6 +76,9 @@ describe("hosts fleet route", () => {
     // the fleet list only needs online/offline, not restart-observability detail.
     expect(html).not.toContain("restart");
     expect(html).not.toContain("host-daemon-started-at");
+    expect(html).toContain('data-pw="hosts-retained-data-notice"');
+    expect(html).toContain("teardown");
+    expect(html).toContain("purge");
   });
 
   it("keeps the filtered empty result when no hosts match", async () => {
@@ -89,6 +92,7 @@ describe("hosts fleet route", () => {
     );
     expect(html).toContain("No hosts match filters");
     expect(html).toContain('colSpan="7"');
+    expect(html).toContain('data-pw="hosts-retained-data-notice"');
   });
 
   it("surfaces a host fleet read failure", async () => {
@@ -112,5 +116,23 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="host-drain-still-visible"');
     expect(html).toContain("No worktrees configured.");
     expect(html).not.toContain("worktrees unavailable");
+    expect(html).not.toContain('data-pw="hosts-retained-data-notice"');
+  });
+
+  it("does not show leftover-data notice when every host is online", async () => {
+    stubApi({
+      "/api/v1/hosts": {
+        items: [
+          { hostId: "online-a", online: true },
+          { hostId: "online-b", online: true },
+        ],
+      },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="host-row-online-a"');
+    expect(html).toContain('data-pw="host-row-online-b"');
+    expect(html).not.toContain('data-pw="hosts-retained-data-notice"');
   });
 });

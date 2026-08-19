@@ -9,6 +9,8 @@ export const metadata: Metadata = {
   description: "Control plane UI for sessions, repositories, schedules, and agents",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -16,7 +18,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {/* Runs before paint so the stored/system theme is applied before hydration — without
             this, every page load flashes light before React could catch up. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-        <ControlShell>{children}</ControlShell>
+        <ControlShell authRequired={process.env.HARNESS_AUTH_MODE === "required"}>
+          {children}
+        </ControlShell>
       </body>
     </html>
   );

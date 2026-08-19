@@ -91,4 +91,18 @@ describe("ControlShell", () => {
     expect(view.container.querySelector('[data-pw="control-shell"]')).toBeNull();
     view.unmount();
   });
+
+  it("hides logout when authentication is not required", () => {
+    const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: "/" });
+    expect(view.container.querySelector('[data-pw="logout"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("shows logout when authentication is required", () => {
+    const view = mountForm(<ControlShell authRequired>Dashboard</ControlShell>, {
+      pathname: "/",
+    });
+    expect(field(view.container, "logout")).toBeInstanceOf(HTMLButtonElement);
+    view.unmount();
+  });
 });
