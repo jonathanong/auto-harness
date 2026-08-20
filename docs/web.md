@@ -388,7 +388,11 @@ The Provider accounts tab shows, for each host the repository is attached to, a 
 
 ## Worktrees
 
-Fleet-wide worktrees view, grouped by repository. Each worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts, Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to exactly one host, so there's only one block, and the worktree scope wins over its repository's).
+Fleet-wide worktrees view, grouped by repository. Add worktree is available here and on a
+repository's Worktrees tab (pick a host when the catalog repo is attached to more than one). Each
+worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts,
+Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to
+exactly one host, so there's only one block, and the worktree scope wins over its repository's).
 
 ---
 

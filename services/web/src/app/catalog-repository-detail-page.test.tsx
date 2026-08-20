@@ -67,6 +67,9 @@ describe("control repository detail route", () => {
       );
       expect(html).toContain('data-pw="page-repository-detail"');
       expect(html).toContain("harness");
+      if (tab === "worktrees") {
+        expect(html).toContain('data-pw="add-worktree-open-r-1"');
+      }
     }
   });
 

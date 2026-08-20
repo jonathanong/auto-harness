@@ -10,6 +10,7 @@ import {
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
 
+import { AddWorktreeForRepo } from "../../../components/add-worktree-for-repo.tsx";
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
@@ -153,6 +154,18 @@ export default async function RepositoryDetailPage({
                   showHost
                   hrefBase="/worktrees"
                   emptyMessage="No worktrees registered for this repository."
+                  renderRepoActions={() => (
+                    <AddWorktreeForRepo
+                      repositoryId={repositoryId}
+                      repositoryName={repository.name ?? repositoryId}
+                      attachments={attachedHosts.flatMap((host, index) => {
+                        const repo = hostInventories[index]?.repositories.find(
+                          (entry) => entry.id === repositoryId,
+                        );
+                        return repo ? [{ hostId: host.hostId, repo }] : [];
+                      })}
+                    />
+                  )}
                 />
               ),
             },
