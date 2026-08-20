@@ -1,10 +1,30 @@
 // @vitest-environment happy-dom
 
 import React, { act } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { field, mountForm } from "./form-test-helpers.tsx";
 import { ControlShell } from "./control-shell.tsx";
+
+if (!HTMLElement.prototype.hasPointerCapture) {
+  HTMLElement.prototype.hasPointerCapture = () => false;
+}
+if (!HTMLElement.prototype.setPointerCapture) {
+  HTMLElement.prototype.setPointerCapture = () => {};
+}
+if (!HTMLElement.prototype.releasePointerCapture) {
+  HTMLElement.prototype.releasePointerCapture = () => {};
+}
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
+
+function openNavGroup(container: ParentNode, pw: string) {
+  act(() => {
+    const trigger = field<HTMLButtonElement>(container, pw);
+    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 }));
+  });
+}
 
 describe("ControlShell", () => {
   it("renders its control-plane chrome, children, and active nested route", () => {
@@ -18,22 +38,20 @@ describe("ControlShell", () => {
     expect(titleLink.getAttribute("href")).toBe("/");
     expect(field(view.container, "app-subtitle").textContent).toContain("host fleet");
     expect(view.container.innerHTML.toLowerCase()).not.toContain("host pane");
-    expect(view.container.textContent).toContain("Operate");
-    expect(view.container.textContent).toContain("Catalog");
-    expect(view.container.textContent).toContain("Fleet");
+    expect(field(view.container, "nav-group-operate").textContent).toContain("Operate");
+    expect(field(view.container, "nav-group-catalog").textContent).toContain("Catalog");
+    expect(field(view.container, "nav-group-fleet").textContent).toContain("Fleet");
+    expect(field(view.container, "nav-group-settings").textContent).toContain("Settings");
     expect(field(view.container, "app-main").textContent).toContain("Current sessions");
-    expect(field<HTMLAnchorElement>(view.container, "nav-sessions").className).toContain(
-      "bg-muted",
-    );
-    expect(field<HTMLAnchorElement>(view.container, "nav-dashboard").getAttribute("href")).toBe(
-      "/",
-    );
+    expect(field(view.container, "nav-group-operate").className).toContain("bg-muted");
     expect(field<HTMLAnchorElement>(view.container, "nav-session-new").getAttribute("href")).toBe(
       "/sessions/new",
     );
-    expect(field<HTMLAnchorElement>(view.container, "nav-hosts").getAttribute("href")).toBe(
-      "/hosts",
-    );
+    openNavGroup(view.container, "nav-group-operate");
+    expect(field<HTMLAnchorElement>(document, "nav-sessions").className).toContain("bg-muted");
+    expect(field<HTMLAnchorElement>(document, "nav-dashboard").getAttribute("href")).toBe("/");
+    openNavGroup(view.container, "nav-group-fleet");
+    expect(field<HTMLAnchorElement>(document, "nav-hosts").getAttribute("href")).toBe("/hosts");
     view.unmount();
   });
 
@@ -44,44 +62,34 @@ describe("ControlShell", () => {
     expect(field<HTMLAnchorElement>(view.container, "nav-session-new").className).toContain(
       "bg-muted text-foreground",
     );
-    expect(field<HTMLAnchorElement>(view.container, "nav-sessions").className).not.toContain(
+    expect(field(view.container, "nav-group-operate").className).not.toContain(
+      "bg-muted text-foreground",
+    );
+    openNavGroup(view.container, "nav-group-operate");
+    expect(field<HTMLAnchorElement>(document, "nav-sessions").className).not.toContain(
       "bg-muted text-foreground",
     );
     view.unmount();
   });
 
-  it("shows a scroll-fade hint only on the edge with more nav content off-screen", () => {
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe() {}
-        disconnect() {}
-      },
-    );
-    const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: "/" });
-    const nav = view.container.querySelector('[data-pw="app-nav"]') as HTMLElement;
-    Object.defineProperty(nav, "scrollWidth", { configurable: true, value: 900 });
-    Object.defineProperty(nav, "clientWidth", { configurable: true, value: 400 });
-    Object.defineProperty(nav, "scrollLeft", { configurable: true, value: 0, writable: true });
-
-    act(() => nav.dispatchEvent(new Event("scroll")));
-    expect(view.container.querySelector('[data-pw="app-nav-fade-left"]')).toBeNull();
-    expect(view.container.querySelector('[data-pw="app-nav-fade-right"]')).not.toBeNull();
-
-    act(() => {
-      (nav as unknown as { scrollLeft: number }).scrollLeft = 250;
-      nav.dispatchEvent(new Event("scroll"));
+  it("highlights New session for nested create routes and leaves Operate inactive", () => {
+    const view = mountForm(<ControlShell>New session</ControlShell>, {
+      pathname: "/sessions/new/preview",
     });
-    expect(view.container.querySelector('[data-pw="app-nav-fade-left"]')).not.toBeNull();
-    expect(view.container.querySelector('[data-pw="app-nav-fade-right"]')).not.toBeNull();
+    expect(field<HTMLAnchorElement>(view.container, "nav-session-new").className).toContain(
+      "bg-muted text-foreground",
+    );
+    expect(field(view.container, "nav-group-operate").className).not.toContain(
+      "bg-muted text-foreground",
+    );
     view.unmount();
   });
 
   it("uses the dashboard route when Next has no pathname", () => {
     const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: null });
-    expect(field<HTMLAnchorElement>(view.container, "nav-dashboard").className).toContain(
-      "bg-muted",
-    );
+    expect(field(view.container, "nav-group-operate").className).toContain("bg-muted");
+    openNavGroup(view.container, "nav-group-operate");
+    expect(field<HTMLAnchorElement>(document, "nav-dashboard").className).toContain("bg-muted");
     view.unmount();
   });
 
@@ -95,6 +103,9 @@ describe("ControlShell", () => {
   it("hides logout when authentication is not required", () => {
     const view = mountForm(<ControlShell>Dashboard</ControlShell>, { pathname: "/" });
     expect(view.container.querySelector('[data-pw="logout"]')).toBeNull();
+    expect(field<HTMLAnchorElement>(view.container, "nav-session-new").className).not.toContain(
+      "bg-muted text-foreground",
+    );
     view.unmount();
   });
 
