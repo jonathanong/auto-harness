@@ -30,7 +30,13 @@ describe("EditRepoForm", () => {
     );
     press(field(view.container, "edit-repo-open"));
     expect(field(document, "edit-repo-dialog")).not.toBeNull();
-    expect(field<HTMLInputElement>(document, "edit-repo-url").value).toBe(repository.url);
+    const url = field<HTMLInputElement>(document, "edit-repo-url");
+    expect(url.labels?.[0]?.textContent).toBe("URL / Path");
+    expect(url.placeholder).toBe("https://github.com/org/repo.git");
+    expect(url.value).toBe(repository.url);
+    expect(document.body.textContent).toContain(
+      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
+    );
     expect(field<HTMLTextAreaElement>(document, "edit-repo-setup").value).toBe("install");
     expect(field<HTMLButtonElement>(document, "edit-repo-submit").textContent).toBe("Save");
     pressCancel();

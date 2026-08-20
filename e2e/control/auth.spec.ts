@@ -41,6 +41,7 @@ test.describe("control plane required authentication", () => {
       await expect(page).toHaveURL(/\/sessions\?status=queued$/);
       await expect(page.getByTestId("page-sessions")).toBeVisible();
 
+      await page.getByTestId("nav-group-settings").click();
       await page.getByTestId("nav-settings").click();
       await expect(page.getByTestId("page-settings")).toBeVisible();
       await expect(page.getByTestId("settings-heading")).toHaveText("Settings");

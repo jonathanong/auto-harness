@@ -32,8 +32,8 @@ export function AddRepoDialog({
         <DialogHeader>
           <DialogTitle>Add repository</DialogTitle>
           <DialogDescription>
-            Registers a repository in the control-plane catalog only. Attach a local host path to an
-            agent separately, below.
+            Registers a repository in the control-plane catalog only. Attach a local path to a host
+            separately, below.
           </DialogDescription>
         </DialogHeader>
         <RepoCreateForm />

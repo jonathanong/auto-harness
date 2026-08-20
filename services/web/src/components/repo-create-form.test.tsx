@@ -15,6 +15,12 @@ describe("RepoCreateForm", () => {
     const name = field<HTMLInputElement>(view.container, "repo-catalog-name");
     expect(form.checkValidity()).toBe(false);
     expect(name.labels?.[0]?.textContent).toBe("Name");
+    const url = field<HTMLInputElement>(view.container, "repo-catalog-url");
+    expect(url.labels?.[0]?.textContent).toBe("URL / Path");
+    expect(url.placeholder).toBe("https://github.com/org/repo.git");
+    expect(view.container.textContent).toContain(
+      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
+    );
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
       "Create repository",
     );
