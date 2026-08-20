@@ -1,7 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { renderPage, stubApi } from "../route-test-helpers.tsx";
 import HostsPage from "./page.tsx";
+
+const originalAuthMode = process.env.HARNESS_AUTH_MODE;
+
+afterEach(() => {
+  if (originalAuthMode === undefined) delete process.env.HARNESS_AUTH_MODE;
+  else process.env.HARNESS_AUTH_MODE = originalAuthMode;
+});
 
 describe("hosts fleet route", () => {
   it("groups detailed worktrees and connection time under their host", async () => {
@@ -134,5 +141,52 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="host-row-online-a"');
     expect(html).toContain('data-pw="host-row-online-b"');
     expect(html).not.toContain('data-pw="hosts-retained-data-notice"');
+    expect(html).toContain('data-pw="form-add-host"');
+  });
+
+  it("does not render Add host for an operator when authentication is required", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      "/api/v1/auth/me": { username: "operator", role: "operator", kind: "user" },
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="page-hosts"');
+    expect(html).not.toContain('data-pw="form-add-host"');
+    expect(html).not.toContain("Add host");
+    expect(html).toContain("No hosts match filters.");
+    expect(html).not.toContain("Add a host above");
+  });
+
+  it("renders Add host for an unscoped admin when authentication is required", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      "/api/v1/auth/me": { username: "admin", role: "admin", kind: "admin" },
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/host-inventories": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+    expect(html).toContain('data-pw="form-add-host"');
+    expect(html).toContain("Add a host above or start a daemon.");
+  });
+
+  it("hides Add host for a repository- or host-scoped admin", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    for (const me of [
+      { username: "repo-admin", role: "admin", kind: "user", allowedRepositoryIds: ["repo-1"] },
+      { username: "host-admin", role: "admin", kind: "user", boundHostId: "host-1" },
+    ]) {
+      stubApi({
+        "/api/v1/auth/me": me,
+        "/api/v1/hosts": { items: [] },
+        "/api/v1/host-inventories": { items: [] },
+        "/api/v1/worktrees": { items: [] },
+      });
+      const html = await renderPage(HostsPage({ searchParams: Promise.resolve({}) }));
+      expect(html).not.toContain('data-pw="form-add-host"');
+    }
   });
 });

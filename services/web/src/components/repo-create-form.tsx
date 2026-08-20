@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function RepoCreateForm() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export function RepoCreateForm() {
             body: JSON.stringify(body),
           });
           if (!res.ok) {
-            setError(await res.text());
+            setError(await apiErrorMessage(res));
             return;
           }
           const created = (await res.json()) as { id: string };

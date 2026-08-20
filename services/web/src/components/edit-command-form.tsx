@@ -5,12 +5,7 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip } from "@auto-harness/ui";
 import type { Command, Provider } from "@auto-harness/shared";
 
-import { apiBase } from "@auto-harness/shared";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function EditCommandForm({
   command,
@@ -64,7 +59,7 @@ export function EditCommandForm({
             },
           );
           if (!res.ok) {
-            setError(await errorMessage(res));
+            setError(await apiErrorMessage(res));
             return;
           }
           setOpen(false);

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
@@ -72,7 +72,7 @@ export function HostConfigForm({
               setConflict(true);
               return;
             }
-            setError(await res.text());
+            setError(await apiErrorMessage(res));
             return;
           }
           setOk(true);

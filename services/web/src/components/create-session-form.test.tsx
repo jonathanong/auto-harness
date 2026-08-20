@@ -139,7 +139,13 @@ describe("CreateSessionForm", () => {
     expect(field<HTMLButtonElement>(view.container, "create-session-submit").textContent).toBe(
       "Creating…",
     );
-    await act(async () => finish(new Response("capacity unavailable", { status: 409 })));
+    await act(async () =>
+      finish(
+        new Response(JSON.stringify({ error: { message: "capacity unavailable" } }), {
+          status: 409,
+        }),
+      ),
+    );
     expect(field(view.container, "create-session-error").textContent).toBe("capacity unavailable");
     expect(field<HTMLButtonElement>(view.container, "create-session-submit").disabled).toBe(false);
     view.unmount();

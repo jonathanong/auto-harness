@@ -1,3 +1,5 @@
+import { apiErrorMessage } from "@auto-harness/shared";
+
 import type { RequestFunction } from "./request-types.ts";
 
 export async function deleteCatalogResource(
@@ -7,10 +9,7 @@ export async function deleteCatalogResource(
   try {
     const response = await request(url, { method: "DELETE" });
     if (response.ok) return null;
-    const body = (await response.json().catch(() => null)) as {
-      error?: { message?: string };
-    } | null;
-    return body?.error?.message ?? `request failed (${response.status})`;
+    return apiErrorMessage(response);
   } catch (cause) {
     return cause instanceof Error && cause.message ? cause.message : "request failed";
   }

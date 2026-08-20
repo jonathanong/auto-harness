@@ -40,3 +40,9 @@ export async function apiGet<T>(path: string): Promise<T> {
   }
   return (await res.json()) as T;
 }
+
+/** Parse `{ error: { message } }` instead of dumping raw JSON at the operator. */
+export async function apiErrorMessage(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+  return body?.error?.message ?? `request failed (${res.status})`;
+}

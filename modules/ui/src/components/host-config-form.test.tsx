@@ -93,7 +93,9 @@ describe("HostConfigForm", () => {
     expect(view.container.querySelector('[data-pw="host-config-ok"]')?.textContent).toBe("Saved.");
     expect(router.refresh).toHaveBeenCalledOnce();
 
-    enqueue(new Response("some other failure", { status: 500 }));
+    enqueue(
+      new Response(JSON.stringify({ error: { message: "some other failure" } }), { status: 500 }),
+    );
     act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     await act(async () => Promise.resolve());
     expect(view.container.querySelector('[data-pw="host-config-error"]')?.textContent).toBe(

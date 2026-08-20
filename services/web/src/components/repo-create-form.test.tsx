@@ -52,7 +52,11 @@ describe("RepoCreateForm", () => {
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
       "Saving…",
     );
-    await act(async () => finish(new Response("already registered", { status: 409 })));
+    await act(async () =>
+      finish(
+        new Response(JSON.stringify({ error: { message: "already registered" } }), { status: 409 }),
+      ),
+    );
     expect(field(view.container, "repo-catalog-error").textContent).toBe("already registered");
     view.unmount();
   });

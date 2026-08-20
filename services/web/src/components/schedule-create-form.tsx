@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import {
   decodeSessionRoutingFormData,
   type SessionTarget,
@@ -73,7 +73,7 @@ export function ScheduleCreateForm({
             },
           );
           if (!res.ok) {
-            setError(await res.text());
+            setError(await apiErrorMessage(res));
             return;
           }
           const payload = (await res.json()) as { id?: string };

@@ -57,9 +57,51 @@ describe("AddHostForm", () => {
     submit(field(view.container, "form-add-host"));
     await act(async () => Promise.resolve());
     expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(true);
-    await act(async () => finish(new Response("cannot create", { status: 500 })));
+    await act(async () =>
+      finish(
+        new Response(JSON.stringify({ error: { message: "cannot create" } }), { status: 500 }),
+      ),
+    );
     expect(field(view.container, "add-host-error").textContent).toBe("cannot create");
     view.unmount();
+  });
+
+  it("parses structured API errors and names a 403 as an admin-only action", async () => {
+    const forbidden = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("missing", { status: 404 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: { code: "FORBIDDEN", message: "insufficient role for this operation" },
+          }),
+          { status: 403 },
+        ),
+      );
+    vi.stubGlobal("fetch", forbidden);
+    const view = mountForm(<AddHostForm />);
+    setValue(field(view.container, "add-host-id"), "new-host");
+    submit(field(view.container, "form-add-host"));
+    await act(async () => Promise.resolve());
+    expect(field(view.container, "add-host-error").textContent).toBe(
+      "Admins create host slots; operators run sessions.",
+    );
+    expect(field(view.container, "add-host-error").textContent).not.toContain("FORBIDDEN");
+    view.unmount();
+
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(new Response("missing", { status: 404 }))
+        .mockResolvedValueOnce(new Response("not json", { status: 502 })),
+    );
+    const fallback = mountForm(<AddHostForm />);
+    setValue(field(fallback.container, "add-host-id"), "new-host");
+    submit(field(fallback.container, "form-add-host"));
+    await act(async () => Promise.resolve());
+    expect(field(fallback.container, "add-host-error").textContent).toBe("request failed (502)");
+    fallback.unmount();
   });
 
   it("creates an empty host inventory", async () => {

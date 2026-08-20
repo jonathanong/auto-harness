@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { apiBase, apiGet, resolveServerApiBase } from "./api-client.ts";
+import { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
 
 function withWindow<T>(fn: () => T): T {
   const original = (globalThis as { window?: unknown }).window;
@@ -93,5 +93,23 @@ describe("apiGet", () => {
     } finally {
       globalThis.fetch = original;
     }
+  });
+});
+
+describe("apiErrorMessage", () => {
+  it("prefers a structured error message and falls back to status", async () => {
+    await expect(
+      apiErrorMessage(
+        new Response(JSON.stringify({ error: { code: "FORBIDDEN", message: "nope" } }), {
+          status: 403,
+        }),
+      ),
+    ).resolves.toBe("nope");
+    await expect(
+      apiErrorMessage(new Response(JSON.stringify({ error: {} }), { status: 409 })),
+    ).resolves.toBe("request failed (409)");
+    await expect(apiErrorMessage(new Response("not json", { status: 500 }))).resolves.toBe(
+      "request failed (500)",
+    );
   });
 });

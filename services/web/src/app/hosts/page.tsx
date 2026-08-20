@@ -24,6 +24,14 @@ import { parseHostListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
 
+type Principal = {
+  username: string;
+  role: "admin" | "operator" | "read-only";
+  kind: "admin" | "user" | "service-account";
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
+};
+
 type Host = {
   hostId: string;
   online: boolean;
@@ -35,6 +43,12 @@ type HostInventorySummary = {
   hostId: string;
   repositories?: unknown[];
 };
+
+function isUnscopedAdmin(principal: Principal): boolean {
+  return (
+    principal.role === "admin" && !principal.allowedRepositoryIds?.length && !principal.boundHostId
+  );
+}
 
 export default async function HostsPage({
   searchParams,
@@ -49,6 +63,12 @@ export default async function HostsPage({
     }
   }
   const filters = parseHostListState(sp);
+  const principal =
+    process.env.HARNESS_AUTH_MODE === "required"
+      ? await apiGet<Principal>("/api/v1/auth/me")
+      : undefined;
+  // Loopback (auth disabled) has no session role, so the form stays available locally.
+  const canAddHost = principal === undefined || isUnscopedAdmin(principal);
 
   let hosts: Host[] = [];
   let inventories: HostInventorySummary[] = [];
@@ -93,10 +113,12 @@ export default async function HostsPage({
         </p>
       </div>
 
-      <section className="space-y-2">
-        <h3 className="text-lg font-medium">Add host</h3>
-        <AddHostForm />
-      </section>
+      {canAddHost ? (
+        <section className="space-y-2">
+          <h3 className="text-lg font-medium">Add host</h3>
+          <AddHostForm />
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h3 className="text-lg font-medium">Fleet</h3>
@@ -165,7 +187,9 @@ export default async function HostsPage({
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-muted-foreground">
-                  No hosts match filters. Add a host above or start a daemon.
+                  {canAddHost
+                    ? "No hosts match filters. Add a host above or start a daemon."
+                    : "No hosts match filters."}
                 </TableCell>
               </TableRow>
             ) : null}

@@ -84,7 +84,11 @@ describe("ScheduleCreateForm", () => {
     submit(field(view.container, "form-create-schedule"));
     expect(field<HTMLButtonElement>(view.container, "schedule-submit").disabled).toBe(true);
     expect(field<HTMLButtonElement>(view.container, "schedule-submit").textContent).toBe("Saving…");
-    await act(async () => finish(new Response("cron rejected", { status: 400 })));
+    await act(async () =>
+      finish(
+        new Response(JSON.stringify({ error: { message: "cron rejected" } }), { status: 400 }),
+      ),
+    );
     expect(field(view.container, "schedule-error").textContent).toBe("cron rejected");
     view.unmount();
 
