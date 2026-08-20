@@ -40,3 +40,18 @@ export async function apiGet<T>(path: string): Promise<T> {
   }
   return (await res.json()) as T;
 }
+
+/** Prefer `{ error.message }`, then a non-empty plain body, rather than dumping raw JSON. */
+export async function apiErrorMessage(res: {
+  status: number;
+  text: () => Promise<string>;
+}): Promise<string> {
+  const text = await res.text();
+  try {
+    const body = JSON.parse(text) as { error?: { message?: string } };
+    if (body?.error?.message) return body.error.message;
+  } catch {
+    if (text.trim()) return text;
+  }
+  return `request failed (${res.status})`;
+}

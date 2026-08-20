@@ -77,7 +77,9 @@ describe("EditRepoForm", () => {
     setValue(field(view.container, "edit-repo-branch"), "feature");
     submit(form);
     expect(field<HTMLButtonElement>(view.container, "edit-repo-submit").disabled).toBe(true);
-    await act(async () => finish(new Response("cannot edit", { status: 409 })));
+    await act(async () =>
+      finish(new Response(JSON.stringify({ error: { message: "cannot edit" } }), { status: 409 })),
+    );
     expect(field(view.container, "edit-repo-error").textContent).toBe("cannot edit");
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
       defaultBranch: "feature",

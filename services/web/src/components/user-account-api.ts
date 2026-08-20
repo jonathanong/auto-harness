@@ -1,3 +1,5 @@
+import { apiErrorMessage } from "@auto-harness/shared";
+
 import { apiFetch } from "../lib/client-api.ts";
 
 export type UserAccountRole = "read-only" | "operator" | "admin";
@@ -24,7 +26,7 @@ export async function loadUserAccounts(): Promise<UserAccountData> {
   const response = await apiFetch("/api/v1/auth/users", { cache: "no-store" });
   if (response.status === 401) return { kind: "unauthorized" };
   if (response.status === 403) return { kind: "forbidden" };
-  if (!response.ok) throw new Error(await responseError(response));
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
   const body = (await response.json()) as { items?: UserAccount[] };
   return { kind: "ready", accounts: body.items ?? [] };
 }
@@ -35,7 +37,7 @@ export async function createUserAccount(input: UserAccountInput): Promise<UserAc
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!response.ok) throw new Error(await responseError(response));
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
   return (await response.json()) as UserAccount;
 }
 
@@ -44,12 +46,5 @@ export async function deleteUserAccount(username: string): Promise<void> {
   const response = await apiFetch(`/api/v1/auth/users/${encodeURIComponent(username)}`, {
     method: "DELETE",
   });
-  if (!response.ok) throw new Error(await responseError(response));
-}
-
-async function responseError(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => null)) as {
-    error?: { message?: string };
-  } | null;
-  return body?.error?.message ?? `request failed (${response.status})`;
+  if (!response.ok) throw new Error(await apiErrorMessage(response));
 }

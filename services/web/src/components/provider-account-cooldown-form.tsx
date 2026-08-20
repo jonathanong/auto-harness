@@ -9,7 +9,7 @@ import {
   ProviderAccountHealth,
   isProviderAccountPaused,
 } from "@auto-harness/ui";
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 type AccountCooldown = {
   id: string;
@@ -65,7 +65,7 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
             },
           );
           if (!response.ok) {
-            setError(await response.text());
+            setError(await apiErrorMessage(response));
             return;
           }
           setEditing(false);
@@ -121,7 +121,7 @@ function ClearCooldownButton({ accountId }: { accountId: string }) {
               { method: "DELETE" },
             );
             if (!response.ok) {
-              setError(await response.text());
+              setError(await apiErrorMessage(response));
               return;
             }
             router.refresh();

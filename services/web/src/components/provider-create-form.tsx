@@ -4,18 +4,13 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 import {
   catalogCommandDefaults,
   catalogProviderKey,
   retainOrSuggestCommandName,
 } from "../lib/catalog-command-defaults.ts";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
 
 /**
  * Creates a Provider and its default Command in one submit. A Provider with no default
@@ -66,7 +61,7 @@ export function ProviderCreateForm() {
             body: JSON.stringify({ name }),
           });
           if (!providerRes.ok) {
-            setError(await errorMessage(providerRes));
+            setError(await apiErrorMessage(providerRes));
             return;
           }
           const provider = (await providerRes.json()) as { id: string };
@@ -84,7 +79,7 @@ export function ProviderCreateForm() {
           });
           if (!commandRes.ok) {
             setError(
-              `provider "${name}" created, but its default command failed: ${await errorMessage(commandRes)}`,
+              `provider "${name}" created, but its default command failed: ${await apiErrorMessage(commandRes)}`,
             );
             return;
           }
@@ -100,7 +95,7 @@ export function ProviderCreateForm() {
           );
           if (!linkRes.ok) {
             setError(
-              `provider "${name}" and command "${submittedCommandName}" created, but linking the default failed: ${await errorMessage(linkRes)}`,
+              `provider "${name}" and command "${submittedCommandName}" created, but linking the default failed: ${await apiErrorMessage(linkRes)}`,
             );
             return;
           }

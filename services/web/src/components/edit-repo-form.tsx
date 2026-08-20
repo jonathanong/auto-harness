@@ -11,7 +11,7 @@ import {
   WithTooltip,
 } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function EditRepoForm({ repository }: { repository: RepositorySummary }) {
   const router = useRouter();
@@ -59,7 +59,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
             },
           );
           if (!res.ok) {
-            setError(await res.text());
+            setError(await apiErrorMessage(res));
             return;
           }
           setOpen(false);

@@ -29,7 +29,12 @@ function mount(node: ReactNode, router: Router) {
 }
 
 function response(ok: boolean, body = "") {
-  return { ok, text: vi.fn(async () => body), json: vi.fn(async () => JSON.parse(body)) };
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    text: vi.fn(async () => body),
+    json: vi.fn(async () => JSON.parse(body)),
+  };
 }
 
 afterEach(() => {
@@ -87,7 +92,7 @@ describe("SessionActions", () => {
     expect(pendingCancel.disabled).toBe(true);
     expect(pendingCancel.textContent).toBe("Cancelling…");
     expect(pendingCancel.getAttribute("aria-busy")).toBe("true");
-    resolve(response(false, "cannot cancel"));
+    resolve(response(false, JSON.stringify({ error: { message: "cannot cancel" } })));
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();

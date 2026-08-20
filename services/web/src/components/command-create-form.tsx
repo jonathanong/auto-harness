@@ -4,13 +4,8 @@ import { useState } from "react";
 import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
 import type { Provider } from "@auto-harness/shared";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import { navigateBrowser } from "../lib/browser-navigation.ts";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
 
 export function CommandCreateForm({
   providers,
@@ -54,7 +49,7 @@ export function CommandCreateForm({
             body: JSON.stringify({ name, argv, appendPrompt, appendPromptSeparator, providerId }),
           });
           if (!res.ok) {
-            setError(await errorMessage(res));
+            setError(await apiErrorMessage(res));
             setPending(false);
             return;
           }

@@ -1,40 +1,32 @@
 import { Suspense } from "react";
-import Link from "next/link";
-import {
-  Alert,
-  DrainButton,
-  OnlineStatusBadge,
-  RelativeTime,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@auto-harness/ui";
+import { Alert } from "@auto-harness/ui";
 
 import { AddHostForm } from "../../components/add-host-form.tsx";
 import { HostFilters } from "../../components/host-filters.tsx";
+import type { FleetWorktree } from "../../components/host-worktree-details.tsx";
 import {
-  HostWorktreeDetails,
-  type FleetWorktree,
-} from "../../components/host-worktree-details.tsx";
+  HostsFleetTable,
+  type FleetHost,
+  type HostInventorySummary,
+} from "../../components/hosts-fleet-table.tsx";
 import { apiGet } from "../../lib/api.ts";
 import { parseHostListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
 
-type Host = {
-  hostId: string;
-  online: boolean;
-  connectedAt?: string | null;
-  worktreeIds?: string[];
+type Principal = {
+  username: string;
+  role: "admin" | "operator" | "read-only";
+  kind: "admin" | "user" | "service-account";
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
 };
 
-type HostInventorySummary = {
-  hostId: string;
-  repositories?: unknown[];
-};
+function isUnscopedAdmin(principal: Principal): boolean {
+  return (
+    principal.role === "admin" && !principal.allowedRepositoryIds?.length && !principal.boundHostId
+  );
+}
 
 export default async function HostsPage({
   searchParams,
@@ -49,14 +41,20 @@ export default async function HostsPage({
     }
   }
   const filters = parseHostListState(sp);
+  const principal =
+    process.env.HARNESS_AUTH_MODE === "required"
+      ? await apiGet<Principal>("/api/v1/auth/me")
+      : undefined;
+  // Loopback (auth disabled) has no session role, so the form stays available locally.
+  const canAddHost = principal === undefined || isUnscopedAdmin(principal);
 
-  let hosts: Host[] = [];
+  let hosts: FleetHost[] = [];
   let inventories: HostInventorySummary[] = [];
   let worktrees: FleetWorktree[] = [];
   let error: string | null = null;
   try {
     const [h, inv] = await Promise.all([
-      apiGet<{ items: Host[] }>("/api/v1/hosts"),
+      apiGet<{ items: FleetHost[] }>("/api/v1/hosts"),
       apiGet<{ items: HostInventorySummary[] }>("/api/v1/host-inventories"),
     ]);
     hosts = h.items ?? [];
@@ -87,16 +85,27 @@ export default async function HostsPage({
           Hosts
         </h2>
         <p className="text-sm text-muted-foreground">
-          Add a host slot (host inventory), then run the daemon with that{" "}
-          <code className="font-mono">HARNESS_HOST_ID</code>. Click a host below to attach
-          repositories, manage worktrees, and configure Provider accounts.
+          {canAddHost ? (
+            <>
+              Add a host slot (host inventory), then run the daemon with that{" "}
+              <code className="font-mono">HARNESS_HOST_ID</code>. Click a host below to attach
+              repositories, manage worktrees, and configure Provider accounts.
+            </>
+          ) : (
+            <>
+              Use an existing host slot to attach repositories, manage worktrees, and configure
+              Provider accounts.
+            </>
+          )}
         </p>
       </div>
 
-      <section className="space-y-2">
-        <h3 className="text-lg font-medium">Add host</h3>
-        <AddHostForm />
-      </section>
+      {canAddHost ? (
+        <section className="space-y-2">
+          <h3 className="text-lg font-medium">Add host</h3>
+          <AddHostForm />
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h3 className="text-lg font-medium">Fleet</h3>
@@ -110,67 +119,12 @@ export default async function HostsPage({
             show leftover offline slots. Delete unused hosts, or purge the environment to wipe them.
           </Alert>
         ) : null}
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Host</TableHead>
-              <TableHead>Online</TableHead>
-              <TableHead>Repos</TableHead>
-              <TableHead>Host config</TableHead>
-              <TableHead>Connected</TableHead>
-              <TableHead>Worktrees</TableHead>
-              <TableHead />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((h) => {
-              const inventory = inventoryById.get(h.hostId);
-              const repoCount = Array.isArray(inventory?.repositories)
-                ? inventory.repositories.length
-                : 0;
-              return (
-                <TableRow key={h.hostId} data-pw={`host-row-${h.hostId}`}>
-                  <TableCell className="font-mono text-xs">
-                    <Link
-                      href={`/hosts/${encodeURIComponent(h.hostId)}`}
-                      className="hover:underline"
-                      data-pw={`host-link-${h.hostId}`}
-                    >
-                      {h.hostId}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <OnlineStatusBadge online={h.online} pw={`host-online-${h.hostId}`} />
-                  </TableCell>
-                  <TableCell className="text-xs">{repoCount}</TableCell>
-                  <TableCell>{inventory ? "yes" : "no"}</TableCell>
-                  <TableCell
-                    className="whitespace-nowrap text-xs"
-                    data-pw={`host-connected-at-${h.hostId}`}
-                  >
-                    <RelativeTime value={h.connectedAt} label="Connected" />
-                  </TableCell>
-                  <TableCell>
-                    <HostWorktreeDetails
-                      hostId={h.hostId}
-                      worktrees={worktreesByHost.get(h.hostId) ?? []}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            {rows.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={7} className="text-muted-foreground">
-                  No hosts match filters. Add a host above or start a daemon.
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+        <HostsFleetTable
+          rows={rows}
+          inventoryById={inventoryById}
+          worktreesByHost={worktreesByHost}
+          canAddHost={canAddHost}
+        />
       </section>
     </div>
   );

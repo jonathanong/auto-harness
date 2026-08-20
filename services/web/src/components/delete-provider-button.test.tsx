@@ -97,7 +97,7 @@ describe("DeleteProviderButton", () => {
     open(fallbackView);
     press(confirm());
     await act(async () => Promise.resolve());
-    expect(field(document, "delete-provider-error").textContent).toBe("request failed (502)");
+    expect(field(document, "delete-provider-error").textContent).toBe("not json");
     fallbackView.unmount();
   });
 });

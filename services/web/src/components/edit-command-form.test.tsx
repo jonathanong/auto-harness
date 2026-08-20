@@ -80,7 +80,7 @@ describe("EditCommandForm", () => {
     form.querySelectorAll("input, textarea, select").forEach((input) => input.remove());
     submit(form);
     await act(async () => Promise.resolve());
-    expect(field(view.container, "edit-command-error").textContent).toBe("request failed (500)");
+    expect(field(view.container, "edit-command-error").textContent).toBe("bad");
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       name: "",
       argv: [],

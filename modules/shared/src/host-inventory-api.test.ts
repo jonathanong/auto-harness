@@ -80,7 +80,10 @@ describe("getInventory / putInventory", () => {
       globalThis.fetch = original;
     }
 
-    globalThis.fetch = (async () => new Response("bad request", { status: 400 })) as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+      })) as typeof fetch;
     try {
       const failed = await putInventory("host-1", {
         repositories: [],

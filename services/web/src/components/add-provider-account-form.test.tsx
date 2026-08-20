@@ -58,9 +58,7 @@ describe("AddProviderAccountForm", () => {
     );
     submit(form);
     await act(async () => Promise.resolve());
-    expect(field(view.container, "provider-account-error").textContent).toBe(
-      "request failed (503)",
-    );
+    expect(field(view.container, "provider-account-error").textContent).toBe("unavailable");
     view.unmount();
   });
 });

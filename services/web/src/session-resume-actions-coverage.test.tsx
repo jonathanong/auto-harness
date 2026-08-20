@@ -29,7 +29,12 @@ function mount(node: ReactNode, router: Router) {
 }
 
 function response(body: string, ok = true) {
-  return { ok, text: vi.fn(async () => body), json: vi.fn(async () => JSON.parse(body)) };
+  return {
+    ok,
+    status: ok ? 200 : 500,
+    text: vi.fn(async () => body),
+    json: vi.fn(async () => JSON.parse(body)),
+  };
 }
 
 function setInput(pw: string, value: string) {
@@ -133,7 +138,11 @@ describe("session resume actions", () => {
     const router = { push: vi.fn(), refresh: vi.fn() };
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(response("cannot resume this session", false)),
+      vi
+        .fn()
+        .mockResolvedValue(
+          response(JSON.stringify({ error: { message: "cannot resume this session" } }), false),
+        ),
     );
     const view = mount(<SessionActions sessionId="old" status="failed" />, router);
     await submitResume(view.container);

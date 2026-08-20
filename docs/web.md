@@ -396,6 +396,11 @@ Fleet-wide worktrees view, grouped by repository. Each worktree's detail page ha
 
 ### Host List
 
+The **Add host** form is shown only to an unscoped admin (and in loopback when authentication is
+disabled). Operators run sessions on existing host slots; they do not create them. Submitting the
+form as a non-admin surfaces "Admins create host slots; operators run sessions." instead of a raw
+JSON `FORBIDDEN` body.
+
 The connected-host fleet table shows each host id, online/offline status, attached repository count,
 whether host configuration exists, connection time (relative, full timestamp on hover), worktree
 count, busy worktrees, and drain control — a scanning view, not a drill-down one. Detected restart

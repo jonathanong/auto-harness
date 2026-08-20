@@ -102,7 +102,7 @@ export {
   type SessionListQuery,
 } from "./list-query.ts";
 
-export { apiBase, apiGet, resolveServerApiBase } from "./api-client.ts";
+export { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
 
 export { getInventory, mutateInventory, putInventory } from "./host-inventory-api.ts";
 export {

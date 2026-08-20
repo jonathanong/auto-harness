@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
 import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
 import { SessionPromptField } from "./session-prompt-field.tsx";
@@ -56,12 +56,12 @@ export function CreateSessionForm({
             headers: { "content-type": "application/json" },
             body: JSON.stringify(body),
           });
-          const text = await res.text();
           if (!res.ok) {
-            setError(text);
+            setError(await apiErrorMessage(res));
             setPending(false);
             return;
           }
+          const text = await res.text();
           let id = "";
           let created = true;
           let activeSessionId = "";

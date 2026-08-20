@@ -159,7 +159,7 @@ describe("ProviderCreateForm", () => {
       [
         json({ id: "p" }),
         new Response("bad", { status: 502 }),
-        'provider "codex" created, but its default command failed: request failed (502)',
+        'provider "codex" created, but its default command failed: bad',
       ],
       [
         json({ id: "p" }),

@@ -72,7 +72,7 @@ describe("CommandCreateForm", () => {
     submit(form);
     expect(field<HTMLButtonElement>(view.container, "command-catalog-submit").disabled).toBe(true);
     await act(async () => finish(new Response("invalid", { status: 400 })));
-    expect(field(view.container, "command-catalog-error").textContent).toBe("request failed (400)");
+    expect(field(view.container, "command-catalog-error").textContent).toBe("invalid");
     view.unmount();
   });
 });

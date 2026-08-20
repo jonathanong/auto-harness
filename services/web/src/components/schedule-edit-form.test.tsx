@@ -75,7 +75,11 @@ describe("ScheduleEditForm", () => {
     expect(field<HTMLButtonElement>(view.container, "edit-schedule-submit").textContent).toBe(
       "Saving…",
     );
-    await act(async () => finish(new Response("schedule is locked", { status: 409 })));
+    await act(async () =>
+      finish(
+        new Response(JSON.stringify({ error: { message: "schedule is locked" } }), { status: 409 }),
+      ),
+    );
     expect(field(view.container, "edit-schedule-error").textContent).toBe("schedule is locked");
     view.container.querySelectorAll("input").forEach((input) => input.remove());
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json({})));

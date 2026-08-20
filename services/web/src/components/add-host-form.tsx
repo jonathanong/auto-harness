@@ -6,7 +6,7 @@ import { flushSync } from "react-dom";
 import { emptyHostInventory } from "@auto-harness/shared";
 import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 /** Control-plane: seed a host inventory slot (the host's daemon may be offline). */
 export function AddHostForm() {
@@ -53,7 +53,11 @@ export function AddHostForm() {
               },
             );
             if (!res.ok) {
-              setError(await res.text());
+              setError(
+                res.status === 403
+                  ? "Admins create host slots; operators run sessions."
+                  : await apiErrorMessage(res),
+              );
               setPending(false);
               return;
             }

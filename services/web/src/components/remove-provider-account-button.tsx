@@ -3,12 +3,7 @@
 import { useRouter } from "next/navigation";
 import { ConfirmButton } from "@auto-harness/ui";
 
-import { apiBase } from "@auto-harness/shared";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function RemoveProviderAccountButton({
   accountId,
@@ -34,7 +29,7 @@ export function RemoveProviderAccountButton({
           { method: "DELETE" },
         );
         if (!res.ok) {
-          return { ok: false, error: await errorMessage(res) };
+          return { ok: false, error: await apiErrorMessage(res) };
         }
         router.refresh();
       }}

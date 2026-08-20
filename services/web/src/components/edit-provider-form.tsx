@@ -5,12 +5,7 @@ import { useState, useTransition } from "react";
 import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
 import type { Provider } from "@auto-harness/shared";
 
-import { apiBase } from "@auto-harness/shared";
-
-async function errorMessage(res: Response): Promise<string> {
-  const body = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
-  return body?.error?.message ?? `request failed (${res.status})`;
-}
+import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function EditProviderForm({ provider }: { provider: Provider }) {
   const router = useRouter();
@@ -51,7 +46,7 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
             },
           );
           if (!res.ok) {
-            setError(await errorMessage(res));
+            setError(await apiErrorMessage(res));
             return;
           }
           setOpen(false);
