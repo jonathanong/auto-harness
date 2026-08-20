@@ -44,7 +44,7 @@ export function showToast(message: string, options: ShowToastOptions = {}): void
   emit({
     message,
     variant: options.variant === "destructive" ? "destructive" : "default",
-    pw: options.pw,
+    ...(options.pw !== undefined ? { pw: options.pw } : {}),
   });
 }
 
