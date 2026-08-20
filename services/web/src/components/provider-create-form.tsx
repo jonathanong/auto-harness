@@ -124,7 +124,10 @@ export function ProviderCreateForm() {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="commandName" tip="Name for this provider's default command">
+        <Label
+          htmlFor="commandName"
+          tip="Catalog label for this command — not the binary on disk (the first argv token is the executable)"
+        >
           default command name
         </Label>
         <Input
