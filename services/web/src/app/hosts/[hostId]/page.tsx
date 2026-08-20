@@ -8,6 +8,7 @@ import { HostOverviewSection } from "../../../components/host-overview-section.t
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
+import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -32,7 +33,7 @@ export default async function HostDetailPage({
   params: Promise<{ hostId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { hostId } = await params;
+  const hostId = decodeRouteParam((await params).hostId);
   const { tab } = await searchParams;
 
   let inventory: (HostInventory & { version?: number }) | null = null;

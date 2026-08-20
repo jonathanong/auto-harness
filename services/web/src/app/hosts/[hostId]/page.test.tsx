@@ -132,6 +132,48 @@ describe("host detail route", () => {
     expect(html).toContain("repo-a");
   });
 
+  it("decodes a percent-encoded host id before lookup and display", async () => {
+    stubApi({
+      "/api/v1/hosts/admin:admin/inventory": {
+        repositories: [],
+        providerAccounts: [],
+      },
+      "/api/v1/hosts": { items: [{ hostId: "admin:admin", online: true }] },
+      "/api/v1/repositories": { items: [] },
+      "/api/v1/worktrees?hostId=admin%3Aadmin": { items: [] },
+      "/api/v1/providers": { items: [] },
+      "/api/v1/provider-accounts": { items: [] },
+      "/api/v1/commands": { items: [] },
+    });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "admin%3Aadmin" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('data-pw="page-host-detail"');
+    expect(html).toContain(">admin:admin<");
+    expect(html).not.toContain('data-pw="page-host-detail-not-found"');
+    expect(html).not.toContain("No host");
+  });
+
+  it("shows a decoded host id in the not-found empty state", async () => {
+    stubApi({
+      "/api/v1/hosts/admin:admin/inventory": jsonResponse({}, 404),
+      "/api/v1/hosts": { items: [] },
+    });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "admin%3Aadmin" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('data-pw="page-host-detail-not-found"');
+    expect(html).toContain("No host");
+    expect(html).toContain("admin:admin");
+    expect(html).not.toContain("%3A");
+  });
+
   it("surfaces an agent-status failure on the Overview tab without hiding the page", async () => {
     stubApi({ ...catalogOk, "/api/v1/hosts": jsonResponse({}, 503) });
     const html = await renderPage(
