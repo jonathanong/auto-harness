@@ -13,6 +13,8 @@ describe("AddRepoDialog", () => {
     const dialog = field(document, "add-repo-dialog");
     expect(dialog.querySelector('[data-pw="form-repo-catalog"]')).not.toBeNull();
     expect(dialog.querySelector('[data-pw="repo-catalog-name"]')).not.toBeNull();
+    expect(dialog.textContent).toContain("Attach a local path to a host separately, below.");
+    expect(dialog.textContent).not.toMatch(/\bagent\b/i);
     expect(dialog.querySelector('[data-pw="repo-catalog-submit"]')?.textContent).toBe(
       "Create repository",
     );

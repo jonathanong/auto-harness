@@ -52,11 +52,21 @@ export function RepoCreateForm() {
       <div className="space-y-1">
         <Label
           htmlFor="url"
-          tip="Remote URL or logical path stored in the catalog (agent host paths are separate)"
+          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
         >
           URL / Path
         </Label>
-        <Input id="url" name="url" required data-pw="repo-catalog-url" />
+        <Input
+          id="url"
+          name="url"
+          required
+          placeholder="https://github.com/org/repo.git"
+          data-pw="repo-catalog-url"
+        />
+        <p className="text-xs text-muted-foreground">
+          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path
+          on the host — that is set when attaching the repo to a host.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch name for sessions that omit ref">
