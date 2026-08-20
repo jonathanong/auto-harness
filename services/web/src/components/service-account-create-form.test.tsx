@@ -40,6 +40,22 @@ describe("ServiceAccountCreateForm", () => {
     expect(field<HTMLInputElement>(view.container, "service-account-bound-host").value).toBe("");
   });
 
+  it("rejects a bound host id that is not in the host list", async () => {
+    const onCreate = vi.fn();
+    const view = mountForm(
+      <ServiceAccountCreateForm repositories={[]} hostIds={["host-a"]} onCreate={onCreate} />,
+    );
+    setValue(field(view.container, "service-account-name"), "bot");
+    setValue(field(view.container, "service-account-bound-host"), "ghost");
+    submit(field(view.container, "form-service-account-create"));
+    await settle();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(field(view.container, "service-account-create-error").textContent).toBe(
+      "Select a host from the list",
+    );
+    view.unmount();
+  });
+
   it("omits empty optional scopes and shows thrown failures", async () => {
     const onCreate = vi
       .fn()

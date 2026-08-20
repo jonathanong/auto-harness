@@ -18,6 +18,20 @@ describe("AttachLocalRepoForm", () => {
     noRepos.unmount();
   });
 
+  it("rejects a typed host id that is not in the host list", () => {
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const view = mountForm(<AttachLocalRepoForm hostIds={["host"]} repos={repos} />);
+    setValue(field(view.container, "attach-repo-agent-id"), "ghost");
+    setValue(field(view.container, "attach-repo-path"), "/repo");
+    submit(field(view.container, "form-attach-local-repo"));
+    expect(field(view.container, "attach-repo-error").textContent).toBe(
+      "Select a host from the list",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
   it("validates an absent host, repository, or path", () => {
     const view = mountForm(<AttachLocalRepoForm hostIds={["host"]} repos={repos} />);
     const form = field<HTMLFormElement>(view.container, "form-attach-local-repo");

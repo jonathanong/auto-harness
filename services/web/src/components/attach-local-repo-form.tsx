@@ -52,6 +52,10 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           setError("host, repository, and absolute path on the host are required");
           return;
         }
+        if (!hostIds.includes(hostId)) {
+          setError("Select a host from the list");
+          return;
+        }
         setPending(true);
         void (async () => {
           const result = await attachLocalRepo({ hostId, id, path, defaultBranch });

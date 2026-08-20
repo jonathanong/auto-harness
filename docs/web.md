@@ -378,7 +378,8 @@ Expandable hierarchy of configured repositories and their worktrees. Each reposi
 Both Add and Edit forms include name, git URL, default branch, and an optional multiline setup
 script.
 
-**Attach a repository to a host** picks the host with a filterable combobox of `GET /hosts` hostIds.
+**Attach a repository to a host** picks the host with a filterable combobox of `GET /hosts` hostIds;
+typed values that are not in that list are rejected (they do not create a new host).
 **Add host** stays a free-text field for a new host id.
 
 ### Repository Detail
@@ -403,7 +404,7 @@ The **Add host** form is shown only to an unscoped admin (and in loopback when a
 disabled). Operators run sessions on existing host slots; they do not create them. Submitting the
 form as a non-admin surfaces "Admins create host slots; operators run sessions." instead of a raw
 JSON `FORBIDDEN` body. The host id field is free text for a _new_ identity — existing-host pickers
-elsewhere are a filterable combobox of `GET /hosts` hostIds.
+elsewhere are a filterable combobox of `GET /hosts` hostIds and reject unknown typed values.
 
 The connected-host fleet table shows each host id, online/offline status, attached repository count,
 whether host configuration exists, connection time (relative, full timestamp on hover), worktree

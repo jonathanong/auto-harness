@@ -99,12 +99,21 @@ describe("HostIdCombobox", () => {
     const input = field<HTMLInputElement>(view.container, "host-picker");
     setValue(input, "zzz");
     expect(input.getAttribute("aria-expanded")).toBe("false");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+    expect(input.validationMessage).toBe("Select a host from the list");
     expect(view.container.querySelector('[role="option"]')).toBeNull();
     const down = key(input, "ArrowDown");
     expect(down.defaultPrevented).toBe(false);
     key(input, "ArrowUp");
-    key(input, "Enter");
-    expect(input.value).toBe("zzz");
+    const enter = key(input, "Enter");
+    expect(enter.defaultPrevented).toBe(true);
+    expect(input.value).toBe("");
+    setValue(input, "zzz");
+    act(() => input.blur());
+    expect(input.value).toBe("");
+    expect(input.validationMessage).toBe("");
+    setValue(input, "only");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
     view.unmount();
   });
 

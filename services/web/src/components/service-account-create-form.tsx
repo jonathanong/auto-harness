@@ -31,6 +31,10 @@ export function ServiceAccountCreateForm({
         const data = new FormData(form);
         const allowedRepositoryIds = data.getAll("allowedRepositoryIds").map(String);
         const boundHostId = String(data.get("boundHostId") ?? "").trim();
+        if (boundHostId && !hostIds.includes(boundHostId)) {
+          setError("Select a host from the list");
+          return;
+        }
         const input: ServiceAccountInput = {
           name: String(data.get("name") ?? "").trim(),
           role: String(data.get("role") ?? "operator") as ServiceAccountRole,

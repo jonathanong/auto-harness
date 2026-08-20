@@ -46,11 +46,29 @@ export function HostIdCombobox({
   }, [filtering, hostIds, value]);
   const activeIndex = matches.length === 0 ? 0 : Math.min(active, matches.length - 1);
   const expanded = open && matches.length > 0;
+  const trimmed = value.trim();
+  const listed = trimmed === "" || hostIds.includes(trimmed);
+
+  useEffect(() => {
+    const input = rootRef.current?.querySelector("input");
+    if (!input) return;
+    input.setCustomValidity(listed ? "" : "Select a host from the list");
+  }, [listed]);
 
   const select = (hostId: string) => {
     setValue(hostId);
     setFiltering(false);
     setOpen(false);
+  };
+
+  const rejectUnknown = () => {
+    if (trimmed !== "" && !hostIds.includes(trimmed)) {
+      setValue("");
+      setFiltering(false);
+      return true;
+    }
+    if (trimmed !== value) setValue(trimmed);
+    return false;
   };
 
   return (
@@ -65,6 +83,7 @@ export function HostIdCombobox({
         aria-controls={listId}
         aria-autocomplete="list"
         aria-haspopup="listbox"
+        {...(listed ? {} : { "aria-invalid": true as const })}
         aria-activedescendant={expanded ? `${listId}-${activeIndex}` : undefined}
         data-pw={dataPw}
         value={value}
@@ -77,10 +96,22 @@ export function HostIdCombobox({
           setFiltering(false);
           setOpen(true);
         }}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false);
+          rejectUnknown();
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setOpen(false);
+            return;
+          }
+          if (event.key === "Enter" && open && matches.length > 0) {
+            event.preventDefault();
+            select(matches[activeIndex]!);
+            return;
+          }
+          if (event.key === "Enter" && rejectUnknown()) {
+            event.preventDefault();
             return;
           }
           if (matches.length === 0) return;
@@ -95,10 +126,6 @@ export function HostIdCombobox({
             setOpen(true);
             setActive((index) => (index - 1 + matches.length) % matches.length);
             return;
-          }
-          if (event.key === "Enter" && open) {
-            event.preventDefault();
-            select(matches[activeIndex]!);
           }
         }}
       />
