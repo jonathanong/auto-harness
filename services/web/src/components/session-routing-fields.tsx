@@ -31,7 +31,7 @@ export function SessionRoutingFields({
     <div className="space-y-3" data-pw={`${prefix}-routing`}>
       <div className="space-y-1">
         <Label htmlFor={`${prefix}-target`} tip="Provider pool or named command to try first">
-          Primary target
+          Primary Target
         </Label>
         <SessionTargetSelect
           targets={targets}

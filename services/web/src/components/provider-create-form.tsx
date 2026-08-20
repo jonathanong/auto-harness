@@ -108,7 +108,7 @@ export function ProviderCreateForm() {
           htmlFor="name"
           tip="Lowercase letters, numbers, and dashes only; unique across the catalog (e.g. claude, codex)"
         >
-          name
+          Name
         </Label>
         <Input
           id="name"
@@ -123,7 +123,7 @@ export function ProviderCreateForm() {
           htmlFor="commandName"
           tip="Catalog label for this command — not the binary on disk (the first argv token is the executable)"
         >
-          default command name
+          Default Command Name
         </Label>
         <Input
           id="commandName"
@@ -141,7 +141,7 @@ export function ProviderCreateForm() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="argv" tip="One argv element per line — never a shell string">
-          default command argv (one per line)
+          Default Command Argv (One Per Line)
         </Label>
         <Textarea
           id="argv"
@@ -163,7 +163,7 @@ export function ProviderCreateForm() {
           onChange={(event) => setAppendPrompt(event.currentTarget.checked)}
           data-pw="provider-catalog-append-prompt"
         />
-        append session prompt as the final argv element
+        Append Session Prompt as the Final Argv Element
       </label>
       <label className="flex items-center gap-2 text-sm">
         <input
@@ -173,8 +173,8 @@ export function ProviderCreateForm() {
           onChange={(event) => setAppendPromptSeparator(event.currentTarget.checked)}
           data-pw="provider-catalog-append-prompt-separator"
         />
-        insert -- before the prompt (on by default; grok&apos;s -p takes the prompt as its value —
-        leave this off for grok)
+        Insert -- Before the Prompt (On by Default; Grok&apos;s -p Takes the Prompt as Its Value —
+        Leave This Off for Grok)
       </label>
       {error ? (
         <p className="text-sm text-red-700" data-pw="provider-catalog-error">

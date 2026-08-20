@@ -51,7 +51,7 @@ describe("HostProviderAccountsSection", () => {
     );
     const select = field<HTMLSelectElement>(view.container, "attach-provider-account-select");
     expect(select.value).toBe("a");
-    expect(select.labels?.[0]?.textContent).toBe("provider account");
+    expect(select.labels?.[0]?.textContent).toBe("Provider Account");
     view.unmount();
   });
 

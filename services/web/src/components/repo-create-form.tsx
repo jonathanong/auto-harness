@@ -45,7 +45,7 @@ export function RepoCreateForm() {
           htmlFor="name"
           tip="Lowercase letters, numbers, and dashes only; unique across the catalog. Id is auto-generated."
         >
-          name
+          Name
         </Label>
         <Input id="name" name="name" required data-pw="repo-catalog-name" />
       </div>
@@ -70,7 +70,7 @@ export function RepoCreateForm() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch name for sessions that omit ref">
-          defaultBranch
+          Default Branch
         </Label>
         <Input
           id="defaultBranch"
@@ -81,7 +81,7 @@ export function RepoCreateForm() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="setupScript" tip="Optional catalog-level setup script">
-          setup script
+          Setup Script
         </Label>
         <Textarea
           id="setupScript"

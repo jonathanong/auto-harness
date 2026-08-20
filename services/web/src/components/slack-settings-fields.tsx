@@ -17,7 +17,7 @@ export function SlackSettingsFields({
   return (
     <>
       <div className="space-y-1">
-        <Label htmlFor="slack-bot-token">Bot token</Label>
+        <Label htmlFor="slack-bot-token">Bot Token</Label>
         <Input
           id="slack-bot-token"
           name="botToken"
@@ -33,7 +33,7 @@ export function SlackSettingsFields({
         Starts with <code>xoxb-</code>. This field is write-only and is cleared after saving.
       </p>
       <div className="space-y-1">
-        <Label htmlFor="slack-signing-secret">Signing secret (optional)</Label>
+        <Label htmlFor="slack-signing-secret">Signing Secret (Optional)</Label>
         <Input
           id="slack-signing-secret"
           name="signingSecret"
@@ -47,7 +47,7 @@ export function SlackSettingsFields({
         Leave blank to replace without a signing secret. It is never displayed.
       </p>
       <div className="space-y-1">
-        <Label htmlFor="slack-default-channel">Default channel</Label>
+        <Label htmlFor="slack-default-channel">Default Channel</Label>
         <Input
           id="slack-default-channel"
           name="defaultChannel"
@@ -65,10 +65,10 @@ export function SlackSettingsFields({
           defaultChecked={values.enabled}
           data-pw="slack-enabled"
         />
-        <span>Integration enabled</span>
+        <span>Integration Enabled</span>
       </label>
       <fieldset className="grid gap-2 rounded-md border border-border p-3">
-        <legend className="px-1 text-sm font-medium">Notification toggles</legend>
+        <legend className="px-1 text-sm font-medium">Notification Toggles</legend>
         {notificationFields.map(({ key, label }) => (
           <label key={key} className="flex items-center gap-2 text-sm">
             <input
