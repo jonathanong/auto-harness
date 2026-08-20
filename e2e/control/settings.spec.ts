@@ -45,6 +45,7 @@ test.describe("control plane Slack settings", () => {
     await page.goto("/settings");
     await page.getByTestId("nav-group-settings").click();
     await expect(page.getByTestId("nav-settings")).toBeVisible();
+    await page.keyboard.press("Escape");
     await expect(page.getByTestId("page-settings")).toBeVisible();
     await expect(page.getByTestId("settings-heading")).toHaveText("Settings");
     await expect(page.getByTestId("slack-settings-section")).toBeVisible();

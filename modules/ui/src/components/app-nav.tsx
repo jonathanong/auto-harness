@@ -106,17 +106,20 @@ function NavGroupMenu({ group, activeHref }: { group: NavGroup; activeHref: stri
   const label = group.label ?? "";
   const groupActive = group.items.some((item) => item.href === activeHref);
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        data-pw={group.pw ?? `nav-group-${label.toLowerCase().replace(/\s+/g, "-")}`}
-        className={cn(
-          "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-          "outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted/60",
-          groupActive ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60",
-        )}
-      >
-        {label}
-        <ChevronDown />
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          data-pw={group.pw ?? `nav-group-${label.toLowerCase().replace(/\s+/g, "-")}`}
+          className={cn(
+            "inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+            "outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted/60",
+            groupActive ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60",
+          )}
+        >
+          {label}
+          <ChevronDown />
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start">
         {group.items.map((item) => (

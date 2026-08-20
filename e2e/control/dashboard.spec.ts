@@ -76,12 +76,15 @@ test.describe("control plane dashboard", () => {
     await expect(page.getByTestId("nav-dashboard")).toBeVisible();
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
     await expect(page.getByTestId("nav-schedules")).toBeVisible();
+    await page.keyboard.press("Escape");
 
     await page.getByTestId("nav-group-catalog").click();
     await expect(page.getByTestId("nav-repositories")).toBeVisible();
+    await page.keyboard.press("Escape");
 
     await page.getByTestId("nav-group-fleet").click();
     await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-hosts")).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 });
