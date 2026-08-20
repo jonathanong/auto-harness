@@ -65,7 +65,7 @@ describe("HostRepoSettingsForm", () => {
     press(field(view.container, "repo-settings-open-repo-1"));
     expect(
       field<HTMLInputElement>(view.container, "repo-settings-path-repo-1").labels?.[0]?.textContent,
-    ).toBe("absolute path");
+    ).toBe("Absolute Path");
     expect(field<HTMLInputElement>(view.container, "repo-settings-path-repo-1").value).toBe(
       "/old/repo",
     );

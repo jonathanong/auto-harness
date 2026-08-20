@@ -14,7 +14,7 @@ export function SessionCreateDetailFields({
         <SessionTimeoutField initialSeconds={initialValues?.timeout} />
         <div className="space-y-1">
           <Label htmlFor="ref" tip="Git ref to check out in the worktree (branch, tag, or SHA)">
-            Git ref
+            Git Ref
           </Label>
           <Input
             id="ref"

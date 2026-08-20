@@ -51,7 +51,7 @@ export function AttachProviderAccountToHostForm({
           htmlFor="providerAccountId"
           tip="Makes this account eligible for sessions on this host"
         >
-          provider account
+          Provider Account
         </Label>
         <select
           id="providerAccountId"

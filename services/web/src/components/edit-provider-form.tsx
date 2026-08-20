@@ -56,7 +56,7 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
     >
       <div className="space-y-1">
         <Label htmlFor="name" tip="Lowercase letters, numbers, and dashes only; unique">
-          name
+          Name
         </Label>
         <Input
           id="name"

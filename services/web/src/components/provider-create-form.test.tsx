@@ -45,7 +45,7 @@ describe("ProviderCreateForm", () => {
     const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
     expect(input<HTMLInputElement>(view, "provider-catalog-name").labels?.[0]?.textContent).toBe(
-      "name",
+      "Name",
     );
     expect(input<HTMLInputElement>(view, "provider-catalog-command-name").placeholder).toBe(
       "claude-print",
