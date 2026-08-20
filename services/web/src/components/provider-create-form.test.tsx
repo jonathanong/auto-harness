@@ -22,6 +22,14 @@ function setName(view: View, value: string) {
   act(() => setValue(input<HTMLInputElement>(view, "provider-catalog-name"), value));
 }
 
+function expectCommand(view: View, name: string, argv: string, separator: boolean) {
+  expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe(name);
+  expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(argv);
+  expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
+    separator,
+  );
+}
+
 function mockCreate() {
   const fetch = vi
     .fn()
@@ -63,13 +71,7 @@ describe("ProviderCreateForm", () => {
     const fetch = mockCreate();
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
-    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("grok-print");
-    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(
-      "grok\n--always-approve\n--max-turns\n3\n-p",
-    );
-    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
-      false,
-    );
+    expectCommand(view, "grok-print", "grok\n--always-approve\n--max-turns\n3\n-p", false);
     submit(field(view.container, "form-provider-catalog"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
@@ -86,13 +88,18 @@ describe("ProviderCreateForm", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
     setName(view, "claude");
-    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe(
-      "claude-print",
-    );
-    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe("claude\n-p");
-    expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
-      true,
-    );
+    expectCommand(view, "claude-print", "claude\n-p", true);
+    view.unmount();
+  });
+
+  it("applies codex exec and cursor-agent print presets with a -- separator", () => {
+    const view = mountForm(<ProviderCreateForm />);
+    setName(view, "codex");
+    expectCommand(view, "codex-exec", "codex\nexec", true);
+    setName(view, "cursor-agent");
+    expectCommand(view, "cursor-print", "cursor-agent\n--print\n--force", true);
+    setName(view, "cursor");
+    expectCommand(view, "cursor-print", "cursor-agent\n--print\n--force", true);
     view.unmount();
   });
 
@@ -101,19 +108,15 @@ describe("ProviderCreateForm", () => {
     setName(view, "grok");
     act(() => setValue(input<HTMLInputElement>(view, "provider-catalog-command-name"), "my-cli"));
     setName(view, "claude");
-    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("my-cli");
-    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe("claude\n-p");
+    expectCommand(view, "my-cli", "claude\n-p", true);
     view.unmount();
   });
 
   it("does not wipe grok defaults when the name becomes a non-catalog value", () => {
     const view = mountForm(<ProviderCreateForm />);
     setName(view, "grok");
-    setName(view, "codex");
-    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").value).toBe("grok-print");
-    expect(input<HTMLTextAreaElement>(view, "provider-catalog-argv").value).toBe(
-      "grok\n--always-approve\n--max-turns\n3\n-p",
-    );
+    setName(view, "other");
+    expectCommand(view, "grok-print", "grok\n--always-approve\n--max-turns\n3\n-p", false);
     view.unmount();
   });
 
