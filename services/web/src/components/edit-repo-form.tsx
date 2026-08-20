@@ -68,16 +68,24 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="url" tip="Git remote URL and/or local path identity for operators">
-          URL
+        <Label
+          htmlFor="url"
+          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
+        >
+          URL / Path
         </Label>
         <Input
           id="url"
           name="url"
           defaultValue={repository.url ?? ""}
           required
+          placeholder="https://github.com/org/repo.git"
           data-pw="edit-repo-url"
         />
+        <p className="text-xs text-muted-foreground">
+          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path
+          on the host — that is set when attaching the repo to a host.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch when sessions omit ref">

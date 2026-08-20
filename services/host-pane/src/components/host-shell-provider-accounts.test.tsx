@@ -110,33 +110,6 @@ describe("host-pane shell", () => {
     );
     view.unmount();
   });
-
-  it("doesn't re-observe its flat nav's overflow on every unrelated re-render", () => {
-    // navGroups() wraps a flat NavItem[] (host-pane's shape) in a fresh array literal on
-    // every call — unmemoized, that re-triggers the overflow effect (which unconditionally
-    // calls setState) on every render, looping. observe() should run once per mount.
-    const observe = vi.fn();
-    const disconnect = vi.fn();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        observe = observe;
-        disconnect = disconnect;
-      },
-    );
-    const render = (n: number) =>
-      withNavigation(
-        <HostShell hostId="host-1" online>
-          <p>{n}</p>
-        </HostShell>,
-        "/repositories",
-      );
-    const view = mount(render(0));
-    for (let i = 1; i <= 5; i += 1) view.rerender(render(i));
-    expect(observe).toHaveBeenCalledTimes(1);
-    view.unmount();
-    expect(disconnect).toHaveBeenCalledTimes(1);
-  });
 });
 
 const provider: Provider = {

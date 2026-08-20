@@ -27,6 +27,7 @@ test.describe("human user-account administration", () => {
       await page.getByTestId("login-username").fill(admin.username);
       await page.getByTestId("login-password").fill(admin.password);
       await page.getByTestId("login-submit").click();
+      await page.getByTestId("nav-group-settings").click();
       await page.getByTestId("nav-settings").click();
       await expect(page.getByTestId("user-accounts-loading")).toBeVisible();
       await expect.poll(() => Boolean(releaseLoad)).toBe(true);
@@ -115,6 +116,7 @@ test.describe("human user-account administration", () => {
     await page.getByTestId("login-username").fill(admin.username);
     await page.getByTestId("login-password").fill(admin.password);
     await page.getByTestId("login-submit").click();
+    await page.getByTestId("nav-group-settings").click();
     await page.getByTestId("nav-settings").click();
     await expect(page.getByTestId("user-accounts-error")).toContainText(
       "temporary user list failure",
