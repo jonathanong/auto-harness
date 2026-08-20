@@ -24,4 +24,16 @@ describe("AddCommandDialog", () => {
     expect(document.querySelector('[data-pw="add-command-dialog"]')).toBeNull();
     view.unmount();
   });
+
+  it("opens a provider-owned command form without a provider picker", () => {
+    const view = mountForm(<AddCommandDialog fixedProviderId="provider-1" />);
+    press(field<HTMLButtonElement>(view.container, "add-command-open"));
+    const dialog = field(document, "add-command-dialog");
+    expect(dialog.textContent).toContain("owned by this provider");
+    expect(dialog.querySelector('[data-pw="command-catalog-provider"]')).toBeNull();
+    expect(dialog.querySelector("[data-pw=command-catalog-submit]")?.textContent).toBe(
+      "Create command",
+    );
+    view.unmount();
+  });
 });

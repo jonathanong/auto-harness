@@ -11,8 +11,8 @@ import {
 } from "@auto-harness/ui";
 import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
 
+import { AddCommandDialog } from "../../../components/add-command-dialog.tsx";
 import { AddProviderAccountForm } from "../../../components/add-provider-account-form.tsx";
-import { CommandCreateForm } from "../../../components/command-create-form.tsx";
 import { DeleteProviderButton } from "../../../components/delete-provider-button.tsx";
 import { EditProviderForm } from "../../../components/edit-provider-form.tsx";
 import { ProviderAccountUnattachedWarning } from "../../../components/provider-account-unattached-warning.tsx";
@@ -181,7 +181,7 @@ export default async function ProviderDetailPage({
                     ) : null}
                   </TableBody>
                 </Table>
-                <CommandCreateForm fixedProviderId={providerId} />
+                <AddCommandDialog fixedProviderId={providerId} />
               </div>
             ),
           },
