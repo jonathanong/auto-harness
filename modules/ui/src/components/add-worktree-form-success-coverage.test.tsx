@@ -34,6 +34,9 @@ describe("AddWorktreeForm success flow", () => {
     );
     expect(document.body.textContent).toContain("Do not mkdir this directory");
     expect(document.body.textContent).toContain("git worktree add");
+    expect(
+      (document.querySelector('[data-pw="add-worktree-labels-repo-1"]') as HTMLInputElement).value,
+    ).toBe("");
     const form = document.querySelector("form") as HTMLFormElement;
     const name = document.querySelector('[data-pw="add-worktree-name-repo-1"]') as HTMLInputElement;
     const path = document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement;

@@ -388,7 +388,11 @@ The Provider accounts tab shows, for each host the repository is attached to, a 
 
 ## Worktrees
 
-Fleet-wide worktrees view, grouped by repository. Each worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts, Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to exactly one host, so there's only one block, and the worktree scope wins over its repository's).
+Fleet-wide worktrees view, grouped by repository. New worktrees start with no scheduler labels;
+edit a worktree to set or clear labels (they must match a session's required labels). Each
+worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts,
+Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to
+exactly one host, so there's only one block, and the worktree scope wins over its repository's).
 
 ---
 
