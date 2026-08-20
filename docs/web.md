@@ -303,7 +303,7 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 | Queue TTL      | Number input       | ✗        | Absolute queue lifetime in seconds; default 691200 (8 days), never reset by fallback attempts                                      |
 | Timeout        | Dropdown + number  | ✓        | Presets for 5 min, 15 min, 30 min, and 1 hour. Custom reveals a required positive-seconds input. The API receives numeric seconds. |
 | Priority       | Slider (0–100)     | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                                       |
-| Labels         | Multi-select chips | ✗        | Filter which worktrees can run this session. Populated from available labels across connected agents.                              |
+| Labels         | Labeled switches   | ✗        | Filter which worktrees can run this session. Each advertised label is a switch; leave all off to allow any worktree.               |
 | Concurrency ID | Text input         | ✗        | Optional global exact-match identity for deduplication and concurrency. A duplicate active request returns the existing session.   |
 
 ### Submission
