@@ -1,7 +1,8 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
-import { AppShell, type NavGroup, ThemeToggle } from "@auto-harness/ui";
+import { AppShell, type NavGroup, ThemeToggle, Toast } from "@auto-harness/ui";
 
 import { LogoutButton } from "./logout-button.tsx";
 import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
@@ -97,7 +98,16 @@ export function ControlShell({
   authRequired?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login") {
+    return (
+      <>
+        {children}
+        <Suspense fallback={null}>
+          <Toast />
+        </Suspense>
+      </>
+    );
+  }
   return (
     <AppShell
       pw="control-shell"

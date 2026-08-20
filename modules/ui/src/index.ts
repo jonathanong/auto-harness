@@ -112,5 +112,5 @@ export {
   DialogTitle,
   DialogDescription,
 } from "./components/dialog.tsx";
-export { RetryToast, Toast, withToast } from "./components/toast.tsx";
+export { RetryToast, Toast, dismissToast, showToast, withToast } from "./components/toast.tsx";
 export { ThemeToggle, THEME_CHANGE_EVENT, THEME_INIT_SCRIPT } from "./components/theme-toggle.tsx";

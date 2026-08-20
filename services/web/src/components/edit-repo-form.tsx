@@ -9,6 +9,7 @@ import {
   Textarea,
   type RepositorySummary,
   WithTooltip,
+  showToast,
 } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
@@ -17,7 +18,6 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (!open) {
     return (
@@ -39,14 +39,13 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       data-pw="form-edit-repo"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const url = String(fd.get("url") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         const setupScript = String(fd.get("setupScript") ?? "");
         const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
         if (!url) {
-          setError("url is required");
+          showToast("url is required", { variant: "destructive", pw: "edit-repo-error" });
           return;
         }
         start(async () => {
@@ -59,7 +58,10 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
             },
           );
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "edit-repo-error",
+            });
             return;
           }
           setOpen(false);
@@ -116,11 +118,6 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
           data-pw="edit-repo-hook"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="edit-repo-error">
-          {error}
-        </p>
-      ) : null}
       <div className="flex gap-2">
         <WithTooltip tip="Save changes to this catalog repository">
           <Button type="submit" size="sm" disabled={pending} data-pw="edit-repo-submit">

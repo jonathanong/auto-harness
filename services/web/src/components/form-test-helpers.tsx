@@ -8,7 +8,7 @@ import {
   PathnameContext,
   SearchParamsContext,
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
-import { TooltipProvider } from "@auto-harness/ui";
+import { Toast, TooltipProvider, dismissToast } from "@auto-harness/ui";
 import { afterEach, vi } from "vitest";
 
 const router = {
@@ -40,7 +40,12 @@ export function mountForm(
       <AppRouterContext.Provider value={router}>
         <PathnameContext.Provider value={pathname}>
           <SearchParamsContext.Provider value={searchParams}>
-            <TooltipProvider delayDuration={0}>{node}</TooltipProvider>
+            <TooltipProvider delayDuration={0}>
+              <React.Suspense fallback={null}>
+                <Toast />
+              </React.Suspense>
+              {node}
+            </TooltipProvider>
           </SearchParamsContext.Provider>
         </PathnameContext.Provider>
       </AppRouterContext.Provider>,
@@ -110,6 +115,7 @@ export function json(body: unknown, status = 200): Response {
 }
 afterEach(() => {
   for (const unmount of mountedRoots) unmount();
+  dismissToast();
   document.body.replaceChildren();
   router.back.mockReset();
   router.forward.mockReset();

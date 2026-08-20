@@ -43,6 +43,14 @@ describe("AddHostForm", () => {
     expect(field(view.container, "add-host-error").textContent).toBe("network unreachable");
     expect(field<HTMLButtonElement>(view.container, "add-host-submit").disabled).toBe(false);
     view.unmount();
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue("offline"));
+    const fallback = mountForm(<AddHostForm />);
+    setValue(field(fallback.container, "add-host-id"), "new-host");
+    submit(field(fallback.container, "form-add-host"));
+    await act(async () => Promise.resolve());
+    expect(field(fallback.container, "add-host-error").textContent).toBe("offline");
+    fallback.unmount();
   });
 
   it("creates an empty slot, and reports a failed create while pending", async () => {

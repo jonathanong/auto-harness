@@ -1,14 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useTransition } from "react";
 import { mutateInventory, upsertHostRepository } from "@auto-harness/shared";
 
 import { Button } from "./button.tsx";
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 import { PathInput } from "./path-input.tsx";
-import { withToast } from "./toast.tsx";
+import { showToast, withToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 export type RepoCatalogEntry = { id: string; name: string; defaultBranch?: string };
@@ -36,7 +36,6 @@ export function AddRepoForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   if (catalog.length === 0) {
     return (
@@ -53,13 +52,15 @@ export function AddRepoForm({
       data-pw="form-add-local-repo"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         if (!id || !path) {
-          setError("repository and absolute path are required");
+          showToast("repository and absolute path are required", {
+            variant: "destructive",
+            pw: "add-repo-error",
+          });
           return;
         }
         start(async () => {
@@ -67,7 +68,7 @@ export function AddRepoForm({
             upsertHostRepository(current, { id, path, defaultBranch }),
           );
           if (!r.ok) {
-            setError(r.error);
+            showToast(r.error, { variant: "destructive", pw: "add-repo-error" });
             return;
           }
           if (onSuccess) {
@@ -124,11 +125,6 @@ export function AddRepoForm({
           data-pw="add-repo-branch"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="add-repo-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Attaches this host's path to an existing catalog repository, zero worktrees">
         <Button type="submit" disabled={pending} data-pw="add-repo-submit">
           {pending ? "Attaching…" : "Attach repository"}

@@ -9,6 +9,7 @@ import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
 import type { RequestFunction } from "./request-types.ts";
 import { Textarea } from "./textarea.tsx";
+import { dismissToast, showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 /**
@@ -33,7 +34,6 @@ export function HostConfigForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [ok, setOk] = useState(false);
 
@@ -43,7 +43,7 @@ export function HostConfigForm({
       data-pw="form-host-config-json"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
+        dismissToast();
         setConflict(false);
         setOk(false);
         const raw = String(new FormData(e.currentTarget).get("configJson") ?? "");
@@ -55,7 +55,7 @@ export function HostConfigForm({
           }
           body = parsed as Record<string, unknown>;
         } catch {
-          setError("Invalid JSON");
+          showToast("Invalid JSON", { variant: "destructive", pw: "host-config-error" });
           return;
         }
         start(async () => {
@@ -72,7 +72,10 @@ export function HostConfigForm({
               setConflict(true);
               return;
             }
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "host-config-error",
+            });
             return;
           }
           setOk(true);
@@ -97,11 +100,6 @@ export function HostConfigForm({
           data-pw="host-config-json"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="host-config-error">
-          {error}
-        </p>
-      ) : null}
       {conflict ? (
         <Alert variant="warning" data-pw="host-config-conflict">
           This host's inventory changed since you loaded this page — reload to see the latest, then

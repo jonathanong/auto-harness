@@ -1,15 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
+import { useTransition } from "react";
+import {
+  Button,
+  Input,
+  Label,
+  Textarea,
+  WithTooltip,
+  showToast,
+  withToast,
+} from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function RepoCreateForm() {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -17,7 +24,6 @@ export function RepoCreateForm() {
       data-pw="form-repo-catalog"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const body: Record<string, string> = {
           name: String(fd.get("name") ?? ""),
@@ -32,7 +38,10 @@ export function RepoCreateForm() {
             body: JSON.stringify(body),
           });
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "repo-catalog-error",
+            });
             return;
           }
           const created = (await res.json()) as { id: string };
@@ -81,11 +90,6 @@ export function RepoCreateForm() {
           data-pw="repo-catalog-setup"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="repo-catalog-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Register a repository in the control-plane catalog only">
         <Button type="submit" disabled={pending} data-pw="repo-catalog-submit">
           {pending ? "Saving…" : "Create repository"}

@@ -8,6 +8,7 @@ import {
   Label,
   ProviderAccountHealth,
   isProviderAccountPaused,
+  showToast,
 } from "@auto-harness/ui";
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
@@ -22,7 +23,6 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
   const router = useRouter();
   const [pending, start] = useTransition();
   const [editing, setEditing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const paused = isProviderAccountPaused(account.usageLimitedUntil);
   if (!editing) {
     return (
@@ -53,7 +53,6 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
       data-pw={`provider-account-cooldown-form-${account.id}`}
       onSubmit={(event) => {
         event.preventDefault();
-        setError(null);
         const seconds = Number(new FormData(event.currentTarget).get("seconds") ?? 18000);
         start(async () => {
           const response = await fetch(
@@ -65,7 +64,7 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
             },
           );
           if (!response.ok) {
-            setError(await apiErrorMessage(response));
+            showToast(await apiErrorMessage(response), { variant: "destructive" });
             return;
           }
           setEditing(false);
@@ -96,7 +95,6 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
           Cancel
         </Button>
       </div>
-      {error ? <p className="text-xs text-red-700">{error}</p> : null}
     </form>
   );
 }
@@ -104,40 +102,31 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
 function ClearCooldownButton({ accountId }: { accountId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   return (
-    <span className="inline-flex flex-col gap-1">
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        disabled={pending}
-        data-pw={`provider-account-cooldown-clear-${accountId}`}
-        onClick={() =>
-          start(async () => {
-            setError(null);
-            const response = await fetch(
-              `${apiBase()}/api/v1/provider-accounts/${encodeURIComponent(accountId)}/usage-limit`,
-              { method: "DELETE" },
-            );
-            if (!response.ok) {
-              setError(await apiErrorMessage(response));
-              return;
-            }
-            router.refresh();
-          })
-        }
-      >
-        {pending ? "Clearing…" : "Clear pause"}
-      </Button>
-      {error ? (
-        <span
-          className="text-xs text-red-700"
-          data-pw={`provider-account-cooldown-clear-error-${accountId}`}
-        >
-          {error}
-        </span>
-      ) : null}
-    </span>
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      data-pw={`provider-account-cooldown-clear-${accountId}`}
+      onClick={() =>
+        start(async () => {
+          const response = await fetch(
+            `${apiBase()}/api/v1/provider-accounts/${encodeURIComponent(accountId)}/usage-limit`,
+            { method: "DELETE" },
+          );
+          if (!response.ok) {
+            showToast(await apiErrorMessage(response), {
+              variant: "destructive",
+              pw: `provider-account-cooldown-clear-error-${accountId}`,
+            });
+            return;
+          }
+          router.refresh();
+        })
+      }
+    >
+      {pending ? "Clearing…" : "Clear pause"}
+    </Button>
   );
 }

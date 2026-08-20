@@ -1,21 +1,72 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
+import { cn } from "../lib/utils.ts";
 import { Button } from "./button.tsx";
+
+type ToastVariant = "default" | "destructive";
+
+type ShowToastOptions = {
+  variant?: ToastVariant;
+  /** Overrides `data-pw="toast"` so form tests/e2e can keep their existing error ids. */
+  pw?: string;
+};
+
+type ToastState = { message: string; variant: ToastVariant; pw?: string };
+
+let clientToast: ToastState | null = null;
+const listeners = new Set<() => void>();
+
+function emit(next: ToastState | null): void {
+  clientToast = next;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getClientToast(): ToastState | null {
+  return clientToast;
+}
+
+/** Show a toast without navigating. `withToast` remains the URL/redirect path. */
+export function showToast(message: string, options: ShowToastOptions = {}): void {
+  if (!message) {
+    emit(null);
+    return;
+  }
+  emit({
+    message,
+    variant: options.variant === "destructive" ? "destructive" : "default",
+    pw: options.pw,
+  });
+}
+
+export function dismissToast(): void {
+  emit(null);
+}
 
 /**
  * Shows a one-off success message carried across a redirect via a `?toast=`
  * query param (e.g. after creating something, before navigating to its
  * detail page) — survives the navigation without any client-side state
  * provider, and strips itself from the URL once shown.
+ *
+ * Client-side callers (form submit failures) use `showToast` instead of the
+ * URL param so the error does not dump raw JSON under the field.
  */
 export function Toast({ paramName = "toast" }: { paramName?: string }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const param = searchParams.get(paramName);
-  const [message, setMessage] = useState<string | null>(null);
+  const [urlMessage, setUrlMessage] = useState<string | null>(null);
+  const live = useSyncExternalStore(subscribe, getClientToast, () => null);
 
   // Capture the incoming param into local state and strip it from the URL.
   // Runs once per incoming param value, not per `message` state change.
@@ -23,7 +74,8 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
     if (!param) {
       return;
     }
-    setMessage(param);
+    dismissToast();
+    setUrlMessage(param);
     const params = new URLSearchParams(searchParams);
     params.delete(paramName);
     const next = params.size ? `${pathname}?${params.toString()}` : pathname;
@@ -33,27 +85,42 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [param]);
 
+  const displayed =
+    live ?? (urlMessage ? { message: urlMessage, variant: "default" as const } : null);
+  const displayedKey = displayed
+    ? `${displayed.variant}:${displayed.pw ?? ""}:${displayed.message}`
+    : "";
+
   // Auto-hide, independent of the URL-stripping effect above so the
   // resulting searchParams/router churn can't cancel this timer early.
   useEffect(() => {
-    if (!message) {
+    if (!displayedKey) {
       return;
     }
-    const hide = setTimeout(() => setMessage(null), 4000);
+    const hide = setTimeout(() => {
+      dismissToast();
+      setUrlMessage(null);
+    }, 4000);
     return () => clearTimeout(hide);
-  }, [message]);
+  }, [displayedKey]);
 
-  if (!message) {
+  if (!displayed) {
     return null;
   }
 
+  const destructive = displayed.variant === "destructive";
   return (
     <div
-      role="status"
-      data-pw="toast"
-      className="fixed bottom-4 right-4 z-50 rounded-md border border-border bg-foreground px-4 py-2 text-sm text-background shadow-lg"
+      role={destructive ? "alert" : "status"}
+      data-pw={displayed.pw ?? "toast"}
+      className={cn(
+        "fixed bottom-4 right-4 z-50 max-w-sm rounded-md border px-4 py-2 text-sm shadow-lg",
+        destructive
+          ? "border-destructive bg-destructive text-destructive-foreground"
+          : "border-border bg-foreground text-background",
+      )}
     >
-      {message}
+      {displayed.message}
     </div>
   );
 }

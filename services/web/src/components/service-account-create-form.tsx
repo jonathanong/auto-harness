@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
 import type {
   RepositoryOption,
@@ -17,7 +17,6 @@ export function ServiceAccountCreateForm({
   onCreate: (input: ServiceAccountInput) => Promise<void>;
 }) {
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   return (
     <form
       className="space-y-4 border-b border-border pb-6"
@@ -34,13 +33,15 @@ export function ServiceAccountCreateForm({
           ...(allowedRepositoryIds.length ? { allowedRepositoryIds } : {}),
           ...(boundHostId ? { boundHostId } : {}),
         };
-        setError(null);
         start(async () => {
           try {
             await onCreate(input);
             form.reset();
           } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "Unable to create service account.");
+            showToast(
+              cause instanceof Error ? cause.message : "Unable to create service account.",
+              { variant: "destructive", pw: "service-account-create-error" },
+            );
           }
         });
       }}
@@ -88,11 +89,6 @@ export function ServiceAccountCreateForm({
           ))}
         </div>
       </fieldset>
-      {error ? (
-        <p className="text-sm text-red-700" role="alert" data-pw="service-account-create-error">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" disabled={pending} data-pw="service-account-create-submit">
         {pending ? "Creating…" : "Create service account"}
       </Button>

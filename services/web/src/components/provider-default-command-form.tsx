@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Label, WithTooltip } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Label, WithTooltip, showToast } from "@auto-harness/ui";
 import type { Command } from "@auto-harness/shared";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
@@ -19,7 +19,6 @@ export function ProviderDefaultCommandForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -27,7 +26,6 @@ export function ProviderDefaultCommandForm({
       data-pw="form-provider-default-command"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("defaultCommandId") ?? "");
         start(async () => {
@@ -40,7 +38,10 @@ export function ProviderDefaultCommandForm({
             },
           );
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "provider-default-command-error",
+            });
             return;
           }
           router.refresh();
@@ -69,11 +70,6 @@ export function ProviderDefaultCommandForm({
           ))}
         </select>
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="provider-default-command-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Save this provider's default command">
         <Button
           type="submit"

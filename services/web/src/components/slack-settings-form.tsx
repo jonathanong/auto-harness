@@ -10,6 +10,8 @@ import {
   CardHeader,
   CardTitle,
   WithTooltip,
+  dismissToast,
+  showToast,
 } from "@auto-harness/ui";
 
 import {
@@ -52,7 +54,9 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
       });
       if (!response.ok) {
         const message = await responseMessage(response);
-        if (mounted.current) setError(message);
+        if (mounted.current) {
+          showToast(message, { variant: "destructive", pw: "slack-error" });
+        }
         return;
       }
       const next = (await response.json()) as PublicSlackIntegration;
@@ -63,7 +67,12 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
       setSuccess("Slack configuration saved. Configuration alone does not send messages.");
       router.refresh();
     } catch {
-      if (mounted.current) setError("Unable to save Slack configuration. Try again.");
+      if (mounted.current) {
+        showToast("Unable to save Slack configuration. Try again.", {
+          variant: "destructive",
+          pw: "slack-error",
+        });
+      }
     }
   }
 
@@ -88,6 +97,7 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
           data-pw={configured ? "form-slack-replace" : "form-slack-create"}
           onSubmit={(event) => {
             event.preventDefault();
+            dismissToast();
             setError(null);
             setSuccess(null);
             const form = event.currentTarget;
@@ -166,7 +176,9 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
                 });
                 if (!response.ok) {
                   const message = await responseMessage(response);
-                  if (mounted.current) setError(message);
+                  if (mounted.current) {
+                    showToast(message, { variant: "destructive", pw: "slack-error" });
+                  }
                   return;
                 }
                 if (!mounted.current) return;
@@ -174,7 +186,12 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
                 setSuccess("Slack configuration deleted.");
                 router.refresh();
               } catch {
-                if (mounted.current) setError("Unable to delete Slack configuration. Try again.");
+                if (mounted.current) {
+                  showToast("Unable to delete Slack configuration. Try again.", {
+                    variant: "destructive",
+                    pw: "slack-error",
+                  });
+                }
               }
             }}
           />

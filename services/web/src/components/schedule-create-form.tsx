@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import {
@@ -37,7 +37,6 @@ export function ScheduleCreateForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -45,7 +44,6 @@ export function ScheduleCreateForm({
       data-pw={schedule ? `form-edit-schedule-${schedule.id}` : "form-create-schedule"}
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
@@ -73,7 +71,10 @@ export function ScheduleCreateForm({
             },
           );
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "schedule-error",
+            });
             return;
           }
           const payload = (await res.json()) as { id?: string };
@@ -173,11 +174,6 @@ export function ScheduleCreateForm({
           data-pw="schedule-concurrency-id"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="schedule-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip
         tip={
           targets.length === 0
