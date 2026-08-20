@@ -61,17 +61,6 @@ export function HostIdCombobox({
     setOpen(false);
   };
 
-  const rejectUnknown = (raw = value) => {
-    const next = raw.trim();
-    if (next !== "" && !hostIds.includes(next)) {
-      setValue("");
-      setFiltering(false);
-      return true;
-    }
-    if (next !== value) setValue(next);
-    return false;
-  };
-
   return (
     <div ref={rootRef} className="relative">
       <Input
@@ -97,10 +86,7 @@ export function HostIdCombobox({
           setFiltering(false);
           setOpen(true);
         }}
-        onBlur={(event) => {
-          setOpen(false);
-          rejectUnknown(event.currentTarget.value);
-        }}
+        onBlur={() => setOpen(false)}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             setOpen(false);
