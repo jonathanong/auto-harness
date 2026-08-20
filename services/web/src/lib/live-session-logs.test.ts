@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   lastLiveCursor,
+  liveLogsStateLabel,
   mergeInitialLiveLogs,
   mergeLiveLogs,
+  resolveViewerSessionStatus,
   validLiveLog,
   viewerWebSocketUrl,
   viewerTicket,
@@ -16,6 +18,32 @@ const first = {
   stream: "stdout",
   content: "first",
 };
+
+describe("live session log status labels", () => {
+  it("prefers a terminal REST status over a later subscribe queued or running", () => {
+    expect(resolveViewerSessionStatus("completed", "queued")).toBe("completed");
+    expect(resolveViewerSessionStatus("failed", "queued")).toBe("failed");
+    expect(resolveViewerSessionStatus("cancelled", "queued")).toBe("cancelled");
+    expect(resolveViewerSessionStatus("timed_out", "queued")).toBe("timed_out");
+    expect(resolveViewerSessionStatus("queued", "queued")).toBe("queued");
+    expect(resolveViewerSessionStatus("queued", "running")).toBe("running");
+    expect(resolveViewerSessionStatus("running", "completed")).toBe("completed");
+    expect(resolveViewerSessionStatus("completed", "running")).toBe("completed");
+    expect(resolveViewerSessionStatus("completed", "failed")).toBe("failed");
+  });
+
+  it("omits Live — for terminal sessions and keeps it for active ones", () => {
+    expect(liveLogsStateLabel("connecting", "completed")).toBe("Connecting live logs…");
+    expect(liveLogsStateLabel("reconnecting", "queued")).toBe("Reconnecting live logs…");
+    expect(liveLogsStateLabel("error", "failed")).toBe("Live logs unavailable");
+    expect(liveLogsStateLabel("live", "running")).toBe("Live — running");
+    expect(liveLogsStateLabel("live", "queued")).toBe("Live — queued");
+    expect(liveLogsStateLabel("live", "completed")).toBe("completed");
+    expect(liveLogsStateLabel("live", "failed")).toBe("failed");
+    expect(liveLogsStateLabel("live", "cancelled")).toBe("cancelled");
+    expect(liveLogsStateLabel("live", "timed_out")).toBe("timed_out");
+  });
+});
 
 describe("live session log state", () => {
   it("orders history, deduplicates reconnect replay, and bounds retained output", () => {

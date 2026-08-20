@@ -23,6 +23,7 @@ export {
   type NavItem,
 } from "./components/app-shell.tsx";
 export { SessionStatusBadge } from "./components/session-status-badge.tsx";
+export { SESSION_QUEUED_WAIT_COPY } from "./components/session-status-cell.tsx";
 export { WorktreeStatusBadge } from "./components/worktree-status-badge.tsx";
 export { formatDuration, RelativeTime } from "./components/session-time.tsx";
 export {

@@ -98,6 +98,7 @@ describe("shared detail views", () => {
       </SessionDetail>,
     );
     expect(linked).toContain('data-pw="session-detail-status"');
+    expect(linked).not.toContain("The scheduler runs about once a minute; waiting is expected.");
     expect(linked).toContain('data-pw="session-detail-source"');
     expect(linked).toContain('data-pw="session-source-api"');
     expect(linked).toContain('href="/repositories/repo%2Fa"');
@@ -130,6 +131,7 @@ describe("shared detail views", () => {
     expect(plain).toContain('data-pw="session-source-unknown"');
     expect(plain).toContain("host/b");
     expect(plain).toContain("worktree/b");
+    expect(plain).toContain("The scheduler runs about once a minute; waiting is expected.");
     expect(plain).toContain('data-pw="session-detail-queue-deadline"');
     expect(plain).toContain('dateTime="2026-08-14T12:30:00.000Z"');
     expect(plain).toContain('data-pw="session-detail-priority">—');

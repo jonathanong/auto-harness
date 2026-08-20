@@ -1,19 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Alert, SessionTerminalViewer } from "@auto-harness/ui";
+import { Alert, SESSION_QUEUED_WAIT_COPY, SessionTerminalViewer } from "@auto-harness/ui";
 
 import {
   lastLiveCursor,
+  liveLogsStateLabel,
   mergeInitialLiveLogs,
   mergeLiveLogs,
+  resolveViewerSessionStatus,
   validLiveLog,
   viewerWebSocketUrl,
   viewerTicket,
   type LiveLogEntry,
+  type LiveLogsConnectionState,
 } from "../lib/live-session-logs.ts";
-
-type ConnectionState = "connecting" | "live" | "reconnecting" | "error";
 
 export function SessionLiveLogs({
   sessionId,
@@ -26,7 +27,7 @@ export function SessionLiveLogs({
 }) {
   const initialLogs = useMemo(() => mergeInitialLiveLogs(initialItems), [initialItems]);
   const [items, setItems] = useState(initialLogs);
-  const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
+  const [connectionState, setConnectionState] = useState<LiveLogsConnectionState>("connecting");
   const [sessionStatus, setSessionStatus] = useState(initialStatus);
   const [error, setError] = useState<string | null>(null);
   const [reconnectKey, setReconnectKey] = useState(0);
@@ -77,7 +78,10 @@ export function SessionLiveLogs({
             if (wire.type === "session:subscribed") {
               setConnectionState("live");
               setError(null);
-              if (typeof wire.status === "string") setSessionStatus(wire.status);
+              if (typeof wire.status === "string") {
+                const incoming = wire.status;
+                setSessionStatus((current) => resolveViewerSessionStatus(current, incoming));
+              }
               return;
             }
             if (wire.type === "session:log" && validLiveLog(wire)) {
@@ -89,7 +93,8 @@ export function SessionLiveLogs({
               return;
             }
             if (wire.type === "session:status" && typeof wire.status === "string") {
-              setSessionStatus(wire.status);
+              const incoming = wire.status;
+              setSessionStatus((current) => resolveViewerSessionStatus(current, incoming));
               return;
             }
             if (wire.type === "session:error") {
@@ -131,11 +136,11 @@ export function SessionLiveLogs({
         data-pw="session-logs-live-state"
         aria-live="polite"
       >
-        {connectionState === "connecting" && "Connecting live logs…"}
-        {connectionState === "live" && `Live — ${sessionStatus}`}
-        {connectionState === "reconnecting" && "Reconnecting live logs…"}
-        {connectionState === "error" && "Live logs unavailable"}
+        {liveLogsStateLabel(connectionState, sessionStatus)}
       </p>
+      {sessionStatus === "queued" ? (
+        <p className="text-sm text-muted-foreground">{SESSION_QUEUED_WAIT_COPY}</p>
+      ) : null}
       {error ? (
         <p className="text-sm text-destructive" data-pw="session-logs-live-error" role="alert">
           {error}
