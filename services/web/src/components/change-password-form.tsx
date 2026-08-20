@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, Input, Label, showToast } from "@auto-harness/ui";
+import { Button, Input, Label, dismissToast, showToast } from "@auto-harness/ui";
 import { apiErrorMessage } from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
@@ -16,6 +16,7 @@ export function ChangePasswordForm() {
       data-pw="form-change-password"
       onSubmit={(event) => {
         event.preventDefault();
+        dismissToast();
         setSuccess(false);
         const formElement = event.currentTarget;
         const form = new FormData(formElement);
@@ -39,6 +40,7 @@ export function ChangePasswordForm() {
             return;
           }
           formElement.reset();
+          dismissToast();
           setSuccess(true);
         });
       }}

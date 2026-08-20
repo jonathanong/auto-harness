@@ -14,7 +14,9 @@ type ShowToastOptions = {
   pw?: string;
 };
 
-type ToastState = { message: string; variant: ToastVariant; pw?: string };
+type ToastState = { message: string; variant: ToastVariant; pw?: string; seq: number };
+
+let toastSeq = 0;
 
 let clientToast: ToastState | null = null;
 const listeners = new Set<() => void>();
@@ -41,9 +43,11 @@ export function showToast(message: string, options: ShowToastOptions = {}): void
     emit(null);
     return;
   }
+  toastSeq += 1;
   emit({
     message,
     variant: options.variant === "destructive" ? "destructive" : "default",
+    seq: toastSeq,
     ...(options.pw !== undefined ? { pw: options.pw } : {}),
   });
 }
@@ -88,7 +92,7 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
   const displayed =
     live ?? (urlMessage ? { message: urlMessage, variant: "default" as const } : null);
   const displayedKey = displayed
-    ? `${displayed.variant}:${displayed.pw ?? ""}:${displayed.message}`
+    ? `${displayed.seq}:${displayed.variant}:${displayed.pw ?? ""}:${displayed.message}`
     : "";
 
   // Auto-hide, independent of the URL-stripping effect above so the

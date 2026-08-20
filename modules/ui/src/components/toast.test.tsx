@@ -115,6 +115,20 @@ describe("shared Toast", () => {
     view.unmount();
   });
 
+  it("restarts the hide timer when the same client toast is shown again", async () => {
+    vi.useFakeTimers();
+    const view = mount(withNavigation(<Toast />));
+    act(() => showToast("Saved"));
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    act(() => showToast("Saved"));
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(view.container.querySelector('[role="status"]')).toBeNull();
+    view.unmount();
+  });
+
   it("announces mutation failures and exposes retry progress", () => {
     const onRetry = vi.fn();
     const view = mount(<RetryToast onRetry={onRetry}>Could not delete command.</RetryToast>);
