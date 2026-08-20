@@ -9,6 +9,7 @@ import {
   workingDirectoryErrors,
   windowsCreateTaskArgs,
   windowsDeleteTaskArgs,
+  windowsEndTaskArgs,
   windowsTaskRunCommand,
   xmlEscape,
 } from "./host-service-templates.ts";
@@ -45,6 +46,8 @@ describe("launchd plist / windows cmd", () => {
     });
     expect(plist).toContain("<string>/Users/op &amp; co</string>");
     expect(plist).toContain("<key>HOME</key>");
+    expect(plist).toContain("<key>ExitTimeOut</key>");
+    expect(plist).toContain("<integer>900</integer>");
     expect(plist).toContain("<string>start</string>");
     expect(plist).not.toMatch(/hns_/);
     expect(xmlEscape("a<b>c")).toBe("a&lt;b&gt;c");
@@ -66,6 +69,11 @@ describe("launchd plist / windows cmd", () => {
     });
     expect(args).toEqual(expect.arrayContaining(["/SC", "ONLOGON", "/RL", "LIMITED", "/IT", "/F"]));
     expect(args.join(" ")).not.toMatch(/LOCALSYSTEM|NSSM|WinSW/i);
+    expect(windowsEndTaskArgs("AutoHarnessHostDaemon")).toEqual([
+      "/End",
+      "/TN",
+      "AutoHarnessHostDaemon",
+    ]);
     expect(windowsDeleteTaskArgs("AutoHarnessHostDaemon")).toEqual([
       "/Delete",
       "/TN",
@@ -91,6 +99,8 @@ describe("template contract", () => {
     ).toEqual(
       expect.arrayContaining([
         "missing plist fragment: com.auto-harness.host-daemon",
+        "missing plist fragment: <key>ExitTimeOut</key>",
+        "missing plist fragment: <integer>900</integer>",
         "plist contains a service-account-shaped secret",
         "plist uses a forbidden host identity or service wrapper",
         "windows cmd missing HARNESS_ENV_FILE",

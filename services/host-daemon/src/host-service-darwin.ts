@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { pathFromEnv, renderEnvFile } from "./host-service-env.ts";
+import { pathFromEnv, renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
 import type { HostServiceContext } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import { DARWIN_LABEL, renderLaunchAgentPlist } from "./host-service-templates.ts";
@@ -32,11 +32,13 @@ export function installDarwin(ctx: HostServiceContext): number {
   if (ctx.fs.existsSync(paths.envFile)) {
     ctx.log(`Keeping existing env file ${paths.envFile}`);
   } else {
+    warnOrRefuseIdentity(ctx);
     writeMode(
       ctx.fs,
       paths.envFile,
       renderEnvFile(ctx.fs.readFileSync(ctx.envExamplePath), ctx.env),
       0o600,
+      true,
     );
     ctx.log(`Wrote ${paths.envFile} (mode 0600)`);
   }

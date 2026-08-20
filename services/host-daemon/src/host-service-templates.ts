@@ -3,8 +3,8 @@ export const LINUX_ENV_DEST = "/etc/auto-harness/host-daemon.env";
 export const LINUX_UNIT_DEST = "/etc/systemd/system/auto-harness-host-daemon.service";
 export const LINUX_OPT_CURRENT = "/opt/auto-harness/current";
 export const LINUX_SERVICE_NAME = "auto-harness-host-daemon.service";
-export const LINUX_ENABLE_COMMAND =
-  "systemctl daemon-reload && systemctl enable --now auto-harness-host-daemon.service";
+export const LINUX_RELOAD_COMMAND = "systemctl daemon-reload";
+export const LINUX_ENABLE_NOW_COMMAND = "systemctl enable --now auto-harness-host-daemon.service";
 
 export const DARWIN_LABEL = "com.auto-harness.host-daemon";
 export const WINDOWS_TASK_NAME = "AutoHarnessHostDaemon";
@@ -60,6 +60,8 @@ export function renderLaunchAgentPlist(opts: {
   <true/>
   <key>KeepAlive</key>
   <true/>
+  <key>ExitTimeOut</key>
+  <integer>900</integer>
   <key>StandardOutPath</key>
   ${s(opts.logPath)}
   <key>StandardErrorPath</key>
@@ -100,6 +102,10 @@ export function windowsCreateTaskArgs(opts: { taskName: string; command: string 
   ];
 }
 
+export function windowsEndTaskArgs(taskName: string): string[] {
+  return ["/End", "/TN", taskName];
+}
+
 export function windowsDeleteTaskArgs(taskName: string): string[] {
   return ["/Delete", "/TN", taskName, "/F"];
 }
@@ -116,6 +122,8 @@ export function validateHostServiceArtifacts(input: {
     "com.auto-harness.host-daemon",
     "<key>RunAtLoad</key>",
     "<key>KeepAlive</key>",
+    "<key>ExitTimeOut</key>",
+    "<integer>900</integer>",
     "<key>HOME</key>",
     "HARNESS_ENV_FILE",
     "<string>start</string>",

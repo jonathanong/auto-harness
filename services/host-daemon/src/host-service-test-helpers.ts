@@ -14,22 +14,34 @@ export const envExample = readFileSync(
 export type MemoryFs = HostServiceFs & {
   files: Map<string, string>;
   modes: Map<string, number>;
+  flags: Map<string, string>;
 };
 
 export function memFs(seed: Record<string, string> = {}): MemoryFs {
   const files = new Map(Object.entries(seed));
   const dirs = new Set<string>();
   const modes = new Map<string, number>();
+  const flags = new Map<string, string>();
   return {
     files,
     modes,
+    flags,
     existsSync: (path) => files.has(path) || dirs.has(path),
     mkdirSync: (path) => {
       dirs.add(path);
     },
+    mkdtempSync: (prefix) => {
+      const path = `${prefix}XXXXXX`;
+      dirs.add(path);
+      return path;
+    },
     writeFileSync: (path, data, opts) => {
+      if (opts.flag === "wx" && (files.has(path) || dirs.has(path))) {
+        throw new Error(`EEXIST: ${path}`);
+      }
       files.set(path, data);
       modes.set(path, opts.mode);
+      if (opts.flag !== undefined) flags.set(path, opts.flag);
     },
     readFileSync: (path) => {
       const value = files.get(path);

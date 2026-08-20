@@ -1,13 +1,14 @@
 import { join } from "node:path";
 
-import { renderEnvFile } from "./host-service-env.ts";
-import type { HostServiceContext } from "./host-service-io.ts";
+import { renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
+import type { HostServiceContext, HostServiceRunResult } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import {
   WINDOWS_TASK_NAME,
   renderWindowsLaunchCmd,
   windowsCreateTaskArgs,
   windowsDeleteTaskArgs,
+  windowsEndTaskArgs,
   windowsTaskRunCommand,
 } from "./host-service-templates.ts";
 
@@ -20,17 +21,29 @@ function windowsPaths(appData: string): { dir: string; envFile: string; cmd: str
   };
 }
 
+function taskAbsent(result: HostServiceRunResult): boolean {
+  return /not running|cannot find|does not exist/i.test(`${result.stderr} ${result.stdout}`);
+}
+
+function endWindowsTask(ctx: HostServiceContext): number {
+  const ended = ctx.run("schtasks", windowsEndTaskArgs(WINDOWS_TASK_NAME));
+  if (ended.status === 0 || taskAbsent(ended)) return 0;
+  return failedCommand(ctx.error, "schtasks /End", ended);
+}
+
 export function installWin32(ctx: HostServiceContext): number {
   const paths = windowsPaths(ctx.appData);
   ctx.fs.mkdirSync(paths.dir, { recursive: true, mode: 0o700 });
   if (ctx.fs.existsSync(paths.envFile)) {
     ctx.log(`Keeping existing env file ${paths.envFile}`);
   } else {
+    warnOrRefuseIdentity(ctx);
     writeMode(
       ctx.fs,
       paths.envFile,
       renderEnvFile(ctx.fs.readFileSync(ctx.envExamplePath), ctx.env),
       0o600,
+      true,
     );
     ctx.log(`Wrote ${paths.envFile} (mode 0600)`);
   }
@@ -45,6 +58,7 @@ export function installWin32(ctx: HostServiceContext): number {
     0o700,
   );
   ctx.log(`Wrote ${paths.cmd}`);
+  if (endWindowsTask(ctx) !== 0) return 1;
   const create = ctx.run(
     "schtasks",
     windowsCreateTaskArgs({
@@ -65,6 +79,7 @@ export function installWin32(ctx: HostServiceContext): number {
 
 export function uninstallWin32(ctx: HostServiceContext): number {
   const paths = windowsPaths(ctx.appData);
+  if (endWindowsTask(ctx) !== 0) return 1;
   const del = ctx.run("schtasks", windowsDeleteTaskArgs(WINDOWS_TASK_NAME));
   if (del.status !== 0) {
     const msg = `${del.stderr} ${del.stdout}`;

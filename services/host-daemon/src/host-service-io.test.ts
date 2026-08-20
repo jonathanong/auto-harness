@@ -72,6 +72,9 @@ describe("resolveHostService / defaults", () => {
     writeMode(fs, "/f", "x", 0o600);
     expect(fs.files.get("/f")).toBe("x");
     expect(fs.modes.get("/f")).toBe(0o600);
+    writeMode(fs, "/g", "y", 0o600, true);
+    expect(fs.flags.get("/g")).toBe("wx");
+    expect(() => writeMode(fs, "/g", "z", 0o600, true)).toThrow(/EEXIST/);
     const errors: string[] = [];
     expect(failedCommand((m) => errors.push(m), "cmd", { status: 3, stdout: "", stderr: "" })).toBe(
       1,
@@ -106,8 +109,12 @@ describe("resolveHostService / defaults", () => {
     const dir = mkdtempSync(join(tmpdir(), "ah-hs-"));
     const file = join(dir, "f.env");
     try {
+      const staged = nodeHostServiceFs.mkdtempSync(join(dir, "ah-hs-"));
+      const exclusive = join(staged, "e.env");
       nodeHostServiceFs.mkdirSync(dir, { recursive: true, mode: 0o755 });
       nodeHostServiceFs.writeFileSync(file, "A=1\n", { mode: 0o600 });
+      nodeHostServiceFs.writeFileSync(exclusive, "B=1\n", { mode: 0o600, flag: "wx" });
+      expect(nodeHostServiceFs.readFileSync(exclusive)).toBe("B=1\n");
       nodeHostServiceFs.chmodSync(file, 0o600);
       expect(nodeHostServiceFs.readFileSync(file)).toBe("A=1\n");
       expect(nodeHostServiceFs.existsSync(file)).toBe(true);

@@ -107,4 +107,23 @@ describe("install-service darwin", () => {
       ),
     ).toBe(0);
   });
+
+  it("warns but still writes when darwin identity is incomplete", () => {
+    const logs: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          env: {
+            HARNESS_HOST_ID: "host-1",
+            HARNESS_API_URL: "https://example.cloudfront.net",
+          },
+          log: (m) => logs.push(m),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(0);
+    expect(logs.join("\n")).toMatch(/Warning:.*HARNESS_API_KEY/);
+  });
 });

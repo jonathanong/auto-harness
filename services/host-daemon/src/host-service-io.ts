@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +15,8 @@ import { fileURLToPath } from "node:url";
 export type HostServiceFs = {
   existsSync: (path: string) => boolean;
   mkdirSync: (path: string, opts: { recursive: boolean; mode: number }) => void;
-  writeFileSync: (path: string, data: string, opts: { mode: number }) => void;
+  mkdtempSync: (prefix: string) => string;
+  writeFileSync: (path: string, data: string, opts: { mode: number; flag?: string }) => void;
   readFileSync: (path: string) => string;
   chmodSync: (path: string, mode: number) => void;
   rmSync: (path: string, opts: { force: boolean }) => void;
@@ -59,8 +68,15 @@ export const nodeHostServiceFs: HostServiceFs = {
   mkdirSync: (path, opts) => {
     mkdirSync(path, opts);
   },
+  mkdtempSync: (prefix) => mkdtempSync(prefix),
   writeFileSync: (path, data, opts) => {
-    writeFileSync(path, data, { encoding: "utf8", mode: opts.mode });
+    writeFileSync(
+      path,
+      data,
+      opts.flag === undefined
+        ? { encoding: "utf8", mode: opts.mode }
+        : { encoding: "utf8", mode: opts.mode, flag: opts.flag },
+    );
   },
   readFileSync: (path) => readFileSync(path, "utf8"),
   chmodSync,
@@ -104,8 +120,14 @@ export function defaultCheckoutRoot(): string {
   return fileURLToPath(new URL("../../..", import.meta.url));
 }
 
-export function writeMode(fs: HostServiceFs, path: string, data: string, mode: number): void {
-  fs.writeFileSync(path, data, { mode });
+export function writeMode(
+  fs: HostServiceFs,
+  path: string,
+  data: string,
+  mode: number,
+  exclusive = false,
+): void {
+  fs.writeFileSync(path, data, exclusive ? { mode, flag: "wx" } : { mode });
   fs.chmodSync(path, mode);
 }
 

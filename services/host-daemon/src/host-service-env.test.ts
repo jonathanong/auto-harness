@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyEnvFile,
+  envIdentityErrors,
   loadEnvFileIfPresent,
   parseEnvFile,
   pathFromEnv,
   renderEnvFile,
+  warnOrRefuseIdentity,
 } from "./host-service-env.ts";
 
 const example = `# comment
@@ -71,6 +73,9 @@ describe("renderEnvFile", () => {
     expect(renderEnvFile(example, { HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN" })).not.toContain(
       "GITHUB_TOKEN=",
     );
+    expect(renderEnvFile(example, { PATH: "/opt/homebrew/bin" }, { capturePath: false })).toContain(
+      "PATH=/usr/bin",
+    );
   });
 
   it("keeps an existing extra key and rejects multiline values", () => {
@@ -94,6 +99,76 @@ describe("renderEnvFile", () => {
     expect(pathFromEnv({ PATH: "/bin" })).toBe("/bin");
     expect(pathFromEnv({ Path: "C:\\Windows" })).toBe("C:\\Windows");
     expect(pathFromEnv({})).toBeUndefined();
+  });
+
+  it("envIdentityErrors flags linux local defaults and placeholders", () => {
+    expect(envIdentityErrors({}, "linux")).toEqual([
+      "HARNESS_HOST_ID",
+      "HARNESS_API_URL",
+      "HARNESS_API_KEY",
+    ]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "local-1",
+          HARNESS_API_URL: "http://127.0.0.1:7420",
+          HARNESS_API_KEY: "",
+        },
+        "linux",
+      ),
+    ).toEqual(["HARNESS_HOST_ID", "HARNESS_API_URL", "HARNESS_API_KEY"]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "https://d111.cloudfront.net",
+          HARNESS_API_KEY: "secret",
+        },
+        "linux",
+      ),
+    ).toEqual([]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_HTTP: "https://d111.cloudfront.net",
+          HARNESS_API_KEY: "secret",
+        },
+        "linux",
+      ),
+    ).toEqual([]);
+    expect(
+      warnOrRefuseIdentity({
+        env: {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "https://d111.cloudfront.net",
+          HARNESS_API_KEY: "secret",
+        },
+        platform: "linux",
+        error: () => undefined,
+        log: () => undefined,
+      }),
+    ).toBe(0);
+    const errors: string[] = [];
+    const logs: string[] = [];
+    expect(
+      warnOrRefuseIdentity({
+        env: { HARNESS_HOST_ID: "REPLACE_WITH_BOUND_HOST_ID" },
+        platform: "linux",
+        error: (m) => errors.push(m),
+        log: (m) => logs.push(m),
+      }),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/Refusing/);
+    expect(
+      warnOrRefuseIdentity({
+        env: { HARNESS_HOST_ID: "host-1", HARNESS_API_URL: "https://x", HARNESS_API_KEY: "" },
+        platform: "darwin",
+        error: (m) => errors.push(m),
+        log: (m) => logs.push(m),
+      }),
+    ).toBe(0);
+    expect(logs.join("\n")).toMatch(/Warning/);
   });
 
   it("loadEnvFileIfPresent is a no-op without HARNESS_ENV_FILE", () => {
