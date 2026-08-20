@@ -154,7 +154,7 @@ test.describe("live session logs", () => {
           exitCode: 0,
         }),
       );
-      await expect(page.getByTestId("session-logs-live-state")).toContainText("Live — completed");
+      await expect(page.getByTestId("session-logs-live-state")).toHaveText("completed");
     } finally {
       if (host) await closeSocket(host.socket);
     }

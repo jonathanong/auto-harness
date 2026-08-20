@@ -1,5 +1,9 @@
 import { SessionStatusBadge } from "./session-status-badge.tsx";
 
+/** Waiting is expected — assignment waits for the next ~1 minute scheduler sweep. */
+export const SESSION_QUEUED_WAIT_COPY =
+  "The scheduler runs about once a minute; waiting is expected.";
+
 export function sessionStatusReason(errorCode?: string | null): string | null {
   if (errorCode === "usage_limit") return "Usage limit";
   if (errorCode === "queue_expired") return "Queue expired";
@@ -47,6 +51,9 @@ export function SessionStatusDetail({
         <div className="text-xs text-muted-foreground" data-pw="session-detail-status-reason">
           {reason}
         </div>
+      ) : null}
+      {status === "queued" ? (
+        <div className="text-xs text-muted-foreground">{SESSION_QUEUED_WAIT_COPY}</div>
       ) : null}
     </div>
   );

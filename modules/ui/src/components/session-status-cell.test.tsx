@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import {
+  SESSION_QUEUED_WAIT_COPY,
   SessionStatusCell,
   SessionStatusDetail,
   sessionStatusReason,
@@ -59,5 +60,16 @@ describe("SessionStatusCell", () => {
     expect(reassigned).toContain("running");
     expect(reassigned).not.toContain("Usage limit");
     expect(reassigned).not.toContain("session-detail-status-reason");
+  });
+
+  it("explains the one-minute scheduler wait only on queued session detail", () => {
+    const queued = renderToStaticMarkup(<SessionStatusDetail status="queued" />);
+    expect(queued).toContain(SESSION_QUEUED_WAIT_COPY);
+    expect(renderToStaticMarkup(<SessionStatusDetail status="completed" />)).not.toContain(
+      SESSION_QUEUED_WAIT_COPY,
+    );
+    expect(
+      renderToStaticMarkup(<SessionStatusCell status="queued" sessionId="queued" />),
+    ).not.toContain(SESSION_QUEUED_WAIT_COPY);
   });
 });

@@ -3,6 +3,8 @@
 import React, { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { SESSION_QUEUED_WAIT_COPY } from "@auto-harness/ui";
+
 import { field, mountForm, press } from "./form-test-helpers.tsx";
 import { SessionLiveLogs } from "./session-live-logs.tsx";
 
@@ -34,6 +36,14 @@ async function settle() {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+function emitStatus(socket: FakeWebSocket, type: string, status: string) {
+  act(() =>
+    socket.emit("message", {
+      data: JSON.stringify({ type, status }),
+    }),
+  );
 }
 
 afterEach(() => {
@@ -89,6 +99,57 @@ describe("SessionLiveLogs reconnect controls", () => {
     await settle();
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(FakeWebSocket.instances[0]?.url).not.toContain("ticket=");
+    view.unmount();
+  });
+});
+
+describe("SessionLiveLogs status display", () => {
+  async function mountLive(sessionId: string, initialStatus: string) {
+    const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: "ticket" }) }));
+    vi.stubGlobal("fetch", fetch);
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    const view = mountForm(
+      <SessionLiveLogs sessionId={sessionId} initialItems={[]} initialStatus={initialStatus} />,
+    );
+    await settle();
+    const socket = FakeWebSocket.instances[0]!;
+    act(() => socket.emit("open"));
+    return { view, socket };
+  }
+
+  it("keeps a terminal initialStatus when subscribe reports queued", async () => {
+    const { view, socket } = await mountLive("session-done", "completed");
+    emitStatus(socket, "session:subscribed", "queued");
+    const state = field(view.container, "session-logs-live-state").textContent;
+    expect(state).toBe("completed");
+    expect(state).not.toContain("Live —");
+    expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
+    view.unmount();
+  });
+
+  it("does not label a later terminal session Live", async () => {
+    const { view, socket } = await mountLive("session-run", "running");
+    emitStatus(socket, "session:subscribed", "running");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — running");
+    emitStatus(socket, "session:status", "completed");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("completed");
+    view.unmount();
+  });
+
+  it("explains that queued sessions wait for the one-minute scheduler", async () => {
+    const { view, socket } = await mountLive("session-wait", "queued");
+    emitStatus(socket, "session:subscribed", "queued");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("Live — queued");
+    expect(view.container.textContent).toContain(SESSION_QUEUED_WAIT_COPY);
+    view.unmount();
+  });
+
+  it("ignores a stale queued status after the session has finished", async () => {
+    const { view, socket } = await mountLive("session-stale", "failed");
+    emitStatus(socket, "session:subscribed", "failed");
+    emitStatus(socket, "session:status", "queued");
+    expect(field(view.container, "session-logs-live-state").textContent).toBe("failed");
+    expect(view.container.textContent).not.toContain(SESSION_QUEUED_WAIT_COPY);
     view.unmount();
   });
 });
