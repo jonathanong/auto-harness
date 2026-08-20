@@ -74,7 +74,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
         >
           <div className="space-y-1">
             <Label htmlFor="url" tip="Git remote URL and/or local path identity for operators">
-              url
+              URL
             </Label>
             <Input
               id="url"
@@ -86,7 +86,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
           </div>
           <div className="space-y-1">
             <Label htmlFor="defaultBranch" tip="Default branch when sessions omit ref">
-              default branch
+              Default Branch
             </Label>
             <Input
               id="defaultBranch"
@@ -97,7 +97,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
           </div>
           <div className="space-y-1">
             <Label htmlFor="setupScript" tip="Optional catalog-level setup script">
-              setup script
+              Setup Script
             </Label>
             <Textarea
               id="setupScript"
@@ -110,7 +110,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
           </div>
           <div className="space-y-1">
             <Label htmlFor="terminalHookScript" tip="Optional catalog-level terminal hook script">
-              terminal hook script
+              Terminal Hook Script
             </Label>
             <Textarea
               id="terminalHookScript"

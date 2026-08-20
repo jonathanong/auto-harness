@@ -86,7 +86,7 @@ export function AddHostForm() {
           htmlFor="hostId"
           tip="Stable host identity. Must match HARNESS_HOST_ID on the host when you start the daemon. Does not start a process."
         >
-          hostId
+          Host ID
         </Label>
         <Input id="hostId" name="hostId" required placeholder="local-1" data-pw="add-host-id" />
       </div>

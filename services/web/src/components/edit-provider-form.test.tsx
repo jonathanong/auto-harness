@@ -28,7 +28,7 @@ describe("EditProviderForm", () => {
     const view = mountForm(<EditProviderForm provider={provider} />);
     press(field(view.container, "edit-provider-open"));
     expect(field<HTMLInputElement>(document, "edit-provider-name").labels?.[0]?.textContent).toBe(
-      "name",
+      "Name",
     );
     expect(field<HTMLInputElement>(document, "edit-provider-name").value).toBe("claude");
     pressCancel();

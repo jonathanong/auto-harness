@@ -16,12 +16,12 @@ export type SlackFormValues = {
 };
 
 export const notificationFields: Array<{ key: keyof SlackNotifications; label: string }> = [
-  { key: "onSessionCreated", label: "Session created" },
-  { key: "onSessionStarted", label: "Session started" },
-  { key: "onSessionCompleted", label: "Session completed" },
-  { key: "onSessionFailed", label: "Session failed" },
-  { key: "onSessionCancelled", label: "Session cancelled" },
-  { key: "onScheduleCompleted", label: "Schedule completed" },
+  { key: "onSessionCreated", label: "Session Created" },
+  { key: "onSessionStarted", label: "Session Started" },
+  { key: "onSessionCompleted", label: "Session Completed" },
+  { key: "onSessionFailed", label: "Session Failed" },
+  { key: "onSessionCancelled", label: "Session Cancelled" },
+  { key: "onScheduleCompleted", label: "Schedule Completed" },
 ];
 
 export function validateSlackForm(values: SlackFormValues): string | null {

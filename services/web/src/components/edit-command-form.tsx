@@ -86,7 +86,7 @@ export function EditCommandForm({
         >
           <div className="space-y-1">
             <Label htmlFor="name" tip="Display name for this command">
-              name
+              Name
             </Label>
             <Input
               id="name"
@@ -98,7 +98,7 @@ export function EditCommandForm({
           </div>
           <div className="space-y-1">
             <Label htmlFor="argv" tip="One argv element per line — never a shell string">
-              argv (one per line)
+              Argv (One Per Line)
             </Label>
             <Textarea
               id="argv"
@@ -117,7 +117,7 @@ export function EditCommandForm({
               defaultChecked={command.appendPrompt}
               data-pw="edit-command-append-prompt"
             />
-            append session prompt as the final argv element
+            Append Session Prompt as the Final Argv Element
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input
@@ -126,14 +126,14 @@ export function EditCommandForm({
               defaultChecked={command.appendPromptSeparator}
               data-pw="edit-command-append-prompt-separator"
             />
-            insert -- before the prompt (getopt-style CLIs only — breaks commands like printf)
+            Insert -- Before the Prompt (Getopt-Style CLIs Only — Breaks Commands like Printf)
           </label>
           <div className="space-y-1">
             <Label
               htmlFor="providerId"
               tip="Standalone commands (none) run ungated on any worktree; provider-owned commands are reached through that provider's accounts"
             >
-              provider
+              Provider
             </Label>
             <select
               id="providerId"

@@ -37,7 +37,7 @@ describe("EditCommandForm", () => {
     expect(field<HTMLTextAreaElement>(document, "edit-command-argv").value).toBe("claude\n-p");
     expect(
       field<HTMLSelectElement>(document, "edit-command-provider").labels?.[0]?.textContent,
-    ).toBe("provider");
+    ).toBe("Provider");
     setValue(field(document, "edit-command-name"), " codex ");
     setValue(field(document, "edit-command-argv"), " codex \n -p ");
     setValue(field(document, "edit-command-provider"), "");
