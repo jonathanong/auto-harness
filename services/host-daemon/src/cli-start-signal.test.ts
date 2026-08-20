@@ -91,6 +91,8 @@ function minimalDeps(overrides: Partial<RunSessionDeps>): RunSessionDeps {
     loadConfig: async () => emptyDaemonConfig({ hostId: "unused", logLevel: "info" }),
     ensureReady: async () => undefined,
     runSession: async () => ({ status: "completed", exitCode: 0, logs: [] }),
+    installService: () => 0,
+    uninstallService: () => 0,
     ...overrides,
   };
 }

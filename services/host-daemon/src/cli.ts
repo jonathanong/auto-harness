@@ -10,8 +10,13 @@ import {
 
 import type { DaemonConfig } from "./config.ts";
 import { loadDaemonConfig } from "./config.ts";
+import { printUsage } from "./cli-usage.ts";
+import { loadEnvFileIfPresent } from "./host-service-env.ts";
+import { installHostService, uninstallHostService, type HostServiceOpts } from "./host-service.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
 import type { SessionRunResult } from "./session-runner.ts";
+
+export { printUsage } from "./cli-usage.ts";
 
 /**
  * Upper bound on graceful shutdown. In-flight CLIs are drained, not killed, so this is
@@ -39,30 +44,6 @@ export function shutdownLoggerFor(error: (msg: string) => void): LifecycleLogger
   };
 }
 
-export function printUsage(log: (msg: string) => void = console.log): void {
-  log(`Usage:
-  auto-harness-host-daemon status
-  auto-harness-host-daemon run-session --file session.json
-  auto-harness-host-daemon start [--ws ws://host/ws]
-
-Identity (env; local defaults shown):
-  HARNESS_HOST_ID   default local-1
-  HARNESS_API_URL    default http://127.0.0.1:7420  (alias: HARNESS_API_HTTP)
-                      On a deployed control plane this is the CloudFront WebUrl
-                      from the deploy output (e.g. https://d111...cloudfront.net) —
-                      never a raw API Gateway *.execute-api.*.amazonaws.com URL.
-  HARNESS_API_KEY    service account token (when auth enabled)
-  HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
-
---ws overrides only the WebSocket target (REST still resolves from HARNESS_API_URL). It
-accepts a raw API Gateway endpoint directly — a deploy-day escape hatch if the CloudFront
-WebSocket path misbehaves — which HARNESS_API_URL does not.
-
-Host inventory (repos, worktrees) is configured via
-API/UI: PUT /api/v1/hosts/:hostId/inventory — not a local config file.
-`);
-}
-
 export type RunSessionDeps = {
   loadConfig: (opts: {
     env?: NodeJS.ProcessEnv;
@@ -79,6 +60,8 @@ export type RunSessionDeps = {
   error: (msg: string) => void;
   /** Passed straight through to onShutdownSignal; defaults to the real process there. */
   process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
+  installService: (opts: HostServiceOpts) => number;
+  uninstallService: (opts: HostServiceOpts) => number;
 };
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
@@ -93,6 +76,8 @@ export function createDefaultRunSessionDeps(): RunSessionDeps {
     },
     ensureReady: (config) => ensureDaemonReady(config),
     runSession: (config, assign, onLog) => runAssignedSession(config, assign, onLog),
+    installService: installHostService,
+    uninstallService: uninstallHostService,
   };
 }
 
@@ -120,8 +105,24 @@ export async function runCli(
     return command ? 0 : 1;
   }
 
+  let resolvedEnv = env;
+  try {
+    resolvedEnv = loadEnvFileIfPresent(env, deps.readFile);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    deps.error(`Cannot read HARNESS_ENV_FILE: ${detail}`);
+    return 1;
+  }
+
+  if (command === "install-service") {
+    return deps.installService({ env: resolvedEnv, log: deps.log, error: deps.error });
+  }
+  if (command === "uninstall-service") {
+    return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });
+  }
+
   if (command === "status") {
-    const config = await deps.loadConfig({ env });
+    const config = await deps.loadConfig({ env: resolvedEnv });
     deps.log(
       JSON.stringify(
         {
@@ -151,7 +152,7 @@ export async function runCli(
       deps.error("--file is required");
       return 1;
     }
-    const config = await deps.loadConfig({ env });
+    const config = await deps.loadConfig({ env: resolvedEnv });
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
     await deps.ensureReady(config);
     const result = await deps.runSession(config, assign, deps.log);
@@ -166,7 +167,7 @@ export async function runCli(
   }
 
   if (command === "start") {
-    const config = await deps.loadConfig({ env });
+    const config = await deps.loadConfig({ env: resolvedEnv });
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
@@ -175,7 +176,7 @@ export async function runCli(
       await deps.ensureReady(config);
       const { stop } = await startDaemon({
         config,
-        identity: loadHostIdentity(env),
+        identity: loadHostIdentity(resolvedEnv),
         ...(wsUrl !== undefined ? { wsUrl } : {}),
         log: deps.log,
         error: deps.error,
@@ -190,7 +191,7 @@ export async function runCli(
             finished();
           },
           {
-            timeoutMs: shutdownTimeoutMs(env),
+            timeoutMs: shutdownTimeoutMs(resolvedEnv),
             ...(deps.process ? { process: deps.process } : {}),
             logger: shutdownLoggerFor(deps.error),
           },

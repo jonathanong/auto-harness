@@ -69,24 +69,24 @@ This is the supported way to **test Auto Harness locally today**. Local deploy/u
 
 ## Commands cheat sheet
 
-| Command                     | What it does                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------- |
-| `pnpm local:dynamodb`       | Start DynamoDB Local                                                            |
-| `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                               |
-| `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                         |
-| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                             |
-| `pnpm local:host-pane`      | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                             |
-| `pnpm local:daemon`         | Agent CLI (`status`, `run-session`, `start`)                                    |
-| `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)   |
-| `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                     |
-| `pnpm local:cli-e2e`        | Documented `pnpm local:daemon` path with `ref: main`                            |
-| `pnpm local:api-smoke`      | `POST /sessions` → 201                                                          |
-| `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                                                |
-| `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                                       |
-| `pnpm local:manage-verify`  | Repo/schedule CRUD, cancel, drain, web manage routes                            |
-| `pnpm check`                | Full local CI gate (lint, fmt, test, knip, depcruise, links, no-mistakes)       |
-| `pnpm check:no-mistakes`    | `no-mistakes` rules in `.no-mistakes.yml` (also runs in `pnpm check`)           |
-| `pnpm test:e2e`             | Build production UIs + Playwright E2E (`next start`, not dev; [e2e.md](e2e.md)) |
+| Command                     | What it does                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| `pnpm local:dynamodb`       | Start DynamoDB Local                                                                 |
+| `pnpm local:dynamodb:ready` | Wait for endpoint + ensure tables                                                    |
+| `pnpm local:api`            | Control-plane HTTP (+ `/ws`) on `:7420`                                              |
+| `pnpm local:web`            | Control-plane Next.js UI on `:7421`                                                  |
+| `pnpm local:host-pane`      | Host-pane Next.js UI on `:7422` (`HARNESS_HOST_ID`)                                  |
+| `pnpm local:daemon`         | Agent CLI (`status`, `run-session`, `start`, `install-service`, `uninstall-service`) |
+| `pnpm local:tmux`           | API + both UIs + agent, one tmux window each (DynamoDB Local runs via Docker)        |
+| `pnpm local:e2e`            | SessionRunner create→run on a temp git repo                                          |
+| `pnpm local:cli-e2e`        | Documented `pnpm local:daemon` path with `ref: main`                                 |
+| `pnpm local:api-smoke`      | `POST /sessions` → 201                                                               |
+| `pnpm local:ws-e2e`         | Real WebSocket create→assign→run                                                     |
+| `pnpm local:cloud-e2e`      | Loopback agent loop against control plane                                            |
+| `pnpm local:manage-verify`  | Repo/schedule CRUD, cancel, drain, web manage routes                                 |
+| `pnpm check`                | Full local CI gate (lint, fmt, test, knip, depcruise, links, no-mistakes)            |
+| `pnpm check:no-mistakes`    | `no-mistakes` rules in `.no-mistakes.yml` (also runs in `pnpm check`)                |
+| `pnpm test:e2e`             | Build production UIs + Playwright E2E (`next start`, not dev; [e2e.md](e2e.md))      |
 
 ---
 

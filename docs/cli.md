@@ -77,6 +77,23 @@ pnpm local:daemon start
 # optional: --ws ws://127.0.0.1:7420/ws  (otherwise derived from HARNESS_API_URL)
 ```
 
+### `install-service` / `uninstall-service`
+
+Persist this checkout's daemon so it survives logout/reboot: systemd on Linux (user `harness`),
+a LaunchAgent as the current user on macOS (`HOME` kept for CLI creds), or a logon scheduled
+task as the current user on Windows (not `LOCALSYSTEM`). Identity is read from `HARNESS_*` and
+written to a mode-0600 env file that is never committed.
+
+```bash
+export HARNESS_HOST_ID=local-1
+export HARNESS_API_URL=http://127.0.0.1:7420
+export HARNESS_API_KEY=  # bound key when the control plane requires auth
+pnpm local:daemon install-service
+pnpm local:daemon uninstall-service
+```
+
+Host install details: [deploy-host-daemon.md](deploy-host-daemon.md).
+
 ---
 
 ## API commands (Phase 1)

@@ -1,0 +1,72 @@
+import { describe, expect, it } from "vitest";
+
+import { installHostService, uninstallHostService } from "./host-service.ts";
+import type { HostServiceFs } from "./host-service-io.ts";
+import { baseOpts, memFs, seededFs } from "./host-service-test-helpers.ts";
+
+describe("unsupported platform / thrown failures", () => {
+  it("rejects unknown platforms and maps thrown values", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({ platform: "aix", fs: seededFs(), error: (m) => errors.push(m) }),
+      ),
+    ).toBe(1);
+    expect(
+      uninstallHostService(
+        baseOpts({ platform: "aix", fs: seededFs(), error: (m) => errors.push(m) }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/not supported/);
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "linux",
+          fs: memFs(),
+          error: (m) => errors.push(m),
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/ENOENT/);
+    const uninstallErrors: string[] = [];
+    expect(
+      uninstallHostService(
+        baseOpts({
+          platform: "linux",
+          uid: 0,
+          fs: {
+            existsSync: () => {
+              throw new Error("boom");
+            },
+          } as unknown as HostServiceFs,
+          error: (m) => uninstallErrors.push(m),
+          run: () => ({ status: 0, stdout: "", stderr: "" }),
+        }),
+      ),
+    ).toBe(1);
+    expect(uninstallErrors.join("\n")).toMatch(/boom/);
+  });
+
+  it("stringifies non-Error throws from install and uninstall", () => {
+    const errors: string[] = [];
+    const throwing = {
+      existsSync: () => {
+        throw "nope";
+      },
+      readFileSync: () => {
+        throw "nope";
+      },
+    } as unknown as HostServiceFs;
+    expect(
+      installHostService(
+        baseOpts({ platform: "linux", fs: throwing, error: (m) => errors.push(m) }),
+      ),
+    ).toBe(1);
+    expect(
+      uninstallHostService(
+        baseOpts({ platform: "linux", uid: 0, fs: throwing, error: (m) => errors.push(m) }),
+      ),
+    ).toBe(1);
+    expect(errors).toEqual(["nope", "nope"]);
+  });
+});
