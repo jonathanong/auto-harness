@@ -75,7 +75,7 @@ export function ProviderAccountCooldownForm({ account }: { account: AccountCoold
     >
       <Label
         htmlFor={`cooldown-${account.id}`}
-        tip="How long an account remains paused after usage_limit"
+        tip="Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry."
       >
         Cooldown (s)
       </Label>

@@ -18,6 +18,19 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
+function daemonConnectCommand(
+  hostId: string,
+  origin: string,
+  verb: "start" | "install-service",
+): string {
+  return [
+    `HARNESS_HOST_ID=${shellQuote(hostId)} \\`,
+    `HARNESS_API_URL=${shellQuote(origin)} \\`,
+    `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY' \\`,
+    `pnpm local:daemon ${verb}`,
+  ].join("\n");
+}
+
 /**
  * Shown while a host has no live daemon connection: the exact, copyable command to start
  * one. HARNESS_API_URL comes from controlPlaneUrl(), never a raw API Gateway endpoint —
@@ -45,36 +58,36 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
   // synchronously in the initializer, so this branch is never observable there — which is
   // also why it renders inline rather than under its own data-pw: nothing in this repo's
   // test tiers can ever reach it, and check:data-pw requires every selector be covered.
-  const command =
+  const commands =
     origin === null
       ? null
-      : [
-          `HARNESS_HOST_ID=${shellQuote(hostId)} \\`,
-          `HARNESS_API_URL=${shellQuote(origin)} \\`,
-          `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY' \\`,
-          `pnpm local:daemon start`,
-        ].join("\n");
+      : {
+          start: daemonConnectCommand(hostId, origin, "start"),
+          persist: daemonConnectCommand(hostId, origin, "install-service"),
+        };
 
   return (
     <div className="space-y-3 rounded border border-border p-4" data-pw="connect-host-panel">
       <p className="text-sm font-medium">Connect this host</p>
-      {command === null ? (
+      {commands === null ? (
         <p className="text-sm text-muted-foreground">Loading connect instructions…</p>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
-            Run this on the host. It needs a service account key bound to{" "}
-            <code className="font-mono">{hostId}</code> — create one on the{" "}
+            You need two keys — create both on the{" "}
             <Link href="/settings" className="underline">
               Settings
             </Link>{" "}
-            page.
+            page. This command uses a service-account key bound to{" "}
+            <code className="font-mono">{hostId}</code> for the daemon. POST /sessions needs an
+            unbound operator key; a bound key 404s on session create on purpose.
           </p>
+          <p className="text-sm font-medium">Foreground</p>
           <pre
             className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs"
             data-pw="connect-host-command"
           >
-            {command}
+            {commands.start}
           </pre>
           <div className="flex items-center gap-2">
             <Button
@@ -84,7 +97,7 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
               data-pw="connect-host-copy"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(command);
+                  await navigator.clipboard.writeText(commands.start);
                   setState("copied");
                 } catch {
                   setState("failed");
@@ -99,6 +112,10 @@ export function ConnectHostPanel({ hostId }: { hostId: string }) {
               </span>
             )}
           </div>
+          <p className="text-sm font-medium">Persist across reboots</p>
+          <pre className="overflow-x-auto rounded bg-muted p-3 font-mono text-xs">
+            {commands.persist}
+          </pre>
         </>
       )}
     </div>

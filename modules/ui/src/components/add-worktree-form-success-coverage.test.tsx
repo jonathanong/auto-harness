@@ -32,6 +32,8 @@ describe("AddWorktreeForm success flow", () => {
         view.container.querySelector('[data-pw="add-worktree-open-repo-1"]') as HTMLButtonElement
       ).click(),
     );
+    expect(view.container.textContent).toContain("Do not mkdir this directory");
+    expect(view.container.textContent).toContain("git worktree add");
     const form = view.container.querySelector("form") as HTMLFormElement;
     const name = view.container.querySelector(
       '[data-pw="add-worktree-name-repo-1"]',

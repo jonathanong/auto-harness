@@ -15,6 +15,10 @@ describe("AddProviderAccountForm", () => {
     const cooldown = field<HTMLInputElement>(view.container, "provider-account-cooldown-seconds");
     expect(label.required).toBe(true);
     expect(cooldown.min).toBe("1");
+    expect(cooldown.defaultValue).toBe("18000");
+    expect(view.container.textContent).toContain(
+      "Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry.",
+    );
     setValue(label, " account@example.test ");
     setValue(cooldown, "90");
     submit(field(view.container, "form-add-provider-account"));

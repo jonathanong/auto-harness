@@ -210,12 +210,16 @@ Do not read `web.md`. Follow nav labels.
 
 4. **Hosts → Add host** — create a host slot (`<host-id>`). This only
    registers the slot; nothing is running yet. Open the host detail page.
-5. **Connect this host** — copy the generated command. Confirm it embeds
-   `HARNESS_API_URL` as `WebUrl` (the CloudFront origin, not
-   `*.execute-api.*`) and
-   `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'`. Don't run it
-   yet — the daemon needs a registered repository first, or the initial
-   inventory sync has nothing to report.
+5. **Connect this host** — copy the generated **foreground** command
+   (`pnpm local:daemon start`). Confirm it embeds `HARNESS_API_URL` as
+   `WebUrl` (the CloudFront origin, not `*.execute-api.*`) and
+   `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'` (quoted). The
+   panel also shows the persist path (`pnpm local:daemon install-service`)
+   with the same quoted env vars. You need **two** keys: the bound daemon
+   key for this command, and an unbound operator key for `POST /sessions`
+   (a bound key 404s on session create on purpose). Don't run it yet — the
+   daemon needs a registered repository first, or the initial inventory
+   sync has nothing to report.
 6. **Attach a repository** from the host detail page (**Repositories &
    Worktrees**): absolute path from Prerequisites. Then add at least one
    worktree. This is a control-plane action; the daemon creates the actual

@@ -416,9 +416,18 @@ WebSocket reconnects; the control plane counts a restart only when a later regis
 previously known instance id. Legacy daemons establish no baseline. This is local API/UI
 observability, not an outbound alert and not permission to restart a host.
 
+An offline host's Overview tab also shows **Connect this host**: the quoted env +
+`pnpm local:daemon start` foreground command, plus the same quoted env with
+`pnpm local:daemon install-service` as the persist path. Copy uses the foreground command.
+The panel states that you need **two** service-account keys (create both on Settings): a
+**bound** key for the daemon, and an **unbound** operator key for `POST /sessions`. A bound
+key 404s on session create on purpose.
+
 Worktree status for this tab's Repositories & Worktrees section comes from `GET
 /api/v1/worktrees?hostId=<id>` — filtered server-side, not fetched unfiltered and grouped in JS —
-the same filter host pane's own repository/worktree pages use for their single host.
+the same filter host pane's own repository/worktree pages use for their single host. **Add
+worktree** records the name and absolute path on the control plane only — it does not mkdir the
+directory. The daemon runs `git worktree add` when the host is online.
 
 The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one. An account's usage-limit cooldown is global across hosts; clearing it on the Provider page makes it eligible everywhere immediately.
 
@@ -430,11 +439,11 @@ The Advanced tab's raw JSON editor (`HostConfigForm`, shared with the host pane'
 
 ### Provider List
 
-Table: name, default command, attached-account count, owned-command count. "Add provider" opens a dialog that creates the provider **and** its default command in one submit — a provider is never left without a default, since that would make every account under it unresolvable.
+Table: name, default command, attached-account count, owned-command count. "Add provider" opens a dialog that creates the provider **and** its default command in one submit — a provider is never left without a default, since that would make every account under it unresolvable. The default command **name** is a catalog label (e.g. `claude-print`), not the binary on disk; the first argv token is the executable.
 
 ### Provider Detail
 
-Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an inline create form) · **Settings** (rename; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip).
+Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an inline create form) · **Settings** (rename; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
 
 ---
 

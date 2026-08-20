@@ -21,6 +21,7 @@ describe("ConnectHostPanel", () => {
     expect(command).toContain("HARNESS_HOST_ID='mac-1'");
     expect(command).toContain("HARNESS_API_URL='https://d111.cloudfront.net'");
     expect(command).toContain("pnpm local:daemon start");
+    expect(command).not.toContain("install-service");
     expect(command).not.toContain("local:agent");
     expect(command).not.toContain("execute-api");
     // Regression: an earlier version rendered `HARNESS_API_KEY=<bound service-account key>`
@@ -29,6 +30,14 @@ describe("ConnectHostPanel", () => {
     // any indication a placeholder needed replacing.
     expect(command).toContain("HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'");
     expect(command).not.toMatch(/HARNESS_API_KEY=</);
+    const panel = field(view.container, "connect-host-panel").textContent;
+    expect(panel).toContain("two keys");
+    expect(panel).toContain("unbound operator key");
+    expect(panel).toContain("404s on session create on purpose");
+    expect(panel).toContain("Foreground");
+    expect(panel).toContain("Persist across reboots");
+    expect(panel).toContain("pnpm local:daemon install-service");
+    expect(panel).toContain("HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'");
     view.unmount();
   });
 
