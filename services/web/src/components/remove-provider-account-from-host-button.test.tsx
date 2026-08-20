@@ -91,7 +91,7 @@ describe("RemoveProviderAccountFromHostButton", () => {
     press(field(document.body, "host-provider-account-remove-account/one-confirm-submit"));
     await act(async () => Promise.resolve());
     expect(field(document.body, "host-provider-account-remove-account/one-error").textContent).toBe(
-      "request failed while updating host inventory",
+      "request failed (500)",
     );
     fallback.unmount();
   });

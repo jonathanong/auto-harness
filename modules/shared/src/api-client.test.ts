@@ -97,7 +97,7 @@ describe("apiGet", () => {
 });
 
 describe("apiErrorMessage", () => {
-  it("prefers a structured error message and falls back to status", async () => {
+  it("prefers a structured error message, then plain text, then status", async () => {
     await expect(
       apiErrorMessage(
         new Response(JSON.stringify({ error: { code: "FORBIDDEN", message: "nope" } }), {
@@ -108,8 +108,11 @@ describe("apiErrorMessage", () => {
     await expect(
       apiErrorMessage(new Response(JSON.stringify({ error: {} }), { status: 409 })),
     ).resolves.toBe("request failed (409)");
-    await expect(apiErrorMessage(new Response("not json", { status: 500 }))).resolves.toBe(
-      "request failed (500)",
+    await expect(apiErrorMessage(new Response("cannot save", { status: 500 }))).resolves.toBe(
+      "cannot save",
+    );
+    await expect(apiErrorMessage(new Response("  ", { status: 502 }))).resolves.toBe(
+      "request failed (502)",
     );
   });
 });

@@ -85,9 +85,7 @@ describe("ProviderDefaultCommandForm", () => {
     api.enqueue(new Response("bad", { status: 503 }));
     submit(form);
     await act(async () => Promise.resolve());
-    expect(field(view.container, "provider-default-command-error").textContent).toBe(
-      "request failed (503)",
-    );
+    expect(field(view.container, "provider-default-command-error").textContent).toBe("bad");
     api.enqueue(new Response(null, { status: 204 }));
     field(view.container, "provider-default-command-select").remove();
     submit(form);

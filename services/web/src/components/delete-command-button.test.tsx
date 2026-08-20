@@ -86,7 +86,7 @@ describe("DeleteCommandButton", () => {
     open(fallbackView);
     press(confirm());
     await act(async () => Promise.resolve());
-    expect(field(document, "delete-command-error").textContent).toBe("request failed (503)");
+    expect(field(document, "delete-command-error").textContent).toBe("not json");
     press(
       [...field(document, "delete-command-confirm").querySelectorAll("button")].find(
         (button) => button.textContent === "Cancel",

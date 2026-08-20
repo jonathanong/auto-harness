@@ -29,7 +29,7 @@ describe("deleteCatalogResource", () => {
         vi.fn(async () => new Response("not json", { status: 503 })),
         "/thing",
       ),
-    ).resolves.toBe("request failed (503)");
+    ).resolves.toBe("not json");
   });
 
   it("normalizes transport failures", async () => {

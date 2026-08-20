@@ -53,7 +53,7 @@ describe("service-account API client", () => {
     replies(json({ error: { message: "accounts unavailable" } }, 503));
     await expect(loadServiceAccountData()).rejects.toThrow("accounts unavailable");
     replies(json({ items: [] }), new Response("bad gateway", { status: 502 }));
-    await expect(loadServiceAccountData()).rejects.toThrow("request failed (502)");
+    await expect(loadServiceAccountData()).rejects.toThrow("bad gateway");
     replies(json({ items: [] }), new Response(null, { status: 401 }));
     await expect(loadServiceAccountData()).resolves.toEqual({ kind: "unauthorized" });
   });

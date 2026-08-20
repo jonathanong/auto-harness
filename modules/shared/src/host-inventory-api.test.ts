@@ -189,7 +189,7 @@ describe("mutateInventory", () => {
 
       await expect(mutateInventory("host-1", (current) => current)).resolves.toEqual({
         ok: false,
-        error: "request failed (400)",
+        error: "nope",
       });
       expect(calls.filter((call) => call.init?.method === "PUT")).toHaveLength(1);
     } finally {

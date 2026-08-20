@@ -62,7 +62,7 @@ describe("EditProviderForm", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("no json", { status: 503 })));
     submit(field(view.container, "form-edit-provider"));
     await act(async () => Promise.resolve());
-    expect(field(view.container, "edit-provider-error").textContent).toBe("request failed (503)");
+    expect(field(view.container, "edit-provider-error").textContent).toBe("no json");
     view.unmount();
   });
 

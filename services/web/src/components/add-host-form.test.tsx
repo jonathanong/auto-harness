@@ -100,7 +100,7 @@ describe("AddHostForm", () => {
     setValue(field(fallback.container, "add-host-id"), "new-host");
     submit(field(fallback.container, "form-add-host"));
     await act(async () => Promise.resolve());
-    expect(field(fallback.container, "add-host-error").textContent).toBe("request failed (502)");
+    expect(field(fallback.container, "add-host-error").textContent).toBe("not json");
     fallback.unmount();
   });
 

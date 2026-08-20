@@ -36,7 +36,7 @@ describe("user-account API client", () => {
     replies(json({ error: { message: "users unavailable" } }, 503));
     await expect(loadUserAccounts()).rejects.toThrow("users unavailable");
     replies(new Response("bad gateway", { status: 502 }));
-    await expect(loadUserAccounts()).rejects.toThrow("request failed (502)");
+    await expect(loadUserAccounts()).rejects.toThrow("bad gateway");
   });
 
   it("creates an account using only the supplied initial password", async () => {
