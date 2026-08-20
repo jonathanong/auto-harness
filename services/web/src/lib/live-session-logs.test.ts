@@ -20,7 +20,7 @@ const first = {
 };
 
 describe("live session log status labels", () => {
-  it("prefers a terminal REST status over a later subscribe queued", () => {
+  it("prefers a terminal REST status over a later subscribe queued or running", () => {
     expect(resolveViewerSessionStatus("completed", "queued")).toBe("completed");
     expect(resolveViewerSessionStatus("failed", "queued")).toBe("failed");
     expect(resolveViewerSessionStatus("cancelled", "queued")).toBe("cancelled");
@@ -28,7 +28,8 @@ describe("live session log status labels", () => {
     expect(resolveViewerSessionStatus("queued", "queued")).toBe("queued");
     expect(resolveViewerSessionStatus("queued", "running")).toBe("running");
     expect(resolveViewerSessionStatus("running", "completed")).toBe("completed");
-    expect(resolveViewerSessionStatus("completed", "running")).toBe("running");
+    expect(resolveViewerSessionStatus("completed", "running")).toBe("completed");
+    expect(resolveViewerSessionStatus("completed", "failed")).toBe("failed");
   });
 
   it("omits Live — for terminal sessions and keeps it for active ones", () => {

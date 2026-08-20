@@ -1,4 +1,4 @@
-import { isTerminalSessionStatus } from "@auto-harness/shared";
+import { isActiveSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
 
 export type LiveLogEntry = {
   timestampSeq: string;
@@ -10,9 +10,9 @@ export type LiveLogEntry = {
 
 export type LiveLogsConnectionState = "connecting" | "live" | "reconnecting" | "error";
 
-/** Keep a terminal REST status over a stale subscribe `queued`. */
+/** Keep a terminal REST status over a stale subscribe `queued` or `running`. */
 export function resolveViewerSessionStatus(current: string, incoming: string): string {
-  return isTerminalSessionStatus(current) && incoming === "queued" ? current : incoming;
+  return isTerminalSessionStatus(current) && isActiveSessionStatus(incoming) ? current : incoming;
 }
 
 export function liveLogsStateLabel(

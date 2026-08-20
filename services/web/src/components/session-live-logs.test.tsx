@@ -127,6 +127,15 @@ describe("SessionLiveLogs status display", () => {
     view.unmount();
   });
 
+  it("keeps a terminal initialStatus when subscribe reports running", async () => {
+    const { view, socket } = await mountLive("session-done-running", "completed");
+    emitStatus(socket, "session:subscribed", "running");
+    const state = field(view.container, "session-logs-live-state").textContent;
+    expect(state).toBe("completed");
+    expect(state).not.toContain("Live —");
+    view.unmount();
+  });
+
   it("does not label a later terminal session Live", async () => {
     const { view, socket } = await mountLive("session-run", "running");
     emitStatus(socket, "session:subscribed", "running");
