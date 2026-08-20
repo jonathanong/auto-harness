@@ -114,5 +114,11 @@ describe("apiErrorMessage", () => {
     await expect(apiErrorMessage(new Response("  ", { status: 502 }))).resolves.toBe(
       "request failed (502)",
     );
+    await expect(
+      apiErrorMessage({
+        status: 403,
+        text: async () => JSON.stringify({ error: { message: "nope" } }),
+      }),
+    ).resolves.toBe("nope");
   });
 });
