@@ -70,12 +70,18 @@ test.describe("control plane dashboard", () => {
 
   test("nav links are present", async ({ page }) => {
     await page.goto("/");
+    await expect(page.getByTestId("nav-session-new")).toBeVisible();
+
+    await page.getByTestId("nav-group-operate").click();
     await expect(page.getByTestId("nav-dashboard")).toBeVisible();
     await expect(page.getByTestId("nav-sessions")).toBeVisible();
-    await expect(page.getByTestId("nav-session-new")).toBeVisible();
-    await expect(page.getByTestId("nav-repositories")).toBeVisible();
-    await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-schedules")).toBeVisible();
+
+    await page.getByTestId("nav-group-catalog").click();
+    await expect(page.getByTestId("nav-repositories")).toBeVisible();
+
+    await page.getByTestId("nav-group-fleet").click();
+    await expect(page.getByTestId("nav-worktrees")).toBeVisible();
     await expect(page.getByTestId("nav-hosts")).toBeVisible();
   });
 });
