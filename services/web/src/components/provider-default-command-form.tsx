@@ -52,7 +52,7 @@ export function ProviderDefaultCommandForm({
           htmlFor="defaultCommandId"
           tip="Command used when a provider account has no command override anywhere in the cascade"
         >
-          default command
+          Default Command
         </Label>
         <select
           id="defaultCommandId"

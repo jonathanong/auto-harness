@@ -66,7 +66,7 @@ export function ServiceAccountCreateForm({
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="service-account-bound-host">Bound host ID (optional)</Label>
+        <Label htmlFor="service-account-bound-host">Bound Host ID (Optional)</Label>
         <Input
           id="service-account-bound-host"
           name="boundHostId"
@@ -75,7 +75,7 @@ export function ServiceAccountCreateForm({
         <p className="text-xs text-muted-foreground">Required for host daemon credentials.</p>
       </div>
       <fieldset className="space-y-2" data-pw="service-account-repository-scope">
-        <legend className="text-sm font-medium">Repository scope</legend>
+        <legend className="text-sm font-medium">Repository Scope</legend>
         <p className="text-xs text-muted-foreground">
           No selection grants access to all repositories.
         </p>

@@ -21,7 +21,7 @@ describe("CommandCreateForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<CommandCreateForm providers={providers} navigate={navigate} />);
     const select = field<HTMLSelectElement>(view.container, "command-catalog-provider");
-    expect(select.labels?.[0]?.textContent).toBe("provider");
+    expect(select.labels?.[0]?.textContent).toBe("Provider");
     setValue(select, "p1");
     fill(view);
     submit(field(view.container, "form-command-catalog"));

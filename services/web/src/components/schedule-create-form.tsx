@@ -93,7 +93,7 @@ export function ScheduleCreateForm({
           htmlFor="repositoryId"
           tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
         >
-          repository
+          Repository
         </Label>
         <select
           id="repositoryId"
@@ -112,7 +112,7 @@ export function ScheduleCreateForm({
         </select>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="name">name</Label>
+        <Label htmlFor="name">Name</Label>
         <Input
           id="name"
           name="name"
@@ -129,7 +129,7 @@ export function ScheduleCreateForm({
         initialFallbacks={schedule?.fallbacks}
       />
       <div className="space-y-1">
-        <Label htmlFor="cron">cron</Label>
+        <Label htmlFor="cron">Cron</Label>
         <Input
           id="cron"
           name="cron"
@@ -140,7 +140,7 @@ export function ScheduleCreateForm({
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="timeout">timeout</Label>
+          <Label htmlFor="timeout">Timeout</Label>
           <Input
             id="timeout"
             name="timeout"
@@ -149,12 +149,12 @@ export function ScheduleCreateForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ref">ref</Label>
+          <Label htmlFor="ref">Ref</Label>
           <Input id="ref" name="ref" defaultValue={schedule?.ref ?? "main"} />
         </div>
       </div>
       <div className="space-y-1">
-        <Label htmlFor="queueTtlSeconds">queue TTL (s)</Label>
+        <Label htmlFor="queueTtlSeconds">Queue TTL (s)</Label>
         <Input
           id="queueTtlSeconds"
           name="queueTtlSeconds"
@@ -165,7 +165,7 @@ export function ScheduleCreateForm({
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="concurrencyId">Concurrency ID override</Label>
+        <Label htmlFor="concurrencyId">Concurrency ID Override</Label>
         <Input
           id="concurrencyId"
           name="concurrencyId"

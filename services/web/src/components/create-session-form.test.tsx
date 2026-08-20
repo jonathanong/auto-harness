@@ -70,7 +70,7 @@ describe("CreateSessionForm", () => {
       ["custom", "Custom"],
     ]);
     expect(preset.labels?.[0]?.textContent).toBe("Duration");
-    expect(custom.labels?.[0]?.textContent).toBe("Custom timeout (seconds)");
+    expect(custom.labels?.[0]?.textContent).toBe("Custom Timeout (Seconds)");
     expect(preset.getAttribute("aria-describedby")).toBe("timeout-help");
     expect(new FormData(form).get("timeout")).toBe("600");
 
