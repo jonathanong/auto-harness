@@ -19,7 +19,7 @@ describe("RepoCreateForm", () => {
     expect(url.labels?.[0]?.textContent).toBe("URL / Path");
     expect(url.placeholder).toBe("https://github.com/org/repo.git");
     expect(view.container.textContent).toContain(
-      "This is the git remote URL used to clone (HTTPS or SSH), not a filesystem path on the host. Host path is set when attaching the catalog repo to a host.",
+      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
     );
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
       "Create repository",

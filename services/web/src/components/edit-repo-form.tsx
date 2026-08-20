@@ -70,7 +70,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       <div className="space-y-1">
         <Label
           htmlFor="url"
-          tip="This is the git remote URL used to clone (HTTPS or SSH), not a filesystem path on the host. Host path is set when attaching the catalog repo to a host."
+          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
         >
           URL / Path
         </Label>
