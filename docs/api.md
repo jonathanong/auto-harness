@@ -913,7 +913,9 @@ Three global catalogs are available to session/schedule target chains instead of
 
 Deleting a Command returns `409 Conflict` while it is a Provider default or is selected by any host-, repository-, or worktree-level Provider Account command override. Conflict responses include each blocking Provider Account ID and exact override scope; clear or replace every reference before retrying deletion.
 
-All CRUD below is **operator or admin**, and control-plane-only — there's no host-pane equivalent.
+Catalog CRUD below is **admin** (and control-plane-only — there's no host-pane
+equivalent). Operators create sessions; they do not add hosts, repositories, or
+providers. See [auth.md](auth.md#roles).
 
 #### `POST /providers`
 

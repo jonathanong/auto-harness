@@ -428,7 +428,7 @@ stateDiagram-v2
   "sessionId": "sess-x1y2z3",
   "repositoryId": "repo-abc",
   "prompt": "Fix the failing test",
-  "command": "codex -p",
+  "resolvedArgv": ["codex", "exec", "Fix the failing test"],
   "timeout": 1800,
   "worktreeId": "wt-1",
   "setupScript": "git fetch && git reset --hard origin/main && pnpm install"

@@ -133,7 +133,7 @@ sequenceDiagram
 📋 Session queued — my-app
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Prompt: Fix the failing test in src/utils.test.ts
-Command: codex -p
+Command: codex exec
 Priority: 10
 Source: ui (jong)
 ```
@@ -159,7 +159,7 @@ The original channel message is also updated to show the final status:
 ✅ Session completed — my-app (5m 32s)
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Prompt: Fix the failing test in src/utils.test.ts
-Command: codex -p
+Command: codex exec
 Exit code: 0
 ```
 

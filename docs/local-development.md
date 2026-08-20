@@ -213,21 +213,31 @@ Or start everything above (except DynamoDB Local, which runs in Docker) in one t
 
 **Intended flow**
 
+When `HARNESS_AUTH_MODE=required`, steps 2–4 are **admin** writes (user
+accounts, service accounts, hosts, repos, providers). Operators create
+sessions; they do not Add host. Local auth is usually off, so the same
+clicks work without a login — that is not a license to document them as
+operator steps.
+
 1. Start API + agent (+ optional UIs). Agent uses env defaults (`local-1` → `:7420`) and **registers online** with empty inventory.
 2. **Register the repository in the catalog** (once): Control pane: http://127.0.0.1:7421/repositories → **Add repository** (name + url; id is auto-generated).
-3. **Attach it to a host** (either place does the same thing — pick the catalog repo, give a local path):
-   - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**
-   - Host pane: http://127.0.0.1:7422/repositories → **Add repository**
-4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step) → attach an account to the host on its detail page's Provider accounts tab.
+3. **Attach it to a host** from the control plane (pick the catalog repo, give a local path):
+   - Control pane: http://127.0.0.1:7421/repositories → **Attach a repository to a host**, or host detail → **Repositories & Worktrees**
+   - Host pane (`:7422`) is debug-only and is not required for attach
+4. **Register a Provider/Command target** (once): http://127.0.0.1:7421/commands → **Add command** (standalone, e.g. `echo`), or http://127.0.0.1:7421/providers → **Add provider** for a real CLI (creates its default command in the same step; Codex is `codex exec`, not `-p`) → attach an account to the host on its detail page's Provider accounts tab.
 5. Agent polls inventory (~15s) and re-registers worktrees; then create a session (picking the target from step 4 — http://127.0.0.1:7421/sessions/new — or via `POST /sessions`). The local scheduler dispatches it on its next sweep (within one minute). `POST /scheduler/assign` is still useful to force a manual sweep.
 
 Local defaults: `HARNESS_HOST_ID=local-1`, `HARNESS_API_URL`/`HARNESS_API_HTTP=http://127.0.0.1:7420`.
 
 ---
 
-## Operator management (local REST)
+## Local REST
 
-With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1` supports:
+With `pnpm local:api` (and DynamoDB Local) running, REST under `/api/v1`
+supports the routes below. Local auth is usually off. When
+`HARNESS_AUTH_MODE=required`, host inventory, repositories, providers,
+commands, and `POST /hosts/drain` are **admin** writes — operators create
+sessions, they do not Add host. See [auth.md](auth.md#roles).
 
 | Resource                                 | Routes                                                                                                                               |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
