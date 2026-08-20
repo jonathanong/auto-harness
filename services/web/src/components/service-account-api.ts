@@ -28,7 +28,12 @@ export type ServiceAccountSecret = {
 };
 
 type ServiceAccountData =
-  | { kind: "ready"; accounts: ServiceAccount[]; repositories: RepositoryOption[] }
+  | {
+      kind: "ready";
+      accounts: ServiceAccount[];
+      repositories: RepositoryOption[];
+      hostIds: string[];
+    }
   | { kind: "forbidden" }
   | { kind: "unauthorized" };
 
@@ -40,12 +45,17 @@ export async function loadServiceAccountData(): Promise<ServiceAccountData> {
   const repositories = await apiFetch("/api/v1/repositories", { cache: "no-store" });
   if (repositories.status === 401) return { kind: "unauthorized" };
   if (!repositories.ok) throw new Error(await apiErrorMessage(repositories));
+  const hosts = await apiFetch("/api/v1/hosts", { cache: "no-store" });
+  if (hosts.status === 401) return { kind: "unauthorized" };
+  if (!hosts.ok) throw new Error(await apiErrorMessage(hosts));
   const accountBody = (await accounts.json()) as { items?: ServiceAccount[] };
   const repositoryBody = (await repositories.json()) as { items?: RepositoryOption[] };
+  const hostBody = (await hosts.json()) as { items?: Array<{ hostId?: string }> };
   return {
     kind: "ready",
     accounts: accountBody.items ?? [],
     repositories: repositoryBody.items ?? [],
+    hostIds: (hostBody.items ?? []).flatMap((item) => (item.hostId ? [item.hostId] : [])),
   };
 }
 

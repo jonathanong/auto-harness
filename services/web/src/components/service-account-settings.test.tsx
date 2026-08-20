@@ -61,12 +61,13 @@ describe("ServiceAccountSettings", () => {
     const pending = mountForm(<ServiceAccountSettings canManage />);
     expect(pending.container.querySelector('[aria-busy="true"]')).toBeTruthy();
     pending.unmount();
-    await act(async () => finish({ kind: "ready", accounts: [], repositories: [] }));
+    await act(async () => finish({ kind: "ready", accounts: [], repositories: [], hostIds: [] }));
 
     api.loadServiceAccountData.mockResolvedValue({
       kind: "ready",
       accounts: [oldAccount],
       repositories: [{ id: "repo-1", name: "Repo one" }],
+      hostIds: ["host-a"],
     });
     const ready = mountForm(<ServiceAccountSettings canManage />);
     await settle();
@@ -78,6 +79,7 @@ describe("ServiceAccountSettings", () => {
       kind: "ready",
       accounts: [oldAccount],
       repositories: [{ id: "repo-1", name: "Repo one" }],
+      hostIds: ["host-a"],
     });
     api.createServiceAccount
       .mockResolvedValueOnce({

@@ -19,6 +19,7 @@ describe("ServiceAccountCreateForm", () => {
           { id: "repo-1", name: "Repo one" },
           { id: "repo-2", name: "Repo two" },
         ]}
+        hostIds={["host-a", "host-b"]}
         onCreate={onCreate}
       />,
     );
@@ -36,6 +37,7 @@ describe("ServiceAccountCreateForm", () => {
       boundHostId: "host-a",
     });
     expect(name.value).toBe("");
+    expect(field<HTMLInputElement>(view.container, "service-account-bound-host").value).toBe("");
   });
 
   it("omits empty optional scopes and shows thrown failures", async () => {
