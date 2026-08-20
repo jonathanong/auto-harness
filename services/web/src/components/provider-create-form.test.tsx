@@ -47,6 +47,12 @@ describe("ProviderCreateForm", () => {
     expect(input<HTMLInputElement>(view, "provider-catalog-name").labels?.[0]?.textContent).toBe(
       "name",
     );
+    expect(input<HTMLInputElement>(view, "provider-catalog-command-name").placeholder).toBe(
+      "claude-print",
+    );
+    expect(view.container.textContent).toContain(
+      "Catalog label for this command — not the binary on disk (the first argv token is the executable).",
+    );
     expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt").checked).toBe(true);
     expect(input<HTMLInputElement>(view, "provider-catalog-append-prompt-separator").checked).toBe(
       true,

@@ -134,6 +134,10 @@ export function ProviderCreateForm() {
           value={commandName}
           onChange={(event) => setCommandName(event.currentTarget.value)}
         />
+        <p className="text-xs text-muted-foreground">
+          Catalog label for this command — not the binary on disk (the first argv token is the
+          executable).
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="argv" tip="One argv element per line — never a shell string">

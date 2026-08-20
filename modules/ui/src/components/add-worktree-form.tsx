@@ -45,7 +45,7 @@ export function AddWorktreeForm({
 
   if (!open) {
     return (
-      <WithTooltip tip="Define a worktree name and absolute path under this repository (nothing is auto-created; id is auto-generated)">
+      <WithTooltip tip="Records the name and path on the control plane. Does not mkdir the worktree directory — the daemon runs git worktree add when online.">
         <Button
           type="button"
           variant="outline"
@@ -103,6 +103,10 @@ export function AddWorktreeForm({
       }}
     >
       <p className="text-sm font-medium">New worktree under {repoName}</p>
+      <p className="text-xs text-muted-foreground">
+        Records the name and path only. Do not mkdir this directory — the daemon runs{" "}
+        <code className="font-mono">git worktree add</code> when online.
+      </p>
       <div className="space-y-1">
         <Label tip="Lowercase letters, numbers, and dashes only; unique across all hosts. Id is auto-generated.">
           name
@@ -122,7 +126,7 @@ export function AddWorktreeForm({
         />
       </div>
       <div className="space-y-1">
-        <Label tip="Absolute path on this host. Suggested path is optional — edit freely.">
+        <Label tip="Absolute path on this host. Do not mkdir it — the daemon git worktree adds when online. Suggested path is optional — edit freely.">
           absolute path
         </Label>
         <PathInput

@@ -43,6 +43,10 @@ test.describe("control plane hosts", () => {
     expect(command).toContain("pnpm local:daemon start");
     expect(command).not.toContain("local:agent");
     expect(command).not.toContain("execute-api");
+    await expect(page.getByTestId("connect-host-panel")).toContainText("two keys");
+    await expect(page.getByTestId("connect-host-panel")).toContainText(
+      "pnpm local:daemon install-service",
+    );
     await page.getByTestId("connect-host-copy").click();
     await expect(page.getByTestId("connect-host-copy")).toHaveText("Copied");
     await expect(page.getByTestId("connect-host-copy-status")).toHaveText("Command copied");

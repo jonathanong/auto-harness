@@ -52,7 +52,7 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
       <div className="space-y-1">
         <Label
           htmlFor="usageLimitCooldownSeconds"
-          tip="Global pause applied after this account reports usage_limit"
+          tip="Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry."
         >
           cooldown (s)
         </Label>
@@ -64,6 +64,9 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
           defaultValue={18000}
           data-pw="provider-account-cooldown-seconds"
         />
+        <p className="max-w-xs text-xs text-muted-foreground">
+          Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry.
+        </p>
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="provider-account-error">
