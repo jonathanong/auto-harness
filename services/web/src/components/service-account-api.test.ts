@@ -30,6 +30,8 @@ describe("service-account API client", () => {
     replies(
       json({ items: [{ id: "service:1", name: "ci", role: "operator", createdAt: "now" }] }),
       json({ items: [{ id: "repo-1", name: "Repo one" }] }),
+      json({ items: [{ hostId: "host-a" }, { hostId: "" }, {}] }),
+      json({}),
       json({}),
       json({}),
     );
@@ -37,11 +39,13 @@ describe("service-account API client", () => {
       kind: "ready",
       accounts: [{ id: "service:1", name: "ci", role: "operator", createdAt: "now" }],
       repositories: [{ id: "repo-1", name: "Repo one" }],
+      hostIds: ["host-a"],
     });
     await expect(loadServiceAccountData()).resolves.toEqual({
       kind: "ready",
       accounts: [],
       repositories: [],
+      hostIds: [],
     });
   });
 
@@ -56,6 +60,14 @@ describe("service-account API client", () => {
     await expect(loadServiceAccountData()).rejects.toThrow("bad gateway");
     replies(json({ items: [] }), new Response(null, { status: 401 }));
     await expect(loadServiceAccountData()).resolves.toEqual({ kind: "unauthorized" });
+    replies(json({ items: [] }), json({ items: [] }), new Response(null, { status: 401 }));
+    await expect(loadServiceAccountData()).resolves.toEqual({ kind: "unauthorized" });
+    replies(
+      json({ items: [] }),
+      json({ items: [] }),
+      new Response("hosts offline", { status: 502 }),
+    );
+    await expect(loadServiceAccountData()).rejects.toThrow("hosts offline");
   });
 
   it("creates an account and returns only its one-time key response", async () => {
