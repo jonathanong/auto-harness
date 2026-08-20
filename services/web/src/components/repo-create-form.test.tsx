@@ -14,7 +14,7 @@ describe("RepoCreateForm", () => {
     const form = field<HTMLFormElement>(view.container, "form-repo-catalog");
     const name = field<HTMLInputElement>(view.container, "repo-catalog-name");
     expect(form.checkValidity()).toBe(false);
-    expect(name.labels?.[0]?.textContent).toBe("name");
+    expect(name.labels?.[0]?.textContent).toBe("Name");
     expect(field<HTMLButtonElement>(view.container, "repo-catalog-submit").textContent).toBe(
       "Create repository",
     );

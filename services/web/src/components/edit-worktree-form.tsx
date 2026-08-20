@@ -72,7 +72,7 @@ export function EditWorktreeForm({
     >
       <div className="space-y-1">
         <Label htmlFor="path" tip="Absolute path on this host">
-          absolute path
+          Absolute Path
         </Label>
         <Input
           id="path"
@@ -84,7 +84,7 @@ export function EditWorktreeForm({
       </div>
       <div className="space-y-1">
         <Label htmlFor="labels" tip="Scheduler labels used when matching work to worktrees">
-          labels (comma-separated)
+          Labels (Comma-Separated)
         </Label>
         <Input
           id="labels"

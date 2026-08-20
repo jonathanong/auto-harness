@@ -4,7 +4,7 @@ export function SchedulePromptField({ defaultValue }: { defaultValue?: string })
   return (
     <div className="space-y-1">
       <Label htmlFor="prompt" tip="Prompt passed to the CLI when this schedule fires">
-        prompt
+        Prompt
       </Label>
       <Textarea
         id="prompt"
