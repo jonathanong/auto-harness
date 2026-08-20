@@ -81,7 +81,7 @@ export function AddRepoForm({
     >
       <div className="space-y-1">
         <Label htmlFor="repositoryId" tip="Existing catalog repository to attach to this host">
-          repository
+          Repository
         </Label>
         <select
           id="repositoryId"
@@ -103,7 +103,7 @@ export function AddRepoForm({
           htmlFor="path"
           tip="Absolute path that exists on this machine. Worktrees are not created automatically."
         >
-          absolute path on this host
+          Absolute Path on This Host
         </Label>
         <PathInput
           id="path"
@@ -116,7 +116,7 @@ export function AddRepoForm({
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch when a session omits ref">
-          default branch
+          Default Branch
         </Label>
         <Input
           id="defaultBranch"

@@ -73,7 +73,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
     >
       <div className="space-y-1">
         <Label htmlFor="hostId" tip="Which host's inventory receives this repository path">
-          host
+          Host
         </Label>
         <select
           id="hostId"
@@ -92,7 +92,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
       </div>
       <div className="space-y-1">
         <Label htmlFor="repositoryId" tip="Existing catalog repository to attach to this host">
-          repository
+          Repository
         </Label>
         <select
           id="repositoryId"
@@ -114,7 +114,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           htmlFor="path"
           tip="Absolute path on the host machine (must exist there). Add worktrees separately, from this host's detail page."
         >
-          absolute path on host
+          Absolute Path on Host
         </Label>
         <Input
           id="path"
@@ -126,7 +126,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch when sessions omit a ref">
-          default branch
+          Default Branch
         </Label>
         <Input
           id="defaultBranch"

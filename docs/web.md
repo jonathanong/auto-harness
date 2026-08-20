@@ -10,13 +10,12 @@ target until the AWS runtime has a deploy path and account-backed verification. 
 
 ### Shell & Navigation
 
-The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, New session,
-Sessions, Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts),
-and **Settings** — one horizontally-scrolling row, not a wrapping grid, so it never pushes page
-content down at narrow widths. The theme toggle, keyboard-shortcuts button, logout (only when
-`HARNESS_AUTH_MODE=required`), and the page subtitle live in a slim secondary row below title+nav,
-not competing with navigation for space in the primary header row. The host pane's own shell reuses
-the same chrome with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane
+The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, Sessions,
+Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts), and
+**Settings** — one dropdown per group. **New session** is a button on the slim secondary row with
+the theme toggle, keyboard-shortcuts button, and logout (only when `HARNESS_AUTH_MODE=required`),
+next to the page subtitle, not inside Operate. The host pane's own shell reuses the same chrome
+with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane
 is **debug-only** and has no login form — a visible badge and subtitle tell operators to use the
 control plane. A missing session cookie (`HARNESS_AUTH_MODE=required`) or a 401 from
 `/api/v1/hosts` (typical when opening a remote `WebUrl` whose cookies live on the CloudFront

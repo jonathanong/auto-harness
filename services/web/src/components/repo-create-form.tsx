@@ -54,22 +54,32 @@ export function RepoCreateForm() {
           htmlFor="name"
           tip="Lowercase letters, numbers, and dashes only; unique across the catalog. Id is auto-generated."
         >
-          name
+          Name
         </Label>
         <Input id="name" name="name" required data-pw="repo-catalog-name" />
       </div>
       <div className="space-y-1">
         <Label
           htmlFor="url"
-          tip="Remote URL or logical path stored in the catalog (agent host paths are separate)"
+          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
         >
-          url / path
+          URL / Path
         </Label>
-        <Input id="url" name="url" required data-pw="repo-catalog-url" />
+        <Input
+          id="url"
+          name="url"
+          required
+          placeholder="https://github.com/org/repo.git"
+          data-pw="repo-catalog-url"
+        />
+        <p className="text-xs text-muted-foreground">
+          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path
+          on the host — that is set when attaching the repo to a host.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch name for sessions that omit ref">
-          defaultBranch
+          Default Branch
         </Label>
         <Input
           id="defaultBranch"
@@ -80,7 +90,7 @@ export function RepoCreateForm() {
       </div>
       <div className="space-y-1">
         <Label htmlFor="setupScript" tip="Optional catalog-level setup script">
-          setup script
+          Setup Script
         </Label>
         <Textarea
           id="setupScript"

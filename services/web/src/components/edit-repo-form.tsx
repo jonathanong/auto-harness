@@ -70,20 +70,28 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="url" tip="Git remote URL and/or local path identity for operators">
-          url
+        <Label
+          htmlFor="url"
+          tip="Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host."
+        >
+          URL / Path
         </Label>
         <Input
           id="url"
           name="url"
           defaultValue={repository.url ?? ""}
           required
+          placeholder="https://github.com/org/repo.git"
           data-pw="edit-repo-url"
         />
+        <p className="text-xs text-muted-foreground">
+          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path
+          on the host — that is set when attaching the repo to a host.
+        </p>
       </div>
       <div className="space-y-1">
         <Label htmlFor="defaultBranch" tip="Default branch when sessions omit ref">
-          default branch
+          Default Branch
         </Label>
         <Input
           id="defaultBranch"
@@ -94,7 +102,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       </div>
       <div className="space-y-1">
         <Label htmlFor="setupScript" tip="Optional catalog-level setup script">
-          setup script
+          Setup Script
         </Label>
         <Textarea
           id="setupScript"
@@ -107,7 +115,7 @@ export function EditRepoForm({ repository }: { repository: RepositorySummary }) 
       </div>
       <div className="space-y-1">
         <Label htmlFor="terminalHookScript" tip="Optional catalog-level terminal hook script">
-          terminal hook script
+          Terminal Hook Script
         </Label>
         <Textarea
           id="terminalHookScript"

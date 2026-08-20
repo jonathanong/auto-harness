@@ -68,7 +68,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
     >
       <div className="space-y-1">
         <Label htmlFor={`path-${repo.id}`} tip="Absolute path on this host">
-          absolute path
+          Absolute Path
         </Label>
         <Input
           id={`path-${repo.id}`}
@@ -80,7 +80,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
       </div>
       <div className="space-y-1">
         <Label htmlFor={`branch-${repo.id}`} tip="Default branch when sessions omit ref">
-          default branch
+          Default Branch
         </Label>
         <Input
           id={`branch-${repo.id}`}
@@ -91,7 +91,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
       </div>
       <div className="space-y-1">
         <Label htmlFor={`setup-${repo.id}`} tip="Optional setup script for this host's attachment">
-          setup script
+          Setup Script
         </Label>
         <Textarea
           id={`setup-${repo.id}`}
@@ -107,7 +107,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
           htmlFor={`hook-${repo.id}`}
           tip="Optional terminal hook script for this host's attachment"
         >
-          terminal hook script
+          Terminal Hook Script
         </Label>
         <Textarea
           id={`hook-${repo.id}`}

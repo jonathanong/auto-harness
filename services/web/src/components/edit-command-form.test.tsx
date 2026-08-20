@@ -30,7 +30,7 @@ describe("EditCommandForm", () => {
     );
     expect(
       field<HTMLSelectElement>(view.container, "edit-command-provider").labels?.[0]?.textContent,
-    ).toBe("provider");
+    ).toBe("Provider");
     setValue(field(view.container, "edit-command-name"), " codex ");
     setValue(field(view.container, "edit-command-argv"), " codex \n -p ");
     setValue(field(view.container, "edit-command-provider"), "");

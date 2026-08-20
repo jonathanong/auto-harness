@@ -96,7 +96,7 @@ export function CreateSessionForm({
           htmlFor="repositoryId"
           tip="Catalog repository id (control-plane repository), not necessarily a filesystem path"
         >
-          Repository id
+          Repository ID
         </Label>
         <select
           id="repositoryId"

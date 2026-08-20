@@ -88,7 +88,7 @@ export function HostConfigForm({
           htmlFor="configJson"
           tip="Full host inventory JSON (repositories, worktrees). Prefer the form UI when possible."
         >
-          host config JSON
+          Host Config JSON
         </Label>
         <Textarea
           id="configJson"

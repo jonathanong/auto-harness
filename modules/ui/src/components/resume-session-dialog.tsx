@@ -66,7 +66,7 @@ export function ResumeSessionDialog({
           }}
         >
           <div className="space-y-1">
-            <Label htmlFor="resume-prompt">Continuation prompt</Label>
+            <Label htmlFor="resume-prompt">Continuation Prompt</Label>
             <Input
               id="resume-prompt"
               data-pw="session-resume-prompt"
@@ -75,7 +75,7 @@ export function ResumeSessionDialog({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="resume-timeout">Timeout (seconds)</Label>
+            <Label htmlFor="resume-timeout">Timeout (Seconds)</Label>
             <Input
               id="resume-timeout"
               data-pw="session-resume-timeout"

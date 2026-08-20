@@ -40,7 +40,7 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
     >
       <div className="space-y-1">
         <Label htmlFor="label" tip="Human-readable identifier for this account, e.g. an email">
-          label
+          Label
         </Label>
         <Input
           id="label"
@@ -55,7 +55,7 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
           htmlFor="usageLimitCooldownSeconds"
           tip="Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry."
         >
-          cooldown (s)
+          Cooldown (s)
         </Label>
         <Input
           id="usageLimitCooldownSeconds"

@@ -46,7 +46,7 @@ export function ChangePasswordForm() {
       }}
     >
       <div className="space-y-1">
-        <Label htmlFor="currentPassword">Current password</Label>
+        <Label htmlFor="currentPassword">Current Password</Label>
         <Input
           id="currentPassword"
           name="currentPassword"
@@ -57,7 +57,7 @@ export function ChangePasswordForm() {
         />
       </div>
       <div className="space-y-1">
-        <Label htmlFor="newPassword">New password</Label>
+        <Label htmlFor="newPassword">New Password</Label>
         <Input
           id="newPassword"
           name="newPassword"

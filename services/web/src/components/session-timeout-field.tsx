@@ -44,7 +44,7 @@ export function SessionTimeoutField({ initialSeconds = 600 }: { initialSeconds?:
       </div>
       {choice === "custom" ? (
         <div className="space-y-1">
-          <Label htmlFor="timeout">Custom timeout (seconds)</Label>
+          <Label htmlFor="timeout">Custom Timeout (Seconds)</Label>
           <Input
             id="timeout"
             name="timeout"

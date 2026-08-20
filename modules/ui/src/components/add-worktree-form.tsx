@@ -108,7 +108,7 @@ export function AddWorktreeForm({
       </p>
       <div className="space-y-1">
         <Label tip="Lowercase letters, numbers, and dashes only; unique across all hosts. Id is auto-generated.">
-          name
+          Name
         </Label>
         <Input
           value={name}
@@ -126,7 +126,7 @@ export function AddWorktreeForm({
       </div>
       <div className="space-y-1">
         <Label tip="Absolute path on this host. Do not mkdir it — the daemon git worktree adds when online. Suggested path is optional — edit freely.">
-          absolute path
+          Absolute Path
         </Label>
         <PathInput
           value={path}
@@ -150,7 +150,7 @@ export function AddWorktreeForm({
       </div>
       <div className="space-y-1">
         <Label tip="Scheduler labels (e.g. echo) used when matching work to worktrees">
-          labels (comma-separated)
+          Labels (Comma-Separated)
         </Label>
         <Input
           value={labels}

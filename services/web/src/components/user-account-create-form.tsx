@@ -49,7 +49,7 @@ export function UserAccountCreateForm({
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="user-account-password">Initial password</Label>
+          <Label htmlFor="user-account-password">Initial Password</Label>
           <Input
             id="user-account-password"
             name="password"

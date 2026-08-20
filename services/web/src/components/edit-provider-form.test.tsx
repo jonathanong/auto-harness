@@ -20,7 +20,7 @@ describe("EditProviderForm", () => {
     press(field(view.container, "edit-provider-open"));
     expect(
       field<HTMLInputElement>(view.container, "edit-provider-name").labels?.[0]?.textContent,
-    ).toBe("name");
+    ).toBe("Name");
     expect(field<HTMLInputElement>(view.container, "edit-provider-name").value).toBe("claude");
     press(
       [...view.container.querySelectorAll("button")].find(

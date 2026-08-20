@@ -83,7 +83,7 @@ export function ScheduleEditForm({
     >
       <div className="space-y-1">
         <Label htmlFor="repositoryId" tip="Catalog repository id">
-          Repository id
+          Repository ID
         </Label>
         <Input
           id="repositoryId"
@@ -164,7 +164,7 @@ export function ScheduleEditForm({
       </div>
       <div className="space-y-1">
         <Label htmlFor="concurrencyId" tip="Stable ID shared by scheduled runs">
-          Concurrency ID override
+          Concurrency ID Override
         </Label>
         <Input
           id="concurrencyId"
