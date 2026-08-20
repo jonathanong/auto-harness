@@ -205,6 +205,7 @@ test.describe("control plane hosts", () => {
         });
         await expect(page.getByTestId(`repo-settings-open-${repo.id}`)).toBeVisible();
         await page.getByTestId(`repo-settings-open-${repo.id}`).click();
+        await expect(page.getByTestId(`repo-settings-dialog-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`form-repo-settings-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-path-${repo.id}`)).toHaveValue(
           `/tmp/${repoId}`,

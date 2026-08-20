@@ -41,6 +41,7 @@ test.describe("control plane commands", () => {
 
     await page.goto(`/commands/${commandId}`);
     await page.getByTestId("edit-command-open").click();
+    await expect(page.getByTestId("edit-command-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-command")).toBeVisible();
     await expect(page.getByTestId("edit-command-error")).toBeHidden();
     await expect(page.getByTestId("edit-command-name")).toHaveValue(name);
@@ -57,7 +58,10 @@ test.describe("control plane commands", () => {
 
     // Round-trips through the API/DB: re-opening the edit form reflects the persisted value.
     await page.getByTestId("edit-command-open").click();
+    await expect(page.getByTestId("edit-command-dialog")).toBeVisible();
     await expect(page.getByTestId("edit-command-append-prompt-separator")).toBeChecked();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("edit-command-dialog")).toBeHidden();
 
     await page.getByTestId("delete-command-open").click();
     await expect(page.getByTestId("delete-command-confirm")).toBeVisible();

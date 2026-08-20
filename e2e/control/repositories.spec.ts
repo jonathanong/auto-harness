@@ -84,6 +84,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repository-attached-hosts")).toHaveCount(0);
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
     await page.getByTestId("edit-repo-open").click();
+    await expect(page.getByTestId("edit-repo-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-repo")).toBeVisible();
     await expect(page.getByTestId("edit-repo-url")).toHaveValue(`/tmp/${name}`);
     await expect(page.getByTestId("edit-repo-branch")).toHaveValue("main");
