@@ -16,7 +16,8 @@ Identity (env; local defaults shown):
   HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
 
 install-service persists the daemon (systemd / LaunchAgent / logon task) from this
-identity into a mode-0600 env file that is never committed.
+identity into a mode-0600 env file that is never committed. On Linux it refuses
+local-1, http://127.0.0.1:7420, placeholders, and an empty HARNESS_API_KEY.
 
 --ws overrides only the WebSocket target (REST still resolves from HARNESS_API_URL). It
 accepts a raw API Gateway endpoint directly — a deploy-day escape hatch if the CloudFront

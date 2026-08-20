@@ -60,12 +60,13 @@ Persist the host daemon on Linux (systemd), macOS (LaunchAgent, current user), o
 
 ```bash
 export HARNESS_HOST_ID='<bound-host-id>'
-export HARNESS_API_URL='<CloudFront WebUrl or http://127.0.0.1:7420>'
+export HARNESS_API_URL='<CloudFront WebUrl>'
 export HARNESS_API_KEY='<bound-daemon-key>'
 pnpm local:daemon install-service
 ```
 
-Copy-pasteable command, every OS. Details and the Linux VPS copy-unit path:
+Copy-pasteable command, every OS. Linux refuses `local-1` / `http://127.0.0.1:7420` / an empty
+key when writing a new env file. Details and the Linux VPS copy-unit path:
 [deploy-host-daemon.md](deploy-host-daemon.md).
 
 Agent config includes optional `apiUrl` / `apiKey` for cloud connect. All execution still resolves to **named, fixed argv** (D4), now via the global Provider/Provider Account/Command catalogs rather than host-local command profiles. Subscription CLIs and secrets live only on the host — see [why.md](why.md), [costs.md](costs.md).

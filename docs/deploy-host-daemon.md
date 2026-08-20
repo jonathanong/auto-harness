@@ -43,6 +43,10 @@ export HARNESS_API_KEY='hns_…'
 pnpm local:daemon install-service
 ```
 
+Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
+`HARNESS_API_KEY`. macOS and Windows warn and still write. `status` / `run-session` / `start`
+keep the local defaults.
+
 | OS      | What it installs                                                                                                            |
 | ------- | --------------------------------------------------------------------------------------------------------------------------- |
 | Linux   | systemd unit `auto-harness-host-daemon.service` as user `harness`                                                           |
