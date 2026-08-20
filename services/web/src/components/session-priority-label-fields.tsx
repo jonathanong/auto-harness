@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Input, Label } from "@auto-harness/ui";
+import { Input, Label, Switch } from "@auto-harness/ui";
 
 function priorityBand(priority: number): string {
   if (priority >= 75) return "critical";
@@ -50,23 +50,22 @@ export function SessionPriorityLabelFields({
       <fieldset className="space-y-2" data-pw="create-session-labels">
         <legend className="text-sm font-medium">Required labels</legend>
         {availableLabels.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {availableLabels.map((label) => (
-              <label
-                key={label}
-                className="cursor-pointer rounded-full border px-3 py-1 text-xs has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground"
-              >
-                <input
-                  type="checkbox"
-                  name="requiredLabels"
-                  value={label}
-                  defaultChecked={required.has(label)}
-                  className="sr-only"
-                  data-pw={`create-session-label-${label}`}
-                />
-                {label}
-              </label>
-            ))}
+          <div className="space-y-2">
+            {availableLabels.map((label) => {
+              const id = `create-session-label-${label}`;
+              return (
+                <div key={label} className="flex items-center gap-2">
+                  <Switch
+                    id={id}
+                    name="requiredLabels"
+                    value={label}
+                    defaultChecked={required.has(label)}
+                    data-pw={id}
+                  />
+                  <Label htmlFor={id}>{label}</Label>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground" data-pw="create-session-labels-empty">
