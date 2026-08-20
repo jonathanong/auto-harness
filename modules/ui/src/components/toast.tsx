@@ -89,8 +89,8 @@ export function Toast({ paramName = "toast" }: { paramName?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [param]);
 
-  const displayed =
-    live ?? (urlMessage ? { message: urlMessage, variant: "default" as const } : null);
+  const displayed: ToastState | null =
+    live ?? (urlMessage ? { message: urlMessage, variant: "default", seq: 0 } : null);
   const displayedKey = displayed
     ? `${displayed.seq}:${displayed.variant}:${displayed.pw ?? ""}:${displayed.message}`
     : "";
