@@ -43,6 +43,8 @@ describe("ControlShell", () => {
     expect(field(view.container, "nav-group-fleet").textContent).toContain("Fleet");
     expect(field(view.container, "nav-group-settings").textContent).toContain("Settings");
     expect(field(view.container, "app-main").textContent).toContain("Current sessions");
+    expect(field(view.container, "app-main").className).not.toContain("max-w-5xl");
+    expect(field(view.container, "app-header").innerHTML).not.toContain("max-w-5xl");
     expect(field(view.container, "nav-group-operate").className).toContain("bg-muted");
     expect(field<HTMLAnchorElement>(view.container, "nav-session-new").getAttribute("href")).toBe(
       "/sessions/new",
