@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+import { validateGeneratedHostServiceTemplates } from "../services/host-daemon/src/host-service-templates.ts";
 import { envExampleUrl, serviceUrl, validateSystemdArtifacts } from "./check-systemd-service.mts";
 
 describe("production host systemd artifacts", () => {
@@ -9,6 +10,7 @@ describe("production host systemd artifacts", () => {
 
   it("keeps the checked-in service and environment contracts safe", () => {
     expect(validateSystemdArtifacts(service, envExample)).toEqual([]);
+    expect(validateGeneratedHostServiceTemplates(service)).toEqual([]);
     expect(envExample).toContain("mode 0600");
     expect(envExample).toContain("REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY");
   });

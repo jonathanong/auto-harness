@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { validateGeneratedHostServiceTemplates } from "../services/host-daemon/src/host-service-templates.ts";
+
 export const serviceUrl = new URL(
   "../services/host-daemon/systemd/auto-harness-host-daemon.service",
   import.meta.url,
@@ -66,7 +68,10 @@ export function validateSystemdArtifacts(service: string, envExample: string): s
 function main(): void {
   const service = readFileSync(serviceUrl, "utf8");
   const envExample = readFileSync(envExampleUrl, "utf8");
-  const errors = validateSystemdArtifacts(service, envExample);
+  const errors = [
+    ...validateSystemdArtifacts(service, envExample),
+    ...validateGeneratedHostServiceTemplates(service),
+  ];
   if (errors.length > 0) throw new Error(errors.join("\n"));
 
   const verify = spawnSync("systemd-analyze", ["verify", fileURLToPath(serviceUrl)], {

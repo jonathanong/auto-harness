@@ -162,7 +162,7 @@ export default defineConfig({
               { 100: true },
             "services/host-pane/src/components/{add-repo-dialog,host-shell,provider-accounts-readonly,sessions-live}.tsx":
               { 100: true },
-            "services/host-daemon/src/{agent-updater,bootstrap,config,config-parse,daemon-loop,executor,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport,ws-url}.ts":
+            "services/host-daemon/src/{agent-updater,bootstrap,cli-usage,config,config-parse,daemon-loop,executor,host-service,host-service-darwin,host-service-env,host-service-io,host-service-linux,host-service-templates,host-service-win32,runtime,session-run-claimed,session-runner,start-daemon,worktree-manager,ws-transport,ws-url}.ts":
               {
                 100: true,
               },

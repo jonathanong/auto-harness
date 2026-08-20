@@ -2,7 +2,6 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { DaemonConfig } from "./config.ts";
 import {
   createDefaultRunSessionDeps,
   isDirectInvocation,
@@ -12,58 +11,10 @@ import {
   runCli,
   setExitCode,
   shutdownLoggerFor,
-  type RunSessionDeps,
 } from "./cli.ts";
-
-const sampleConfig: DaemonConfig = {
-  hostId: "a1",
-  logLevel: "info",
-  providerAccounts: [],
-  commandProfiles: { echo: { argv: ["echo"], appendPrompt: true } },
-  repositories: [
-    {
-      id: "repo-1",
-      path: "/repo",
-      defaultBranch: "main",
-      worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["codex"] }],
-    },
-  ],
-};
-
-function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
-  logs: string[];
-  errors: string[];
-} {
-  const logs: string[] = [];
-  const errors: string[] = [];
-  return {
-    logs,
-    errors,
-    log: (m) => {
-      logs.push(m);
-    },
-    error: (m) => {
-      errors.push(m);
-    },
-    readFile: () =>
-      JSON.stringify({
-        sessionId: "s1",
-        repositoryId: "repo-1",
-        prompt: "p",
-        resolvedArgv: ["echo"],
-        timeout: 5,
-        worktreeId: "wt-1",
-      }),
-    loadConfig: async () => sampleConfig,
-    ensureReady: async () => undefined,
-    runSession: async () => ({
-      status: "completed",
-      exitCode: 0,
-      logs: [],
-    }),
-    ...partial,
-  };
-}
+import { deps, sampleConfig } from "./cli-test-helpers.ts";
+import type { DaemonConfig } from "./config.ts";
+import { installHostService, uninstallHostService } from "./host-service.ts";
 
 describe("normalizeCliArgs", () => {
   it("strips a leading -- from pnpm forwarding", () => {
@@ -169,8 +120,13 @@ describe("printUsage / main / defaults", () => {
     const lines: string[] = [];
     printUsage((m) => lines.push(m));
     expect(lines[0]).toMatch(/local-1/);
+    expect(lines[0]).toMatch(/install-service/);
+    expect(lines[0]).toMatch(/uninstall-service/);
+    expect(lines[0]).toMatch(/On Linux it refuses/);
     const d = createDefaultRunSessionDeps();
     expect(typeof d.loadConfig).toBe("function");
+    expect(d.installService).toBe(installHostService);
+    expect(d.uninstallService).toBe(uninstallHostService);
   });
 
   it("default deps' log/error/readFile close over the real console and filesystem", () => {

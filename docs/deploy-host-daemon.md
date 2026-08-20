@@ -8,13 +8,14 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Maturity
 
-| Item                                     | Status                                                                                                        |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Local daemon (`pnpm local:daemon start`) | **Supported** against local API/WS                                                                            |
-| Production systemd unit                  | **Packaged** — checked-in unit and environment contract; syntax and graceful drain are validated in CI        |
-| Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)) |
-| Signed update orchestration core         | **Implemented and locally tested** behind injected fetch/install/restart boundaries                           |
-| Automatic production download / restart  | **Not wired**; updates use the manual drain procedure below                                                   |
+| Item                                     | Status                                                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Local daemon (`pnpm local:daemon start`) | **Supported** against local API/WS                                                                               |
+| `pnpm local:daemon install-service`      | **Supported** — systemd (linux), LaunchAgent (macOS, current user), logon scheduled task (Windows, current user) |
+| Production systemd unit                  | **Packaged** — checked-in unit and environment contract; syntax and graceful drain are validated in CI           |
+| Drain without killing in-flight CLIs     | **Implemented** in control plane / agent loop ([host-daemon.md](host-daemon.md#auto-update-graceful-restart))    |
+| Signed update orchestration core         | **Implemented and locally tested** behind injected fetch/install/restart boundaries                              |
+| Automatic production download / restart  | **Not wired**; updates use the manual drain procedure below                                                      |
 
 ---
 
@@ -28,6 +29,57 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 ---
 
 ## Deploy (install)
+
+### One-command path (supported)
+
+Identity is still env-only (`HARNESS_HOST_ID`, `HARNESS_API_URL` as the CloudFront
+`WebUrl` on AWS, `HARNESS_API_KEY` as the bound key). From the checkout, the same
+command persists the daemon on every supported OS:
+
+```bash
+export HARNESS_HOST_ID='<bound-host-id>'
+export HARNESS_API_URL='https://d111111abcdef8.cloudfront.net'  # CloudFront WebUrl
+export HARNESS_API_KEY='hns_…'
+pnpm local:daemon install-service
+```
+
+Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
+`HARNESS_API_KEY`. macOS and Windows warn and still write. `status` / `run-session` / `start`
+keep the local defaults.
+
+| OS      | What it installs                                                                                                            |
+| ------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Linux   | systemd unit `auto-harness-host-daemon.service` as user `harness`                                                           |
+| macOS   | LaunchAgent `~/Library/LaunchAgents/com.auto-harness.host-daemon.plist` as the **current user** (`HOME` kept for CLI creds) |
+| Windows | Logon scheduled task as the **current user** (not `LOCALSYSTEM`)                                                            |
+
+Env files are mode `0600` and are never committed:
+
+- Linux: `/etc/auto-harness/host-daemon.env` (created from the checked-in example if missing)
+- macOS: `~/Library/Application Support/auto-harness/host-daemon.env`
+- Windows: `%APPDATA%\auto-harness\host-daemon.env`
+
+On Linux, if this command is not root it writes a staged unit/env and prints:
+
+```bash
+sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-daemon.service
+```
+
+Working directory is `/opt/auto-harness/current` when that path exists, otherwise this checkout.
+`KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
+
+Uninstall (removes the service definition, not the checkout):
+
+```bash
+pnpm local:daemon uninstall-service
+```
+
+### VPS copy-unit path
+
+Keep this when you are installing onto a dedicated Linux VPS by hand (create the
+`harness` user, clone into `/opt/auto-harness/current`, copy the unit). The
+one-command path above is the supported operator path for an already-cloned
+checkout.
 
 On the agent host:
 
@@ -209,7 +261,13 @@ When the **API** changes: roll control plane first ([deploy-aws.md](deploy-aws.m
 ## Teardown
 
 1. Drain agent; wait for idle.
-2. Stop and disable the service (SIGTERM follows the same graceful drain path):
+2. Stop and disable the persisted service:
+
+   ```bash
+   pnpm local:daemon uninstall-service
+   ```
+
+   Linux VPS copy-unit path (SIGTERM follows the same graceful drain path):
 
    ```bash
    sudo systemctl disable --now auto-harness-host-daemon.service
@@ -231,10 +289,11 @@ When the **API** changes: roll control plane first ([deploy-aws.md](deploy-aws.m
 | After agent install/update | Online in `/hosts`, expected profiles, one smoke session                                                 |
 | After hard kill / crash    | Re-register; reconcile running sessions ([host-daemon.md](host-daemon.md#disconnect-and-crash-recovery)) |
 
-The repository validates the unit contract with `pnpm check:systemd`, uses `systemd-analyze verify`
-when it is available, and runs the packaged entrypoint against a real local HTTP/WebSocket control
-plane while SIGTERM arrives during an active CLI. These are packaging and process-lifecycle proofs;
-they do not claim that CI installed, enabled, stopped, or restarted a service on a production host.
+The repository validates the unit contract and generated LaunchAgent/scheduled-task templates with
+`pnpm check:systemd`, uses `systemd-analyze verify` when it is available, and runs the packaged
+entrypoint against a real local HTTP/WebSocket control plane while SIGTERM arrives during an active
+CLI. These are packaging and process-lifecycle proofs; they do not claim that CI installed, enabled,
+stopped, or restarted a service on a production host.
 
 ---
 

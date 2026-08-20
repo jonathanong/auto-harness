@@ -77,6 +77,30 @@ pnpm local:daemon start
 # optional: --ws ws://127.0.0.1:7420/ws  (otherwise derived from HARNESS_API_URL)
 ```
 
+### `install-service` / `uninstall-service`
+
+Persist this checkout's daemon so it survives logout/reboot: systemd on Linux (user `harness`),
+a LaunchAgent as the current user on macOS (`HOME` kept for CLI creds), or a logon scheduled
+task as the current user on Windows (not `LOCALSYSTEM`). Identity is read from `HARNESS_*` and
+written to a mode-0600 env file that is never committed.
+
+Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
+`HARNESS_API_KEY`. Use a bound host id, CloudFront `WebUrl`, and bound key (same recipe as
+[deploy-host-daemon.md](deploy-host-daemon.md)):
+
+```bash
+export HARNESS_HOST_ID='<bound-host-id>'
+export HARNESS_API_URL='https://d111111abcdef8.cloudfront.net'  # CloudFront WebUrl
+export HARNESS_API_KEY='hns_…'
+pnpm local:daemon install-service
+pnpm local:daemon uninstall-service
+```
+
+`status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
+local work above.
+
+Host install details: [deploy-host-daemon.md](deploy-host-daemon.md).
+
 ---
 
 ## API commands (Phase 1)
