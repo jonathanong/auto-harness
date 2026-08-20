@@ -45,7 +45,12 @@ Short checklist:
 1. `pnpm install`
 2. Create the three environment-scoped SecureStrings as described in [deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit) (Parameter Store UI, or the `aws ssm put-parameter` form given there).
 3. Set `AWS_REGION` and `HARNESS_DEPLOY_ENVIRONMENT`, then run `pnpm --filter @auto-harness/cdk run deploy`. (Note the `run` — `pnpm --filter @auto-harness/cdk deploy` without it invokes pnpm's own built-in `deploy` command, not this package's script, and does not do what you want.)
-4. Open the printed `WebUrl`. Use the UI to create accounts and repositories, then install agents per [deploy-host-daemon.md](deploy-host-daemon.md).
+4. Open the printed `WebUrl`. Sign in as **admin** to create accounts,
+   host slots, repositories, and providers (operators create sessions; they
+   do not Add host), then persist agents with
+   `pnpm local:daemon install-service` per
+   [deploy-host-daemon.md](deploy-host-daemon.md). Codex is `codex exec`,
+   not `-p`.
 
 See [aws.md](aws.md), [auth.md](auth.md), [security.md](security.md).
 

@@ -1,10 +1,11 @@
 # Production QA
 
-A numbered script for QAing a real AWS Auto Harness environment the way a
-first-time operator would: restore or deploy the control plane, drive the
-control-plane UI, connect a local host (and the debug host pane), run real
-`grok -p` and `claude -p` sessions, exercise a schedule, try to break the
-product, then tear the environment down.
+A numbered script for QAing a real AWS Auto Harness environment: restore or
+deploy the control plane, **sign in as admin** to set up the fleet (user
+accounts, service accounts, hosts, repos, providers), persist a local host
+daemon, **sign in as operator** to run real `grok -p`, `claude -p`, and
+`codex exec` sessions, exercise a schedule, try to break the product, then
+tear the environment down. Do not tell an operator to Add host.
 
 This is the production-surface runbook. The laptop-only counterpart is
 [qa-local.md](qa-local.md). Deploy mechanics: [deploy-aws.md](deploy-aws.md).
@@ -104,7 +105,9 @@ Then retry `pnpm --filter @auto-harness/cdk run update`. Do not set
   including `teardown` and `purge` — they re-synth the same Lambda image),
   AWS CLI credentials, `AWS_REGION` set.
 - `grok` and `claude` on `PATH`, already logged in on this machine. Verify
-  in a real shell **before** starting the daemon (Phase 3).
+  in a real shell **before** starting the daemon (Phase 3). `codex` is
+  optional; if it is installed, the catalog preset is `codex exec` — **not**
+  `-p` (`-p` is `--profile`).
 - A git repository the daemon can reach **on this machine**. The control-plane
   "attach repository" form takes an absolute host path that must already
   exist. Attaching a path that doesn't exist does not fail validation; it
@@ -190,7 +193,13 @@ stack. Full detail:
 
 ---
 
-## Phase 2 — First-time operator (control plane only)
+## Phase 2 — Fleet setup (admin)
+
+Stay signed in as **admin** for this entire phase. User accounts, service
+accounts, host slots, repositories, and providers are admin writes
+([auth.md](auth.md#roles); `PUT /hosts/:id/inventory` is how **Add host**
+lands). Do not log in as the operator yet — operators create sessions
+(Phase 4), they do not Add host.
 
 Everything in this phase is reachable from `WebUrl`. Do not open `:7422`.
 Do not read `web.md`. Follow nav labels.
@@ -198,9 +207,11 @@ Do not read `web.md`. Follow nav labels.
 1. **Log in** at `<WebUrl>/login` with `admin` / the bootstrap password.
    The first request after a fresh deploy can render a blank page while
    CloudFront/Lambda cold-starts — a reload is not a failure.
-2. **Settings → User accounts** — create a real user; bootstrap admin is
-   for initial setup, not day-to-day use. Log out and back in as that user
-   if the product lets you (if it doesn't, that's a UX finding).
+2. **Settings → User accounts** — create a real user with role
+   **operator** for Phase 4. Bootstrap admin is for fleet setup, not
+   day-to-day session creation. **Stay on admin** for the rest of this
+   phase. Logging out and back in as that operator is a UX finding if
+   **Add host** / catalog writes then fail (they should).
 3. **Settings → Service accounts** — create the two accounts from trap #1:
    - `<host-id>-daemon`, role operator, **bound** to the host ID you will
      register next
@@ -223,7 +234,8 @@ Do not read `web.md`. Follow nav labels.
 --detach`). **Do not pre-create the worktree directory** — a directory
    sitting at that path can collide with `git worktree add`. Only the
    repository path must already exist as a valid git repo.
-7. **Providers → Add provider** twice:
+7. **Providers → Add provider** (the UI fills argv when the name matches a
+   catalog preset — `claude`, `grok`, `codex`, `cursor` / `cursor-agent`):
    - name `claude`; default command name e.g. `claude-print`; argv one token
      per line: `claude` then `-p`; append-prompt on
    - name `grok`; default command name e.g. `grok-print`; argv one token
@@ -233,6 +245,10 @@ Do not read `web.md`. Follow nav labels.
      before the prompt makes grok 1.0.5 exit 2 with `a value is required
 for '--single <PROMPT>'`. Do not add `--output-format plain`; `-p`
      already means headless.
+   - name `codex`; default command name e.g. `codex-exec`; argv one token
+     per line: `codex` then `exec`. Append-prompt **on**, separator **on**
+     (the catalog preset). **Do not use `-p`** — on Codex that is
+     `--profile`, unrelated to the prompt.
 
    Creating a provider auto-creates its default command in the same submit.
 
@@ -260,12 +276,31 @@ If either command does not print `OK`, fix the CLI login before going
 further — every downstream symptom (session stuck `queued`, then failing
 with an auth error) traces back to this.
 
+If `codex` is on `PATH`:
+
 ```bash
-HARNESS_HOST_ID='<host-id>' \
-HARNESS_API_URL='<WebUrl>' \
-HARNESS_API_KEY='<bound-daemon-key>' \
-pnpm local:daemon start
+codex exec 'Reply with exactly: OK'
 ```
+
+Persist the daemon so it survives logout/reboot. Same command on linux
+(systemd), macOS (LaunchAgent, current user), and Windows (logon scheduled
+task, current user). Details:
+[deploy-host-daemon.md](deploy-host-daemon.md).
+
+```bash
+export HARNESS_HOST_ID='<host-id>'
+export HARNESS_API_URL='<WebUrl>'
+export HARNESS_API_KEY='<bound-daemon-key>'
+pnpm local:daemon install-service
+```
+
+Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`,
+placeholders, or an empty `HARNESS_API_KEY`. This production path uses
+`WebUrl` and the bound key. macOS and Windows warn and still write.
+
+Foreground `pnpm local:daemon start` with the same env is fine for a
+one-shot unsandboxed sanity check; **persist is the path this runbook
+expects to leave running.**
 
 **Gate:** the daemon logs `connected and registered`, and `GET /api/v1/hosts`
 (any key) shows the host with `online: true` and the worktree ID(s)
@@ -291,11 +326,13 @@ be able to finish the rest of this runbook from `WebUrl` alone.
 
 ---
 
-## Phase 4 — Sessions (`grok -p` and `claude -p`)
+## Phase 4 — Sessions as operator (`grok -p`, `claude -p`, `codex exec`)
 
-Create sessions from **New session** on the control plane (primary). Use
-the REST API once with the unbound key as the programmatic acceptance
-test, and once with the bound key to confirm trap #1.
+**Log out of admin. Log in as the operator** created in Phase 2. Create
+sessions from **New session** on the control plane (primary). Do not Add
+host, edit inventory, or change the catalog — those stay admin. Use the
+REST API once with the unbound key as the programmatic acceptance test,
+and once with the bound key to confirm trap #1.
 
 Dispatch is not synchronous — a scheduler sweep runs on its own cron
 (about once a minute). Waiting for the next sweep is expected, not a hang.
@@ -303,7 +340,9 @@ Dispatch is not synchronous — a scheduler sweep runs on its own cron
 
 ### Prompt matrix
 
-Run each row against **both** providers unless noted.
+Run each row against **both** `claude` and `grok` unless noted. If you
+created the `codex` provider in Phase 2, also run row 1 as `codex exec`
+(not `-p`).
 
 | #   | Prompt                                                                                            | Why                                    |
 | --- | ------------------------------------------------------------------------------------------------- | -------------------------------------- |
@@ -345,7 +384,8 @@ returns to unassigned (`worktreeId` is `null` on the completed record).
 
 ## Phase 5 — Schedule
 
-From **Schedules**, still without reading product docs:
+Still as the operator, from **Schedules**, still without reading product
+docs:
 
 1. Create a schedule against the same repository and a provider target.
    Fill cron with something a human can read (`0 * * * *` is fine). Set a
@@ -412,8 +452,13 @@ the retained Foundation tables, archive bucket, and (after AWS's seven-day
 window) the integration KMS key. Re-confirm the environment name before
 continuing.
 
-Stop the daemon first (clean Ctrl-C, so it deregisters). Stop the host
-pane if you started one.
+Stop the daemon first so it deregisters. If you persisted it in Phase 3:
+
+```bash
+pnpm local:daemon uninstall-service
+```
+
+Otherwise clean Ctrl-C. Stop the host pane if you started one.
 
 ```bash
 export HARNESS_DEPLOY_CONFIRM="$HARNESS_DEPLOY_ENVIRONMENT"
@@ -459,18 +504,23 @@ assets, not this environment.
 - [ ] `update` or `deploy` prints all three URLs; REST `/health` and web
       `/login` both pass
 - [ ] Login with the bootstrap admin succeeds
-- [ ] A real user account exists; two service accounts created (one bound,
-      one unbound)
-- [ ] Host slot created, repository attached, worktree added — all from
-      `WebUrl`, no `:7422` step required
-- [ ] Providers `grok` and `claude`, default Commands, Provider Accounts
-      created; both accounts attached to the host
-- [ ] Daemon connects and registers (`online: true`, worktree populated)
+- [ ] Phase 2 stayed **admin**: a real operator user account exists; two
+      service accounts created (one bound, one unbound); host slot,
+      repository, worktree, and providers set up from `WebUrl` — no
+      `:7422` step, no operator Add host
+- [ ] Providers `grok`, `claude`, and `codex` (`codex exec`, not `-p`),
+      default Commands, Provider Accounts created; accounts attached to
+      the host (`codex` may be skipped if the binary is missing)
+- [ ] Daemon persisted with `pnpm local:daemon install-service` and
+      registers (`online: true`, worktree populated)
 - [ ] Host pane either works as debug or fails in a documented, obvious
       way; no operator step required it
+- [ ] Logged in as the operator (not admin) before creating sessions
 - [ ] `POST /api/v1/sessions` with the unbound key returns `201`/`queued`
 - [ ] At least one `claude -p` and one `grok -p` session reach `completed`
       with the expected CLI output visible in logs
+- [ ] If Codex was configured: at least one `codex exec` session reaches
+      `completed` (not `codex -p`)
 - [ ] Prompt matrix rows recorded (pass, fail, or skipped with reason)
 - [ ] Same-`concurrencyId` re-`POST` while active returns `created:false`;
       after terminal completion returns `created:true`

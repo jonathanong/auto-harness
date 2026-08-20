@@ -165,7 +165,7 @@ Illustrative step (after prompt is in `$PROMPT`):
         '{
           repositoryId: $repositoryId,
           prompt: $prompt,
-          command: "codex -p",
+          target: { providerId: "prov-codex" },
           timeout: 6300,
           priority: 20,
           requiredLabels: ["codex"],

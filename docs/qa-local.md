@@ -1,9 +1,11 @@
 # Local E2E QA
 
 A numbered script for QAing Auto Harness on a laptop: automated gates, the
-local stack, the control-plane UI, the debug host pane, real `grok -p` /
-`claude -p` (and a required `echo` dry run), a schedule, a short break-it
-pass, then teardown. **No AWS.**
+local stack, the control-plane UI, the debug host pane, fleet setup (hosts,
+repos, providers — admin-shaped even when local auth is off), real
+`grok -p` / `claude -p` / `codex exec` (and a required `echo` dry run), a
+schedule, a short break-it pass, then teardown. **No AWS.** Do not treat
+Add host as an operator step.
 
 This is the local counterpart to [qa-production.md](qa-production.md). The
 technical pre-deploy checklist that agents run before any cloud claim is
@@ -47,6 +49,7 @@ on. That 404 is a production-only check — do it in
 | Docker                        | DynamoDB Local                        |
 | Git ≥ 2.20                    | worktrees                             |
 | `grok` and `claude` on `PATH` | `which grok claude`; logged in        |
+| `codex` (optional)            | `which codex`; recipe is `codex exec` (not `-p` — that is `--profile`) |
 
 ```bash
 cd /path/to/auto-harness
@@ -167,7 +170,10 @@ export HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:host-pane
 # → http://127.0.0.1:7422
 
-# D — daemon (unsandboxed shell)
+# D — daemon (unsandboxed shell). Foreground `start` is the local path.
+# Persist (`pnpm local:daemon install-service`) is linux/macos/windows
+# production — Linux refuses this loopback URL. See
+# [deploy-host-daemon.md](deploy-host-daemon.md).
 export HARNESS_HOST_ID=local-qa-1
 export HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:daemon start
@@ -189,31 +195,36 @@ Sanity the CLIs in the same unsandboxed shell **before** relying on them:
 ```bash
 claude -p 'Reply with exactly: OK'
 grok --always-approve --max-turns 3 -p 'Reply with exactly: OK'
+# optional: codex exec 'Reply with exactly: OK'   # not `codex -p`
 ```
 
 ---
 
-## Phase 4 — First-time operator (control plane only)
+## Phase 4 — Fleet setup (control plane only)
 
 Open `http://127.0.0.1:7421`. Do not read `web.md`. Local auth is usually
-off — there is no login. That difference from production is expected;
-note whether the empty Settings page is confusing.
+off — there is no login, so this phase is not "log in as operator then
+Add host." In production those writes are **admin**
+([qa-production.md](qa-production.md) Phase 2). Note whether the empty
+Settings page is confusing.
 
 1. **Hosts** — add host slot `local-qa-1` if the daemon has not already
-   created one. Open host detail.
+   created one. Open host detail. This is fleet setup, not an operator
+   session step.
 2. **Attach a repository** to that host: absolute path `$WORK/repo`. Add
    one worktree (give it a path under `$WORK/worktrees/wt-1` — let the
    daemon create the directory).
-3. **Providers → Add provider** for `claude` and `grok` with the same
-   argv as [qa-production.md](qa-production.md) Phase 2 (one token per
-   line; append-prompt on).
-4. Create a Provider Account under each; **attach both to the host**.
+3. **Providers → Add provider** for `claude`, `grok`, and `codex` with
+   the same argv as [qa-production.md](qa-production.md) Phase 2 (one
+   token per line). Codex is `codex exec`, **not** `-p` (`-p` is
+   `--profile`). Skip `codex` if the binary is missing.
+4. Create a Provider Account under each; **attach them to the host**.
    Note whether the UI warns if you skip attach.
 5. **Commands** — add a standalone (providerless) command named
    `echo-prompt`, argv `echo`, append-prompt on. This is the required
    dry run.
 
-Confirm `GET /api/v1/session-targets` lists both providers plus
+Confirm `GET /api/v1/session-targets` lists the configured providers plus
 `echo-prompt`. A provider that is missing there is almost always "account
 not attached."
 
@@ -225,8 +236,8 @@ chrome says this is debug-only.
 
 ## Phase 5 — Sessions
 
-Create from **New session** (primary). Force a sweep when you do not want
-to wait a minute:
+Create from **New session** (primary). Do not Add host from here — the
+slot already exists. Force a sweep when you do not want to wait a minute:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:7420/api/v1/scheduler/assign
@@ -239,10 +250,11 @@ Target the standalone `echo-prompt` command. Prompt: `hello-from-qa`.
 **Pass:** `queued → running → completed`, exit 0, logs show spawn +
 stdout, worktree is a real git worktree on `main`.
 
-### 5.2 Prompt matrix (`grok` and `claude`)
+### 5.2 Prompt matrix (`grok`, `claude`, optional `codex exec`)
 
 Same rows as [qa-production.md](qa-production.md) Phase 4. Run each
-against both providers unless a row is CLI-specific.
+against `grok` and `claude` unless a row is CLI-specific. If Codex is
+configured, also run row 1 as `codex exec` (not `-p`).
 
 | #   | Prompt                                                                                            | Why                              |
 | --- | ------------------------------------------------------------------------------------------------- | -------------------------------- |
@@ -335,11 +347,14 @@ working tree.
 - [ ] API `:7420` health ok; daemon `local-qa-1` online
 - [ ] Repository + worktree attached from `:7421`; daemon created the
       worktree
+- [ ] Fleet setup (hosts/repos/providers) done from `:7421` as admin-shaped
+      writes — not an operator Add host step
 - [ ] Providers `grok` and `claude` + accounts attached; standalone
-      `echo-prompt` exists
+      `echo-prompt` exists; `codex` (`codex exec`) if the binary is present
 - [ ] Echo session completed; logs present
 - [ ] At least one `claude -p` and one `grok -p` session completed with
       expected stdout
+- [ ] If Codex was configured: at least one `codex exec` session completed
 - [ ] Prompt matrix rows recorded
 - [ ] Unknown `commandId` rejected 400
 - [ ] Schedule **Run now** produced a `schedule` session and history row
