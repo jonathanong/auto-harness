@@ -80,7 +80,10 @@ describe("getInventory / putInventory", () => {
       globalThis.fetch = original;
     }
 
-    globalThis.fetch = (async () => new Response("bad request", { status: 400 })) as typeof fetch;
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "bad request" } }), {
+        status: 400,
+      })) as typeof fetch;
     try {
       const failed = await putInventory("host-1", {
         repositories: [],
@@ -186,7 +189,7 @@ describe("mutateInventory", () => {
 
       await expect(mutateInventory("host-1", (current) => current)).resolves.toEqual({
         ok: false,
-        error: "nope",
+        error: "request failed (400)",
       });
       expect(calls.filter((call) => call.init?.method === "PUT")).toHaveLength(1);
     } finally {

@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { apiErrorMessage } from "@auto-harness/shared";
+
 import { Button } from "./button.tsx";
 import { ConfirmButton } from "./confirm-button.tsx";
 import { ResumeSessionDialog, type ResumeOverrides } from "./resume-session-dialog.tsx";
@@ -47,7 +49,7 @@ export function SessionActions({
         : {}),
     });
     if (!res.ok) {
-      const message = await res.text();
+      const message = await apiErrorMessage(res);
       setError(message);
       return { ok: false, error: message };
     }

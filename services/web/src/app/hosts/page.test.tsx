@@ -156,6 +156,8 @@ describe("hosts fleet route", () => {
     expect(html).toContain('data-pw="page-hosts"');
     expect(html).not.toContain('data-pw="form-add-host"');
     expect(html).not.toContain("Add host");
+    expect(html).not.toContain("Add a host slot");
+    expect(html).toContain("Use an existing host slot");
     expect(html).toContain("No hosts match filters.");
     expect(html).not.toContain("Add a host above");
   });

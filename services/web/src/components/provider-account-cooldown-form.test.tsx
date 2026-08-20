@@ -66,7 +66,11 @@ describe("ProviderAccountCooldownForm", () => {
   });
 
   it("uses the default cooldown and keeps its editor open after a save error", async () => {
-    const fetch = vi.fn().mockResolvedValue(new Response("bad cooldown", { status: 500 }));
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ error: { message: "bad cooldown" } }), { status: 500 }),
+      );
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<ProviderAccountCooldownForm account={account} />);
     press(field(view.container, "provider-account-cooldown-edit-account/one"));
@@ -97,7 +101,9 @@ describe("ProviderAccountCooldownForm", () => {
       field<HTMLButtonElement>(view.container, "provider-account-cooldown-clear-account/one")
         .disabled,
     ).toBe(true);
-    await act(async () => finish(new Response("cannot clear", { status: 500 })));
+    await act(async () =>
+      finish(new Response(JSON.stringify({ error: { message: "cannot clear" } }), { status: 500 })),
+    );
     expect(
       field(view.container, "provider-account-cooldown-clear-error-account/one").textContent,
     ).toBe("cannot clear");

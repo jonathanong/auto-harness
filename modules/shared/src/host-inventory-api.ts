@@ -1,4 +1,4 @@
-import { apiBase } from "./api-client.ts";
+import { apiBase, apiErrorMessage } from "./api-client.ts";
 import { emptyHostInventory, type HostInventory } from "./host-inventory.ts";
 import { isHostCapability, normalizeHostCapabilities } from "./host-capabilities.ts";
 
@@ -63,7 +63,7 @@ export async function putInventory(
     return {
       ok: false,
       ...(res.status === 409 ? { conflict: true as const } : {}),
-      error: await res.text(),
+      error: await apiErrorMessage(res),
     };
   }
   return { ok: true };
