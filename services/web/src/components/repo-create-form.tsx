@@ -64,8 +64,8 @@ export function RepoCreateForm() {
           data-pw="repo-catalog-url"
         />
         <p className="text-xs text-muted-foreground">
-          This is the git remote URL used to clone (HTTPS or SSH), not a filesystem path on the
-          host. Host path is set when attaching the catalog repo to a host.
+          Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem
+          path on the host — that is set when attaching the repo to a host.
         </p>
       </div>
       <div className="space-y-1">
