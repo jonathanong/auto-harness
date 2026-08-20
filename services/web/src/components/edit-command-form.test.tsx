@@ -3,7 +3,16 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  json,
+  mountForm,
+  press,
+  pressCancel,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { EditCommandForm } from "./edit-command-form.tsx";
 
 const command = {
@@ -25,17 +34,15 @@ describe("EditCommandForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<EditCommandForm command={command} providers={providers} />);
     press(field(view.container, "edit-command-open"));
-    expect(field<HTMLTextAreaElement>(view.container, "edit-command-argv").value).toBe(
-      "claude\n-p",
-    );
+    expect(field<HTMLTextAreaElement>(document, "edit-command-argv").value).toBe("claude\n-p");
     expect(
-      field<HTMLSelectElement>(view.container, "edit-command-provider").labels?.[0]?.textContent,
+      field<HTMLSelectElement>(document, "edit-command-provider").labels?.[0]?.textContent,
     ).toBe("Provider");
-    setValue(field(view.container, "edit-command-name"), " codex ");
-    setValue(field(view.container, "edit-command-argv"), " codex \n -p ");
-    setValue(field(view.container, "edit-command-provider"), "");
-    press(field(view.container, "edit-command-append-prompt"));
-    submit(field(view.container, "form-edit-command"));
+    setValue(field(document, "edit-command-name"), " codex ");
+    setValue(field(document, "edit-command-argv"), " codex \n -p ");
+    setValue(field(document, "edit-command-provider"), "");
+    press(field(document, "edit-command-append-prompt"));
+    submit(field(document, "form-edit-command"));
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       name: "codex",
@@ -56,16 +63,12 @@ describe("EditCommandForm", () => {
     );
     const view = mountForm(<EditCommandForm command={command} providers={providers} />);
     press(field(view.container, "edit-command-open"));
-    submit(field(view.container, "form-edit-command"));
-    expect(field<HTMLButtonElement>(view.container, "edit-command-submit").disabled).toBe(true);
+    submit(field(document, "form-edit-command"));
+    expect(field<HTMLButtonElement>(document, "edit-command-submit").disabled).toBe(true);
     await act(async () => finish(json({ error: { message: "duplicate" } }, 409)));
-    expect(field(view.container, "edit-command-error").textContent).toBe("duplicate");
-    press(
-      [...view.container.querySelectorAll("button")].find(
-        (button) => button.textContent === "Cancel",
-      )!,
-    );
-    expect(view.container.querySelector('[data-pw="form-edit-command"]')).toBeNull();
+    expect(field(document, "edit-command-error").textContent).toBe("duplicate");
+    pressCancel();
+    expect(document.querySelector('[data-pw="form-edit-command"]')).toBeNull();
     view.unmount();
   });
 
@@ -76,11 +79,11 @@ describe("EditCommandForm", () => {
       <EditCommandForm command={{ ...command, providerId: null }} providers={[]} />,
     );
     press(field(view.container, "edit-command-open"));
-    const form = field<HTMLFormElement>(view.container, "form-edit-command");
+    const form = field<HTMLFormElement>(document, "form-edit-command");
     form.querySelectorAll("input, textarea, select").forEach((input) => input.remove());
     submit(form);
     await act(async () => Promise.resolve());
-    expect(field(view.container, "edit-command-error").textContent).toBe("bad");
+    expect(field(document, "edit-command-error").textContent).toBe("bad");
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
       name: "",
       argv: [],

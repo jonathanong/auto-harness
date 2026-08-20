@@ -115,10 +115,12 @@ test.describe("control plane providers", () => {
     // Edit the provider's name, then verify the list page reflects it.
     const renamed = `${name}-renamed`;
     await page.getByTestId("edit-provider-open").click();
+    await expect(page.getByTestId("edit-provider-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-provider")).toBeVisible();
     await expect(page.getByTestId("edit-provider-error")).toBeHidden();
     await page.getByTestId("edit-provider-name").fill(renamed);
     await page.getByTestId("edit-provider-submit").click();
+    await expect(page.getByTestId("form-edit-provider")).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("provider-detail-id")).toHaveText(renamed, { timeout: 15_000 });
 
     await page.goto("/providers");
