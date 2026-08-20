@@ -67,7 +67,7 @@ test.describe("control plane repositories", () => {
     await page.getByTestId("add-repo-open").click();
     await expect(page.getByTestId("form-repo-catalog")).toBeVisible();
     await expect(page.getByTestId("add-repo-dialog")).toContainText("URL / Path");
-    await expect(page.getByTestId("add-repo-dialog")).toContainText("git remote URL");
+    await expect(page.getByTestId("add-repo-dialog")).toContainText("Git remote URL");
     await expect(page.getByTestId("add-repo-dialog")).not.toContainText(/agent/i);
     await expect(page.getByTestId("repo-catalog-url")).toHaveAttribute(
       "placeholder",
