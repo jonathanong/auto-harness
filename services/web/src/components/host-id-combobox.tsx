@@ -61,13 +61,14 @@ export function HostIdCombobox({
     setOpen(false);
   };
 
-  const rejectUnknown = () => {
-    if (trimmed !== "" && !hostIds.includes(trimmed)) {
+  const rejectUnknown = (raw = value) => {
+    const next = raw.trim();
+    if (next !== "" && !hostIds.includes(next)) {
       setValue("");
       setFiltering(false);
       return true;
     }
-    if (trimmed !== value) setValue(trimmed);
+    if (next !== value) setValue(next);
     return false;
   };
 
@@ -96,9 +97,9 @@ export function HostIdCombobox({
           setFiltering(false);
           setOpen(true);
         }}
-        onBlur={() => {
+        onBlur={(event) => {
           setOpen(false);
-          rejectUnknown();
+          rejectUnknown(event.currentTarget.value);
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
@@ -110,7 +111,7 @@ export function HostIdCombobox({
             select(matches[activeIndex]!);
             return;
           }
-          if (event.key === "Enter" && rejectUnknown()) {
+          if (event.key === "Enter" && rejectUnknown(event.currentTarget.value)) {
             event.preventDefault();
             return;
           }

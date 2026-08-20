@@ -109,9 +109,12 @@ describe("HostIdCombobox", () => {
     expect(enter.defaultPrevented).toBe(true);
     expect(input.value).toBe("");
     setValue(input, "zzz");
-    act(() => input.blur());
+    act(() => {
+      input.dispatchEvent(new FocusEvent("blur", { bubbles: true }));
+      input.blur();
+    });
     expect(input.value).toBe("");
-    expect(input.validationMessage).toBe("");
+    expect(input.getAttribute("aria-invalid")).toBeNull();
     setValue(input, "only");
     expect(input.getAttribute("aria-invalid")).toBeNull();
     view.unmount();
