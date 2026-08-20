@@ -91,6 +91,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repository-attached-hosts")).toHaveCount(0);
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
     await page.getByTestId("edit-repo-open").click();
+    await expect(page.getByTestId("edit-repo-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-repo")).toBeVisible();
     await expect(page.getByTestId("form-edit-repo")).toContainText("URL / Path");
     await expect(page.getByTestId("edit-repo-url")).toHaveAttribute(
@@ -104,7 +105,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("edit-repo-hook")).toBeVisible();
     await expect(page.getByTestId("edit-repo-error")).toBeHidden();
     await page.getByTestId("edit-repo-submit").click();
-    await expect(page.getByTestId("edit-repo-open")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("form-edit-repo")).toBeHidden({ timeout: 15_000 });
     await page.getByTestId("delete-repo-open").click();
     await expect(page.getByTestId("delete-repo-confirm")).toBeVisible();
     await expect(page.getByTestId("delete-repo-error")).toBeHidden();

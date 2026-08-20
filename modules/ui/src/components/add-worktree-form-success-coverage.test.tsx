@@ -22,7 +22,7 @@ describe("AddWorktreeForm success flow", () => {
     );
     act(() =>
       (
-        [...view.container.querySelectorAll("button")].find(
+        [...document.querySelectorAll("button")].find(
           (button) => button.textContent === "Cancel",
         ) as HTMLButtonElement
       ).click(),
@@ -32,15 +32,11 @@ describe("AddWorktreeForm success flow", () => {
         view.container.querySelector('[data-pw="add-worktree-open-repo-1"]') as HTMLButtonElement
       ).click(),
     );
-    expect(view.container.textContent).toContain("Do not mkdir this directory");
-    expect(view.container.textContent).toContain("git worktree add");
-    const form = view.container.querySelector("form") as HTMLFormElement;
-    const name = view.container.querySelector(
-      '[data-pw="add-worktree-name-repo-1"]',
-    ) as HTMLInputElement;
-    const path = view.container.querySelector(
-      '[data-pw="add-worktree-path-repo-1"]',
-    ) as HTMLInputElement;
+    expect(document.body.textContent).toContain("Do not mkdir this directory");
+    expect(document.body.textContent).toContain("git worktree add");
+    const form = document.querySelector("form") as HTMLFormElement;
+    const name = document.querySelector('[data-pw="add-worktree-name-repo-1"]') as HTMLInputElement;
+    const path = document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement;
     input(name, " ");
     input(name, "runner-0");
     input(name, "runner-1");
@@ -51,19 +47,19 @@ describe("AddWorktreeForm success flow", () => {
     input(path, "/src/repo/.worktrees/runner-2");
     input(name, "runner-3");
     input(
-      view.container.querySelector('[data-pw="add-worktree-labels-repo-1"]') as HTMLInputElement,
+      document.querySelector('[data-pw="add-worktree-labels-repo-1"]') as HTMLInputElement,
       "echo, , build",
     );
     await submit(form);
-    expect(
-      view.container.querySelector('[data-pw="add-worktree-submit-repo-1"]')?.textContent,
-    ).toBe("Saving…");
+    expect(document.querySelector('[data-pw="add-worktree-submit-repo-1"]')?.textContent).toBe(
+      "Saving…",
+    );
     release({ ok: true });
     await act(async () => {
       await Promise.resolve();
     });
     expect(router.refresh).toHaveBeenCalledOnce();
-    expect(view.container.querySelector("form")).toBeNull();
+    expect(document.querySelector("form")).toBeNull();
   });
 
   it("selects the auto-suggested path on focus, but not once the user has edited it", () => {
@@ -74,13 +70,11 @@ describe("AddWorktreeForm success flow", () => {
         view.container.querySelector('[data-pw="add-worktree-open-repo-1"]') as HTMLButtonElement
       ).click(),
     );
-    const name = view.container.querySelector(
-      '[data-pw="add-worktree-name-repo-1"]',
-    ) as HTMLInputElement;
-    const path = view.container.querySelector(
-      '[data-pw="add-worktree-path-repo-1"]',
-    ) as HTMLInputElement;
+    const name = document.querySelector('[data-pw="add-worktree-name-repo-1"]') as HTMLInputElement;
+    const path = document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement;
     input(name, "runner-1");
+    // Dialog auto-focus also calls select() on the first field; we only care about the path.
+    select.mockClear();
     // Still the live suggestion — focusing in should select it all, so typing replaces it.
     act(() => path.focus());
     expect(select).toHaveBeenCalledOnce();

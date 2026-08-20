@@ -447,7 +447,7 @@ Table: name, default command, attached-account count, owned-command count. "Add 
 
 ### Provider Detail
 
-Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an inline create form) · **Settings** (rename; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
+Tabs: **Accounts** (add/remove catalog accounts, each showing how many hosts it's attached to) · **Commands** (this provider's owned commands, plus a default-command selector and an Add command dialog) · **Settings** (rename in a dialog; delete — disabled while any account or command still references this provider, to avoid a 409 round-trip). The account create form's cooldown pauses that account on `usage_limit` (default 18000s / 5 hours), not as a general retry.
 
 ---
 
@@ -459,7 +459,7 @@ Table: name, argv, owning provider (or "—" for standalone), append-prompt flag
 
 ### Command Detail
 
-Edit name/argv/append-prompt/provider inline. Delete is disabled while the command is some provider's default command. The API also rejects deletion with `409 Conflict` while the command is referenced by a host, repository, or worktree Provider Account command override; the confirmation control announces the precise blocking scope so the override can be cleared first.
+Edit name/argv/append-prompt/provider in a dialog. Delete is disabled while the command is some provider's default command. The API also rejects deletion with `409 Conflict` while the command is referenced by a host, repository, or worktree Provider Account command override; the confirmation control announces the precise blocking scope so the override can be cleared first.
 
 ---
 

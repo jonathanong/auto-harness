@@ -107,6 +107,14 @@ export function press(element: HTMLElement) {
   act(() => element.click());
 }
 
+export function pressCancel(root: ParentNode = document) {
+  const cancel = [...root.querySelectorAll("button")].find(
+    (button) => button.textContent === "Cancel",
+  );
+  if (!cancel) throw new Error("missing Cancel");
+  press(cancel);
+}
+
 export function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
