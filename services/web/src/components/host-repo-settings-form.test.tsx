@@ -3,7 +3,15 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  pressCancel,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { HostRepoSettingsForm } from "./host-repo-settings-form.tsx";
 
 const repo = {
@@ -64,27 +72,21 @@ describe("HostRepoSettingsForm", () => {
     const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
     expect(
-      field<HTMLInputElement>(view.container, "repo-settings-path-repo-1").labels?.[0]?.textContent,
+      field<HTMLInputElement>(document, "repo-settings-path-repo-1").labels?.[0]?.textContent,
     ).toBe("absolute path");
-    expect(field<HTMLInputElement>(view.container, "repo-settings-path-repo-1").value).toBe(
-      "/old/repo",
-    );
-    press(
-      [...view.container.querySelectorAll("button")].find(
-        (button) => button.textContent === "Cancel",
-      )!,
-    );
-    expect(view.container.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
+    expect(field<HTMLInputElement>(document, "repo-settings-path-repo-1").value).toBe("/old/repo");
+    pressCancel();
+    expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
     view.unmount();
   });
 
   it("requires an absolute path before saving", () => {
     const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
-    const form = field<HTMLFormElement>(view.container, "form-repo-settings-repo-1");
-    field(view.container, "repo-settings-path-repo-1").remove();
+    const form = field<HTMLFormElement>(document, "form-repo-settings-repo-1");
+    field(document, "repo-settings-path-repo-1").remove();
     submit(form);
-    expect(field(view.container, "repo-settings-error-repo-1").textContent).toBe(
+    expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
       "absolute path is required",
     );
     view.unmount();
@@ -94,11 +96,11 @@ describe("HostRepoSettingsForm", () => {
     const fetch = stubInventoryFetch(inventory);
     const view = mountForm(<HostRepoSettingsForm hostId="host/one" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
-    setValue(field(view.container, "repo-settings-path-repo-1"), " /new/repo ");
-    setValue(field(view.container, "repo-settings-branch-repo-1"), " ");
-    setValue(field(view.container, "repo-settings-setup-repo-1"), "setup");
-    setValue(field(view.container, "repo-settings-hook-repo-1"), "hook");
-    submit(field(view.container, "form-repo-settings-repo-1"));
+    setValue(field(document, "repo-settings-path-repo-1"), " /new/repo ");
+    setValue(field(document, "repo-settings-branch-repo-1"), " ");
+    setValue(field(document, "repo-settings-setup-repo-1"), "setup");
+    setValue(field(document, "repo-settings-hook-repo-1"), "hook");
+    submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
     expect(putBody(fetch)).toMatchObject({
       repositories: [
@@ -113,7 +115,7 @@ describe("HostRepoSettingsForm", () => {
       ],
     });
     expect(router.refresh).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
+    expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
     view.unmount();
   });
 
@@ -121,16 +123,14 @@ describe("HostRepoSettingsForm", () => {
     const { finish } = stubDeferredPut(inventory);
     const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
     press(field(view.container, "repo-settings-open-repo-1"));
-    const form = field<HTMLFormElement>(view.container, "form-repo-settings-repo-1");
-    field(view.container, "repo-settings-branch-repo-1").remove();
-    field(view.container, "repo-settings-setup-repo-1").remove();
-    field(view.container, "repo-settings-hook-repo-1").remove();
+    const form = field<HTMLFormElement>(document, "form-repo-settings-repo-1");
+    field(document, "repo-settings-branch-repo-1").remove();
+    field(document, "repo-settings-setup-repo-1").remove();
+    field(document, "repo-settings-hook-repo-1").remove();
     submit(form);
-    expect(field<HTMLButtonElement>(view.container, "repo-settings-submit-repo-1").disabled).toBe(
-      true,
-    );
+    expect(field<HTMLButtonElement>(document, "repo-settings-submit-repo-1").disabled).toBe(true);
     await act(async () => await finish(new Response("cannot save", { status: 500 })));
-    expect(field(view.container, "repo-settings-error-repo-1").textContent).toBe("cannot save");
+    expect(field(document, "repo-settings-error-repo-1").textContent).toBe("cannot save");
     view.unmount();
   });
 });

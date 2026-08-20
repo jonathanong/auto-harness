@@ -49,6 +49,7 @@ test.describe("control plane commands", () => {
     await page.getByTestId("edit-command-argv").fill("echo\n-n");
     await page.getByTestId("edit-command-provider").selectOption({ label: providerName });
     await page.getByTestId("edit-command-submit").click();
+    await expect(page.getByTestId("form-edit-command")).toBeHidden({ timeout: 15_000 });
     await expect(page.getByTestId("command-detail-argv")).toHaveText("echo -n");
     await expect(page.getByTestId("command-detail-provider")).toHaveText(providerName, {
       timeout: 15_000,

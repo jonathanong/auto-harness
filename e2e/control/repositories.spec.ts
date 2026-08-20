@@ -92,7 +92,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("edit-repo-hook")).toBeVisible();
     await expect(page.getByTestId("edit-repo-error")).toBeHidden();
     await page.getByTestId("edit-repo-submit").click();
-    await expect(page.getByTestId("edit-repo-open")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("form-edit-repo")).toBeHidden({ timeout: 15_000 });
     await page.getByTestId("delete-repo-open").click();
     await expect(page.getByTestId("delete-repo-confirm")).toBeVisible();
     await expect(page.getByTestId("delete-repo-error")).toBeHidden();

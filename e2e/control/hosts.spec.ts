@@ -214,7 +214,7 @@ test.describe("control plane hosts", () => {
         await expect(page.getByTestId(`repo-settings-hook-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-error-${repo.id}`)).toHaveCount(0);
         await page.getByTestId(`repo-settings-submit-${repo.id}`).click();
-        await expect(page.getByTestId(`repo-settings-open-${repo.id}`)).toBeVisible({
+        await expect(page.getByTestId(`form-repo-settings-${repo.id}`)).toBeHidden({
           timeout: 15_000,
         });
       } finally {

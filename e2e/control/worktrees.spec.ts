@@ -45,7 +45,7 @@ test.describe("control plane worktrees", () => {
         await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("echo");
         await expect(page.getByTestId("worktree-edit-error")).toBeHidden();
         await page.getByTestId("worktree-edit-submit").click();
-        await expect(page.getByTestId("worktree-edit-open")).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId("form-edit-worktree")).toBeHidden({ timeout: 15_000 });
       } finally {
         await removeHostRepo(request, repoId);
       }

@@ -11,16 +11,16 @@ afterEach(reset);
 
 function open(view: ReturnType<typeof mount>) {
   act(() => (view.container.querySelector("button") as HTMLButtonElement).click());
-  return view.container.querySelector("form") as HTMLFormElement;
+  return document.querySelector("form") as HTMLFormElement;
 }
 
-function fill(view: ReturnType<typeof mount>) {
+function fill() {
   input(
-    view.container.querySelector('[data-pw="add-worktree-name-repo-1"]') as HTMLInputElement,
+    document.querySelector('[data-pw="add-worktree-name-repo-1"]') as HTMLInputElement,
     "runner",
   );
   input(
-    view.container.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement,
+    document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement,
     "/src/runner",
   );
 }
@@ -33,17 +33,14 @@ describe("AddWorktreeForm errors", () => {
     const view = mount(<AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" />);
     const form = open(view);
     input(
-      view.container.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement,
+      document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement,
       "/src/runner",
     );
     await submit(form);
-    fill(view);
-    input(
-      view.container.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement,
-      "",
-    );
+    fill();
+    input(document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement, "");
     await submit(form);
-    expect(view.container.textContent).toContain("worktree name and absolute path are required");
+    expect(document.body.textContent).toContain("worktree name and absolute path are required");
   });
 
   it("reports a rejected write, an unknown repository, and a thrown error", async () => {
@@ -56,9 +53,10 @@ describe("AddWorktreeForm errors", () => {
       <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
     );
     const rejectedForm = open(rejected);
-    fill(rejected);
+    fill();
     await submit(rejectedForm);
-    expect(rejected.container.textContent).toContain("denied");
+    expect(document.body.textContent).toContain("denied");
+    rejected.unmount();
 
     const unknownRepoMutate = vi.fn(
       (_hostId: string, transform: (current: HostInventory) => HostInventory) =>
@@ -71,9 +69,10 @@ describe("AddWorktreeForm errors", () => {
       <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={unknownRepoMutate} />,
     );
     const unknownForm = open(unknown);
-    fill(unknown);
+    fill();
     await submit(unknownForm);
-    expect(unknown.container.textContent).toContain("Unknown repository: repo-1");
+    expect(document.body.textContent).toContain("Unknown repository: repo-1");
+    unknown.unmount();
 
     const offline = mount(
       <AddWorktreeForm
@@ -84,8 +83,8 @@ describe("AddWorktreeForm errors", () => {
       />,
     );
     const offlineForm = open(offline);
-    fill(offline);
+    fill();
     await submit(offlineForm);
-    expect(offline.container.textContent).toContain("offline");
+    expect(document.body.textContent).toContain("offline");
   });
 });
