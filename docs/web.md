@@ -12,7 +12,8 @@ target until the AWS runtime has a deploy path and account-backed verification. 
 
 The app title links back to `/`. Nav items are grouped into **Operate** (Dashboard, Sessions,
 Schedules), **Catalog** (Repositories, Providers, Commands), **Fleet** (Worktrees, Hosts), and
-**Settings** — one dropdown per group. **New session** is a button on the slim secondary row with
+**Settings** — one dropdown per group. Header and main use the viewport width with horizontal
+padding (dialogs stay `max-w-lg`). **New session** is a button on the slim secondary row with
 the theme toggle, keyboard-shortcuts button, and logout (only when `HARNESS_AUTH_MODE=required`),
 next to the page subtitle, not inside Operate. The host pane's own shell reuses the same chrome
 with a flat (ungrouped) nav, since its 3-item nav doesn't need grouping. That pane

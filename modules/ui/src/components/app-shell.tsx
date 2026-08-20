@@ -60,7 +60,7 @@ export function AppShell({
     <TooltipProvider>
       <div className={cn("min-h-screen bg-background", className)} data-pw={pw}>
         <header className="border-b border-border" data-pw="app-header">
-          <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <Link href="/" data-pw="app-title" className="shrink-0 hover:opacity-80">
               {titleEl}
             </Link>
@@ -68,7 +68,7 @@ export function AppShell({
           </div>
           {subtitle || titleBadge ? (
             <div className="border-t border-border/60 bg-muted/30">
-              <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-1.5">
+              <div className="flex items-center justify-between gap-4 px-4 py-1.5">
                 {subtitle ? (
                   subtitleTip ? (
                     <WithTooltip tip={subtitleTip}>
@@ -92,7 +92,7 @@ export function AppShell({
             </div>
           ) : null}
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-6" data-pw="app-main">
+        <main className="px-4 py-6" data-pw="app-main">
           {children}
         </main>
         <React.Suspense fallback={null}>

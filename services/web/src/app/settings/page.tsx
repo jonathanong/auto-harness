@@ -22,7 +22,7 @@ export default async function SettingsPage() {
       ? await apiGet<Principal>("/api/v1/auth/me")
       : undefined;
   return (
-    <div className="mx-auto max-w-5xl space-y-6" data-pw="page-settings">
+    <div className="space-y-6" data-pw="page-settings">
       <div>
         <h2 className="text-2xl font-semibold tracking-tight" data-pw="settings-heading">
           Settings
