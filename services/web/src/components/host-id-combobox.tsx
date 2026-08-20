@@ -111,7 +111,7 @@ export function HostIdCombobox({
             select(matches[activeIndex]!);
             return;
           }
-          if (event.key === "Enter" && rejectUnknown(event.currentTarget.value)) {
+          if (event.key === "Enter" && !listed) {
             event.preventDefault();
             return;
           }
