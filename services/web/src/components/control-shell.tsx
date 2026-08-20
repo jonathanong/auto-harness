@@ -79,10 +79,28 @@ const NAV: NavGroup[] = [
     pw: "nav-group-settings",
     items: [
       {
-        href: "/settings",
-        label: "Settings",
+        href: "/settings/account",
+        label: "Account",
         pw: "nav-settings",
-        tip: "View your account and manage admin-only service accounts and integrations",
+        tip: "View your account and change your password",
+      },
+      {
+        href: "/settings/user-accounts",
+        label: "User accounts",
+        pw: "nav-user-accounts",
+        tip: "Create and delete human operator accounts",
+      },
+      {
+        href: "/settings/service-accounts",
+        label: "Service accounts",
+        pw: "nav-service-accounts",
+        tip: "Issue API keys for host daemons and automation",
+      },
+      {
+        href: "/settings/slack",
+        label: "Slack",
+        pw: "nav-slack",
+        tip: "Admin-only Slack integration",
       },
     ],
   },

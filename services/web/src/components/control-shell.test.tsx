@@ -52,6 +52,19 @@ describe("ControlShell", () => {
     expect(field<HTMLAnchorElement>(document, "nav-dashboard").getAttribute("href")).toBe("/");
     openNavGroup(view.container, "nav-group-fleet");
     expect(field<HTMLAnchorElement>(document, "nav-hosts").getAttribute("href")).toBe("/hosts");
+    openNavGroup(view.container, "nav-group-settings");
+    expect(field<HTMLAnchorElement>(document, "nav-settings").getAttribute("href")).toBe(
+      "/settings/account",
+    );
+    expect(field<HTMLAnchorElement>(document, "nav-user-accounts").getAttribute("href")).toBe(
+      "/settings/user-accounts",
+    );
+    expect(field<HTMLAnchorElement>(document, "nav-service-accounts").getAttribute("href")).toBe(
+      "/settings/service-accounts",
+    );
+    expect(field<HTMLAnchorElement>(document, "nav-slack").getAttribute("href")).toBe(
+      "/settings/slack",
+    );
     view.unmount();
   });
 

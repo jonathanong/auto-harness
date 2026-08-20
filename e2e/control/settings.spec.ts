@@ -42,9 +42,9 @@ test.describe("control plane Slack settings", () => {
       await route.fulfill({ status: 204, body: "" });
     });
 
-    await page.goto("/settings");
+    await page.goto("/settings/slack");
     await page.getByTestId("nav-group-settings").click();
-    await expect(page.getByTestId("nav-settings")).toBeVisible();
+    await expect(page.getByTestId("nav-slack")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("page-settings")).toBeVisible();
     await expect(page.getByTestId("settings-heading")).toHaveText("Settings");
@@ -103,7 +103,7 @@ test.describe("control plane Slack settings", () => {
       await route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND" } } });
     });
 
-    await page.goto("/settings");
+    await page.goto("/settings/slack");
     await expect(page.getByTestId("slack-settings-loading")).toHaveAttribute("aria-busy", "true");
     release!();
     await expect(page.getByTestId("page-settings")).toBeVisible();
@@ -116,11 +116,11 @@ test.describe("control plane Slack settings", () => {
       route.fulfill({ status: 403, json: { error: { code: "FORBIDDEN" } } }),
     );
 
-    await page.goto("/settings");
+    await page.goto("/settings/slack");
     await expect(page.getByTestId("slack-settings-forbidden")).toBeVisible();
     await expect(page.getByTestId("settings-forbidden-error")).toContainText("permission");
     await page.getByTestId("nav-group-settings").click();
-    await expect(page.getByTestId("nav-settings")).toBeVisible();
+    await expect(page.getByTestId("nav-slack")).toBeVisible();
   });
 
   test("shows a load error when the settings API is unavailable", async ({ page }) => {
@@ -128,7 +128,7 @@ test.describe("control plane Slack settings", () => {
       route.fulfill({ status: 500, json: { error: { code: "INTERNAL" } } }),
     );
 
-    await page.goto("/settings");
+    await page.goto("/settings/slack");
     await expect(page.getByTestId("slack-settings-error")).toBeVisible();
     await expect(page.getByTestId("settings-load-error")).toContainText("Unable to load");
   });
@@ -137,7 +137,7 @@ test.describe("control plane Slack settings", () => {
     await page.route("**/api/v1/integrations/slack", (route) =>
       route.fulfill({ status: 401, body: "authentication required" }),
     );
-    await page.goto("/settings");
+    await page.goto("/settings/slack");
     await expect(page).toHaveURL(/\/login\?returnTo=%2Fsettings$/);
   });
 });
