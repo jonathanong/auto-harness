@@ -9,6 +9,7 @@ import { HostProviderAccountsSection } from "../../../components/host-provider-a
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -35,6 +36,10 @@ export default async function HostDetailPage({
 }) {
   const hostId = decodeRouteParam((await params).hostId);
   const { tab } = await searchParams;
+  const principal = await loadPrincipal();
+  const canDrain = can(principal, "fleet:drain");
+  const canWriteInventory = can(principal, "fleet:inventory");
+  const canWriteProviderAccounts = can(principal, "providers:accounts");
 
   let inventory: (HostInventory & { version?: number }) | null = null;
   let inventoryError: string | null = null;
@@ -72,7 +77,7 @@ export default async function HostDetailPage({
     // into showing "no repositories/provider accounts attached" when the truth is unknown.
     return (
       <div className="space-y-6">
-        <HostDetailHeader hostId={hostId} />
+        <HostDetailHeader hostId={hostId} canDrain={canDrain} />
         <SectionError
           resource={`host ${hostId}'s inventory`}
           message={inventoryError}
@@ -145,7 +150,7 @@ export default async function HostDetailPage({
 
   return (
     <div className="space-y-6" data-pw="page-host-detail">
-      <HostDetailHeader hostId={hostId} />
+      <HostDetailHeader hostId={hostId} canDrain={canDrain} />
 
       <Tabs
         basePath={`/hosts/${encodeURIComponent(hostId)}`}
@@ -177,6 +182,7 @@ export default async function HostDetailPage({
                 liveById={liveById}
                 catalogError={catalogError}
                 worktreesError={worktreesError}
+                canWrite={canWriteInventory}
               />
             ),
           },
@@ -191,6 +197,7 @@ export default async function HostDetailPage({
                 providersById={providersById}
                 commandsById={commandsById}
                 catalogError={providerCatalogError}
+                canWrite={canWriteProviderAccounts}
               />
             ),
           },
@@ -202,6 +209,7 @@ export default async function HostDetailPage({
                 hostId={hostId}
                 initialJson={inventoryJson}
                 initialVersion={inventoryVersion}
+                canWrite={canWriteInventory}
               />
             ),
           },

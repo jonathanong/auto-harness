@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { effectiveRole, principalCapabilities } from "@auto-harness/shared";
+
 import { type AuthService, type Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
@@ -24,7 +26,11 @@ export async function handleSelfServiceAuthRoutes(
       send(res, 401, { error: { code: "UNAUTHENTICATED", message: "authentication required" } });
       return true;
     }
-    send(res, 200, ctx.principal);
+    send(res, 200, {
+      ...ctx.principal,
+      role: effectiveRole(ctx.principal),
+      capabilities: principalCapabilities(ctx.principal),
+    });
     return true;
   }
   if (method === "POST" && url.pathname === "/api/v1/auth/viewer-ticket") {

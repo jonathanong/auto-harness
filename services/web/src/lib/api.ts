@@ -12,13 +12,22 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
+export async function apiGet<T>(
+  path: string,
+  options?: { redirectOnUnauthorized?: boolean },
+): Promise<T> {
   const forwarded = await incomingAuthHeaders();
   const res = await fetch(`${apiBase()}${path}`, {
     cache: "no-store",
     ...(forwarded ? { headers: forwarded } : {}),
   });
-  if (res.status === 401 && process.env.HARNESS_AUTH_MODE === "required") redirect("/login");
+  if (
+    res.status === 401 &&
+    process.env.HARNESS_AUTH_MODE === "required" &&
+    options?.redirectOnUnauthorized !== false
+  ) {
+    redirect("/login");
+  }
   if (!res.ok) throw new ApiError(path, res.status);
   return (await res.json()) as T;
 }

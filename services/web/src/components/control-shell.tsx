@@ -131,9 +131,11 @@ function NewSessionButton({ active }: { active: boolean }) {
 export function ControlShell({
   children,
   authRequired = false,
+  canAuthorSessions = true,
 }: {
   children: React.ReactNode;
   authRequired?: boolean;
+  canAuthorSessions?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
   if (pathname === "/login") {
@@ -156,7 +158,7 @@ export function ControlShell({
       subtitleTip="Hosts self-register over the API/WebSocket; attach repositories on the Hosts page"
       titleBadge={
         <div className="flex items-center gap-1">
-          <NewSessionButton active={newSessionActive} />
+          {canAuthorSessions ? <NewSessionButton active={newSessionActive} /> : null}
           <ThemeToggle />
           <KeyboardShortcuts />
           {authRequired ? <LogoutButton /> : null}

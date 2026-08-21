@@ -22,6 +22,10 @@ export type SessionActionsProps = {
   cloneEditHref?: string;
   /** The assigned host is known to be offline, so cancellation needs an explicit warning. */
   assignedHostOffline?: boolean;
+  canCancel?: boolean;
+  canResume?: boolean;
+  canClone?: boolean;
+  canArchive?: boolean;
 };
 
 /** Cancel/resume/archive — pure REST against the same-origin `/api/v1` proxy, no app wiring needed. */
@@ -31,6 +35,10 @@ export function SessionActions({
   detailHrefBase = "/sessions",
   cloneEditHref,
   assignedHostOffline = false,
+  canCancel = true,
+  canResume = true,
+  canClone = true,
+  canArchive = true,
 }: SessionActionsProps) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -78,7 +86,7 @@ export function SessionActions({
   return (
     <div className="flex flex-col items-end gap-2">
       <div className="flex gap-2">
-        {status === "running" && assignedHostOffline ? (
+        {canCancel && status === "running" && assignedHostOffline ? (
           <ConfirmButton
             triggerLabel="Force-cancel"
             confirmTitle="Force-cancel this session?"
@@ -93,7 +101,7 @@ export function SessionActions({
             variant="destructive"
             disabled={pending}
           />
-        ) : ACTIVE_STATUSES.has(status) ? (
+        ) : canCancel && ACTIVE_STATUSES.has(status) ? (
           <WithTooltip tip="Cancel this session — running work finishes stopping, worktree is released">
             <Button
               type="button"
@@ -110,28 +118,32 @@ export function SessionActions({
         ) : null}
         {TERMINAL_STATUSES.has(status) ? (
           <>
-            <WithTooltip tip="Create a new session pinned to the same host, with optional overrides">
-              <ResumeSessionDialog
-                disabled={pending}
-                pending={pending && action === "resume"}
-                error={action === "resume" ? error : null}
-                onSubmit={(overrides) => run("resume", "resume", overrides)}
-              />
-            </WithTooltip>
-            <WithTooltip tip="Create a clean independent rerun of this session">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={pending}
-                aria-busy={pending && action === "clone"}
-                data-pw="session-clone"
-                onClick={() => void run("clone", "clone")}
-              >
-                {pending && action === "clone" ? "Re-running…" : "Re-run"}
-              </Button>
-            </WithTooltip>
-            {cloneEditHref ? (
+            {canResume ? (
+              <WithTooltip tip="Create a new session pinned to the same host, with optional overrides">
+                <ResumeSessionDialog
+                  disabled={pending}
+                  pending={pending && action === "resume"}
+                  error={action === "resume" ? error : null}
+                  onSubmit={(overrides) => run("resume", "resume", overrides)}
+                />
+              </WithTooltip>
+            ) : null}
+            {canClone ? (
+              <WithTooltip tip="Create a clean independent rerun of this session">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={pending}
+                  aria-busy={pending && action === "clone"}
+                  data-pw="session-clone"
+                  onClick={() => void run("clone", "clone")}
+                >
+                  {pending && action === "clone" ? "Re-running…" : "Re-run"}
+                </Button>
+              </WithTooltip>
+            ) : null}
+            {canClone && cloneEditHref ? (
               <WithTooltip tip="Open a new session form with replayable inputs copied from this session">
                 <Button
                   type="button"
@@ -147,19 +159,21 @@ export function SessionActions({
             ) : null}
           </>
         ) : null}
-        <WithTooltip tip="Move current logs to durable archive storage">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={pending}
-            aria-busy={pending && action === "archive"}
-            data-pw="session-archive"
-            onClick={() => void run("archive", "archive")}
-          >
-            {pending && action === "archive" ? "Archiving…" : "Archive logs"}
-          </Button>
-        </WithTooltip>
+        {canArchive ? (
+          <WithTooltip tip="Move current logs to durable archive storage">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              aria-busy={pending && action === "archive"}
+              data-pw="session-archive"
+              onClick={() => void run("archive", "archive")}
+            >
+              {pending && action === "archive" ? "Archiving…" : "Archive logs"}
+            </Button>
+          </WithTooltip>
+        ) : null}
       </div>
       {error ? (
         <p className="text-sm text-red-700" data-pw="session-action-error">

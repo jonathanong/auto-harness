@@ -16,6 +16,7 @@ import {
 } from "@auto-harness/ui";
 
 import { ApiError, apiGet } from "../../../lib/api.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,7 @@ type SessionHistory = {
 
 export default async function ScheduleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
   let schedule: EditableSchedule | undefined;
   let targets: SessionTarget[] = [];
   let history: SessionHistory[] = [];
@@ -91,12 +93,16 @@ export default async function ScheduleDetailPage({ params }: { params: Promise<{
             </Link>
           ) : null}
         </div>
-        <ScheduleTriggerButton id={schedule.id} />
+        {canWriteSchedules ? <ScheduleTriggerButton id={schedule.id} /> : null}
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="space-y-3">
           <h3 className="text-lg font-medium">Edit schedule</h3>
-          <ScheduleEditForm schedule={schedule} targets={targets} />
+          {canWriteSchedules ? (
+            <ScheduleEditForm schedule={schedule} targets={targets} />
+          ) : (
+            <p className="text-sm text-muted-foreground">This account cannot edit schedules.</p>
+          )}
         </section>
         <section className="space-y-3">
           <h3 className="text-lg font-medium">Run history</h3>

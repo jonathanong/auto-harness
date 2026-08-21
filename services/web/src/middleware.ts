@@ -15,12 +15,18 @@ async function hasRemoteSession(request: NextRequest): Promise<boolean> {
   }
 }
 
+function pass(request: NextRequest): NextResponse {
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", request.nextUrl.pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
+
 /** Public UI binds must have a session before rendering or proxying data. */
 export async function middleware(request: NextRequest): Promise<NextResponse> {
-  if (process.env.HARNESS_AUTH_MODE !== "required") return NextResponse.next();
+  if (process.env.HARNESS_AUTH_MODE !== "required") return pass(request);
   // A locally valid token can still name an account revoked by the API. Keep
   // login reachable so that stale cookies never trap the browser in a loop.
-  if (request.nextUrl.pathname === "/login") return NextResponse.next();
+  if (request.nextUrl.pathname === "/login") return pass(request);
   const valid =
     process.env.HARNESS_WEB_REMOTE_AUTH === "1"
       ? await hasRemoteSession(request)
@@ -28,7 +34,7 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
           request.cookies.get(SESSION_COOKIE)?.value,
           process.env.HARNESS_SESSION_SECRET,
         );
-  if (valid) return NextResponse.next();
+  if (valid) return pass(request);
   return NextResponse.redirect(
     new URL(loginPath(`${request.nextUrl.pathname}${request.nextUrl.search}`), request.url),
   );

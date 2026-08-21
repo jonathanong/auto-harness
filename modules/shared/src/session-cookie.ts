@@ -1,3 +1,5 @@
+import { isUserRole } from "./validation.ts";
+
 export const SESSION_COOKIE = "auto_harness_session";
 
 /** Extract the session cookie value from a Cookie header. */
@@ -51,7 +53,7 @@ export async function hasValidSession(
       protectedHeader.typ === "JWT" &&
       typeof claims?.id === "string" &&
       typeof claims.username === "string" &&
-      (claims.role === "admin" || claims.role === "operator" || claims.role === "read-only") &&
+      isUserRole(claims.role) &&
       (claims.kind === "admin" || claims.kind === "user" || claims.kind === "service-account") &&
       claims.audience === undefined &&
       typeof claims.exp === "number" &&

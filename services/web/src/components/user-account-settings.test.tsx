@@ -59,14 +59,18 @@ describe("UserAccountSettings", () => {
     loading.unmount();
     await act(async () => finish({ kind: "ready", accounts: [] }));
 
-    api.loadUserAccounts.mockResolvedValue({ kind: "ready", accounts: [alice] });
+    api.loadUserAccounts.mockResolvedValue({
+      kind: "ready",
+      accounts: [alice],
+      repositories: [],
+    });
     const ready = mountForm(<UserAccountSettings canManage />);
     await settle();
     expect(field(ready.container, "user-accounts-table").textContent).toContain("alice");
   });
 
   it("creates and deletes accounts while keeping passwords out of the rendered list", async () => {
-    api.loadUserAccounts.mockResolvedValue({ kind: "ready", accounts: [] });
+    api.loadUserAccounts.mockResolvedValue({ kind: "ready", accounts: [], repositories: [] });
     api.createUserAccount.mockResolvedValue(alice);
     api.deleteUserAccount.mockResolvedValue(undefined);
     const view = mountForm(<UserAccountSettings canManage />);
@@ -89,6 +93,19 @@ describe("UserAccountSettings", () => {
     expect(api.deleteUserAccount).toHaveBeenCalledWith("alice");
     expect(view.container.querySelector('[data-pw="user-account-row-alice"]')).toBeNull();
     expect(field(view.container, "user-accounts-empty")).toBeTruthy();
+  });
+
+  it("passes loaded repositories into the create form", async () => {
+    api.loadUserAccounts.mockResolvedValue({
+      kind: "ready",
+      accounts: [],
+      repositories: [{ id: "r-1", name: "Repo one" }],
+    });
+    const view = mountForm(<UserAccountSettings canManage />);
+    await settle();
+    expect(
+      view.container.querySelector('input[name="allowedRepositoryIds"][value="r-1"]'),
+    ).toBeInstanceOf(HTMLInputElement);
   });
 
   it("renders forbidden, load failures, and an inert unauthorized transition", async () => {

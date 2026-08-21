@@ -98,7 +98,7 @@ export async function invokeRepositoryRoute(
       id: "user:scoped",
       username: "scoped",
       kind: "service-account",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["other"],
     },
   });

@@ -15,7 +15,7 @@ function hostPrincipal(hostId = "host-1") {
     id: "service-1",
     username: "daemon",
     kind: "service-account" as const,
-    role: "operator" as const,
+    role: "agent" as const,
     boundHostId: hostId,
   };
 }

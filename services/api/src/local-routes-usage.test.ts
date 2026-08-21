@@ -54,7 +54,7 @@ describe("usage report authorization", () => {
     });
     const { apiKey } = await auth.createServiceAccount({
       name: "host reader",
-      role: "read-only",
+      role: "agent",
       boundHostId: "host-1",
     });
     const plane = new ControlPlane();
@@ -86,7 +86,7 @@ describe("usage report authorization", () => {
     });
     const { apiKey } = await auth.createServiceAccount({
       name: "host reader",
-      role: "read-only",
+      role: "agent",
       boundHostId: "host-1",
     });
     const plane = new ControlPlane();

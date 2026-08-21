@@ -1,4 +1,6 @@
-export type Role = "read-only" | "operator" | "admin";
+import type { UserRole } from "@auto-harness/shared";
+
+export type Role = UserRole;
 
 export type Principal = {
   id: string;

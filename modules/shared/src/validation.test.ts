@@ -47,6 +47,9 @@ describe("isUserRole", () => {
     expect(isUserRole("admin")).toBe(true);
     expect(isUserRole("operator")).toBe(true);
     expect(isUserRole("read-only")).toBe(true);
+    expect(isUserRole("author")).toBe(true);
+    expect(isUserRole("maintainer")).toBe(true);
+    expect(isUserRole("agent")).toBe(true);
   });
 
   it("rejects unknown roles", () => {

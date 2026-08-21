@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@auto-harness/ui";
 
+import type { RepositoryOption } from "./service-account-api.ts";
 import {
   createUserAccount,
   deleteUserAccount,
@@ -24,6 +25,7 @@ export function UserAccountSettings({ canManage }: { canManage: boolean }) {
     canManage ? { kind: "loading" } : { kind: "forbidden" },
   );
   const [accounts, setAccounts] = useState<UserAccount[]>([]);
+  const [repositories, setRepositories] = useState<RepositoryOption[]>([]);
   useEffect(() => {
     if (!canManage) return;
     let active = true;
@@ -32,6 +34,7 @@ export function UserAccountSettings({ canManage }: { canManage: boolean }) {
         if (!active || result.kind === "unauthorized") return;
         if (result.kind === "ready") {
           setAccounts(result.accounts);
+          setRepositories(result.repositories);
           setState({ kind: "ready" });
         } else {
           setState(result);
@@ -101,7 +104,7 @@ export function UserAccountSettings({ canManage }: { canManage: boolean }) {
         <CardTitle>User accounts</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <UserAccountCreateForm onCreate={create} />
+        <UserAccountCreateForm repositories={repositories} onCreate={create} />
         <UserAccountTable accounts={accounts} onDelete={remove} />
       </CardContent>
     </Card>

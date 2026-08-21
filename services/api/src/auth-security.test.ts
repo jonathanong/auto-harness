@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import { AuthService, authModeFromEnv, type Principal } from "./auth.ts";
 import { createServiceAccount as createAccount } from "./auth-accounts.ts";
-import { authorize, mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import {
+  authorize,
+  mayAccessHost,
+  mayAccessRepository,
+  requiredCapability,
+} from "./auth-policy.ts";
 import type { AuthAccountRecord } from "./db/plane-storage.ts";
 
 function admins(entries: Array<{ username: string; password: string }>): string {
@@ -61,6 +66,9 @@ describe("control-plane authentication security", () => {
       deleteAuthAccount: async () => undefined,
     };
     await expect(createAccount({ name: "", role: "operator" }, new Map())).rejects.toThrow();
+    await expect(
+      createAccount({ name: "daemon", role: "operator", boundHostId: "host-a" }, new Map()),
+    ).resolves.toMatchObject({ account: { role: "agent", boundHostId: "host-a" } });
     const first = new AuthService({
       mode: "required",
       secret: "a".repeat(32),
@@ -69,7 +77,7 @@ describe("control-plane authentication security", () => {
     const created = await first.createServiceAccount(
       {
         name: "agent-a",
-        role: "operator",
+        role: "agent",
         allowedRepositoryIds: ["repo-a"],
         boundHostId: "host-a",
       },
@@ -359,7 +367,8 @@ describe("control-plane authentication security", () => {
     expect(authorize(readOnly, "GET", "/api/v1/sessions")).toBe(true);
     expect(authorize(readOnly, "POST", "/api/v1/sessions")).toBe(false);
     expect(authorize(operator, "POST", "/api/v1/sessions")).toBe(true);
-    expect(authorize(operator, "POST", "/api/v1/hosts/drain")).toBe(false);
+    expect(authorize(operator, "POST", "/api/v1/hosts/drain")).toBe(true);
+    expect(authorize(operator, "PUT", "/api/v1/hosts/host-a/inventory")).toBe(false);
     expect(authorize(admin, "POST", "/api/v1/auth/users")).toBe(true);
     expect(authorize(operator, "POST", "/api/v1/auth/users")).toBe(false);
     const scheduleRoute = "/api/v1/schedules/schedule-1";
@@ -371,16 +380,50 @@ describe("control-plane authentication security", () => {
     expect(authorize(operator, "POST", "/api/v1/schedules")).toBe(true);
     expect(authorize(operator, "PATCH", scheduleRoute)).toBe(true);
     expect(authorize(operator, "POST", `${scheduleRoute}/trigger`)).toBe(true);
-    expect(authorize(operator, "DELETE", scheduleRoute)).toBe(false);
+    expect(authorize(operator, "DELETE", scheduleRoute)).toBe(true);
     expect(authorize(admin, "POST", "/api/v1/schedules")).toBe(true);
     expect(authorize(admin, "PATCH", scheduleRoute)).toBe(true);
     expect(authorize(admin, "POST", `${scheduleRoute}/trigger`)).toBe(true);
     expect(authorize(admin, "DELETE", scheduleRoute)).toBe(true);
+    const author: Principal = { ...admin, role: "author", kind: "user" };
+    const maintainer: Principal = { ...admin, role: "maintainer", kind: "user" };
+    const agent: Principal = {
+      ...admin,
+      role: "agent",
+      kind: "service-account",
+      boundHostId: "host-a",
+    };
+    expect(authorize(author, "POST", "/api/v1/sessions")).toBe(true);
+    expect(authorize(author, "POST", "/api/v1/schedules")).toBe(false);
+    expect(authorize(author, "POST", "/api/v1/hosts/drain")).toBe(false);
+    expect(authorize(maintainer, "PUT", "/api/v1/hosts/host-a/inventory")).toBe(true);
+    expect(authorize(maintainer, "POST", "/api/v1/commands")).toBe(false);
+    expect(authorize(maintainer, "POST", "/api/v1/provider-accounts")).toBe(true);
+    expect(authorize(agent, "POST", "/api/v1/host/messages")).toBe(true);
+    expect(authorize(agent, "POST", "/api/v1/sessions")).toBe(true);
+    expect(authorize(agent, "POST", "/api/v1/commands")).toBe(false);
+    expect(authorize(operator, "POST", "/api/v1/host/messages")).toBe(false);
+    expect(authorize(admin, "POST", "/api/v1/not-a-real-route")).toBe(false);
     expect(mayAccessRepository({ ...operator, allowedRepositoryIds: ["repo-a"] }, "repo-b")).toBe(
       false,
     );
     expect(mayAccessHost({ ...operator, boundHostId: "host-a" }, "host-b")).toBe(false);
     expect(mayAccessHost({ ...operator, boundHostId: "host-a" }, "host-a")).toBe(true);
+    expect(requiredCapability("GET", "/api/v1/integrations/slack")).toBe("integrations:write");
+    expect(requiredCapability("GET", "/api/v1/auth/users")).toBe("accounts:write");
+    expect(requiredCapability("GET", "/api/v1/audit-logs")).toBe("audit:read");
+    expect(requiredCapability("POST", "/api/v1/scheduler/assign")).toBe("scheduler:run");
+    expect(requiredCapability("GET", "/api/v1/hosts/h/inventory")).toBe("authenticated");
+    expect(requiredCapability("PUT", "/api/v1/hosts/h/inventory")).toBe("fleet:inventory");
+    expect(requiredCapability("POST", "/api/v1/sessions/s/archive")).toBe("sessions:archive");
+    expect(requiredCapability("POST", "/api/v1/sessions/s/cancel")).toBe("sessions:write");
+    expect(requiredCapability("GET", "/api/v1/sessions")).toBe("authenticated");
+    expect(requiredCapability("POST", "/api/v1/unknown")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/scheduler-extra")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/commands-private")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/sessions-old")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/auth/users-backup")).toBeNull();
+    expect(requiredCapability("GET", "/health")).toBe("authenticated");
   });
 
   it("rejects tampered or stale cookie claims", async () => {
@@ -466,7 +509,7 @@ describe("control-plane authentication security", () => {
     });
     const scoped = await auth.createServiceAccount({
       name: "scoped",
-      role: "operator",
+      role: "agent",
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });

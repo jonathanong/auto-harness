@@ -180,6 +180,19 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
   }
 
   if (method === "DELETE") {
+    if (ctx.principal?.allowedRepositoryIds?.length) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: "host-inventory:delete",
+          resourceType: "host-inventory",
+          resourceId: hostId,
+          outcome: "denied",
+        }))
+      )
+        return true;
+      send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+      return true;
+    }
     try {
       const result = await plane.deleteHostInventoryDurable(hostId);
       if (!result.ok) {

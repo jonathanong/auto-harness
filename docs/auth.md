@@ -1,6 +1,8 @@
 # Authentication & authorization
 
-How principals prove identity and what they can do. Security principles, transport, hardening, and threat boundaries: [security.md](security.md).
+How principals prove identity. **Named roles and the permission matrix:**
+[roles.md](roles.md). Security principles, transport, hardening, and threat
+boundaries: [security.md](security.md).
 
 ## Credential types
 
@@ -88,7 +90,7 @@ Admin operations:
 - View all sessions across all users
 - System configuration
 
-> **Note:** Admin accounts can only manage accounts and platform settings. To actually use the service (create sessions, view logs), use a separate user account. This separation keeps admin credentials off everyday workflows.
+> **Note:** Prefer an `author` or `operator` account for everyday session work so the bootstrap `HARNESS_ADMINS` credential stays off the hot path. Unscoped `admin` **can** create sessions; the split is operational hygiene, not an API restriction.
 
 ### User accounts
 
@@ -123,7 +125,7 @@ Service accounts are for machines — CI/CD systems, VPS agents, and external in
 | Rotation    | Create a new key, update consumers, delete the old key             |
 | Auth method | `Authorization: Bearer <api-key>` header (REST and WebSocket)      |
 
-Service accounts have the same role system as user accounts (`read-only`, `operator`, `admin`) and can optionally be scoped to specific repositories:
+Service accounts have the same role system as user accounts (`read-only`, `author`, `operator`, `maintainer`, `agent`, `admin`) and can optionally be scoped to specific repositories. `agent` additionally requires `boundHostId`.
 
 ```json
 {
@@ -137,19 +139,14 @@ Service accounts have the same role system as user accounts (`read-only`, `opera
 
 ## Roles
 
-| Role        | Create sessions | Cancel sessions | List/view | Manage repos | Manage accounts |
-| ----------- | :-------------: | :-------------: | :-------: | :----------: | :-------------: |
-| `read-only` |        ✗        |        ✗        |     ✓     |      ✗       |        ✗        |
-| `operator`  |        ✓        |    Own only     |     ✓     |      ✗       |        ✗        |
-| `admin`     |        ✓        |       Any       |     ✓     |      ✓       |        ✓        |
+Named roles, the capability matrix, REST path map, scopes, and what to assign:
+**[roles.md](roles.md)**.
 
-User accounts with `admin` role have the same permissions as env-var admins but are tracked per-user in audit logs.
-
-Operators create sessions; they do not Add host, manage host inventory,
-repositories, providers, provider accounts, or commands. Those writes are
-admin.
-
-Post-D4, `operator` means **target any catalog Provider or Command**, with ordered fallbacks — not arbitrary shell execution. Provider targets use healthy attached account pools; a Command with `providerId: null` is a pure CLI. Free-form `command` strings are not accepted ([plan.md](plan.md) D4).
+Accounts pick one of `read-only`, `author`, `operator`, `maintainer`, `agent`,
+or `admin`. Optional `allowedRepositoryIds` and (on `agent` only) `boundHostId`
+are filters, not extra roles. Catalog argv stays admin-only ([plan.md](plan.md)
+D4). A bound key that tries to author a session still gets `404 NOT_FOUND`, not
+`403` — see [roles.md — Object-level rules](roles.md#object-level-rules).
 
 ---
 
@@ -213,14 +210,14 @@ When creating a service account for an agent, the admin specifies the `boundHost
 ```json
 {
   "name": "vps-prod-1-agent",
-  "role": "operator",
+  "role": "agent",
   "boundHostId": "vps-prod-1"
 }
 ```
 
 The `boundHostId` is stored on the service account record. On WebSocket connect and `host:register`, the server validates:
 
-1. The API key is valid and has `operator` role
+1. The API key is valid and has the `agent:protocol` grant (effective `agent` role, service-account kind, `boundHostId` set). Pre-migration bound `operator`/`admin` keys still authenticate: `effectiveRole()` treats them as `agent` at request time, and create/rotate rewrites the stored role to `agent`.
 2. The `hostId` in the `host:register` message matches the `boundHostId` on the service account
 3. No other connection is already registered with the same `hostId`
 
@@ -248,7 +245,7 @@ Practically, this means every host needs **two** service accounts, not one:
 
 - a **bound** one (`boundHostId` set) for the host daemon's `HARNESS_API_KEY`
   ([deploy-host-daemon.md](deploy-host-daemon.md))
-- an **unbound** `operator` (or `admin`) one for anything that creates sessions —
+- an **unbound** `author` (CI) or `operator` (humans) one for anything that creates sessions —
   a CI trigger, a webhook consumer, a scheduled-task caller
 
 ### Connection flow
@@ -263,7 +260,7 @@ sequenceDiagram
     Agent->>APIGW: WebSocket connect<br/>Authorization: Bearer hns_xxx
     APIGW->>Lambda: $connect handler
     Lambda->>DDB: Lookup API key hash
-    DDB-->>Lambda: Service account found (role: operator, boundHostId: vps-prod-1)
+    DDB-->>Lambda: Service account found (role: agent, boundHostId: vps-prod-1)
     Lambda->>DDB: Store connection record (connectionId, boundHostId)
     Lambda-->>APIGW: Allow connection
     APIGW-->>Agent: Connected
@@ -279,7 +276,7 @@ sequenceDiagram
 
 **Reconnection:** On disconnect, the agent reconnects with exponential backoff (1s, 2s, 4s, ... max 60s). On reconnect, it re-sends `host:register` and reports any in-progress sessions.
 
-**Recommended role:** Use an `operator` service account dedicated to the agent. Do not reuse CI/CD keys.
+**Recommended role:** Use an `agent` service account dedicated to the daemon. Do not reuse CI/CD keys.
 
 Wire formats: [websocket.md](websocket.md). REST account APIs: [api.md](api.md).
 
@@ -289,6 +286,7 @@ Wire formats: [websocket.md](websocket.md). REST account APIs: [api.md](api.md).
 
 | Doc                          | Role                                     |
 | ---------------------------- | ---------------------------------------- |
+| [roles.md](roles.md)         | Roles, capabilities, grant matrix        |
 | [security.md](security.md)   | Principles, transport, hardening         |
 | [api.md](api.md)             | REST including account management        |
 | [websocket.md](websocket.md) | Agent/UI tokens on connect               |

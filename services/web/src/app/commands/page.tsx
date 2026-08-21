@@ -4,10 +4,12 @@ import type { Command, Provider } from "@auto-harness/shared";
 
 import { AddCommandDialog } from "../../components/add-command-dialog.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function CommandsPage() {
+  const canWriteCatalog = can(await loadPrincipal(), "catalog:write");
   let commands: Command[] = [];
   let providers: Provider[] = [];
   let error: string | null = null;
@@ -36,7 +38,7 @@ export default async function CommandsPage() {
             provider-owned commands are reached through that provider's accounts.
           </p>
         </div>
-        <AddCommandDialog providers={providers} />
+        {canWriteCatalog ? <AddCommandDialog providers={providers} /> : null}
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <Table>

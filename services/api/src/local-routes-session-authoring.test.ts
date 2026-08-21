@@ -47,7 +47,7 @@ async function harness() {
   // The daemon identity: operator, bound to the host it serves, allowed its repository.
   const { apiKey: hostKey } = await auth.createServiceAccount({
     name: "host-a-agent",
-    role: "operator",
+    role: "agent",
     allowedRepositoryIds: ["repo-a"],
     boundHostId: "host-a",
   });

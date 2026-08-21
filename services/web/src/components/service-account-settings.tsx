@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { effectiveRole } from "@auto-harness/shared";
 import { Card, CardContent, CardHeader, CardTitle } from "@auto-harness/ui";
 
 import {
@@ -111,7 +112,7 @@ export function ServiceAccountSettings({ canManage }: { canManage: boolean }) {
   const rotate = async (account: ServiceAccount) => {
     const input: ServiceAccountInput = {
       name: account.name,
-      role: account.role,
+      role: effectiveRole(account),
       ...(account.allowedRepositoryIds
         ? { allowedRepositoryIds: account.allowedRepositoryIds }
         : {}),

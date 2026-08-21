@@ -118,4 +118,38 @@ describe("HostProviderAccountsSection", () => {
     expect(view.container.querySelector('[data-pw="attach-provider-account-select"]')).toBeNull();
     view.unmount();
   });
+
+  it("hides mutation controls when the caller cannot write provider accounts", () => {
+    const view = mountForm(
+      <HostProviderAccountsSection
+        hostId="host"
+        inventory={{
+          ...baseInventory,
+          providerAccounts: [
+            { providerAccountId: "a", commandId: "c" },
+            { providerAccountId: "b", commandId: "gone" },
+            { providerAccountId: "removed-account" },
+          ],
+        }}
+        accountsById={{ a: account }}
+        providersById={{ p: provider }}
+        commandsById={{ c: command }}
+        canWrite={false}
+        catalogError="GET /api/v1/providers → 500"
+      />,
+    );
+    expect(view.container.querySelector('[data-pw="attach-provider-account-select"]')).toBeNull();
+    expect(
+      view.container.querySelector('[data-pw="host-provider-accounts-catalog-error"]'),
+    ).toBeNull();
+    expect(view.container.querySelector('[data-pw="host-provider-account-remove-a"]')).toBeNull();
+    expect(field(view.container, "host-provider-account-row-a").textContent).toContain(
+      "claude-run",
+    );
+    expect(field(view.container, "host-provider-account-row-b").textContent).toContain("gone");
+    expect(
+      field(view.container, "host-provider-account-row-removed-account").textContent,
+    ).toContain("—");
+    view.unmount();
+  });
 });

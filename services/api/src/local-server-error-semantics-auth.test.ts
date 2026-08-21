@@ -75,7 +75,7 @@ describe("local auth route error semantics", () => {
     });
     const { apiKey } = await auth.createServiceAccount({
       name: "operator",
-      role: "operator",
+      role: "agent",
       allowedRepositoryIds: ["allowed-repository"],
       boundHostId: "host",
     });

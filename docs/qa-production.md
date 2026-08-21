@@ -34,8 +34,10 @@ Mint **two** service accounts per host before connecting the daemon:
 
 - a **bound** one (`boundHostId` set to the host's ID) for the daemon's
   `HARNESS_API_KEY`
-- an **unbound** `operator` one for anything that creates sessions — Phase 4's
-  REST check, a CI trigger, a webhook consumer
+- an **unbound** `author` (CI / automation) or `operator` (humans running the
+  queue) key for anything that creates sessions — Phase 4's REST check, a CI
+  trigger, a webhook consumer. Do not give CI `operator` unless it also needs
+  schedules, cancel-any, or drain.
 
 ### 2. Subscription CLIs need an unsandboxed shell
 
@@ -213,9 +215,9 @@ Do not read `web.md`. Follow nav labels.
    phase. Logging out and back in as that operator is a UX finding if
    **Add host** / catalog writes then fail (they should).
 3. **Settings → Service accounts** — create the two accounts from trap #1:
-   - `<host-id>-daemon`, role operator, **bound** to the host ID you will
+   - `<host-id>-daemon`, role **agent**, **bound** to the host ID you will
      register next
-   - `operator` (or similar), role operator, **not** bound
+   - `author` (CI) or `operator` (humans), **not** bound
 
    Each key is shown exactly once — save both immediately.
 
@@ -227,10 +229,10 @@ Do not read `web.md`. Follow nav labels.
    `HARNESS_API_KEY='REPLACE_WITH_BOUND_SERVICE_ACCOUNT_KEY'` (quoted). The
    panel also shows the persist path (`pnpm local:daemon install-service`)
    with the same quoted env vars. You need **two** keys: the bound daemon
-   key for this command, and an unbound operator key for `POST /sessions`
-   (a bound key 404s on session create on purpose). Don't run it yet — the
-   daemon needs a registered repository first, or the initial inventory
-   sync has nothing to report.
+   key for this command, and an unbound `author` (CI) or `operator` (humans)
+   key for `POST /sessions` (a bound key 404s on session create on purpose).
+   Don't run it yet — the daemon needs a registered repository first, or the
+   initial inventory sync has nothing to report.
 6. **Attach a repository** from the host detail page (**Repositories &
    Worktrees**): absolute path from Prerequisites. Then add at least one
    worktree. This is a control-plane action; the daemon creates the actual

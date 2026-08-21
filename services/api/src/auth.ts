@@ -1,11 +1,12 @@
 /* eslint-disable max-lines -- authentication and account lifecycle share one security boundary. */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { isUserRole } from "@auto-harness/shared";
 import bcrypt from "bcryptjs";
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Principal, Role } from "./auth-types.ts";
-export type { Principal, Role } from "./auth-types.ts";
+export type { Principal } from "./auth-types.ts";
 import {
   createServiceAccount,
   createUser,
@@ -52,7 +53,7 @@ function parseB64urlJson<T>(value: string): T | null {
 }
 
 function asRole(value: unknown): Role | null {
-  return value === "admin" || value === "operator" || value === "read-only" ? value : null;
+  return isUserRole(value) ? value : null;
 }
 
 function parseAdmins(raw: string | undefined): User[] {
@@ -163,7 +164,7 @@ export class AuthService {
   }
 
   async createUser(
-    input: { username: string; password: string; role: Role },
+    input: { username: string; password: string; role: Role; allowedRepositoryIds?: string[] },
     storage?: AuthStorage,
   ): Promise<Principal> {
     return createUser(input, this.users, this.admins, storage);

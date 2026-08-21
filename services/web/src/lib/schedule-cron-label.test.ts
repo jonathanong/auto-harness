@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeCron } from "./schedule-cron-label.ts";
+import { describeCron, routeLabel } from "./schedule-cron-label.ts";
 
 describe("describeCron", () => {
   it("describes minute intervals and hourly schedules", () => {
@@ -36,5 +36,15 @@ describe("describeCron", () => {
     ]) {
       expect(describeCron(expression)).toBe("Custom schedule");
     }
+  });
+});
+
+describe("routeLabel", () => {
+  it("labels provider and command targets", () => {
+    expect(routeLabel(undefined)).toBeNull();
+    expect(routeLabel(null)).toBeNull();
+    expect(routeLabel({})).toBeNull();
+    expect(routeLabel({ providerId: "p-1" })).toBe("provider:p-1");
+    expect(routeLabel({ commandId: "c-1" })).toBe("command:c-1");
   });
 });

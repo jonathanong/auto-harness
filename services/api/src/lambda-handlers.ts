@@ -5,7 +5,7 @@ import {
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { GetParameterCommand, SSMClient } from "@aws-sdk/client-ssm";
-import type { HostToServerMessage, HostWireMessage } from "@auto-harness/shared";
+import { principalHas, type HostToServerMessage, type HostWireMessage } from "@auto-harness/shared";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { AuthService, type Principal } from "./auth.ts";
@@ -121,11 +121,7 @@ function authenticationRequest(event: {
 function authenticatedHost(
   principal: Principal | null,
 ): principal is Principal & { boundHostId: string } {
-  return Boolean(
-    principal?.kind === "service-account" &&
-    principal.role !== "read-only" &&
-    principal.boundHostId,
-  );
+  return Boolean(principal && principalHas(principal, "agent:protocol") && principal.boundHostId);
 }
 
 function validHostMessage(message: HostToServerMessage, boundHostId: string): boolean {

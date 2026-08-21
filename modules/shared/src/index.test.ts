@@ -8,6 +8,8 @@ describe("package exports", () => {
     expect(typeof shared.validateCreateSessionInput).toBe("function");
     expect(typeof shared.formatLogSortKey).toBe("function");
     expect(typeof shared.isUserRole).toBe("function");
+    expect(typeof shared.roleHas).toBe("function");
+    expect(typeof shared.principalHas).toBe("function");
     expect(typeof shared.isWorktreeStatus).toBe("function");
     expect(shared.SESSION_STATUSES.length).toBeGreaterThan(0);
     expect(shared.USER_ROLES).toContain("admin");

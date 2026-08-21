@@ -48,7 +48,7 @@ describe("host-bound session mutations stay on the bound host", () => {
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
       name: "host-a-admin",
-      role: "admin",
+      role: "agent",
       boundHostId: "host-a",
     });
     const { handler } = createLocalApp({
@@ -67,8 +67,7 @@ describe("host-bound session mutations stay on the bound host", () => {
     expect((await invoke("POST", `/api/v1/sessions/${foreign.id}/cancel`)).status).toBe(404);
     expect((await invoke("POST", `/api/v1/sessions/${foreign.id}/archive`)).status).toBe(404);
 
-    // Archive while the session still carries hostId — cancel clears the assignment.
-    expect((await invoke("POST", `/api/v1/sessions/${own.id}/archive`)).status).toBe(200);
-    expect((await invoke("POST", `/api/v1/sessions/${own.id}/cancel`)).status).toBe(200);
+    expect((await invoke("POST", `/api/v1/sessions/${own.id}/archive`)).status).toBe(404);
+    expect((await invoke("POST", `/api/v1/sessions/${own.id}/cancel`)).status).toBe(404);
   });
 });

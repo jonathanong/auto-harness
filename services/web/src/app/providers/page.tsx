@@ -4,10 +4,12 @@ import type { Command, Provider, ProviderAccount } from "@auto-harness/shared";
 
 import { AddProviderDialog } from "../../components/add-provider-dialog.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProvidersPage() {
+  const canWriteCatalog = can(await loadPrincipal(), "catalog:write");
   let providers: Provider[] = [];
   let accounts: ProviderAccount[] = [];
   let commands: Command[] = [];
@@ -39,7 +41,7 @@ export default async function ProvidersPage() {
             accounts under it.
           </p>
         </div>
-        <AddProviderDialog />
+        {canWriteCatalog ? <AddProviderDialog /> : null}
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
       <Table>

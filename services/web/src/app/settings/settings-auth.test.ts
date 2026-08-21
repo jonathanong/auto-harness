@@ -47,5 +47,8 @@ describe("settings auth helpers", () => {
       }),
     ).toBe(false);
     expect(canManageAccounts({ username: "operator", role: "operator", kind: "user" })).toBe(false);
+    expect(canManageAccounts({ username: "maintainer", role: "maintainer", kind: "user" })).toBe(
+      false,
+    );
   });
 });

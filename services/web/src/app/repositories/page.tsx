@@ -5,6 +5,7 @@ import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,9 @@ type Wt = {
 };
 
 export default async function RepositoriesPage() {
+  const principal = await loadPrincipal();
+  const canWriteCatalog = can(principal, "catalog:write");
+  const canWriteInventory = can(principal, "fleet:inventory");
   let items: Repo[] = [];
   let hostIds: string[] = [];
   let worktrees: Wt[] = [];
@@ -77,7 +81,7 @@ export default async function RepositoriesPage() {
             worktrees, or a worktree to see its details and sessions.
           </p>
         </div>
-        <AddRepoDialog />
+        {canWriteCatalog ? <AddRepoDialog /> : null}
       </div>
       {error ? (
         <ListApiError resource="repositories" message={error} selector="repositories" />
@@ -87,11 +91,13 @@ export default async function RepositoriesPage() {
             <div data-pw="worktrees-empty">
               <PrimaryEmptyState title="No repositories configured." pw="repositories-empty">
                 <p>Register a catalog repository before attaching it to a host.</p>
-                <AddRepoDialog
-                  triggerLabel="Add one →"
-                  triggerPw="repositories-empty-add"
-                  dialogPw="repositories-empty-dialog"
-                />
+                {canWriteCatalog ? (
+                  <AddRepoDialog
+                    triggerLabel="Add one →"
+                    triggerPw="repositories-empty-add"
+                    dialogPw="repositories-empty-dialog"
+                  />
+                ) : null}
               </PrimaryEmptyState>
             </div>
           ) : (
@@ -103,10 +109,12 @@ export default async function RepositoriesPage() {
             />
           )}
 
-          <div className="border-t border-border pt-6">
-            <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-            <AttachLocalRepoForm hostIds={hostIds} repos={items} />
-          </div>
+          {canWriteInventory ? (
+            <div className="border-t border-border pt-6">
+              <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
+              <AttachLocalRepoForm hostIds={hostIds} repos={items} />
+            </div>
+          ) : null}
         </>
       )}
     </div>

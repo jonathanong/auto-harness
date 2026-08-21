@@ -1,3 +1,12 @@
+export function routeLabel(
+  target?: { providerId?: string; commandId?: string } | null,
+): string | null {
+  if (!target) return null;
+  if (target.providerId) return `provider:${target.providerId}`;
+  if (target.commandId) return `command:${target.commandId}`;
+  return null;
+}
+
 const WEEKDAYS = [
   "Sunday",
   "Monday",

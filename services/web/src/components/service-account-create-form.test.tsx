@@ -25,19 +25,25 @@ describe("ServiceAccountCreateForm", () => {
     );
     const name = field<HTMLInputElement>(view.container, "service-account-name");
     setValue(name, " ci-bot ");
-    setValue(field<HTMLSelectElement>(view.container, "service-account-role"), "admin");
+    setValue(field<HTMLSelectElement>(view.container, "service-account-role"), "agent");
+    await act(async () => {
+      field<HTMLSelectElement>(view.container, "service-account-role").dispatchEvent(
+        new Event("change", { bubbles: true }),
+      );
+    });
+    await settle();
     setValue(field<HTMLInputElement>(view.container, "service-account-bound-host"), " host-a ");
     view.container.querySelectorAll<HTMLInputElement>('[name="allowedRepositoryIds"]')[1]!.click();
     submit(field(view.container, "form-service-account-create"));
     await settle();
     expect(onCreate).toHaveBeenCalledWith({
       name: "ci-bot",
-      role: "admin",
+      role: "agent",
       allowedRepositoryIds: ["repo-2"],
       boundHostId: "host-a",
     });
     expect(name.value).toBe("");
-    expect(field<HTMLInputElement>(view.container, "service-account-bound-host").value).toBe("");
+    expect(view.container.querySelector('[data-pw="service-account-bound-host"]')).toBeNull();
   });
 
   it("rejects a bound host id that is not in the host list", async () => {
@@ -46,11 +52,18 @@ describe("ServiceAccountCreateForm", () => {
       <ServiceAccountCreateForm repositories={[]} hostIds={["host-a"]} onCreate={onCreate} />,
     );
     setValue(field(view.container, "service-account-name"), "bot");
+    setValue(field<HTMLSelectElement>(view.container, "service-account-role"), "agent");
+    await act(async () => {
+      field<HTMLSelectElement>(view.container, "service-account-role").dispatchEvent(
+        new Event("change", { bubbles: true }),
+      );
+    });
+    await settle();
     setValue(field(view.container, "service-account-bound-host"), "ghost");
     submit(field(view.container, "form-service-account-create"));
     await settle();
     expect(onCreate).not.toHaveBeenCalled();
-    expect(field(view.container, "service-account-create-error").textContent).toBe(
+    expect(field(document.body, "service-account-create-error").textContent).toBe(
       "Select a host from the list",
     );
     view.unmount();
@@ -73,5 +86,22 @@ describe("ServiceAccountCreateForm", () => {
     expect(field(view.container, "service-account-create-error").textContent).toBe(
       "Unable to create service account.",
     );
+  });
+
+  it("hides repository scope when the selected role is admin", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const view = mountForm(
+      <ServiceAccountCreateForm
+        repositories={[{ id: "repo-1", name: "Repo one" }]}
+        onCreate={onCreate}
+      />,
+    );
+    expect(field(view.container, "service-account-repository-scope")).toBeTruthy();
+    setValue(field<HTMLSelectElement>(view.container, "service-account-role"), "admin");
+    expect(view.container.querySelector('[data-pw="service-account-repository-scope"]')).toBeNull();
+    setValue(field(view.container, "service-account-name"), "admins");
+    submit(field(view.container, "form-service-account-create"));
+    await settle();
+    expect(onCreate).toHaveBeenCalledWith({ name: "admins", role: "admin" });
   });
 });

@@ -24,9 +24,22 @@ afterEach(() => vi.unstubAllGlobals());
 describe("user-account API client", () => {
   it("loads public user accounts without inventing missing items", async () => {
     const account = { id: "user:alice", username: "alice", role: "operator", kind: "user" };
-    replies(json({ items: [account] }), json({}));
-    await expect(loadUserAccounts()).resolves.toEqual({ kind: "ready", accounts: [account] });
-    await expect(loadUserAccounts()).resolves.toEqual({ kind: "ready", accounts: [] });
+    replies(
+      json({ items: [account] }),
+      json({ items: [{ id: "r-1", name: "Repo" }] }),
+      json({}),
+      json({}),
+    );
+    await expect(loadUserAccounts()).resolves.toEqual({
+      kind: "ready",
+      accounts: [account],
+      repositories: [{ id: "r-1", name: "Repo" }],
+    });
+    await expect(loadUserAccounts()).resolves.toEqual({
+      kind: "ready",
+      accounts: [],
+      repositories: [],
+    });
   });
 
   it("preserves authorization states and readable load errors", async () => {
@@ -37,6 +50,10 @@ describe("user-account API client", () => {
     await expect(loadUserAccounts()).rejects.toThrow("users unavailable");
     replies(new Response("bad gateway", { status: 502 }));
     await expect(loadUserAccounts()).rejects.toThrow("bad gateway");
+    replies(json({ items: [] }), new Response(null, { status: 401 }));
+    await expect(loadUserAccounts()).resolves.toEqual({ kind: "unauthorized" });
+    replies(json({ items: [] }), new Response("catalog offline", { status: 502 }));
+    await expect(loadUserAccounts()).rejects.toThrow("catalog offline");
   });
 
   it("creates an account using only the supplied initial password", async () => {

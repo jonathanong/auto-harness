@@ -83,4 +83,34 @@ describe("HostRepositoriesSection", () => {
     );
     view.unmount();
   });
+
+  it("hides attach and mutation controls when the caller cannot write inventory", () => {
+    const inventory = {
+      repositories: [
+        {
+          id: "repo-one",
+          path: "/repos/one",
+          defaultBranch: "main",
+          worktrees: [{ id: "worktree-one", name: "one", path: "/repos/one/wt", labels: [] }],
+        },
+      ],
+      providerAccounts: [],
+    };
+    const view = mountForm(
+      <HostRepositoriesSection
+        hostId="host"
+        inventory={inventory}
+        namesById={{ "repo-one": "Catalog one" }}
+        unattachedCatalog={[{ id: "catalog-repo", name: "Catalog repo" }]}
+        liveById={{}}
+        canWrite={false}
+      />,
+    );
+    expect(view.container.querySelector('[data-pw="form-add-local-repo"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="add-worktree-open-repo-one"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="repo-remove-repo-one"]')).toBeNull();
+    expect(view.container.querySelector('[data-pw="worktree-remove-worktree-one"]')).toBeNull();
+    expect(field(view.container, "repo-link-repo-one").textContent).toBe("Catalog one");
+    view.unmount();
+  });
 });

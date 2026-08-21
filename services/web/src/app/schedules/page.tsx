@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- list, empty state, and capability-gated write controls. */
 import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@auto-harness/ui";
 
@@ -7,7 +8,8 @@ import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet } from "../../lib/api.ts";
-import { describeCron } from "../../lib/schedule-cron-label.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
+import { describeCron, routeLabel } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +40,7 @@ export default async function SchedulesPage({
 }) {
   const rawSearchParams = await searchParams;
   const editId = typeof rawSearchParams.edit === "string" ? rawSearchParams.edit : null;
+  const canWriteSchedules = can(await loadPrincipal(), "schedules:write");
   let items: Schedule[] = [];
   let targets: SessionTarget[] = [];
   let repositories: Array<{ id: string; name: string }> = [];
@@ -131,7 +134,13 @@ export default async function SchedulesPage({
                     </span>
                   </TableCell>
                   <TableCell>
-                    <ScheduleEnabledToggle id={s.id} enabled={s.enabled} />
+                    {canWriteSchedules ? (
+                      <ScheduleEnabledToggle id={s.id} enabled={s.enabled} />
+                    ) : s.enabled ? (
+                      "enabled"
+                    ) : (
+                      "disabled"
+                    )}
                   </TableCell>
                   <TableCell className="max-w-xs truncate font-mono text-xs">
                     {s.concurrencyId ?? "—"}
@@ -151,14 +160,18 @@ export default async function SchedulesPage({
                   <TableCell className="text-xs">{s.nextRunAt}</TableCell>
                   <TableCell className="text-xs">{s.lastRunAt ?? "—"}</TableCell>
                   <TableCell>
-                    <ScheduleTriggerButton id={s.id} />
-                    <Link
-                      href={`/schedules?edit=${encodeURIComponent(s.id)}`}
-                      className="text-sm hover:underline"
-                      data-pw={`schedule-edit-${s.id}`}
-                    >
-                      Edit
-                    </Link>
+                    {canWriteSchedules ? (
+                      <>
+                        <ScheduleTriggerButton id={s.id} />
+                        <Link
+                          href={`/schedules?edit=${encodeURIComponent(s.id)}`}
+                          className="text-sm hover:underline"
+                          data-pw={`schedule-edit-${s.id}`}
+                        >
+                          Edit
+                        </Link>
+                      </>
+                    ) : null}
                   </TableCell>
                 </TableRow>
               ))}
@@ -167,34 +180,35 @@ export default async function SchedulesPage({
                   <TableCell colSpan={11} className="text-muted-foreground">
                     <PrimaryEmptyState title="No schedules configured." pw="schedules-empty">
                       <p>Create a recurring task with a repository, target, and cron schedule.</p>
-                      <Link
-                        href="#schedule-create"
-                        className="font-medium text-primary hover:underline"
-                        data-pw="schedules-empty-create"
-                      >
-                        Create one →
-                      </Link>
+                      {canWriteSchedules ? (
+                        <Link
+                          href="#schedule-create"
+                          className="font-medium text-primary hover:underline"
+                          data-pw="schedules-empty-create"
+                        >
+                          Create one →
+                        </Link>
+                      ) : null}
                     </PrimaryEmptyState>
                   </TableCell>
                 </TableRow>
               ) : null}
             </TableBody>
           </Table>
-          <div id="schedule-create">
-            <h3 className="mb-2 text-lg font-medium">
-              {editing ? `Edit ${editing.name}` : "Add schedule"}
-            </h3>
-            <ScheduleCreateForm targets={targets} repositories={repositories} schedule={editing} />
-          </div>
+          {canWriteSchedules ? (
+            <div id="schedule-create">
+              <h3 className="mb-2 text-lg font-medium">
+                {editing ? `Edit ${editing.name}` : "Add schedule"}
+              </h3>
+              <ScheduleCreateForm
+                targets={targets}
+                repositories={repositories}
+                schedule={editing}
+              />
+            </div>
+          ) : null}
         </>
       )}
     </div>
   );
-}
-
-function routeLabel(target?: { providerId?: string; commandId?: string } | null): string | null {
-  if (!target) return null;
-  if (target.providerId) return `provider:${target.providerId}`;
-  if (target.commandId) return `command:${target.commandId}`;
-  return null;
 }

@@ -1,16 +1,22 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
+import type { UserRole } from "@auto-harness/shared";
 import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
-import type { UserAccountInput, UserAccountRole } from "./user-account-api.ts";
+import { RoleSelect } from "./role-select.tsx";
+import type { RepositoryOption } from "./service-account-api.ts";
+import type { UserAccountInput } from "./user-account-api.ts";
 
 export function UserAccountCreateForm({
+  repositories = [],
   onCreate,
 }: {
+  repositories?: RepositoryOption[];
   onCreate: (input: UserAccountInput) => Promise<void>;
 }) {
   const [pending, start] = useTransition();
+  const [role, setRole] = useState<UserRole>("operator");
   return (
     <form
       className="space-y-4 border-b border-border pb-6"
@@ -19,15 +25,18 @@ export function UserAccountCreateForm({
         event.preventDefault();
         const form = event.currentTarget;
         const data = new FormData(form);
+        const allowedRepositoryIds = data.getAll("allowedRepositoryIds").map(String);
         const input: UserAccountInput = {
           username: String(data.get("username") ?? "").trim(),
           password: String(data.get("password") ?? ""),
-          role: String(data.get("role") ?? "operator") as UserAccountRole,
+          role: String(data.get("role") ?? "operator") as UserRole,
+          ...(role !== "admin" && allowedRepositoryIds.length ? { allowedRepositoryIds } : {}),
         };
         start(async () => {
           try {
             await onCreate(input);
             form.reset();
+            setRole("operator");
           } catch (cause) {
             showToast(cause instanceof Error ? cause.message : "Unable to create user account.", {
               variant: "destructive",
@@ -59,21 +68,24 @@ export function UserAccountCreateForm({
             data-pw="user-account-password"
           />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="user-account-role">Role</Label>
-          <select
-            id="user-account-role"
-            name="role"
-            defaultValue="operator"
-            className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
-            data-pw="user-account-role"
-          >
-            <option value="read-only">Read-only</option>
-            <option value="operator">Operator</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
+        <RoleSelect id="user-account-role" pw="user-account-role" onChange={setRole} />
       </div>
+      {repositories.length && role !== "admin" ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Repository scope</legend>
+          <p className="text-xs text-muted-foreground">
+            No selection grants access to all repositories. Admin accounts cannot be scoped.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {repositories.map((repository) => (
+              <label key={repository.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="allowedRepositoryIds" value={repository.id} />
+                {repository.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       <p className="text-xs text-muted-foreground">
         Passwords are sent only when the account is created. Users can change their own password
         after signing in.

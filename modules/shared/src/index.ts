@@ -9,6 +9,20 @@ export type {
   WorktreeStatus,
 } from "./types.ts";
 
+export type { AuthzPrincipal, Capability } from "./authz.ts";
+export {
+  CAPABILITIES,
+  ROLE_CAPABILITIES,
+  USER_ROLE_DESCRIPTIONS,
+  USER_ROLE_LABELS,
+  accountGrantError,
+  effectiveRole,
+  normalizeAccountGrant,
+  principalCapabilities,
+  principalHas,
+  roleHas,
+} from "./authz.ts";
+
 export type {
   HostToServerMessage,
   HostWireMessage,

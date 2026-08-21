@@ -101,7 +101,7 @@ describe("local route authorization and outcomes", () => {
     const principal: Principal = {
       id: "service:host-a-daemon",
       kind: "service-account",
-      role: "operator",
+      role: "agent",
       boundHostId: "host-a",
     };
     const invoke = (hostId: string) =>

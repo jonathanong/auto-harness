@@ -134,12 +134,12 @@ describe("audit records", () => {
     const { apiKey } = await auth.createServiceAccount({ name: "reader", role: "read-only" });
     const { apiKey: scopedAdminKey } = await auth.createServiceAccount({
       name: "scoped-admin",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["repo-a"],
     });
     const { apiKey: hostBoundAdminKey } = await auth.createServiceAccount({
       name: "host-bound-admin",
-      role: "admin",
+      role: "agent",
       boundHostId: "host-a",
     });
     const { handler } = createLocalApp({ plane, authService: auth });

@@ -101,7 +101,7 @@ describe("ServiceAccountSettings", () => {
     await settle();
     expect(api.createServiceAccount).toHaveBeenLastCalledWith({
       name: "ci",
-      role: "operator",
+      role: "agent",
       allowedRepositoryIds: ["repo-1"],
       boundHostId: "host-a",
     });

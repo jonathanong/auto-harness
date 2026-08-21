@@ -48,6 +48,14 @@ describe("host inventory audit failures", () => {
     const existing = auditFailingPlane();
     expect(await existing.putHostInventoryDurable("host-1", inventory)).toMatchObject({ ok: true });
     expect(await invoke(existing, "DELETE", "/api/v1/hosts/host-1/inventory")).toBe(500);
+    expect(
+      await invoke(auditFailingPlane(), "DELETE", "/api/v1/hosts/host-1/inventory", undefined, {
+        id: "user:scoped",
+        kind: "user",
+        role: "maintainer",
+        allowedRepositoryIds: ["repo-allowed"],
+      }),
+    ).toBe(500);
   });
 });
 
