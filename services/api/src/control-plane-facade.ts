@@ -181,7 +181,10 @@ export class ControlPlaneBase {
   async registerHostDurable(
     opts: Parameters<typeof agents.registerHost>[1],
   ): Promise<ReturnType<typeof agents.registerHost>> {
-    return agents.registerHostDurable(this.state, opts);
+    return agents.registerHostDurable(this.state, {
+      ...opts,
+      runtime: testHostRuntime(opts.runtime),
+    });
   }
 
   async disconnectHostDurable(connectionId: string): Promise<string[]> {
