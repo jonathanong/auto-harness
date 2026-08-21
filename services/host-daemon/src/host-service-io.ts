@@ -36,7 +36,7 @@ export type HostServiceStatus = {
 };
 
 /** Keep service-manager output bounded even when a platform command is noisy. */
-export const MAX_HOST_SERVICE_OUTPUT_BYTES = 8 * 1024;
+const MAX_HOST_SERVICE_OUTPUT_BYTES = 8 * 1024;
 
 function boundedOutput(value: string): string {
   if (Buffer.byteLength(value, "utf8") <= MAX_HOST_SERVICE_OUTPUT_BYTES) return value;
