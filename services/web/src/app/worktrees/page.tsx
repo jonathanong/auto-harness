@@ -24,6 +24,7 @@ export default async function WorktreesPage() {
   let namesById: Record<string, string> = {};
   let inventories: Array<{ hostId: string; repositories?: HostRepository[] }> = [];
   let error: string | null = null;
+  let inventoryError: string | null = null;
   try {
     const [wts, repos] = await Promise.all([
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
@@ -41,8 +42,8 @@ export default async function WorktreesPage() {
           "/api/v1/host-inventories",
         )
       ).items ?? [];
-  } catch {
-    /* add-worktree actions stay empty if inventories cannot load */
+  } catch (e) {
+    inventoryError = e instanceof Error ? e.message : String(e);
   }
 
   const groups = groupWorktreesByRepo(
@@ -79,13 +80,17 @@ export default async function WorktreesPage() {
         showHost
         hrefBase="/worktrees"
         emptyMessage="No worktrees registered yet."
-        renderRepoActions={(group) => (
-          <AddWorktreeForRepo
-            repositoryId={group.repositoryId}
-            repositoryName={group.repositoryName ?? group.repositoryId}
-            attachments={attachmentsForRepo(inventories, group.repositoryId)}
-          />
-        )}
+        renderRepoActions={(group) =>
+          inventoryError ? (
+            <p className="text-xs text-red-700">Unable to load host inventories.</p>
+          ) : (
+            <AddWorktreeForRepo
+              repositoryId={group.repositoryId}
+              repositoryName={group.repositoryName ?? group.repositoryId}
+              attachments={attachmentsForRepo(inventories, group.repositoryId)}
+            />
+          )
+        }
       />
     </div>
   );

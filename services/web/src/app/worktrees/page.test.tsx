@@ -34,12 +34,24 @@ describe("worktrees page", () => {
 
   it("keeps the list when inventories fail and reports a worktrees API error", async () => {
     stubApi({
-      "/api/v1/worktrees": { items: [] },
-      "/api/v1/repositories": { items: [] },
+      "/api/v1/worktrees": {
+        items: [
+          {
+            id: "wt-1",
+            name: "feature",
+            repositoryId: "r-1",
+            path: "/tmp/feature",
+            hostId: "host-1",
+          },
+        ],
+      },
+      "/api/v1/repositories": { items: [{ id: "r-1", name: "Repo" }] },
       "/api/v1/host-inventories": jsonResponse({}, 500),
     });
     let html = await renderPage(WorktreesPage());
-    expect(html).toContain("No worktrees registered yet.");
+    expect(html).toContain("Unable to load host inventories.");
+    expect(html).not.toContain("add-worktree-need-host-r-1");
+    expect(html).not.toContain("add-worktree-open-r-1");
     stubApi({
       "/api/v1/worktrees": "__throw_string__",
       "/api/v1/repositories": { items: [] },
