@@ -398,12 +398,13 @@ Triggered every **60 seconds** by EventBridge.
       `lastRunAt` unchanged
    d. Otherwise create Session { type: scheduled, source: schedule, concurrencyId, timeout,
       repositoryId, priority: 0 }, set `lastRunAt = now`, advance `nextRunAt`, and invoke scheduler
-3. Stale-session sweep:
-   - Sessions with status=running and (now - startedAt) > timeout + grace
-     and no recent agent activity → mark timed_out, free worktree if still marked busy
+3. Ack-deadline sweep: unacknowledged assignments are requeued
+4. Acknowledged running timeout:
+   - Sessions with status=running, ackReceivedAt set, and now >= startedAt + timeout
+     → mark timed_out, send session:cancel, free the worktree or main-checkout lease
 ```
 
-Grace window (e.g. 60–120s) avoids racing a legitimate slow `session:status`.
+The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge no later than the configured timeout.
 
 The lock table is keyed by the exact `concurrencyId` and stores the active session id plus expiry
 metadata. Conditional put is the write-side invariant; conditional delete on terminal transition

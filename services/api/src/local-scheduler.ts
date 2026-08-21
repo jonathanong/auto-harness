@@ -11,6 +11,7 @@ type SchedulerPlane = Pick<
   ControlPlane,
   | "evaluateCronDurable"
   | "enforceAckDeadlinesDurable"
+  | "enforceRunningTimeoutsDurable"
   | "reclaimStaleHostsDurable"
   | "assignQueuedDurable"
   | "assignScheduledQueuedDurable"
@@ -81,6 +82,7 @@ export class LocalScheduler {
     const steps = [
       () => this.plane.evaluateCronDurable(),
       () => this.plane.enforceAckDeadlinesDurable(),
+      () => this.plane.enforceRunningTimeoutsDurable(),
       () => this.plane.reclaimStaleHostsDurable(),
       () => this.plane.assignQueuedDurable(),
       () => this.plane.assignScheduledQueuedDurable(),
