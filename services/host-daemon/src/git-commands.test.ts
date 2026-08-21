@@ -75,6 +75,27 @@ describe("sanitizeGitDiagnostic", () => {
     expect(failure.message).not.toContain("eyJ.secret.token");
   });
 
+  it("drops an incomplete line when the raw capture boundary splits a credential", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({
+            stream: "stderr",
+            data:
+              "\u001b[31m".repeat(13_100) + "fatal: https://oauth:SUPERSECRET@example.com/repo.git",
+          });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+
+    const failure = gitFailure("git fetch failed", result.stderr);
+    expect(failure.message).toBe("git fetch failed");
+    expect(failure.message).not.toContain("SUPERSECRET");
+  });
+
   it("returns an empty diagnostic when Git emitted no stderr", () => {
     expect(sanitizeGitDiagnostic("\n\t")).toBe("");
   });

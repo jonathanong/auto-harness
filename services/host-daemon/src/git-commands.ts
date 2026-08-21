@@ -14,6 +14,13 @@ function appendBounded(current: string, next: string, maxBytes: number): string 
   return current + truncateUtf8(next, remaining);
 }
 
+function completeCapturedLines(value: string): string {
+  if (Buffer.byteLength(value, "utf8") <= MAX_CAPTURED_GIT_STDERR_BYTES) return value;
+  const prefix = truncateUtf8(value, MAX_CAPTURED_GIT_STDERR_BYTES);
+  const lastLineBreak = Math.max(prefix.lastIndexOf("\n"), prefix.lastIndexOf("\r"));
+  return lastLineBreak < 0 ? "" : prefix.slice(0, lastLineBreak + 1);
+}
+
 function removeTerminalControls(value: string): string {
   const escape = String.fromCharCode(0x1b);
   const bell = String.fromCharCode(0x07);
@@ -106,14 +113,14 @@ export async function runGit(
       if (c.stream === "stdout") {
         stdout += c.data;
       } else {
-        stderr = appendBounded(stderr, c.data, MAX_CAPTURED_GIT_STDERR_BYTES);
+        stderr = appendBounded(stderr, c.data, MAX_CAPTURED_GIT_STDERR_BYTES + 1);
       }
     },
   });
   return {
     exitCode: result.exitCode ?? 1,
     stdout,
-    stderr: sanitizeGitDiagnostic(stderr),
+    stderr: sanitizeGitDiagnostic(completeCapturedLines(stderr)),
   };
 }
 
