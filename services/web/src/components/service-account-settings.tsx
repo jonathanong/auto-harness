@@ -18,7 +18,12 @@ import { ServiceAccountTable } from "./service-account-table.tsx";
 
 type State =
   | { kind: "loading" }
-  | { kind: "ready"; accounts: ServiceAccount[]; repositories: RepositoryOption[] }
+  | {
+      kind: "ready";
+      accounts: ServiceAccount[];
+      repositories: RepositoryOption[];
+      hostIds: string[];
+    }
   | { kind: "forbidden" }
   | { kind: "error"; message: string };
 
@@ -120,7 +125,11 @@ export function ServiceAccountSettings({ canManage }: { canManage: boolean }) {
         <CardTitle>Service accounts</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <ServiceAccountCreateForm repositories={state.repositories} onCreate={create} />
+        <ServiceAccountCreateForm
+          repositories={state.repositories}
+          hostIds={state.hostIds}
+          onCreate={create}
+        />
         <ServiceAccountTable
           accounts={state.accounts}
           repositories={state.repositories}

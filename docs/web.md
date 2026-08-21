@@ -378,6 +378,10 @@ Expandable hierarchy of configured repositories and their worktrees. Each reposi
 Both Add and Edit forms include name, git URL, default branch, and an optional multiline setup
 script.
 
+**Attach a repository to a host** picks the host with a filterable combobox of `GET /hosts` hostIds;
+typed values that are not in that list are rejected (they do not create a new host).
+**Add host** stays a free-text field for a new host id.
+
 ### Repository Detail
 
 Tabs: **Sessions** (default) · **Worktrees** · **Provider accounts** · **Settings**.
@@ -404,7 +408,8 @@ exactly one host, so there's only one block, and the worktree scope wins over it
 The **Add host** form is shown only to an unscoped admin (and in loopback when authentication is
 disabled). Operators run sessions on existing host slots; they do not create them. Submitting the
 form as a non-admin surfaces "Admins create host slots; operators run sessions." instead of a raw
-JSON `FORBIDDEN` body.
+JSON `FORBIDDEN` body. The host id field is free text for a _new_ identity — existing-host pickers
+elsewhere are a filterable combobox of `GET /hosts` hostIds and reject unknown typed values.
 
 The connected-host fleet table shows each host id, online/offline status, attached repository count,
 whether host configuration exists, connection time (relative, full timestamp on hover), worktree
@@ -497,7 +502,8 @@ separate capabilities and are not enabled by this UI.
 ### Service Accounts
 
 - List all service accounts with name, role, allowed repositories, and creation date
-- Create new service account — name, role dropdown (`read-only`, `operator`, `admin`), repository scope
+- Create new service account — name, role dropdown (`read-only`, `operator`, `admin`), optional bound
+  host ID (filterable combobox of `GET /hosts` hostIds; empty means unbound), repository scope
 - API key shown once in a modal after creation with copy button
 - Delete service account with confirmation
 - Rotate by creating an overlapping replacement with identical role/scope, showing its key once,

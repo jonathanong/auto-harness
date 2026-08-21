@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
+import { HostIdCombobox } from "./host-id-combobox.tsx";
 
 type Repo = { id: string; name: string; defaultBranch?: string };
 
@@ -52,6 +53,13 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           });
           return;
         }
+        if (!hostIds.includes(hostId)) {
+          showToast("Select a host from the list", {
+            variant: "destructive",
+            pw: "attach-repo-error",
+          });
+          return;
+        }
         setPending(true);
         void (async () => {
           const result = await attachLocalRepo({ hostId, id, path, defaultBranch });
@@ -75,20 +83,14 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
         <Label htmlFor="hostId" tip="Which host's inventory receives this repository path">
           Host
         </Label>
-        <select
+        <HostIdCombobox
           id="hostId"
           name="hostId"
+          dataPw="attach-repo-agent-id"
+          hostIds={hostIds}
           required
-          data-pw="attach-repo-agent-id"
-          className="flex h-9 w-full rounded-md border border-border bg-background px-3 text-sm"
           defaultValue={hostIds[0]}
-        >
-          {hostIds.map((a) => (
-            <option key={a} value={a}>
-              {a}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       <div className="space-y-1">
         <Label htmlFor="repositoryId" tip="Existing catalog repository to attach to this host">

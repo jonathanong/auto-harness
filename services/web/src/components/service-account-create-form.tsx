@@ -8,12 +8,15 @@ import type {
   ServiceAccountInput,
   ServiceAccountRole,
 } from "./service-account-api.ts";
+import { HostIdCombobox } from "./host-id-combobox.tsx";
 
 export function ServiceAccountCreateForm({
   repositories,
+  hostIds = [],
   onCreate,
 }: {
   repositories: RepositoryOption[];
+  hostIds?: string[];
   onCreate: (input: ServiceAccountInput) => Promise<void>;
 }) {
   const [pending, start] = useTransition();
@@ -27,6 +30,13 @@ export function ServiceAccountCreateForm({
         const data = new FormData(form);
         const allowedRepositoryIds = data.getAll("allowedRepositoryIds").map(String);
         const boundHostId = String(data.get("boundHostId") ?? "").trim();
+        if (boundHostId && !hostIds.includes(boundHostId)) {
+          showToast("Select a host from the list", {
+            variant: "destructive",
+            pw: "service-account-create-error",
+          });
+          return;
+        }
         const input: ServiceAccountInput = {
           name: String(data.get("name") ?? "").trim(),
           role: String(data.get("role") ?? "operator") as ServiceAccountRole,
@@ -68,10 +78,11 @@ export function ServiceAccountCreateForm({
       </div>
       <div className="space-y-1">
         <Label htmlFor="service-account-bound-host">Bound Host ID (Optional)</Label>
-        <Input
+        <HostIdCombobox
           id="service-account-bound-host"
           name="boundHostId"
-          data-pw="service-account-bound-host"
+          dataPw="service-account-bound-host"
+          hostIds={hostIds}
         />
         <p className="text-xs text-muted-foreground">Required for host daemon credentials.</p>
       </div>
