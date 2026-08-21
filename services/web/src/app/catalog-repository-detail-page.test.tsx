@@ -67,6 +67,9 @@ describe("control repository detail route", () => {
       );
       expect(html).toContain('data-pw="page-repository-detail"');
       expect(html).toContain("harness");
+      if (tab === "worktrees") {
+        expect(html).toContain('data-pw="add-worktree-open-r-1"');
+      }
     }
   });
 
@@ -112,6 +115,13 @@ describe("control repository detail route", () => {
       }),
     );
     expect(html).toContain('data-pw="repository-provider-accounts-tab"');
+    html = await renderPage(
+      RepositoryDetailPage({
+        params: Promise.resolve({ id: "r-3" }),
+        searchParams: Promise.resolve({ tab: "worktrees" }),
+      }),
+    );
+    expect(html).toContain('data-pw="add-worktree-need-host-r-3"');
 
     stubApi({
       "/api/v1/repositories/r-4": { id: "r-4", name: "inventory-error", url: "/error" },

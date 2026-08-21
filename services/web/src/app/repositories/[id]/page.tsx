@@ -4,13 +4,14 @@ import {
   RepositoryDetailsCard,
   SessionsTable,
   Tabs,
-  WorktreesHierarchy,
   type RepositorySummary,
   type WorktreeRepoGroup,
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
 
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
+import { RepositoryDetailNotFound } from "../../../components/repository-detail-not-found.tsx";
+import { RepositoryWorktreesTab } from "../../../components/repository-worktrees-tab.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
 import { apiGet } from "../../../lib/api.ts";
@@ -58,19 +59,7 @@ export default async function RepositoryDetailPage({
     /* treated as not found below */
   }
 
-  if (!repository) {
-    return (
-      <div className="space-y-4" data-pw="page-repository-detail-not-found">
-        <Link href="/repositories" className="text-sm text-muted-foreground hover:underline">
-          ← Back to repositories
-        </Link>
-        <p className="text-sm text-muted-foreground">
-          No repository <code className="font-mono">{repositoryId}</code> registered with the
-          control plane.
-        </p>
-      </div>
-    );
-  }
+  if (!repository) return <RepositoryDetailNotFound repositoryId={repositoryId} />;
 
   let worktrees: Wt[] = [];
   try {
@@ -148,11 +137,12 @@ export default async function RepositoryDetailPage({
               key: "worktrees",
               label: "Worktrees",
               content: (
-                <WorktreesHierarchy
-                  groups={[group]}
-                  showHost
-                  hrefBase="/worktrees"
-                  emptyMessage="No worktrees registered for this repository."
+                <RepositoryWorktreesTab
+                  repositoryId={repositoryId}
+                  repositoryName={repository.name ?? repositoryId}
+                  group={group}
+                  attachedHosts={attachedHosts}
+                  hostInventories={hostInventories}
                 />
               ),
             },

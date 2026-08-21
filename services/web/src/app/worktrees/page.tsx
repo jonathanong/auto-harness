@@ -1,5 +1,8 @@
 import { WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
+import type { HostRepository } from "@auto-harness/shared";
 
+import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
+import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
 import { apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +22,9 @@ type Repo = { id: string; name: string };
 export default async function WorktreesPage() {
   let items: Wt[] = [];
   let namesById: Record<string, string> = {};
+  let inventories: Array<{ hostId: string; repositories?: HostRepository[] }> = [];
   let error: string | null = null;
+  let inventoryError: string | null = null;
   try {
     const [wts, repos] = await Promise.all([
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
@@ -29,6 +34,16 @@ export default async function WorktreesPage() {
     namesById = Object.fromEntries((repos.items ?? []).map((r) => [r.id, r.name]));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
+  }
+  try {
+    inventories =
+      (
+        await apiGet<{ items: Array<{ hostId: string; repositories?: HostRepository[] }> }>(
+          "/api/v1/host-inventories",
+        )
+      ).items ?? [];
+  } catch (e) {
+    inventoryError = e instanceof Error ? e.message : String(e);
   }
 
   const groups = groupWorktreesByRepo(
@@ -55,8 +70,8 @@ export default async function WorktreesPage() {
           Worktrees
         </h2>
         <p className="text-sm text-muted-foreground">
-          Fleet worktrees grouped by repository. Edit host paths and add worktrees from a host's
-          detail page (Repositories &amp; Worktrees tab).
+          Fleet worktrees grouped by repository. Add a worktree on a host that already has the
+          repository attached.
         </p>
       </div>
       {error ? <p className="text-sm text-red-700">{error}</p> : null}
@@ -65,6 +80,17 @@ export default async function WorktreesPage() {
         showHost
         hrefBase="/worktrees"
         emptyMessage="No worktrees registered yet."
+        renderRepoActions={(group) =>
+          inventoryError ? (
+            <p className="text-xs text-red-700">Unable to load host inventories.</p>
+          ) : (
+            <AddWorktreeForRepo
+              repositoryId={group.repositoryId}
+              repositoryName={group.repositoryName ?? group.repositoryId}
+              attachments={attachmentsForRepo(inventories, group.repositoryId)}
+            />
+          )
+        }
       />
     </div>
   );

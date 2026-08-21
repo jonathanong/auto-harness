@@ -30,6 +30,10 @@ test.describe("control plane worktrees", () => {
       try {
         await page.goto("/worktrees");
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId(`add-worktree-for-repo-${repoId}`)).toBeVisible();
+        await expect(page.getByTestId(`add-worktree-open-${repoId}`)).toBeVisible();
+        await expect(page.getByTestId(`add-worktree-host-${repoId}`)).toHaveCount(0);
+        await expect(page.getByTestId(`add-worktree-need-host-${repoId}`)).toHaveCount(0);
         await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("echo");
         await page.getByTestId(`worktree-link-${wtId}`).click();
 
@@ -48,6 +52,9 @@ test.describe("control plane worktrees", () => {
         await page.getByTestId("worktree-edit-labels").fill("");
         await page.getByTestId("worktree-edit-submit").click();
         await expect(page.getByTestId("form-edit-worktree")).toBeHidden({ timeout: 15_000 });
+        await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("—", {
+          timeout: 15_000,
+        });
         await page.getByTestId("worktree-edit-open").click();
         await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("");
       } finally {
