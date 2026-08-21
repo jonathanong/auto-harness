@@ -61,14 +61,21 @@ describe("createGitClient main checkout", () => {
     const localFailed = createGitClient({
       async run(options) {
         if (options.argv[1] === "switch") {
+          options.onChunk({
+            stream: "stderr",
+            data: "fatal: https://oauth:secret-token@example.com/repo.git",
+          });
           return { exitCode: 1, timedOut: false, signal: null };
         }
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
-    await expect(localFailed.prepareMainCheckout({ cwd: "/repo", ref: "main" })).rejects.toThrow(
-      /Failed to switch main checkout/,
-    );
+    const localError = await localFailed
+      .prepareMainCheckout({ cwd: "/repo", ref: "main" })
+      .catch((error: unknown) => error);
+    expect(localError).toBeInstanceOf(Error);
+    expect((localError as Error).message).toContain("Failed to switch main checkout");
+    expect((localError as Error).message).not.toContain("secret-token");
   });
 
   it("fetches missing branches and reports fetch or second-switch failures", async () => {
@@ -94,12 +101,19 @@ describe("createGitClient main checkout", () => {
         { match: ["status", "--porcelain"], exitCode: 0 },
         { match: ["show-ref", "--verify", "--quiet", "refs/heads/feature"], exitCode: 1 },
         { match: ["switch", "--", "feature"], exitCode: 1 },
-        { match: ["fetch", "--all", "--tags"], exitCode: 1, stderr: "offline" },
+        {
+          match: ["fetch", "--all", "--tags"],
+          exitCode: 1,
+          stderr: "fatal: https://oauth:secret-token@example.com/repo.git",
+        },
       ]),
     );
-    await expect(fetchFailed.prepareMainCheckout({ cwd: "/repo", ref: "feature" })).rejects.toThrow(
-      /Failed to fetch branch/,
-    );
+    const fetchError = await fetchFailed
+      .prepareMainCheckout({ cwd: "/repo", ref: "feature" })
+      .catch((error: unknown) => error);
+    expect(fetchError).toBeInstanceOf(Error);
+    expect((fetchError as Error).message).toContain("Failed to fetch branch");
+    expect((fetchError as Error).message).not.toContain("secret-token");
   });
 
   it("rejects symbolic HEAD mismatches and failed retries", async () => {
