@@ -179,7 +179,7 @@ curl -sS -X POST http://127.0.0.1:7420/api/v1/sessions \
   }"
 ```
 
-Response `201` includes `id`, `status: "queued"`, `url`, `targetLabel`, `created: true`, and the fields you sent. If the request includes an active matching `concurrencyId`, the API instead returns `200` with the existing session and `created: false`; terminal sessions release the identity for retry. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
+Response `201` includes `id`, `status: "queued"`, `url`, `targetLabels`, `created: true`, and the fields you sent. If the request includes an active matching `concurrencyId`, the API instead returns `200` with the existing session and `created: false`; terminal sessions release the identity for retry. Copy `id` into a session assign JSON as `sessionId`, set `worktreeId` from host inventory, then:
 
 ```bash
 export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
