@@ -21,45 +21,58 @@ function completeCapturedLines(value: string): string {
   return lastLineBreak < 0 ? "" : prefix.slice(0, lastLineBreak + 1);
 }
 
+function skipCsi(value: string, index: number): number {
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    index += 1;
+    if (code >= 0x40 && code <= 0x7e) break;
+  }
+  return index;
+}
+
+function skipControlString(value: string, index: number, allowBell: boolean): number {
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if ((allowBell && code === 0x07) || code === 0x9c) return index + 1;
+    if (code === 0x1b && value.charCodeAt(index + 1) === 0x5c) return index + 2;
+    index += 1;
+  }
+  return index;
+}
+
 function removeTerminalControls(value: string): string {
-  const escape = String.fromCharCode(0x1b);
-  const bell = String.fromCharCode(0x07);
-  const stringTerminator = String.fromCharCode(0x9c);
-  const csi = String.fromCharCode(0x9b);
-  const osc = String.fromCharCode(0x9d);
-  const stringControls = [0x90, 0x9e, 0x9f].map((code) => String.fromCharCode(code)).join("");
-  const withoutEscapeSequences = value
-    // eslint-disable-next-line no-control-regex -- terminal protocols are defined by controls
-    .replace(/\u001b\][\s\S]*?(?:\u0007|\u009c|\u001b\\)/g, "")
-    // eslint-disable-next-line no-control-regex -- terminal protocols are defined by controls
-    .replace(/\u001b[P^_][\s\S]*?(?:\u009c|\u001b\\)/g, "")
-    .replace(new RegExp(`${escape}\\[[0-?]*[ -/]*[@-~]`, "g"), "")
-    .replace(new RegExp(`${csi}[0-?]*[ -/]*[@-~]`, "g"), "")
-    .replace(
-      new RegExp(
-        `${osc}[^${bell}${escape}${stringTerminator}]*(?:${bell}|${stringTerminator}|${escape}\\\\)`,
-        "g",
-      ),
-      "",
-    )
-    .replace(
-      new RegExp(
-        `[${stringControls}][^${escape}${stringTerminator}]*(?:${stringTerminator}|${escape}\\\\)`,
-        "g",
-      ),
-      "",
-    );
-  return [...withoutEscapeSequences]
-    .filter((character) => {
-      const code = character.charCodeAt(0);
-      return (
-        code === 0x09 ||
-        code === 0x0a ||
-        code === 0x0d ||
-        (code >= 0x20 && (code < 0x80 || code > 0x9f))
-      );
-    })
-    .join("");
+  const output: string[] = [];
+  let index = 0;
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    if (code === 0x1b) {
+      const next = value.charCodeAt(index + 1);
+      if (next === 0x5b) index = skipCsi(value, index + 2);
+      else if (next === 0x5d) index = skipControlString(value, index + 2, true);
+      else if (next === 0x50 || next === 0x5e || next === 0x5f) {
+        index = skipControlString(value, index + 2, false);
+      } else index = Math.min(index + 2, value.length);
+      continue;
+    }
+    if (code === 0x9b) {
+      index = skipCsi(value, index + 1);
+      continue;
+    }
+    if (code === 0x9d || code === 0x90 || code === 0x9e || code === 0x9f) {
+      index = skipControlString(value, index + 1, code === 0x9d);
+      continue;
+    }
+    index += 1;
+    if (
+      code === 0x09 ||
+      code === 0x0a ||
+      code === 0x0d ||
+      (code >= 0x20 && (code < 0x80 || code > 0x9f))
+    ) {
+      output.push(String.fromCharCode(code));
+    }
+  }
+  return output.join("");
 }
 
 /**
@@ -72,7 +85,7 @@ export function sanitizeGitDiagnostic(stderr: string): string {
   const withoutTerminalControls = removeTerminalControls(stderr);
   const withoutCredentials = withoutTerminalControls
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
-    .replace(/\b(authorization)(\s*[:=]\s*)(?:(?:Bearer|Basic)\s+)?[^\s,;]+/gi, "$1$2[redacted]")
+    .replace(/\b(authorization)(\s*[:=]\s*)[^\r\n]+/gi, "$1$2[redacted]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
       /(^|[^A-Za-z0-9])(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,

@@ -66,6 +66,19 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).not.toContain("privacy");
   });
 
+  it("redacts complete authorization values for arbitrary schemes", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "fatal\nAuthorization: token totally-secret-value\nretry failed",
+    );
+
+    expect(diagnostic).toBe("fatal Authorization: [redacted] retry failed");
+    expect(diagnostic).not.toContain("totally-secret-value");
+  });
+
+  it("handles many unterminated control-string prefixes in one linear scan", () => {
+    expect(sanitizeGitDiagnostic("\u001b]".repeat(32_000))).toBe("");
+  });
+
   it("redacts credentials containing terminal styling through runGit and gitFailure", async () => {
     const result = await runGit(
       {
