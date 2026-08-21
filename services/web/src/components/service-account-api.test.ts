@@ -30,7 +30,7 @@ describe("service-account API client", () => {
     replies(
       json({ items: [{ id: "service:1", name: "ci", role: "operator", createdAt: "now" }] }),
       json({ items: [{ id: "repo-1", name: "Repo one" }] }),
-      json({ items: [{ hostId: "host-a" }, { hostId: "" }, {}] }),
+      json({ items: [{ hostId: "host-a" }, { hostId: "" }, {}, { hostId: "  " }] }),
       json({}),
       json({}),
       json({}),

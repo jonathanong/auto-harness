@@ -55,7 +55,10 @@ export async function loadServiceAccountData(): Promise<ServiceAccountData> {
     kind: "ready",
     accounts: accountBody.items ?? [],
     repositories: repositoryBody.items ?? [],
-    hostIds: (hostBody.items ?? []).flatMap((item) => (item.hostId ? [item.hostId] : [])),
+    hostIds: (hostBody.items ?? []).flatMap((item) => {
+      const hostId = item.hostId?.trim();
+      return hostId ? [hostId] : [];
+    }),
   };
 }
 

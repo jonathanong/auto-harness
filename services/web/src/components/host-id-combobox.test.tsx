@@ -113,6 +113,21 @@ describe("HostIdCombobox", () => {
     view.unmount();
   });
 
+  it("keeps a pointer selection active when reopening and pressing Enter", () => {
+    const view = mountForm(
+      <HostIdCombobox id="host" name="hostId" dataPw="host-picker" hostIds={hostIds} />,
+    );
+    const input = field<HTMLInputElement>(view.container, "host-picker");
+    act(() => input.focus());
+    const options = [...view.container.querySelectorAll('[role="option"]')];
+    act(() => options[2]!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
+    expect(input.value).toBe("gamma");
+    act(() => input.focus());
+    key(input, "Enter");
+    expect(input.value).toBe("gamma");
+    view.unmount();
+  });
+
   it("restores the default value when the enclosing form resets", () => {
     const view = mountForm(
       <form data-pw="host-form">

@@ -57,6 +57,8 @@ export function HostIdCombobox({
 
   const select = (hostId: string) => {
     setValue(hostId);
+    const index = hostIds.indexOf(hostId);
+    if (index >= 0) setActive(index);
     setFiltering(false);
     setOpen(false);
   };
