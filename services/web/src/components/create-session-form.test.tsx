@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, json, mountForm, router, setValue, submit } from "./form-test-helpers.tsx";
+import { field, json, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
 import { CreateSessionForm } from "./create-session-form.tsx";
 
 const targets = [{ kind: "provider" as const, id: "p/1", label: "Claude" }];
@@ -30,7 +30,7 @@ describe("CreateSessionForm", () => {
     const form = field<HTMLFormElement>(view.container, "form-create-session");
     expect(form.checkValidity()).toBe(false);
     fill(view);
-    field<HTMLInputElement>(view.container, "create-session-label-gpu").click();
+    press(field(view.container, "create-session-label-gpu"));
     expect(form.checkValidity()).toBe(true);
     submit(form);
     await act(async () => Promise.resolve());
@@ -113,7 +113,9 @@ describe("CreateSessionForm", () => {
       />,
     );
     expect(field<HTMLInputElement>(view.container, "create-session-concurrency-id").value).toBe("");
-    expect(field<HTMLInputElement>(view.container, "create-session-label-gpu").checked).toBe(true);
+    expect(field(view.container, "create-session-label-gpu").getAttribute("aria-checked")).toBe(
+      "true",
+    );
     const priority = field<HTMLInputElement>(view.container, "create-session-priority");
     expect(priority.min).toBe("-20");
     expect(priority.max).toBe("100");

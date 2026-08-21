@@ -13,6 +13,7 @@ import {
   Input,
   Label,
   WithTooltip,
+  showToast,
 } from "@auto-harness/ui";
 import type { Provider } from "@auto-harness/shared";
 
@@ -22,7 +23,6 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -43,7 +43,6 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
           data-pw="form-edit-provider"
           onSubmit={(e) => {
             e.preventDefault();
-            setError(null);
             const fd = new FormData(e.currentTarget);
             const name = String(fd.get("name") ?? "").trim();
             start(async () => {
@@ -56,7 +55,10 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
                 },
               );
               if (!res.ok) {
-                setError(await apiErrorMessage(res));
+                showToast(await apiErrorMessage(res), {
+                  variant: "destructive",
+                  pw: "edit-provider-error",
+                });
                 return;
               }
               setOpen(false);
@@ -76,11 +78,6 @@ export function EditProviderForm({ provider }: { provider: Provider }) {
               data-pw="edit-provider-name"
             />
           </div>
-          {error ? (
-            <p className="text-sm text-red-700" data-pw="edit-provider-error">
-              {error}
-            </p>
-          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this provider">
               <Button type="submit" size="sm" disabled={pending} data-pw="edit-provider-submit">

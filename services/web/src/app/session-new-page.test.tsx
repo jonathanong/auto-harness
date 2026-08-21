@@ -85,7 +85,10 @@ describe("new session route", () => {
     expect(html).toContain('value="provider:provider" selected=""');
     expect(html).toContain('value="command:missing-command" selected=""');
     expect(html).toContain("Unavailable command missing-command (unavailable)");
-    expect(html).toContain('checked="" value="source-label"');
+    expect(html).toContain('data-pw="create-session-label-source-label"');
+    expect(html).toContain('aria-checked="true"');
+    expect(html).toContain('value="source-label"');
+    expect(html).toContain('name="requiredLabels"');
     expect(html).toContain('value="50"');
     expect(html).toContain('value="source/ref"');
     expect(html).not.toContain("excluded-concurrency");
