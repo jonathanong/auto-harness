@@ -85,6 +85,32 @@ describe("UserAccountCreateForm", () => {
     });
   });
 
+  it("hides repository scope when the selected role is admin", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const view = mountForm(
+      <UserAccountCreateForm
+        repositories={[{ id: "r-1", name: "Repo one" }]}
+        onCreate={onCreate}
+      />,
+    );
+    expect(
+      view.container.querySelector('input[name="allowedRepositoryIds"][value="r-1"]'),
+    ).toBeInstanceOf(HTMLInputElement);
+    setValue(field<HTMLSelectElement>(view.container, "user-account-role"), "admin");
+    expect(
+      view.container.querySelector('input[name="allowedRepositoryIds"][value="r-1"]'),
+    ).toBeNull();
+    setValue(field<HTMLInputElement>(view.container, "user-account-username"), "alice");
+    setValue(field<HTMLInputElement>(view.container, "user-account-password"), "secret");
+    submit(field(view.container, "form-user-account-create"));
+    await settle();
+    expect(onCreate).toHaveBeenCalledWith({
+      username: "alice",
+      password: "secret",
+      role: "admin",
+    });
+  });
+
   it("keeps safe defaults if malformed markup omits fields", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const view = mountForm(<UserAccountCreateForm onCreate={onCreate} />);

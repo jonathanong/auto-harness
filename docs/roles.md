@@ -44,7 +44,7 @@ UI copy uses the **label**. API, JWT, and DynamoDB store the **id**.
 | `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                           |
 | `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + drain. Not inventory, catalog, or IAM.                                                                    |
 | `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                            |
-| `agent`      | Host daemon | Host daemon API keys                        | Bound WebSocket identity only. The **only** role allowed to set `boundHostId`. Cannot author sessions.                                                                |
+| `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                |
 | `admin`      | Admin       | Platform owners, bootstrap `HARNESS_ADMINS` | Everything, including catalog (arbitrary argv / setup scripts), accounts, Slack, audit, scheduler internals. **Must be unscoped** (no repository list, no host bind). |
 
 Humans should not be given `agent`. Service accounts may use any role; daemons

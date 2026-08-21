@@ -180,13 +180,15 @@ export default async function SchedulesPage({
                   <TableCell colSpan={11} className="text-muted-foreground">
                     <PrimaryEmptyState title="No schedules configured." pw="schedules-empty">
                       <p>Create a recurring task with a repository, target, and cron schedule.</p>
-                      <Link
-                        href="#schedule-create"
-                        className="font-medium text-primary hover:underline"
-                        data-pw="schedules-empty-create"
-                      >
-                        Create one →
-                      </Link>
+                      {canWriteSchedules ? (
+                        <Link
+                          href="#schedule-create"
+                          className="font-medium text-primary hover:underline"
+                          data-pw="schedules-empty-create"
+                        >
+                          Create one →
+                        </Link>
+                      ) : null}
                     </PrimaryEmptyState>
                   </TableCell>
                 </TableRow>

@@ -419,6 +419,10 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("POST", "/api/v1/sessions/s/cancel")).toBe("sessions:write");
     expect(requiredCapability("GET", "/api/v1/sessions")).toBe("authenticated");
     expect(requiredCapability("POST", "/api/v1/unknown")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/scheduler-extra")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/commands-private")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/sessions-old")).toBeNull();
+    expect(requiredCapability("POST", "/api/v1/auth/users-backup")).toBeNull();
     expect(requiredCapability("GET", "/health")).toBe("authenticated");
   });
 

@@ -111,7 +111,7 @@ export function principalHas(principal: AuthzPrincipal, capability: Capability):
 }
 
 export function principalCapabilities(principal: AuthzPrincipal): Capability[] {
-  return [...ROLE_CAPABILITIES[effectiveRole(principal)]];
+  return CAPABILITIES.filter((capability) => principalHas(principal, capability));
 }
 
 /** Rewrite a stored/submitted grant to the named role those axes actually were. */

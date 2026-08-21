@@ -112,8 +112,12 @@ describe("principalHas", () => {
     expect(principalHas(principal("admin"), "catalog:write")).toBe(true);
     expect(principalHas(principal("author"), "sessions:write")).toBe(true);
     expect(principalCapabilities(principal("operator", { boundHostId: "h" }))).toEqual([
-      ...ROLE_CAPABILITIES.agent,
+      "fleet:drain",
     ]);
+    expect(
+      principalCapabilities(principal("agent", { kind: "service-account", boundHostId: "h" })),
+    ).toEqual(["fleet:drain", "agent:protocol"]);
+    expect(principalCapabilities(principal("admin"))).not.toContain("agent:protocol");
   });
 });
 

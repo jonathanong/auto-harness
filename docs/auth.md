@@ -217,7 +217,7 @@ When creating a service account for an agent, the admin specifies the `boundHost
 
 The `boundHostId` is stored on the service account record. On WebSocket connect and `host:register`, the server validates:
 
-1. The API key is valid and has the `agent:protocol` grant (`agent` role, service-account kind, `boundHostId` set)
+1. The API key is valid and has the `agent:protocol` grant (effective `agent` role, service-account kind, `boundHostId` set). Pre-migration bound `operator`/`admin` keys still authenticate: `effectiveRole()` treats them as `agent` at request time, and create/rotate rewrites the stored role to `agent`.
 2. The `hostId` in the `host:register` message matches the `boundHostId` on the service account
 3. No other connection is already registered with the same `hostId`
 

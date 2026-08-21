@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import type { UserRole } from "@auto-harness/shared";
 import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
@@ -16,6 +16,7 @@ export function UserAccountCreateForm({
   onCreate: (input: UserAccountInput) => Promise<void>;
 }) {
   const [pending, start] = useTransition();
+  const [role, setRole] = useState<UserRole>("operator");
   return (
     <form
       className="space-y-4 border-b border-border pb-6"
@@ -29,12 +30,13 @@ export function UserAccountCreateForm({
           username: String(data.get("username") ?? "").trim(),
           password: String(data.get("password") ?? ""),
           role: String(data.get("role") ?? "operator") as UserRole,
-          ...(allowedRepositoryIds.length ? { allowedRepositoryIds } : {}),
+          ...(role !== "admin" && allowedRepositoryIds.length ? { allowedRepositoryIds } : {}),
         };
         start(async () => {
           try {
             await onCreate(input);
             form.reset();
+            setRole("operator");
           } catch (cause) {
             showToast(cause instanceof Error ? cause.message : "Unable to create user account.", {
               variant: "destructive",
@@ -66,9 +68,9 @@ export function UserAccountCreateForm({
             data-pw="user-account-password"
           />
         </div>
-        <RoleSelect id="user-account-role" pw="user-account-role" />
+        <RoleSelect id="user-account-role" pw="user-account-role" onChange={setRole} />
       </div>
-      {repositories.length ? (
+      {repositories.length && role !== "admin" ? (
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Repository scope</legend>
           <p className="text-xs text-muted-foreground">

@@ -4,6 +4,10 @@ import type { Principal } from "./auth.ts";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
+function matchesRoutePrefix(pathname: string, route: string): boolean {
+  return pathname === route || pathname.startsWith(`${route}/`);
+}
+
 /**
  * Map a REST method+path to the capability that may invoke it.
  * `"authenticated"` means any signed-in principal (including read-only).
@@ -16,14 +20,14 @@ export function requiredCapability(
   const write = !SAFE_METHODS.has(method);
   if (pathname === "/api/v1/integrations/slack") return "integrations:write";
   if (
-    pathname.startsWith("/api/v1/auth/users") ||
-    pathname.startsWith("/api/v1/auth/service-accounts")
+    matchesRoutePrefix(pathname, "/api/v1/auth/users") ||
+    matchesRoutePrefix(pathname, "/api/v1/auth/service-accounts")
   ) {
     return "accounts:write";
   }
   if (pathname === "/api/v1/audit-logs") return "audit:read";
   if (pathname === "/api/v1/host/messages") return "agent:protocol";
-  if (pathname.startsWith("/api/v1/scheduler")) return "scheduler:run";
+  if (matchesRoutePrefix(pathname, "/api/v1/scheduler")) return "scheduler:run";
   if (pathname === "/api/v1/hosts/drain") return write ? "fleet:drain" : "authenticated";
   if (
     pathname === "/api/v1/host-inventories" ||
@@ -31,21 +35,21 @@ export function requiredCapability(
   ) {
     return write ? "fleet:inventory" : "authenticated";
   }
-  if (pathname.startsWith("/api/v1/provider-accounts")) {
+  if (matchesRoutePrefix(pathname, "/api/v1/provider-accounts")) {
     return write ? "providers:accounts" : "authenticated";
   }
   if (
-    pathname.startsWith("/api/v1/commands") ||
-    pathname.startsWith("/api/v1/providers") ||
-    pathname.startsWith("/api/v1/repositories")
+    matchesRoutePrefix(pathname, "/api/v1/commands") ||
+    matchesRoutePrefix(pathname, "/api/v1/providers") ||
+    matchesRoutePrefix(pathname, "/api/v1/repositories")
   ) {
     return write ? "catalog:write" : "authenticated";
   }
-  if (pathname === "/api/v1/schedules" || pathname.startsWith("/api/v1/schedules/")) {
+  if (matchesRoutePrefix(pathname, "/api/v1/schedules")) {
     return write ? "schedules:write" : "authenticated";
   }
   if (write && /^\/api\/v1\/sessions\/[^/]+\/archive$/.test(pathname)) return "sessions:archive";
-  if (pathname.startsWith("/api/v1/sessions") && write) return "sessions:write";
+  if (matchesRoutePrefix(pathname, "/api/v1/sessions") && write) return "sessions:write";
   if (!write) return "authenticated";
   if (pathname.startsWith("/api/v1/")) return null;
   return "authenticated";
