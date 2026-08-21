@@ -52,6 +52,9 @@ test.describe("control plane worktrees", () => {
         await page.getByTestId("worktree-edit-labels").fill("");
         await page.getByTestId("worktree-edit-submit").click();
         await expect(page.getByTestId("form-edit-worktree")).toBeHidden({ timeout: 15_000 });
+        await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("—", {
+          timeout: 15_000,
+        });
         await page.getByTestId("worktree-edit-open").click();
         await expect(page.getByTestId("worktree-edit-labels")).toHaveValue("");
       } finally {
