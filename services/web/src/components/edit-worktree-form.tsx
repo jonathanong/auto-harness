@@ -14,6 +14,7 @@ import {
   Input,
   Label,
   WithTooltip,
+  showToast,
 } from "@auto-harness/ui";
 
 export function EditWorktreeForm({
@@ -28,7 +29,6 @@ export function EditWorktreeForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -49,7 +49,6 @@ export function EditWorktreeForm({
           data-pw="form-edit-worktree"
           onSubmit={(e) => {
             e.preventDefault();
-            setError(null);
             const fd = new FormData(e.currentTarget);
             const path = String(fd.get("path") ?? "").trim();
             const labels = String(fd.get("labels") ?? "")
@@ -57,7 +56,10 @@ export function EditWorktreeForm({
               .map((s) => s.trim())
               .filter(Boolean);
             if (!path) {
-              setError("absolute path is required");
+              showToast("absolute path is required", {
+                variant: "destructive",
+                pw: "worktree-edit-error",
+              });
               return;
             }
             start(async () => {
@@ -72,7 +74,7 @@ export function EditWorktreeForm({
                 }),
               );
               if (!r.ok) {
-                setError(r.error);
+                showToast(r.error, { variant: "destructive", pw: "worktree-edit-error" });
                 return;
               }
               setOpen(false);
@@ -103,11 +105,6 @@ export function EditWorktreeForm({
               data-pw="worktree-edit-labels"
             />
           </div>
-          {error ? (
-            <p className="text-sm text-red-700" data-pw="worktree-edit-error">
-              {error}
-            </p>
-          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this worktree">
               <Button type="submit" size="sm" disabled={pending} data-pw="worktree-edit-submit">

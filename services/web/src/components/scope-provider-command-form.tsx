@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, WithTooltip } from "@auto-harness/ui";
+import { Button, WithTooltip, showToast } from "@auto-harness/ui";
 import {
   mutateInventory,
   setScopeProviderCommand,
@@ -29,7 +29,6 @@ export function ScopeProviderCommandForm({
   navigate?: (href: string) => void;
 }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -37,7 +36,6 @@ export function ScopeProviderCommandForm({
       data-pw={`scope-provider-command-form-${providerAccountId}`}
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
         setPending(true);
@@ -47,13 +45,19 @@ export function ScopeProviderCommandForm({
               setScopeProviderCommand(current, scope, providerAccountId, value || undefined),
             );
             if (!r.ok) {
-              setError(r.error);
+              showToast(r.error, {
+                variant: "destructive",
+                pw: `scope-provider-command-error-${providerAccountId}`,
+              });
               return;
             }
             setPending(false);
             navigate(`${location.pathname}${location.search}`);
           } catch (cause) {
-            setError(String(cause));
+            showToast(String(cause), {
+              variant: "destructive",
+              pw: `scope-provider-command-error-${providerAccountId}`,
+            });
           } finally {
             setPending(false);
           }
@@ -73,14 +77,6 @@ export function ScopeProviderCommandForm({
           </option>
         ))}
       </select>
-      {error ? (
-        <p
-          className="text-xs text-red-700"
-          data-pw={`scope-provider-command-error-${providerAccountId}`}
-        >
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Override which command this account runs at this scope">
         <Button
           type="submit"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, WithTooltip } from "@auto-harness/ui";
+import { Button, WithTooltip, showToast } from "@auto-harness/ui";
 import {
   mutateInventory,
   setScopeProviderEnabled,
@@ -28,7 +28,6 @@ export function ScopeProviderEnabledForm({
   navigate?: (href: string) => void;
 }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -36,7 +35,6 @@ export function ScopeProviderEnabledForm({
       data-pw={`scope-provider-enabled-form-${providerAccountId}`}
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("enabled") ?? "");
         const enabled = value === "" ? undefined : value === "true";
@@ -47,13 +45,19 @@ export function ScopeProviderEnabledForm({
               setScopeProviderEnabled(current, scope, providerAccountId, enabled),
             );
             if (!r.ok) {
-              setError(r.error);
+              showToast(r.error, {
+                variant: "destructive",
+                pw: `scope-provider-enabled-error-${providerAccountId}`,
+              });
               return;
             }
             setPending(false);
             navigate(`${location.pathname}${location.search}`);
           } catch (cause) {
-            setError(String(cause));
+            showToast(String(cause), {
+              variant: "destructive",
+              pw: `scope-provider-enabled-error-${providerAccountId}`,
+            });
           } finally {
             setPending(false);
           }
@@ -70,14 +74,6 @@ export function ScopeProviderEnabledForm({
         <option value="true">Enabled</option>
         <option value="false">Disabled</option>
       </select>
-      {error ? (
-        <p
-          className="text-xs text-red-700"
-          data-pw={`scope-provider-enabled-error-${providerAccountId}`}
-        >
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Override this account's enablement at this scope">
         <Button
           type="submit"

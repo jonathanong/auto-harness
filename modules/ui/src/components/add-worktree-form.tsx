@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 import { PathInput } from "./path-input.tsx";
+import { showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
 export function AddWorktreeForm({
@@ -35,7 +36,6 @@ export function AddWorktreeForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [path, setPath] = useState("");
   // Tracks whether the user has typed into the path field directly, independent of its current
@@ -70,11 +70,10 @@ export function AddWorktreeForm({
           data-pw={`form-add-worktree-${repo.id}`}
           onSubmit={(e) => {
             e.preventDefault();
-            setError(null);
             const wtName = name.trim();
             const wtPath = path.trim();
             if (!wtName || !wtPath) {
-              setError("worktree name and absolute path are required");
+              showToast("worktree name and absolute path are required", { variant: "destructive" });
               return;
             }
             const id = newId();
@@ -93,7 +92,7 @@ export function AddWorktreeForm({
                   }),
                 );
                 if (!r.ok) {
-                  setError(r.error);
+                  showToast(r.error, { variant: "destructive" });
                   return;
                 }
                 setOpen(false);
@@ -102,7 +101,9 @@ export function AddWorktreeForm({
                 setPathEdited(false);
                 router.refresh();
               } catch (err) {
-                setError(err instanceof Error ? err.message : String(err));
+                showToast(err instanceof Error ? err.message : String(err), {
+                  variant: "destructive",
+                });
               }
             });
           }}
@@ -159,7 +160,6 @@ export function AddWorktreeForm({
               data-pw={`add-worktree-labels-${repo.id}`}
             />
           </div>
-          {error ? <p className="text-sm text-red-700">{error}</p> : null}
           <div className="flex gap-2">
             <WithTooltip tip="Persist this worktree on host inventory (daemon reloads within ~15s)">
               <Button

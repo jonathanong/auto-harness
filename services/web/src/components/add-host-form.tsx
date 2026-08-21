@@ -4,15 +4,18 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { flushSync } from "react-dom";
 import { emptyHostInventory } from "@auto-harness/shared";
-import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
+
+function showAddHostError(message: string): void {
+  showToast(message, { variant: "destructive", pw: "add-host-error" });
+}
 
 /** Control-plane: seed a host inventory slot (the host's daemon may be offline). */
 export function AddHostForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
   return (
@@ -21,13 +24,12 @@ export function AddHostForm() {
       data-pw="form-add-host"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         setOk(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
         const hostId = String(fd.get("hostId") ?? "").trim();
         if (!hostId) {
-          setError("hostId is required");
+          showAddHostError("hostId is required");
           return;
         }
         setPending(true);
@@ -53,7 +55,7 @@ export function AddHostForm() {
               },
             );
             if (!res.ok) {
-              setError(
+              showAddHostError(
                 res.status === 403
                   ? "Admins create host slots; operators run sessions."
                   : await apiErrorMessage(res),
@@ -75,7 +77,7 @@ export function AddHostForm() {
               withToast(`/hosts/${encodeURIComponent(hostId)}`, `Host slot ${hostId} created.`),
             );
           } catch (reason) {
-            setError(reason instanceof Error ? reason.message : String(reason));
+            showAddHostError(reason instanceof Error ? reason.message : String(reason));
             setPending(false);
           }
         })();
@@ -90,11 +92,6 @@ export function AddHostForm() {
         </Label>
         <Input id="hostId" name="hostId" required placeholder="local-1" data-pw="add-host-id" />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="add-host-error">
-          {error}
-        </p>
-      ) : null}
       {ok ? (
         <p className="text-sm text-emerald-700" data-pw="add-host-ok">
           {ok}
