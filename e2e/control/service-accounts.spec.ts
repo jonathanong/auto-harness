@@ -24,6 +24,7 @@ test.describe("service-account administration", () => {
     await expect(page.getByTestId("service-accounts-card")).toBeVisible();
     await expect(page.getByTestId("service-accounts-empty")).toBeVisible();
     await expect(page.getByTestId("service-account-role")).toHaveValue("operator");
+    await expect(page.getByTestId("service-account-bound-host")).toBeVisible();
     await expect(page.getByTestId("service-account-repository-scope")).toContainText(
       "all repositories",
     );
