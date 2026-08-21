@@ -69,7 +69,7 @@ export function UserAccountCreateForm({
         <RoleSelect id="user-account-role" pw="user-account-role" />
       </div>
       {repositories.length ? (
-        <fieldset className="space-y-2" data-pw="user-account-repository-scope">
+        <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Repository scope</legend>
           <p className="text-xs text-muted-foreground">
             No selection grants access to all repositories. Admin accounts cannot be scoped.
