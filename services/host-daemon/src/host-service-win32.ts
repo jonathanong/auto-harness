@@ -1,7 +1,11 @@
 import { join } from "node:path";
 
 import { renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
-import type { HostServiceContext, HostServiceRunResult } from "./host-service-io.ts";
+import type {
+  HostServiceContext,
+  HostServiceRunResult,
+  HostServiceStatus,
+} from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import {
   WINDOWS_TASK_NAME,
@@ -23,6 +27,19 @@ function windowsPaths(appData: string): { dir: string; envFile: string; cmd: str
 
 function taskAbsent(result: HostServiceRunResult): boolean {
   return /not running|cannot find|does not exist/i.test(`${result.stderr} ${result.stdout}`);
+}
+
+export function statusWin32(ctx: HostServiceContext): HostServiceStatus {
+  const result = ctx.run("schtasks", ["/Query", "/TN", WINDOWS_TASK_NAME, "/FO", "LIST", "/V"]);
+  if (result.status !== 0) {
+    return taskAbsent(result)
+      ? { state: "missing", reason: "scheduled task is not installed" }
+      : { state: "unknown", reason: "schtasks status command failed" };
+  }
+  const status = /^\s*Status:\s*(.+)$/im.exec(result.stdout)?.[1]?.trim().toLowerCase();
+  if (status === "running") return { state: "running", reason: "scheduled task is running" };
+  if (status) return { state: "stopped", reason: "scheduled task is not running" };
+  return { state: "unknown", reason: "schtasks returned an unrecognized state" };
 }
 
 function endWindowsTask(ctx: HostServiceContext): number {

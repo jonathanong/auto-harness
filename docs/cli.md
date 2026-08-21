@@ -46,15 +46,20 @@ Agent process env: `HARNESS_HOST_ID`, `HARNESS_API_URL`, optional `HARNESS_API_K
 
 ### `status`
 
-Bootstraps host inventory from the control plane, then prints `hostId` and
-`repositories` (each with its `worktrees`). It does **not** print attached provider
-accounts — confirmed against a real deployment with a provider account already
-attached to the host; `cli.ts`'s `status` handler only ever reads `config.repositories`.
+The default status is a bounded readiness check with three separately labelled sections:
+local service-manager state, the exact host's control-plane liveness/draining/readiness,
+and configured inventory. It exits `0` only when the service is running and the exact host
+is online, non-draining, and explicitly Git-ready. Missing or legacy readiness data fails
+closed. API keys and service-manager command output are never printed.
 
 ```bash
 export HARNESS_HOST_ID=local-1 HARNESS_API_URL=http://127.0.0.1:7420
 pnpm local:daemon -- status
 ```
+
+Use `status --config-only` for the prior inventory-only JSON (`hostId`, `repositories`,
+and worktrees) and its configuration-only exit behavior. This mode does not query the
+service manager or control-plane host status.
 
 ### `run-session`
 
@@ -97,7 +102,8 @@ pnpm local:daemon uninstall-service
 ```
 
 `status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
-local work above.
+local work above. On a deployed host, run `status` with the same persisted identity used by
+the service; it queries only that `hostId` and sends the API key as an authorization header.
 
 Host install details: [deploy-host-daemon.md](deploy-host-daemon.md).
 

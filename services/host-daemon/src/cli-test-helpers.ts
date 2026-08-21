@@ -47,6 +47,16 @@ export function deps(partial: Partial<RunSessionDeps> = {}): RunSessionDeps & {
     }),
     installService: () => 0,
     uninstallService: () => 0,
+    statusService: () => ({ state: "running", reason: "test service" }),
+    fetchHostStatus: async (identity) => ({
+      reachable: true,
+      hostId: identity.hostId,
+      online: true,
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      draining: false,
+      gitReady: true,
+      reason: "test host",
+    }),
     ...partial,
   };
 }

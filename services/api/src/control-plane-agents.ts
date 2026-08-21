@@ -177,6 +177,7 @@ async function validateRunningSessionsDurable(
 export function listHosts(state: ControlPlaneState): Array<{
   hostId: string;
   online: boolean;
+  draining: boolean;
   connectedAt: string | null;
   lastHeartbeatAt: string | null;
   capabilities: HostCapability[];
@@ -196,6 +197,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     {
       hostId: string;
       online: boolean;
+      draining: boolean;
       connectedAt: string | null;
       lastHeartbeatAt: string | null;
       capabilities: HostCapability[];
@@ -215,6 +217,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     const cur = byHost.get(wt.hostId) ?? {
       hostId: wt.hostId,
       online: false,
+      draining: false,
       connectedAt: null,
       lastHeartbeatAt: null,
       capabilities: [],
@@ -237,6 +240,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     const cur = byHost.get(conn.hostId) ?? {
       hostId: conn.hostId,
       online: true,
+      draining: state.drainingHosts.has(conn.hostId),
       connectedAt: conn.connectedAt,
       lastHeartbeatAt: conn.lastHeartbeatAt,
       capabilities: normalizeHostCapabilities(conn.capabilities),
@@ -249,6 +253,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       lastRestartDetectedAt: null,
     };
     cur.online = true;
+    cur.draining = state.drainingHosts.has(conn.hostId);
     cur.connectedAt = conn.connectedAt;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.capabilities = normalizeHostCapabilities(conn.capabilities);
@@ -262,6 +267,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       byHost.set(host.hostId, {
         hostId: host.hostId,
         online: false,
+        draining: false,
         connectedAt: null,
         lastHeartbeatAt: null,
         capabilities: normalizeHostCapabilities(host.capabilities),
@@ -663,6 +669,7 @@ export function disconnectHost(state: ControlPlaneState, connectionId: string): 
   state.connections.delete(connectionId);
   if (state.hostConnection.get(hostId) === connectionId) {
     state.hostConnection.delete(hostId);
+    state.drainingHosts.delete(hostId);
   }
   state.disconnectedHosts.set(hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });
   return offlineHostAndRequeue(state, hostId, "agent disconnected; requeued");
@@ -704,6 +711,7 @@ export async function disconnectHostDurable(
   state.connections.delete(connectionId);
   if (state.hostConnection.get(conn.hostId) === connectionId) {
     state.hostConnection.delete(conn.hostId);
+    state.drainingHosts.delete(conn.hostId);
   }
   if (!released) return requeued;
   state.disconnectedHosts.set(conn.hostId, { lastHeartbeatAt: conn.lastHeartbeatAt });

@@ -105,6 +105,15 @@ describe("resolveHostService / defaults", () => {
     expect(missing.stderr.length).toBeGreaterThan(0);
   });
 
+  it("bounds service-manager stdout and stderr", () => {
+    const result = defaultHostServiceRun(process.execPath, [
+      "-e",
+      "process.stdout.write('x'.repeat(20000)); process.stderr.write('y'.repeat(20000))",
+    ]);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(8 * 1024);
+    expect(Buffer.byteLength(result.stderr)).toBeLessThanOrEqual(8 * 1024);
+  });
+
   it("nodeHostServiceFs reads and writes a temp file", () => {
     const dir = mkdtempSync(join(tmpdir(), "ah-hs-"));
     const file = join(dir, "f.env");

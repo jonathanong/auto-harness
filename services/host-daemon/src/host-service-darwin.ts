@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { pathFromEnv, renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
-import type { HostServiceContext } from "./host-service-io.ts";
+import type { HostServiceContext, HostServiceStatus } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import { DARWIN_LABEL, renderLaunchAgentPlist } from "./host-service-templates.ts";
 
@@ -23,6 +23,22 @@ function darwinPaths(home: string): {
 
 function launchDomain(uid: number): string {
   return `gui/${uid}`;
+}
+
+export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
+  const result = ctx.run("launchctl", ["print", `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`]);
+  if (result.status !== 0) {
+    const output = `${result.stderr} ${result.stdout}`.toLowerCase();
+    return /could not find|not found|no such service/.test(output)
+      ? { state: "missing", reason: "launch agent is not installed" }
+      : { state: "failed", reason: "launchctl status command failed" };
+  }
+  const state = /^\s*state\s*=\s*(\S+)/m.exec(result.stdout)?.[1]?.toLowerCase();
+  if (state === "running") return { state: "running", reason: "launch agent is running" };
+  if (state === "stopped" || state === "waiting") {
+    return { state: "stopped", reason: `launch agent is ${state}` };
+  }
+  return { state: "unknown", reason: "launchctl returned an unrecognized state" };
 }
 
 export function installDarwin(ctx: HostServiceContext): number {

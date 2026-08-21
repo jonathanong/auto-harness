@@ -28,6 +28,29 @@ export type HostServiceRunResult = {
   stderr: string;
 };
 
+export type HostServiceState = "running" | "stopped" | "failed" | "missing" | "unknown";
+
+export type HostServiceStatus = {
+  state: HostServiceState;
+  reason: string;
+};
+
+/** Keep service-manager output bounded even when a platform command is noisy. */
+export const MAX_HOST_SERVICE_OUTPUT_BYTES = 8 * 1024;
+
+function boundedOutput(value: string): string {
+  if (Buffer.byteLength(value, "utf8") <= MAX_HOST_SERVICE_OUTPUT_BYTES) return value;
+  let output = "";
+  let bytes = 0;
+  for (const character of value) {
+    const size = Buffer.byteLength(character, "utf8");
+    if (bytes + size > MAX_HOST_SERVICE_OUTPUT_BYTES) break;
+    output += character;
+    bytes += size;
+  }
+  return output;
+}
+
 export type HostServiceRun = (command: string, args: string[]) => HostServiceRunResult;
 
 export type HostServiceOpts = {
@@ -111,8 +134,8 @@ export function defaultHostServiceRun(command: string, args: string[]): HostServ
   }
   return {
     status: spawnStatus(result.status),
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: boundedOutput(result.stdout),
+    stderr: boundedOutput(result.stderr),
   };
 }
 
