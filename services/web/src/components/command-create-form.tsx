@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Textarea,
+  WithTooltip,
+  showToast,
+  withToast,
+} from "@auto-harness/ui";
 import type { Provider } from "@auto-harness/shared";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
@@ -22,7 +30,6 @@ export function CommandCreateForm({
   navigate?: (href: string) => void;
 }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -30,7 +37,6 @@ export function CommandCreateForm({
       data-pw="form-command-catalog"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
         const name = String(fd.get("name") ?? "").trim();
@@ -49,7 +55,10 @@ export function CommandCreateForm({
             body: JSON.stringify({ name, argv, appendPrompt, appendPromptSeparator, providerId }),
           });
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "command-catalog-error",
+            });
             setPending(false);
             return;
           }
@@ -133,11 +142,6 @@ export function CommandCreateForm({
           </select>
         </div>
       )}
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="command-catalog-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Register a command in the control-plane catalog">
         <Button type="submit" disabled={pending} data-pw="command-catalog-submit">
           {pending ? "Saving…" : "Create command"}

@@ -15,13 +15,13 @@ import {
   Label,
   Textarea,
   WithTooltip,
+  showToast,
 } from "@auto-harness/ui";
 
 export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: HostRepository }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -42,14 +42,16 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
           data-pw={`form-repo-settings-${repo.id}`}
           onSubmit={(e) => {
             e.preventDefault();
-            setError(null);
             const fd = new FormData(e.currentTarget);
             const path = String(fd.get("path") ?? "").trim();
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
             if (!path) {
-              setError("absolute path is required");
+              showToast("absolute path is required", {
+                variant: "destructive",
+                pw: `repo-settings-error-${repo.id}`,
+              });
               return;
             }
             start(async () => {
@@ -65,7 +67,10 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
                 }),
               );
               if (!r.ok) {
-                setError(r.error);
+                showToast(r.error, {
+                  variant: "destructive",
+                  pw: `repo-settings-error-${repo.id}`,
+                });
                 return;
               }
               setOpen(false);
@@ -128,11 +133,6 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               data-pw={`repo-settings-hook-${repo.id}`}
             />
           </div>
-          {error ? (
-            <p className="text-sm text-red-700" data-pw={`repo-settings-error-${repo.id}`}>
-              {error}
-            </p>
-          ) : null}
           <div className="flex gap-2">
             <WithTooltip tip="Save changes to this host's repository attachment">
               <Button

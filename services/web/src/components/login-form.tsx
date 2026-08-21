@@ -1,8 +1,17 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "@auto-harness/ui";
+import { useTransition } from "react";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Input,
+  Label,
+  showToast,
+} from "@auto-harness/ui";
 
 import { navigateAfterLogin } from "../lib/auth-session.ts";
 import { apiFetch } from "../lib/client-api.ts";
@@ -10,7 +19,6 @@ import { apiFetch } from "../lib/client-api.ts";
 export function LoginForm() {
   const searchParams = useSearchParams();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <Card className="mx-auto w-full max-w-md" data-pw="login-card">
@@ -23,7 +31,6 @@ export function LoginForm() {
           data-pw="form-login"
           onSubmit={(event) => {
             event.preventDefault();
-            setError(null);
             const form = new FormData(event.currentTarget);
             const username = String(form.get("username") ?? "");
             const password = String(form.get("password") ?? "");
@@ -38,7 +45,10 @@ export function LoginForm() {
                 { redirectOnUnauthorized: false },
               );
               if (!response.ok) {
-                setError("Invalid username or password.");
+                showToast("Invalid username or password.", {
+                  variant: "destructive",
+                  pw: "login-error",
+                });
                 return;
               }
               navigateAfterLogin(searchParams.get("returnTo"));
@@ -66,11 +76,6 @@ export function LoginForm() {
               data-pw="login-password"
             />
           </div>
-          {error ? (
-            <p className="text-sm text-red-700" data-pw="login-error">
-              {error}
-            </p>
-          ) : null}
           <Button type="submit" disabled={pending} data-pw="login-submit">
             {pending ? "Signing in…" : "Sign in"}
           </Button>

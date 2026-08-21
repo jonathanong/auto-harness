@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Label, WithTooltip } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Label, WithTooltip, showToast } from "@auto-harness/ui";
 import { attachProviderAccountToHost, mutateInventory } from "@auto-harness/shared";
 
 export function AttachProviderAccountToHostForm({
@@ -15,7 +15,6 @@ export function AttachProviderAccountToHostForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   if (availableAccounts.length === 0) {
     return (
@@ -31,7 +30,6 @@ export function AttachProviderAccountToHostForm({
       data-pw="form-attach-provider-account"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const providerAccountId = String(fd.get("providerAccountId") ?? "");
         start(async () => {
@@ -39,7 +37,7 @@ export function AttachProviderAccountToHostForm({
             attachProviderAccountToHost(current, { providerAccountId }),
           );
           if (!r.ok) {
-            setError(r.error);
+            showToast(r.error, { variant: "destructive", pw: "attach-provider-account-error" });
             return;
           }
           router.refresh();
@@ -67,11 +65,6 @@ export function AttachProviderAccountToHostForm({
           ))}
         </select>
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="attach-provider-account-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Attach this provider account to the host">
         <Button type="submit" size="sm" disabled={pending} data-pw="attach-provider-account-submit">
           {pending ? "Saving…" : "Attach"}

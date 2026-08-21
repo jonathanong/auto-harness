@@ -2,7 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
-import { Button, Input, Label, Textarea, WithTooltip, withToast } from "@auto-harness/ui";
+import {
+  Button,
+  Input,
+  Label,
+  Textarea,
+  WithTooltip,
+  showToast,
+  withToast,
+} from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
@@ -21,7 +29,6 @@ import {
 export function ProviderCreateForm() {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [commandName, setCommandName] = useState("");
   const [argvText, setArgvText] = useState("");
   const [appendPrompt, setAppendPrompt] = useState(true);
@@ -46,7 +53,6 @@ export function ProviderCreateForm() {
       data-pw="form-provider-catalog"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const name = String(fd.get("name") ?? "").trim();
         const argv = String(fd.get("argv") ?? "")
@@ -61,7 +67,10 @@ export function ProviderCreateForm() {
             body: JSON.stringify({ name }),
           });
           if (!providerRes.ok) {
-            setError(await apiErrorMessage(providerRes));
+            showToast(await apiErrorMessage(providerRes), {
+              variant: "destructive",
+              pw: "provider-catalog-error",
+            });
             return;
           }
           const provider = (await providerRes.json()) as { id: string };
@@ -78,8 +87,9 @@ export function ProviderCreateForm() {
             }),
           });
           if (!commandRes.ok) {
-            setError(
+            showToast(
               `provider "${name}" created, but its default command failed: ${await apiErrorMessage(commandRes)}`,
+              { variant: "destructive", pw: "provider-catalog-error" },
             );
             return;
           }
@@ -94,8 +104,9 @@ export function ProviderCreateForm() {
             },
           );
           if (!linkRes.ok) {
-            setError(
+            showToast(
               `provider "${name}" and command "${submittedCommandName}" created, but linking the default failed: ${await apiErrorMessage(linkRes)}`,
+              { variant: "destructive", pw: "provider-catalog-error" },
             );
             return;
           }
@@ -176,11 +187,6 @@ export function ProviderCreateForm() {
         Insert -- Before the Prompt (On by Default; Grok&apos;s -p Takes the Prompt as Its Value —
         Leave This Off for Grok)
       </label>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="provider-catalog-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Register a provider and its default command together">
         <Button type="submit" disabled={pending} data-pw="provider-catalog-submit">
           {pending ? "Saving…" : "Create provider"}

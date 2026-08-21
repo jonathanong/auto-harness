@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import { decodeSessionRoutingFormData, type SessionTarget } from "../session-target.ts";
@@ -25,7 +25,6 @@ export function CreateSessionForm({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -33,7 +32,6 @@ export function CreateSessionForm({
       data-pw="form-create-session"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
         const body = {
@@ -57,7 +55,10 @@ export function CreateSessionForm({
             body: JSON.stringify(body),
           });
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "create-session-error",
+            });
             setPending(false);
             return;
           }
@@ -128,11 +129,6 @@ export function CreateSessionForm({
       </div>
       <SessionPromptField initialValue={initialValues?.prompt} />
       <SessionCreateDetailFields initialValues={initialValues} />
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="create-session-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip
         tip={
           repositories.length === 0

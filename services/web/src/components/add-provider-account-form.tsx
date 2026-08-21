@@ -1,15 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Input, Label, WithTooltip } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Input, Label, WithTooltip, showToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 
 export function AddProviderAccountForm({ providerId }: { providerId: string }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -17,7 +16,6 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
       data-pw="form-add-provider-account"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const form = e.currentTarget;
         const fd = new FormData(form);
         const label = String(fd.get("label") ?? "").trim();
@@ -29,7 +27,10 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
             body: JSON.stringify({ providerId, label, usageLimitCooldownSeconds }),
           });
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "provider-account-error",
+            });
             return;
           }
           form.reset();
@@ -68,11 +69,6 @@ export function AddProviderAccountForm({ providerId }: { providerId: string }) {
           Pause this account on usage_limit (default 18000s / 5 hours). Not a general retry.
         </p>
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="provider-account-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Add an account of this provider to the catalog">
         <Button type="submit" size="sm" disabled={pending} data-pw="provider-account-submit">
           {pending ? "Saving…" : "Add account"}
