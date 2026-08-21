@@ -40,6 +40,16 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).toContain("[diagnostic truncated]");
   });
 
+  it("removes complete 8-bit C1 escape sequences and standalone C1 controls", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "fatal: \u009b31mcheckout\u009b0m \u009d0;window title\u0007" +
+        "\u0090device-control\u009c\u009eprivacy\u001b\\\u009fapplication\u009c\u0084failed",
+    );
+
+    expect(diagnostic).toBe("fatal: checkout failed");
+    expect(diagnostic).not.toMatch(/[\u0080-\u009f]/);
+  });
+
   it("returns an empty diagnostic when Git emitted no stderr", () => {
     expect(sanitizeGitDiagnostic("\n\t")).toBe("");
   });

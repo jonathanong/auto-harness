@@ -15,14 +15,38 @@ function appendBounded(current: string, next: string, maxBytes: number): string 
 }
 
 function removeTerminalControls(value: string): string {
-  const withoutAnsi = value.replace(
-    new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g"),
-    "",
-  );
-  return [...withoutAnsi]
+  const escape = String.fromCharCode(0x1b);
+  const bell = String.fromCharCode(0x07);
+  const stringTerminator = String.fromCharCode(0x9c);
+  const csi = String.fromCharCode(0x9b);
+  const osc = String.fromCharCode(0x9d);
+  const stringControls = [0x90, 0x9e, 0x9f].map((code) => String.fromCharCode(code)).join("");
+  const withoutEscapeSequences = value
+    .replace(new RegExp(`${escape}\\[[0-?]*[ -/]*[@-~]`, "g"), "")
+    .replace(new RegExp(`${csi}[0-?]*[ -/]*[@-~]`, "g"), "")
+    .replace(
+      new RegExp(
+        `${osc}[^${bell}${escape}${stringTerminator}]*(?:${bell}|${stringTerminator}|${escape}\\\\)`,
+        "g",
+      ),
+      "",
+    )
+    .replace(
+      new RegExp(
+        `[${stringControls}][^${escape}${stringTerminator}]*(?:${stringTerminator}|${escape}\\\\)`,
+        "g",
+      ),
+      "",
+    );
+  return [...withoutEscapeSequences]
     .filter((character) => {
       const code = character.charCodeAt(0);
-      return code === 0x09 || code === 0x0a || code === 0x0d || code >= 0x20;
+      return (
+        code === 0x09 ||
+        code === 0x0a ||
+        code === 0x0d ||
+        (code >= 0x20 && (code < 0x80 || code > 0x9f))
+      );
     })
     .join("");
 }
