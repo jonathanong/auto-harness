@@ -107,17 +107,17 @@ async function commitDurableTimeout(
       hostId: session.hostId,
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
-      attemptId: session.attemptId,
       status: "timed_out",
       queueShard: session.queueShard,
       completedAt,
       reason: TIMEOUT_ERROR,
+      ...(session.attemptId !== undefined ? { attemptId: session.attemptId } : {}),
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
     });
   }
   return storage.finishSession({
     sessionId: session.id,
-    worktreeId: session.worktreeId,
+    worktreeId: session.worktreeId ?? null,
     attemptId: session.attemptId!,
     status: "timed_out",
     queueShard: session.queueShard,

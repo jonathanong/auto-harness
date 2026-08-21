@@ -14,7 +14,6 @@ export function startAcknowledgedRunning(plane: ControlPlane): {
   plane.registerHost({
     hostId: "host",
     worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/wt", labels: [] }],
-    commandProfiles: [],
   });
   const created = plane.createSession(baseSessionBody({ timeout: RUNNING_TIMEOUT_SECONDS }));
   expect(created.ok).toBe(true);

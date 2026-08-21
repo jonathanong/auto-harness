@@ -47,7 +47,6 @@ describe("running timeout residual coverage", () => {
     plane.registerHost({
       hostId: "host",
       worktrees: [{ id: "wt", name: "wt", repositoryId: "repo-1", path: "/wt", labels: [] }],
-      commandProfiles: [],
     });
     const queued = plane.createSession(baseSessionBody({ timeout: 1 }));
     expect(queued.ok).toBe(true);
