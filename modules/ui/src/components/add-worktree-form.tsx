@@ -42,7 +42,7 @@ export function AddWorktreeForm({
   // value — comparing the value against a freshly computed suggestion isn't reliable, since a
   // custom path can coincidentally match what the suggestion would be for the current name.
   const [pathEdited, setPathEdited] = useState(false);
-  const [labels, setLabels] = useState("echo");
+  const [labels, setLabels] = useState("");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -151,7 +151,7 @@ export function AddWorktreeForm({
             />
           </div>
           <div className="space-y-1">
-            <Label tip="Scheduler labels (e.g. echo) used when matching work to worktrees">
+            <Label tip="Optional scheduler labels that must match a session's required labels. Leave empty to accept only sessions with no required labels.">
               Labels (Comma-Separated)
             </Label>
             <Input
