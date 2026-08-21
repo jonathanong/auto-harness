@@ -85,6 +85,7 @@ test.describe("host pane sessions", () => {
                       },
                     ],
                     commandProfiles: [],
+                    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
                   }),
                 );
               });

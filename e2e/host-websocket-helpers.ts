@@ -22,6 +22,7 @@ export async function registerObservedHost(
           daemonStartedAt,
           worktrees: [],
           commandProfiles: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
       ),
     );
