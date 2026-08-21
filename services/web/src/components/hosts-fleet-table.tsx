@@ -72,9 +72,7 @@ export function HostsFleetTable({
               <TableCell>
                 <OnlineStatusBadge online={h.online} pw={`host-online-${h.hostId}`} />
               </TableCell>
-              <TableCell data-pw={`host-git-ready-${h.hostId}`}>
-                {h.gitReady ? "Ready" : "Not ready"}
-              </TableCell>
+              <TableCell>{h.gitReady ? "Ready" : "Not ready"}</TableCell>
               <TableCell className="text-xs">{repoCount}</TableCell>
               <TableCell>{inventory ? "yes" : "no"}</TableCell>
               <TableCell

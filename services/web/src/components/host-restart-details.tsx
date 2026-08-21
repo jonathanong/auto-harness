@@ -41,11 +41,9 @@ export function HostRestartDetails({
           <RelativeTime value={lastRestartDetectedAt} pw={`host-last-restart-${hostId}`} />
         </div>
       ) : null}
-      <div className="mt-2" data-pw={`host-daemon-version-${hostId}`}>
-        Daemon: {daemonVersion ?? "legacy/unknown"}
-      </div>
-      <div data-pw={`host-git-version-${hostId}`}>Git: {gitVersion ?? "unknown"}</div>
-      <div data-pw={`host-git-readiness-${hostId}`}>
+      <div className="mt-2">Daemon: {daemonVersion ?? "legacy/unknown"}</div>
+      <div>Git: {gitVersion ?? "unknown"}</div>
+      <div>
         {gitReady ? "Git checkout recovery ready" : gitReadinessMessage(gitReadinessReason)}
       </div>
     </div>
