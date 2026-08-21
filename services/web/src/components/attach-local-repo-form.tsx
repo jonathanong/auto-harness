@@ -54,7 +54,10 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           return;
         }
         if (!hostIds.includes(hostId)) {
-          setError("Select a host from the list");
+          showToast("Select a host from the list", {
+            variant: "destructive",
+            pw: "attach-repo-error",
+          });
           return;
         }
         setPending(true);
