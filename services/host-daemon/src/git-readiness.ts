@@ -3,7 +3,7 @@ import daemonPackage from "../package.json" with { type: "json" };
 
 import type { ProcessRunner } from "./executor.ts";
 
-export const DAEMON_VERSION = daemonPackage.version;
+const DAEMON_VERSION = daemonPackage.version;
 const MIN_GIT_MAJOR = 2;
 const MIN_GIT_MINOR = 36;
 
