@@ -11,6 +11,7 @@ import {
   json,
   mountForm,
   press,
+  router,
   setValue,
   submit,
 } from "./form-test-helpers.tsx";
@@ -63,5 +64,6 @@ describe("auth forms", () => {
     const view = mountForm(<LogoutButton />);
     press(field(view.container, "logout"));
     await settle();
+    expect(router.replace).toHaveBeenCalledWith("/login");
   });
 });
