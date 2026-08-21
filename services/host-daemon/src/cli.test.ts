@@ -129,6 +129,57 @@ describe("runCli", () => {
     expect(a.errors.join("\n")).not.toContain("secret-token");
   });
 
+  it("fails safely when config loading fails", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("inventory request failed");
+      },
+      statusService: () => ({ state: "unknown", reason: "not available" }),
+      fetchHostStatus: async (identity) => ({
+        reachable: false,
+        hostId: identity.hostId,
+        online: null,
+        connectedAt: null,
+        draining: null,
+        gitReady: null,
+        reason: "control plane is unreachable",
+      }),
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(JSON.parse(a.logs[0] ?? "").inventory).toBeNull();
+    expect(a.errors).toEqual([]);
+  });
+
+  it("reports a safe error when config-only loading fails", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("secret-token inventory failure");
+      },
+    });
+    expect(await runCli(["node", "x", "status", "--config-only"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["Cannot load daemon configuration"]);
+    expect(a.errors.join("\n")).not.toContain("secret-token");
+  });
+
+  it("rejects an unexpectedly empty config in config-only mode", async () => {
+    const a = deps({ loadConfig: async () => undefined as never });
+    expect(await runCli(["node", "x", "status", "--config-only"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["Cannot load daemon configuration"]);
+  });
+
+  it("maps a thrown service-manager status to unknown", async () => {
+    const a = deps({
+      statusService: () => {
+        throw new Error("raw service-manager output");
+      },
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(JSON.parse(a.logs[0] ?? "").service).toEqual({
+      state: "unknown",
+      reason: "service status could not be determined",
+    });
+  });
+
   it("run-session requires --file and completes", async () => {
     const missing = deps();
     expect(await runCli(["node", "x", "run-session"], {}, missing)).toBe(1);

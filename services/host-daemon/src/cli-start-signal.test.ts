@@ -93,6 +93,16 @@ function minimalDeps(overrides: Partial<RunSessionDeps>): RunSessionDeps {
     runSession: async () => ({ status: "completed", exitCode: 0, logs: [] }),
     installService: () => 0,
     uninstallService: () => 0,
+    statusService: () => ({ state: "unknown", reason: "not used by start" }),
+    fetchHostStatus: async () => ({
+      reachable: false,
+      hostId: "unused",
+      online: null,
+      connectedAt: null,
+      draining: null,
+      gitReady: null,
+      reason: "not used by start",
+    }),
     ...overrides,
   };
 }

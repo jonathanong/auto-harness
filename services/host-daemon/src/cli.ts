@@ -72,8 +72,8 @@ export type RunSessionDeps = {
   process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
   installService: (opts: HostServiceOpts) => number;
   uninstallService: (opts: HostServiceOpts) => number;
-  statusService?: (opts: HostServiceOpts) => HostServiceStatus;
-  fetchHostStatus?: (identity: HostIdentity) => Promise<ControlPlaneHostStatus>;
+  statusService: (opts: HostServiceOpts) => HostServiceStatus;
+  fetchHostStatus: (identity: HostIdentity) => Promise<ControlPlaneHostStatus>;
 };
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
@@ -195,7 +195,7 @@ export async function runCli(
     const identity = statusIdentity(config, resolvedEnv);
     let service: HostServiceStatus;
     try {
-      service = (deps.statusService ?? getHostServiceStatus)({
+      service = deps.statusService({
         env: resolvedEnv,
         log: () => undefined,
         error: () => undefined,
@@ -205,7 +205,7 @@ export async function runCli(
     }
     let host: ControlPlaneHostStatus;
     try {
-      host = await (deps.fetchHostStatus ?? fetchControlPlaneHostStatus)(identity);
+      host = await deps.fetchHostStatus(identity);
     } catch {
       host = {
         reachable: false,
