@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
 import type { UserAccountInput, UserAccountRole } from "./user-account-api.ts";
 
@@ -11,7 +11,6 @@ export function UserAccountCreateForm({
   onCreate: (input: UserAccountInput) => Promise<void>;
 }) {
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   return (
     <form
       className="space-y-4 border-b border-border pb-6"
@@ -25,13 +24,15 @@ export function UserAccountCreateForm({
           password: String(data.get("password") ?? ""),
           role: String(data.get("role") ?? "operator") as UserAccountRole,
         };
-        setError(null);
         start(async () => {
           try {
             await onCreate(input);
             form.reset();
           } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "Unable to create user account.");
+            showToast(cause instanceof Error ? cause.message : "Unable to create user account.", {
+              variant: "destructive",
+              pw: "user-account-create-error",
+            });
           }
         });
       }}
@@ -77,11 +78,6 @@ export function UserAccountCreateForm({
         Passwords are sent only when the account is created. Users can change their own password
         after signing in.
       </p>
-      {error ? (
-        <p className="text-sm text-red-700" role="alert" data-pw="user-account-create-error">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" disabled={pending} data-pw="user-account-create-submit">
         {pending ? "Creating…" : "Create user account"}
       </Button>

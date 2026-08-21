@@ -1,8 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AppShell, cn, type NavGroup, ThemeToggle, WithTooltip } from "@auto-harness/ui";
+import { AppShell, cn, type NavGroup, ThemeToggle, Toast, WithTooltip } from "@auto-harness/ui";
 
 import { LogoutButton } from "./logout-button.tsx";
 import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
@@ -135,7 +136,16 @@ export function ControlShell({
   authRequired?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login") {
+    return (
+      <>
+        {children}
+        <Suspense fallback={null}>
+          <Toast />
+        </Suspense>
+      </>
+    );
+  }
   const newSessionActive = pathname === "/sessions/new" || pathname.startsWith("/sessions/new/");
   return (
     <AppShell

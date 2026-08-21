@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, WithTooltip } from "@auto-harness/ui";
+import { Button, WithTooltip, showToast } from "@auto-harness/ui";
 import { mutateInventory, setHostProviderAccountCommand } from "@auto-harness/shared";
 import type { Command } from "@auto-harness/shared";
 
@@ -22,7 +22,6 @@ export function HostProviderAccountCommandForm({
   navigate?: (href: string) => void;
 }) {
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -30,7 +29,6 @@ export function HostProviderAccountCommandForm({
       data-pw={`host-provider-account-command-form-${providerAccountId}`}
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const value = String(fd.get("commandId") ?? "");
         setPending(true);
@@ -40,13 +38,19 @@ export function HostProviderAccountCommandForm({
               setHostProviderAccountCommand(current, providerAccountId, value || undefined),
             );
             if (!r.ok) {
-              setError(r.error);
+              showToast(r.error, {
+                variant: "destructive",
+                pw: `host-provider-account-command-error-${providerAccountId}`,
+              });
               return;
             }
             setPending(false);
             navigate(`${location.pathname}${location.search}`);
           } catch (cause) {
-            setError(String(cause));
+            showToast(String(cause), {
+              variant: "destructive",
+              pw: `host-provider-account-command-error-${providerAccountId}`,
+            });
           } finally {
             setPending(false);
           }
@@ -66,14 +70,6 @@ export function HostProviderAccountCommandForm({
           </option>
         ))}
       </select>
-      {error ? (
-        <p
-          className="text-xs text-red-700"
-          data-pw={`host-provider-account-command-error-${providerAccountId}`}
-        >
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Override which command this account runs on this host">
         <Button
           type="submit"

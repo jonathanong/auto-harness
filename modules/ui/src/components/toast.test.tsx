@@ -12,7 +12,7 @@ import {
 } from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RetryToast, Toast, withToast } from "./toast.tsx";
+import { RetryToast, Toast, dismissToast, showToast, withToast } from "./toast.tsx";
 
 const router = {
   back: vi.fn(),
@@ -59,6 +59,7 @@ afterEach(() => {
   navigation.searchParams = new URLSearchParams();
   router.replace.mockReset();
   history.replaceState(null, "", "/");
+  dismissToast();
   vi.useRealTimers();
 });
 
@@ -84,6 +85,47 @@ describe("shared Toast", () => {
     expect(withToast("/sessions?toast=Old&filter=active", "Done")).toBe(
       "/sessions?toast=Done&filter=active",
     );
+    view.unmount();
+  });
+
+  it("shows client toasts, prefers a later URL toast, and auto-hides", async () => {
+    vi.useFakeTimers();
+    const view = mount(withNavigation(<Toast />));
+    act(() => showToast(""));
+    expect(view.container.querySelector('[role="status"]')).toBeNull();
+    act(() => showToast("Saved", { variant: "default" }));
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    expect(view.container.querySelector('[data-pw="toast"]')).toBeTruthy();
+    act(() => showToast("cannot create", { variant: "destructive", pw: "add-host-error" }));
+    const alert = view.container.querySelector('[data-pw="add-host-error"]');
+    expect(alert?.getAttribute("role")).toBe("alert");
+    expect(alert?.textContent).toBe("cannot create");
+    expect(alert?.className).toContain("bg-destructive");
+
+    navigation.searchParams = new URLSearchParams("toast=Host+created");
+    view.rerender(withNavigation(<Toast />));
+    await act(async () => Promise.resolve());
+    expect(view.container.querySelector('[data-pw="add-host-error"]')).toBeNull();
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Host created");
+
+    act(() => showToast("network unreachable", { variant: "destructive" }));
+    expect(view.container.querySelector('[role="alert"]')?.textContent).toBe("network unreachable");
+    await act(async () => vi.advanceTimersByTimeAsync(4000));
+    expect(view.container.querySelector('[role="alert"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("restarts the hide timer when the same client toast is shown again", async () => {
+    vi.useFakeTimers();
+    const view = mount(withNavigation(<Toast />));
+    act(() => showToast("Saved"));
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    act(() => showToast("Saved"));
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(view.container.querySelector('[role="status"]')?.textContent).toBe("Saved");
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(view.container.querySelector('[role="status"]')).toBeNull();
     view.unmount();
   });
 

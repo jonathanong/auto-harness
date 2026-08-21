@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { Button, Input, Label, dismissToast, showToast } from "@auto-harness/ui";
+import { apiErrorMessage } from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
 
 export function ChangePasswordForm() {
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   return (
@@ -16,7 +16,7 @@ export function ChangePasswordForm() {
       data-pw="form-change-password"
       onSubmit={(event) => {
         event.preventDefault();
-        setError(null);
+        dismissToast();
         setSuccess(false);
         const formElement = event.currentTarget;
         const form = new FormData(formElement);
@@ -33,13 +33,14 @@ export function ChangePasswordForm() {
             { redirectOnUnauthorized: false },
           );
           if (!response.ok) {
-            const payload = (await response.json().catch(() => null)) as {
-              error?: { message?: string };
-            } | null;
-            setError(payload?.error?.message ?? "Unable to change password.");
+            showToast(await apiErrorMessage(response), {
+              variant: "destructive",
+              pw: "change-password-error",
+            });
             return;
           }
           formElement.reset();
+          dismissToast();
           setSuccess(true);
         });
       }}
@@ -66,11 +67,6 @@ export function ChangePasswordForm() {
           data-pw="change-password-new"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="change-password-error">
-          {error}
-        </p>
-      ) : null}
       {success ? (
         <p className="text-sm text-emerald-700" data-pw="change-password-ok">
           Password changed.
