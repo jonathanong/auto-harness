@@ -2,12 +2,10 @@ import { principalHas } from "@auto-harness/shared";
 
 import { loadPrincipal, type MePrincipal } from "../../lib/principal.ts";
 
-export type SettingsPrincipal = MePrincipal;
-
-export async function loadSettingsPrincipal(): Promise<SettingsPrincipal | undefined> {
+export async function loadSettingsPrincipal(): Promise<MePrincipal | undefined> {
   return loadPrincipal();
 }
 
-export function canManageAccounts(principal: SettingsPrincipal): boolean {
+export function canManageAccounts(principal: MePrincipal): boolean {
   return principalHas(principal, "accounts:write");
 }
