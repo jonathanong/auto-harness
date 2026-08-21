@@ -43,6 +43,7 @@ test.describe("control plane required authentication", () => {
 
       await page.getByTestId("nav-group-settings").click();
       await page.getByTestId("nav-settings").click();
+      await expect(page).toHaveURL(/\/settings\/account/);
       await expect(page.getByTestId("page-settings")).toBeVisible();
       await expect(page.getByTestId("settings-heading")).toHaveText("Settings");
       await expect(page.getByTestId("account-details")).toBeVisible();
