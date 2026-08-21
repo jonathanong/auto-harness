@@ -138,6 +138,6 @@ test.describe("control plane Slack settings", () => {
       route.fulfill({ status: 401, body: "authentication required" }),
     );
     await page.goto("/settings/slack");
-    await expect(page).toHaveURL(/\/login\?returnTo=%2Fsettings$/);
+    await expect(page).toHaveURL(/\/login\?returnTo=%2Fsettings%2Fslack$/);
   });
 });

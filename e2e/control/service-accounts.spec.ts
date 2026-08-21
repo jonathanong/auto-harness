@@ -125,10 +125,12 @@ test.describe("service-account administration", () => {
       await expect(page.getByTestId("service-accounts-forbidden-error")).toContainText(
         "unscoped admin",
       );
+      await expect(page.getByTestId("form-service-account-create")).toHaveCount(0);
+      await page.getByTestId("nav-group-settings").click();
+      await page.getByTestId("nav-user-accounts").click();
       await expect(page.getByTestId("user-accounts-forbidden-error")).toContainText(
         "unscoped admin",
       );
-      await expect(page.getByTestId("form-service-account-create")).toHaveCount(0);
       await expect(page.getByTestId("form-user-account-create")).toHaveCount(0);
     } finally {
       await request.delete(`${apiUrl}/auth/users/${encodeURIComponent(username)}`, {

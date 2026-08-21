@@ -1,6 +1,6 @@
 import { apiGet } from "../../lib/api.ts";
 
-export type SettingsPrincipal = {
+type SettingsPrincipal = {
   username: string;
   role: "admin" | "operator" | "read-only";
   kind: "admin" | "user" | "service-account";
