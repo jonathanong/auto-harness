@@ -29,6 +29,7 @@ test.describe("human user-account administration", () => {
       await page.getByTestId("login-submit").click();
       await page.getByTestId("nav-group-settings").click();
       await page.getByTestId("nav-user-accounts").click();
+      await expect(page).toHaveURL(/\/settings\/user-accounts/);
       await expect(page.getByTestId("user-accounts-loading")).toBeVisible();
       await expect.poll(() => Boolean(releaseLoad)).toBe(true);
       releaseLoad?.();
