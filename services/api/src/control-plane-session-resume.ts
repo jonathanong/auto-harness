@@ -1,4 +1,8 @@
-import { isActiveSessionStatus, isTerminalSessionStatus } from "@auto-harness/shared";
+import {
+  isActiveSessionStatus,
+  isTerminalSessionStatus,
+  promptByteLengthError,
+} from "@auto-harness/shared";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -15,8 +19,12 @@ export type ResumeOptions = {
 };
 
 function validateResumeOverrides(opts: ResumeOptions): string | null {
-  if (opts.prompt !== undefined && (typeof opts.prompt !== "string" || opts.prompt.length === 0)) {
-    return "prompt must be a non-empty string";
+  if (opts.prompt !== undefined) {
+    if (typeof opts.prompt !== "string" || opts.prompt.length === 0) {
+      return "prompt must be a non-empty string";
+    }
+    const promptBytes = promptByteLengthError(opts.prompt);
+    if (promptBytes) return promptBytes;
   }
   if (
     opts.timeout !== undefined &&

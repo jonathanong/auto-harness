@@ -362,6 +362,13 @@ describe("control-plane native resume", () => {
         ok: false,
         error: "prompt must be a non-empty string",
       });
+      expect(overrides.resumeSession(source.session.id, { prompt: "x".repeat(65_536) }).ok).toBe(
+        true,
+      );
+      expect(overrides.resumeSession(source.session.id, { prompt: "x".repeat(65_537) })).toEqual({
+        ok: false,
+        error: "prompt must be at most 65536 bytes",
+      });
       expect(overrides.resumeSession(source.session.id, { timeout: 0 })).toEqual({
         ok: false,
         error: "timeout must be a positive number of seconds",
