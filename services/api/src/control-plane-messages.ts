@@ -35,6 +35,15 @@ export const MAX_DURABLE_LOG_BATCH_SIZE = 25;
 const MAX_RETAINED_LOG_CHUNKS = 10_000;
 const MAX_RETAINED_LOG_BYTES = 10 * 1024 * 1024;
 
+function legacyHostRuntime() {
+  return {
+    daemonVersion: "legacy/unknown",
+    gitVersion: null,
+    gitReady: false,
+    gitReadinessReason: "git_readiness_unreported" as const,
+  };
+}
+
 /**
  * Running size of each retained list, keyed by the list itself so it is discarded
  * whenever the list is replaced wholesale (a durable read rebuilds it). Without this the
@@ -215,12 +224,7 @@ export function handleHostMessage(
               },
             }
           : {}),
-        runtime: msg.runtime ?? {
-          daemonVersion: "legacy/unknown",
-          gitVersion: null,
-          gitReady: false,
-          gitReadinessReason: "git_readiness_unreported",
-        },
+        runtime: msg.runtime ?? legacyHostRuntime(),
         ...(msg.draining ? { draining: true } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
@@ -322,12 +326,7 @@ export async function handleHostMessageDurable(
             },
           }
         : {}),
-      runtime: msg.runtime ?? {
-        daemonVersion: "legacy/unknown",
-        gitVersion: null,
-        gitReady: false,
-        gitReadinessReason: "git_readiness_unreported",
-      },
+      runtime: msg.runtime ?? legacyHostRuntime(),
       ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),
