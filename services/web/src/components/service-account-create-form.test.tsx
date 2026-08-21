@@ -87,4 +87,21 @@ describe("ServiceAccountCreateForm", () => {
       "Unable to create service account.",
     );
   });
+
+  it("hides repository scope when the selected role is admin", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const view = mountForm(
+      <ServiceAccountCreateForm
+        repositories={[{ id: "repo-1", name: "Repo one" }]}
+        onCreate={onCreate}
+      />,
+    );
+    expect(field(view.container, "service-account-repository-scope")).toBeTruthy();
+    setValue(field<HTMLSelectElement>(view.container, "service-account-role"), "admin");
+    expect(view.container.querySelector('[data-pw="service-account-repository-scope"]')).toBeNull();
+    setValue(field(view.container, "service-account-name"), "admins");
+    submit(field(view.container, "form-service-account-create"));
+    await settle();
+    expect(onCreate).toHaveBeenCalledWith({ name: "admins", role: "admin" });
+  });
 });

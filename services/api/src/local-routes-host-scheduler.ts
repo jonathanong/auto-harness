@@ -164,7 +164,10 @@ export async function handleHostSchedulerRoutes(ctx: RouteCtx): Promise<boolean>
       return true;
     }
     try {
-      if (!mayAccessHost(ctx.principal, body.hostId)) {
+      if (
+        !mayAccessHost(ctx.principal, body.hostId) ||
+        (ctx.principal?.allowedRepositoryIds?.length && !ctx.principal.boundHostId)
+      ) {
         send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
         return true;
       }

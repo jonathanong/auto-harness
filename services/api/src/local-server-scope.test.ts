@@ -251,6 +251,12 @@ describe("scoped control-plane REST resources", () => {
     ).toBe(true);
     const drain = await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" });
     expect(drain.status).toBe(404);
+    expect(
+      (await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-a" }, authoringKey)).status,
+    ).toBe(404);
+    expect(
+      (await invoke("DELETE", "/api/v1/hosts/host-a/inventory", undefined, adminKey)).status,
+    ).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/schedule-b/trigger")).status).toBe(404);
     const repoC = {
       name: "repo-c",

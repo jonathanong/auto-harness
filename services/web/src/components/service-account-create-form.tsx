@@ -40,7 +40,9 @@ export function ServiceAccountCreateForm({
         const input: ServiceAccountInput = {
           name: String(data.get("name") ?? "").trim(),
           role: selectedRole,
-          ...(allowedRepositoryIds.length ? { allowedRepositoryIds } : {}),
+          ...(selectedRole !== "admin" && allowedRepositoryIds.length
+            ? { allowedRepositoryIds }
+            : {}),
           ...(selectedRole === "agent" && boundHostId ? { boundHostId } : {}),
         };
         start(async () => {
@@ -82,20 +84,22 @@ export function ServiceAccountCreateForm({
           <p className="text-xs text-muted-foreground">Required for host daemon credentials.</p>
         </div>
       ) : null}
-      <fieldset className="space-y-2" data-pw="service-account-repository-scope">
-        <legend className="text-sm font-medium">Repository Scope</legend>
-        <p className="text-xs text-muted-foreground">
-          No selection grants access to all repositories.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {repositories.map((repository) => (
-            <label key={repository.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="allowedRepositoryIds" value={repository.id} />
-              {repository.name}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      {role === "admin" ? null : (
+        <fieldset className="space-y-2" data-pw="service-account-repository-scope">
+          <legend className="text-sm font-medium">Repository Scope</legend>
+          <p className="text-xs text-muted-foreground">
+            No selection grants access to all repositories.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {repositories.map((repository) => (
+              <label key={repository.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="allowedRepositoryIds" value={repository.id} />
+                {repository.name}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
       <Button type="submit" disabled={pending} data-pw="service-account-create-submit">
         {pending ? "Creating…" : "Create service account"}
       </Button>
