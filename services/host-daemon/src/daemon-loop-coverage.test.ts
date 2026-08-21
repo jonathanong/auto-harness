@@ -98,6 +98,7 @@ describe("DaemonLoop coverage guards", () => {
         config,
         transport: createLoopbackTransport({ sendToServer: () => undefined }),
         onLog: (line) => lines.push(line),
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         timers: {
           setTimeout: () => {
             markAcknowledged?.();
