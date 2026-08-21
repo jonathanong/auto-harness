@@ -5,9 +5,14 @@ import {
   AppRouterContext,
   type AppRouterInstance,
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
+import {
+  PathnameContext,
+  SearchParamsContext,
+} from "next/dist/shared/lib/hooks-client-context.shared-runtime";
 import { vi } from "vitest";
 import { type HostInventory, type HostRepository } from "@auto-harness/shared";
 
+import { Toast, dismissToast } from "./toast.tsx";
 import { TooltipProvider } from "./tooltip.tsx";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,7 +46,15 @@ export function mount(node: React.ReactNode) {
       createElement(
         AppRouterContext.Provider,
         { value: router },
-        createElement(TooltipProvider, null, node),
+        createElement(
+          PathnameContext.Provider,
+          { value: "/" },
+          createElement(
+            SearchParamsContext.Provider,
+            { value: new URLSearchParams() },
+            createElement(TooltipProvider, null, createElement(Toast), node),
+          ),
+        ),
       ),
     ),
   );
@@ -96,6 +109,7 @@ export async function submit(form: HTMLFormElement) {
 
 export function reset() {
   for (const unmount of mountedRoots) unmount();
+  dismissToast();
   document.body.replaceChildren();
   router.refresh.mockReset();
   router.push.mockReset();

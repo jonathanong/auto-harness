@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Button, Input, Label } from "@auto-harness/ui";
+import { useTransition } from "react";
+import { Button, Input, Label, showToast } from "@auto-harness/ui";
 
 import { apiBase, apiErrorMessage } from "@auto-harness/shared";
 import {
@@ -39,7 +39,6 @@ export function ScheduleEditForm({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
 
   return (
     <form
@@ -47,7 +46,6 @@ export function ScheduleEditForm({
       data-pw="form-edit-schedule"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const { target, fallbacks } = decodeSessionRoutingFormData(fd);
         const body = {
@@ -73,7 +71,10 @@ export function ScheduleEditForm({
             },
           );
           if (!res.ok) {
-            setError(await apiErrorMessage(res));
+            showToast(await apiErrorMessage(res), {
+              variant: "destructive",
+              pw: "edit-schedule-error",
+            });
             return;
           }
           router.refresh();
@@ -182,11 +183,6 @@ export function ScheduleEditForm({
         />
         Enabled
       </label>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="edit-schedule-error">
-          {error}
-        </p>
-      ) : null}
       <Button type="submit" disabled={pending} data-pw="edit-schedule-submit">
         {pending ? "Saving…" : "Save schedule"}
       </Button>

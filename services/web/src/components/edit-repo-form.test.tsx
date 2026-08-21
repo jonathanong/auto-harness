@@ -3,7 +3,15 @@
 import React, { act } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { field, mountForm, press, router, setValue, submit } from "./form-test-helpers.tsx";
+import {
+  field,
+  mountForm,
+  press,
+  pressCancel,
+  router,
+  setValue,
+  submit,
+} from "./form-test-helpers.tsx";
 import { EditRepoForm } from "./edit-repo-form.tsx";
 
 const repository = {
@@ -21,15 +29,18 @@ describe("EditRepoForm", () => {
       "Edit repository",
     );
     press(field(view.container, "edit-repo-open"));
-    expect(field<HTMLInputElement>(view.container, "edit-repo-url").value).toBe(repository.url);
-    expect(field<HTMLTextAreaElement>(view.container, "edit-repo-setup").value).toBe("install");
-    expect(field<HTMLButtonElement>(view.container, "edit-repo-submit").textContent).toBe("Save");
-    press(
-      [...view.container.querySelectorAll("button")].find(
-        (button) => button.textContent === "Cancel",
-      )!,
+    expect(field(document, "edit-repo-dialog")).not.toBeNull();
+    const url = field<HTMLInputElement>(document, "edit-repo-url");
+    expect(url.labels?.[0]?.textContent).toBe("URL / Path");
+    expect(url.placeholder).toBe("https://github.com/org/repo.git");
+    expect(url.value).toBe(repository.url);
+    expect(document.body.textContent).toContain(
+      "Git remote URL recorded for this catalog repository (HTTPS or SSH). Not a filesystem path on the host — that is set when attaching the repo to a host.",
     );
-    expect(view.container.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
+    expect(field<HTMLTextAreaElement>(document, "edit-repo-setup").value).toBe("install");
+    expect(field<HTMLButtonElement>(document, "edit-repo-submit").textContent).toBe("Save");
+    pressCancel();
+    expect(document.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
     view.unmount();
   });
 
@@ -38,13 +49,13 @@ describe("EditRepoForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<EditRepoForm repository={repository} />);
     press(field(view.container, "edit-repo-open"));
-    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
-    setValue(field(view.container, "edit-repo-url"), "/repo");
-    setValue(field(view.container, "edit-repo-url"), "   ");
+    const form = field<HTMLFormElement>(document, "form-edit-repo");
+    setValue(field(document, "edit-repo-url"), "/repo");
+    setValue(field(document, "edit-repo-url"), "   ");
     submit(form);
-    expect(field(view.container, "edit-repo-error").textContent).toBe("url is required");
-    setValue(field(view.container, "edit-repo-url"), " /new ");
-    setValue(field(view.container, "edit-repo-branch"), " ");
+    expect(field(document, "edit-repo-error").textContent).toBe("url is required");
+    setValue(field(document, "edit-repo-url"), " /new ");
+    setValue(field(document, "edit-repo-branch"), " ");
     submit(form);
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith(
@@ -58,7 +69,7 @@ describe("EditRepoForm", () => {
       terminalHookScript: "hook",
     });
     expect(router.refresh).toHaveBeenCalledOnce();
-    expect(view.container.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
+    expect(document.querySelector('[data-pw="form-edit-repo"]')).toBeNull();
     view.unmount();
   });
 
@@ -72,15 +83,15 @@ describe("EditRepoForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<EditRepoForm repository={{ id: "repo", url: null }} />);
     press(field(view.container, "edit-repo-open"));
-    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
-    setValue(field(view.container, "edit-repo-url"), "/repo");
-    setValue(field(view.container, "edit-repo-branch"), "feature");
+    const form = field<HTMLFormElement>(document, "form-edit-repo");
+    setValue(field(document, "edit-repo-url"), "/repo");
+    setValue(field(document, "edit-repo-branch"), "feature");
     submit(form);
-    expect(field<HTMLButtonElement>(view.container, "edit-repo-submit").disabled).toBe(true);
+    expect(field<HTMLButtonElement>(document, "edit-repo-submit").disabled).toBe(true);
     await act(async () =>
       finish(new Response(JSON.stringify({ error: { message: "cannot edit" } }), { status: 409 })),
     );
-    expect(field(view.container, "edit-repo-error").textContent).toBe("cannot edit");
+    expect(field(document, "edit-repo-error").textContent).toBe("cannot edit");
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
       defaultBranch: "feature",
       setupScript: "",
@@ -94,11 +105,11 @@ describe("EditRepoForm", () => {
     vi.stubGlobal("fetch", fetch);
     const view = mountForm(<EditRepoForm repository={{ id: "repo" }} />);
     press(field(view.container, "edit-repo-open"));
-    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
-    setValue(field(view.container, "edit-repo-url"), "/repo");
-    field(view.container, "edit-repo-branch").remove();
-    field(view.container, "edit-repo-setup").remove();
-    field(view.container, "edit-repo-hook").remove();
+    const form = field<HTMLFormElement>(document, "form-edit-repo");
+    setValue(field(document, "edit-repo-url"), "/repo");
+    field(document, "edit-repo-branch").remove();
+    field(document, "edit-repo-setup").remove();
+    field(document, "edit-repo-hook").remove();
     submit(form);
     await act(async () => Promise.resolve());
     expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toMatchObject({
@@ -113,10 +124,10 @@ describe("EditRepoForm", () => {
   it("treats an absent URL as required", () => {
     const view = mountForm(<EditRepoForm repository={{ id: "repo" }} />);
     press(field(view.container, "edit-repo-open"));
-    const form = field<HTMLFormElement>(view.container, "form-edit-repo");
-    field(view.container, "edit-repo-url").remove();
+    const form = field<HTMLFormElement>(document, "form-edit-repo");
+    field(document, "edit-repo-url").remove();
     submit(form);
-    expect(field(view.container, "edit-repo-error").textContent).toBe("url is required");
+    expect(field(document, "edit-repo-error").textContent).toBe("url is required");
     view.unmount();
   });
 });

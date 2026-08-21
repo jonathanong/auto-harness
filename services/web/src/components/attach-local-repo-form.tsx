@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Input, Label, WithTooltip, withToast } from "@auto-harness/ui";
+import { Button, Input, Label, WithTooltip, showToast, withToast } from "@auto-harness/ui";
 
 import { attachLocalRepo } from "../lib/attach-local-repo.ts";
 import { HostIdCombobox } from "./host-id-combobox.tsx";
@@ -14,7 +14,6 @@ type Repo = { id: string; name: string; defaultBranch?: string };
 export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; repos: Repo[] }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   if (hostIds.length === 0) {
     return (
@@ -42,14 +41,16 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
       data-pw="form-attach-local-repo"
       onSubmit={(e) => {
         e.preventDefault();
-        setError(null);
         const fd = new FormData(e.currentTarget);
         const hostId = String(fd.get("hostId") ?? "").trim();
         const id = String(fd.get("repositoryId") ?? "").trim();
         const path = String(fd.get("path") ?? "").trim();
         const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
         if (!hostId || !id || !path) {
-          setError("host, repository, and absolute path on the host are required");
+          showToast("host, repository, and absolute path on the host are required", {
+            variant: "destructive",
+            pw: "attach-repo-error",
+          });
           return;
         }
         if (!hostIds.includes(hostId)) {
@@ -60,7 +61,7 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
         void (async () => {
           const result = await attachLocalRepo({ hostId, id, path, defaultBranch });
           if (!result.ok) {
-            setError(result.error);
+            showToast(result.error, { variant: "destructive", pw: "attach-repo-error" });
             setPending(false);
             return;
           }
@@ -133,11 +134,6 @@ export function AttachLocalRepoForm({ hostIds, repos }: { hostIds: string[]; rep
           data-pw="attach-repo-branch"
         />
       </div>
-      {error ? (
-        <p className="text-sm text-red-700" data-pw="attach-repo-error">
-          {error}
-        </p>
-      ) : null}
       <WithTooltip tip="Attaches an existing catalog repository's path to a host with zero worktrees">
         <Button type="submit" disabled={pending} data-pw="attach-repo-submit">
           {pending ? "Attaching…" : "Attach repository to host"}

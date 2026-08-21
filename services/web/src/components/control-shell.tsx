@@ -1,7 +1,9 @@
 "use client";
 
+import { Suspense } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AppShell, type NavGroup, ThemeToggle } from "@auto-harness/ui";
+import { AppShell, cn, type NavGroup, ThemeToggle, Toast, WithTooltip } from "@auto-harness/ui";
 
 import { LogoutButton } from "./logout-button.tsx";
 import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
@@ -9,18 +11,13 @@ import { KeyboardShortcuts } from "./keyboard-shortcuts.tsx";
 const NAV: NavGroup[] = [
   {
     label: "Operate",
+    pw: "nav-group-operate",
     items: [
       {
         href: "/",
         label: "Dashboard",
         pw: "nav-dashboard",
         tip: "Fleet overview: running/queued sessions and hosts online",
-      },
-      {
-        href: "/sessions/new",
-        label: "New session",
-        pw: "nav-session-new",
-        tip: "Create a one-off session for a repository with a Provider or Command target",
       },
       {
         href: "/sessions",
@@ -38,6 +35,7 @@ const NAV: NavGroup[] = [
   },
   {
     label: "Catalog",
+    pw: "nav-group-catalog",
     items: [
       {
         href: "/repositories",
@@ -61,6 +59,7 @@ const NAV: NavGroup[] = [
   },
   {
     label: "Fleet",
+    pw: "nav-group-fleet",
     items: [
       {
         href: "/worktrees",
@@ -78,6 +77,7 @@ const NAV: NavGroup[] = [
   },
   {
     label: "Settings",
+    pw: "nav-group-settings",
     items: [
       {
         href: "/settings",
@@ -89,6 +89,27 @@ const NAV: NavGroup[] = [
   },
 ];
 
+function NewSessionButton({ active }: { active: boolean }) {
+  return (
+    <WithTooltip tip="Create a one-off session for a repository with a Provider or Command target">
+      <Link
+        href="/sessions/new"
+        data-pw="nav-session-new"
+        prefetch={false}
+        className={cn(
+          "inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-medium transition-colors",
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active
+            ? "bg-muted text-foreground"
+            : "bg-primary text-primary-foreground hover:opacity-90",
+        )}
+      >
+        New session
+      </Link>
+    </WithTooltip>
+  );
+}
+
 export function ControlShell({
   children,
   authRequired = false,
@@ -97,7 +118,17 @@ export function ControlShell({
   authRequired?: boolean;
 }) {
   const pathname = usePathname() ?? "/";
-  if (pathname === "/login") return <>{children}</>;
+  if (pathname === "/login") {
+    return (
+      <>
+        {children}
+        <Suspense fallback={null}>
+          <Toast />
+        </Suspense>
+      </>
+    );
+  }
+  const newSessionActive = pathname === "/sessions/new" || pathname.startsWith("/sessions/new/");
   return (
     <AppShell
       pw="control-shell"
@@ -107,6 +138,7 @@ export function ControlShell({
       subtitleTip="Hosts self-register over the API/WebSocket; attach repositories on the Hosts page"
       titleBadge={
         <div className="flex items-center gap-1">
+          <NewSessionButton active={newSessionActive} />
           <ThemeToggle />
           <KeyboardShortcuts />
           {authRequired ? <LogoutButton /> : null}
@@ -114,6 +146,7 @@ export function ControlShell({
       }
       nav={NAV}
       pathname={pathname}
+      extraActiveHrefs={["/sessions/new"]}
     >
       {children}
     </AppShell>

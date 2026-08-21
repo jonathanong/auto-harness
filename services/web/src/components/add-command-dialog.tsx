@@ -13,7 +13,14 @@ import type { Provider } from "@auto-harness/shared";
 
 import { CommandCreateForm } from "./command-create-form.tsx";
 
-export function AddCommandDialog({ providers }: { providers: Provider[] }) {
+export function AddCommandDialog({
+  providers,
+  fixedProviderId,
+}: {
+  providers?: Provider[];
+  /** Pins the new command to this provider (provider Commands tab). */
+  fixedProviderId?: string;
+}) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -25,11 +32,12 @@ export function AddCommandDialog({ providers }: { providers: Provider[] }) {
         <DialogHeader>
           <DialogTitle>Add command</DialogTitle>
           <DialogDescription>
-            A fixed argv, optionally owned by a provider. Standalone commands (no provider) run
-            ungated on any worktree.
+            {fixedProviderId
+              ? "A fixed argv owned by this provider. The new command stays on this page so you can set it as default."
+              : "A fixed argv, optionally owned by a provider. Standalone commands (no provider) run ungated on any worktree."}
           </DialogDescription>
         </DialogHeader>
-        <CommandCreateForm providers={providers} />
+        <CommandCreateForm providers={providers} fixedProviderId={fixedProviderId} />
       </DialogContent>
     </Dialog>
   );

@@ -19,6 +19,7 @@ test.describe("service-account administration", () => {
     await page.getByTestId("login-username").fill(admin.username);
     await page.getByTestId("login-password").fill(admin.password);
     await page.getByTestId("login-submit").click();
+    await page.getByTestId("nav-group-settings").click();
     await page.getByTestId("nav-settings").click();
     await expect(page.getByTestId("service-accounts-card")).toBeVisible();
     await expect(page.getByTestId("service-accounts-empty")).toBeVisible();
@@ -118,6 +119,7 @@ test.describe("service-account administration", () => {
       await page.getByTestId("login-username").fill(username);
       await page.getByTestId("login-password").fill("operator-password");
       await page.getByTestId("login-submit").click();
+      await page.getByTestId("nav-group-settings").click();
       await page.getByTestId("nav-settings").click();
       await expect(page.getByTestId("service-accounts-forbidden-error")).toContainText(
         "unscoped admin",

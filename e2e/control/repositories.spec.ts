@@ -66,6 +66,13 @@ test.describe("control plane repositories", () => {
     await page.goto("/repositories");
     await page.getByTestId("add-repo-open").click();
     await expect(page.getByTestId("form-repo-catalog")).toBeVisible();
+    await expect(page.getByTestId("add-repo-dialog")).toContainText("URL / Path");
+    await expect(page.getByTestId("add-repo-dialog")).toContainText("Git remote URL");
+    await expect(page.getByTestId("add-repo-dialog")).not.toContainText(/agent/i);
+    await expect(page.getByTestId("repo-catalog-url")).toHaveAttribute(
+      "placeholder",
+      "https://github.com/org/repo.git",
+    );
     await expect(page.getByTestId("repo-catalog-branch")).toHaveValue("main");
     await expect(page.getByTestId("repo-catalog-setup")).toHaveValue("");
     await expect(page.getByTestId("repo-catalog-error")).toBeHidden();
@@ -84,7 +91,13 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("repository-attached-hosts")).toHaveCount(0);
     await expect(page.getByTestId("repository-detail-path")).toHaveText(`/tmp/${name}`);
     await page.getByTestId("edit-repo-open").click();
+    await expect(page.getByTestId("edit-repo-dialog")).toBeVisible();
     await expect(page.getByTestId("form-edit-repo")).toBeVisible();
+    await expect(page.getByTestId("form-edit-repo")).toContainText("URL / Path");
+    await expect(page.getByTestId("edit-repo-url")).toHaveAttribute(
+      "placeholder",
+      "https://github.com/org/repo.git",
+    );
     await expect(page.getByTestId("edit-repo-url")).toHaveValue(`/tmp/${name}`);
     await expect(page.getByTestId("edit-repo-branch")).toHaveValue("main");
     await expect(page.getByTestId("edit-repo-setup")).toBeVisible();
@@ -92,7 +105,7 @@ test.describe("control plane repositories", () => {
     await expect(page.getByTestId("edit-repo-hook")).toBeVisible();
     await expect(page.getByTestId("edit-repo-error")).toBeHidden();
     await page.getByTestId("edit-repo-submit").click();
-    await expect(page.getByTestId("edit-repo-open")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("form-edit-repo")).toBeHidden({ timeout: 15_000 });
     await page.getByTestId("delete-repo-open").click();
     await expect(page.getByTestId("delete-repo-confirm")).toBeVisible();
     await expect(page.getByTestId("delete-repo-error")).toBeHidden();
