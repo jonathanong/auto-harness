@@ -392,7 +392,12 @@ The Provider accounts tab shows, for each host the repository is attached to, a 
 
 ## Worktrees
 
-Fleet-wide worktrees view, grouped by repository. Each worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts, Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to exactly one host, so there's only one block, and the worktree scope wins over its repository's).
+Fleet-wide worktrees view, grouped by repository. New worktrees start with no scheduler labels;
+edit a worktree to set or clear labels. A worktree with no labels accepts only sessions that
+also have no required labels; labeled sessions need every required label on the worktree. Each
+worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts,
+Settings) — the Provider accounts tab is a single `ProviderScopeTable` (a worktree belongs to
+exactly one host, so there's only one block, and the worktree scope wins over its repository's).
 
 ---
 
@@ -471,14 +476,15 @@ Edit name/argv/append-prompt/provider in a dialog. Delete is disabled while the 
 
 ## Settings
 
-Authenticated users retain access to the control-plane Settings page, account
-details, password controls, and the Settings nav item. Only the Slack panel is
+The Settings dropdown lists **Account**, **User accounts**, **Service accounts**,
+and **Slack**. `/settings` redirects to `/settings/account`. Authenticated users
+retain access to account details and password controls. Only the Slack page is
 restricted to an unscoped admin; it renders an accessible permission error for a
 valid but unauthorized account. Missing authentication redirects to `/login`
 with only a relative, validated `returnTo` path. When authentication is disabled
-(`HARNESS_AUTH_MODE` unset or not `required`), Settings shows an "Authentication
-disabled" card and does not render user-account or service-account management
-chrome.
+(`HARNESS_AUTH_MODE` unset or not `required`), Account shows an "Authentication
+disabled" card and the user-account and service-account pages render no
+management chrome.
 
 ### Slack configuration
 

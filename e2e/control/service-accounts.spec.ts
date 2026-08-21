@@ -20,7 +20,8 @@ test.describe("service-account administration", () => {
     await page.getByTestId("login-password").fill(admin.password);
     await page.getByTestId("login-submit").click();
     await page.getByTestId("nav-group-settings").click();
-    await page.getByTestId("nav-settings").click();
+    await page.getByTestId("nav-service-accounts").click();
+    await expect(page).toHaveURL(/\/settings\/service-accounts/);
     await expect(page.getByTestId("service-accounts-card")).toBeVisible();
     await expect(page.getByTestId("service-accounts-empty")).toBeVisible();
     await expect(page.getByTestId("service-account-role")).toHaveValue("operator");
@@ -121,14 +122,16 @@ test.describe("service-account administration", () => {
       await page.getByTestId("login-password").fill("operator-password");
       await page.getByTestId("login-submit").click();
       await page.getByTestId("nav-group-settings").click();
-      await page.getByTestId("nav-settings").click();
+      await page.getByTestId("nav-service-accounts").click();
       await expect(page.getByTestId("service-accounts-forbidden-error")).toContainText(
         "unscoped admin",
       );
+      await expect(page.getByTestId("form-service-account-create")).toHaveCount(0);
+      await page.getByTestId("nav-group-settings").click();
+      await page.getByTestId("nav-user-accounts").click();
       await expect(page.getByTestId("user-accounts-forbidden-error")).toContainText(
         "unscoped admin",
       );
-      await expect(page.getByTestId("form-service-account-create")).toHaveCount(0);
       await expect(page.getByTestId("form-user-account-create")).toHaveCount(0);
     } finally {
       await request.delete(`${apiUrl}/auth/users/${encodeURIComponent(username)}`, {
