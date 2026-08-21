@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_GIT_DIAGNOSTIC_BYTES, sanitizeGitDiagnostic } from "./git-commands.ts";
+import {
+  gitFailure,
+  MAX_GIT_DIAGNOSTIC_BYTES,
+  runGit,
+  sanitizeGitDiagnostic,
+} from "./git-commands.ts";
 
 describe("sanitizeGitDiagnostic", () => {
   it("redacts URL userinfo and token-shaped credentials", () => {
@@ -48,6 +53,26 @@ describe("sanitizeGitDiagnostic", () => {
 
     expect(diagnostic).toBe("fatal: checkout failed");
     expect(diagnostic).not.toMatch(/[\u0080-\u009f]/);
+  });
+
+  it("redacts credentials containing terminal styling through runGit and gitFailure", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({
+            stream: "stderr",
+            data: "Authorization: Bearer \u001b[31meyJ.secret.token\u001b[0m",
+          });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+
+    const failure = gitFailure("git fetch failed", result.stderr);
+    expect(failure.message).toBe("git fetch failed: Authorization: [redacted]");
+    expect(failure.message).not.toContain("eyJ.secret.token");
   });
 
   it("returns an empty diagnostic when Git emitted no stderr", () => {

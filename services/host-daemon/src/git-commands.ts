@@ -58,11 +58,13 @@ function removeTerminalControls(value: string): string {
  * diagnostics). Unknown output is retained only as a short, single-line excerpt.
  */
 export function sanitizeGitDiagnostic(stderr: string): string {
-  const withoutCredentials = stderr
+  const withoutTerminalControls = removeTerminalControls(stderr);
+  const withoutCredentials = withoutTerminalControls
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
+    .replace(/\b(authorization)(\s*[:=]\s*)(?:(?:Bearer|Basic)\s+)?[^\s,;]+/gi, "$1$2[redacted]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
-      /(^|[^A-Za-z0-9])(authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      /(^|[^A-Za-z0-9])(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
       "$1$2$3[redacted]",
     )
     .replace(
