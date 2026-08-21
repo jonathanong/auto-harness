@@ -169,7 +169,9 @@ describe("runCli", () => {
 
   it("maps a thrown service-manager status to unknown", async () => {
     const a = deps({
-      statusService: () => {
+      statusService: (opts) => {
+        opts.log("ignored service output");
+        opts.error("ignored service error");
         throw new Error("raw service-manager output");
       },
     });
