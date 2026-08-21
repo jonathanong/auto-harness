@@ -21,7 +21,7 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 
 ## Prerequisites
 
-- Node ≥ 22.18, Git 2.20+
+- Node ≥ 22.18, Git 2.36+
 - Target AI CLIs on `PATH` (`grok`, `codex`, …) for real profiles
 - Control plane reachable (local [deploy-local.md](deploy-local.md) or AWS [deploy-aws.md](deploy-aws.md))
 - Bound service-account API key when talking to a secured control plane ([auth.md](auth.md#vps-agent-authentication))

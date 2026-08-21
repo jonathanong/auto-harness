@@ -47,7 +47,7 @@ on. That 404 is a production-only check — do it in
 | Node.js ≥ 22.18               | `node -v`                                                              |
 | pnpm                          | `pnpm -v` (see root `packageManager`)                                  |
 | Docker                        | DynamoDB Local                                                         |
-| Git ≥ 2.20                    | worktrees                                                              |
+| Git ≥ 2.36                    | worktrees and checkout recovery                                        |
 | `grok` and `claude` on `PATH` | `which grok claude`; logged in                                         |
 | `codex` (optional)            | `which codex`; recipe is `codex exec` (not `-p` — that is `--profile`) |
 

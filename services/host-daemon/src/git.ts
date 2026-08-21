@@ -2,6 +2,7 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
+import { refetchConfiguredRemotes, runGit } from "./git-commands.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -10,34 +11,6 @@ export type GitClient = {
   prepareMainCheckout(opts: { cwd: string; ref: string; signal?: AbortSignal }): Promise<void>;
   revParse(cwd: string, rev: string): Promise<string>;
 };
-
-async function runGit(
-  runner: ProcessRunner,
-  cwd: string,
-  args: string[],
-  signal?: AbortSignal,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  let stdout = "";
-  let stderr = "";
-  const result = await runner.run({
-    argv: ["git", ...args],
-    cwd,
-    timeoutMs: 120_000,
-    ...(signal ? { signal } : {}),
-    onChunk: (c) => {
-      if (c.stream === "stdout") {
-        stdout += c.data;
-      } else {
-        stderr += c.data;
-      }
-    },
-  });
-  return {
-    exitCode: result.exitCode ?? 1,
-    stdout,
-    stderr,
-  };
-}
 
 async function canonicalPath(path: string): Promise<string> {
   const absolutePath = resolve(path);
@@ -108,10 +81,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       // as a pathspec instead of a revision ("Needed a single revision"), so this is
       // the git-native separator here rather than `--` (see `switch -- ref` below,
       // which does accept plain `--`).
+      const commitRef = `${ref}^{commit}`;
       let resolved = await runGit(
         runner,
         cwd,
-        ["rev-parse", "--verify", "--end-of-options", ref],
+        ["rev-parse", "--verify", "--end-of-options", commitRef],
         signal,
       );
       if (resolved.exitCode !== 0) {
@@ -119,7 +93,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         resolved = await runGit(
           runner,
           cwd,
-          ["rev-parse", "--verify", "--end-of-options", ref],
+          ["rev-parse", "--verify", "--end-of-options", commitRef],
           signal,
         );
       }
@@ -132,7 +106,31 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
       }
       if (co.exitCode !== 0) {
-        throw new Error(`Failed to checkout ref ${ref}: ${co.stderr}`);
+        // A regular fetch can treat the locally-present commit as complete
+        // while its graph is missing an object. Repair only that condition,
+        // rather than masking ordinary checkout failures with a network retry.
+        const connectivity = await runGit(
+          runner,
+          cwd,
+          ["fsck", "--connectivity-only", sha],
+          signal,
+        );
+        if (connectivity.exitCode !== 0) {
+          if (!(await refetchConfiguredRemotes(runner, cwd, signal))) {
+            throw new Error("Failed to fetch required checkout objects");
+          }
+          co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
+          if (co.exitCode !== 0) {
+            co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
+          }
+        }
+      }
+      if (co.exitCode !== 0) {
+        throw new Error("Failed to checkout resolved ref");
+      }
+      const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
+      if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+        throw new Error("Failed to verify detached checkout");
       }
     },
 
