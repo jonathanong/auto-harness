@@ -8,7 +8,7 @@ import { statusLinux } from "./host-service-linux.ts";
 import { statusWin32 } from "./host-service-win32.ts";
 
 export type { HostServiceOpts } from "./host-service-io.ts";
-export type { HostServiceState, HostServiceStatus } from "./host-service-io.ts";
+export type { HostServiceStatus } from "./host-service-io.ts";
 
 export function getHostServiceStatus(
   opts: HostServiceOpts,
