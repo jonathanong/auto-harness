@@ -20,6 +20,24 @@ import {
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
 
+type ListedHostRuntime = {
+  daemonVersion: string | null;
+  gitVersion: string | null;
+  gitReady: boolean;
+  gitReadinessReason: import("@auto-harness/shared").GitReadinessReason | null;
+};
+
+function listedHostRuntime(runtime?: HostRuntimeReport): ListedHostRuntime {
+  return {
+    daemonVersion: runtime?.daemonVersion ?? null,
+    gitVersion: runtime?.gitVersion ?? null,
+    gitReady: runtime?.gitReady ?? false,
+    gitReadinessReason: runtime?.gitReady
+      ? null
+      : (runtime?.gitReadinessReason ?? "git_readiness_unreported"),
+  };
+}
+
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
  * connection, so an intervening replacement keeps its own inventory. */
@@ -204,10 +222,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositories: [],
       repositoryIds: [],
       daemonStartedAt: null,
-      daemonVersion: null,
-      gitVersion: null,
-      gitReady: false,
-      gitReadinessReason: "git_readiness_unreported",
+      ...listedHostRuntime(),
       restartCount: 0,
       lastRestartDetectedAt: null,
     };
@@ -229,12 +244,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositories: [],
       repositoryIds: [...(conn.repositoryIds ?? [])],
       daemonStartedAt: null,
-      daemonVersion: conn.runtime?.daemonVersion ?? null,
-      gitVersion: conn.runtime?.gitVersion ?? null,
-      gitReady: conn.runtime?.gitReady ?? false,
-      gitReadinessReason: conn.runtime?.gitReady
-        ? null
-        : (conn.runtime?.gitReadinessReason ?? "git_readiness_unreported"),
+      ...listedHostRuntime(conn.runtime),
       restartCount: 0,
       lastRestartDetectedAt: null,
     };
@@ -242,12 +252,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     cur.connectedAt = conn.connectedAt;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.capabilities = normalizeHostCapabilities(conn.capabilities);
-    cur.daemonVersion = conn.runtime?.daemonVersion ?? null;
-    cur.gitVersion = conn.runtime?.gitVersion ?? null;
-    cur.gitReady = conn.runtime?.gitReady ?? false;
-    cur.gitReadinessReason = conn.runtime?.gitReady
-      ? null
-      : (conn.runtime?.gitReadinessReason ?? "git_readiness_unreported");
+    Object.assign(cur, listedHostRuntime(conn.runtime));
     byHost.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
@@ -264,12 +269,7 @@ export function listHosts(state: ControlPlaneState): Array<{
         repositories: host.repositories.map(({ id, path }) => ({ id, path })),
         repositoryIds: host.repositories.map(({ id }) => id),
         daemonStartedAt: host.daemonStartedAt ?? null,
-        daemonVersion: host.runtime?.daemonVersion ?? null,
-        gitVersion: host.runtime?.gitVersion ?? null,
-        gitReady: host.runtime?.gitReady ?? false,
-        gitReadinessReason: host.runtime?.gitReady
-          ? null
-          : (host.runtime?.gitReadinessReason ?? "git_readiness_unreported"),
+        ...listedHostRuntime(host.runtime),
         restartCount: host.restartCount ?? 0,
         lastRestartDetectedAt: host.lastRestartDetectedAt ?? null,
       });
@@ -280,12 +280,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       current.restartCount = host.restartCount ?? 0;
       current.lastRestartDetectedAt = host.lastRestartDetectedAt ?? null;
       if (!current.online) {
-        current.daemonVersion = host.runtime?.daemonVersion ?? null;
-        current.gitVersion = host.runtime?.gitVersion ?? null;
-        current.gitReady = host.runtime?.gitReady ?? false;
-        current.gitReadinessReason = host.runtime?.gitReady
-          ? null
-          : (host.runtime?.gitReadinessReason ?? "git_readiness_unreported");
+        Object.assign(current, listedHostRuntime(host.runtime));
       }
     }
   }
