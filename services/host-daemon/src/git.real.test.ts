@@ -75,6 +75,26 @@ describe("createGitClient real git", () => {
     expect(head).toBe(mainSha);
   });
 
+  it("peels an annotated tag before detaching at its commit", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-tag-"));
+    roots.push(root);
+    const repo = join(root, "repo");
+    mkdirSync(repo);
+    await git(repo, ["init"]);
+    await git(repo, ["config", "user.email", "t@example.com"]);
+    await git(repo, ["config", "user.name", "t"]);
+    writeFileSync(join(repo, "f.txt"), "main\n");
+    await git(repo, ["add", "f.txt"]);
+    await git(repo, ["commit", "-m", "init"]);
+    await git(repo, ["tag", "-a", "v1.2.3", "-m", "release"]);
+    const tagCommit = (await git(repo, ["rev-parse", "v1.2.3^{commit}"])).trim();
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: repo, ref: "v1.2.3" });
+
+    await expect(client.revParse(repo, "HEAD")).resolves.toBe(tagCommit);
+  });
+
   it("fetches missing tree objects after an exact-SHA checkout fails", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-missing-tree-"));
     roots.push(root);

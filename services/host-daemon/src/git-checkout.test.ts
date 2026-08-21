@@ -3,15 +3,19 @@ import { describe, expect, it } from "vitest";
 import { createGitClient } from "./git.ts";
 import { scripted } from "./git-test-helpers.ts";
 
+function resolvesCommit(ref: string, sha = "abc") {
+  return {
+    match: ["rev-parse", "--verify", "--end-of-options", `${ref}^{commit}`],
+    exitCode: 0,
+    stdout: `${sha}\n`,
+  };
+}
+
 describe("createGitClient checkout and revParse", () => {
   it("checkoutRef detaches at resolved sha", async () => {
     const git = createGitClient(
       scripted([
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc123\n",
-        },
+        resolvesCommit("main", "abc123"),
         { match: ["switch", "--detach", "abc123"], exitCode: 0 },
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc123\n" },
       ]),
@@ -22,13 +26,13 @@ describe("createGitClient checkout and revParse", () => {
   it("checkoutRef fetches then falls back to checkout --detach", async () => {
     const git = createGitClient(
       scripted([
-        { match: ["rev-parse", "--verify", "--end-of-options", "main"], exitCode: 1, stderr: "no" },
-        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
         {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
+          match: ["rev-parse", "--verify", "--end-of-options", "main^{commit}"],
+          exitCode: 1,
+          stderr: "no",
         },
+        { match: ["fetch", "--all", "--tags"], exitCode: 0 },
+        resolvesCommit("main"),
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "old git" },
         { match: ["checkout", "--detach", "abc"], exitCode: 0 },
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
@@ -41,10 +45,14 @@ describe("createGitClient checkout and revParse", () => {
     await expect(
       createGitClient(
         scripted([
-          { match: ["rev-parse", "--verify", "--end-of-options", "bad"], exitCode: 1, stderr: "e" },
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "bad^{commit}"],
+            exitCode: 1,
+            stderr: "e",
+          },
           { match: ["fetch", "--all", "--tags"], exitCode: 0 },
           {
-            match: ["rev-parse", "--verify", "--end-of-options", "bad"],
+            match: ["rev-parse", "--verify", "--end-of-options", "bad^{commit}"],
             exitCode: 1,
             stderr: "e2",
           },
@@ -53,20 +61,31 @@ describe("createGitClient checkout and revParse", () => {
     ).rejects.toThrow(/Failed to resolve ref/);
   });
 
-  it("checkoutRef retries checkout once after fetching missing objects", async () => {
+  it("checkoutRef peels an annotated tag to its commit", async () => {
     const git = createGitClient(
       scripted([
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
+        resolvesCommit("v1.2.3", "commit-sha"),
+        { match: ["switch", "--detach", "commit-sha"], exitCode: 0 },
+        { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "commit-sha\n" },
+      ]),
+    );
+
+    await expect(git.checkoutRef({ cwd: "/repo", ref: "v1.2.3" })).resolves.toBeUndefined();
+  });
+
+  it("checkoutRef retries once after a target graph connectivity failure", async () => {
+    const git = createGitClient(
+      scripted([
+        resolvesCommit("main"),
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "missing tree" },
         { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["remote"], exitCode: 0, stdout: "origin\nupstream\n" },
         {
-          match: ["fetch", "--all", "--tags", "--refetch"],
+          match: ["fetch", "--tags", "--refetch", "origin"],
           exitCode: 0,
         },
+        { match: ["fetch", "--tags", "--refetch", "upstream"], exitCode: 0 },
         { match: ["switch", "--detach", "abc"], exitCode: 0 },
         { match: ["rev-parse", "HEAD"], exitCode: 0, stdout: "abc\n" },
       ]),
@@ -74,18 +93,29 @@ describe("createGitClient checkout and revParse", () => {
     await expect(git.checkoutRef({ cwd: "/repo", ref: "main" })).resolves.toBeUndefined();
   });
 
-  it("checkoutRef fails closed when the missing-object fetch fails", async () => {
+  it("checkoutRef does not refetch after an unrelated checkout failure", async () => {
     const checkout = createGitClient(
       scripted([
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
+        resolvesCommit("main"),
+        { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "dirty worktree" },
+        { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "dirty worktree" },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 0 },
+      ]),
+    ).checkoutRef({ cwd: "/repo", ref: "main" });
+
+    await expect(checkout).rejects.toThrow("Failed to checkout resolved ref");
+  });
+
+  it("checkoutRef fails closed when a remote refetch fails", async () => {
+    const checkout = createGitClient(
+      scripted([
+        resolvesCommit("main"),
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
         { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["remote"], exitCode: 0, stdout: "origin\n" },
         {
-          match: ["fetch", "--all", "--tags", "--refetch"],
+          match: ["fetch", "--tags", "--refetch", "origin"],
           exitCode: 1,
           stderr: "fatal: https://oauth:secret-token@example.com/repo.git",
         },
@@ -97,17 +127,15 @@ describe("createGitClient checkout and revParse", () => {
     expect((error as Error).message).not.toContain("secret-token");
   });
 
-  it("checkoutRef fails after one missing-object fetch retry", async () => {
+  it("checkoutRef fails after one missing-object recovery attempt", async () => {
     const checkout = createGitClient(
       scripted([
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
+        resolvesCommit("main"),
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "first switch" },
         { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "first checkout" },
-        { match: ["fetch", "--all", "--tags", "--refetch"], exitCode: 0 },
+        { match: ["fsck", "--connectivity-only", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["remote"], exitCode: 0, stdout: "origin\n" },
+        { match: ["fetch", "--tags", "--refetch", "origin"], exitCode: 0 },
         { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "second switch" },
         {
           match: ["checkout", "--detach", "abc"],
@@ -122,26 +150,22 @@ describe("createGitClient checkout and revParse", () => {
     expect((error as Error).message).not.toContain("secret-token");
   });
 
-  it("checkoutRef fails closed when detached HEAD does not match the resolved SHA", async () => {
+  it("checkoutRef fails closed when detached HEAD resolves to a different SHA", async () => {
     const checkout = createGitClient(
       scripted([
-        {
-          match: ["rev-parse", "--verify", "--end-of-options", "main"],
-          exitCode: 0,
-          stdout: "abc\n",
-        },
+        resolvesCommit("main"),
         { match: ["switch", "--detach", "abc"], exitCode: 0 },
         {
           match: ["rev-parse", "HEAD"],
-          exitCode: 1,
-          stderr: "fatal: https://oauth:secret-token@example.com/repo.git",
+          exitCode: 0,
+          stdout: "different-sha\n",
         },
       ]),
     ).checkoutRef({ cwd: "/repo", ref: "main" });
     const error = await checkout.catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toBe("Failed to verify detached checkout");
-    expect((error as Error).message).not.toContain("secret-token");
+    expect((error as Error).message).not.toContain("different-sha");
   });
 
   it("revParse returns hash", async () => {

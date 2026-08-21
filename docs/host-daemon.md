@@ -353,6 +353,16 @@ For `type: scheduled` / `worktreeId: null`:
 5. Setup script resets branch/deps at **session start**
 6. Worktree is reused across sessions (not deleted after each run)
 
+### Ref checkout recovery
+
+For a worktree session, the daemon resolves its `ref` to a commit before
+detaching `HEAD`, so branch names, SHAs, lightweight tags, and annotated tags
+all land on the exact target commit. If both detached-checkout forms fail, it
+checks that target commit's object connectivity. Only an incomplete graph gets
+one repair attempt: refetch every configured remote with `--refetch`, then
+retry the detached checkout. Ordinary checkout failures do not trigger a
+network retry.
+
 ### Labels
 
 Same model as GitHub Actions runner labels:
