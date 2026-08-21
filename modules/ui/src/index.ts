@@ -7,6 +7,7 @@ export { Card, CardContent, CardHeader, CardTitle } from "./components/card.tsx"
 export { Input, type InputProps } from "./components/input.tsx";
 export { PathInput, type PathInputProps } from "./components/path-input.tsx";
 export { Label, type LabelProps } from "./components/label.tsx";
+export { Switch, type SwitchProps } from "./components/switch.tsx";
 export { Textarea, type TextareaProps } from "./components/textarea.tsx";
 export {
   Table,

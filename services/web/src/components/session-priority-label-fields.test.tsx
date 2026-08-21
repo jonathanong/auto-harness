@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { field, mountForm, setValue } from "./form-test-helpers.tsx";
+import { field, mountForm, press, setValue } from "./form-test-helpers.tsx";
 import { SessionPriorityLabelFields } from "./session-priority-label-fields.tsx";
 
 describe("SessionPriorityLabelFields", () => {
@@ -16,10 +16,26 @@ describe("SessionPriorityLabelFields", () => {
   });
 
   it("renders selectable labels and describes every priority band", () => {
-    const view = mountForm(<SessionPriorityLabelFields availableLabels={["codex", "gpu"]} />);
-    expect(field<HTMLInputElement>(view.container, "create-session-label-codex").value).toBe(
-      "codex",
+    const view = mountForm(
+      <form>
+        <SessionPriorityLabelFields
+          availableLabels={["codex", "gpu"]}
+          initialRequiredLabels={["gpu"]}
+        />
+      </form>,
     );
+    const form = view.container.querySelector("form") as HTMLFormElement;
+    const codex = field<HTMLButtonElement>(view.container, "create-session-label-codex");
+    const gpu = field<HTMLButtonElement>(view.container, "create-session-label-gpu");
+    expect(codex.value).toBe("codex");
+    expect(codex.getAttribute("role")).toBe("switch");
+    expect(codex.getAttribute("aria-checked")).toBe("false");
+    expect(gpu.getAttribute("aria-checked")).toBe("true");
+    expect(form.querySelectorAll('input[name="requiredLabels"]')).toHaveLength(2);
+    expect(new FormData(form).getAll("requiredLabels")).toEqual(["gpu"]);
+    press(codex);
+    expect(codex.getAttribute("aria-checked")).toBe("true");
+    expect(new FormData(form).getAll("requiredLabels")).toEqual(["codex", "gpu"]);
     const priority = field<HTMLInputElement>(view.container, "create-session-priority");
     for (const [value, label] of [
       ["25", "25 (normal)"],
