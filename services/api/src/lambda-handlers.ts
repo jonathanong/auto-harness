@@ -42,6 +42,7 @@ export type LambdaRuntime = {
 
 export type CronResult = {
   ackDeadlinesEnforced: number;
+  runningTimeoutsEnforced: number;
   queuedAssigned: number;
   scheduledAssigned: number;
   schedulesFired: number;
@@ -231,12 +232,14 @@ export async function createLambdaRuntime(
       return runInvocation(async () => {
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
+        const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
         await created.plane.refreshSchedulerReadModelDurable();
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
+          runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: queuedAssigned.length,
           scheduledAssigned: scheduledAssigned.length,
           schedulesFired: schedulesFired.length,

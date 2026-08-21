@@ -28,6 +28,7 @@ import * as sessions from "./control-plane-sessions.ts";
 import * as durableSessions from "./control-plane-sessions-durable.ts";
 import * as worktrees from "./control-plane-worktrees.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
+import * as runningTimeout from "./control-plane-running-timeout.ts";
 
 /**
  * Shared ControlPlane implementation (methods split across facade + subclass
@@ -157,6 +158,14 @@ export class ControlPlaneBase {
 
   async enforceAckDeadlinesDurable(nowMs: number = Date.now()): Promise<string[]> {
     return assign.enforceAckDeadlinesDurable(this.state, nowMs);
+  }
+
+  enforceRunningTimeouts(nowMs: number = Date.now()): string[] {
+    return runningTimeout.enforceRunningTimeouts(this.state, nowMs);
+  }
+
+  async enforceRunningTimeoutsDurable(nowMs: number = Date.now()): Promise<string[]> {
+    return runningTimeout.enforceRunningTimeoutsDurable(this.state, nowMs);
   }
 
   handleHostMessage(msg: HostToServerMessage): { ok: boolean; error?: string } {

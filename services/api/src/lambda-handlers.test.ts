@@ -482,6 +482,10 @@ describe("Lambda runtime adapters", () => {
       order.push("ack");
       return ["session-1"];
     });
+    vi.spyOn(fixture.plane, "enforceRunningTimeoutsDurable").mockImplementation(async () => {
+      order.push("timeout");
+      return ["session-2"];
+    });
     vi.spyOn(fixture.plane, "refreshSchedulerReadModelDurable").mockImplementation(async () => {
       order.push("refresh");
       await refreshSchedulerReadModelDurable();
@@ -501,12 +505,13 @@ describe("Lambda runtime adapters", () => {
 
     await expect((await fixture.runtime).cron()).resolves.toEqual({
       ackDeadlinesEnforced: 1,
+      runningTimeoutsEnforced: 1,
       queuedAssigned: 1,
       scheduledAssigned: 1,
       schedulesFired: 1,
       staleHostsReclaimed: 2,
     });
-    expect(order).toEqual(["cron", "ack", "refresh", "stale", "queued", "scheduled"]);
+    expect(order).toEqual(["cron", "ack", "timeout", "refresh", "stale", "queued", "scheduled"]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {
