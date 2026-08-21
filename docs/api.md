@@ -455,7 +455,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
   "queueExpiresAt": "2026-08-09T12:00:00Z",
-  "targetLabel": "codex-fix",
+  "targetLabels": ["codex-fix", "echo"],
   "status": "queued",
   "timeout": 1800,
   "priority": 10,
@@ -469,7 +469,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
 }
 ```
 
-`targetLabel` is a human-readable label for the resolved target (the Command's name, or `"<provider> — <account label>"`), useful for display without a second lookup. Once assigned, the session record also gains `resolvedArgv: string[]` — the exact argv the agent spawned.
+`targetLabels` is the human-readable primary-plus-fallback label list fixed at create (Command name, or `"<provider> — <account label>"`). Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
 
 The session enters the `queued` state. The scheduler assigns it to an idle worktree that matches the repository and required labels on an online agent. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, it remains queued.
 
@@ -535,6 +535,7 @@ Get session details.
   "prompt": "Fix the failing test in src/utils.test.ts",
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
+  "targetLabels": ["codex-fix", "echo"],
   "status": "running",
   "type": "prompt",
   "source": "ui",
@@ -550,23 +551,30 @@ Get session details.
   "pinExpiresAt": null,
   "cliResumeRef": null,
   "queueExpiresAt": "2026-08-09T12:00:00Z",
-  "resolvedRoute": null,
+  "resolvedRoute": {
+    "targetIndex": 0,
+    "providerAccountId": "acct-codex-1",
+    "commandId": "cmd-codex-fix",
+    "hostId": "vps-prod-1",
+    "worktreeId": "wt-1",
+    "attemptId": "att-1"
+  },
   "createdAt": "2026-08-01T12:00:00Z",
   "startedAt": "2026-08-01T12:00:05Z",
   "completedAt": null
 }
 ```
 
-| Field                           | When set                                                                                           |
-| ------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                |
-| `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                    |
-| `errorMessage`                  | Optional short human excerpt from the match / logs                                                 |
-| `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                             |
-| `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing   |
-| `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route |
-| `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                   |
-| `resolvedRoute`                 | Last route diagnostics: target index, Provider Account, Command, Host, and Worktree (no secrets)   |
+| Field                           | When set                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                                             |
+| `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                                                 |
+| `errorMessage`                  | Optional short human excerpt from the match / logs                                                                              |
+| `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                                                          |
+| `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing                                |
+| `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                              |
+| `queueExpiresAt`                | Fixed absolute queue deadline; fallback attempts never extend it                                                                |
+| `resolvedRoute`                 | Last assigned route: `targetIndex`, optional `providerAccountId`, `commandId`, `hostId`, `worktreeId`, `attemptId` (no secrets) |
 
 #### `POST /sessions/:id/clone`
 

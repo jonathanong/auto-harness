@@ -288,7 +288,7 @@ done
 
 | Check     | Expect                                                                                                                        |
 | --------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `target: { commandId }`, `queueExpiresAt`, `targetLabel: "echo-prompt"` |
+| Create    | `201` body: `status: "queued"`, `url`, `ref: "main"`, `target: { commandId }`, `queueExpiresAt`, `targetLabels: ["echo-prompt"]` |
 | Assign    | one item for `$SID` / `wt-1` / your `hostId`                                                                                  |
 | Terminal  | `status: "completed"`, `exitCode: 0`                                                                                          |
 | Logs      | `GET /api/v1/sessions/$SID/logs` has system lines (claim, checkout, spawn) + stdout                                           |
