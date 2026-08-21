@@ -80,15 +80,14 @@ describe("scoped control-plane REST resources", () => {
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
       name: "scoped-agent",
-      role: "operator",
+      role: "agent",
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });
     const { apiKey: adminKey } = await auth.createServiceAccount({
-      name: "host-admin",
-      role: "admin",
+      name: "host-maintainer",
+      role: "maintainer",
       allowedRepositoryIds: ["repo-a"],
-      boundHostId: "host-a",
     });
     // Same repository scope, no host binding. Session- and schedule-authoring routes are
     // closed to host-bound agent identities, so the positive assertions below use this
@@ -232,7 +231,7 @@ describe("scoped control-plane REST resources", () => {
     expect((await invokeHandler(handler, "DELETE", "/api/v1/schedules/schedule-a")).status).toBe(
       401,
     );
-    expect((await invoke("DELETE", "/api/v1/schedules/schedule-a")).status).toBe(403);
+    expect((await invoke("DELETE", "/api/v1/schedules/schedule-a")).status).toBe(404);
     expect(
       (await invoke("DELETE", "/api/v1/schedules/schedule-a", undefined, adminKey)).status,
     ).toBe(204);
@@ -249,7 +248,7 @@ describe("scoped control-plane REST resources", () => {
         scopedSessions.json as { items: Array<{ repositoryId?: string; hostId?: string }> }
       ).items.every((session) => session.repositoryId === "repo-a" && session.hostId !== "host-b"),
     ).toBe(true);
-    const drain = await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" }, adminKey);
+    const drain = await invoke("POST", "/api/v1/hosts/drain", { hostId: "host-b" });
     expect(drain.status).toBe(404);
     expect((await invoke("POST", "/api/v1/schedules/schedule-b/trigger")).status).toBe(404);
     const repoC = {
@@ -314,7 +313,7 @@ describe("scoped control-plane REST resources", () => {
     expect(ownedSession.metadata.createdBy).toContain("service:");
     const peer = await auth.createServiceAccount({
       name: "peer",
-      role: "operator",
+      role: "author",
       allowedRepositoryIds: ["repo-a"],
     });
     const denied = await invoke(

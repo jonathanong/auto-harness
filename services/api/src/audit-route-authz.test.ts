@@ -11,7 +11,7 @@ describe("audit authorization outcomes", () => {
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
       name: "scoped",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["repository-a"],
     });
     const plane = auditFixture();

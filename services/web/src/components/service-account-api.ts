@@ -2,7 +2,9 @@ import { apiErrorMessage } from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
 
-export type ServiceAccountRole = "read-only" | "operator" | "admin";
+import type { UserRole } from "@auto-harness/shared";
+
+export type ServiceAccountRole = UserRole;
 
 export type ServiceAccount = {
   id: string;

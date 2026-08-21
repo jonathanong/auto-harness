@@ -9,6 +9,7 @@ import { HostProviderAccountsSection } from "../../../components/host-provider-a
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
 import { ApiError, apiGet } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -35,6 +36,7 @@ export default async function HostDetailPage({
 }) {
   const hostId = decodeRouteParam((await params).hostId);
   const { tab } = await searchParams;
+  const canDrain = can(await loadPrincipal(), "fleet:drain");
 
   let inventory: (HostInventory & { version?: number }) | null = null;
   let inventoryError: string | null = null;
@@ -72,7 +74,7 @@ export default async function HostDetailPage({
     // into showing "no repositories/provider accounts attached" when the truth is unknown.
     return (
       <div className="space-y-6">
-        <HostDetailHeader hostId={hostId} />
+        <HostDetailHeader hostId={hostId} canDrain={canDrain} />
         <SectionError
           resource={`host ${hostId}'s inventory`}
           message={inventoryError}
@@ -145,7 +147,7 @@ export default async function HostDetailPage({
 
   return (
     <div className="space-y-6" data-pw="page-host-detail">
-      <HostDetailHeader hostId={hostId} />
+      <HostDetailHeader hostId={hostId} canDrain={canDrain} />
 
       <Tabs
         basePath={`/hosts/${encodeURIComponent(hostId)}`}

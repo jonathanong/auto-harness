@@ -4,6 +4,7 @@ import { type SessionSummary } from "@auto-harness/ui";
 import { SessionLiveDetail } from "../../../components/session-live-detail.tsx";
 import { SessionLiveLogs } from "../../../components/session-live-logs.tsx";
 import { apiGet } from "../../../lib/api.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 import { MAX_LIVE_LOG_ENTRIES } from "../../../lib/live-session-logs.ts";
 import { configuredCost, hasReportedUsage, type UsageAggregate } from "./session-usage-summary.ts";
 
@@ -69,9 +70,24 @@ export default async function SessionDetailPage({ params }: { params: Promise<{ 
     }
   }
 
+  const principal = await loadPrincipal();
+  const canWrite = can(principal, "sessions:write");
+  const createdBy = session.metadata?.createdBy;
+  const canCancel =
+    can(principal, "sessions:cancel-any") ||
+    (canWrite && !!principal?.id && createdBy === principal.id);
+  const canArchive = can(principal, "sessions:archive");
+
   return (
     <div data-pw="page-session-detail">
-      <SessionLiveDetail initialSession={session} initialHosts={hosts}>
+      <SessionLiveDetail
+        initialSession={session}
+        initialHosts={hosts}
+        canCancel={canCancel}
+        canResume={canWrite}
+        canClone={canWrite}
+        canArchive={canArchive}
+      >
         <div className="mb-4 rounded-md border p-4" data-pw="session-usage-summary">
           <h3 className="text-sm font-medium">Session usage</h3>
           {hasReportedUsage(usage) ? (

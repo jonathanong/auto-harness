@@ -58,7 +58,7 @@ describe("createLocalApp authentication routes", () => {
     expect(invalidAccount.status).toBe(400);
     const account = await invoke("POST", "/api/v1/auth/service-accounts", {
       name: "agent-a",
-      role: "operator",
+      role: "agent",
       allowedRepositoryIds: ["repo-a"],
       boundHostId: "host-a",
     });

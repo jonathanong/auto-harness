@@ -19,11 +19,10 @@ describe("WebSocket host authentication", () => {
     const readOnly = await auth.createServiceAccount({
       name: "reader",
       role: "read-only",
-      boundHostId: "a1",
     });
     const bound = await auth.createServiceAccount({
       name: "agent",
-      role: "operator",
+      role: "agent",
       boundHostId: "a1",
     });
     const bridge = createPlaneWsBridge();

@@ -10,23 +10,10 @@ import {
   type HostInventorySummary,
 } from "../../components/hosts-fleet-table.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 import { parseHostListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
-
-type Principal = {
-  username: string;
-  role: "admin" | "operator" | "read-only";
-  kind: "admin" | "user" | "service-account";
-  allowedRepositoryIds?: string[];
-  boundHostId?: string;
-};
-
-function isUnscopedAdmin(principal: Principal): boolean {
-  return (
-    principal.role === "admin" && !principal.allowedRepositoryIds?.length && !principal.boundHostId
-  );
-}
 
 export default async function HostsPage({
   searchParams,
@@ -41,12 +28,9 @@ export default async function HostsPage({
     }
   }
   const filters = parseHostListState(sp);
-  const principal =
-    process.env.HARNESS_AUTH_MODE === "required"
-      ? await apiGet<Principal>("/api/v1/auth/me")
-      : undefined;
-  // Loopback (auth disabled) has no session role, so the form stays available locally.
-  const canAddHost = principal === undefined || isUnscopedAdmin(principal);
+  const principal = await loadPrincipal();
+  const canWriteInventory = can(principal, "fleet:inventory");
+  const canDrain = can(principal, "fleet:drain");
 
   let hosts: FleetHost[] = [];
   let inventories: HostInventorySummary[] = [];
@@ -85,7 +69,7 @@ export default async function HostsPage({
           Hosts
         </h2>
         <p className="text-sm text-muted-foreground">
-          {canAddHost ? (
+          {canWriteInventory ? (
             <>
               Add a host slot (host inventory), then run the daemon with that{" "}
               <code className="font-mono">HARNESS_HOST_ID</code>. Click a host below to attach
@@ -100,7 +84,7 @@ export default async function HostsPage({
         </p>
       </div>
 
-      {canAddHost ? (
+      {canWriteInventory ? (
         <section className="space-y-2">
           <h3 className="text-lg font-medium">Add host</h3>
           <AddHostForm />
@@ -123,7 +107,8 @@ export default async function HostsPage({
           rows={rows}
           inventoryById={inventoryById}
           worktreesByHost={worktreesByHost}
-          canAddHost={canAddHost}
+          canAddHost={canWriteInventory}
+          canDrain={canDrain}
         />
       </section>
     </div>

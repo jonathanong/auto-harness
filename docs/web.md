@@ -2,7 +2,7 @@
 
 ## Overview
 
-Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials and roles: [auth.md](auth.md).
+Next.js UI for sessions, repositories, worktrees, schedules, hosts, the Providers/Commands catalog, and admin-only global settings. REST: [api.md](api.md). Live updates: [websocket.md](websocket.md). Credentials: [auth.md](auth.md). Roles: [roles.md](roles.md).
 
 The UI runs against the supported local control plane. Cloud-hosted UI/API behavior remains a
 target until the AWS runtime has a deploy path and account-backed verification. Sections that say
@@ -504,8 +504,7 @@ separate capabilities and are not enabled by this UI.
 ### Service Accounts
 
 - List all service accounts with name, role, allowed repositories, and creation date
-- Create new service account — name, role dropdown (`read-only`, `operator`, `admin`), optional bound
-  host ID (filterable combobox of `GET /hosts` hostIds; empty means unbound), repository scope
+- Create new service account — name, role dropdown (`read-only`, `author`, `operator`, `maintainer`, `agent`, `admin`), repository scope. Bound host ID (filterable combobox of `GET /hosts` hostIds) is required when the role is `agent`.
 - API key shown once in a modal after creation with copy button
 - Delete service account with confirmation
 - Rotate by creating an overlapping replacement with identical role/scope, showing its key once,
@@ -514,7 +513,7 @@ separate capabilities and are not enabled by this UI.
 ### User Accounts
 
 - List all human user accounts with username and role
-- Create a user account with an initial write-only password and role (`read-only`, `operator`, `admin`)
+- Create a user account with an initial write-only password and role (`read-only`, `author`, `operator`, `maintainer`, `admin`) and optional repository scope
 - Delete a user account with explicit confirmation
 - Only unscoped admins can manage users; other authenticated users see a permission boundary
 - Users change their own password after signing in; passwords and hashes are never displayed

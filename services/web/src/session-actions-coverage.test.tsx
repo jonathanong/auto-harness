@@ -161,4 +161,38 @@ describe("SessionActions", () => {
     expect(archive?.getAttribute("aria-busy")).toBe("false");
     view.unmount();
   });
+
+  it("hides cancel, resume, clone, and archive when the caller lacks those capabilities", () => {
+    const router = { push: vi.fn(), refresh: vi.fn() };
+    const running = mount(
+      <SessionActions
+        sessionId="sess"
+        status="running"
+        canCancel={false}
+        canResume={false}
+        canClone={false}
+        canArchive={false}
+      />,
+      router,
+    );
+    expect(running.container.querySelector('[data-pw="session-cancel"]')).toBeNull();
+    expect(running.container.querySelector('[data-pw="session-archive"]')).toBeNull();
+    running.unmount();
+    const terminal = mount(
+      <SessionActions
+        sessionId="sess"
+        status="failed"
+        cloneEditHref="/sessions/new"
+        canCancel={false}
+        canResume={false}
+        canClone={false}
+        canArchive={false}
+      />,
+      router,
+    );
+    expect(terminal.container.querySelector('[data-pw="session-clone"]')).toBeNull();
+    expect(terminal.container.querySelector('[data-pw="session-clone-edit"]')).toBeNull();
+    expect(terminal.container.querySelector('[data-pw="session-archive"]')).toBeNull();
+    terminal.unmount();
+  });
 });

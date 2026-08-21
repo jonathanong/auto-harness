@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
+import { accountGrantError } from "@auto-harness/shared";
 import bcrypt from "bcryptjs";
 
 import type { AuthAccountRecord } from "./db/plane-storage.ts";
@@ -67,13 +68,15 @@ export async function hydrateAccounts(
 }
 
 export async function createUser(
-  input: { username: string; password: string; role: Role },
+  input: { username: string; password: string; role: Role; allowedRepositoryIds?: string[] },
   users: Map<string, User>,
   admins: User[],
   storage?: AuthStorage,
 ): Promise<Principal> {
   validateCredential(input.username, "username");
   validateCredential(input.password, "password");
+  const grant = accountGrantError(input);
+  if (grant) throw new Error(grant);
   if (users.has(input.username) || admins.some((admin) => admin.username === input.username))
     throw new Error("username already exists");
   const user: User = {
@@ -82,10 +85,30 @@ export async function createUser(
     role: input.role,
     kind: "user",
     passwordHash: await bcrypt.hash(input.password, 12),
+    ...(input.allowedRepositoryIds?.length
+      ? { allowedRepositoryIds: [...input.allowedRepositoryIds] }
+      : {}),
   };
   if (storage) await storage.putAuthAccount(toRecord(user));
   users.set(user.username, user);
   return publicPrincipal(user);
+}
+
+export function parseRepositoryScope(body: Record<string, unknown>): string[] | undefined {
+  const raw = body.allowedRepositoryIds ?? body.allowedRepositories;
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || !raw.every((value) => typeof value === "string" && value.length > 0)) {
+    throw new Error("allowedRepositories must be an array of non-empty strings");
+  }
+  return raw as string[];
+}
+
+export function assertAccountGrant(
+  role: Role,
+  extra: { allowedRepositoryIds?: string[]; boundHostId?: string } = {},
+): void {
+  const grant = accountGrantError({ role, ...extra });
+  if (grant) throw new Error(grant);
 }
 
 /** Keep account identifiers and bcrypt inputs bounded at every account boundary. */
@@ -108,6 +131,8 @@ export async function createServiceAccount(
   storage?: AuthStorage,
 ): Promise<{ account: Principal & { name: string; createdAt: string }; apiKey: string }> {
   validateCredential(input.name, "name");
+  const grant = accountGrantError(input);
+  if (grant) throw new Error(grant);
   const apiKey = `hns_${randomBytes(36).toString("base64url")}`;
   const createdAt = new Date().toISOString();
   const account: ServiceAccount = {

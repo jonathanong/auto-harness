@@ -39,10 +39,18 @@ export function SessionLiveDetail({
   initialSession,
   initialHosts,
   children,
+  canCancel = true,
+  canResume = true,
+  canClone = true,
+  canArchive = true,
 }: {
   initialSession: SessionSummary;
   initialHosts: Host[];
   children?: ReactNode;
+  canCancel?: boolean;
+  canResume?: boolean;
+  canClone?: boolean;
+  canArchive?: boolean;
 }) {
   const [session, setSession] = useState(initialSession);
   const [hosts, setHosts] = useState(initialHosts);
@@ -88,6 +96,10 @@ export function SessionLiveDetail({
           status={session.status}
           assignedHostOffline={offline}
           cloneEditHref={`/sessions/new?cloneFrom=${encodeURIComponent(session.id)}`}
+          canCancel={canCancel}
+          canResume={canResume}
+          canClone={canClone}
+          canArchive={canArchive}
         />
       }
       repoHrefBase="/repositories"

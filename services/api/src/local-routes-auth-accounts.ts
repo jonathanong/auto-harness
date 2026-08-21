@@ -1,8 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import { isUserRole } from "@auto-harness/shared";
+
 import { auditActor } from "./audit.ts";
-import { validateCredential } from "./auth-accounts.ts";
-import type { AuthService, Principal, Role } from "./auth.ts";
+import { assertAccountGrant, parseRepositoryScope, validateCredential } from "./auth-accounts.ts";
+import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
 
@@ -46,6 +48,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
     if (method === "GET") return (send(res, 200, { items: auth.listUsers() }), true);
     if (method === "POST") {
       let body: Record<string, unknown>;
+      let allowedRepositoryIds: string[] | undefined;
       try {
         body = (await readJson(req)) as Record<string, unknown>;
         if (
@@ -54,11 +57,13 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
           Array.isArray(body) ||
           typeof body.username !== "string" ||
           typeof body.password !== "string" ||
-          !isRole(body.role)
+          !isUserRole(body.role)
         )
           throw new Error("username, password, and role are required");
+        allowedRepositoryIds = parseRepositoryScope(body);
         validateCredential(body.username, "username");
         validateCredential(body.password, "password");
+        assertAccountGrant(body.role, allowedRepositoryIds ? { allowedRepositoryIds } : {});
       } catch (error) {
         send(res, 400, {
           error: {
@@ -70,7 +75,12 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
       }
       try {
         const user = await auth.createUser(
-          { username: body.username, password: body.password, role: body.role },
+          {
+            username: body.username,
+            password: body.password,
+            role: body.role,
+            ...(allowedRepositoryIds ? { allowedRepositoryIds } : {}),
+          },
           plane.state.storage,
         );
         if (!(await audit(ctx, "user:create", "user", user.id, "success"))) return true;
@@ -104,7 +114,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
     if (method === "GET") return (send(res, 200, { items: auth.listServiceAccounts() }), true);
     if (method === "POST") {
       let body: Record<string, unknown>;
-      let rawRepositories: unknown;
+      let rawRepositories: string[] | undefined;
       try {
         body = (await readJson(req)) as Record<string, unknown>;
         if (
@@ -112,17 +122,15 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
           typeof body !== "object" ||
           Array.isArray(body) ||
           typeof body.name !== "string" ||
-          !isRole(body.role)
+          !isUserRole(body.role)
         )
           throw new Error("name and role are required");
-        rawRepositories = body.allowedRepositoryIds ?? body.allowedRepositories;
-        if (
-          rawRepositories !== undefined &&
-          (!Array.isArray(rawRepositories) ||
-            !rawRepositories.every((value) => typeof value === "string" && value.length > 0))
-        )
-          throw new Error("allowedRepositories must be an array of non-empty strings");
+        rawRepositories = parseRepositoryScope(body);
         validateCredential(body.name, "name");
+        assertAccountGrant(body.role, {
+          ...(rawRepositories ? { allowedRepositoryIds: rawRepositories } : {}),
+          ...(typeof body.boundHostId === "string" ? { boundHostId: body.boundHostId } : {}),
+        });
       } catch (error) {
         send(res, 400, {
           error: {
@@ -137,7 +145,7 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
           {
             name: body.name,
             role: body.role,
-            ...(rawRepositories ? { allowedRepositoryIds: rawRepositories as string[] } : {}),
+            ...(rawRepositories ? { allowedRepositoryIds: rawRepositories } : {}),
             ...(typeof body.boundHostId === "string" ? { boundHostId: body.boundHostId } : {}),
           },
           plane.state.storage,
@@ -186,8 +194,4 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
     removed ? null : { error: { code: "NOT_FOUND", message: "service account not found" } },
   );
   return true;
-}
-
-function isRole(value: unknown): value is Role {
-  return value === "admin" || value === "operator" || value === "read-only";
 }

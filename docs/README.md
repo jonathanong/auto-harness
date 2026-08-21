@@ -34,7 +34,8 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [architecture.md](architecture.md) | Two-plane overview + flows                            |
 | [aws.md](aws.md)                   | Control plane internals                               |
 | [host-daemon.md](host-daemon.md)   | VPS agent internals                                   |
-| [auth.md](auth.md)                 | Credentials, roles, login, agent binding              |
+| [auth.md](auth.md)                 | Credentials, login, agent binding                     |
+| [roles.md](roles.md)               | Named roles, capabilities, and the grant matrix       |
 | [security.md](security.md)         | Principles, transport, hardening, threat boundaries   |
 | [web.md](web.md)                   | Web UI behavior                                       |
 | [terminology.md](terminology.md)   | Canonical UI vocabulary (nav labels, copy, `data-pw`) |

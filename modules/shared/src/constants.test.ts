@@ -33,7 +33,7 @@ describe("constants", () => {
     expect(TERMINAL_SESSION_STATUSES).not.toContain("queued");
     expect(ACTIVE_SESSION_STATUSES).toEqual(["queued", "running"]);
     expect(SESSION_ERROR_CODES).toContain("usage_limit");
-    expect(USER_ROLES).toEqual(["admin", "operator", "read-only"]);
+    expect(USER_ROLES).toEqual(["read-only", "author", "operator", "maintainer", "agent", "admin"]);
     expect(WORKTREE_STATUSES).toEqual(["idle", "busy", "error"]);
     expect(LOCAL_HOST_ID).toBe("local-1");
     expect(LOCAL_API_HTTP).toContain("7420");

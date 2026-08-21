@@ -70,6 +70,18 @@ describe("ControlShell", () => {
     view.unmount();
   });
 
+  it("hides New session when the caller cannot author sessions", () => {
+    const view = mountForm(<ControlShell canAuthorSessions={false}>x</ControlShell>, {
+      pathname: "/",
+    });
+    expect(view.container.querySelector('[data-pw="nav-session-new"]')).toBeNull();
+    openNavGroup(view.container, "nav-group-operate");
+    expect(field<HTMLAnchorElement>(document, "nav-sessions").getAttribute("href")).toBe(
+      "/sessions",
+    );
+    view.unmount();
+  });
+
   it("highlights only New session, not Sessions, on /sessions/new", () => {
     const view = mountForm(<ControlShell>New session</ControlShell>, {
       pathname: "/sessions/new",

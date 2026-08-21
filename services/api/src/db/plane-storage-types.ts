@@ -5,6 +5,7 @@ import type {
   Provider,
   ProviderAccount,
   TargetRef,
+  UserRole,
 } from "@auto-harness/shared";
 
 import type { DynamoTableNames } from "./dynamo.ts";
@@ -34,7 +35,7 @@ export type AuthAccountRecord = {
   username: string;
   name?: string;
   kind: "user" | "service-account";
-  role: "read-only" | "operator" | "admin";
+  role: UserRole;
   passwordHash?: string;
   apiKeyHash?: string;
   allowedRepositoryIds?: string[];
@@ -59,7 +60,7 @@ export type ConnectionRecord = {
   viewerPrincipal?: {
     id: string;
     username: string;
-    role: "read-only" | "operator" | "admin";
+    role: UserRole;
     kind: "admin" | "user";
     allowedRepositoryIds?: string[];
   };

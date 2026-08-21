@@ -1,37 +1,71 @@
+import { principalHas, type Capability, type AuthzPrincipal } from "@auto-harness/shared";
+
 import type { Principal } from "./auth.ts";
+
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Map a REST method+path to the capability that may invoke it.
+ * `"authenticated"` means any signed-in principal (including read-only).
+ * `null` is an unknown write — deny.
+ */
+export function requiredCapability(
+  method: string,
+  pathname: string,
+): Capability | "authenticated" | null {
+  const write = !SAFE_METHODS.has(method);
+  if (pathname === "/api/v1/integrations/slack") return "integrations:write";
+  if (
+    pathname.startsWith("/api/v1/auth/users") ||
+    pathname.startsWith("/api/v1/auth/service-accounts")
+  ) {
+    return "accounts:write";
+  }
+  if (pathname === "/api/v1/audit-logs") return "audit:read";
+  if (pathname === "/api/v1/host/messages") return "agent:protocol";
+  if (pathname.startsWith("/api/v1/scheduler")) return "scheduler:run";
+  if (pathname === "/api/v1/hosts/drain") return write ? "fleet:drain" : "authenticated";
+  if (
+    pathname === "/api/v1/host-inventories" ||
+    /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)
+  ) {
+    return write ? "fleet:inventory" : "authenticated";
+  }
+  if (pathname.startsWith("/api/v1/provider-accounts")) {
+    return write ? "providers:accounts" : "authenticated";
+  }
+  if (
+    pathname.startsWith("/api/v1/commands") ||
+    pathname.startsWith("/api/v1/providers") ||
+    pathname.startsWith("/api/v1/repositories")
+  ) {
+    return write ? "catalog:write" : "authenticated";
+  }
+  if (pathname === "/api/v1/schedules" || pathname.startsWith("/api/v1/schedules/")) {
+    return write ? "schedules:write" : "authenticated";
+  }
+  if (write && /^\/api\/v1\/sessions\/[^/]+\/archive$/.test(pathname)) return "sessions:archive";
+  if (pathname.startsWith("/api/v1/sessions") && write) return "sessions:write";
+  if (!write) return "authenticated";
+  if (pathname.startsWith("/api/v1/")) return null;
+  return "authenticated";
+}
+
+const BOUND_KEY_HANDLER_DENIALS = new Set<Capability>([
+  "sessions:write",
+  "sessions:archive",
+  "schedules:write",
+]);
 
 /** Role gate used by every REST route before it reaches its handler. */
 export function authorize(principal: Principal, method: string, pathname: string): boolean {
-  const scopedAdmin =
-    principal.role === "admin" && (!!principal.allowedRepositoryIds || !!principal.boundHostId);
-  // Global integration credentials are not available to repository/host-scoped admins.
-  if (pathname === "/api/v1/integrations/slack") {
-    return principal.role === "admin" && !scopedAdmin;
-  }
-  if (principal.role === "admin" && !scopedAdmin) return true;
-  if (pathname.startsWith("/api/v1/auth/")) return false;
-  if (method === "DELETE" && /^\/api\/v1\/schedules\/[^/]+$/.test(pathname)) {
-    return principal.role === "admin";
-  }
-  if (pathname === "/api/v1/host/messages") {
-    return (
-      principal.kind === "service-account" &&
-      principal.role !== "read-only" &&
-      !!principal.boundHostId
-    );
-  }
-  // Let a host-bound admin reach the target-aware drain handler so a different
-  // host is hidden with the same 404 as an unknown host.
-  if (scopedAdmin && pathname === "/api/v1/hosts/drain") return !!principal.boundHostId;
-  if (scopedAdmin && /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)) {
-    return !!principal.boundHostId;
-  }
-  const write = !["GET", "HEAD", "OPTIONS"].includes(method);
-  if (principal.role === "read-only") return !write;
-  if (!write) return true;
-  return !/^\/api\/v1\/(commands|providers|provider-accounts|repositories|hosts(?:\/[^/]+\/inventory|\/drain)|host-inventories|scheduler|host\/messages)/.test(
-    pathname,
-  );
+  const capability = requiredCapability(method, pathname);
+  if (capability === null) return false;
+  if (capability === "authenticated") return true;
+  // Bound daemon keys must reach the handler so authoring denials stay 404, not 403 —
+  // a 403 would advertise that session/schedule writes exist for this credential.
+  if (principal.boundHostId && BOUND_KEY_HANDLER_DENIALS.has(capability)) return true;
+  return principalHas(principal, capability);
 }
 
 export function mayAccessRepository(
@@ -52,4 +86,8 @@ export function mayAccessHost(
   hostId: string | null | undefined,
 ): boolean {
   return !principal?.boundHostId || principal.boundHostId === hostId;
+}
+
+export function may(principal: AuthzPrincipal | undefined, capability: Capability): boolean {
+  return !!principal && principalHas(principal, capability);
 }

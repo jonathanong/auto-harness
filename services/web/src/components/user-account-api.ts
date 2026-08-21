@@ -1,20 +1,22 @@
-import { apiErrorMessage } from "@auto-harness/shared";
+import { apiErrorMessage, type UserRole } from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
 
-export type UserAccountRole = "read-only" | "operator" | "admin";
+export type UserAccountRole = UserRole;
 
 export type UserAccount = {
   id: string;
   username: string;
   role: UserAccountRole;
   kind: "user";
+  allowedRepositoryIds?: string[];
 };
 
 export type UserAccountInput = {
   username: string;
   password: string;
   role: UserAccountRole;
+  allowedRepositoryIds?: string[];
 };
 
 type UserAccountData =

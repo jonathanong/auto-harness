@@ -1,4 +1,4 @@
-import { mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
+import { may, mayAccessHost, mayAccessRepository } from "./auth-policy.ts";
 import { send, type RouteCtx } from "./local-http.ts";
 
 export function canAccessSession(ctx: RouteCtx, repositoryId: string | undefined): boolean {
@@ -26,7 +26,8 @@ export function sendSessionForbidden(res: RouteCtx["res"]): void {
  * `local-routes-session-authoring.test.ts` enumerates them so a new one cannot skip it.
  */
 export function canAuthorSessions(ctx: RouteCtx): boolean {
-  return !ctx.principal?.boundHostId;
+  if (ctx.principal?.boundHostId) return false;
+  return !ctx.principal || may(ctx.principal, "sessions:write");
 }
 
 export function canCancelSession(
@@ -34,9 +35,7 @@ export function canCancelSession(
   session: { hostId?: string | null; metadata?: Record<string, unknown> },
 ): boolean {
   if (!canAccessSessionHost(ctx, session.hostId)) return false;
-  return (
-    !ctx.principal ||
-    ctx.principal.role === "admin" ||
-    session.metadata?.createdBy === ctx.principal.id
-  );
+  if (!ctx.principal) return true;
+  if (may(ctx.principal, "sessions:cancel-any")) return true;
+  return may(ctx.principal, "sessions:write") && session.metadata?.createdBy === ctx.principal.id;
 }

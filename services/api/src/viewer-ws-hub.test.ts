@@ -124,7 +124,7 @@ describe("browser session log websocket", () => {
     const auth = authService();
     const agent = await auth.createServiceAccount({
       name: "agent",
-      role: "operator",
+      role: "agent",
       boundHostId: "host-a",
     });
     const principal = await auth.createUser({

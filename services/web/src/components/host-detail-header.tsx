@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { DrainButton } from "@auto-harness/ui";
 
-export function HostDetailHeader({ hostId }: { hostId: string }) {
+export function HostDetailHeader({
+  hostId,
+  canDrain = true,
+}: {
+  hostId: string;
+  canDrain?: boolean;
+}) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -16,7 +22,7 @@ export function HostDetailHeader({ hostId }: { hostId: string }) {
           {hostId}
         </h2>
       </div>
-      <DrainButton hostId={hostId} pw="host-detail-drain" />
+      {canDrain ? <DrainButton hostId={hostId} pw="host-detail-drain" /> : null}
     </div>
   );
 }

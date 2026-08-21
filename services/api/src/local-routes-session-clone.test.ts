@@ -98,7 +98,7 @@ describe("session clone route", () => {
     });
     const { apiKey } = await auth.createServiceAccount({
       name: "allowed",
-      role: "admin",
+      role: "operator",
       allowedRepositoryIds: ["repo-1"],
     });
     expect(
@@ -114,7 +114,7 @@ describe("session clone route", () => {
     ).toBe(201);
     const { apiKey: deniedApiKey } = await auth.createServiceAccount({
       name: "scoped",
-      role: "admin",
+      role: "operator",
       allowedRepositoryIds: ["other-repository"],
     });
     expect(

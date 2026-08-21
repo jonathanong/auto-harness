@@ -65,7 +65,8 @@ secrets, prompts, or session-log content.
 | Bearer token   | `Authorization: Bearer hns_…`        | Service accounts (CI, scripts) |
 | Basic auth     | `Authorization: Basic …`             | Admin / user direct API calls  |
 
-`401` if missing/invalid; `403` if role insufficient.
+`401` if missing/invalid; `403` if role insufficient. Role and capability
+matrix: [roles.md](roles.md).
 
 ### `POST /auth/viewer-ticket`
 
@@ -239,7 +240,7 @@ Create a service account. **Admin only.**
 | Field                 | Type     | Required | Description                                                                                                              |
 | --------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `name`                | string   | ✓        | Human-readable name                                                                                                      |
-| `role`                | string   | ✓        | `read-only`, `operator`, or `admin`                                                                                      |
+| `role`                | string   | ✓        | `read-only`, `author`, `operator`, `maintainer`, `agent`, or `admin`                                                     |
 | `allowedRepositories` | string[] | ✗        | Restrict to specific repos. Default: all repos.                                                                          |
 | `boundHostId`         | string   | ✗        | Required for agent service accounts. Binds this key to a specific agent identity (see [auth.md](auth.md#agent-binding)). |
 

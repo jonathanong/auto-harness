@@ -213,9 +213,9 @@ Do not read `web.md`. Follow nav labels.
    phase. Logging out and back in as that operator is a UX finding if
    **Add host** / catalog writes then fail (they should).
 3. **Settings → Service accounts** — create the two accounts from trap #1:
-   - `<host-id>-daemon`, role operator, **bound** to the host ID you will
+   - `<host-id>-daemon`, role **agent**, **bound** to the host ID you will
      register next
-   - `operator` (or similar), role operator, **not** bound
+   - `author` (CI) or `operator` (humans), **not** bound
 
    Each key is shown exactly once — save both immediately.
 

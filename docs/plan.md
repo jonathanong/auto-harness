@@ -100,7 +100,7 @@ erDiagram
         string id PK
         string username "unique"
         string passwordHash "bcrypt, null for service accounts"
-        string role "admin | operator | read-only"
+        string role "read-only | author | operator | maintainer | agent | admin"
         string type "user | service-account"
         string apiKeyHash "SHA-256, service accounts only"
         string[] allowedRepositories "optional scope"

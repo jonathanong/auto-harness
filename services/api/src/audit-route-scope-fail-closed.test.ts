@@ -10,7 +10,7 @@ describe("scoped audited mutations", () => {
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
     const { apiKey } = await auth.createServiceAccount({
       name: "repository-b-only",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["repository-b"],
     });
     const calls = [

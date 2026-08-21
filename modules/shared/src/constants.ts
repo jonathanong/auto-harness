@@ -44,7 +44,14 @@ export const SESSION_SOURCES = [
   "schedule",
 ] as const satisfies readonly SessionSource[];
 
-export const USER_ROLES = ["admin", "operator", "read-only"] as const satisfies readonly UserRole[];
+export const USER_ROLES = [
+  "read-only",
+  "author",
+  "operator",
+  "maintainer",
+  "agent",
+  "admin",
+] as const satisfies readonly UserRole[];
 
 export const WORKTREE_STATUSES = [
   "idle",

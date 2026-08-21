@@ -35,3 +35,4 @@ The short version: **a "Host" runs "Sessions".** Never call either one an "agent
 - [local-development.md](local-development.md) — ports, commands, the two UIs
 - [e2e.md](e2e.md) — `data-pw` selector conventions
 - [host-daemon.md](host-daemon.md) — host daemon internals (the _process_, not the UI concept)
+- [roles.md](roles.md) — account roles; the stored id `agent` is labeled **Host daemon** in the UI and is not a name for a session or a host

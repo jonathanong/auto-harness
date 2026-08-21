@@ -1,5 +1,6 @@
 import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
+import { may } from "./auth-policy.ts";
 import {
   canAccessSession,
   canAccessSessionHost,
@@ -82,6 +83,7 @@ export async function handleSessionLifecycleRoutes(ctx: RouteCtx): Promise<boole
   const session = await plane.getSessionDurable(id);
   if (
     !session ||
+    (ctx.principal && !may(ctx.principal, "sessions:archive")) ||
     !canAccessSession(ctx, session.repositoryId) ||
     !canAccessSessionHost(ctx, session.hostId)
   ) {

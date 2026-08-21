@@ -32,7 +32,7 @@ describe("Slack integration routes", () => {
     const { apiKey: operator } = await auth.createServiceAccount({ name: "op", role: "operator" });
     const { apiKey: scopedAdmin } = await auth.createServiceAccount({
       name: "scoped",
-      role: "admin",
+      role: "maintainer",
       allowedRepositoryIds: ["repo-1"],
     });
     const plane = new ControlPlane({ secretEncryptor: encryptor() });

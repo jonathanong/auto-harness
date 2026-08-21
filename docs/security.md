@@ -1,13 +1,15 @@
 # Security
 
-Trust boundaries, transport, operational controls, and host hardening. **Authentication, roles, login, and agent binding:** [auth.md](auth.md).
+Trust boundaries, transport, operational controls, and host hardening.
+**Authentication, login, and agent binding:** [auth.md](auth.md). **Roles and
+the permission matrix:** [roles.md](roles.md).
 
 ## Principles
 
 1. **No secrets in the control plane.** The Auto Harness cloud service holds no repository credentials, SSH keys, or AI tool API keys. All credentials live on the VPS.
 2. **No secrets in prompts.** Never pass secrets through the API or in session prompts. The prompt is stored in DynamoDB and visible in the UI.
 3. **Trusted execution environment.** The VPS agent runs directly on a secure server — no Docker isolation wrapping the agent (D9). The AI agents themselves may use Docker for development work within repositories.
-4. **Principle of least privilege.** Service accounts are scoped by role and optionally by repository ([auth.md](auth.md#roles)).
+4. **Principle of least privilege.** Users and service accounts are scoped by named role and optionally by repository; daemon keys use the `agent` role plus `boundHostId` ([roles.md](roles.md)).
 
 ## Threat model (prompt influence)
 
@@ -183,10 +185,11 @@ Agent identity on the wire uses a **bound** service account API key — see [aut
 
 ## Related
 
-| Doc                              | Role                               |
-| -------------------------------- | ---------------------------------- |
-| [auth.md](auth.md)               | Credentials, roles, login, binding |
-| [api.md](api.md)                 | REST surface                       |
-| [websocket.md](websocket.md)     | Connect tokens                     |
-| [host-daemon.md](host-daemon.md) | Host-side agent behavior           |
-| [setup.md](setup.md)             | Deploy secrets env vars            |
+| Doc                              | Role                              |
+| -------------------------------- | --------------------------------- |
+| [auth.md](auth.md)               | Credentials, login, binding       |
+| [roles.md](roles.md)             | Named roles and permission matrix |
+| [api.md](api.md)                 | REST surface                      |
+| [websocket.md](websocket.md)     | Connect tokens                    |
+| [host-daemon.md](host-daemon.md) | Host-side agent behavior          |
+| [setup.md](setup.md)             | Deploy secrets env vars           |

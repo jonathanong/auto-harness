@@ -45,13 +45,13 @@ describe("UserAccountCreateForm", () => {
     setValue(password, "secret");
     submit(form);
     await settle();
-    expect(field(view.container, "user-account-create-error").textContent).toBe(
+    expect(field(document.body, "user-account-create-error").textContent).toBe(
       "username already exists",
     );
     expect(password.value).toBe("secret");
     submit(form);
     await settle();
-    expect(field(view.container, "user-account-create-error").textContent).toBe(
+    expect(field(document.body, "user-account-create-error").textContent).toBe(
       "Unable to create user account.",
     );
   });

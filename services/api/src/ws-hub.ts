@@ -7,6 +7,7 @@ import {
   isHostCapability,
   isValidCliResumeRef,
   isSessionStatus,
+  principalHas,
   type HostToServerMessage,
   type HostWireMessage,
 } from "@auto-harness/shared";
@@ -448,14 +449,7 @@ function isAllowedMessage(
   principal: Principal | null,
   authRequired: boolean,
 ): boolean {
-  if (
-    authRequired &&
-    (!principal ||
-      principal.kind !== "service-account" ||
-      principal.role === "read-only" ||
-      !principal.boundHostId)
-  )
-    return false;
+  if (authRequired && (!principal || !principalHas(principal, "agent:protocol"))) return false;
   if (msg.type === "host:register")
     return (
       (!hostId || hostId === msg.hostId) &&

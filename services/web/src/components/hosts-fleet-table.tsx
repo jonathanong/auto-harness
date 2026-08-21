@@ -29,11 +29,13 @@ export function HostsFleetTable({
   inventoryById,
   worktreesByHost,
   canAddHost,
+  canDrain = true,
 }: {
   rows: FleetHost[];
   inventoryById: Map<string, HostInventorySummary>;
   worktreesByHost: Map<string, FleetWorktree[]>;
   canAddHost: boolean;
+  canDrain?: boolean;
 }) {
   return (
     <Table>
@@ -83,7 +85,9 @@ export function HostsFleetTable({
                 />
               </TableCell>
               <TableCell>
-                <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
+                {canDrain ? (
+                  <DrainButton hostId={h.hostId} size="sm" pw={`host-drain-${h.hostId}`} />
+                ) : null}
               </TableCell>
             </TableRow>
           );

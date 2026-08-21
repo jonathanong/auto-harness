@@ -320,7 +320,7 @@ describe("createPlaneWsBridge", () => {
     });
     const { apiKey } = await auth.createServiceAccount({
       name: "agent-a",
-      role: "operator",
+      role: "agent",
       boundHostId: "a1",
     });
     const bridge = createPlaneWsBridge();

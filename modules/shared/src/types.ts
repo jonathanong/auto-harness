@@ -21,7 +21,7 @@ export type SessionErrorCode =
   | "unknown_command_profile"
   | "setup_failed";
 
-export type UserRole = "admin" | "operator" | "read-only";
+export type UserRole = "read-only" | "author" | "operator" | "maintainer" | "agent" | "admin";
 
 export type AccountType = "user" | "service-account";
 

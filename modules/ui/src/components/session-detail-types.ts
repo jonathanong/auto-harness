@@ -37,4 +37,5 @@ export type SessionSummary = {
   exitCode?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
+  metadata?: { createdBy?: unknown } | null;
 };
