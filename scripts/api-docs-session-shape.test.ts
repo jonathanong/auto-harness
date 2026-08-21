@@ -7,15 +7,28 @@ const sessionRecord = readFileSync(
   "utf8",
 );
 
+function jsonExampleAfter(heading: string): Record<string, unknown> {
+  const start = apiDocs.indexOf(heading);
+  expect(start, heading).toBeGreaterThan(-1);
+  const fence = apiDocs.indexOf("```json", start);
+  expect(fence, `${heading} json fence`).toBeGreaterThan(-1);
+  const bodyStart = apiDocs.indexOf("\n", fence) + 1;
+  const bodyEnd = apiDocs.indexOf("```", bodyStart);
+  return JSON.parse(apiDocs.slice(bodyStart, bodyEnd)) as Record<string, unknown>;
+}
+
 describe("session API docs match PublicSession", () => {
-  it("documents plural targetLabels and resolvedRoute, not a singular targetLabel field", () => {
-    expect(apiDocs).toContain('"targetLabels"');
+  it("documents GET /sessions/:id with targetLabels and nested resolvedRoute", () => {
+    const detail = jsonExampleAfter("#### `GET /sessions/:id`");
+    expect(detail.targetLabels).toEqual(["codex", "echo"]);
+    expect(detail).not.toHaveProperty("targetLabel");
+    expect(detail).not.toHaveProperty("providerId");
+    expect(detail).not.toHaveProperty("providerAccountId");
+    expect(detail.target).toEqual({ providerId: "prov-codex" });
+    const route = detail.resolvedRoute as Record<string, unknown>;
+    expect(route.providerAccountId).toBe("acct-codex-1");
+    expect(route.commandId).toBe("cmd-codex-fix");
     expect(apiDocs).not.toMatch(/"targetLabel"\s*:/);
-    expect(apiDocs).not.toMatch(/`targetLabel`/);
-    expect(apiDocs).toContain('"target": { "providerId"');
-    expect(apiDocs).toContain("providerAccountId");
-    expect(apiDocs).toContain("resolvedRoute");
-    expect(apiDocs).toMatch(/resolvedRoute[\s\S]*providerAccountId/);
   });
 
   it("keeps SessionRecord as the runtime source of those fields", () => {

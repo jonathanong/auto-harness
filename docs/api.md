@@ -455,7 +455,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
   "queueExpiresAt": "2026-08-09T12:00:00Z",
-  "targetLabels": ["codex-fix", "echo"],
+  "targetLabels": ["codex", "echo"],
   "status": "queued",
   "timeout": 1800,
   "priority": 10,
@@ -469,7 +469,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
 }
 ```
 
-`targetLabels` is the human-readable primary-plus-fallback label list fixed at create (Command name, or `"<provider> — <account label>"`). Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
+`targetLabels` is the human-readable primary-plus-fallback list fixed at create: a provider target stores the provider name, a provider-backed command stores `"<provider> — <command>"`, and a providerless command stores the command name. Account labels are not included; account selection happens at assignment. Requested provider identity is `target.providerId`, not a top-level `providerId`. Once assigned, the session also gains `resolvedArgv` and `resolvedRoute` (including optional `providerAccountId`); there is no top-level `providerAccountId`.
 
 The session enters the `queued` state. The scheduler assigns it to an idle worktree that matches the repository and required labels on an online agent. If multiple worktrees match, assignment is **round-robin** (least recently assigned first). If none are available, it remains queued.
 
@@ -535,7 +535,7 @@ Get session details.
   "prompt": "Fix the failing test in src/utils.test.ts",
   "target": { "providerId": "prov-codex" },
   "fallbacks": [{ "commandId": "cmd-echo" }],
-  "targetLabels": ["codex-fix", "echo"],
+  "targetLabels": ["codex", "echo"],
   "status": "running",
   "type": "prompt",
   "source": "ui",
