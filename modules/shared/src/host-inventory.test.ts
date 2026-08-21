@@ -130,6 +130,7 @@ describe("host-inventory", () => {
       worktreeName: "wt-1",
     });
     expect(next.repositories[0]?.worktrees[0]?.path).toBe("/repo/.worktrees/wt-1");
+    expect(next.repositories[0]?.worktrees[0]?.labels).toEqual([]);
   });
 
   it("upsertHostRepository preserves scripts by default and allows overriding them", () => {

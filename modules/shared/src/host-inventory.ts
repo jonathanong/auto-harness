@@ -198,7 +198,7 @@ export function mergeHostRepository(
       id: entry.worktreeId,
       name: entry.worktreeName,
       path: defaultWorktreePath(entry.path, entry.worktreeName),
-      labels: entry.labels ?? ["echo"],
+      labels: entry.labels ?? [],
     },
   ];
   return next;
