@@ -269,7 +269,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web
 ```
 
-`pnpm check` runs oxlint, oxfmt, typecheck, vitest — both the unit project (**100%** coverage on `modules/*/src` and `services/*/src`, excluding pure type files and thin CLIs) and the integration project (`integration/`, no coverage gate of its own) — the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes).
+`pnpm check` runs oxlint, oxfmt, typecheck, vitest — both the unit project (**lines 98 / branches 97 / functions 100 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`; `vitest.config.ts` is the authoritative exclude/deny-list) and the integration project (`integration/`, no coverage gate of its own) — the Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes).
 
 `pnpm check:no-mistakes` (`pnpm check:data-pw` is an alias) runs the root `.no-mistakes.yml`. That config binds the `control` and `host-pane` Playwright projects to `services/web` and `services/host-pane` so selector coverage stays app-scoped, then checks Playwright `data-pw` uniqueness/coverage, prefers test-id locators, bans control-plane Next.js API routes and Next.js caching, and enforces repo hygiene (pnpm-only lockfile, workspace package coverage, registry-only deps, `AGENTS.md` size, no empty files, no `.js`/`.jsx` under `modules/`/`services/`, no workspace package cycles, valid Mermaid, no mocks in `integration/`). `frontendRoot`/`selectorRoots` stay explicit so `src/app` route detection and `src/components` selector coverage cannot silently regress.
 
