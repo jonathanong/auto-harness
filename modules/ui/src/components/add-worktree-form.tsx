@@ -151,7 +151,7 @@ export function AddWorktreeForm({
             />
           </div>
           <div className="space-y-1">
-            <Label tip="Optional scheduler labels that must match a session's required labels. Leave empty to allow any session for this repository.">
+            <Label tip="Optional scheduler labels that must match a session's required labels. Leave empty to accept only sessions with no required labels.">
               Labels (Comma-Separated)
             </Label>
             <Input
