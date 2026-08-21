@@ -84,6 +84,8 @@ export {
   isSessionType,
   isActiveSessionStatus,
   isTerminalSessionStatus,
+  MAX_PROMPT_BYTES,
+  promptByteLengthError,
   validateCreateSessionInput,
 } from "./validation.ts";
 

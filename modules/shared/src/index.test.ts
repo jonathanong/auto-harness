@@ -6,6 +6,8 @@ import type { SessionAssign } from "./session.ts";
 describe("package exports", () => {
   it("re-exports validation helpers and constants", () => {
     expect(typeof shared.validateCreateSessionInput).toBe("function");
+    expect(typeof shared.promptByteLengthError).toBe("function");
+    expect(shared.MAX_PROMPT_BYTES).toBe(65_536);
     expect(typeof shared.formatLogSortKey).toBe("function");
     expect(typeof shared.isUserRole).toBe("function");
     expect(typeof shared.roleHas).toBe("function");

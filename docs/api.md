@@ -428,7 +428,7 @@ one unbound (for anything that creates sessions).
 | Field             | Type     | Required | Description                                                                                                                                                            |
 | ----------------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `repositoryId`    | string   | ✓        | Target repository                                                                                                                                                      |
-| `prompt`          | string   | ✓        | The prompt/instruction for the AI agent                                                                                                                                |
+| `prompt`          | string   | ✓        | The prompt/instruction for the AI agent. UTF-8 length is at most 65,536 bytes; 65,537 is `400 VALIDATION_ERROR`.                                                       |
 | `ref`             | string   | ✗        | Branch, tag, or commit SHA to check out. The repository default branch is used when omitted.                                                                           |
 | `target`          | object   | ✓        | Primary `{ providerId }` or `{ commandId }` target. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. |
 | `fallbacks`       | object[] | ✗        | Ordered additional targets. The scheduler advances only when the preceding target has no eligible route.                                                               |
@@ -626,12 +626,12 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 }
 ```
 
-| Field           | Type   | Required | Description                                                                                                                                          |
-| --------------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `prompt`        | string | ✗        | Continuation instruction. If omitted, agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
-| `concurrencyId` | string | ✗        | Optional caller assertion; when set, it must exactly match the source session’s inherited concurrency identity. It cannot override that identity.    |
-| `timeout`       | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                       |
-| `priority`      | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                  |
+| Field           | Type   | Required | Description                                                                                                                                                                                                                                                                       |
+| --------------- | ------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `prompt`        | string | ✗        | Continuation instruction. Same UTF-8 cap as create: at most 65,536 bytes; 65,537 is `400 VALIDATION_ERROR` (`prompt must be at most 65536 bytes`). If omitted, the agent uses a default resume/continue prompt or the CLI’s native resume with no new user text (tool-dependent). |
+| `concurrencyId` | string | ✗        | Optional caller assertion; when set, it must exactly match the source session’s inherited concurrency identity. It cannot override that identity.                                                                                                                                 |
+| `timeout`       | number | ✗        | Override timeout (seconds). Default: source session’s timeout.                                                                                                                                                                                                                    |
+| `priority`      | number | ✗        | Queue priority. Default: source session’s priority.                                                                                                                                                                                                                               |
 
 **Response:** `201 Created`
 
@@ -667,11 +667,11 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 
 **Errors:**
 
-| Status | Code               | When                                                                       |
-| ------ | ------------------ | -------------------------------------------------------------------------- |
-| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued` |
-| 404    | `NOT_FOUND`        | Unknown session id                                                         |
-| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)              |
+| Status | Code               | When                                                                                                       |
+| ------ | ------------------ | ---------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR` | Source never assigned (no agent/worktree); source still `running`/`queued`; prompt over 65,536 UTF-8 bytes |
+| 404    | `NOT_FOUND`        | Unknown session id                                                                                         |
+| 409    | `CONFLICT`         | Policy reject (e.g. source type `scheduled` without worktree)                                              |
 
 **Clone vs resume:**
 

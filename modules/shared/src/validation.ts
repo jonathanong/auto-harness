@@ -28,7 +28,15 @@ export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: s
  * request-body cap allows (1 MiB), well past DynamoDB's 400 KiB item limit once combined
  * with the rest of the session record.
  */
-const MAX_PROMPT_BYTES = 64 * 1024;
+export const MAX_PROMPT_BYTES = 64 * 1024;
+
+/** Shared UTF-8 byte-length check for create and resume prompts. */
+export function promptByteLengthError(prompt: string): string | null {
+  if (new TextEncoder().encode(prompt).length > MAX_PROMPT_BYTES) {
+    return `prompt must be at most ${MAX_PROMPT_BYTES} bytes`;
+  }
+  return null;
+}
 /** Seven days. Longer would keep a host process in setTimeout indefinitely. */
 const MAX_SESSION_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
 /** Thirty days. The default queue TTL is eight days. */
@@ -125,9 +133,8 @@ export function validateCreateSessionInput(input: {
   if (!input.prompt && input.type !== "scheduled") {
     return { ok: false, error: "prompt is required" };
   }
-  if (new TextEncoder().encode(input.prompt).length > MAX_PROMPT_BYTES) {
-    return { ok: false, error: `prompt must be at most ${MAX_PROMPT_BYTES} bytes` };
-  }
+  const promptBytes = promptByteLengthError(input.prompt);
+  if (promptBytes) return { ok: false, error: promptBytes };
   const routing = validateTargetRouting(input);
   if (!routing.ok) return routing;
   if (typeof input.timeout !== "number" || !Number.isFinite(input.timeout) || input.timeout <= 0) {

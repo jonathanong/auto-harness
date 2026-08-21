@@ -9,6 +9,8 @@ import {
   isTerminalSessionStatus,
   isUserRole,
   isWorktreeStatus,
+  MAX_PROMPT_BYTES,
+  promptByteLengthError,
   validateCreateSessionInput,
 } from "./validation.ts";
 
@@ -79,6 +81,16 @@ describe("isSessionErrorCode", () => {
 
   it("rejects unknown codes", () => {
     expect(isSessionErrorCode("boom")).toBe(false);
+  });
+});
+
+describe("promptByteLengthError", () => {
+  it("accepts 65536 UTF-8 bytes and rejects 65537", () => {
+    expect(MAX_PROMPT_BYTES).toBe(65_536);
+    expect(promptByteLengthError("x".repeat(MAX_PROMPT_BYTES))).toBeNull();
+    expect(promptByteLengthError("x".repeat(MAX_PROMPT_BYTES + 1))).toBe(
+      "prompt must be at most 65536 bytes",
+    );
   });
 });
 
@@ -285,13 +297,18 @@ describe("validateCreateSessionInput", () => {
   it("rejects a prompt over the byte cap", () => {
     const result = validateCreateSessionInput({
       ...base,
-      prompt: "x".repeat(64 * 1024 + 1),
+      prompt: "x".repeat(MAX_PROMPT_BYTES + 1),
     });
-    expect(result).toEqual({ ok: false, error: "prompt must be at most 65536 bytes" });
+    expect(result).toEqual({
+      ok: false,
+      error: promptByteLengthError("x".repeat(MAX_PROMPT_BYTES + 1)),
+    });
   });
 
   it("accepts a prompt at the byte cap", () => {
-    expect(validateCreateSessionInput({ ...base, prompt: "x".repeat(64 * 1024) }).ok).toBe(true);
+    expect(validateCreateSessionInput({ ...base, prompt: "x".repeat(MAX_PROMPT_BYTES) }).ok).toBe(
+      true,
+    );
   });
 
   it("accepts concurrencyId and metadata", () => {
