@@ -29,7 +29,6 @@ test.describe("service-account administration", () => {
 
     const name = `pw-service-${test.info().parallelIndex}-${Date.now()}`;
     await page.getByTestId("service-account-name").fill(name);
-    await page.getByTestId("service-account-bound-host").fill("pw-host");
     let rejectCreate = true;
     await page.route("**/api/v1/auth/service-accounts", async (route) => {
       if (route.request().method() === "POST" && rejectCreate) {
