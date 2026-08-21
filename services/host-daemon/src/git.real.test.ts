@@ -75,6 +75,39 @@ describe("createGitClient real git", () => {
     expect(head).toBe(mainSha);
   });
 
+  it("fetches missing tree objects after an exact-SHA checkout fails", async () => {
+    const root = mkdtempSync(join(tmpdir(), "ah-git-missing-tree-"));
+    roots.push(root);
+    const source = join(root, "source");
+    const remote = join(root, "remote.git");
+    const clientPath = join(root, "client");
+    const commitFile = join(root, "target-commit");
+    mkdirSync(source);
+    await git(source, ["init"]);
+    await git(source, ["config", "user.email", "t@example.com"]);
+    await git(source, ["config", "user.name", "t"]);
+    writeFileSync(join(source, "f.txt"), "target\n");
+    await git(source, ["add", "f.txt"]);
+    await git(source, ["commit", "-m", "target"]);
+    await git(source, ["branch", "-M", "main"]);
+    const targetSha = (await git(source, ["rev-parse", "HEAD"])).trim();
+    await git(root, ["clone", "--bare", source, remote]);
+    await git(root, ["clone", "--no-checkout", remote, clientPath]);
+
+    const targetCommit = await git(clientPath, ["cat-file", "commit", targetSha]);
+    rmSync(join(clientPath, ".git", "objects"), { recursive: true, force: true });
+    mkdirSync(join(clientPath, ".git", "objects"));
+    writeFileSync(commitFile, targetCommit);
+    expect((await git(clientPath, ["hash-object", "-t", "commit", "-w", commitFile])).trim()).toBe(
+      targetSha,
+    );
+    await expect(git(clientPath, ["cat-file", "-e", `${targetSha}^{tree}`])).rejects.toThrow();
+
+    const client = createGitClient(new SpawnProcessRunner());
+    await client.checkoutRef({ cwd: clientPath, ref: targetSha });
+    await expect(client.revParse(clientPath, "HEAD")).resolves.toBe(targetSha);
+  });
+
   it("recognizes an absolute worktree when the repository path is a symlink", async () => {
     const root = mkdtempSync(join(tmpdir(), "ah-git-link-"));
     const externalRoot = mkdtempSync(join(tmpdir(), "ah-git-external-"));

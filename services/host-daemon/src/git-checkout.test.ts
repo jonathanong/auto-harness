@@ -51,7 +51,24 @@ describe("createGitClient checkout and revParse", () => {
     ).rejects.toThrow(/Failed to resolve ref/);
   });
 
-  it("checkoutRef fails when switch and checkout both fail", async () => {
+  it("checkoutRef retries checkout once after fetching missing objects", async () => {
+    const git = createGitClient(
+      scripted([
+        {
+          match: ["rev-parse", "--verify", "--end-of-options", "main"],
+          exitCode: 0,
+          stdout: "abc\n",
+        },
+        { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "missing tree" },
+        { match: ["fetch", "--all", "--tags", "--refetch"], exitCode: 0 },
+        { match: ["switch", "--detach", "abc"], exitCode: 0 },
+      ]),
+    );
+    await expect(git.checkoutRef({ cwd: "/repo", ref: "main" })).resolves.toBeUndefined();
+  });
+
+  it("checkoutRef fails closed when the missing-object fetch fails", async () => {
     await expect(
       createGitClient(
         scripted([
@@ -62,6 +79,26 @@ describe("createGitClient checkout and revParse", () => {
           },
           { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "s" },
           { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "c" },
+          { match: ["fetch", "--all", "--tags", "--refetch"], exitCode: 1, stderr: "fetch failed" },
+        ]),
+      ).checkoutRef({ cwd: "/repo", ref: "main" }),
+    ).rejects.toThrow(/Failed to fetch ref/);
+  });
+
+  it("checkoutRef fails after one missing-object fetch retry", async () => {
+    await expect(
+      createGitClient(
+        scripted([
+          {
+            match: ["rev-parse", "--verify", "--end-of-options", "main"],
+            exitCode: 0,
+            stdout: "abc\n",
+          },
+          { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "first switch" },
+          { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "first checkout" },
+          { match: ["fetch", "--all", "--tags", "--refetch"], exitCode: 0 },
+          { match: ["switch", "--detach", "abc"], exitCode: 1, stderr: "second switch" },
+          { match: ["checkout", "--detach", "abc"], exitCode: 1, stderr: "second checkout" },
         ]),
       ).checkoutRef({ cwd: "/repo", ref: "main" }),
     ).rejects.toThrow(/Failed to checkout ref/);

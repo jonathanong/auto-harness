@@ -132,6 +132,21 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
       }
       if (co.exitCode !== 0) {
+        const fetched = await runGit(
+          runner,
+          cwd,
+          ["fetch", "--all", "--tags", "--refetch"],
+          signal,
+        );
+        if (fetched.exitCode !== 0) {
+          throw new Error(`Failed to fetch ref ${ref}: ${fetched.stderr}`);
+        }
+        co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
+        if (co.exitCode !== 0) {
+          co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
+        }
+      }
+      if (co.exitCode !== 0) {
         throw new Error(`Failed to checkout ref ${ref}: ${co.stderr}`);
       }
     },
