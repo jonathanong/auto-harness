@@ -55,6 +55,17 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).not.toMatch(/[\u0080-\u009f]/);
   });
 
+  it("removes seven-bit terminal control strings before matching credentials", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "Authorization: Bearer aaa\u001b]0;window\u0007.bbb\u001b^privacy\u001b\\.ccc",
+    );
+
+    expect(diagnostic).toBe("Authorization: [redacted]");
+    expect(diagnostic).not.toContain("aaa.bbb.ccc");
+    expect(diagnostic).not.toContain("window");
+    expect(diagnostic).not.toContain("privacy");
+  });
+
   it("redacts credentials containing terminal styling through runGit and gitFailure", async () => {
     const result = await runGit(
       {

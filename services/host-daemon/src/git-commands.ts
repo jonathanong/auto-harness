@@ -29,6 +29,10 @@ function removeTerminalControls(value: string): string {
   const osc = String.fromCharCode(0x9d);
   const stringControls = [0x90, 0x9e, 0x9f].map((code) => String.fromCharCode(code)).join("");
   const withoutEscapeSequences = value
+    // eslint-disable-next-line no-control-regex -- terminal protocols are defined by controls
+    .replace(/\u001b\][\s\S]*?(?:\u0007|\u009c|\u001b\\)/g, "")
+    // eslint-disable-next-line no-control-regex -- terminal protocols are defined by controls
+    .replace(/\u001b[P^_][\s\S]*?(?:\u009c|\u001b\\)/g, "")
     .replace(new RegExp(`${escape}\\[[0-?]*[ -/]*[@-~]`, "g"), "")
     .replace(new RegExp(`${csi}[0-?]*[ -/]*[@-~]`, "g"), "")
     .replace(
