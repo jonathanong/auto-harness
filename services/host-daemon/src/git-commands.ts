@@ -7,6 +7,7 @@ type GitResult = { exitCode: number; stdout: string; stderr: string };
 export const MAX_GIT_DIAGNOSTIC_BYTES = 1_024;
 const MAX_CAPTURED_GIT_STDERR_BYTES = 64 * 1_024;
 const DIAGNOSTIC_TRUNCATION_MARKER = " [diagnostic truncated]";
+const OUTPUT_CHUNK_TRUNCATION_MARKER = "[output chunk truncated]";
 
 function appendBounded(current: string, next: string, maxBytes: number): string {
   const remaining = maxBytes - Buffer.byteLength(current, "utf8");
@@ -14,11 +15,14 @@ function appendBounded(current: string, next: string, maxBytes: number): string 
   return current + truncateUtf8(next, remaining);
 }
 
+function discardTrailingLine(value: string): string {
+  const lastLineBreak = Math.max(value.lastIndexOf("\n"), value.lastIndexOf("\r"));
+  return lastLineBreak < 0 ? "" : value.slice(0, lastLineBreak + 1);
+}
+
 function completeCapturedLines(value: string): string {
   if (Buffer.byteLength(value, "utf8") <= MAX_CAPTURED_GIT_STDERR_BYTES) return value;
-  const prefix = truncateUtf8(value, MAX_CAPTURED_GIT_STDERR_BYTES);
-  const lastLineBreak = Math.max(prefix.lastIndexOf("\n"), prefix.lastIndexOf("\r"));
-  return lastLineBreak < 0 ? "" : prefix.slice(0, lastLineBreak + 1);
+  return discardTrailingLine(truncateUtf8(value, MAX_CAPTURED_GIT_STDERR_BYTES));
 }
 
 function skipCsi(value: string, index: number): number {
@@ -130,6 +134,9 @@ export async function runGit(
       if (c.stream === "stdout") {
         stdout += c.data;
       } else {
+        if (c.data.includes(OUTPUT_CHUNK_TRUNCATION_MARKER)) {
+          stderr = discardTrailingLine(stderr);
+        }
         stderr = appendBounded(stderr, c.data, MAX_CAPTURED_GIT_STDERR_BYTES + 1);
       }
     },

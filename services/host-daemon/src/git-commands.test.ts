@@ -120,6 +120,27 @@ describe("sanitizeGitDiagnostic", () => {
     expect(failure.message).not.toContain("SUPERSECRET");
   });
 
+  it("drops the incomplete line before an executor truncation marker", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({
+            stream: "stderr",
+            data: "fatal: https://oauth:SUPERSE",
+          });
+          options.onChunk({ stream: "stderr", data: "\n[output chunk truncated]\n" });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+
+    const failure = gitFailure("git fetch failed", result.stderr);
+    expect(failure.message).toBe("git fetch failed: [output chunk truncated]");
+    expect(failure.message).not.toContain("SUPERSE");
+  });
+
   it("returns an empty diagnostic when Git emitted no stderr", () => {
     expect(sanitizeGitDiagnostic("\n\t")).toBe("");
   });
