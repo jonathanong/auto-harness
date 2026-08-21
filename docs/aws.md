@@ -400,11 +400,11 @@ Triggered every **60 seconds** by EventBridge.
       repositoryId, priority: 0 }, set `lastRunAt = now`, advance `nextRunAt`, and invoke scheduler
 3. Ack-deadline sweep: unacknowledged assignments are requeued
 4. Acknowledged running timeout:
-   - Sessions with status=running, ackReceivedAt set, and now >= startedAt + timeout
-     → mark timed_out, send session:cancel, free the worktree or main-checkout lease
+   - Sessions with status=running, ackReceivedAt set, and now >= ackReceivedAt + timeout
+     → mark timed_out, send session:cancel, archive logs, free the worktree or main-checkout lease
 ```
 
-The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge no later than the configured timeout.
+The running-timeout sweep is a bound, not a grace window: host timeout is best-effort, and a lost or rejected `session:status` must still converge on the next cron tick after `ackReceivedAt + timeout`.
 
 The lock table is keyed by the exact `concurrencyId` and stores the active session id plus expiry
 metadata. Conditional put is the write-side invariant; conditional delete on terminal transition

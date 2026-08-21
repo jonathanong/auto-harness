@@ -1,6 +1,7 @@
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession } from "./control-plane-state.ts";
+import { queueSessionArchive } from "./control-plane-archive.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
@@ -8,8 +9,8 @@ import { releaseWorktree } from "./control-plane-worktrees.ts";
 const TIMEOUT_ERROR = "session exceeded timeout without a host terminal report";
 
 function isAcknowledgedRunningDue(session: SessionRecord, nowMs: number): boolean {
-  if (session.status !== "running" || !session.startedAt || !session.ackReceivedAt) return false;
-  const deadlineMs = Date.parse(session.startedAt) + session.timeout * 1000;
+  if (session.status !== "running" || !session.ackReceivedAt) return false;
+  const deadlineMs = Date.parse(session.ackReceivedAt) + session.timeout * 1000;
   return Number.isFinite(deadlineMs) && nowMs >= deadlineMs;
 }
 
@@ -51,6 +52,7 @@ function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRe
   session.worktreeId = null;
   session.hostId = null;
   persistTimedOutSession(state, session);
+  queueSessionArchive(state, session.id);
 }
 
 function rememberDurableTimeout(
@@ -84,6 +86,7 @@ function rememberDurableTimeout(
   delete next.ackReceivedAt;
   delete next.reconnectDeadlineAt;
   state.sessions.set(session.id, next);
+  queueSessionArchive(state, session.id);
 }
 
 function canCommitDurableTimeout(
@@ -127,10 +130,29 @@ async function commitDurableTimeout(
   });
 }
 
+async function listRunningSessions(state: ControlPlaneState): Promise<SessionRecord[]> {
+  const storage = state.storage;
+  if (!storage)
+    return [...state.sessions.values()].filter((session) => session.status === "running");
+  if (typeof storage.listSessionsByStatus === "function") {
+    const pages = await Promise.all(
+      [...Array(state.shardCount).keys()].map((shard) =>
+        storage.listSessionsByStatus("running", shard),
+      ),
+    );
+    return pages.flat();
+  }
+  if (typeof storage.listAllSessions === "function") {
+    return (await storage.listAllSessions()).filter((session) => session.status === "running");
+  }
+  return [...state.sessions.values()].filter((session) => session.status === "running");
+}
+
 /**
  * Control-plane bound on an acknowledged running assignment. Host timeout is
  * best-effort; if the process-exit/status report is lost, this sweep still
- * terminates the public session no later than startedAt + timeout.
+ * terminates the public session on the next scheduler tick after
+ * ackReceivedAt + timeout.
  */
 export function enforceRunningTimeouts(
   state: ControlPlaneState,
@@ -151,10 +173,7 @@ export async function enforceRunningTimeoutsDurable(
 ): Promise<string[]> {
   const storage = state.storage;
   if (!storage) return enforceRunningTimeouts(state, nowMs);
-  const rows =
-    typeof storage.listAllSessions === "function"
-      ? await storage.listAllSessions()
-      : [...state.sessions.values()];
+  const rows = await listRunningSessions(state);
   const canCommit =
     typeof storage.finishSession === "function" ||
     typeof storage.releaseMainCheckoutSession === "function";

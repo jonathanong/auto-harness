@@ -60,7 +60,7 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.getWorktree(worktreeId)?.status).toBe("idle");
   });
 
-  it("times out an acknowledged running assignment at startedAt + timeout", () => {
+  it("times out an acknowledged running assignment at ackReceivedAt + timeout", () => {
     const plane = new ControlPlane({ now: () => NOW });
     const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
     const due = runningDeadlineMs(plane, sessionId);

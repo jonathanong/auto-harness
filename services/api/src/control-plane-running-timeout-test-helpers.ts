@@ -31,5 +31,5 @@ export function startAcknowledgedRunning(plane: ControlPlane): {
 }
 
 export function runningDeadlineMs(plane: ControlPlane, sessionId: string): number {
-  return Date.parse(plane.getSession(sessionId)!.startedAt!) + RUNNING_TIMEOUT_SECONDS * 1000;
+  return Date.parse(plane.getSession(sessionId)!.ackReceivedAt!) + RUNNING_TIMEOUT_SECONDS * 1000;
 }

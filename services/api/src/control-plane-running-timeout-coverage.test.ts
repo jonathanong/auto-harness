@@ -57,12 +57,11 @@ describe("running timeout residual coverage", () => {
     expect(plane.enforceRunningTimeouts(far)).toEqual([]);
     expect(await plane.enforceRunningTimeoutsDurable(far)).toEqual([]);
     assigned.status = "running";
-    assigned.startedAt = "not-a-date";
-    assigned.ackReceivedAt = NOW;
+    assigned.ackReceivedAt = "not-a-date";
     expect(plane.enforceRunningTimeouts(far)).toEqual([]);
-    delete assigned.startedAt;
+    delete assigned.ackReceivedAt;
     expect(plane.enforceRunningTimeouts(far)).toEqual([]);
-    assigned.startedAt = new Date(Date.now() - 2_000).toISOString();
+    assigned.ackReceivedAt = new Date(Date.now() - 2_000).toISOString();
     assigned.timeout = 1;
     expect(plane.enforceRunningTimeouts()).toEqual([assigned.id]);
   });
@@ -94,6 +93,8 @@ describe("running timeout residual coverage", () => {
     });
     plane.state.storage = {
       putSession: async () => undefined,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
       releaseConcurrencyLock: async (id: string) => {
         released.push(id);
       },
@@ -110,7 +111,11 @@ describe("running timeout residual coverage", () => {
   it("hydrates running rows then times them out when storage has no finish path", async () => {
     const plane = new ControlPlane({ now: () => NOW });
     const row = scheduledRunning({ id: "hydrated", mainCheckoutLease: undefined, hostId: null });
-    plane.state.storage = { listAllSessions: async () => [row] } as never;
+    plane.state.storage = {
+      listAllSessions: async () => [row],
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    } as never;
     expect(
       await plane.enforceRunningTimeoutsDurable(Date.parse(NOW) + TIMEOUT_SECONDS * 1000),
     ).toEqual(["hydrated"]);
@@ -125,6 +130,8 @@ describe("running timeout residual coverage", () => {
     let finished: unknown;
     plane.state.storage = {
       listAllSessions: async () => [session],
+      listLogs: async () => [],
+      putArchive: async () => undefined,
       finishSession: async (opts: unknown) => {
         finished = opts;
         return true;
@@ -164,6 +171,8 @@ describe("running timeout residual coverage", () => {
     });
     const released: unknown[] = [];
     plane.state.storage = {
+      listLogs: async () => [],
+      putArchive: async () => undefined,
       releaseMainCheckoutSession: async (opts: unknown) => {
         released.push(opts);
         return true;
@@ -180,7 +189,10 @@ describe("running timeout residual coverage", () => {
     const stale = scheduledRunning({ id: "stale" });
     local.state.sessions.set("stale", { ...stale, status: "completed" });
     local.state.storage = {
-      listAllSessions: async () => [onlyStorage, stale],
+      listSessionsByStatus: async (status: string, shard: number) =>
+        shard === 0 && status === "running" ? [onlyStorage, stale] : [],
+      listLogs: async () => [],
+      putArchive: async () => undefined,
       finishSession: async () => true,
     } as never;
     expect(
