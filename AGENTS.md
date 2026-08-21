@@ -25,7 +25,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm install`                | Install workspace                                                                                                                             |
 | `pnpm lint`                   | oxlint                                                                                                                                        |
 | `pnpm fmt` / `pnpm fmt:check` | oxfmt                                                                                                                                         |
-| `pnpm test`                   | vitest — unit + integration projects, with coverage thresholds (98/97/100/98 global; 100% per-file overrides)                                 |
+| `pnpm test`                   | vitest — unit + integration projects, with coverage thresholds (98/97/100/98 global)                                                          |
 | `pnpm test:unit`              | vitest, unit project only                                                                                                                     |
 | `pnpm test:integration`       | vitest, integration project only (real HTTP+WS+daemon+git)                                                                                    |
 | `pnpm knip`                   | Unused exports/deps                                                                                                                           |
@@ -60,7 +60,7 @@ worktree gets stable, reusable ports across runs.
 ## Testing
 
 - Framework: **vitest**, one config (`vitest.config.ts`) with two `test.projects`: **unit** (`modules/`, `services/`, `scripts/`) and **integration** (`integration/`, real HTTP+WS+daemon+git — see [docs/host-daemon-e2e-testing.md](docs/host-daemon-e2e-testing.md)).
-- Coverage: enforced globally at **lines 98 / branches 97 / functions 100 / statements 98** on `modules/*/src` and `services/*/src` (excluding pure type files like `types.ts` and `*-types.ts`, `*.test.ts`, and the exact paths `modules/shared/src/session.ts`, `modules/shared/src/providers.ts`, and the two thin `services/{api,cdk}/src/cli.ts` entrypoints — `services/host-daemon/src/cli.ts` is real dispatch logic and is measured); `vitest.config.ts`'s root-level `coverage` raises most individual files to a **100%** per-file threshold override — see its `coverage.thresholds` map for the current list. The integration project carries no coverage gate of its own.
+- Coverage: enforced globally at **lines 98 / branches 97 / functions 100 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`. Excludes (tests, `*.d.ts`, `types.ts` / `*-types.ts`, and a short named deny-list) live in `vitest.config.ts`; new source is included by those globs — do not add per-file include/threshold allow-lists. `services/host-daemon/src/cli.ts` is measured (thin `services/{api,cdk}/src/cli.ts` are not). The integration project carries no coverage gate of its own.
 - **Mock only host CLI boundaries** (`child_process`, `node-pty`, and similar “run a CLI tool” adapters). Prefer real modules, in-memory fakes, and pure functions for everything else.
 - Do not lower coverage thresholds to land incomplete code.
 

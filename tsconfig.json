@@ -2,7 +2,9 @@
   "extends": "./tsconfig.base.json",
   "include": [
     "modules/*/src/**/*.ts",
+    "modules/*/src/**/*.tsx",
     "services/*/src/**/*.ts",
+    "services/*/src/**/*.tsx",
     "scripts/**/*.ts",
     "scripts/**/*.mts",
     "vitest.config.ts"

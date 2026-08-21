@@ -2,21 +2,7 @@
   "$schema": "https://unpkg.com/knip@5/schema.json",
   "workspaces": {
     ".": {
-      "entry": [
-        "scripts/local-e2e.mts",
-        "scripts/local-api-smoke.mts",
-        "scripts/local-cli-e2e.mts",
-        "scripts/phase3-cloud-e2e.mts",
-        "scripts/phase2-post-session.mts",
-        "scripts/ensure-dynamodb.mts",
-        "scripts/worktree-e2e-env.mts",
-        "scripts/prepare-dynamo-adapters-coverage.mts",
-        "scripts/phase3-ws-e2e.mts",
-        "scripts/manage-verify.mts",
-        "scripts/validate-bind.mts",
-        "vitest.config.ts",
-        "playwright.config.ts",
-      ],
+      "entry": ["scripts/*.mts", "vitest.config.ts", "playwright.config.ts"],
       "project": [
         "scripts/**/*.{ts,mts}",
         "vitest.config.ts",
