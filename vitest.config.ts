@@ -56,6 +56,7 @@ export default defineConfig({
         // Catalog dialogs and destructive actions are exercised with real React in happy-dom.
         "services/web/src/components/{add-command-dialog,add-provider-dialog,add-repo-dialog,delete-command-button,delete-provider-button,delete-repo-button}.tsx",
         "services/web/src/components/{add-provider-account-form,add-worktree-for-repo,host-add-repo-form,host-repositories-section,provider-account-unattached-warning,remove-provider-account-button,remove-provider-account-from-host-button}.tsx",
+        "services/web/src/components/add-worktree-attachments.ts",
         "services/web/src/components/{control-shell,host-filters,edit-worktree-form,list-page-states}.tsx",
         // Settings state and fields are exercised in happy-dom; complete workflows stay in Playwright.
         "services/web/src/components/{settings-page-client,slack-settings-fields,user-account-settings,user-account-create-form,user-account-table}.tsx",
@@ -70,7 +71,6 @@ export default defineConfig({
         "services/web/src/app/providers/*/page.tsx",
         "services/web/src/app/repositories/page.tsx",
         "services/web/src/app/repositories/*/page.tsx",
-        "services/web/src/app/worktrees/page.tsx",
         "services/host-pane/src/app/repositories/[[]id[]]/page.tsx",
         "services/host-pane/src/app/sessions/[[]id[]]/page.tsx",
         "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx",
@@ -159,6 +159,7 @@ export default defineConfig({
               { 100: true },
             "services/web/src/components/{add-provider-account-form,add-worktree-for-repo,host-add-repo-form,host-repositories-section,provider-account-unattached-warning,remove-provider-account-button,remove-provider-account-from-host-button}.tsx":
               { 100: true },
+            "services/web/src/components/add-worktree-attachments.ts": { 100: true },
             "services/web/src/components/{control-shell,host-filters,edit-worktree-form,user-account-settings,user-account-create-form,user-account-table}.tsx":
               { 100: true },
             "services/host-pane/src/components/{add-repo-dialog,host-shell,provider-accounts-readonly,sessions-live}.tsx":
@@ -207,7 +208,6 @@ export default defineConfig({
             "services/web/src/app/commands/**/page.tsx": { 100: true },
             "services/web/src/app/providers/**/page.tsx": { 100: true },
             "services/web/src/app/repositories/**/page.tsx": { 100: true },
-            "services/web/src/app/worktrees/page.tsx": { 100: true },
             "services/host-pane/src/app/repositories/[[]id[]]/page.tsx": { 100: true },
             "services/host-pane/src/app/sessions/[[]id[]]/page.tsx": { 100: true },
             "services/host-pane/src/app/worktrees/[[]worktreeId[]]/page.tsx": { 100: true },

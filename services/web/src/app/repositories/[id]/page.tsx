@@ -10,6 +10,7 @@ import {
 } from "@auto-harness/ui";
 import type { HostInventory } from "@auto-harness/shared";
 
+import { attachmentsForRepo } from "../../../components/add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "../../../components/add-worktree-for-repo.tsx";
 import { DeleteRepoButton } from "../../../components/delete-repo-button.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
@@ -158,12 +159,13 @@ export default async function RepositoryDetailPage({
                     <AddWorktreeForRepo
                       repositoryId={repositoryId}
                       repositoryName={repository.name ?? repositoryId}
-                      attachments={attachedHosts.flatMap((host, index) => {
-                        const repo = hostInventories[index]?.repositories.find(
-                          (entry) => entry.id === repositoryId,
-                        );
-                        return repo ? [{ hostId: host.hostId, repo }] : [];
-                      })}
+                      attachments={attachmentsForRepo(
+                        attachedHosts.map((host, index) => ({
+                          hostId: host.hostId,
+                          repositories: hostInventories[index]?.repositories,
+                        })),
+                        repositoryId,
+                      )}
                     />
                   )}
                 />

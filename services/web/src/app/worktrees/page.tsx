@@ -1,7 +1,8 @@
 import { WorktreesHierarchy, groupWorktreesByRepo } from "@auto-harness/ui";
 import type { HostRepository } from "@auto-harness/shared";
 
-import { AddWorktreeForRepo, attachmentsForRepo } from "../../components/add-worktree-for-repo.tsx";
+import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
+import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
 import { apiGet } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";

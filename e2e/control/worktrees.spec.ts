@@ -29,10 +29,8 @@ test.describe("control plane worktrees", () => {
 
       try {
         await page.goto("/worktrees");
-        await expect(page.getByTestId(`add-worktree-open-${repoId}`)).toBeVisible({
-          timeout: 15_000,
-        });
         await expect(page.getByTestId(`worktree-link-${wtId}`)).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByTestId(`add-worktree-open-${repoId}`)).toBeVisible();
         await expect(page.getByTestId(`worktree-labels-${wtId}`)).toHaveText("echo");
         await page.getByTestId(`worktree-link-${wtId}`).click();
 

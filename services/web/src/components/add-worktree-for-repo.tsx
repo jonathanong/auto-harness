@@ -3,21 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AddWorktreeForm } from "@auto-harness/ui";
-import type { HostRepository } from "@auto-harness/shared";
 
-export type WorktreeHostAttachment = { hostId: string; repo: HostRepository };
+import { type WorktreeHostAttachment, attachmentsForRepo } from "./add-worktree-attachments.ts";
 
-export function attachmentsForRepo(
-  inventories: Array<{ hostId: string; repositories?: HostRepository[] }>,
-  repositoryId: string,
-): WorktreeHostAttachment[] {
-  const attachments: WorktreeHostAttachment[] = [];
-  for (const inventory of inventories) {
-    const repo = (inventory.repositories ?? []).find((entry) => entry.id === repositoryId);
-    if (repo) attachments.push({ hostId: inventory.hostId, repo });
-  }
-  return attachments;
-}
+export { attachmentsForRepo, type WorktreeHostAttachment };
 
 /** Add-worktree dialog for fleet/repo views, with a host picker when the repo is on several hosts. */
 export function AddWorktreeForRepo({
@@ -44,8 +33,10 @@ export function AddWorktreeForRepo({
       </p>
     );
   }
-  const selected =
-    attachments.find((attachment) => attachment.hostId === hostId) ?? attachments[0]!;
+  const selected = attachments.reduce(
+    (current, attachment) => (attachment.hostId === hostId ? attachment : current),
+    attachments[0]!,
+  );
   return (
     <div
       className="flex flex-wrap items-end gap-2"
