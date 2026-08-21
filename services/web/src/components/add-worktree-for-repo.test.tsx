@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import type { HostRepository } from "@auto-harness/shared";
 
 import { field, mountForm, setValue } from "./form-test-helpers.tsx";
-import { AddWorktreeForRepo, attachmentsForRepo } from "./add-worktree-for-repo.tsx";
+import { attachmentsForRepo } from "./add-worktree-attachments.ts";
+import { AddWorktreeForRepo } from "./add-worktree-for-repo.tsx";
 
 if (!HTMLElement.prototype.hasPointerCapture) {
   HTMLElement.prototype.hasPointerCapture = () => false;

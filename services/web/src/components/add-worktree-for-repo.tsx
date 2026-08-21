@@ -4,9 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { AddWorktreeForm } from "@auto-harness/ui";
 
-import { type WorktreeHostAttachment, attachmentsForRepo } from "./add-worktree-attachments.ts";
-
-export { attachmentsForRepo, type WorktreeHostAttachment };
+import { type WorktreeHostAttachment } from "./add-worktree-attachments.ts";
 
 /** Add-worktree dialog for fleet/repo views, with a host picker when the repo is on several hosts. */
 export function AddWorktreeForRepo({
