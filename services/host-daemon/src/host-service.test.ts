@@ -1,10 +1,29 @@
 import { describe, expect, it } from "vitest";
 
-import { installHostService, uninstallHostService } from "./host-service.ts";
+import { getHostServiceStatus, installHostService, uninstallHostService } from "./host-service.ts";
 import type { HostServiceFs } from "./host-service-io.ts";
 import { baseOpts, memFs, seededFs } from "./host-service-test-helpers.ts";
 
 describe("unsupported platform / thrown failures", () => {
+  it("dispatches service status through the platform adapter", () => {
+    expect(
+      getHostServiceStatus(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          run: () => ({
+            status: 0,
+            stdout: "LoadState=loaded\nActiveState=active\nSubState=running\n",
+            stderr: "",
+          }),
+        }),
+      ),
+    ).toMatchObject({ state: "running" });
+    expect(getHostServiceStatus(baseOpts({ platform: "aix", fs: seededFs() }))).toMatchObject({
+      state: "unknown",
+    });
+  });
+
   it("rejects unknown platforms and maps thrown values", () => {
     const errors: string[] = [];
     expect(
