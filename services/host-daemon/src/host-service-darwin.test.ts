@@ -38,7 +38,10 @@ describe("install-service darwin", () => {
 
   it("falls back to launchctl load and keeps an existing env file", () => {
     const envPath = "/Users/op/Library/Application Support/auto-harness/host-daemon.env";
-    const fs = seededFs({ [envPath]: "HARNESS_HOST_ID=old\n" });
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
     const spawn = recorder({
       "launchctl bootstrap gui/501 /Users/op/Library/LaunchAgents/com.auto-harness.host-daemon.plist":
         { status: 1, stdout: "", stderr: "no bootstrap" },
@@ -49,7 +52,7 @@ describe("install-service darwin", () => {
         baseOpts({ platform: "darwin", fs, run: spawn.run, log: (m) => logs.push(m) }),
       ),
     ).toBe(0);
-    expect(fs.files.get(envPath)).toBe("HARNESS_HOST_ID=old\n");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.at(-1)?.args[0]).toBe("load");
   });
@@ -110,23 +113,55 @@ describe("install-service darwin", () => {
     ).toBe(0);
   });
 
-  it("warns but still writes when darwin identity is incomplete", () => {
+  it("refuses an invalid existing env before writing or restarting", () => {
+    const fs = seededFs({
+      "/Users/op/Library/Application Support/auto-harness/host-daemon.env":
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_KEY=secret\n",
+    });
+    const before = new Map(fs.files);
     const logs: string[] = [];
+    const calls: string[] = [];
     expect(
       installHostService(
         baseOpts({
           platform: "darwin",
-          fs: seededFs(),
-          env: {
-            HARNESS_HOST_ID: "host-1",
-            HARNESS_API_URL: "https://example.cloudfront.net",
-          },
+          fs,
           log: (m) => logs.push(m),
-          run: () => ({ status: 0, stdout: "", stderr: "" }),
+          error: (m) => logs.push(m),
+          run: (command) => {
+            calls.push(command);
+            return { status: 0, stdout: "", stderr: "" };
+          },
+        }),
+      ),
+    ).toBe(1);
+    expect(logs.join("\n")).toMatch(/HARNESS_API_URL/);
+    expect(logs.join("\n")).not.toContain("secret");
+    expect(calls).toEqual([]);
+    expect(fs.files).toEqual(before);
+  });
+
+  it("updates only the persisted API URL while retaining the bound key", () => {
+    const envPath = "/Users/op/Library/Application Support/auto-harness/host-daemon.env";
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://old.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n",
+    });
+    const spawn = recorder();
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "darwin",
+          fs,
+          run: spawn.run,
+          apiUrl: "https://new.example.com",
         }),
       ),
     ).toBe(0);
-    expect(logs.join("\n")).toMatch(/Warning:.*HARNESS_API_KEY/);
+    expect(fs.files.get(envPath)).toBe(
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://new.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n",
+    );
+    expect(spawn.calls.map((call) => call.args[0])).toEqual(["bootout", "bootstrap", "kickstart"]);
   });
 });
 

@@ -47,13 +47,23 @@ export HARNESS_API_KEY='hns_…'
 pnpm local:daemon install-service
 ```
 
-Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
-`HARNESS_API_KEY`. macOS and Windows warn and still write. `status` / `run-session` / `start`
-keep the local defaults. After installation, use `pnpm local:daemon status` to check the
+Every platform validates the effective persisted env before writing service files or restarting.
+It requires a non-placeholder bound `HARNESS_HOST_ID`, a well-formed non-local HTTPS production
+`HARNESS_API_URL`, and a non-placeholder `HARNESS_API_KEY`. `status` / `run-session` / `start`
+keep the local defaults. If a deployed URL changes, update only the non-secret URL while retaining
+the persisted bound key:
+
+```bash
+pnpm local:daemon install-service --api-url 'https://new-control.example.com'
+```
+
+The update path rewrites only `HARNESS_API_URL` and validates the resulting file before writing or
+restarting; it never prints or requires copying `HARNESS_API_KEY`. On Linux, run the update as root
+when the existing mode-0600 env file is root-owned. After installation, use `pnpm local:daemon status` to check the
 local service manager and the exact bound host in the control plane. The command succeeds
 only when the service is running, the host is online and non-draining, and the host reports
-explicit Git readiness; missing readiness data fails closed. Use `status --config-only` when
-you only need the configured inventory. Status output is bounded and never includes the
+explicit Git readiness; missing readiness data fails closed. Use `status --config-only` when you
+only need the configured inventory. Status output is bounded and never includes the
 persisted API key or raw service-manager diagnostics.
 
 | OS      | What it installs                                                                                                            |

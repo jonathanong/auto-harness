@@ -30,7 +30,10 @@ describe("install-service win32", () => {
 
   it("keeps env, reports create failure, and warns when /Run fails", () => {
     const envPath = "/Users/op/AppData/Roaming/auto-harness/host-daemon.env";
-    const fs = seededFs({ [envPath]: "KEEP=1\n" });
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
     const logs: string[] = [];
     expect(
       installHostService(
@@ -45,7 +48,7 @@ describe("install-service win32", () => {
         }),
       ),
     ).toBe(0);
-    expect(fs.files.get(envPath)).toBe("KEEP=1\n");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/schtasks \/Run failed/);
     const errors: string[] = [];
     expect(
@@ -134,6 +137,26 @@ describe("install-service win32", () => {
       ),
     ).toBe(1);
     expect(endErrors.join("\n")).toMatch(/End/);
+  });
+
+  it("refuses an invalid existing env before filesystem or task mutation", () => {
+    const envPath = "/Users/op/AppData/Roaming/auto-harness/host-daemon.env";
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=REPLACE_WITH_BOUND_HOST_ID\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
+    const before = new Map(fs.files);
+    const spawn = recorder();
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({ platform: "win32", fs, run: spawn.run, error: (m) => errors.push(m) }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/HARNESS_HOST_ID/);
+    expect(errors.join("\n")).not.toContain("REPLACE_WITH_BOUND_HOST_ID");
+    expect(spawn.calls).toEqual([]);
+    expect(fs.files).toEqual(before);
   });
 });
 

@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
-import { pathFromEnv, renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
+import { pathFromEnv, persistedEnvError } from "./host-service-env.ts";
+import { preparePersistedEnv } from "./host-service-env-persisted.ts";
 import type { HostServiceContext, HostServiceStatus } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import { DARWIN_LABEL, renderLaunchAgentPlist } from "./host-service-templates.ts";
@@ -47,20 +48,25 @@ export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
 
 export function installDarwin(ctx: HostServiceContext): number {
   const paths = darwinPaths(ctx.home);
+  const envExists = ctx.fs.existsSync(paths.envFile);
+  const existingEnv = envExists ? ctx.fs.readFileSync(paths.envFile) : undefined;
+  const preparedEnv = preparePersistedEnv({
+    existing: existingEnv,
+    example: ctx.fs.readFileSync(ctx.envExamplePath),
+    env: ctx.env,
+    apiUrl: ctx.apiUrl,
+  });
+  if (preparedEnv.errors.length > 0) {
+    ctx.error(persistedEnvError(preparedEnv.errors));
+    return 1;
+  }
   ctx.fs.mkdirSync(paths.agentsDir, { recursive: true, mode: 0o755 });
   ctx.fs.mkdirSync(paths.supportDir, { recursive: true, mode: 0o755 });
-  if (ctx.fs.existsSync(paths.envFile)) {
+  if (envExists && ctx.apiUrl === undefined) {
     ctx.log(`Keeping existing env file ${paths.envFile}`);
   } else {
-    warnOrRefuseIdentity(ctx);
-    writeMode(
-      ctx.fs,
-      paths.envFile,
-      renderEnvFile(ctx.fs.readFileSync(ctx.envExamplePath), ctx.env),
-      0o600,
-      true,
-    );
-    ctx.log(`Wrote ${paths.envFile} (mode 0600)`);
+    writeMode(ctx.fs, paths.envFile, preparedEnv.contents, 0o600, !envExists);
+    ctx.log(`${envExists ? "Updated" : "Wrote"} ${paths.envFile} (mode 0600)`);
   }
   writeMode(
     ctx.fs,

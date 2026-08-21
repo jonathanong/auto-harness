@@ -131,6 +131,26 @@ describe("renderEnvFile", () => {
       envIdentityErrors(
         {
           HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "http://control.example.com",
+          HARNESS_API_KEY: "secret",
+        },
+        "darwin",
+      ),
+    ).toEqual(["HARNESS_API_URL"]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "not a URL",
+          HARNESS_API_KEY: "PLACEHOLDER_KEY",
+        },
+        "win32",
+      ),
+    ).toEqual(["HARNESS_API_URL", "HARNESS_API_KEY"]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
           HARNESS_API_HTTP: "https://d111.cloudfront.net",
           HARNESS_API_KEY: "secret",
         },

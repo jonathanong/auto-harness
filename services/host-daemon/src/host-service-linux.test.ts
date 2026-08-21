@@ -36,7 +36,10 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_RELOAD_COMMAND}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_ENABLE_NOW_COMMAND}`);
-    const existing = seededFs({ [LINUX_ENV_DEST]: "KEEP=1\n" });
+    const existing = seededFs({
+      [LINUX_ENV_DEST]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
     const existingLogs: string[] = [];
     expect(
       installHostService(
@@ -56,7 +59,8 @@ describe("install-service linux", () => {
   it("keeps /opt working directory and existing env as root", () => {
     const fs = seededFs({
       [LINUX_OPT_CURRENT]: "",
-      [LINUX_ENV_DEST]: "HARNESS_HOST_ID=existing\n",
+      [LINUX_ENV_DEST]:
+        "HARNESS_HOST_ID=existing\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
     });
     const spawn = recorder();
     const logs: string[] = [];
@@ -72,7 +76,7 @@ describe("install-service linux", () => {
       ),
     ).toBe(0);
     expect(fs.files.get(LINUX_UNIT_DEST)).toContain(`WorkingDirectory=${LINUX_OPT_CURRENT}`);
-    expect(fs.files.get(LINUX_ENV_DEST)).toBe("HARNESS_HOST_ID=existing\n");
+    expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([
       "systemctl daemon-reload",

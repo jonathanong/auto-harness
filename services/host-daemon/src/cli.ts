@@ -207,7 +207,13 @@ export async function runCli(
   }
 
   if (command === "install-service") {
-    return deps.installService({ env: resolvedEnv, log: deps.log, error: deps.error });
+    const apiUrlIndex = args.indexOf("--api-url");
+    const apiUrl = apiUrlIndex >= 0 ? args[apiUrlIndex + 1] : undefined;
+    if (apiUrlIndex >= 0 && (!apiUrl || apiUrl.startsWith("--"))) {
+      deps.error("--api-url requires an HTTPS production control-plane URL");
+      return 1;
+    }
+    return deps.installService({ env: resolvedEnv, log: deps.log, error: deps.error, apiUrl });
   }
   if (command === "uninstall-service") {
     return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });

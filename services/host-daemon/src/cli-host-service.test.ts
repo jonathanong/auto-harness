@@ -21,6 +21,26 @@ describe("install-service CLI", () => {
     expect(installed).toEqual(["in", "out"]);
   });
 
+  it("passes --api-url as a non-secret persisted URL update", async () => {
+    let received: { apiUrl?: string } | undefined;
+    const a = deps({
+      installService: (opts) => {
+        received = opts;
+        return 0;
+      },
+    });
+    expect(
+      await runCli(["node", "x", "install-service", "--api-url", "https://new.example.com"], {}, a),
+    ).toBe(0);
+    expect(received?.apiUrl).toBe("https://new.example.com");
+  });
+
+  it("requires a value after --api-url", async () => {
+    const a = deps();
+    expect(await runCli(["node", "x", "install-service", "--api-url"], {}, a)).toBe(1);
+    expect(a.errors[0]).toMatch(/--api-url/);
+  });
+
   it("loads HARNESS_ENV_FILE without overriding existing values", async () => {
     const loaded: NodeJS.ProcessEnv[] = [];
     const a = deps({
