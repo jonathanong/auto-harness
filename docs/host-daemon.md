@@ -673,7 +673,7 @@ ERROR: Failed to create worktree at /path/wt-1
 - Parent repo must already be cloned at `repositories[].path`
 - Permissions for agent user
 - `git worktree prune` for stale locks
-- Git ≥ 2.20
+- Git ≥ 2.36 (supports checkout recovery for incomplete object stores)
 
 ### CLI not found
 

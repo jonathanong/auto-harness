@@ -132,6 +132,8 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         co = await runGit(runner, cwd, ["checkout", "--detach", sha], signal);
       }
       if (co.exitCode !== 0) {
+        // Re-fetch every reachable object: a regular fetch can treat the
+        // locally-present commit as complete while its tree is missing.
         const fetched = await runGit(
           runner,
           cwd,
@@ -139,7 +141,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
           signal,
         );
         if (fetched.exitCode !== 0) {
-          throw new Error(`Failed to fetch ref ${ref}: ${fetched.stderr}`);
+          throw new Error("Failed to fetch required checkout objects");
         }
         co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
         if (co.exitCode !== 0) {
@@ -147,7 +149,11 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         }
       }
       if (co.exitCode !== 0) {
-        throw new Error(`Failed to checkout ref ${ref}: ${co.stderr}`);
+        throw new Error("Failed to checkout resolved ref");
+      }
+      const head = await runGit(runner, cwd, ["rev-parse", "HEAD"], signal);
+      if (head.exitCode !== 0 || head.stdout.trim() !== sha) {
+        throw new Error("Failed to verify detached checkout");
       }
     },
 

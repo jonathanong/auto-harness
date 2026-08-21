@@ -15,7 +15,7 @@ Related: [local-development.md](local-development.md) (runbook), [deploy-local.m
 | Node.js ≥ 22.18 | `node -v`                                                               |
 | pnpm            | `pnpm -v` (see root `packageManager`)                                   |
 | Docker          | for DynamoDB Local                                                      |
-| Git ≥ 2.20      | worktrees                                                               |
+| Git ≥ 2.36      | worktrees and checkout recovery                                         |
 | Optional AI CLI | `which grok` / `which codex` / `which claude` / etc. for a real command |
 
 ```bash

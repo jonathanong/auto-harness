@@ -11,7 +11,7 @@ Run and test Auto Harness on your machine **without an AWS account**. Install/pr
 | Node.js ≥ 22.18                         | monorepo tooling + **native TypeScript type stripping** (no `tsc` build) |
 | pnpm                                    | workspaces (`packageManager` in root `package.json`)                     |
 | Docker                                  | **DynamoDB Local** (`amazon/dynamodb-local`)                             |
-| Git 2.20+                               | worktrees                                                                |
+| Git 2.36+                               | worktrees and checkout recovery                                          |
 | AI CLIs (optional for local echo demos) | Codex / Claude / etc. on agent host for real sessions                    |
 
 ```bash
