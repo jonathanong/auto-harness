@@ -355,6 +355,10 @@ For `type: scheduled` / `worktreeId: null`:
 
 ### Ref checkout recovery
 
+Daemon startup preflights the installed Git version for this recovery path. Git 2.36+ is required
+because repair uses `git fetch --refetch`; an incompatible daemon registers its bounded readiness
+reason for operators but refuses assignments and is excluded by the scheduler.
+
 For a worktree session, the daemon resolves its `ref` to a commit before
 detaching `HEAD`, so branch names, SHAs, lightweight tags, and annotated tags
 all land on the exact target commit. If both detached-checkout forms fail, it

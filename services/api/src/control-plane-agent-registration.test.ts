@@ -41,4 +41,24 @@ describe("host registration repository inventory", () => {
       ]),
     ).toThrow("duplicate repository repo");
   });
+
+  it("marks a legacy registration without a runtime report as not ready", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.handleHostMessage({
+        type: "host:register",
+        hostId: "legacy-host",
+        worktrees: [],
+      }),
+    ).toEqual({ ok: true });
+    expect(plane.listHosts()).toEqual([
+      expect.objectContaining({
+        hostId: "legacy-host",
+        daemonVersion: "legacy/unknown",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_readiness_unreported",
+      }),
+    ]);
+  });
 });

@@ -12,6 +12,10 @@ export function HostOverviewTab({
   daemonStartedAt,
   restartCount,
   lastRestartDetectedAt,
+  daemonVersion,
+  gitVersion,
+  gitReady,
+  gitReadinessReason,
 }: {
   hostId: string;
   online: boolean;
@@ -22,6 +26,10 @@ export function HostOverviewTab({
   daemonStartedAt?: string | null;
   restartCount?: number;
   lastRestartDetectedAt?: string | null;
+  daemonVersion?: string | null;
+  gitVersion?: string | null;
+  gitReady?: boolean;
+  gitReadinessReason?: string | null;
 }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-3" data-pw="host-detail-overview">
@@ -65,6 +73,10 @@ export function HostOverviewTab({
             daemonStartedAt={daemonStartedAt}
             restartCount={restartCount}
             lastRestartDetectedAt={lastRestartDetectedAt}
+            daemonVersion={daemonVersion}
+            gitVersion={gitVersion}
+            gitReady={gitReady}
+            gitReadinessReason={gitReadinessReason}
           />
         </dd>
       </div>

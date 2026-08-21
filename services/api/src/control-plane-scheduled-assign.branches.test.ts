@@ -48,6 +48,7 @@ function connection(
     commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
     repositoryIds,
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   };
 }
 

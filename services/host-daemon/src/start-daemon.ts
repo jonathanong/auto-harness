@@ -1,3 +1,4 @@
+import type { HostRuntimeReport } from "@auto-harness/shared";
 import type { HostIdentity } from "./config-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import { fetchHostInventory, inventoryFingerprint } from "./bootstrap.ts";
@@ -20,6 +21,7 @@ type StartDaemonOptions = {
   /** For tests: don't block forever. */
   runUntil?: Promise<void>;
   fetchFn?: typeof fetch;
+  runtime?: HostRuntimeReport;
 };
 
 type InventoryPollOptions = {
@@ -123,6 +125,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     config: options.config,
     transport,
     onLog: log,
+    ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();
   try {

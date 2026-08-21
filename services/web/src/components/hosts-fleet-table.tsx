@@ -17,6 +17,7 @@ export type FleetHost = {
   hostId: string;
   online: boolean;
   connectedAt?: string | null;
+  gitReady?: boolean;
 };
 
 export type HostInventorySummary = {
@@ -43,6 +44,7 @@ export function HostsFleetTable({
         <TableRow>
           <TableHead>Host</TableHead>
           <TableHead>Online</TableHead>
+          <TableHead>Git</TableHead>
           <TableHead>Repos</TableHead>
           <TableHead>Host config</TableHead>
           <TableHead>Connected</TableHead>
@@ -70,6 +72,9 @@ export function HostsFleetTable({
               <TableCell>
                 <OnlineStatusBadge online={h.online} pw={`host-online-${h.hostId}`} />
               </TableCell>
+              <TableCell data-pw={`host-git-ready-${h.hostId}`}>
+                {h.gitReady ? "Ready" : "Not ready"}
+              </TableCell>
               <TableCell className="text-xs">{repoCount}</TableCell>
               <TableCell>{inventory ? "yes" : "no"}</TableCell>
               <TableCell
@@ -94,7 +99,7 @@ export function HostsFleetTable({
         })}
         {rows.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={7} className="text-muted-foreground">
+            <TableCell colSpan={8} className="text-muted-foreground">
               {canAddHost
                 ? "No hosts match filters. Add a host above or start a daemon."
                 : "No hosts match filters."}

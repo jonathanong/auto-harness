@@ -7,6 +7,7 @@ import type {
 } from "./types.ts";
 import type { CommandResumeSpec } from "./command-resume.ts";
 import type { HostCapability } from "./host-capabilities.ts";
+import type { HostRuntimeReport } from "./host-runtime.ts";
 import type { SessionUsage } from "./usage.ts";
 
 export type SessionResumeSpec = CommandResumeSpec & {
@@ -148,6 +149,8 @@ export type HostToServerMessage =
       daemonInstanceId?: string;
       /** Process start time reported alongside daemonInstanceId. */
       daemonStartedAt?: string;
+      /** Git checkout-recovery readiness and daemon package version. Missing means legacy. */
+      runtime?: HostRuntimeReport;
       /** A reconnecting daemon retains drain until this shutdown completes. */
       draining?: true;
     }

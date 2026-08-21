@@ -113,7 +113,16 @@ export async function hydrateFromStorage(state: HydratableState): Promise<void> 
   for (const worktree of worktrees) state.worktrees.set(worktree.id, worktree);
   for (const record of connections) {
     if (record.registered === false) continue;
-    const connection = { ...record, capabilities: normalizeHostCapabilities(record.capabilities) };
+    const connection = {
+      ...record,
+      capabilities: normalizeHostCapabilities(record.capabilities),
+      runtime: record.runtime ?? {
+        daemonVersion: "legacy/unknown",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_readiness_unreported" as const,
+      },
+    };
     state.connections.set(connection.connectionId, connection);
     state.hostConnection.set(connection.hostId, connection.connectionId);
   }

@@ -2,6 +2,7 @@ import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type {
   Command,
   HostCapability,
+  HostRuntimeReport,
   Provider,
   ProviderAccount,
   TargetRef,
@@ -54,6 +55,8 @@ export type ConnectionRecord = {
   repositoryIds?: string[];
   /** Empty/absent means an older daemon supports no optional capabilities. */
   capabilities?: HostCapability[];
+  /** Present only when this daemon has completed the checkout-recovery preflight. */
+  runtime?: HostRuntimeReport;
   /** False only for an authenticated API Gateway socket awaiting host:register. */
   registered?: false;
   /** Present only for a browser viewer connection. */
@@ -150,6 +153,8 @@ export type HostInventoryRecord = {
   restartCount?: number;
   /** Control-plane time of the most recently observed process identity change. */
   lastRestartDetectedAt?: string;
+  /** Most recently registered daemon/Git compatibility facts. */
+  runtime?: HostRuntimeReport;
   repositories: Array<{
     id: string;
     path: string;

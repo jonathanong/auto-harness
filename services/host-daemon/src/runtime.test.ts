@@ -23,6 +23,10 @@ describe("runtime helpers", () => {
     const runner: ProcessRunner = {
       async run(opts) {
         calls.push(opts.argv.join(" "));
+        if (opts.argv.includes("--version")) {
+          opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+          return { exitCode: 0, timedOut: false, signal: null };
+        }
         if (opts.argv.includes("rev-parse")) {
           return { exitCode: 0, timedOut: false, signal: null };
         }
@@ -44,6 +48,9 @@ describe("runtime helpers", () => {
     const runner: ProcessRunner = {
       async run(opts) {
         if (opts.argv[0] === "git") {
+          if (opts.argv.includes("--version")) {
+            opts.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+          }
           return { exitCode: 0, timedOut: false, signal: null };
         }
         opts.onChunk({ stream: "stdout", data: "hi\n" });
@@ -75,6 +82,9 @@ describe("runtime helpers", () => {
     const systemRunner: ProcessRunner = {
       async run(options) {
         systemCalls.push(options.argv);
+        if (options.argv.includes("--version")) {
+          options.onChunk({ stream: "stdout", data: "git version 2.36.0\n" });
+        }
         return { exitCode: 0, timedOut: false, signal: null };
       },
     };

@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- ordered daemon lifecycle belongs in this single loop. */
 import { randomUUID } from "node:crypto";
-import type { HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
+import type { HostRuntimeReport, HostWireMessage, SessionLogChunk } from "@auto-harness/shared";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -19,6 +19,7 @@ import { resolvedRouteMetadata, sessionAssignFromWire } from "./session-assign.t
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import { probeGitReadiness } from "./git-readiness.ts";
 export type { DaemonTransport } from "./daemon-transport-types.ts";
 export type DaemonLoopOptions = {
   config: DaemonConfig;
@@ -41,6 +42,8 @@ export type DaemonLoopOptions = {
   timers?: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   /** Stable process identity; injectable only to make restart semantics deterministic in tests. */
   daemonIdentity?: DaemonRuntimeIdentity;
+  /** Startup preflight from the CLI; direct loop users probe during start(). */
+  runtime?: HostRuntimeReport;
 };
 type InflightSession = {
   controller: AbortController;
@@ -76,6 +79,8 @@ export class DaemonLoop {
   private drainDeadline: ReturnType<typeof setTimeout> | undefined;
   private readonly timers: Pick<typeof globalThis, "setTimeout" | "clearTimeout">;
   private readonly daemonIdentity: DaemonRuntimeIdentity;
+  private readonly processRunner: ProcessRunner;
+  private runtime: HostRuntimeReport | undefined;
   private connectionEvents: { stop: () => void } | undefined;
   constructor(options: DaemonLoopOptions) {
     this.config = options.config;
@@ -94,6 +99,8 @@ export class DaemonLoop {
     this.timers = options.timers ?? globalThis;
     this.outbound = new OutboundQueue(this.transport, (line) => this.onLog?.(line));
     const processRunner = options.processRunner ?? new SpawnProcessRunner();
+    this.processRunner = processRunner;
+    this.runtime = options.runtime;
     const commandRunner =
       options.commandRunner ?? (options.processRunner ? processRunner : new PtyProcessRunner());
     const git = createGitClient(processRunner);
@@ -107,6 +114,7 @@ export class DaemonLoop {
     });
   }
   async start(): Promise<void> {
+    this.runtime ??= await probeGitReadiness(this.processRunner);
     await this.worktrees.ensureAll();
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
@@ -147,6 +155,7 @@ export class DaemonLoop {
       ),
       this.drainRequested || this.draining,
       this.daemonIdentity,
+      this.runtime,
     );
   }
   async keepalive(): Promise<void> {
@@ -246,6 +255,10 @@ export class DaemonLoop {
     }
     if (this.isDraining()) {
       this.onLog?.(`draining: refused assign ${msg.sessionId}`);
+      return;
+    }
+    if (!this.runtime?.gitReady) {
+      this.onLog?.(`git not ready: refused assign ${msg.sessionId}`);
       return;
     }
 

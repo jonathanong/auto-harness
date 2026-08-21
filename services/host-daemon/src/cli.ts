@@ -49,7 +49,9 @@ export type RunSessionDeps = {
     env?: NodeJS.ProcessEnv;
     inline?: unknown;
   }) => Promise<DaemonConfig> | DaemonConfig;
-  ensureReady: (config: DaemonConfig) => Promise<void>;
+  ensureReady: (
+    config: DaemonConfig,
+  ) => Promise<import("@auto-harness/shared").HostRuntimeReport | void>;
   runSession: (
     config: DaemonConfig,
     assign: SessionAssign,
@@ -173,13 +175,14 @@ export async function runCli(
     try {
       const { loadHostIdentity } = await import("./config.ts");
       const { startDaemon } = await import("./start-daemon.ts");
-      await deps.ensureReady(config);
+      const runtime = await deps.ensureReady(config);
       const { stop } = await startDaemon({
         config,
         identity: loadHostIdentity(resolvedEnv),
         ...(wsUrl !== undefined ? { wsUrl } : {}),
         log: deps.log,
         error: deps.error,
+        ...(runtime ? { runtime } : {}),
       });
       // The previous handler ran stop() again on a second signal, had no catch — so a
       // rejecting stop() became an unhandled rejection during shutdown — and only set

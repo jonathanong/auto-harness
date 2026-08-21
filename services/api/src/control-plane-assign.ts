@@ -58,6 +58,8 @@ export function assignQueued(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
+          state.connections.get(state.hostConnection.get(w.hostId) ?? "")?.runtime?.gitReady ===
+            true &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -210,6 +212,8 @@ export async function assignQueuedDurable(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
+          state.connections.get(state.hostConnection.get(w.hostId) ?? "")?.runtime?.gitReady ===
+            true &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -441,6 +445,8 @@ function allIdle(
       worktree.repositoryId === session.repositoryId &&
       worktree.status === "idle" &&
       worktree.online &&
+      state.connections.get(state.hostConnection.get(worktree.hostId) ?? "")?.runtime?.gitReady ===
+        true &&
       !state.drainingHosts.has(worktree.hostId) &&
       !state.disconnectedHosts.has(worktree.hostId) &&
       session.requiredLabels.every((label) => worktree.labels.includes(label)),

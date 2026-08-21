@@ -406,6 +406,7 @@ describe("reconnect reconciliation", () => {
           connectedAt: "now",
           lastHeartbeatAt: "now",
           commandProfiles: ["echo-prompt"],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         });
         return { ...running, status: "queued" as const };
       },

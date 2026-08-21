@@ -25,6 +25,7 @@ describe("daemon registration", () => {
         instanceId: "123e4567-e89b-42d3-a456-426614174000",
         startedAt: "2026-08-11T00:00:00.000Z",
       },
+      { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
     );
     expect(messages).toEqual([
       expect.objectContaining({
@@ -35,6 +36,7 @@ describe("daemon registration", () => {
         runningSessions: ["a", "z"],
         daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
         worktrees: [expect.objectContaining({ id: "w", repositoryId: "r" })],
       }),
     ]);

@@ -46,6 +46,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
         runningSessions: ["session-1"],
         daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
+        runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
       }),
     ).toMatchObject({ type: "host:register" });
     expect(
@@ -105,6 +106,20 @@ describe("parseHostMessage exhaustive wire validation", () => {
         ...registration,
         daemonInstanceId: "not-a-uuid",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
+      },
+      { ...registration, runtime: { daemonVersion: "0.0.0", gitVersion: null, gitReady: true } },
+      {
+        ...registration,
+        runtime: { daemonVersion: "0.0.0", gitVersion: null, gitReady: false },
+      },
+      {
+        ...registration,
+        runtime: {
+          daemonVersion: "0.0.0",
+          gitVersion: null,
+          gitReady: false,
+          gitReadinessReason: "git_readiness_unreported",
+        },
       },
       {
         ...registration,

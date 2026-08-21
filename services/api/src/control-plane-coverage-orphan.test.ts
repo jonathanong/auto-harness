@@ -4,7 +4,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
 
-describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => {
+describe("ControlPlane coverage: orphan maps, claims, and ack deadlines", () => {
   it("orphan maps tryClaim and ack deadlines", () => {
     const planeO = new ControlPlane({
       connectionIdFactory: () => "orphan",
@@ -17,13 +17,14 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
       worktrees: [{ id: "wo", name: "wo", repositoryId: "repo-1", path: "/o", labels: [] }],
       commandProfiles: ["x"],
     });
-    // break consistency: delete connection but leave agent map
+    const originalConnection = planeO.state.connections.get("orphan")!;
     planeO.state.connections.delete("orphan");
     expect(planeO.heartbeat("o1")).toBe(false);
     planeO.state.hostConnection.set("o1", "ghost");
     expect(planeO.reclaimStaleHosts(Date.now() + 10_000)).toEqual([]);
+    planeO.state.connections.set("orphan", originalConnection);
+    planeO.state.hostConnection.set("o1", "orphan");
 
-    // ack deadline: pending without session; pending with acked session
     planeO.state.pendingAcks.set("gone", {
       sessionId: "gone",
       worktreeId: "wo",
@@ -32,14 +33,12 @@ describe("ControlPlane coverage: orphan maps tryClaim and ack deadlines", () => 
     });
     expect(planeO.enforceAckDeadlines(Date.now())).toEqual([]);
 
-    // release missing worktree via status complete without worktree
     planeO.createSession({
       repositoryId: "repo-1",
       prompt: "z",
       target: { commandId: BASE_COMMAND_ID },
       timeout: 1,
     });
-    // force terminal without claim
     const z = planeO.listSessions()[0]!;
     const zAssignment = planeO.assignQueued().find((a) => a.session.id === z.id)!;
     planeO.state.worktrees.delete(zAssignment.worktree.id);

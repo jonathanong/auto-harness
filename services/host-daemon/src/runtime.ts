@@ -1,4 +1,4 @@
-import type { SessionAssign } from "@auto-harness/shared";
+import type { HostRuntimeReport, SessionAssign } from "@auto-harness/shared";
 
 import type { DaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -8,14 +8,17 @@ import { createGitClient } from "./git.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 import { SessionRunner } from "./session-runner.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
+import { probeGitReadiness } from "./git-readiness.ts";
 
 export async function ensureDaemonReady(
   config: DaemonConfig,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
-): Promise<void> {
+): Promise<HostRuntimeReport> {
+  const runtime = await probeGitReadiness(processRunner);
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();
+  return runtime;
 }
 
 export async function runAssignedSession(
@@ -25,6 +28,10 @@ export async function runAssignedSession(
   processRunner: ProcessRunner = new SpawnProcessRunner(),
   commandRunner: ProcessRunner = new PtyProcessRunner(),
 ): Promise<SessionRunResult> {
+  const runtime = await probeGitReadiness(processRunner);
+  if (!runtime.gitReady) {
+    throw new Error("Git 2.36 or newer with checkout recovery support is required");
+  }
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   const sessionRunner = new SessionRunner({

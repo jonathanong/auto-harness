@@ -29,13 +29,9 @@ import * as durableSessions from "./control-plane-sessions-durable.ts";
 import * as worktrees from "./control-plane-worktrees.ts";
 import * as reconnect from "./control-plane-reconnect.ts";
 import * as runningTimeout from "./control-plane-running-timeout.ts";
+import { ensureSeededTestHost, testHostRuntime } from "./control-plane-test-host.ts";
 
-/**
- * Shared ControlPlane implementation (methods split across facade + subclass
- * so each file stays under the max-lines budget).
- */
 export class ControlPlaneBase {
-  /** @internal Process cache — tests may inject edge-case map state. */
   readonly state: ControlPlaneState;
 
   constructor(options: ControlPlaneOptions = {}) {
@@ -55,6 +51,7 @@ export class ControlPlaneBase {
   }
 
   seedWorktree(record: WorktreeRecord): void {
+    ensureSeededTestHost(this.state, record);
     worktrees.seedWorktree(this.state, record);
   }
 
@@ -113,10 +110,11 @@ export class ControlPlaneBase {
     }>;
     repositories?: HostRepositoryRegistration[];
     capabilities?: HostCapability[];
+    runtime?: import("@auto-harness/shared").HostRuntimeReport;
     daemonIdentity?: { instanceId: string; startedAt: string };
     replaceExisting?: boolean;
   }): { ok: true; connectionId: string } | { ok: false; error: string } {
-    return agents.registerHost(this.state, opts);
+    return agents.registerHost(this.state, { ...opts, runtime: testHostRuntime(opts.runtime) });
   }
 
   disconnectHost(connectionId: string): string[] {
@@ -232,13 +230,5 @@ export class ControlPlaneBase {
     id?: string;
   }): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
     return schedules.putSchedule(this.state, input);
-  }
-
-  getSchedule(id: string): ScheduleRecord | null {
-    return schedules.getSchedule(this.state, id);
-  }
-
-  listSchedules(): ScheduleRecord[] {
-    return schedules.listSchedules(this.state);
   }
 }

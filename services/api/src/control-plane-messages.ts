@@ -215,6 +215,12 @@ export function handleHostMessage(
               },
             }
           : {}),
+        runtime: msg.runtime ?? {
+          daemonVersion: "legacy/unknown",
+          gitVersion: null,
+          gitReady: false,
+          gitReadinessReason: "git_readiness_unreported",
+        },
         ...(msg.draining ? { draining: true } : {}),
       });
       return r.ok ? { ok: true } : { ok: false, error: r.error };
@@ -316,6 +322,12 @@ export async function handleHostMessageDurable(
             },
           }
         : {}),
+      runtime: msg.runtime ?? {
+        daemonVersion: "legacy/unknown",
+        gitVersion: null,
+        gitReady: false,
+        gitReadinessReason: "git_readiness_unreported",
+      },
       ...(msg.draining ? { draining: true } : {}),
       replaceExisting,
       ...(sourceConnectionId ? { connectionId: sourceConnectionId } : {}),

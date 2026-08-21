@@ -4,6 +4,7 @@ import type { Duplex } from "node:stream";
 
 import {
   HOST_CAPABILITIES,
+  GIT_READINESS_REASONS,
   isHostCapability,
   isValidCliResumeRef,
   isSessionStatus,
@@ -374,6 +375,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
         (message.daemonStartedAt !== undefined &&
           (!boundedText(message.daemonStartedAt, 128) ||
             !Number.isFinite(Date.parse(message.daemonStartedAt)))) ||
+        (message.runtime !== undefined && !validRuntimeReport(message.runtime)) ||
         (message.draining !== undefined && message.draining !== true)
       ) {
         return null;
@@ -440,6 +442,25 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
   } catch {
     return null;
   }
+}
+
+function validRuntimeReport(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const runtime = value as Record<string, unknown>;
+  if (
+    !boundedText(runtime.daemonVersion, 128) ||
+    (runtime.gitVersion !== null && !boundedText(runtime.gitVersion, 128)) ||
+    typeof runtime.gitReady !== "boolean"
+  )
+    return false;
+  if (runtime.gitReady)
+    return runtime.gitVersion !== null && runtime.gitReadinessReason === undefined;
+  return (
+    typeof runtime.gitReadinessReason === "string" &&
+    (GIT_READINESS_REASONS as readonly string[])
+      .filter((reason) => reason !== "git_readiness_unreported")
+      .includes(runtime.gitReadinessReason)
+  );
 }
 
 function isAllowedMessage(

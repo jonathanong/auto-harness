@@ -26,6 +26,10 @@ Ops index: [deploy.md](deploy.md). Local stack: [deploy-local.md](deploy-local.m
 - Control plane reachable (local [deploy-local.md](deploy-local.md) or AWS [deploy-aws.md](deploy-aws.md))
 - Bound service-account API key when talking to a secured control plane ([auth.md](auth.md#vps-agent-authentication))
 
+At startup the daemon runs `git --version` before advertising capacity. A host with Git older than
+2.36, an unavailable Git executable, or unrecognizable version output remains connected for
+diagnosis but is not schedulable; upgrade or repair Git rather than weakening checkout recovery.
+
 ---
 
 ## Deploy (install)

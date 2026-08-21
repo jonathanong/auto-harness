@@ -46,6 +46,12 @@ export {
 } from "./host-capabilities.ts";
 
 export {
+  GIT_READINESS_REASONS,
+  type GitReadinessReason,
+  type HostRuntimeReport,
+} from "./host-runtime.ts";
+
+export {
   ACTIVE_SESSION_STATUSES,
   DEFAULT_ACK_DEADLINE_MS,
   DEFAULT_HOST_KEEPALIVE_MS,

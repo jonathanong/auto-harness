@@ -24,6 +24,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string): Pr
       connection.type === "host" &&
       state.hostConnection.get(connection.hostId) === connection.connectionId &&
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
+      connection.runtime?.gitReady === true &&
       connection.repositoryIds?.includes(repositoryId)
     )
       unique.set(connection.hostId, connection.connectionId);
