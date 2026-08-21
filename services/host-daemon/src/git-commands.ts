@@ -35,11 +35,11 @@ function removeTerminalControls(value: string): string {
  */
 export function sanitizeGitDiagnostic(stderr: string): string {
   const withoutCredentials = stderr
-    .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#]*?(?:%40|@)/gi, "$1[redacted]@")
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9+/=_-]+/gi, "$1 [redacted]")
+    .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
-      /\b(authorization|token|access[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
-      "$1$2[redacted]",
+      /(^|[^A-Za-z0-9])(authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      "$1$2$3[redacted]",
     )
     .replace(
       /\b(?:gh[pousr]_[A-Za-z0-9_-]+|github_pat_[A-Za-z0-9_-]+|glpat-[A-Za-z0-9_-]+|xox[baprs]-[A-Za-z0-9-]+|npm_[A-Za-z0-9]+|sk-[A-Za-z0-9_-]+)/g,

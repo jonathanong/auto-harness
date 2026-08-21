@@ -17,6 +17,21 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).not.toContain("ghp_test-secret");
   });
 
+  it("redacts underscore-prefixed private tokens, dotted bearer tokens, and encoded userinfo", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "fatal: https://oauth%40example.com:encoded-secret@example.com/repo.git " +
+        "_private_token=private-secret Authorization: Bearer eyJ.header.payload.signature",
+    );
+
+    expect(diagnostic).toContain("https://[redacted]@example.com/repo.git");
+    expect(diagnostic).toContain("_private_token=[redacted]");
+    expect(diagnostic).toContain("Authorization: [redacted]");
+    expect(diagnostic).not.toContain("oauth%40example.com");
+    expect(diagnostic).not.toContain("encoded-secret");
+    expect(diagnostic).not.toContain("private-secret");
+    expect(diagnostic).not.toContain("eyJ.header.payload.signature");
+  });
+
   it("removes terminal controls and bounds UTF-8 output", () => {
     const diagnostic = sanitizeGitDiagnostic(`\u001b[31mfatal\u001b[0m: ${"é".repeat(2_000)}`);
 
