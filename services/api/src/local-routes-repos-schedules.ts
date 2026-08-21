@@ -498,7 +498,10 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     }
     // Schedule writes mint sessions (or stop a schedule from minting). Bound daemon
     // keys cannot author work; they get the same hidden 404 as an unknown schedule.
-    if (!canAuthorSessions(ctx) || (existing && !scoped(ctx, existing.repositoryId))) {
+    // Reads stay on the authenticated GET grant — canAuthorSessions is write-only.
+    const outOfScope = Boolean(existing && !scoped(ctx, existing.repositoryId));
+    const writeBlocked = method !== "GET" && !canAuthorSessions(ctx);
+    if (writeBlocked || outOfScope) {
       if (
         !(await writeRouteAudit(ctx, {
           action: `schedule:${method === "DELETE" ? "delete" : "update"}`,

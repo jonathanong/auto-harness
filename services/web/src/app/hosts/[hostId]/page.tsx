@@ -36,7 +36,10 @@ export default async function HostDetailPage({
 }) {
   const hostId = decodeRouteParam((await params).hostId);
   const { tab } = await searchParams;
-  const canDrain = can(await loadPrincipal(), "fleet:drain");
+  const principal = await loadPrincipal();
+  const canDrain = can(principal, "fleet:drain");
+  const canWriteInventory = can(principal, "fleet:inventory");
+  const canWriteProviderAccounts = can(principal, "providers:accounts");
 
   let inventory: (HostInventory & { version?: number }) | null = null;
   let inventoryError: string | null = null;
@@ -179,6 +182,7 @@ export default async function HostDetailPage({
                 liveById={liveById}
                 catalogError={catalogError}
                 worktreesError={worktreesError}
+                canWrite={canWriteInventory}
               />
             ),
           },
@@ -193,6 +197,7 @@ export default async function HostDetailPage({
                 providersById={providersById}
                 commandsById={commandsById}
                 catalogError={providerCatalogError}
+                canWrite={canWriteProviderAccounts}
               />
             ),
           },
@@ -204,6 +209,7 @@ export default async function HostDetailPage({
                 hostId={hostId}
                 initialJson={inventoryJson}
                 initialVersion={inventoryVersion}
+                canWrite={canWriteInventory}
               />
             ),
           },

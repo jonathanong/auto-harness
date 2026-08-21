@@ -48,4 +48,32 @@ describe("loadPrincipal", () => {
     await expect(loadPrincipal()).resolves.toEqual(me);
     vi.unstubAllGlobals();
   });
+
+  it("returns undefined on 401 instead of redirecting to login", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 401 })),
+    );
+    await expect(loadPrincipal()).resolves.toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("rethrows non-401 failures", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 500 })),
+    );
+    await expect(loadPrincipal()).rejects.toThrow(/500/);
+    vi.unstubAllGlobals();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    await expect(loadPrincipal()).rejects.toThrow("offline");
+    vi.unstubAllGlobals();
+  });
 });

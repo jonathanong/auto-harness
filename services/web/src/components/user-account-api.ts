@@ -1,6 +1,7 @@
 import { apiErrorMessage, type UserRole } from "@auto-harness/shared";
 
 import { apiFetch } from "../lib/client-api.ts";
+import type { RepositoryOption } from "./service-account-api.ts";
 
 export type UserAccountRole = UserRole;
 
@@ -20,7 +21,7 @@ export type UserAccountInput = {
 };
 
 type UserAccountData =
-  | { kind: "ready"; accounts: UserAccount[] }
+  | { kind: "ready"; accounts: UserAccount[]; repositories: RepositoryOption[] }
   | { kind: "forbidden" }
   | { kind: "unauthorized" };
 
@@ -29,8 +30,16 @@ export async function loadUserAccounts(): Promise<UserAccountData> {
   if (response.status === 401) return { kind: "unauthorized" };
   if (response.status === 403) return { kind: "forbidden" };
   if (!response.ok) throw new Error(await apiErrorMessage(response));
+  const repositories = await apiFetch("/api/v1/repositories", { cache: "no-store" });
+  if (repositories.status === 401) return { kind: "unauthorized" };
+  if (!repositories.ok) throw new Error(await apiErrorMessage(repositories));
   const body = (await response.json()) as { items?: UserAccount[] };
-  return { kind: "ready", accounts: body.items ?? [] };
+  const repositoryBody = (await repositories.json()) as { items?: RepositoryOption[] };
+  return {
+    kind: "ready",
+    accounts: body.items ?? [],
+    repositories: repositoryBody.items ?? [],
+  };
 }
 
 export async function createUserAccount(input: UserAccountInput): Promise<UserAccount> {

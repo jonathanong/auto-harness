@@ -56,6 +56,35 @@ describe("UserAccountCreateForm", () => {
     );
   });
 
+  it("submits selected repository scope when catalog options are provided", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const view = mountForm(
+      <UserAccountCreateForm
+        repositories={[
+          { id: "r-1", name: "Repo one" },
+          { id: "r-2", name: "Repo two" },
+        ]}
+        onCreate={onCreate}
+      />,
+    );
+    setValue(field<HTMLInputElement>(view.container, "user-account-username"), "alice");
+    setValue(field<HTMLInputElement>(view.container, "user-account-password"), "secret");
+    const repo = view.container.querySelector<HTMLInputElement>(
+      'input[name="allowedRepositoryIds"][value="r-1"]',
+    );
+    expect(repo).toBeInstanceOf(HTMLInputElement);
+    repo!.checked = true;
+    repo!.dispatchEvent(new Event("input", { bubbles: true }));
+    submit(field(view.container, "form-user-account-create"));
+    await settle();
+    expect(onCreate).toHaveBeenCalledWith({
+      username: "alice",
+      password: "secret",
+      role: "operator",
+      allowedRepositoryIds: ["r-1"],
+    });
+  });
+
   it("keeps safe defaults if malformed markup omits fields", async () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const view = mountForm(<UserAccountCreateForm onCreate={onCreate} />);

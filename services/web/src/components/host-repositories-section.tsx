@@ -22,6 +22,7 @@ export function HostRepositoriesSection({
   liveById,
   catalogError,
   worktreesError,
+  canWrite = true,
 }: {
   hostId: string;
   inventory: HostInventory;
@@ -30,6 +31,7 @@ export function HostRepositoriesSection({
   liveById: Record<string, LiveWorktree>;
   catalogError?: string | null;
   worktreesError?: string | null;
+  canWrite?: boolean;
 }) {
   const groups: WorktreeRepoGroup[] = inventory.repositories.map((repo) => ({
     repositoryId: repo.id,
@@ -50,18 +52,20 @@ export function HostRepositoriesSection({
 
   return (
     <div className="space-y-6" data-pw="host-repositories-section">
-      <section className="space-y-2">
-        <h3 className="text-lg font-medium">Attach a repository</h3>
-        {catalogError ? (
-          <SectionError
-            resource="the repository catalog"
-            message={catalogError}
-            selector="host-repositories-catalog"
-          />
-        ) : (
-          <HostAddRepoForm hostId={hostId} catalog={unattachedCatalog} />
-        )}
-      </section>
+      {canWrite ? (
+        <section className="space-y-2">
+          <h3 className="text-lg font-medium">Attach a repository</h3>
+          {catalogError ? (
+            <SectionError
+              resource="the repository catalog"
+              message={catalogError}
+              selector="host-repositories-catalog"
+            />
+          ) : (
+            <HostAddRepoForm hostId={hostId} catalog={unattachedCatalog} />
+          )}
+        </section>
+      ) : null}
       <section className="space-y-3">
         <h3 className="text-lg font-medium">Attached repositories</h3>
         {worktreesError ? (
@@ -77,6 +81,7 @@ export function HostRepositoriesSection({
           emptyMessage="No repositories attached to this host yet."
           renderRepoActions={(g) => {
             const repo = reposById[g.repositoryId];
+            if (!canWrite) return null;
             return (
               <div className="flex w-full flex-wrap items-start justify-between gap-3">
                 <HostRepoSettingsForm hostId={hostId} repo={repo} />
@@ -91,13 +96,15 @@ export function HostRepositoriesSection({
               </div>
             );
           }}
-          renderWorktreeActions={(wt) => (
-            <RemoveWorktreeButton
-              hostId={hostId}
-              repositoryId={wt.repositoryId}
-              worktreeId={wt.id}
-            />
-          )}
+          renderWorktreeActions={(wt) =>
+            canWrite ? (
+              <RemoveWorktreeButton
+                hostId={hostId}
+                repositoryId={wt.repositoryId}
+                worktreeId={wt.id}
+              />
+            ) : null
+          }
         />
       </section>
     </div>

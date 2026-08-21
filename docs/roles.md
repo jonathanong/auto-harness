@@ -163,16 +163,19 @@ allow (local loopback).
 
 ## Create-time validation
 
-`POST /auth/users` and `POST /auth/service-accounts` reject illegal combinations
-with `400 VALIDATION_ERROR`:
+`POST /auth/users` and `POST /auth/service-accounts` run `normalizeAccountGrant()`
+(`effectiveRole`) **then** `accountGrantError`. Legacy daemon/scoped-admin shapes
+are rewritten to the named role and stored; remaining illegal combinations
+return `400 VALIDATION_ERROR`:
 
-| Combination                                                    | Result                                            |
-| -------------------------------------------------------------- | ------------------------------------------------- |
-| `admin` + `allowedRepositoryIds` or `boundHostId`              | Rejected. Admin must be unscoped.                 |
-| `agent` without `boundHostId`                                  | Rejected.                                         |
-| any non-`agent` + `boundHostId`                                | Rejected.                                         |
-| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered). |
-| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                          |
+| Combination                                                    | Result                                                                 |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `admin` + `allowedRepositoryIds` or `boundHostId`              | Remapped: scoped admin → `maintainer`, bound admin → `agent`.          |
+| `agent` without `boundHostId`                                  | Rejected.                                                              |
+| any non-`agent` except `read-only` + `boundHostId`             | Remapped to `agent` so pre-migration daemon keys can still be rotated. |
+| `read-only` + `boundHostId`                                    | Rejected (no escalation).                                              |
+| `agent` + `allowedRepositoryIds`                               | Allowed (inventory/session reads still filtered).                      |
+| `author` / `operator` / `maintainer` / `read-only` + repo list | Allowed.                                                               |
 
 Users accept optional `allowedRepositoryIds` the same way service accounts do.
 
@@ -182,7 +185,8 @@ Users accept optional `allowedRepositoryIds` the same way service accounts do.
 
 Older rows stored `operator` or `admin` plus a bind or repo list. Those still
 authenticate. `effectiveRole()` maps them **at request time** (the stored role
-is not rewritten on read):
+is not rewritten on read). Create and rotate apply the same mapping **before**
+grant validation so a deployed daemon key can be replaced:
 
 | Stored                                              | Effective                   |
 | --------------------------------------------------- | --------------------------- |

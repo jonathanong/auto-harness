@@ -28,6 +28,7 @@ export function HostProviderAccountsSection({
   providersById,
   commandsById,
   catalogError,
+  canWrite = true,
 }: {
   hostId: string;
   inventory: HostInventory;
@@ -35,6 +36,7 @@ export function HostProviderAccountsSection({
   providersById: Record<string, Provider>;
   commandsById: Record<string, Command>;
   catalogError?: string | null;
+  canWrite?: boolean;
 }) {
   const catalog: ProviderCatalog = { providers: providersById, providerAccounts: accountsById };
   const attachedIds = new Set(inventory.providerAccounts.map((a) => a.providerAccountId));
@@ -90,15 +92,21 @@ export function HostProviderAccountsSection({
                       : "— (no default command)"}
                   </TableCell>
                   <TableCell>
-                    <HostProviderAccountCommandForm
-                      hostId={hostId}
-                      providerAccountId={hostAccount.providerAccountId}
-                      currentCommandId={hostAccount.commandId}
-                      providerCommands={providerCommands}
-                    />
+                    {canWrite ? (
+                      <HostProviderAccountCommandForm
+                        hostId={hostId}
+                        providerAccountId={hostAccount.providerAccountId}
+                        currentCommandId={hostAccount.commandId}
+                        providerCommands={providerCommands}
+                      />
+                    ) : hostAccount.commandId ? (
+                      (commandsById[hostAccount.commandId]?.name ?? hostAccount.commandId)
+                    ) : (
+                      "—"
+                    )}
                   </TableCell>
                   <TableCell>
-                    {account ? (
+                    {canWrite && account ? (
                       <ProviderAccountCooldownForm
                         account={
                           account as typeof account & {
@@ -113,11 +121,13 @@ export function HostProviderAccountsSection({
                     )}
                   </TableCell>
                   <TableCell>
-                    <RemoveProviderAccountFromHostButton
-                      hostId={hostId}
-                      providerAccountId={hostAccount.providerAccountId}
-                      label={label}
-                    />
+                    {canWrite ? (
+                      <RemoveProviderAccountFromHostButton
+                        hostId={hostId}
+                        providerAccountId={hostAccount.providerAccountId}
+                        label={label}
+                      />
+                    ) : null}
                   </TableCell>
                 </TableRow>
               );
@@ -125,15 +135,17 @@ export function HostProviderAccountsSection({
           </TableBody>
         </Table>
       )}
-      {catalogError ? (
-        <SectionError
-          resource="provider accounts"
-          message={catalogError}
-          selector="host-provider-accounts-catalog"
-        />
-      ) : (
-        <AttachProviderAccountToHostForm hostId={hostId} availableAccounts={availableAccounts} />
-      )}
+      {canWrite ? (
+        catalogError ? (
+          <SectionError
+            resource="provider accounts"
+            message={catalogError}
+            selector="host-provider-accounts-catalog"
+          />
+        ) : (
+          <AttachProviderAccountToHostForm hostId={hostId} availableAccounts={availableAccounts} />
+        )
+      ) : null}
     </div>
   );
 }

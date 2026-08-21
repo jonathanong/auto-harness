@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-import { accountGrantError } from "@auto-harness/shared";
+import { accountGrantError, normalizeAccountGrant } from "@auto-harness/shared";
 import bcrypt from "bcryptjs";
 
 import type { AuthAccountRecord } from "./db/plane-storage.ts";
@@ -75,14 +75,15 @@ export async function createUser(
 ): Promise<Principal> {
   validateCredential(input.username, "username");
   validateCredential(input.password, "password");
-  const grant = accountGrantError(input);
+  const normalized = normalizeAccountGrant(input);
+  const grant = accountGrantError(normalized);
   if (grant) throw new Error(grant);
   if (users.has(input.username) || admins.some((admin) => admin.username === input.username))
     throw new Error("username already exists");
   const user: User = {
     id: `user:${input.username}`,
     username: input.username,
-    role: input.role,
+    role: normalized.role,
     kind: "user",
     passwordHash: await bcrypt.hash(input.password, 12),
     ...(input.allowedRepositoryIds?.length
@@ -107,7 +108,7 @@ export function assertAccountGrant(
   role: Role,
   extra: { allowedRepositoryIds?: string[]; boundHostId?: string } = {},
 ): void {
-  const grant = accountGrantError({ role, ...extra });
+  const grant = accountGrantError(normalizeAccountGrant({ role, ...extra }));
   if (grant) throw new Error(grant);
 }
 
@@ -131,7 +132,8 @@ export async function createServiceAccount(
   storage?: AuthStorage,
 ): Promise<{ account: Principal & { name: string; createdAt: string }; apiKey: string }> {
   validateCredential(input.name, "name");
-  const grant = accountGrantError(input);
+  const normalized = normalizeAccountGrant(input);
+  const grant = accountGrantError(normalized);
   if (grant) throw new Error(grant);
   const apiKey = `hns_${randomBytes(36).toString("base64url")}`;
   const createdAt = new Date().toISOString();
@@ -139,7 +141,7 @@ export async function createServiceAccount(
     id: `service:${randomBytes(12).toString("hex")}`,
     username: input.name,
     name: input.name,
-    role: input.role,
+    role: normalized.role,
     kind: "service-account",
     keyHash: hashApiKey(apiKey),
     createdAt,

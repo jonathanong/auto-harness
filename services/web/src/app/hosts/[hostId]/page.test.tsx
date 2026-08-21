@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { jsonResponse, renderPage, stubApi } from "../../route-test-helpers.tsx";
 import HostDetailPage from "./page.tsx";
@@ -15,6 +15,13 @@ const catalogOk = {
   "/api/v1/provider-accounts": { items: [] },
   "/api/v1/commands": { items: [] },
 };
+
+const originalAuthMode = process.env.HARNESS_AUTH_MODE;
+
+afterEach(() => {
+  if (originalAuthMode === undefined) delete process.env.HARNESS_AUTH_MODE;
+  else process.env.HARNESS_AUTH_MODE = originalAuthMode;
+});
 
 describe("host detail route", () => {
   it("renders every section from a fully healthy backend", async () => {
@@ -117,6 +124,30 @@ describe("host detail route", () => {
     expect(html).toContain("Could not load host host-a&#x27;s inventory");
     expect(html).not.toContain('data-pw="host-detail-tabs"');
     expect(html).not.toContain('data-pw="form-add-local-repo"');
+  });
+
+  it("hides inventory and provider-account write chrome for an operator", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    stubApi({
+      ...catalogOk,
+      "/api/v1/auth/me": { username: "op", role: "operator", kind: "user" },
+    });
+    const repos = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "repositories" }),
+      }),
+    );
+    expect(repos).toContain('data-pw="host-repositories-section"');
+    expect(repos).not.toContain('data-pw="form-add-local-repo"');
+    const advanced = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({ tab: "advanced" }),
+      }),
+    );
+    expect(advanced).not.toContain('data-pw="form-host-config-json"');
+    expect(advanced).toContain("repo-a");
   });
 
   it("renders the Advanced tab with the raw inventory JSON editor", async () => {

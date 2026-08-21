@@ -119,6 +119,7 @@ describe("scoped control-plane REST resources", () => {
     expect((await invoke("GET", "/api/v1/schedules")).json).toMatchObject({
       items: [expect.objectContaining({ id: "schedule-a" })],
     });
+    expect((await invoke("GET", "/api/v1/schedules/schedule-a")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/schedules/schedule-b")).status).toBe(404);
     expect(
       (await invoke("PATCH", "/api/v1/schedules/schedule-a", { repositoryId: "repo-b" })).status,

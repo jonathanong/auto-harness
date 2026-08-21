@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import "@auto-harness/ui/globals.css";
 import { THEME_INIT_SCRIPT } from "@auto-harness/ui";
 
@@ -12,8 +13,17 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+async function layoutPathname(): Promise<string | null> {
+  try {
+    return (await headers()).get("x-pathname");
+  } catch {
+    return null;
+  }
+}
+
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const principal = await loadPrincipal();
+  const pathname = await layoutPathname();
+  const principal = pathname === "/login" ? undefined : await loadPrincipal();
   return (
     <html lang="en">
       <body>

@@ -17,6 +17,7 @@ export {
   USER_ROLE_LABELS,
   accountGrantError,
   effectiveRole,
+  normalizeAccountGrant,
   principalCapabilities,
   principalHas,
   roleHas,

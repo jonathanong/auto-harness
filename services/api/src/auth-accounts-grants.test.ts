@@ -15,10 +15,12 @@ describe("account grant helpers", () => {
     );
   });
 
-  it("rejects illegal role and scope combinations", () => {
+  it("rejects illegal role and scope combinations after remapping legacy shapes", () => {
     expect(() => assertAccountGrant("admin")).not.toThrow();
     expect(() => assertAccountGrant("agent", { boundHostId: "h" })).not.toThrow();
-    expect(() => assertAccountGrant("admin", { allowedRepositoryIds: ["r"] })).toThrow(/admin/);
-    expect(() => assertAccountGrant("operator", { boundHostId: "h" })).toThrow(/agent/);
+    expect(() => assertAccountGrant("admin", { allowedRepositoryIds: ["r"] })).not.toThrow();
+    expect(() => assertAccountGrant("operator", { boundHostId: "h" })).not.toThrow();
+    expect(() => assertAccountGrant("agent")).toThrow(/boundHostId/);
+    expect(() => assertAccountGrant("read-only", { boundHostId: "h" })).toThrow(/agent/);
   });
 });

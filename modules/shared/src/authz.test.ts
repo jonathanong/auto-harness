@@ -7,6 +7,7 @@ import {
   USER_ROLE_LABELS,
   accountGrantError,
   effectiveRole,
+  normalizeAccountGrant,
   principalCapabilities,
   principalHas,
   roleHas,
@@ -113,6 +114,24 @@ describe("principalHas", () => {
     expect(principalCapabilities(principal("operator", { boundHostId: "h" }))).toEqual([
       ...ROLE_CAPABILITIES.agent,
     ]);
+  });
+});
+
+describe("normalizeAccountGrant", () => {
+  it("rewrites legacy stored shapes to the named roles they actually were", () => {
+    expect(normalizeAccountGrant({ role: "operator", boundHostId: "h" })).toEqual({
+      role: "agent",
+      boundHostId: "h",
+    });
+    expect(normalizeAccountGrant({ role: "admin", allowedRepositoryIds: ["r"] })).toEqual({
+      role: "maintainer",
+      allowedRepositoryIds: ["r"],
+    });
+    expect(normalizeAccountGrant({ role: "admin" })).toEqual({ role: "admin" });
+    expect(normalizeAccountGrant({ role: "read-only", boundHostId: "h" })).toEqual({
+      role: "read-only",
+      boundHostId: "h",
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import { principalHas, type Capability, type UserRole } from "@auto-harness/shared";
 
-import { apiGet } from "./api.ts";
+import { ApiError, apiGet } from "./api.ts";
 
 export type MePrincipal = {
   id?: string;
@@ -15,7 +15,12 @@ export type MePrincipal = {
 /** `undefined` means auth is disabled — the local loopback shows every write control. */
 export async function loadPrincipal(): Promise<MePrincipal | undefined> {
   if (process.env.HARNESS_AUTH_MODE !== "required") return undefined;
-  return apiGet<MePrincipal>("/api/v1/auth/me");
+  try {
+    return await apiGet<MePrincipal>("/api/v1/auth/me", { redirectOnUnauthorized: false });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) return undefined;
+    throw error;
+  }
 }
 
 export function can(principal: MePrincipal | undefined, capability: Capability): boolean {

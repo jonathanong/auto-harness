@@ -114,6 +114,25 @@ export function principalCapabilities(principal: AuthzPrincipal): Capability[] {
   return [...ROLE_CAPABILITIES[effectiveRole(principal)]];
 }
 
+/** Rewrite a stored/submitted grant to the named role those axes actually were. */
+export function normalizeAccountGrant(input: {
+  role: UserRole;
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
+}): {
+  role: UserRole;
+  allowedRepositoryIds?: string[];
+  boundHostId?: string;
+} {
+  return {
+    role: effectiveRole(input),
+    ...(input.allowedRepositoryIds?.length
+      ? { allowedRepositoryIds: input.allowedRepositoryIds }
+      : {}),
+    ...(input.boundHostId ? { boundHostId: input.boundHostId } : {}),
+  };
+}
+
 /** Why a role + scope + bind combination cannot be stored. `undefined` means valid. */
 export function accountGrantError(input: {
   role: UserRole;
