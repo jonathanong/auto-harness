@@ -111,7 +111,7 @@ describe("HostProviderAccountCommandForm", () => {
     submit(field(view.container, "host-provider-account-command-form-account"));
     await act(async () => Promise.resolve());
     expect(field(view.container, "host-provider-account-command-error-account").textContent).toBe(
-      "Error: inventory unavailable",
+      "inventory unavailable",
     );
     expect(
       field<HTMLButtonElement>(view.container, "host-provider-account-command-submit-account")

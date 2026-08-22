@@ -116,7 +116,7 @@ describe("ScopeProviderEnabledForm", () => {
     submit(field(view.container, "scope-provider-enabled-form-account/one"));
     await act(async () => Promise.resolve());
     expect(field(view.container, "scope-provider-enabled-error-account/one").textContent).toBe(
-      "Error: inventory unavailable",
+      "inventory unavailable",
     );
     expect(
       field<HTMLButtonElement>(view.container, "scope-provider-enabled-submit-account/one")
