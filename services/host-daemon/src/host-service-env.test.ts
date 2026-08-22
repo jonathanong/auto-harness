@@ -7,8 +7,8 @@ import {
   parseEnvFile,
   pathFromEnv,
   renderEnvFile,
-  warnOrRefuseIdentity,
 } from "./host-service-env.ts";
+import { warnOrRefuseIdentity } from "./host-service-env-identity.ts";
 
 const example = `# comment
 PATH=/usr/bin

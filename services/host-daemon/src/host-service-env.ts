@@ -72,6 +72,11 @@ export function isProductionApiUrl(value: string): boolean {
   const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, "");
   if (
     url.protocol !== "https:" ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.pathname !== "/" ||
+    url.search !== "" ||
+    url.hash !== "" ||
     !hostname ||
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||
@@ -139,23 +144,6 @@ export function updatePersistedApiUrl(contents: string, apiUrl: string): string 
 
 export function serviceEnv(env: NodeJS.ProcessEnv, apiUrl: string | undefined): NodeJS.ProcessEnv {
   return apiUrl === undefined ? env : { ...env, HARNESS_API_URL: apiUrl };
-}
-
-export function warnOrRefuseIdentity(opts: {
-  env: NodeJS.ProcessEnv;
-  platform: string;
-  error: (msg: string) => void;
-  log: (msg: string) => void;
-}): number {
-  const gaps = envIdentityErrors(opts.env, opts.platform);
-  if (gaps.length === 0) return 0;
-  const detail = `set ${gaps.join(", ")} to real bound values (not placeholders or local defaults)`;
-  if (opts.platform === "linux") {
-    opts.error(`Refusing to write a new env file: ${detail}`);
-    return 1;
-  }
-  opts.log(`Warning: ${detail}`);
-  return 0;
 }
 
 function filledValue(

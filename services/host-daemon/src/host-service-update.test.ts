@@ -24,9 +24,11 @@ describe("install-service API URL updates", () => {
     ).toBe(0);
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_URL=https://new.example.com");
     expect(fs.files.get(LINUX_ENV_DEST)).toContain("HARNESS_API_KEY=secret");
-    expect(spawn.calls.map((call) => call.args.join(" "))).toContain(
+    expect(spawn.calls.map((call) => call.args.join(" "))).toEqual([
+      "daemon-reload",
+      "enable auto-harness-host-daemon.service",
       "restart auto-harness-host-daemon.service",
-    );
+    ]);
   });
 
   it("updates a Windows persisted URL without replacing its key", () => {

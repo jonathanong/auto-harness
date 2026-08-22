@@ -39,6 +39,11 @@ describe("persisted service environment validation", () => {
         "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://127.0.0.2\nHARNESS_API_KEY=secret\n",
       ),
     ).toEqual(["HARNESS_API_URL"]);
+    expect(
+      validatePersistedEnvFile(
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com/api\nHARNESS_API_KEY=secret\n",
+      ),
+    ).toEqual(["HARNESS_API_URL"]);
   });
 
   it("reports only variable names and remediation, never persisted values", () => {
@@ -74,5 +79,19 @@ describe("persisted service environment validation", () => {
     });
     expect(prepared.errors).toEqual(["HARNESS_API_URL"]);
     expect(prepared.contents).toBe(original);
+  });
+
+  it("rejects URL credentials, queries, and fragments", () => {
+    for (const apiUrl of [
+      "https://user:secret@control.example.com",
+      "https://control.example.com?region=x",
+      "https://control.example.com#fragment",
+    ]) {
+      expect(
+        validatePersistedEnvFile(
+          `HARNESS_HOST_ID=host-1\nHARNESS_API_URL=${apiUrl}\nHARNESS_API_KEY=secret\n`,
+        ),
+      ).toEqual(["HARNESS_API_URL"]);
+    }
   });
 });

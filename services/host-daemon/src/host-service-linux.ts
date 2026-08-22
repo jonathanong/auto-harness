@@ -52,6 +52,8 @@ export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
     return { state: "failed", reason: "systemd unit reported failure" };
   }
   return { state: "unknown", reason: "systemctl returned an unrecognized state" };
+}
+
 function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string): number {
   const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
   const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
@@ -71,6 +73,21 @@ function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string)
   ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
   ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
   ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
+  return 0;
+}
+
+function activateLinux(ctx: HostServiceContext, envExists: boolean): number {
+  if (ctx.apiUrl !== undefined && envExists) {
+    const enable = ctx.run("systemctl", ["enable", LINUX_SERVICE_NAME]);
+    if (enable.status !== 0) return failedCommand(ctx.error, "systemctl enable", enable);
+    const restart = ctx.run("systemctl", ["restart", LINUX_SERVICE_NAME]);
+    if (restart.status !== 0) return failedCommand(ctx.error, "systemctl restart", restart);
+    ctx.log(`Enabled and restarted ${LINUX_SERVICE_NAME}`);
+    return 0;
+  }
+  const enable = ctx.run("systemctl", ["enable", "--now", LINUX_SERVICE_NAME]);
+  if (enable.status !== 0) return failedCommand(ctx.error, "systemctl enable", enable);
+  ctx.log(`Enabled ${LINUX_SERVICE_NAME}`);
   return 0;
 }
 
@@ -114,18 +131,7 @@ export function installLinux(ctx: HostServiceContext): number {
   ctx.log(`Wrote ${LINUX_UNIT_DEST}`);
   const reload = ctx.run("systemctl", ["daemon-reload"]);
   if (reload.status !== 0) return failedCommand(ctx.error, "systemctl daemon-reload", reload);
-  if (ctx.apiUrl !== undefined && envExists) {
-    const enable = ctx.run("systemctl", ["enable", LINUX_SERVICE_NAME]);
-    if (enable.status !== 0) return failedCommand(ctx.error, "systemctl enable", enable);
-    const restart = ctx.run("systemctl", ["restart", LINUX_SERVICE_NAME]);
-    if (restart.status !== 0) return failedCommand(ctx.error, "systemctl restart", restart);
-    ctx.log(`Enabled and restarted ${LINUX_SERVICE_NAME}`);
-    return 0;
-  }
-  const enable = ctx.run("systemctl", ["enable", "--now", LINUX_SERVICE_NAME]);
-  if (enable.status !== 0) return failedCommand(ctx.error, "systemctl enable", enable);
-  ctx.log(`Enabled ${LINUX_SERVICE_NAME}`);
-  return 0;
+  return activateLinux(ctx, envExists);
 }
 
 export function uninstallLinux(ctx: HostServiceContext): number {
