@@ -166,10 +166,14 @@ export function AddWorktreeForm({
             />
           </div>
           <div className="space-y-1">
-            <Label tip="Optional setup run after the host and repository setup scripts">
+            <Label
+              htmlFor={`addWorktreeSetupScript-${repo.id}`}
+              tip="Optional setup run after the host and repository setup scripts"
+            >
               Setup Script
             </Label>
             <Textarea
+              id={`addWorktreeSetupScript-${repo.id}`}
               value={setupScript}
               onChange={(event) => setSetupScript(event.target.value)}
               rows={5}
