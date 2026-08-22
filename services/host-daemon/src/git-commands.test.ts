@@ -91,6 +91,12 @@ describe("sanitizeGitDiagnostic", () => {
     expect(sanitizeGitDiagnostic("\u001b]".repeat(32_000))).toBe("");
   });
 
+  it("consumes complete ESC character-set designations before token matching", () => {
+    const diagnostic = sanitizeGitDiagnostic("fatal: gh\u001b(Bp_SUPERSECRET");
+    expect(diagnostic).toBe("fatal: [redacted]");
+    expect(diagnostic).not.toContain("SUPERSECRET");
+  });
+
   it("redacts credentials containing terminal styling through runGit and gitFailure", async () => {
     const result = await runGit(
       {

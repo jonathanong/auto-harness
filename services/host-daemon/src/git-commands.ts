@@ -66,6 +66,16 @@ function skipControlString(value: string, index: number, allowBell: boolean): nu
   return index;
 }
 
+function skipEscapeSequence(value: string, index: number): number {
+  while (index < value.length) {
+    const code = value.charCodeAt(index);
+    index += 1;
+    if (code >= 0x30 && code <= 0x7e) break;
+    if (code < 0x20 || code > 0x2f) break;
+  }
+  return index;
+}
+
 function removeTerminalControls(value: string): string {
   const output: string[] = [];
   let index = 0;
@@ -77,7 +87,7 @@ function removeTerminalControls(value: string): string {
       else if (next === 0x5d) index = skipControlString(value, index + 2, true);
       else if (next === 0x50 || next === 0x5e || next === 0x5f) {
         index = skipControlString(value, index + 2, false);
-      } else index = Math.min(index + 2, value.length);
+      } else index = skipEscapeSequence(value, index + 1);
       continue;
     }
     if (code === 0x9b) {
