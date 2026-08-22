@@ -330,7 +330,7 @@ The scheduler is a **shared service** (not only a free-standing Lambda) invoked 
 ### Assignment algorithm
 
 1. **Load session** (must be `queued`).
-2. **Native resume preference** — if a source route and `cliResumeRef` are available, prefer that host/worktree while it is idle, online, not draining, and the account is eligible. If it is unavailable, clear the native ref and placement pins, preserve `resumedFromSessionId`, and continue as a fresh target/fallback assignment.
+2. **Native resume preference** — if a source route and `cliResumeRef` are available, pin the source host and choose any eligible worktree there while the host is online, not draining, and the account is eligible. The selected worktree checks out the stored `ref`. If the native route is unavailable, clear the native ref and placement pin, preserve `resumedFromSessionId`, and continue as a fresh target/fallback assignment.
 3. **Target/fallback path** — for each target in order, filter candidates — worktrees where:
    - `repositoryId` matches session
    - `status === idle`
@@ -374,14 +374,14 @@ is the scheduler's concurrency invariant, not a best-effort scan of session rows
 
 ### Multi-agent behavior summary
 
-| Situation                                 | Behavior                                                                                                   |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| Several matching idle worktrees           | Round-robin by `lastAssignedAt`                                                                            |
-| **Resume native route**                   | Prefer source agent/worktree; if unavailable, clear ref/pins and route fresh through target/fallback order |
-| Matching worktrees only on offline agents | Stay `queued`                                                                                              |
-| Agent is **draining** (auto-update)       | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining))                  |
-| Agent disconnect mid-session              | See [Disconnect handling](#disconnect-handling)                                                            |
-| No agent has the repository registered    | Stay `queued` until some agent registers it                                                                |
+| Situation                                 | Behavior                                                                                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Several matching idle worktrees           | Round-robin by `lastAssignedAt`                                                                                              |
+| **Resume native route**                   | Pin the source agent, select any eligible worktree there, and check out `ref`; if unavailable, clear ref/pin and route fresh |
+| Matching worktrees only on offline agents | Stay `queued`                                                                                                                |
+| Agent is **draining** (auto-update)       | Exclude from new assigns; in-flight sessions continue ([Agent draining](#agent-draining))                                    |
+| Agent disconnect mid-session              | See [Disconnect handling](#disconnect-handling)                                                                              |
+| No agent has the repository registered    | Stay `queued` until some agent registers it                                                                                  |
 
 ---
 

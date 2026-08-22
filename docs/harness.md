@@ -21,7 +21,7 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 | Slack session lifecycle threads              | Primary harness-side status for unattended runs ([integrations.md](integrations.md))               |
 | Terminal statuses including `usage_limit`    | Visible in Slack / API; account cooldown/fallback routing is automatic for provider-backed targets |
 | Session id in Slack (and API)                | Resume, UI deep links                                                                              |
-| Resume prefers same agent + worktree         | Native route first; unschedulable native resumes become fresh target/fallback runs                 |
+| Resume pins the source agent                 | Any eligible worktree there checks out the ref; unschedulable native resumes route fresh           |
 | Cancel, timeout, agent drain-on-update       | Ops                                                                                                |
 
 ### Repo harness owns (out of scope for Auto Harness)
@@ -210,7 +210,7 @@ Same fire-and-forget API; only the **rendered prompt** (and maybe `priority` / `
 ## Pattern C — PR `/pr-shepherd`
 
 **Typical workflow:** `codex-pr-shepherd` with long runner session + resume.  
-**Hookup:** short gate job → `POST /sessions` with `concurrencyId: filaments-pr-shepherd-<pr>` (first tick) or `POST /sessions/:id/resume` (continue on the same host) → exit. Repeated webhook/manual delivery receives the existing active session and does not queue a duplicate. Humans follow Slack + the PR on GitHub.
+**Hookup:** short gate job → `POST /sessions` with `concurrencyId: filaments:shepherd:<pr>` (first tick) or `POST /sessions/:id/resume` (continue on the same host) → exit. Repeated webhook/manual delivery receives the existing active session and does not queue a duplicate. Humans follow Slack + the PR on GitHub.
 
 ```mermaid
 sequenceDiagram
@@ -224,26 +224,26 @@ sequenceDiagram
   Dev->>PR: Comment /pr-shepherd
   GHA->>GHA: Gate + resolve PR head
   alt First dispatch
-    GHA->>AH: POST /sessions (shepherd prompt, concurrencyId filaments-pr-shepherd-<pr>)
+    GHA->>AH: POST /sessions (shepherd prompt, concurrencyId filaments:shepherd:<pr>)
   else Continue same work
     GHA->>AH: POST /sessions/{id}/resume
   end
   Note over GHA: Fire and forget
   AH->>Slack: Session lifecycle
-  AH->>Agent: assign / resume pin same worktree
+  AH->>Agent: assign / resume pin source agent
   Agent->>PR: Push / comment / react to checks
   Dev->>Slack: Status
   Dev->>PR: Review PR updates
 ```
 
-Resume is how the **repo harness** re-enters without losing the workspace: pass the prior **session id** (from Slack, job summary, or a comment your gate stored).
+Resume is how the **repo harness** re-enters the prior CLI conversation and remote branch: pass the prior **session id** (from Slack, job summary, or a comment your gate stored). Auto Harness re-checks out the stored ref in any eligible worktree on the pinned agent; uncommitted worktree state is not preserved.
 
 ```bash
-# Continue shepherd on same agent + worktree
+# Continue shepherd on the same agent with the stored ref re-established
 curl -fsS -X POST "${HARNESS_API_URL}/api/v1/sessions/${SESSION_ID}/resume" \
   -H "Authorization: Bearer ${HARNESS_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"prompt":"Continue pr-shepherd from current PR state.","concurrencyId":"filaments-pr-shepherd-<pr>"}'
+  -d '{"prompt":"Continue pr-shepherd from current PR state.","concurrencyId":"filaments:shepherd:<pr>"}'
 ```
 
 The create response is `201`/`created: true` for the first active run and `200`/`created: false`
@@ -361,6 +361,6 @@ What **stays** in the product repo: event filters, triage, dedup, prompt files, 
 2. Run an agent with worktrees/labels matching `requiredLabels`.
 3. For each automation entrypoint: **prepare prompt → `POST /sessions` → exit**.
 4. Configure Slack; tell humans to watch **Slack + GitHub**, not the trigger workflow.
-5. Use **resume** when the same worktree context must continue.
+5. Use **resume** when the same CLI conversation and remote branch should continue; do not rely on dirty worktree state.
 
 API details: [api.md](api.md). Why CLI/subscriptions: [why.md](why.md).

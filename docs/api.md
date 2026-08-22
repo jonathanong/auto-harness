@@ -419,7 +419,7 @@ one unbound (for anything that creates sessions).
   "timeout": 1800,
   "priority": 10,
   "requiredLabels": ["codex"],
-  "concurrencyId": "filaments-pr-shepherd-123",
+  "concurrencyId": "filaments:shepherd:123",
   "metadata": { "pullRequest": 123 },
   "source": "ui"
 }
@@ -460,7 +460,7 @@ Unknown target/fallback IDs, duplicate route references, or malformed target obj
   "timeout": 1800,
   "priority": 10,
   "requiredLabels": ["codex"],
-  "concurrencyId": "filaments-pr-shepherd-123",
+  "concurrencyId": "filaments:shepherd:123",
   "url": "http://127.0.0.1:7421/sessions/sess-x1y2z3",
   "created": true,
   "source": "ui",
@@ -628,7 +628,7 @@ and placement pin, then routes a fresh run through the configured target/fallbac
 ```json
 {
   "prompt": "Continue: also fix the edge case in parseDate",
-  "concurrencyId": "filaments-pr-shepherd-123",
+  "concurrencyId": "filaments:shepherd:123",
   "timeout": 1800,
   "priority": 10
 }
