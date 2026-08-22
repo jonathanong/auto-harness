@@ -81,6 +81,14 @@ worktree gets stable, reusable ports across runs.
 - UI-facing vocabulary (what to call things in nav labels, copy, `data-pw` ids): [docs/terminology.md](docs/terminology.md).
 - Repo harness hookup examples: [docs/harness.md](docs/harness.md).
 
+## Operator-editable configuration
+
+- Every supported persisted setting that an operator can edit must have a structured control-plane
+  UI. A raw JSON editor may exist for bulk or debug workflows, but it must never be the only way to
+  configure a supported setting.
+- Machine-facing JSON APIs/files and daemon-advertised runtime capabilities are not operator UI
+  settings and do not require duplicate form controls.
+
 ## CLAUDE.md
 
 Root `CLAUDE.md` only points here so every agent stack shares one guide.

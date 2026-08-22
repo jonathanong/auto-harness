@@ -1,5 +1,5 @@
 import { type Command, type Provider, type ProviderAccount } from "@auto-harness/shared";
-import { DrainButton, HostConfigForm } from "@auto-harness/ui";
+import { DrainButton, HostConfigForm, HostSetupScriptForm } from "@auto-harness/ui";
 
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
 import { hostId, apiGet } from "../../lib/api.ts";
@@ -76,10 +76,17 @@ export default async function SettingsPage() {
       </div>
 
       <div className="space-y-2 border-t border-border pt-6">
+        <h3 className="text-lg font-medium">Host setup script</h3>
+        <p className="text-sm text-muted-foreground">
+          Optional host-wide setup run before repository and worktree setup scripts.
+        </p>
+        <HostSetupScriptForm hostId={id} setupScript={inventory.setupScript} />
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-6">
         <h3 className="text-lg font-medium">Advanced: raw host inventory JSON</h3>
         <p className="text-sm text-muted-foreground">
-          Configure the optional host setup script or bulk-edit the full inventory. Prefer the forms
-          on Repositories when possible.
+          Bulk-edit the full inventory. Prefer the structured controls when possible.
         </p>
         <HostConfigForm hostId={id} initialJson={initialJson} initialVersion={version} />
       </div>

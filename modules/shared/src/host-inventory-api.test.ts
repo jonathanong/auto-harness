@@ -7,7 +7,7 @@ describe("getInventory / putInventory", () => {
     delete process.env.HARNESS_API_HTTP;
   });
 
-  it("getInventory returns empty inventory on a non-ok response", async () => {
+  it("getInventory returns empty inventory when the host has no inventory yet", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9100";
     const original = globalThis.fetch;
     globalThis.fetch = (async () => new Response("nope", { status: 404 })) as typeof fetch;

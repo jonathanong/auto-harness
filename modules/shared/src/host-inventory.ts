@@ -157,14 +157,18 @@ export function updateHostWorktree(
   if (idx < 0) {
     throw new Error(`Unknown worktree: ${worktree.id}`);
   }
-  repo.worktrees[idx] = {
+  const updated: HostWorktree = {
     ...repo.worktrees[idx],
     id: worktree.id,
     name: worktree.name,
     path: worktree.path,
     labels: [...worktree.labels],
-    ...(worktree.setupScript !== undefined ? { setupScript: worktree.setupScript } : {}),
   };
+  if (Object.hasOwn(worktree, "setupScript")) {
+    if (worktree.setupScript === undefined) delete updated.setupScript;
+    else updated.setupScript = worktree.setupScript;
+  }
+  repo.worktrees[idx] = updated;
   return base;
 }
 

@@ -15,6 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "./input.tsx";
 import { Label } from "./label.tsx";
 import { PathInput } from "./path-input.tsx";
+import { Textarea } from "./textarea.tsx";
 import { showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
@@ -43,6 +44,7 @@ export function AddWorktreeForm({
   // custom path can coincidentally match what the suggestion would be for the current name.
   const [pathEdited, setPathEdited] = useState(false);
   const [labels, setLabels] = useState("");
+  const [setupScript, setSetupScript] = useState("");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -81,6 +83,7 @@ export function AddWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
+            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
             start(async () => {
               try {
                 const r = await mutate(hostId, (current) =>
@@ -89,6 +92,9 @@ export function AddWorktreeForm({
                     name: wtName,
                     path: wtPath,
                     labels: requestedLabels,
+                    ...(worktreeSetupScript !== undefined
+                      ? { setupScript: worktreeSetupScript }
+                      : {}),
                   }),
                 );
                 if (!r.ok) {
@@ -99,6 +105,8 @@ export function AddWorktreeForm({
                 setName("");
                 setPath("");
                 setPathEdited(false);
+                setLabels("");
+                setSetupScript("");
                 router.refresh();
               } catch (err) {
                 showToast(err instanceof Error ? err.message : String(err), {
@@ -158,6 +166,22 @@ export function AddWorktreeForm({
               value={labels}
               onChange={(e) => setLabels(e.target.value)}
               data-pw={`add-worktree-labels-${repo.id}`}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label
+              htmlFor={`addWorktreeSetupScript-${repo.id}`}
+              tip="Optional worktree override; leave blank to inherit repository setup"
+            >
+              Setup Script
+            </Label>
+            <Textarea
+              id={`addWorktreeSetupScript-${repo.id}`}
+              value={setupScript}
+              onChange={(event) => setSetupScript(event.target.value)}
+              rows={5}
+              className="font-mono text-xs"
+              data-pw={`add-worktree-setup-script-${repo.id}`}
             />
           </div>
           <div className="flex gap-2">

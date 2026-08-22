@@ -95,10 +95,9 @@ export default async function HostDetailPage({
     // despite the type saying it's required — never crash on stale storage data.
     providerAccounts: inventory?.providerAccounts ?? [],
   };
-  const inventoryVersion = inventory?.version ?? 0;
-  const { setupScript, repositories, providerAccounts: attachedAccounts } = inv;
+  const { repositories, providerAccounts: attachedAccounts } = inv;
   const inventoryJson = JSON.stringify(
-    { setupScript, repositories, providerAccounts: attachedAccounts },
+    { setupScript: inv.setupScript, repositories, providerAccounts: attachedAccounts },
     null,
     2,
   );
@@ -210,7 +209,8 @@ export default async function HostDetailPage({
               <HostAdvancedTab
                 hostId={hostId}
                 initialJson={inventoryJson}
-                initialVersion={inventoryVersion}
+                initialVersion={inventory?.version ?? 0}
+                setupScript={inv.setupScript}
                 canWrite={canWriteInventory}
               />
             ),

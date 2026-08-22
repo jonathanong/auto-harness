@@ -14,7 +14,13 @@ import {
 } from "./form-test-helpers.tsx";
 import { EditWorktreeForm } from "./edit-worktree-form.tsx";
 
-const worktree = { id: "worktree-1", name: "feature", path: "/repo/feature", labels: ["fast"] };
+const worktree = {
+  id: "worktree-1",
+  name: "feature",
+  path: "/repo/feature",
+  labels: ["fast"],
+  setupScript: "old setup",
+};
 const inventory = {
   repositories: [
     {
@@ -83,6 +89,9 @@ describe("EditWorktreeForm", () => {
     press(field(view.container, "worktree-edit-open"));
     expect(field<HTMLInputElement>(document, "worktree-edit-path").value).toBe("/repo/feature");
     expect(field<HTMLInputElement>(document, "worktree-edit-labels").value).toBe("fast");
+    expect(field<HTMLTextAreaElement>(document, "worktree-edit-setup-script").value).toBe(
+      "old setup",
+    );
     pressCancel();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
     view.unmount();
@@ -103,6 +112,7 @@ describe("EditWorktreeForm", () => {
     press(field(view.container, "worktree-edit-open"));
     setValue(field(document, "worktree-edit-path"), " /new/feature ");
     setValue(field(document, "worktree-edit-labels"), " fast, ci, , fast ");
+    setValue(field(document, "worktree-edit-setup-script"), "pnpm install");
     submit(field(document, "form-edit-worktree"));
     await act(async () => Promise.resolve());
     expect(fetch).toHaveBeenCalledWith(
@@ -118,6 +128,7 @@ describe("EditWorktreeForm", () => {
               name: "feature",
               path: "/new/feature",
               labels: ["fast", "ci", "fast"],
+              setupScript: "pnpm install",
             },
           ],
         },
@@ -125,6 +136,18 @@ describe("EditWorktreeForm", () => {
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-edit-worktree"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("clears a blank setup override so repository setup is inherited", async () => {
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-setup-script"), "   ");
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    const body = putBody(fetch) as typeof inventory;
+    expect(body.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
     view.unmount();
   });
 

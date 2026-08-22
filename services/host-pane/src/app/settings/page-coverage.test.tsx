@@ -62,7 +62,8 @@ describe("host-pane settings route", () => {
     const markup = render(await SettingsPage());
 
     expect(markup).toContain("Advanced: raw host inventory JSON");
-    expect(markup).toContain("&quot;repositories&quot;: []");
+    expect(markup).toContain('data-pw="host-config-json"');
+    expect(markup).toContain("Valid host inventory JSON");
     expect(markup).toContain('data-pw="provider-accounts-readonly-catalog-error"');
     expect(markup).toContain("Could not load the provider catalog");
   });

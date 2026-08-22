@@ -13,6 +13,7 @@ import {
   DialogTrigger,
   Input,
   Label,
+  Textarea,
   WithTooltip,
   showToast,
 } from "@auto-harness/ui";
@@ -41,7 +42,7 @@ export function EditWorktreeForm({
         <DialogHeader>
           <DialogTitle>Edit worktree</DialogTitle>
           <DialogDescription>
-            Update this worktree's absolute path and scheduler labels.
+            Update this worktree's absolute path, scheduler labels, and optional setup script.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -55,6 +56,9 @@ export function EditWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
+            const setupScriptEntry = fd.get("setupScript");
+            const setupScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
+            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",
@@ -71,6 +75,7 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
+                  setupScript: worktreeSetupScript,
                 }),
               );
               if (!r.ok) {
@@ -103,6 +108,22 @@ export function EditWorktreeForm({
               name="labels"
               defaultValue={(worktree.labels ?? []).join(", ")}
               data-pw="worktree-edit-labels"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label
+              htmlFor="worktreeSetupScript"
+              tip="Optional worktree override; leave blank to inherit repository setup"
+            >
+              Setup Script
+            </Label>
+            <Textarea
+              id="worktreeSetupScript"
+              name="setupScript"
+              rows={5}
+              defaultValue={worktree.setupScript ?? ""}
+              className="font-mono text-xs"
+              data-pw="worktree-edit-setup-script"
             />
           </div>
           <div className="flex gap-2">

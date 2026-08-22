@@ -24,8 +24,14 @@ test.describe("host pane settings", () => {
       await expect(page.getByTestId("page-settings")).toBeVisible();
       await expect(page.getByTestId("settings-heading")).toHaveText("Settings");
       await expect(page.getByTestId("host-drain")).toBeVisible();
+      await expect(page.getByTestId("form-host-setup-script")).toBeVisible();
+      await expect(page.getByTestId("host-setup-script")).toBeVisible();
       await expect(page.getByTestId("form-host-config-json")).toBeVisible();
       await expect(page.getByTestId("host-config-json")).toBeVisible();
+      await expect(page.getByTestId("host-config-json").locator(".cm-editor")).toBeVisible();
+      await expect(page.getByTestId("host-config-json-validation")).toHaveText(
+        "Valid host inventory JSON",
+      );
       await expect(page.getByTestId("host-config-error")).toBeHidden();
       await expect(page.getByTestId("host-config-ok")).toHaveCount(0);
       await page.getByTestId("host-config-submit").click();
