@@ -47,7 +47,12 @@ export function setup(runner: ProcessRunner) {
         hooks.push(opts.env?.HARNESS_STATUS ?? "");
         return { exitCode: 1, timedOut: false, signal: null };
       }
-      return runner.run(opts);
+      const result = await runner.run(opts);
+      const isSetup = opts.argv[1] === "-c" && opts.argv[3] === "auto-harness-setup";
+      if (isSetup && result.exitCode === 0 && !result.timedOut && !result.cancelled) {
+        return { ...result, environment: result.environment ?? opts.env ?? {} };
+      }
+      return result;
     },
   };
   return {

@@ -999,9 +999,15 @@ Unified picker source for session/schedule creation: all Providers and Commands,
 }
 ```
 
-#### Host inventory: attaching a Provider Account
+#### Host inventory: setup and Provider Accounts
 
 `PUT /api/v1/hosts/:hostId/inventory` (see [cli.md](cli.md)) carries
+an optional root `setupScript` for host-wide initialization. Each `repositories[]` entry may carry
+its own `setupScript` for that host/repository attachment; the host script runs first, and both are
+absent by default. See [host-daemon.md](host-daemon.md#setup-scripts) for precedence, environment
+forwarding, resume behavior, and security boundaries.
+
+The same inventory document carries
 `providerAccounts: [{ providerAccountId, commandId? }]` — the host-level attachment list, with an
 optional host-level command override per account. Each `providerAccountId` must already exist in
 the catalog; unknown ids return `400 VALIDATION_ERROR` (`unknown providerAccountId: …`). An empty

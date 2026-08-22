@@ -145,6 +145,7 @@ export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 /** Durable agent host inventory (repository/worktree config for a host). */
 export type HostInventoryRecord = {
   hostId: string;
+  setupScript?: string | undefined;
   /** Opaque identity last reported by a modern daemon process. */
   daemonInstanceId?: string;
   /** Start time reported by that daemon process. */

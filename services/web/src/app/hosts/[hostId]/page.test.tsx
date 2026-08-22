@@ -5,6 +5,7 @@ import HostDetailPage from "./page.tsx";
 
 const catalogOk = {
   "/api/v1/hosts/host-a/inventory": {
+    setupScript: "source ~/.zshrc",
     repositories: [{ id: "repo-a", path: "/repos/a", worktrees: [] }],
     providerAccounts: [],
   },
@@ -106,10 +107,7 @@ describe("host detail route", () => {
   });
 
   it("never fabricates an empty inventory when the agent is known but the fetch really failed", async () => {
-    // Regression for a real data-loss bug (chatgpt-codex-connector, PR #168): if this fell
-    // through to the normal render with `inv = { repositories: [], providerAccounts: [] }`,
-    // AddRepoForm would submit that fabricated-empty inventory verbatim on its next save —
-    // silently wiping the host's real repositories and provider accounts.
+    // A fabricated empty inventory could be submitted on the next save and wipe real config.
     stubApi({
       "/api/v1/hosts/host-a/inventory": jsonResponse({}, 500),
       "/api/v1/hosts": { items: [{ hostId: "host-a", online: true }] },
@@ -160,7 +158,7 @@ describe("host detail route", () => {
     );
     expect(html).toContain('data-pw="form-host-config-json"');
     expect(html).toContain('data-pw="host-config-json"');
-    expect(html).toContain("repo-a");
+    expect(html).toContain("source ~/.zshrc");
   });
 
   it("decodes a percent-encoded host id before lookup and display", async () => {

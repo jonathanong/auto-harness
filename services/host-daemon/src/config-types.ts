@@ -34,6 +34,7 @@ export type DaemonConfig = {
   hostId: string;
   apiUrl?: string;
   apiKey?: string;
+  setupScript?: string;
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
 };

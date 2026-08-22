@@ -7,6 +7,7 @@ import {
   mergeHostRepository,
   removeHostRepository,
   removeHostWorktree,
+  updateHostSetupScript,
   updateHostWorktree,
   upsertHostRepository,
 } from "./host-inventory.ts";
@@ -20,6 +21,16 @@ describe("host-inventory", () => {
     const inv = emptyHostInventory();
     expect(inv.repositories).toEqual([]);
     expect(inv.providerAccounts).toEqual([]);
+  });
+
+  it("updates and preserves the host-wide setup script", () => {
+    let inv = updateHostSetupScript(null, "source ~/.zshrc");
+    inv = upsertHostRepository(inv, {
+      id: "demo",
+      path: "/repo",
+      defaultBranch: "main",
+    });
+    expect(inv.setupScript).toBe("source ~/.zshrc");
   });
 
   it("upsertHostRepository creates repo with empty worktrees", () => {

@@ -42,6 +42,8 @@ export type HostProviderAccount = {
 };
 
 export type HostInventory = {
+  /** Optional host-wide setup run before the repository/worktree setup. */
+  setupScript?: string | undefined;
   repositories: HostRepository[];
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
@@ -56,6 +58,7 @@ export function defaultWorktreePath(repoPath: string, worktreeName: string): str
 
 function cloneInventory(existing: HostInventory | null | undefined): HostInventory {
   return {
+    ...(existing?.setupScript !== undefined ? { setupScript: existing.setupScript } : {}),
     repositories: existing?.repositories
       ? existing.repositories.map((r) => ({
           ...r,
@@ -67,6 +70,14 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
       : [],
     capabilities: [...(existing?.capabilities ?? [])],
   };
+}
+
+/** Replace the optional host-wide setup script without disturbing the rest of the inventory. */
+export function updateHostSetupScript(
+  existing: HostInventory | null | undefined,
+  setupScript: string,
+): HostInventory {
+  return { ...cloneInventory(existing), setupScript };
 }
 
 /**

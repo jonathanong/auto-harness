@@ -102,6 +102,7 @@ export {
   mergeHostRepository,
   removeHostRepository,
   removeHostWorktree,
+  updateHostSetupScript,
   updateHostWorktree,
   upsertHostRepository,
   type HostInventory,

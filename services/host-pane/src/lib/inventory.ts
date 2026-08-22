@@ -56,6 +56,7 @@ export async function loadHostInventoryWithVersion(
     );
     return {
       inventory: {
+        ...(typeof cfg.setupScript === "string" ? { setupScript: cfg.setupScript } : {}),
         repositories: Array.isArray(cfg.repositories)
           ? (cfg.repositories as HostInventory["repositories"])
           : [],

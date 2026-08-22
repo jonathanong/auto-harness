@@ -74,11 +74,8 @@ export default async function HostDetailPage({
   }
 
   if (inventoryError) {
-    // The agent is known (the not-found branch above didn't fire) but the inventory
-    // itself failed to load for a real reason. Never fabricate an empty inventory here —
-    // every mutation on this page now re-reads and conditions its write on the current
-    // inventory (mutateInventory), but a fabricated empty list would still mislead the UI
-    // into showing "no repositories/provider accounts attached" when the truth is unknown.
+    // The agent is known, but the inventory failed to load for a real reason. Never fabricate an
+    // empty inventory: that would mislead the UI and risk replacing the real host configuration.
     return (
       <div className="space-y-6">
         <HostDetailHeader hostId={hostId} canDrain={canDrain} />
@@ -99,8 +96,9 @@ export default async function HostDetailPage({
     providerAccounts: inventory?.providerAccounts ?? [],
   };
   const inventoryVersion = inventory?.version ?? 0;
+  const { setupScript, repositories, providerAccounts: attachedAccounts } = inv;
   const inventoryJson = JSON.stringify(
-    { repositories: inv.repositories, providerAccounts: inv.providerAccounts },
+    { setupScript, repositories, providerAccounts: attachedAccounts },
     null,
     2,
   );

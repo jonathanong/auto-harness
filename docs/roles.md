@@ -65,7 +65,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                 |
 | `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                 |
 | `fleet:drain`          | `POST /hosts/drain`. Bound principals: own host only.                                                                                                                                                                         |
-| `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos, worktrees).                                                                                                                                      |
+| `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos/worktrees and configure host-scoped setup/hook scripts). **This permits arbitrary execution on the selected host.**                               |
 | `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                 |
 | `catalog:write`        | Create/update/delete Commands, Providers, and Repositories — including command `argv` and repo `setupScript` / `terminalHookScript`. **This is arbitrary execution on the fleet** ([plan.md](plan.md) D4). Admin only.        |
 | `accounts:write`       | User and service-account CRUD, key rotation. `GET` of those lists too.                                                                                                                                                        |
@@ -221,6 +221,9 @@ sessions ([auth.md](auth.md#a-bound-key-cannot-create-sessions)).
 
 Do **not** give `maintainer` or `operator` `catalog:write`. Command argv and
 repository setup scripts run on the VPS.
+
+Likewise, give `maintainer` only to operators trusted to run code on managed hosts:
+`fleet:inventory` can configure host-, attachment-, and worktree-scoped setup scripts.
 
 ---
 

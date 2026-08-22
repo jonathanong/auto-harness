@@ -2,6 +2,7 @@ import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config.ts
 import type { GitClient } from "./git.ts";
 
 type ClaimedWorktree = {
+  hostSetupScript?: string;
   repository: RepositoryConfig;
   worktree: WorktreeConfig;
   cwd: string;
@@ -61,7 +62,14 @@ export class WorktreeManager {
       throw new Error(`Unknown worktree: ${worktreeId}`);
     }
     this.busy.add(worktreeId);
-    return { repository, worktree, cwd: worktree.path };
+    return {
+      ...(this.config.setupScript !== undefined
+        ? { hostSetupScript: this.config.setupScript }
+        : {}),
+      repository,
+      worktree,
+      cwd: worktree.path,
+    };
   }
 
   mainClaim(repositoryId: string): ClaimedWorktree {
@@ -69,7 +77,14 @@ export class WorktreeManager {
     if (!repository) {
       throw new Error(`Unknown repository: ${repositoryId}`);
     }
-    return { repository, worktree: mainWorktree(repository), cwd: repository.path };
+    return {
+      ...(this.config.setupScript !== undefined
+        ? { hostSetupScript: this.config.setupScript }
+        : {}),
+      repository,
+      worktree: mainWorktree(repository),
+      cwd: repository.path,
+    };
   }
 
   async acquireMain(repositoryId: string, signal?: AbortSignal): Promise<boolean> {

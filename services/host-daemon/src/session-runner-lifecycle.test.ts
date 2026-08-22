@@ -6,7 +6,7 @@ describe("SessionRunner lifecycle transcript", () => {
   it("emits successful setup and process markers without command arguments", async () => {
     const { sessionRunner } = setup({
       async run(opts) {
-        if (opts.argv[0] === "/bin/sh" && opts.argv[1] === "-c") {
+        if (opts.argv[1] === "-c" && opts.argv[3] === "auto-harness-setup") {
           opts.onChunk({ stream: "stdout", data: "setup output\n" });
         } else if (opts.argv[0] === "codex") {
           opts.onChunk({ stream: "stdout", data: "command output\n" });

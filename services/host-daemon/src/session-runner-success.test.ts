@@ -150,6 +150,7 @@ describe("SessionRunner success paths", () => {
     const setupSpy = vi.fn();
     const config = parseDaemonConfig({
       hostId: "a1",
+      setupScript: "host-setup-should-not-run",
       commandProfiles: {
         "echo-prompt": { argv: ["echo"], appendPrompt: true },
       },
@@ -191,7 +192,7 @@ describe("SessionRunner success paths", () => {
     const timeouts: number[] = [];
     const { sessionRunner } = setup({
       async run(options) {
-        if (options.argv[0] === "/bin/sh" && options.argv[1] === "-c") {
+        if (options.argv[1] === "-c") {
           await new Promise<void>((resolve) => setTimeout(resolve, 30));
         } else {
           timeouts.push(options.timeoutMs);
@@ -199,11 +200,8 @@ describe("SessionRunner success paths", () => {
         return { exitCode: 0, timedOut: false, signal: null };
       },
     });
-    await expect(
-      sessionRunner.run(baseAssign({ timeout: 1, setupScript: "slow" })),
-    ).resolves.toMatchObject({
-      status: "completed",
-    });
+    const result = await sessionRunner.run(baseAssign({ timeout: 1, setupScript: "slow" }));
+    expect(result.status).toBe("completed");
     expect(timeouts[0]).toBeGreaterThan(0);
     expect(timeouts[0]).toBeLessThan(1_000);
   });

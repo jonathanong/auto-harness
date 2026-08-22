@@ -32,6 +32,7 @@ describe("host-pane settings route", () => {
       const url = String(input);
       if (url.endsWith("/inventory")) {
         return Response.json({
+          setupScript: "source ~/.zshrc",
           repositories: [],
           providerAccounts: [{ providerAccountId: "account-a" }],
         });
@@ -49,6 +50,7 @@ describe("host-pane settings route", () => {
 
     expect(markup).toContain("Provider accounts");
     expect(markup).toContain("Provider A — Account A");
+    expect(markup).toContain("source ~/.zshrc");
   });
 
   it("keeps raw inventory settings usable when the catalog requests fail", async () => {

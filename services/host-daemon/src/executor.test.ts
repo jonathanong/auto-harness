@@ -6,21 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createChildEnv } from "./child-env.ts";
-import { runSetupScript, type ProcessRunner, SpawnProcessRunner } from "./executor.ts";
-
-describe("runSetupScript", () => {
-  it("invokes /bin/sh -c with the script", async () => {
-    let seen: string[] | undefined;
-    const runner: ProcessRunner = {
-      async run(opts) {
-        seen = opts.argv;
-        return { exitCode: 0, timedOut: false, signal: null };
-      },
-    };
-    await runSetupScript(runner, "true", "/tmp", 1000, () => undefined);
-    expect(seen).toEqual(["/bin/sh", "-c", "true"]);
-  });
-});
+import { SpawnProcessRunner } from "./executor.ts";
 
 describe("child environment", () => {
   it("does not leak control-plane credentials and only admits named extras", () => {

@@ -8,11 +8,20 @@ afterEach(() => setApiTransportForTests(undefined));
 describe("loadHostInventoryWithVersion", () => {
   it("returns the real version a persisted inventory was read at", async () => {
     setApiTransportForTests(async () =>
-      Response.json({ repositories: [], providerAccounts: [], version: 7 }),
+      Response.json({
+        setupScript: "source ~/.zshrc",
+        repositories: [],
+        providerAccounts: [],
+        version: 7,
+      }),
     );
 
     await expect(loadHostInventoryWithVersion("host-a")).resolves.toEqual({
-      inventory: { repositories: [], providerAccounts: [] },
+      inventory: {
+        setupScript: "source ~/.zshrc",
+        repositories: [],
+        providerAccounts: [],
+      },
       version: 7,
     });
   });

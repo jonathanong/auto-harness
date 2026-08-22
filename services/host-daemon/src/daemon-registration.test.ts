@@ -46,6 +46,7 @@ describe("daemon registration", () => {
     const config = { hostId: "h", repositories: [], providerAccounts: [] };
     const next = {
       ...config,
+      setupScript: "source ~/.zshrc",
       repositories: [{ id: "p", path: "/p", defaultBranch: "main", worktrees: [] }],
     };
     const calls: string[] = [];
@@ -56,17 +57,37 @@ describe("daemon registration", () => {
       async () => void calls.push("register"),
     );
     expect(config.repositories).toEqual(next.repositories);
+    expect(config).toMatchObject({ setupScript: "source ~/.zshrc" });
     expect(calls).toEqual(["ensure", "register"]);
+  });
+
+  it("removes a host setup script when the next inventory omits it", async () => {
+    const config = {
+      hostId: "h",
+      setupScript: "source ~/.zshrc",
+      repositories: [],
+      providerAccounts: [],
+    };
+    const next = { hostId: "h", repositories: [], providerAccounts: [] };
+    await applyDaemonInventory(
+      config,
+      next,
+      { ensureAll: async () => undefined } as never,
+      async () => undefined,
+    );
+    expect(config).not.toHaveProperty("setupScript");
   });
 
   it("restores the prior inventory when preparation fails", async () => {
     const config = {
       hostId: "h",
+      setupScript: "old setup",
       repositories: [{ id: "old", path: "/old", defaultBranch: "main", worktrees: [] }],
       providerAccounts: [],
     };
     const next = {
       ...config,
+      setupScript: "new setup",
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
@@ -85,12 +106,14 @@ describe("daemon registration", () => {
     expect(config.repositories).toEqual([
       { id: "old", path: "/old", defaultBranch: "main", worktrees: [] },
     ]);
+    expect(config.setupScript).toBe("old setup");
   });
 
   it("restores the prior inventory when registration fails", async () => {
     const config = { hostId: "h", repositories: [], providerAccounts: [] };
     const next = {
       ...config,
+      setupScript: "new setup",
       repositories: [{ id: "next", path: "/next", defaultBranch: "main", worktrees: [] }],
     };
 
@@ -100,5 +123,6 @@ describe("daemon registration", () => {
       }),
     ).rejects.toThrow("registration failed");
     expect(config.repositories).toEqual([]);
+    expect(config).not.toHaveProperty("setupScript");
   });
 });

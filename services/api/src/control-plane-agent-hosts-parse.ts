@@ -32,6 +32,9 @@ export function parseHostBody(
   if (body.hostId !== undefined && body.hostId !== hostId) {
     throw new Error("body.hostId must match path hostId");
   }
+  if (body.setupScript !== undefined && typeof body.setupScript !== "string") {
+    throw new Error("setupScript must be a string");
+  }
   // Empty repositories allowed: register agent / seed host before attaching repos.
   if (!Array.isArray(body.repositories)) {
     throw new Error("repositories must be an array");
@@ -124,6 +127,7 @@ export function parseHostBody(
 
   return {
     hostId,
+    ...(typeof body.setupScript === "string" ? { setupScript: body.setupScript } : {}),
     repositories,
     providerAccounts,
     capabilities,
