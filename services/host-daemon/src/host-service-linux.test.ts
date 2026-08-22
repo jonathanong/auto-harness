@@ -36,24 +36,6 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toContain(`ephemeral directory ${stagedDir}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_RELOAD_COMMAND}`);
     expect(logs.join("\n")).toContain(`sudo ${LINUX_ENABLE_NOW_COMMAND}`);
-    const existing = seededFs({
-      [LINUX_ENV_DEST]:
-        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
-    });
-    const existingLogs: string[] = [];
-    expect(
-      installHostService(
-        baseOpts({
-          platform: "linux",
-          uid: 501,
-          fs: existing,
-          log: (m) => existingLogs.push(m),
-          run: () => ({ status: 0, stdout: "", stderr: "" }),
-        }),
-      ),
-    ).toBe(0);
-    expect(existing.files.has(`${stagedDir}/host-daemon.env`)).toBe(false);
-    expect(existingLogs.join("\n")).not.toMatch(/install -m 0600/);
   });
 
   it("keeps /opt working directory and existing env as root", () => {

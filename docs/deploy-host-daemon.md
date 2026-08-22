@@ -96,11 +96,15 @@ Env files are mode `0600` and are never committed:
 - macOS: `~/Library/Application Support/auto-harness/host-daemon.env`
 - Windows: `%APPDATA%\auto-harness\host-daemon.env`
 
-On Linux, if this command is not root it writes a staged unit/env and prints:
+On Linux, if this command is not root and no service environment exists yet, it writes a staged
+unit/env and prints:
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-daemon.service
 ```
+
+If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
+installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
 Working directory is `/opt/auto-harness/current` when that path exists, otherwise this checkout.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
