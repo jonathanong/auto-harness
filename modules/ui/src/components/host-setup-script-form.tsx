@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { mutateInventory, updateHostSetupScript } from "@auto-harness/shared";
 import { Button } from "./button.tsx";
@@ -23,10 +23,14 @@ export function HostSetupScriptForm({
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
   const [script, setScript] = useState(setupScript ?? "");
+  const savedRefreshScriptRef = useRef<string | null>(null);
 
   useEffect(() => {
-    setScript(setupScript ?? "");
-    setSaved(false);
+    const nextScript = setupScript ?? "";
+    const preserveSavedFeedback = savedRefreshScriptRef.current === nextScript;
+    savedRefreshScriptRef.current = null;
+    setScript(nextScript);
+    if (!preserveSavedFeedback) setSaved(false);
   }, [setupScript]);
 
   return (
@@ -45,6 +49,7 @@ export function HostSetupScriptForm({
               showToast(result.error, { variant: "destructive", pw: "host-setup-script-error" });
               return;
             }
+            savedRefreshScriptRef.current = script;
             setSaved(true);
             router.refresh();
           } catch (error) {

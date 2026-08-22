@@ -23,14 +23,19 @@ const rejectedMutation: typeof mutateInventory = async () => {
   throw new Error("offline");
 };
 
+const successfulMutation: typeof mutateInventory = async () => ({ ok: true });
+
 function RefreshHarness() {
   const [script, setScript] = useState("old");
   return (
     <>
-      <button type="button" data-pw="refresh-script" onClick={() => setScript("from refresh")}>
-        Refresh
+      <button type="button" data-pw="own-refresh" onClick={() => setScript("saved value")}>
+        Own refresh
       </button>
-      <HostSetupScriptForm hostId="host" setupScript={script} />
+      <button type="button" data-pw="external-refresh" onClick={() => setScript("external value")}>
+        External refresh
+      </button>
+      <HostSetupScriptForm hostId="host" setupScript={script} mutate={successfulMutation} />
     </>
   );
 }
@@ -68,12 +73,20 @@ describe("HostSetupScriptForm", () => {
     rejected.unmount();
   });
 
-  it("synchronizes the controlled field when refreshed inventory changes the prop", () => {
+  it("preserves Saved through its own refresh, then syncs and clears it externally", async () => {
     const view = mount(<RefreshHarness />);
     const textarea = field<HTMLTextAreaElement>(view.container, "host-setup-script");
-    setValue(textarea, "unsaved stale value");
-    act(() => field<HTMLButtonElement>(view.container, "refresh-script").click());
-    expect(textarea.value).toBe("from refresh");
+    setValue(textarea, "saved value");
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");
+
+    act(() => field<HTMLButtonElement>(view.container, "own-refresh").click());
+    expect(textarea.value).toBe("saved value");
+    expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");
+
+    act(() => field<HTMLButtonElement>(view.container, "external-refresh").click());
+    expect(textarea.value).toBe("external value");
+    expect(view.container.querySelector('[data-pw="host-setup-script-ok"]')).toBeNull();
     view.unmount();
   });
 });
