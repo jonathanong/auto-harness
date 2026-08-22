@@ -55,7 +55,12 @@ export function makeRunner() {
           throwSetup.value = false;
           throw new Error("setup failed");
         }
-        return { exitCode: 0, timedOut: false, signal: null };
+        return {
+          exitCode: 0,
+          timedOut: false,
+          signal: null,
+          environment: options.env ?? {},
+        };
       }
       if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook") {
         hooks.push(options.cwd);

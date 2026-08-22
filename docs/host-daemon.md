@@ -414,7 +414,9 @@ process. The daemon captures that environment through a mode-0600 temporary file
 before the session continues, and never writes the captured values to logs or session metadata.
 The reserved `HARNESS_*` namespace is always removed before provider launch. Because the provider
 can read every other exported value, setup scripts are trusted operator code; sourcing a broad shell
-profile may expose all of its exports to repository work.
+profile may expose all of its exports to repository work. A successful script that replaces the
+shell and bypasses environment capture fails setup rather than launching the provider with a stale
+environment.
 
 Examples:
 

@@ -17,16 +17,20 @@ function setupShell(environment: NodeJS.ProcessEnv): string {
 
 function setupCaptureScript(setupScript: string): string {
   return [
+    "auto_harness_capture() {",
+    "  setup_status=$1",
+    "  trap - 0",
+    '  if [ "$setup_status" -eq 0 ]; then',
+    '    "$2" -e "$3" "$4"',
+    "    setup_status=$?",
+    "  fi",
+    '  exit "$setup_status"',
+    "}",
     "auto_harness_setup() {",
     setupScript,
     "}",
+    'trap \'auto_harness_capture "$?" "$1" "$2" "$3"\' 0',
     "auto_harness_setup",
-    "setup_status=$?",
-    'if [ "$setup_status" -eq 0 ]; then',
-    '  "$1" -e "$2" "$3"',
-    "  setup_status=$?",
-    "fi",
-    'exit "$setup_status"',
   ].join("\n");
 }
 
@@ -77,11 +81,18 @@ export async function runSetupScript(
       onChunk,
     });
     if (result.exitCode !== 0 || result.timedOut || result.cancelled) return result;
+    if (result.environment !== undefined) {
+      return { ...result, environment: capturedEnvironment(result.environment) };
+    }
     try {
       const parsed = JSON.parse(await readFile(snapshotPath, "utf8")) as unknown;
       return { ...result, environment: capturedEnvironment(parsed) };
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return result;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error("setup script completed without capturing its environment", {
+          cause: error,
+        });
+      }
       throw error;
     }
   } finally {
