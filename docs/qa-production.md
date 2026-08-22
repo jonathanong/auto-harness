@@ -305,6 +305,19 @@ URL, placeholders, or an empty `HARNESS_API_KEY`. This production path uses
 `WebUrl` and the bound key. Existing persisted environments are validated before
 service-manager mutation.
 
+On macOS, verify the installed production identity by pointing `status` at the persisted
+LaunchAgent environment. A plain status command falls back to the local-development identity and
+can misleadingly report a running LaunchAgent alongside an unreachable `local-1` control plane:
+
+```bash
+HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+  pnpm local:daemon status
+```
+
+**Gate:** status is `ready`, reports the expected production host ID, and shows `reachable: true`,
+`online: true`, `draining: false`, and `gitReady: true`. Do not print the environment file; it
+contains the bound daemon key.
+
 Foreground `pnpm local:daemon start` with the same env is fine for a
 one-shot unsandboxed sanity check; **persist is the path this runbook
 expects to leave running.**

@@ -113,8 +113,19 @@ On Linux, run this update as root when the existing mode-0600 env file is root-o
 (for example, `sudo pnpm local:daemon install-service --api-url 'https://new-control.example.com'`).
 
 `status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
-local work above. On a deployed host, run `status` with the same persisted identity used by
-the service; it queries only that `hostId` and sends the API key as an authorization header.
+local work above. They do not automatically discover a platform service's persisted environment.
+On a deployed macOS host, load the LaunchAgent environment explicitly so `status` checks the same
+identity as the service:
+
+```bash
+HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+  pnpm local:daemon status
+```
+
+The Linux equivalent uses `/etc/auto-harness/host-daemon.env`; Windows uses
+`%APPDATA%\auto-harness\host-daemon.env`. The status request queries only the resulting `hostId`
+and sends its API key as an authorization header without printing it. A result for `local-1` means
+the deployed identity was not loaded and does not verify the installed daemon.
 
 Host install details: [deploy-host-daemon.md](deploy-host-daemon.md).
 
