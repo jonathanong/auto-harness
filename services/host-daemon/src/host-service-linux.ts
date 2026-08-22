@@ -93,12 +93,11 @@ function activateLinux(ctx: HostServiceContext, envExists: boolean): number {
 
 export function installLinux(ctx: HostServiceContext): number {
   const envExists = ctx.fs.existsSync(LINUX_ENV_DEST);
-  if (ctx.uid !== 0 && envExists && ctx.apiUrl === undefined) {
-    return stageLinux(ctx, renderedUnit(ctx));
-  }
-  if (ctx.uid !== 0 && envExists && ctx.apiUrl !== undefined) {
+  if (ctx.uid !== 0 && envExists) {
     ctx.error(
-      "Refusing --api-url update as non-root: rerun install-service with sudo to retain the persisted service key safely.",
+      ctx.apiUrl === undefined
+        ? "Refusing non-root install with an existing service env: rerun install-service with sudo so the persisted environment can be validated safely."
+        : "Refusing --api-url update as non-root: rerun install-service with sudo to retain the persisted service key safely.",
     );
     return 1;
   }

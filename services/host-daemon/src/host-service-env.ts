@@ -1,15 +1,5 @@
 import { LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
-
-function allowlistedExtras(env: NodeJS.ProcessEnv): string[] {
-  const raw = env.HARNESS_CHILD_ENV_ALLOWLIST;
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((key) => key.trim())
-    .filter(
-      (key) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key) && !key.toUpperCase().startsWith("HARNESS_"),
-    );
-}
+import { parseChildEnvAllowlist } from "./child-env.ts";
 
 export function parseEnvFile(contents: string): Record<string, string> {
   const parsed: Record<string, string> = {};
@@ -119,6 +109,7 @@ export function validatePersistedEnvFile(contents: string): string[] {
   if (isPlaceholder(hostId) || hostId === LOCAL_HOST_ID) errors.push("HARNESS_HOST_ID");
   if (isPlaceholder(apiUrl) || !isProductionApiUrl(apiUrl)) errors.push("HARNESS_API_URL");
   if (isPlaceholder(apiKey)) errors.push("HARNESS_API_KEY");
+  errors.push(...parseChildEnvAllowlist(env).errors);
   return errors;
 }
 
@@ -187,6 +178,8 @@ export function renderEnvFile(
   env: NodeJS.ProcessEnv,
   opts: { capturePath?: boolean } = {},
 ): string {
+  const extras = parseChildEnvAllowlist(env);
+  if (extras.errors.length > 0) throw new Error(extras.errors.join("; "));
   const capturePath = opts.capturePath !== false;
   const seen = new Set<string>();
   const out: string[] = [];
@@ -202,7 +195,7 @@ export function renderEnvFile(
     assertSingleLine(key, value);
     out.push(`${key}=${value}`);
   }
-  for (const key of allowlistedExtras(env)) {
+  for (const key of extras.keys) {
     const value = env[key];
     if (value === undefined || seen.has(key)) continue;
     assertSingleLine(key, value);

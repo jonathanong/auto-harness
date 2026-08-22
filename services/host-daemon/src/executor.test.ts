@@ -15,7 +15,7 @@ describe("child environment", () => {
         PATH: "/bin",
         HOME: "/home/agent",
         HARNESS_API_KEY: "secret",
-        HARNESS_CHILD_ENV_ALLOWLIST: "TOKEN,HARNESS_OTHER,not-valid!",
+        HARNESS_CHILD_ENV_ALLOWLIST: "TOKEN",
         TOKEN: "allowed",
         UNRELATED: "nope",
       }),

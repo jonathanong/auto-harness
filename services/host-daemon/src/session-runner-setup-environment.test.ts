@@ -76,4 +76,46 @@ describe("SessionRunner setup environment", () => {
       REPOSITORY_SETUP: "loaded",
     });
   });
+
+  it("forwards persisted allowlisted variables when resume skips setup", async () => {
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      setupScript: "must-not-run",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    };
+    const setupCalls: string[] = [];
+    let commandEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[1] === "-c") setupCalls.push("setup");
+        else commandEnvironment = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new SessionRunner({
+      worktrees: new WorktreeManager(config, git),
+      processRunner: runner,
+      childEnvSource: {
+        HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN",
+        AGENT_BLACKBOARD_TOKEN: "persisted-token",
+      },
+    }).run(baseAssign({ resume: true }));
+    expect(result.status).toBe("completed");
+    expect(setupCalls).toEqual([]);
+    expect(commandEnvironment?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
+  });
 });

@@ -26,6 +26,8 @@ export type DaemonLoopOptions = {
   transport: DaemonTransport;
   processRunner?: ProcessRunner;
   commandRunner?: ProcessRunner;
+  /** Daemon environment after loading the persisted service environment file. */
+  childEnvSource?: NodeJS.ProcessEnv;
   isDraining?: () => boolean;
   onLog?: (line: string) => void;
   now?: () => string;
@@ -109,6 +111,7 @@ export class DaemonLoop {
       worktrees: this.worktrees,
       processRunner,
       commandRunner,
+      ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
       onLog: (chunk) => void this.emitLog(chunk),
       now: this.now,
     });

@@ -57,6 +57,7 @@ export async function finishSession(
   worktreePath: string,
   hookScript: string | undefined,
   outcome: SessionOutcome,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   if (hookScript) {
     await runTerminalHook(processRunner, {
@@ -65,6 +66,7 @@ export async function finishSession(
       sessionId: assign.sessionId,
       status: outcome.status as SessionStatus,
       worktreePath,
+      childEnvSource,
       ...(outcome.errorCode !== undefined ? { errorCode: outcome.errorCode } : {}),
       ...(assign.ref !== undefined ? { ref: assign.ref } : {}),
       ...(assign.metadata !== undefined ? { metadata: assign.metadata } : {}),

@@ -96,11 +96,15 @@ Env files are mode `0600` and are never committed:
 - macOS: `~/Library/Application Support/auto-harness/host-daemon.env`
 - Windows: `%APPDATA%\auto-harness\host-daemon.env`
 
-On Linux, if this command is not root it writes a staged unit/env and prints:
+On Linux, if this command is not root and no service environment exists yet, it writes a staged
+unit/env and prints:
 
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now auto-harness-host-daemon.service
 ```
+
+If `/etc/auto-harness/host-daemon.env` already exists, rerun `install-service` with `sudo`; the
+installer refuses to stage around a root-owned file that it cannot safely read and validate.
 
 Working directory is `/opt/auto-harness/current` when that path exists, otherwise this checkout.
 `KillMode`, `TimeoutStopSec`, and `Type=simple` stay as in the checked-in unit.
@@ -138,12 +142,12 @@ On the agent host:
 5. Set daemon identity/runtime values and only explicitly allowlisted child credentials on the host.
    Inventory remains in the control plane, not this file:
 
-| Variable                      | Role                                                                                                                                                                                                                                                                                                 |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                    |
-| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss) |
-| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                              |
-| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`)                                                                                                                                                                                        |
+| Variable                      | Role                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HARNESS_HOST_ID`             | Required agent id                                                                                                                                                                                                                                                                                                                                      |
+| `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                   |
+| `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                |
+| `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
 
 If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
 supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
@@ -216,6 +220,12 @@ for (const path of [
 }
 NODE
 ```
+
+Credentials and prerequisites needed by every session must be persisted in this environment file
+and named in `HARNESS_CHILD_ENV_ALLOWLIST`. Setup-script exports apply only to fresh sessions because
+native resumes deliberately skip setup scripts. For example, Filaments Blackboard integration should
+persist and allowlist both `AGENT_BLACKBOARD_URL` and `AGENT_BLACKBOARD_TOKEN` before restarting the
+daemon.
 
 The verifier reads the root-only environment file without echoing its API key, tolerates a
 `ws(s)://…/ws`-shaped value even though `HARNESS_API_URL` is expected to be the plain

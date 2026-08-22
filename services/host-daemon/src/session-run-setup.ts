@@ -28,8 +28,9 @@ export async function runSetupIfNeeded(
   signal: AbortSignal | undefined,
   timedOut: () => boolean,
   remainingMs: () => number,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionSetupResult> {
-  let environment = createChildEnv();
+  let environment = createChildEnv(childEnvSource);
   const scopedSetupScript =
     assign.setupScript ?? claimed.worktree.setupScript ?? claimed.repository.setupScript;
   const setupScripts = [claimed.hostSetupScript, scopedSetupScript].filter(
@@ -50,6 +51,7 @@ export async function runSetupIfNeeded(
         claimed.cwd,
         claimed.repository.terminalHookScript,
         { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+        childEnvSource,
       ),
     };
   }
@@ -79,6 +81,7 @@ export async function runSetupIfNeeded(
           claimed.cwd,
           claimed.repository.terminalHookScript,
           { status: "timed_out", exitCode: setup.exitCode },
+          childEnvSource,
         ),
       };
     }
@@ -94,6 +97,7 @@ export async function runSetupIfNeeded(
           claimed.cwd,
           claimed.repository.terminalHookScript,
           { status: "cancelled", exitCode: setup.exitCode },
+          childEnvSource,
         ),
       };
     }
@@ -114,6 +118,7 @@ export async function runSetupIfNeeded(
             errorCode: "setup_failed",
             errorMessage: "setup script failed",
           },
+          childEnvSource,
         ),
       };
     }

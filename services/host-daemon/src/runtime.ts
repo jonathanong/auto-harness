@@ -28,6 +28,7 @@ export async function runAssignedSession(
   onLog: (line: string) => void,
   processRunner: ProcessRunner = new SpawnProcessRunner(),
   commandRunner: ProcessRunner = new PtyProcessRunner(),
+  childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   const runtime = await probeGitReadiness(processRunner);
   if (!runtime.gitReady) {
@@ -39,6 +40,7 @@ export async function runAssignedSession(
     worktrees,
     processRunner,
     commandRunner,
+    childEnvSource,
     onLog: (c) => {
       onLog(`[${c.stream}#${c.seq}] ${c.content}`);
     },

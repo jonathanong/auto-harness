@@ -13,6 +13,7 @@ type TerminalHookInput = {
   metadata?: Record<string, unknown>;
   worktreePath: string;
   timeoutMs?: number;
+  childEnvSource?: NodeJS.ProcessEnv;
 };
 
 /**
@@ -24,7 +25,7 @@ export async function runTerminalHook(
   log: (message: string) => void = console.error,
 ): Promise<void> {
   const env: NodeJS.ProcessEnv = {
-    ...createChildEnv(),
+    ...createChildEnv(input.childEnvSource ?? process.env),
     HARNESS_SESSION_ID: input.sessionId,
     HARNESS_STATUS: input.status,
     HARNESS_WORKTREE_PATH: input.worktreePath,
