@@ -7,6 +7,10 @@ type Agent = {
   daemonStartedAt?: string | null;
   restartCount?: number;
   lastRestartDetectedAt?: string | null;
+  daemonVersion?: string | null;
+  gitVersion?: string | null;
+  gitReady?: boolean;
+  gitReadinessReason?: string | null;
 };
 
 export function HostOverviewSection({
@@ -34,6 +38,10 @@ export function HostOverviewSection({
         daemonStartedAt={agent?.daemonStartedAt}
         restartCount={agent?.restartCount}
         lastRestartDetectedAt={agent?.lastRestartDetectedAt}
+        daemonVersion={agent?.daemonVersion}
+        gitVersion={agent?.gitVersion}
+        gitReady={agent?.gitReady}
+        gitReadinessReason={agent?.gitReadinessReason}
       />
       {agent?.online ? null : <ConnectHostPanel hostId={hostId} />}
     </div>

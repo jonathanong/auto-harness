@@ -81,6 +81,7 @@ export async function connectHost(
             },
           ],
           commandProfiles: [],
+          runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
         }),
       );
       resolveOpen();

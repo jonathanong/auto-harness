@@ -182,6 +182,7 @@ describe("createPlaneWsBridge", () => {
             hostId: "a1",
             worktrees: [{ id: "wt-1", name: "wt-1", repositoryId: "r1", path: "/w", labels: [] }],
             commandProfiles: ["echo-prompt"],
+            runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
           }),
         );
       });

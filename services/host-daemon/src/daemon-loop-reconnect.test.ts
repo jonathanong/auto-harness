@@ -283,6 +283,7 @@ describe("DaemonLoop reconnect", () => {
         config,
         transport: createLoopbackTransport({ sendToServer: (message) => void sent.push(message) }),
         onLog: (line) => lines.push(line),
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
       });
       const inflight = (loop as unknown as { inflight: Map<string, unknown> }).inflight;
       for (let index = 0; index < 64; index++) {

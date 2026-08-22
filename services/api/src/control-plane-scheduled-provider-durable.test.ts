@@ -38,6 +38,7 @@ async function plane(connectionId: string, hostId: string, repositoryId: string)
     repositories: [{ id: repositoryId, path: `/repos/${repositoryId}`, defaultBranch: "main" }],
     commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     replaceExisting: true,
   });
   if (!registered.ok) throw new Error(registered.error);

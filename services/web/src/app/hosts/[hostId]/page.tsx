@@ -24,6 +24,10 @@ type Agent = {
   daemonStartedAt?: string | null;
   restartCount?: number;
   lastRestartDetectedAt?: string | null;
+  daemonVersion?: string | null;
+  gitVersion?: string | null;
+  gitReady?: boolean;
+  gitReadinessReason?: string | null;
 };
 type LiveWorktree = { id: string; hostId?: string; status?: string; online?: boolean };
 

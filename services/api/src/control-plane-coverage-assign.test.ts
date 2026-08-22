@@ -3,6 +3,22 @@ import { describe, expect, it } from "vitest";
 import { ControlPlane } from "./control-plane.ts";
 import { BASE_COMMAND_ID, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
+function markHostReady(plane: ControlPlane, hostId: string): void {
+  const connectionId = `${hostId}-connection`;
+  plane.state.connections.set(connectionId, {
+    connectionId,
+    type: "host",
+    hostId,
+    connectedAt: "2026-01-01T00:00:00.000Z",
+    lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+    capabilities: [],
+    commandProfiles: [],
+    repositoryIds: ["repo-1"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  plane.state.hostConnection.set(hostId, connectionId);
+}
+
 describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
   it("bound sessions pin and offline claim", () => {
     const planeE = new ControlPlane({
@@ -11,6 +27,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       shardCount: 1,
     });
     seedBaseCommand(planeE);
+    markHostReady(planeE, "ae");
     planeE.seedWorktree({
       id: "we",
       name: "we",
@@ -44,6 +61,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       ackDeadlineMs: 60_000,
     });
     seedBaseCommand(planeF);
+    markHostReady(planeF, "af");
     planeF.seedWorktree({
       id: "wf",
       name: "wf",
@@ -109,6 +127,7 @@ describe("ControlPlane coverage: bound sessions pin and offline claim", () => {
       shardCount: 1,
     });
     seedBaseCommand(planeG);
+    markHostReady(planeG, "ag");
     planeG.seedWorktree({
       id: "wg",
       name: "wg",

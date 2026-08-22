@@ -888,6 +888,10 @@ Automatic cron fires use `schedule-${scheduleId}` unless the schedule supplies a
 
 List configured hosts, including connection health and local daemon restart observability.
 
+Each host also reports `daemonVersion`, `gitVersion`, `gitReady`, and a bounded
+`gitReadinessReason`. `online` is connection liveness, not schedulability: legacy daemons or hosts
+whose Git preflight fails remain visible as online but have `gitReady: false` and receive no work.
+
 **Response:** `200 OK`
 
 ```json
@@ -899,6 +903,10 @@ List configured hosts, including connection health and local daemon restart obse
       "connectedAt": "2026-08-01T08:00:00Z",
       "lastHeartbeatAt": "2026-08-01T08:00:30Z",
       "daemonStartedAt": "2026-08-01T07:00:00Z",
+      "daemonVersion": "0.0.0",
+      "gitVersion": "2.44.0",
+      "gitReady": true,
+      "gitReadinessReason": null,
       "restartCount": 1,
       "lastRestartDetectedAt": "2026-08-01T07:00:02Z",
       "worktreeIds": ["docs"],

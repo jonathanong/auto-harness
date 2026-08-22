@@ -1,4 +1,4 @@
-import type { HostToServerMessage } from "@auto-harness/shared";
+import type { HostRuntimeReport, HostToServerMessage } from "@auto-harness/shared";
 
 import type { DaemonConfig } from "./config.ts";
 import type { DaemonTransport } from "./daemon-transport-types.ts";
@@ -15,6 +15,7 @@ export async function registerDaemon(
   runningSessions: readonly string[],
   draining = false,
   identity?: DaemonRuntimeIdentity,
+  runtime?: HostRuntimeReport,
 ): Promise<void> {
   // Registration is the reconnect barrier.  It deliberately bypasses the
   // producer-side FIFO so WsTransport can synchronously replace its pending
@@ -39,6 +40,7 @@ export async function registerDaemon(
     ...(identity
       ? { daemonInstanceId: identity.instanceId, daemonStartedAt: identity.startedAt }
       : {}),
+    ...(runtime ? { runtime } : {}),
     ...(draining ? { draining: true } : {}),
   };
   await transport.send(registration);

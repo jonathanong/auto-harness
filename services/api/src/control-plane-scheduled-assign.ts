@@ -16,27 +16,27 @@ import {
 const leaseKey = (hostId: string, repositoryId: string) => `${hostId}\0${repositoryId}`;
 
 type ScheduledAssignment = { session: PublicSession; hostId: string; worktreeId: null };
-
-async function eligibleHosts(state: ControlPlaneState, repositoryId: string): Promise<string[]> {
+async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
   const unique = new Map<string, string>();
   for (const connection of state.connections.values()) {
     if (
       connection.type === "host" &&
       state.hostConnection.get(connection.hostId) === connection.connectionId &&
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
+      connection.runtime?.gitReady === true &&
       connection.repositoryIds?.includes(repositoryId)
     )
       unique.set(connection.hostId, connection.connectionId);
   }
-  const hosts = [...unique.keys()]
-    .filter((hostId) => !state.drainingHosts.has(hostId) && !state.disconnectedHosts.has(hostId))
+  const hosts = [...unique.entries()]
+    .filter(([hostId]) => !state.drainingHosts.has(hostId) && !state.disconnectedHosts.has(hostId))
     .filter(
-      (hostId) =>
+      ([hostId]) =>
         state.storage !== undefined ||
         !state.mainCheckoutLeases.has(leaseKey(hostId, repositoryId)),
     );
   const cursors = new Map<string, string>();
-  for (const hostId of hosts) {
+  for (const [hostId] of hosts) {
     const cursor = state.storage
       ? await state.storage.getMainCheckoutCursor(hostId)
       : (() => {
@@ -50,9 +50,9 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string): Pr
         })();
     cursors.set(hostId, cursor ?? "");
   }
-  return hosts.toSorted(
-    (a, b) => cursors.get(a)!.localeCompare(cursors.get(b)!) || a.localeCompare(b),
-  );
+  return hosts
+    .toSorted(([a], [b]) => cursors.get(a)!.localeCompare(cursors.get(b)!) || a.localeCompare(b))
+    .map(([hostId, connectionId]) => ({ hostId, connectionId }));
 }
 
 function wire(session: import("./db/types.ts").SessionRecord, now: string): HostWireMessage {
@@ -93,9 +93,10 @@ export async function assignScheduledQueuedDurable(
       .filter((session) => !session.retryAfter || Date.parse(session.retryAfter) <= Date.parse(now))
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
-      for (const hostId of await eligibleHosts(state, session.repositoryId)) {
-        const connectionId = state.hostConnection.get(hostId);
-        if (!connectionId) continue;
+      for (const { hostId, connectionId } of await eligibleHosts(state, session.repositoryId)) {
+        const connection = state.connections.get(connectionId);
+        if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
+          continue;
         const target = resolveScheduledSessionTarget(state, catalog, session, hostId);
         if (!target) continue;
         const attemptId = state.attemptIdFactory();

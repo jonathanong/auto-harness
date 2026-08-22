@@ -1,5 +1,6 @@
 import {
   validateHostRepositoryRegistrations,
+  type HostRuntimeReport,
   type HostRepositoryRegistration,
 } from "@auto-harness/shared";
 
@@ -20,10 +21,10 @@ export type RegisteredDaemonIdentity = {
 
 type RuntimeFields = Pick<
   HostInventoryRecord,
-  "daemonInstanceId" | "daemonStartedAt" | "restartCount" | "lastRestartDetectedAt"
+  "daemonInstanceId" | "daemonStartedAt" | "restartCount" | "lastRestartDetectedAt" | "runtime"
 >;
 
-/** Preserve local runtime observability through inventory edits and legacy registrations. */
+/** Preserve daemon runtime observability through control-plane inventory edits. */
 export function preservedDaemonRuntime(previous?: HostInventoryRecord): RuntimeFields {
   return {
     ...(previous?.daemonInstanceId ? { daemonInstanceId: previous.daemonInstanceId } : {}),
@@ -32,6 +33,7 @@ export function preservedDaemonRuntime(previous?: HostInventoryRecord): RuntimeF
     ...(previous?.lastRestartDetectedAt
       ? { lastRestartDetectedAt: previous.lastRestartDetectedAt }
       : {}),
+    ...(previous?.runtime ? { runtime: previous.runtime } : {}),
   };
 }
 
@@ -140,6 +142,7 @@ export function buildRegisteredInventory(
   updatedAt: string,
   previous?: HostInventoryRecord,
   daemonIdentity?: RegisteredDaemonIdentity,
+  runtime?: HostRuntimeReport,
 ): HostInventoryRecord {
   const priorById = new Map(
     (previous?.repositories ?? []).map((repository) => [repository.id, repository]),
@@ -157,6 +160,7 @@ export function buildRegisteredInventory(
     // next conditional edit from the UI.
     version: (previous?.version ?? 0) + 1,
     ...nextDaemonRuntime(previous, daemonIdentity, updatedAt),
+    ...(runtime ? { runtime } : {}),
     repositories: repositories.map((repository) => {
       const prior = priorById.get(repository.id);
       const advertised = worktreesByRepo.get(repository.id) ?? [];

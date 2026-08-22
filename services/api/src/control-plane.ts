@@ -1,6 +1,11 @@
 import type { HostToServerMessage } from "@auto-harness/shared";
 
-import type { ArchiveMetadata, ArchiveObject, PublicSession } from "./control-plane-types.ts";
+import type {
+  ArchiveMetadata,
+  ArchiveObject,
+  PublicSession,
+  ScheduleRecord,
+} from "./control-plane-types.ts";
 import { ControlPlaneManagement } from "./control-plane-management-ext.ts";
 import * as agents from "./control-plane-agents.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
@@ -61,6 +66,14 @@ export class ControlPlane extends ControlPlaneManagement {
     nowIso: string = this.state.now(),
   ): { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string } {
     return schedules.triggerSchedule(this.state, id, nowIso);
+  }
+
+  getSchedule(id: string): ScheduleRecord | null {
+    return schedules.getSchedule(this.state, id);
+  }
+
+  listSchedules(): ScheduleRecord[] {
+    return schedules.listSchedules(this.state);
   }
 
   async triggerScheduleDurable(

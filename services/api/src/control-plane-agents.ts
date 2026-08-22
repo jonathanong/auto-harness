@@ -1,6 +1,7 @@
 /* eslint-disable max-lines */
 import {
   normalizeHostCapabilities,
+  type HostRuntimeReport,
   type HostCapability,
   type HostRepositoryRegistration,
 } from "@auto-harness/shared";
@@ -18,6 +19,24 @@ import {
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+
+type ListedHostRuntime = {
+  daemonVersion: string | null;
+  gitVersion: string | null;
+  gitReady: boolean;
+  gitReadinessReason: import("@auto-harness/shared").GitReadinessReason | null;
+};
+
+function listedHostRuntime(runtime?: HostRuntimeReport): ListedHostRuntime {
+  return {
+    daemonVersion: runtime?.daemonVersion ?? null,
+    gitVersion: runtime?.gitVersion ?? null,
+    gitReady: runtime?.gitReady ?? false,
+    gitReadinessReason: runtime?.gitReady
+      ? null
+      : (runtime?.gitReadinessReason ?? "git_readiness_unreported"),
+  };
+}
 
 /** Undo a registration after its lease committed but its reconciliation did
  * not. Every write and cache mutation remains fenced by the candidate
@@ -165,6 +184,10 @@ export function listHosts(state: ControlPlaneState): Array<{
   repositories: Array<{ id: string; path: string }>;
   repositoryIds: string[];
   daemonStartedAt: string | null;
+  daemonVersion: string | null;
+  gitVersion: string | null;
+  gitReady: boolean;
+  gitReadinessReason: import("@auto-harness/shared").GitReadinessReason | null;
   restartCount: number;
   lastRestartDetectedAt: string | null;
 }> {
@@ -180,6 +203,10 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositories: Array<{ id: string; path: string }>;
       repositoryIds: string[];
       daemonStartedAt: string | null;
+      daemonVersion: string | null;
+      gitVersion: string | null;
+      gitReady: boolean;
+      gitReadinessReason: import("@auto-harness/shared").GitReadinessReason | null;
       restartCount: number;
       lastRestartDetectedAt: string | null;
     }
@@ -195,6 +222,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositories: [],
       repositoryIds: [],
       daemonStartedAt: null,
+      ...listedHostRuntime(),
       restartCount: 0,
       lastRestartDetectedAt: null,
     };
@@ -216,6 +244,7 @@ export function listHosts(state: ControlPlaneState): Array<{
       repositories: [],
       repositoryIds: [...(conn.repositoryIds ?? [])],
       daemonStartedAt: null,
+      ...listedHostRuntime(conn.runtime),
       restartCount: 0,
       lastRestartDetectedAt: null,
     };
@@ -223,6 +252,7 @@ export function listHosts(state: ControlPlaneState): Array<{
     cur.connectedAt = conn.connectedAt;
     cur.lastHeartbeatAt = conn.lastHeartbeatAt;
     cur.capabilities = normalizeHostCapabilities(conn.capabilities);
+    Object.assign(cur, listedHostRuntime(conn.runtime));
     byHost.set(conn.hostId, cur);
   }
   // Offline hosts with inventory but no live connection still appear in the fleet list.
@@ -239,6 +269,7 @@ export function listHosts(state: ControlPlaneState): Array<{
         repositories: host.repositories.map(({ id, path }) => ({ id, path })),
         repositoryIds: host.repositories.map(({ id }) => id),
         daemonStartedAt: host.daemonStartedAt ?? null,
+        ...listedHostRuntime(host.runtime),
         restartCount: host.restartCount ?? 0,
         lastRestartDetectedAt: host.lastRestartDetectedAt ?? null,
       });
@@ -248,6 +279,9 @@ export function listHosts(state: ControlPlaneState): Array<{
       current.daemonStartedAt = host.daemonStartedAt ?? null;
       current.restartCount = host.restartCount ?? 0;
       current.lastRestartDetectedAt = host.lastRestartDetectedAt ?? null;
+      if (!current.online) {
+        Object.assign(current, listedHostRuntime(host.runtime));
+      }
     }
   }
   return [...byHost.values()]
@@ -277,6 +311,7 @@ export function registerHost(
     capabilities?: HostCapability[];
     runningSessions?: string[];
     daemonIdentity?: RegisteredDaemonIdentity;
+    runtime?: HostRuntimeReport;
     draining?: true;
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
@@ -335,6 +370,7 @@ export function registerHost(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
   };
   state.connections.set(connectionId, conn);
   if (state.storage) {
@@ -352,6 +388,7 @@ export function registerHost(
     at,
     previousInventory,
     opts.daemonIdentity,
+    opts.runtime,
   );
   state.hostInventories.set(opts.hostId, registrationInventory);
   state.hostInventoryRevision += 1;
@@ -408,6 +445,7 @@ export async function registerHostDurable(
     capabilities?: HostCapability[];
     runningSessions?: string[];
     daemonIdentity?: RegisteredDaemonIdentity;
+    runtime?: HostRuntimeReport;
     draining?: true;
     replaceExisting?: boolean;
     /** Transport-owned id (for example API Gateway's connection id). */
@@ -449,6 +487,7 @@ export async function registerHostDurable(
     lastHeartbeatAt: at,
     repositoryIds: registeredRepositories.map((repository) => repository.id),
     capabilities: normalizeHostCapabilities(opts.capabilities),
+    ...(opts.runtime ? { runtime: opts.runtime } : {}),
   };
   const won = await state.storage.tryRegisterHost({
     hostId: opts.hostId,
@@ -554,6 +593,7 @@ export async function registerHostDurable(
     at,
     previousInventory,
     opts.daemonIdentity,
+    opts.runtime,
   );
   try {
     // The version this registration read is only as fresh as the strongly-consistent
@@ -591,6 +631,7 @@ export async function registerHostDurable(
         at,
         previousInventory,
         opts.daemonIdentity,
+        opts.runtime,
       );
     }
   } catch (err) {

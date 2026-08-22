@@ -98,7 +98,7 @@ describe("hosts fleet route", () => {
       HostsPage({ searchParams: Promise.resolve({ online: "online" }) }),
     );
     expect(html).toContain("No hosts match filters");
-    expect(html).toContain('colSpan="7"');
+    expect(html).toContain('colSpan="8"');
     expect(html).toContain('data-pw="hosts-retained-data-notice"');
   });
 

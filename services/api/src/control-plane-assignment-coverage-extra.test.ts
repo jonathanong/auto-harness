@@ -47,6 +47,37 @@ const worktree: WorktreeRecord = {
 };
 
 describe("assignment residual coverage", () => {
+  it("fails closed for a connected host whose Git preflight is not ready", () => {
+    const state = createControlPlaneState({ now: () => NOW, shardCount: 1 });
+    state.sessions.set("s", session({ target: { commandId: "command" } }));
+    state.commands.set("command", {
+      id: "command",
+      name: "command",
+      argv: ["tool"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    state.worktrees.set("w", worktree);
+    state.connections.set("connection", {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      capabilities: [],
+      repositoryIds: ["repo"],
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: "2.35.0",
+        gitReady: false,
+        gitReadinessReason: "git_version_unsupported",
+      },
+    });
+    state.hostConnection.set("host", "connection");
+
+    expect(assignQueued(state)).toEqual([]);
+  });
+
   it("durably assigns a pinned frozen native continuation", async () => {
     const state = createControlPlaneState({
       now: () => NOW,
@@ -74,6 +105,7 @@ describe("assignment residual coverage", () => {
       commandProfiles: [],
       capabilities: [],
       repositoryIds: ["repo"],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
     });
     state.hostConnection.set("host", "connection");
     setDurableReadStorage(state, {
@@ -145,6 +177,18 @@ describe("assignment residual coverage", () => {
     for (const hostId of ["host-a", "host-b"]) {
       const id = `worktree-${hostId}`;
       state.worktrees.set(id, { ...worktree, id, name: id, hostId });
+      const connectionId = `connection-${hostId}`;
+      state.connections.set(connectionId, {
+        hostId,
+        connectionId,
+        type: "host",
+        connectedAt: NOW,
+        lastHeartbeatAt: NOW,
+        capabilities: [],
+        repositoryIds: ["repo"],
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      });
+      state.hostConnection.set(hostId, connectionId);
       state.hostInventories.set(hostId, {
         hostId,
         repositories: [{ id: "repo", path: "/repo", worktrees: [] }],

@@ -22,6 +22,13 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 
+function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
+  const connectionId = state.hostConnection.get(hostId);
+  return (
+    connectionId !== undefined && state.connections.get(connectionId)?.runtime?.gitReady === true
+  );
+}
+
 /**
  * Assign queued sessions with exclusive worktree claim (Invariant 1).
  * Emits session:assign and tracks ack deadline (Invariant 2).
@@ -58,6 +65,7 @@ export function assignQueued(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
+          hostGitReady(state, w.hostId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -210,6 +218,7 @@ export async function assignQueuedDurable(
           w.repositoryId === session.repositoryId &&
           w.status === "idle" &&
           w.online &&
+          hostGitReady(state, w.hostId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -441,6 +450,7 @@ function allIdle(
       worktree.repositoryId === session.repositoryId &&
       worktree.status === "idle" &&
       worktree.online &&
+      hostGitReady(state, worktree.hostId) &&
       !state.drainingHosts.has(worktree.hostId) &&
       !state.disconnectedHosts.has(worktree.hostId) &&
       session.requiredLabels.every((label) => worktree.labels.includes(label)),

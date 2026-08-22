@@ -46,6 +46,7 @@ function addHost(
     lastHeartbeatAt: NOW,
     capabilities: capabilities as never,
     repositoryIds: repositories,
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   });
   state.hostConnection.set(hostId, connectionId);
   state.hostInventories.set(

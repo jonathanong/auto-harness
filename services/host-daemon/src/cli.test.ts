@@ -147,7 +147,7 @@ describe("printUsage / main / defaults", () => {
     // by runtime.ts's own tests. Only proving these wrapper closures forward to them.
     const d = createDefaultRunSessionDeps();
     const empty: DaemonConfig = { ...sampleConfig, repositories: [] };
-    await expect(d.ensureReady(empty)).resolves.toBeUndefined();
+    await expect(d.ensureReady(empty)).resolves.toMatchObject({ gitReady: true });
     const result = await d.runSession(
       empty,
       {
