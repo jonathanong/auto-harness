@@ -2,7 +2,7 @@ import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ProcessRunner } from "./executor.ts";
-import { refetchConfiguredRemotes, runGit } from "./git-commands.ts";
+import { gitFailure, refetchConfiguredRemotes, runGit } from "./git-commands.ts";
 
 export type GitClient = {
   ensureRepo(path: string): Promise<void>;
@@ -58,7 +58,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         tip = await runGit(runner, repoPath, ["rev-parse", "--verify", "HEAD"]);
       }
       if (tip.exitCode !== 0) {
-        throw new Error(`Failed to resolve tip for worktree ${worktreePath}: ${tip.stderr}`);
+        throw gitFailure(`Failed to resolve tip for worktree ${worktreePath}`, tip.stderr);
       }
       const sha = tip.stdout.trim();
       const add = await runGit(runner, repoPath, [
@@ -69,7 +69,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         sha,
       ]);
       if (add.exitCode !== 0) {
-        throw new Error(`Failed to create worktree at ${worktreePath}: ${add.stderr}`);
+        throw gitFailure(`Failed to create worktree at ${worktreePath}`, add.stderr);
       }
     },
 
@@ -98,7 +98,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
         );
       }
       if (resolved.exitCode !== 0) {
-        throw new Error(`Failed to resolve ref ${ref}: ${resolved.stderr}`);
+        throw gitFailure(`Failed to resolve ref ${ref}`, resolved.stderr);
       }
       const sha = resolved.stdout.trim();
       let co = await runGit(runner, cwd, ["switch", "--detach", sha], signal);
@@ -158,16 +158,16 @@ export function createGitClient(runner: ProcessRunner): GitClient {
       let switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
       if (switched.exitCode !== 0) {
         if (localBranch.exitCode === 0) {
-          throw new Error(`Failed to switch main checkout to branch ${ref}: ${switched.stderr}`);
+          throw gitFailure(`Failed to switch main checkout to branch ${ref}`, switched.stderr);
         }
         const fetched = await runGit(runner, cwd, ["fetch", "--all", "--tags"], signal);
         if (fetched.exitCode !== 0) {
-          throw new Error(`Failed to fetch branch ${ref}: ${fetched.stderr}`);
+          throw gitFailure(`Failed to fetch branch ${ref}`, fetched.stderr);
         }
         switched = await runGit(runner, cwd, ["switch", "--", ref], signal);
       }
       if (switched.exitCode !== 0) {
-        throw new Error(`Failed to switch main checkout to branch ${ref}: ${switched.stderr}`);
+        throw gitFailure(`Failed to switch main checkout to branch ${ref}`, switched.stderr);
       }
       const current = await runGit(
         runner,
@@ -183,7 +183,7 @@ export function createGitClient(runner: ProcessRunner): GitClient {
     async revParse(cwd, rev) {
       const result = await runGit(runner, cwd, ["rev-parse", rev]);
       if (result.exitCode !== 0) {
-        throw new Error(`git rev-parse ${rev} failed: ${result.stderr}`);
+        throw gitFailure(`git rev-parse ${rev} failed`, result.stderr);
       }
       return result.stdout.trim();
     },

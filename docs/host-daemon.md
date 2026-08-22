@@ -181,6 +181,11 @@ Orchestrates a single session after `session:assign`:
 
 Concurrent sessions: one runner instance per claimed worktree (and at most one main-lock session per repo).
 
+Git checkout/setup failures retain a stable operation category (for example, switch, fetch,
+resolve, or verification) and may include a short diagnostic excerpt. Git diagnostics are
+single-line and UTF-8 bounded before they are placed in exceptions, logs, or `session:status`;
+remote URL userinfo and token-shaped credential values are redacted.
+
 ### Session resume
 
 Operators resume by session id via the control plane: [`POST /sessions/:id/resume`](api.md#post-sessionsidresume). The control plane first prefers the source session's native route. If that route is no longer schedulable, it discards the stored `cliResumeRef` and placement pins, preserves `resumedFromSessionId`, and schedules a fresh run through the configured target and ordered fallbacks. The agent then tries native resume only when the assignment includes a usable route.

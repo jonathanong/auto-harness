@@ -569,7 +569,7 @@ Get session details.
 | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | `hostId` / `worktreeId`         | Set when assigned; the recorded Host and Worktree are included in route diagnostics                                             |
 | `errorCode`                     | Optional machine-readable failure reason, e.g. `usage_limit` or `queue_expired`                                                 |
-| `errorMessage`                  | Optional short human excerpt from the match / logs                                                                              |
+| `errorMessage`                  | Optional short human excerpt from the match / logs (Git excerpts are bounded and redact credentials)                            |
 | `resumedFromSessionId`          | Set on sessions created via resume — parent session id                                                                          |
 | `pinnedHostId` / `pinExpiresAt` | Temporary host-only native-resume preference and deadline; cleared before fresh fallback routing                                |
 | `cliResumeRef`                  | Optional opaque id from the AI CLI for native resume; discarded when falling back to a fresh route                              |

@@ -1,11 +1,102 @@
+/* eslint-disable max-lines -- daemon error coverage uses one shared lifecycle fixture. */
 import { describe, expect, it } from "vitest";
 
 import type { HostToServerMessage } from "@auto-harness/shared";
 
 import { DaemonLoop } from "./daemon-loop.ts";
 import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
+import { SpawnProcessRunner, type ProcessRunner } from "./executor.ts";
 
 describe("DaemonLoop errors", () => {
+  it("keeps Git credentials out of logs and the final session status", async () => {
+    const { config, cleanup } = await makeRepo();
+    try {
+      const serverMsgs: HostToServerMessage[] = [];
+      const logs: string[] = [];
+      const transport = createAcknowledgingLoopbackTransport({
+        sendToServer: (message) => {
+          serverMsgs.push(message);
+        },
+      });
+      const fallback = new SpawnProcessRunner();
+      const processRunner: ProcessRunner = {
+        async run(options) {
+          if (
+            options.argv[0] === "git" &&
+            options.argv[1] === "switch" &&
+            options.argv[2] === "--" &&
+            options.argv[3] === "main"
+          ) {
+            options.onChunk({
+              stream: "stderr",
+              data: "fatal: https://oauth:switch-secret@example.com/repo.git",
+            });
+            return { exitCode: 1, timedOut: false, signal: null };
+          }
+          if (options.argv[0] === "git" && options.argv[1] === "fetch") {
+            options.onChunk({
+              stream: "stderr",
+              data: "fatal: https://oauth:fetch-secret@example.com/repo.git",
+            });
+            return { exitCode: 1, timedOut: false, signal: null };
+          }
+          return fallback.run(options);
+        },
+      };
+      const loop = new DaemonLoop({
+        config,
+        transport,
+        processRunner,
+        onLog: (line) => logs.push(line),
+      });
+      await loop.start();
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "sess-main-switch",
+        attemptId: "attempt-main-switch",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "switch main",
+        resolvedArgv: ["true"],
+        timeout: 10,
+        worktreeId: null,
+        ref: "main",
+        assignedAt: new Date().toISOString(),
+      });
+      await loop.waitForIdle();
+
+      transport.deliver({
+        type: "session:assign",
+        sessionId: "sess-main-fetch",
+        attemptId: "attempt-main-fetch",
+        sessionType: "scheduled",
+        repositoryId: "demo",
+        prompt: "fetch feature",
+        resolvedArgv: ["true"],
+        timeout: 10,
+        worktreeId: null,
+        ref: "feature",
+        assignedAt: new Date().toISOString(),
+      });
+      await loop.waitForIdle();
+
+      const statuses = serverMsgs.filter(
+        (message): message is Extract<HostToServerMessage, { type: "session:status" }> =>
+          message.type === "session:status",
+      );
+      expect(statuses).toHaveLength(2);
+      expect(statuses[0]?.errorMessage).toContain("Failed to switch main checkout");
+      expect(statuses[1]?.errorMessage).toContain("Failed to fetch branch feature");
+      const output = JSON.stringify(serverMsgs) + logs.join("\n");
+      expect(output).not.toContain("switch-secret");
+      expect(output).not.toContain("fetch-secret");
+      loop.stop();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("rejects a non-scheduled assignment without a worktree", async () => {
     const { config, cleanup } = await makeRepo();
     try {
@@ -92,8 +183,8 @@ describe("DaemonLoop errors", () => {
           serverMsgs.push(m);
         },
       });
-      const { SpawnProcessRunner } = await import("./executor.ts");
-      const real = new SpawnProcessRunner();
+      const { SpawnProcessRunner: RealSpawnProcessRunner } = await import("./executor.ts");
+      const real = new RealSpawnProcessRunner();
       let profileSpawns = 0;
       const loop = new DaemonLoop({
         config,
