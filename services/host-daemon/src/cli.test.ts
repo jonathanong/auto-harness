@@ -204,6 +204,35 @@ describe("runCli", () => {
     expect(ok.logs.some((l) => l.includes("completed"))).toBe(true);
   });
 
+  it("passes the environment loaded from HARNESS_ENV_FILE to a one-shot session", async () => {
+    let childEnvSource: NodeJS.ProcessEnv | undefined;
+    const a = deps({
+      readFile: (path) =>
+        path === "/persisted.env"
+          ? "HARNESS_CHILD_ENV_ALLOWLIST=AGENT_BLACKBOARD_TOKEN\nAGENT_BLACKBOARD_TOKEN=persisted-token\n"
+          : JSON.stringify({
+              sessionId: "s1",
+              repositoryId: "repo-1",
+              prompt: "p",
+              resolvedArgv: ["echo"],
+              timeout: 5,
+              worktreeId: "wt-1",
+            }),
+      runSession: async (_config, _assign, _onLog, environment) => {
+        childEnvSource = environment;
+        return { status: "completed", exitCode: 0, logs: [] };
+      },
+    });
+    expect(
+      await runCli(
+        ["node", "x", "run-session", "--file", "s.json"],
+        { HARNESS_ENV_FILE: "/persisted.env" },
+        a,
+      ),
+    ).toBe(0);
+    expect(childEnvSource?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
+  });
+
   it("unknown command prints usage", async () => {
     const a = deps();
     expect(await runCli(["node", "x", "nope"], {}, a)).toBe(1);
@@ -330,6 +359,7 @@ describe("printUsage / main / defaults", () => {
         worktreeId: "missing",
       },
       () => undefined,
+      {},
     );
     expect(result.status).toBe("failed");
   });

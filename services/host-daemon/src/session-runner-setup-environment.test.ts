@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -8,8 +8,6 @@ import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("SessionRunner setup environment", () => {
-  afterEach(() => vi.unstubAllEnvs());
-
   it("layers host setup before the effective worktree setup and forwards exports", async () => {
     const config = parseDaemonConfig({
       hostId: "a1",
@@ -80,8 +78,6 @@ describe("SessionRunner setup environment", () => {
   });
 
   it("forwards persisted allowlisted variables when resume skips setup", async () => {
-    vi.stubEnv("HARNESS_CHILD_ENV_ALLOWLIST", "AGENT_BLACKBOARD_TOKEN");
-    vi.stubEnv("AGENT_BLACKBOARD_TOKEN", "persisted-token");
     const config = parseDaemonConfig({
       hostId: "a1",
       setupScript: "must-not-run",
@@ -113,6 +109,10 @@ describe("SessionRunner setup environment", () => {
     const result = await new SessionRunner({
       worktrees: new WorktreeManager(config, git),
       processRunner: runner,
+      childEnvSource: {
+        HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN",
+        AGENT_BLACKBOARD_TOKEN: "persisted-token",
+      },
     }).run(baseAssign({ resume: true }));
     expect(result.status).toBe("completed");
     expect(setupCalls).toEqual([]);

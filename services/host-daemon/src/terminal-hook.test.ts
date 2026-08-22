@@ -22,6 +22,10 @@ describe("runTerminalHook", () => {
       ref: "main",
       metadata: { pr: 1 },
       worktreePath: "/wt",
+      childEnvSource: {
+        HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN",
+        AGENT_BLACKBOARD_TOKEN: "persisted-token",
+      },
     });
     expect(seenEnv?.HARNESS_SESSION_ID).toBe("sess-1");
     expect(seenEnv?.HARNESS_STATUS).toBe("failed");
@@ -29,6 +33,7 @@ describe("runTerminalHook", () => {
     expect(seenEnv?.HARNESS_REF).toBe("main");
     expect(seenEnv?.HARNESS_METADATA).toBe('{"pr":1}');
     expect(seenEnv?.HARNESS_WORKTREE_PATH).toBe("/wt");
+    expect(seenEnv?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
   });
 
   it("injects hook metadata without inheriting daemon credentials", async () => {

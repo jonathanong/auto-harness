@@ -14,6 +14,8 @@ export type SessionRunnerDeps = {
   processRunner: ProcessRunner;
   /** PTY-backed runner for the assigned AI CLI; defaults to processRunner for injected tests. */
   commandRunner?: ProcessRunner;
+  /** Daemon environment after loading the persisted service environment file. */
+  childEnvSource?: NodeJS.ProcessEnv;
   onLog?: (chunk: SessionLogChunk) => void;
   now?: () => string;
 };
@@ -111,6 +113,7 @@ export class SessionRunner {
           claimed.cwd,
           claimed.repository.terminalHookScript,
           { status: expired ? "timed_out" : "cancelled", exitCode: null },
+          this.deps.childEnvSource ?? process.env,
         );
       }
 
@@ -138,6 +141,7 @@ export class SessionRunner {
             claimed.cwd,
             claimed.repository.terminalHookScript,
             { status: expired ? "timed_out" : "cancelled", exitCode: null },
+            this.deps.childEnvSource ?? process.env,
           );
         }
         return await finishSession(
@@ -154,6 +158,7 @@ export class SessionRunner {
             errorCode: "setup_failed",
             errorMessage: err instanceof Error ? err.message : String(err),
           },
+          this.deps.childEnvSource ?? process.env,
         );
       }
 
@@ -167,6 +172,7 @@ export class SessionRunner {
           claimed.cwd,
           claimed.repository.terminalHookScript,
           { status: expired ? "timed_out" : "cancelled", exitCode: null },
+          this.deps.childEnvSource ?? process.env,
         );
       }
 
@@ -181,6 +187,7 @@ export class SessionRunner {
           () => expired,
           () => Math.max(1, deadlineMs - Date.now()),
           this.deps.commandRunner ?? this.deps.processRunner,
+          this.deps.childEnvSource ?? process.env,
         );
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
@@ -196,6 +203,7 @@ export class SessionRunner {
           claimed.cwd,
           claimed.repository.terminalHookScript,
           { status: "failed", exitCode: null, errorCode: "setup_failed", errorMessage },
+          this.deps.childEnvSource ?? process.env,
         );
       }
     } finally {

@@ -22,6 +22,8 @@ type StartDaemonOptions = {
   runUntil?: Promise<void>;
   fetchFn?: typeof fetch;
   runtime?: HostRuntimeReport;
+  /** Daemon environment after loading the persisted service environment file. */
+  childEnvSource?: NodeJS.ProcessEnv;
 };
 
 type InventoryPollOptions = {
@@ -125,6 +127,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
     config: options.config,
     transport,
     onLog: log,
+    ...(options.childEnvSource ? { childEnvSource: options.childEnvSource } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
   await loop.start();

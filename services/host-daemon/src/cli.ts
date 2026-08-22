@@ -65,6 +65,7 @@ export type RunSessionDeps = {
     config: DaemonConfig,
     assign: SessionAssign,
     onLog: (line: string) => void,
+    childEnvSource: NodeJS.ProcessEnv,
   ) => Promise<SessionRunResult>;
   readFile: (path: string) => string;
   log: (msg: string) => void;
@@ -129,7 +130,8 @@ export function createDefaultRunSessionDeps(): RunSessionDeps {
       console.error(msg);
     },
     ensureReady: (config) => ensureDaemonReady(config),
-    runSession: (config, assign, onLog) => runAssignedSession(config, assign, onLog),
+    runSession: (config, assign, onLog, childEnvSource) =>
+      runAssignedSession(config, assign, onLog, undefined, undefined, childEnvSource),
     installService: installHostService,
     uninstallService: uninstallHostService,
     statusService: getHostServiceStatus,
@@ -318,7 +320,7 @@ export async function runCli(
     const config = await deps.loadConfig({ env: resolvedEnv });
     const assign = JSON.parse(deps.readFile(resolve(file))) as SessionAssign;
     await deps.ensureReady(config);
-    const result = await deps.runSession(config, assign, deps.log);
+    const result = await deps.runSession(config, assign, deps.log, resolvedEnv);
     deps.log(
       JSON.stringify({
         status: result.status,
@@ -342,6 +344,7 @@ export async function runCli(
         ...(wsUrl !== undefined ? { wsUrl } : {}),
         log: deps.log,
         error: deps.error,
+        childEnvSource: resolvedEnv,
         ...(runtime ? { runtime } : {}),
       });
       // The previous handler ran stop() again on a second signal, had no catch — so a

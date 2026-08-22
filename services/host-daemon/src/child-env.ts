@@ -30,17 +30,18 @@ export function parseChildEnvAllowlist(source: NodeJS.ProcessEnv): {
   const keys: string[] = [];
   const errors: string[] = [];
   const seen = new Set<string>();
-  for (const rawKey of raw.split(",")) {
+  for (const [index, rawKey] of raw.split(",").entries()) {
     const key = rawKey.trim();
     if (!key) {
-      errors.push("HARNESS_CHILD_ENV_ALLOWLIST has an empty entry");
+      errors.push(`HARNESS_CHILD_ENV_ALLOWLIST has an empty entry at position ${index + 1}`);
     } else if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      errors.push(`HARNESS_CHILD_ENV_ALLOWLIST invalid name: ${key}`);
+      // Do not echo malformed input: a mistaken NAME=value entry may contain a secret.
+      errors.push(`HARNESS_CHILD_ENV_ALLOWLIST invalid name at position ${index + 1}`);
     } else if (key.toUpperCase().startsWith("HARNESS_")) {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST reserved name: ${key}`);
     } else if (seen.has(key)) {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST duplicate name: ${key}`);
-    } else if (source[key] === undefined) {
+    } else if (!Object.hasOwn(source, key) || typeof source[key] !== "string") {
       errors.push(`HARNESS_CHILD_ENV_ALLOWLIST undefined name: ${key}`);
       seen.add(key);
     } else {

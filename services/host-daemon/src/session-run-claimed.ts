@@ -24,6 +24,7 @@ export async function runClaimedSession(
   timedOut: () => boolean,
   remainingMs: () => number,
   commandRunner: ProcessRunner = processRunner,
+  childEnvSource: NodeJS.ProcessEnv = process.env,
 ): Promise<SessionRunResult> {
   const setup = await runSetupIfNeeded(
     processRunner,
@@ -34,6 +35,7 @@ export async function runClaimedSession(
     signal,
     timedOut,
     remainingMs,
+    childEnvSource,
   );
   if (setup.failure) return setup.failure;
 
@@ -47,6 +49,7 @@ export async function runClaimedSession(
       claimed.cwd,
       claimed.repository.terminalHookScript,
       { status: timedOut() ? "timed_out" : "cancelled", exitCode: null },
+      childEnvSource,
     );
   }
 
@@ -65,6 +68,7 @@ export async function runClaimedSession(
         errorCode: "unknown_command_profile",
         errorMessage: "no resolved command argv for this session",
       },
+      childEnvSource,
     );
   }
 
@@ -142,6 +146,7 @@ async function runProcessAndFinish(
       claimed.cwd,
       claimed.repository.terminalHookScript,
       outcome,
+      environment,
     );
 
   if (result.timedOut || timedOut()) {

@@ -11,8 +11,8 @@ describe("child environment", () => {
     expect(parseChildEnvAllowlist(source)).toEqual({
       keys: ["SAFE"],
       errors: [
-        "HARNESS_CHILD_ENV_ALLOWLIST has an empty entry",
-        "HARNESS_CHILD_ENV_ALLOWLIST invalid name: not-valid!",
+        "HARNESS_CHILD_ENV_ALLOWLIST has an empty entry at position 2",
+        "HARNESS_CHILD_ENV_ALLOWLIST invalid name at position 3",
         "HARNESS_CHILD_ENV_ALLOWLIST reserved name: HaRnEsS_TOKEN",
         "HARNESS_CHILD_ENV_ALLOWLIST duplicate name: SAFE",
         "HARNESS_CHILD_ENV_ALLOWLIST undefined name: MISSING",
@@ -25,5 +25,28 @@ describe("child environment", () => {
     expect(createChildEnv({ HARNESS_CHILD_ENV_ALLOWLIST: "EMPTY", EMPTY: "" })).toEqual({
       EMPTY: "",
     });
+  });
+
+  it("does not treat inherited object properties as defined environment variables", () => {
+    expect(
+      parseChildEnvAllowlist({
+        HARNESS_CHILD_ENV_ALLOWLIST: "constructor,toString,__proto__",
+      }),
+    ).toEqual({
+      keys: [],
+      errors: [
+        "HARNESS_CHILD_ENV_ALLOWLIST undefined name: constructor",
+        "HARNESS_CHILD_ENV_ALLOWLIST undefined name: toString",
+        "HARNESS_CHILD_ENV_ALLOWLIST undefined name: __proto__",
+      ],
+    });
+  });
+
+  it("does not echo a malformed entry that may contain a secret", () => {
+    const result = parseChildEnvAllowlist({
+      HARNESS_CHILD_ENV_ALLOWLIST: "TOKEN=super-secret",
+    });
+    expect(result.errors).toEqual(["HARNESS_CHILD_ENV_ALLOWLIST invalid name at position 1"]);
+    expect(result.errors.join(" ")).not.toContain("super-secret");
   });
 });
