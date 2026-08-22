@@ -14,8 +14,8 @@ export function HostAdvancedTab({
   return (
     <div className="space-y-2">
       <p className="text-sm text-muted-foreground">
-        Power-user edit of the full inventory (bulk worktrees). Prefer the forms on the Repositories
-        &amp; Worktrees tab when possible.
+        Power-user edit of the host setup script and full inventory (bulk worktrees). Prefer the
+        forms on the Repositories &amp; Worktrees tab when possible.
       </p>
       {canWrite ? (
         <HostConfigForm hostId={hostId} initialJson={initialJson} initialVersion={initialVersion} />

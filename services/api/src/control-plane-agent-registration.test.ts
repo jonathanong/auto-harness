@@ -26,6 +26,24 @@ describe("host registration repository inventory", () => {
     });
   });
 
+  it("preserves the configured host setup script across daemon registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.putHostInventory("host", {
+        setupScript: "source ~/.zshrc",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+      }).ok,
+    ).toBe(true);
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [],
+      }),
+    ).toEqual({ ok: true, connectionId: "connection" });
+    expect(plane.getHostInventory("host")?.setupScript).toBe("source ~/.zshrc");
+  });
+
   it("derives older registrations from worktrees and rejects malformed input", () => {
     expect(
       resolveRegisteredRepositories(

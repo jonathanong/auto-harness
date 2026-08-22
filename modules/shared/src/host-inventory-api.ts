@@ -31,6 +31,7 @@ async function readInventory(
   return {
     version,
     inventory: {
+      ...(typeof cfg.setupScript === "string" ? { setupScript: cfg.setupScript } : {}),
       repositories: Array.isArray(cfg.repositories)
         ? (cfg.repositories as HostInventory["repositories"])
         : [],
@@ -53,6 +54,7 @@ export async function putInventory(
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      ...(inv.setupScript !== undefined ? { setupScript: inv.setupScript } : {}),
       repositories: inv.repositories,
       providerAccounts: inv.providerAccounts,
       ...(inv.capabilities !== undefined ? { capabilities: inv.capabilities } : {}),

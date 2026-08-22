@@ -448,7 +448,13 @@ directory. The daemon runs `git worktree add` when the host is online.
 
 The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one. An account's usage-limit cooldown is global across hosts; clearing it on the Provider page makes it eligible everywhere immediately.
 
-The Advanced tab's raw JSON editor (`HostConfigForm`, shared with the host pane's own Settings page) replaces the whole `repositories`/`providerAccounts` document on save, conditioned on the inventory's version at the time the tab was loaded — if another edit landed in the meantime, the save is rejected with a distinct "this host's inventory changed since you loaded this page" message instead of either an opaque error or a silent overwrite. Prefer the per-repository/per-account forms elsewhere on this page; this editor exists for bulk edits (e.g. seeding many worktrees at once).
+The Advanced tab's raw JSON editor (`HostConfigForm`, shared with the host pane's own Settings page)
+configures the optional root `setupScript` and replaces the whole `repositories`/`providerAccounts`
+document on save, conditioned on the inventory's version at the time the tab was loaded — if
+another edit landed in the meantime, the save is rejected with a distinct "this host's inventory
+changed since you loaded this page" message instead of either an opaque error or a silent
+overwrite. Prefer the per-repository/per-account forms elsewhere on this page; this editor exists
+for host-wide setup and bulk edits (e.g. seeding many worktrees at once).
 
 ---
 

@@ -30,6 +30,11 @@ At startup the daemon runs `git --version` before advertising capacity. A host w
 2.36, an unavailable Git executable, or unrecognizable version output remains connected for
 diagnosis but is not schedulable; upgrade or repair Git rather than weakening checkout recovery.
 
+The service does not implicitly start a login shell or source `.zshrc`/`.bashrc`. If a host needs
+shell-managed PATH entries or exported provider prerequisites, opt in with the host inventory's
+root `setupScript` (for example `source "$HOME/.zshrc"`); a host/repository attachment may add its
+own setup. See [host-daemon.md](host-daemon.md#setup-scripts).
+
 ---
 
 ## Deploy (install)

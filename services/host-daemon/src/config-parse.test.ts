@@ -7,12 +7,14 @@ describe("parseDaemonConfig", () => {
   it("parses a valid config", () => {
     const config = parseDaemonConfig({
       ...valid,
+      setupScript: "source ~/.zshrc",
       apiUrl: "wss://example/ws",
       apiKey: "hns_x",
     });
     expect(config.hostId).toBe("local-1");
     expect(config.apiUrl).toBe("wss://example/ws");
     expect(config.apiKey).toBe("hns_x");
+    expect(config.setupScript).toBe("source ~/.zshrc");
     expect(config.repositories[0]?.worktrees[0]?.labels).toEqual(["codex"]);
   });
 
@@ -64,6 +66,7 @@ describe("parseDaemonConfig", () => {
   });
 
   it("rejects invalid worktree and repo fields", () => {
+    expect(() => parseDaemonConfig({ ...valid, setupScript: 1 })).toThrow(/setupScript/);
     expect(() =>
       parseDaemonConfig({
         hostId: "x",

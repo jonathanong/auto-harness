@@ -44,6 +44,8 @@ export type ProcessResult = {
   signal: NodeJS.Signals | null;
   /** Supplied by a provider-aware CLI adapter; never inferred from output. */
   usage?: SessionUsage;
+  /** Exported environment captured after a trusted setup script succeeds. */
+  environment?: NodeJS.ProcessEnv;
 };
 
 /**
@@ -189,22 +191,4 @@ export class SpawnProcessRunner implements ProcessRunner {
       });
     });
   }
-}
-
-/** Run a trusted setup script via /bin/sh -c without shell:true on Node. */
-export async function runSetupScript(
-  runner: ProcessRunner,
-  setupScript: string,
-  cwd: string,
-  timeoutMs: number,
-  onChunk: (chunk: OutputChunk) => void,
-  signal?: AbortSignal,
-): Promise<ProcessResult> {
-  return runner.run({
-    argv: ["/bin/sh", "-c", setupScript],
-    cwd,
-    timeoutMs,
-    ...(signal ? { signal } : {}),
-    onChunk,
-  });
 }

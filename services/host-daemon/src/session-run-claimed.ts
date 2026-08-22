@@ -25,7 +25,7 @@ export async function runClaimedSession(
   remainingMs: () => number,
   commandRunner: ProcessRunner = processRunner,
 ): Promise<SessionRunResult> {
-  const setupFail = await runSetupIfNeeded(
+  const setup = await runSetupIfNeeded(
     processRunner,
     streamer,
     logs,
@@ -35,7 +35,7 @@ export async function runClaimedSession(
     timedOut,
     remainingMs,
   );
-  if (setupFail) return setupFail;
+  if (setup.failure) return setup.failure;
 
   if (signal?.aborted) {
     return await finishSession(
@@ -79,6 +79,7 @@ export async function runClaimedSession(
     signal,
     timedOut,
     remainingMs,
+    setup.environment,
   );
 }
 
@@ -93,6 +94,7 @@ async function runProcessAndFinish(
   signal: AbortSignal | undefined,
   timedOut: () => boolean,
   remainingMs: () => number,
+  environment: NodeJS.ProcessEnv,
 ): Promise<SessionRunResult> {
   streamer.write(
     "system",
@@ -107,6 +109,7 @@ async function runProcessAndFinish(
   const result = await commandRunner.run({
     argv,
     cwd: claimed.cwd,
+    env: environment,
     timeoutMs: remainingMs(),
     ...(signal ? { signal } : {}),
     onChunk: (c) => {

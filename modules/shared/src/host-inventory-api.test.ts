@@ -26,6 +26,7 @@ describe("getInventory / putInventory", () => {
     globalThis.fetch = (async () =>
       new Response(
         JSON.stringify({
+          setupScript: "source ~/.zshrc",
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
         }),
@@ -34,6 +35,7 @@ describe("getInventory / putInventory", () => {
     try {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
+      expect(inv.setupScript).toBe("source ~/.zshrc");
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
@@ -66,12 +68,14 @@ describe("getInventory / putInventory", () => {
     }) as typeof fetch;
     try {
       const ok = await putInventory("host-1", {
+        setupScript: "source ~/.zshrc",
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
       });
       expect(ok).toEqual({ ok: true });
       expect(sentBody).toEqual({
+        setupScript: "source ~/.zshrc",
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],

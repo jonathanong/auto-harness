@@ -56,6 +56,9 @@ describe("fetchHostInventory", () => {
         repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
       }),
     );
+    expect(inventoryFingerprint(empty)).not.toBe(
+      inventoryFingerprint({ ...empty, setupScript: "source ~/.zshrc" }),
+    );
   });
 
   it("handles empty error bodies", async () => {

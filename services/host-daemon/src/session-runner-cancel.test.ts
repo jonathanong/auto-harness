@@ -8,10 +8,13 @@ import type { WorktreeManager } from "./worktree-manager.ts";
 function cancellableRunner(stage: "setup" | "main"): ProcessRunner {
   return {
     async run(options) {
-      const isSetup = options.argv[0] === "/bin/sh" && options.argv[1] === "-c";
+      const isSetup = options.argv[1] === "-c" && options.argv[3] === "auto-harness-setup";
       const isHook = options.argv[0] === "/bin/sh" && options.argv[1] === "/hook.sh";
       if (isHook || (stage === "setup" ? !isSetup : isSetup)) {
         return { exitCode: 0, timedOut: false, signal: null };
+      }
+      if (options.signal?.aborted) {
+        return { exitCode: null, timedOut: false, cancelled: true, signal: null };
       }
       return await new Promise((resolve) => {
         options.signal?.addEventListener(
@@ -83,7 +86,7 @@ describe("SessionRunner cancellation", () => {
   it("reports a setup timeout without starting the primary command", async () => {
     const { sessionRunner } = setup({
       async run(options) {
-        if (options.argv[0] === "/bin/sh" && options.argv[1] === "-c") {
+        if (options.argv[1] === "-c" && options.argv[3] === "auto-harness-setup") {
           return { exitCode: null, timedOut: true, signal: "SIGTERM" };
         }
         return { exitCode: 0, timedOut: false, signal: null };

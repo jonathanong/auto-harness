@@ -7,6 +7,7 @@ describe("agent host inventory", () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
     const put = plane.putHostInventory("local-1", {
       hostId: "local-1",
+      setupScript: "source ~/.zshrc",
       repositories: [
         {
           id: "demo",
@@ -22,6 +23,7 @@ describe("agent host inventory", () => {
       ],
     });
     expect(put.ok).toBe(true);
+    expect(plane.getHostInventory("local-1")?.setupScript).toBe("source ~/.zshrc");
     expect(plane.getHostInventory("local-1")?.repositories[0]?.path).toBe("/repo");
     expect(plane.listWorktrees().filter((w) => w.hostId === "local-1")).toHaveLength(2);
     expect(plane.listHostInventories()).toHaveLength(1);
@@ -83,6 +85,7 @@ describe("agent host inventory", () => {
     expect(plane.putHostInventory("local-1", {}).ok).toBe(false);
     expect(plane.putHostInventory("local-1", { repositories: "x" }).ok).toBe(false);
     expect(plane.putHostInventory("local-1", null).ok).toBe(false);
+    expect(plane.putHostInventory("local-1", { repositories: [], setupScript: 1 }).ok).toBe(false);
     expect(
       plane.putHostInventory("local-1", {
         hostId: "other",

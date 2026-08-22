@@ -36,7 +36,10 @@ export function emptyDaemonConfig(identity: HostIdentity): DaemonConfig {
 
 /** Stable fingerprint of host inventory for change detection. */
 export function inventoryFingerprint(config: DaemonConfig): string {
-  return JSON.stringify({ repositories: config.repositories });
+  return JSON.stringify({
+    ...(config.setupScript !== undefined ? { setupScript: config.setupScript } : {}),
+    repositories: config.repositories,
+  });
 }
 
 /**

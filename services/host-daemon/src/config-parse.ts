@@ -110,6 +110,12 @@ export function parseDaemonConfig(
     repositories: raw.repositories.map((r, i) => parseRepository(r, i)),
     providerAccounts: parseProviderAccounts(raw.providerAccounts),
   };
+  if (raw.setupScript !== undefined) {
+    if (typeof raw.setupScript !== "string") {
+      throw new Error("setupScript must be a string");
+    }
+    config.setupScript = raw.setupScript;
+  }
   if (typeof raw.apiUrl === "string") {
     config.apiUrl = raw.apiUrl;
   }

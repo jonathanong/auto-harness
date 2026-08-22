@@ -179,7 +179,7 @@ describe("claimed session cancellation", () => {
 
 const cancellableRunner: ProcessRunner = {
   async run(options) {
-    const isSetup = options.argv[0] === "/bin/sh" && options.argv[1] === "-c";
+    const isSetup = options.argv[1] === "-c" && options.argv[3] === "auto-harness-setup";
     if (!isSetup) return { exitCode: 0, timedOut: false, signal: null };
     return await new Promise((resolve) => {
       options.signal?.addEventListener(

@@ -49,12 +49,16 @@ export function makeRunner() {
   };
   const processRunner: ProcessRunner = {
     async run(options) {
-      if (options.argv[0] === "/bin/sh") {
-        if (options.argv[1] === "-c" && throwSetup.value) {
+      const isSetup = options.argv[1] === "-c" && options.argv[3] === "auto-harness-setup";
+      if (isSetup) {
+        if (throwSetup.value) {
           throwSetup.value = false;
           throw new Error("setup failed");
         }
-        if (options.argv[1] === "/hook") hooks.push(options.cwd);
+        return { exitCode: 0, timedOut: false, signal: null };
+      }
+      if (options.argv[0] === "/bin/sh" && options.argv[1] === "/hook") {
+        hooks.push(options.cwd);
         return { exitCode: 0, timedOut: false, signal: null };
       }
       starts.push(options.cwd);

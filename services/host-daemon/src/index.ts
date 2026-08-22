@@ -22,8 +22,9 @@ export type {
   RepositoryConfig,
   WorktreeConfig,
 } from "./config.ts";
-export { SpawnProcessRunner, runSetupScript } from "./executor.ts";
+export { SpawnProcessRunner } from "./executor.ts";
 export type { OutputChunk, ProcessResult, ProcessRunner, RunProcessOptions } from "./executor.ts";
+export { runSetupScript } from "./setup-script.ts";
 export { PtyProcessRunner } from "./pty-runner.ts";
 export type { PtyProcessRunnerDependencies, PtySpawn } from "./pty-runner.ts";
 export { createChildEnv } from "./child-env.ts";

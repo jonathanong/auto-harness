@@ -172,7 +172,8 @@ Orchestrates a single session after `session:assign`:
 2. If `worktreeId` set → claim worktree; else → acquire main-checkout lock for `repositoryId`
 3. Send `session:ack`
 4. **Setup:**
-   - Normal run: run setup script (may reset branch / install)
+   - Normal run: run the optional host setup, then the effective assignment/worktree/repository
+     setup (may initialize the shell environment, reset a branch, or install dependencies)
    - **Resume** (`resume: true`): **skip destructive setup** (no `git reset --hard` / wipe). Optional light `resumeSetup` only if configured; default is leave the worktree as-is
 5. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 6. Pipe output to Log Streamer
@@ -383,7 +384,39 @@ Same model as GitHub Actions runner labels:
 
 ### Setup scripts
 
-Run at the start of each session in the session cwd (worktree or main):
+Setup is opt-in: the daemon does **not** source `.zshrc`, `.bashrc`, or any other shell startup file
+by default. Configure a host-wide script at the inventory root when every repository on that host
+needs the same initialization, and/or a script on that host's repository attachment:
+
+```json
+{
+  "setupScript": "source \"$HOME/.zshrc\"",
+  "repositories": [
+    {
+      "id": "repo-abc",
+      "path": "/home/harness/repos/my-app",
+      "defaultBranch": "main",
+      "setupScript": "pnpm install",
+      "worktrees": []
+    }
+  ],
+  "providerAccounts": []
+}
+```
+
+For a fresh session, the host script runs first, followed by one effective scoped script using the
+existing precedence `session assignment > worktree > host/repository attachment`. Both run in the
+session cwd (worktree or main). They use `$SHELL` when it names an available POSIX-compatible shell
+(`sh`, `bash`, `dash`, `ksh`, or `zsh`), otherwise `/bin/sh`.
+
+Exported variables flow from the host script into the scoped script and then into the provider
+process. The daemon captures that environment through a mode-0600 temporary file, removes the file
+before the session continues, and never writes the captured values to logs or session metadata.
+The reserved `HARNESS_*` namespace is always removed before provider launch. Because the provider
+can read every other exported value, setup scripts are trusted operator code; sourcing a broad shell
+profile may expose all of its exports to repository work.
+
+Examples:
 
 ```bash
 git fetch && git reset --hard origin/main && pnpm install
@@ -398,6 +431,9 @@ source /home/harness/.env.codex && git fetch && git reset --hard origin/main
 ```
 
 Non-zero exit → session `failed`, worktree released.
+
+Resume sessions continue to skip every setup script so a destructive setup cannot reset the
+conversation's existing worktree.
 
 ### Disk layout (example)
 

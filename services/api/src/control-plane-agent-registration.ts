@@ -155,6 +155,7 @@ export function buildRegisteredInventory(
   }
   return {
     hostId,
+    ...(previous?.setupScript !== undefined ? { setupScript: previous.setupScript } : {}),
     // Advance the optimistic-concurrency counter rather than dropping it: a registration
     // is another whole-document replace, and leaving the attribute off would fail the
     // next conditional edit from the UI.
