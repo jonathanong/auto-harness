@@ -152,20 +152,61 @@ jobs:
           include-hidden-files: true
           retention-days: 1
 
+  vitest-platform:
+    name: vitest-${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runner: macos-latest
+          - name: windows
+            runner: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.18"
+          cache: pnpm
+
+      - name: Install without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # The focused tests need node-pty's pinned prebuild preparation. Run only that trusted
+      # dependency's required scripts instead of enabling lifecycle scripts for the workspace.
+      - name: Prepare native PTY dependency
+        run: pnpm prepare:test:platform
+
+      # Only native host-daemon boundaries are repeated off Linux: PTY, subprocesses,
+      # git/worktree/path handling, host-service I/O, and one composed daemon run.
+      - name: Test platform-sensitive host behavior
+        run: pnpm test:platform
+
   vitest:
     name: vitest
-    needs: vitest-shard
-    # Runs even if a shard failed, so this required check reports red instead of being
-    # skipped (a plain `needs:` leaves a dependent job — and its required-check status —
-    # unreported when a dependency fails).
+    needs: [vitest-shard, vitest-platform]
+    # Runs even if a shard or platform leg failed, so this required check reports red instead
+    # of being skipped (a plain `needs:` leaves a dependent job — and its required-check
+    # status — unreported when a dependency fails).
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Fail if a shard failed
-        if: needs.vitest-shard.result != 'success'
+      - name: Fail if a test job failed
+        if: needs.vitest-shard.result != 'success' || needs.vitest-platform.result != 'success'
         run: |
-          echo "a vitest shard failed or was cancelled (result: ${{ needs.vitest-shard.result }})"
+          echo "vitest-shard: ${{ needs.vitest-shard.result }}"
+          echo "vitest-platform: ${{ needs.vitest-platform.result }}"
           exit 1
 
       - name: Checkout

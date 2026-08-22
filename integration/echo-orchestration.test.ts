@@ -41,7 +41,7 @@ afterEach(async () => {
 });
 
 describe("real orchestration: create -> assign -> run -> completed", () => {
-  it("runs `echo hello world` in a real agent daemon and captures real stdout", async () => {
+  it("runs an argv-only command in a real agent daemon and captures real stdout", async () => {
     root = mkdtempSync(join(tmpdir(), "ah-echo-orchestration-"));
     const repo = join(root, "repo");
     const wt = join(root, "wt-1");
@@ -99,7 +99,7 @@ describe("real orchestration: create -> assign -> run -> completed", () => {
 
     const commandResult = server.plane.createCommand({
       name: "echo-prompt",
-      argv: ["echo", "hello world"],
+      argv: [process.execPath, "-e", "console.log('hello world')"],
       appendPrompt: false,
       providerId: null,
     });

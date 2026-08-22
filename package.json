@@ -12,6 +12,8 @@
     "test": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --coverage",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "prepare:test:platform": "node services/host-daemon/node_modules/node-pty/scripts/prebuild.js && node services/host-daemon/node_modules/node-pty/scripts/post-install.js",
+    "test:platform": "vitest run services/host-daemon/src/pty-runner.real.test.ts services/host-daemon/src/executor.test.ts services/host-daemon/src/git.real.test.ts services/host-daemon/src/host-service-io.test.ts integration/echo-orchestration.test.ts",
     "test:shard": "VITEST_SKIP_COVERAGE_THRESHOLDS=1 vitest run --coverage --reporter=blob --reporter=dot",
     "test:merge": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --mergeReports --coverage",
     "check:coverage:dynamo-adapters": "node scripts/check-dynamo-adapters-coverage.mts",

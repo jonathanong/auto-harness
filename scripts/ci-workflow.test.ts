@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const workflow = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
+const rootPackage = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { scripts: Record<string, string> };
 
 function job(id: string): string {
   const starts = [...workflow.matchAll(/^  ([a-z][a-z0-9-]*):\n/gm)];
@@ -20,6 +23,7 @@ describe("required CI check contract", () => {
     expect(jobs).toEqual([
       ["static-code-analysis", "static-code-analysis"],
       ["vitest-shard", "vitest-${{ matrix.shard }}"],
+      ["vitest-platform", "vitest-${{ matrix.name }}"],
       ["vitest", "vitest"],
       ["playwright-e2e", "playwright-e2e"],
       ["playwright-auth", "playwright-auth"],
@@ -86,14 +90,35 @@ describe("required CI check contract", () => {
     expect(shard).toContain("name: vitest-blob-${{ matrix.shard }}");
   });
 
-  it("fans vitest-shard and playwright-e2e/playwright-auth into required, always-run gates", () => {
+  it("runs only the focused native test command on macOS and Windows", () => {
+    const platform = job("vitest-platform");
+    expect(platform).toContain("name: vitest-${{ matrix.name }}");
+    expect(platform).toContain("fail-fast: false");
+    expect(platform).toContain("name: macos\n            runner: macos-latest");
+    expect(platform).toContain("name: windows\n            runner: windows-latest");
+    expect(platform).toContain("run: pnpm install --frozen-lockfile --ignore-scripts");
+    expect(platform).toContain("run: pnpm prepare:test:platform");
+    expect(platform).toContain("run: pnpm test:platform");
+    expect(platform).not.toContain("run: pnpm test\n");
+    expect(platform).not.toContain("run: pnpm local:dynamodb:ready");
+    expect(platform).not.toContain("--coverage");
+    expect(rootPackage.scripts["prepare:test:platform"]).toBe(
+      "node services/host-daemon/node_modules/node-pty/scripts/prebuild.js && node services/host-daemon/node_modules/node-pty/scripts/post-install.js",
+    );
+    expect(rootPackage.scripts["test:platform"]).toBe(
+      "vitest run services/host-daemon/src/pty-runner.real.test.ts services/host-daemon/src/executor.test.ts services/host-daemon/src/git.real.test.ts services/host-daemon/src/host-service-io.test.ts integration/echo-orchestration.test.ts",
+    );
+  });
+
+  it("fans test jobs into required, always-run gates", () => {
     // Each fan-in job must run even when its dependency failed (if: always()) — otherwise
     // GitHub reports the required check as skipped rather than red, and a failure never
     // blocks the merge.
     const vitestFanIn = job("vitest");
-    expect(vitestFanIn).toContain("needs: vitest-shard");
+    expect(vitestFanIn).toContain("needs: [vitest-shard, vitest-platform]");
     expect(vitestFanIn).toContain("if: always()");
     expect(vitestFanIn).toContain("needs.vitest-shard.result != 'success'");
+    expect(vitestFanIn).toContain("needs.vitest-platform.result != 'success'");
 
     const playwrightFanIn = job("playwright");
     expect(playwrightFanIn).toContain("needs: [playwright-e2e, playwright-auth]");
