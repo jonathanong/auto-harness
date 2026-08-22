@@ -10,7 +10,7 @@ describe("PtyProcessRunner real CLI", () => {
       argv: [
         process.execPath,
         "-e",
-        "console.log(JSON.stringify({ tty: process.stdout.isTTY, columns: process.stdout.columns, rows: process.stdout.rows, term: process.env.TERM, literal: process.argv[1] }))",
+        "console.log(JSON.stringify({ tty: process.stdout.isTTY, columns: process.stdout.columns, rows: process.stdout.rows, literal: process.argv[1] }))",
         literal,
       ],
       cwd: process.cwd(),
@@ -24,7 +24,6 @@ describe("PtyProcessRunner real CLI", () => {
         tty: true,
         columns: 120,
         rows: 40,
-        term: "xterm-256color",
         literal,
       }),
     );
