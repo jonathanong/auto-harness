@@ -68,7 +68,7 @@
     "esbuild": "^0.28.1",
     "happy-dom": "20.11.2",
     "knip": "^5.61.3",
-    "no-mistakes": "^0.44.0",
+    "no-mistakes": "^0.48.0",
     "oxfmt": "^0.26.0",
     "oxlint": "^1.28.0",
     "typescript": "^5.8.3",
