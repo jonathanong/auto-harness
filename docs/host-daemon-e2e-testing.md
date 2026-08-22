@@ -33,6 +33,7 @@ Run from repo root. These exercise **shipped** scripts and modules — not re-im
 
 ```bash
 pnpm check                 # lint, fmt, tests+coverage (unit + integration), knip, depcruise, links
+pnpm test:platform         # native PTY/process/git/host-service/daemon slice
 pnpm local:dynamodb
 pnpm local:dynamodb:ready
 pnpm local:e2e             # SessionRunner + ref + unknown target + hooks
@@ -51,6 +52,11 @@ repository, command, and host inventory setup over HTTP; real daemon bootstrap a
 registration; automatic local scheduler dispatch; a real git worktree and subprocess; log/result
 reads; and an API restart that re-reads the terminal session and logs from DynamoDB. The sections
 below remain the full manual and real-vendor-CLI pass.
+
+CI also runs `pnpm test:platform` on `macos-latest` and `windows-latest`. That focused command
+repeats only native host behavior—PTY startup, subprocess cancellation, real Git/path operations,
+host-service I/O, and the fast in-memory orchestration proof—and fans both results into the existing
+required `vitest` check. The full coverage and durable DynamoDB suites remain Linux-only.
 
 **Pass criteria (each):** exit 0; JSON includes `"ok": true` and/or documented HTTP status (`201` for smoke).
 

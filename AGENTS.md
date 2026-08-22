@@ -28,6 +28,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm test`                   | vitest — unit + integration projects, with coverage thresholds (98/97/100/98 global)                                                          |
 | `pnpm test:unit`              | vitest, unit project only                                                                                                                     |
 | `pnpm test:integration`       | vitest, integration project only (real HTTP+WS+daemon+git)                                                                                    |
+| `pnpm test:platform`          | Focused native host-daemon tests used by macOS/Windows CI                                                                                     |
 | `pnpm knip`                   | Unused exports/deps                                                                                                                           |
 | `pnpm depcruise`              | Architecture import boundaries                                                                                                                |
 | `pnpm links`                  | lychee markdown link check                                                                                                                    |

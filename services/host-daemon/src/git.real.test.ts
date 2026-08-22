@@ -143,7 +143,7 @@ describe("createGitClient real git", () => {
     await git(repo, ["add", "f.txt"]);
     await git(repo, ["commit", "-m", "init"]);
     await git(repo, ["branch", "-M", "main"]);
-    symlinkSync(repo, linkedRepo);
+    symlinkSync(repo, linkedRepo, process.platform === "win32" ? "junction" : "dir");
 
     const client = createGitClient(new SpawnProcessRunner());
     await client.ensureWorktree({ repoPath: repo, worktreePath: wt, branch: "main" });
