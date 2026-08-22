@@ -26,5 +26,13 @@ describe("DynamoDB lifecycle logs", () => {
         seq: 0,
       }),
     ]);
+    expect(
+      await ctx.storage.queryLogs("lifecycle-session", { stream: "system", limit: 100 }),
+    ).toEqual([
+      expect.objectContaining({
+        stream: "system",
+        content: "Session started at 2026-08-01T12:00:05.000Z",
+      }),
+    ]);
   });
 });
