@@ -187,7 +187,12 @@ export async function queryLogs(
           ":after": query.after,
           ...(query.stream ? { ":stream": query.stream } : {}),
         },
-        ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
+        ...(query.stream
+          ? {
+              FilterExpression: "#stream = :stream",
+              ExpressionAttributeNames: { "#stream": "stream" },
+            }
+          : {}),
         ScanIndexForward: true,
         Limit: query.limit,
       }),
@@ -208,7 +213,12 @@ export async function queryLogs(
           ...(query.since ? { ":since": `${query.since}\uffff` } : {}),
           ...(query.stream ? { ":stream": query.stream } : {}),
         },
-        ...(query.stream ? { FilterExpression: "stream = :stream" } : {}),
+        ...(query.stream
+          ? {
+              FilterExpression: "#stream = :stream",
+              ExpressionAttributeNames: { "#stream": "stream" },
+            }
+          : {}),
         ScanIndexForward: true,
         Limit: query.limit - records.length,
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),

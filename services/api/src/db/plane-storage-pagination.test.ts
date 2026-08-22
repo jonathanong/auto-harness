@@ -112,7 +112,8 @@ describe("DynamoDB storage pagination", () => {
         ":after": "cursor",
         ":stream": "stderr",
       },
-      FilterExpression: "stream = :stream",
+      FilterExpression: "#stream = :stream",
+      ExpressionAttributeNames: { "#stream": "stream" },
       Limit: 25,
     });
     await expect(queryLogs(ctx, "session-1", { after: "cursor", limit: 1 })).resolves.toHaveLength(
@@ -157,7 +158,8 @@ describe("DynamoDB storage pagination", () => {
     const second = send.mock.calls[1]?.[0] as { input: Record<string, unknown> };
     expect(first.input).toMatchObject({
       KeyConditionExpression: "sessionId = :s AND timestampSeq > :since",
-      FilterExpression: "stream = :stream",
+      FilterExpression: "#stream = :stream",
+      ExpressionAttributeNames: { "#stream": "stream" },
       Limit: 1,
       ScanIndexForward: true,
       ExpressionAttributeValues: {
