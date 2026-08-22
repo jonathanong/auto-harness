@@ -294,6 +294,25 @@ describe("printUsage / main / defaults", () => {
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
   });
 
+  it("default deps' host status closure forwards the fetch signal", async () => {
+    const d = createDefaultRunSessionDeps();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(
+        d.fetchHostStatus(
+          { hostId: "host", apiUrl: "https://control.example" },
+          new AbortController().signal,
+        ),
+      ).resolves.toMatchObject({ reachable: true, online: null });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("default deps' ensureReady/runSession close over the real runtime functions", async () => {
     // Not asserting on the outcome — ensureDaemonReady/runAssignedSession are exercised
     // by runtime.ts's own tests. Only proving these wrapper closures forward to them.
