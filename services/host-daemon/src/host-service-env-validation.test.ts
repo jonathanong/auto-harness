@@ -65,7 +65,7 @@ describe("persisted service environment validation", () => {
     );
     expect(errors).toEqual([
       "HARNESS_CHILD_ENV_ALLOWLIST reserved name: HARNESS_API_KEY",
-      "HARNESS_CHILD_ENV_ALLOWLIST invalid name: not-valid!",
+      "HARNESS_CHILD_ENV_ALLOWLIST invalid name at position 3",
       "HARNESS_CHILD_ENV_ALLOWLIST duplicate name: TOKEN",
     ]);
     expect(errors.join(" ")).not.toContain("blackboard-secret");
