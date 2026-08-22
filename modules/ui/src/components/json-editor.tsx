@@ -7,14 +7,14 @@ import { useEffect, useRef, useState } from "react";
 
 export type JsonValueValidator = (value: unknown) => string | null | undefined;
 
-export type JsonEditorProps = {
+export type JsonEditorProps = Readonly<{
   value: string;
   onChange: (value: string) => void;
   validate?: JsonValueValidator | undefined;
   onValidationChange?: ((error: string | null) => void) | undefined;
   labelledBy: string;
   pw?: string | undefined;
-};
+}>;
 
 function validationError(raw: string, validate?: JsonValueValidator): string | null {
   let parsed: unknown;

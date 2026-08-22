@@ -56,7 +56,8 @@ export function EditWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
-            const setupScript = String(fd.get("setupScript") ?? "");
+            const setupScriptEntry = fd.get("setupScript");
+            const setupScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",

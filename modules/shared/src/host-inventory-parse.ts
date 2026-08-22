@@ -15,109 +15,118 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function requireString(obj: Record<string, unknown>, key: string, ctx: string): string {
   const value = obj[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${ctx}: ${key} must be a non-empty string`);
+    throw new TypeError(`${ctx}: ${key} must be a non-empty string`);
   }
   return value;
+}
+
+function optionalString(
+  obj: Record<string, unknown>,
+  key: string,
+  ctx?: string,
+): string | undefined {
+  const value = obj[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") {
+    throw new TypeError(`${ctx ? `${ctx}.` : ""}${key} must be a string`);
+  }
+  return value;
+}
+
+function parseWorktree(rawWorktree: unknown, index: number, repositoryId: string): HostWorktree {
+  if (!isRecord(rawWorktree)) {
+    throw new TypeError(`repositories.${repositoryId}.worktrees[${index}] invalid`);
+  }
+  const id = requireString(rawWorktree, "id", `worktree[${index}]`);
+  const name = requireString(rawWorktree, "name", `worktree.${id}`);
+  if (!isValidSlugName(name)) {
+    throw new TypeError(`worktree.${id}.name must be ${SLUG_NAME_HINT}`);
+  }
+  const path = requireString(rawWorktree, "path", `worktree.${id}`);
+  if (
+    !Array.isArray(rawWorktree.labels) ||
+    !rawWorktree.labels.every((label) => typeof label === "string")
+  ) {
+    throw new TypeError(`worktree.${id}.labels must be a string array`);
+  }
+  const setupScript = optionalString(rawWorktree, "setupScript", `worktree.${id}`);
+  const overrides = parseProviderAccountOverrides(
+    rawWorktree.providerAccountOverrides,
+    `worktree.${id}`,
+  );
+  return {
+    id,
+    name,
+    path,
+    labels: rawWorktree.labels as string[],
+    ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(overrides !== undefined ? { providerAccountOverrides: overrides } : {}),
+  };
+}
+
+function parseRepository(rawRepository: unknown, index: number): HostRepository {
+  if (!isRecord(rawRepository)) {
+    throw new TypeError(`repositories[${index}] must be an object`);
+  }
+  const id = requireString(rawRepository, "id", `repositories[${index}]`);
+  const path = requireString(rawRepository, "path", `repository.${id}`);
+  const defaultBranch =
+    typeof rawRepository.defaultBranch === "string" && rawRepository.defaultBranch.length > 0
+      ? rawRepository.defaultBranch
+      : "main";
+  if (!Array.isArray(rawRepository.worktrees)) {
+    throw new TypeError(`repository.${id}.worktrees must be an array`);
+  }
+  const setupScript = optionalString(rawRepository, "setupScript", `repository.${id}`);
+  const terminalHookScript = optionalString(
+    rawRepository,
+    "terminalHookScript",
+    `repository.${id}`,
+  );
+  const overrides = parseProviderAccountOverrides(
+    rawRepository.providerAccountOverrides,
+    `repository.${id}`,
+  );
+  return {
+    id,
+    path,
+    defaultBranch,
+    worktrees: rawRepository.worktrees.map((worktree, worktreeIndex) =>
+      parseWorktree(worktree, worktreeIndex, id),
+    ),
+    ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(terminalHookScript !== undefined ? { terminalHookScript } : {}),
+    ...(overrides !== undefined ? { providerAccountOverrides: overrides } : {}),
+  };
+}
+
+function parseCapabilities(value: unknown): HostCapability[] {
+  if (
+    value !== undefined &&
+    (!Array.isArray(value) ||
+      value.length > HOST_CAPABILITIES.length ||
+      !value.every(isHostCapability) ||
+      new Set(value).size !== value.length)
+  ) {
+    throw new TypeError("capabilities must be a supported capability array");
+  }
+  return normalizeHostCapabilities(value as HostCapability[] | undefined);
 }
 
 /** Strictly parse the operator-editable host inventory document. */
 export function parseHostInventory(value: unknown): HostInventory {
   if (!isRecord(value)) {
-    throw new Error("body must be an object");
+    throw new TypeError("body must be an object");
   }
-  if (value.setupScript !== undefined && typeof value.setupScript !== "string") {
-    throw new Error("setupScript must be a string");
-  }
+  const setupScript = optionalString(value, "setupScript");
   if (!Array.isArray(value.repositories)) {
-    throw new Error("repositories must be an array");
-  }
-
-  const repositories: HostRepository[] = [];
-  for (const [ri, rawRepo] of value.repositories.entries()) {
-    if (!isRecord(rawRepo)) {
-      throw new Error(`repositories[${ri}] must be an object`);
-    }
-    const id = requireString(rawRepo, "id", `repositories[${ri}]`);
-    const path = requireString(rawRepo, "path", `repository.${id}`);
-    const defaultBranch =
-      typeof rawRepo.defaultBranch === "string" && rawRepo.defaultBranch.length > 0
-        ? rawRepo.defaultBranch
-        : "main";
-    if (!Array.isArray(rawRepo.worktrees)) {
-      throw new Error(`repository.${id}.worktrees must be an array`);
-    }
-
-    const worktrees: HostWorktree[] = rawRepo.worktrees.map((rawWorktree, wi) => {
-      if (!isRecord(rawWorktree)) {
-        throw new Error(`repositories.${id}.worktrees[${wi}] invalid`);
-      }
-      const worktreeId = requireString(rawWorktree, "id", `worktree[${wi}]`);
-      const name = requireString(rawWorktree, "name", `worktree.${worktreeId}`);
-      if (!isValidSlugName(name)) {
-        throw new Error(`worktree.${worktreeId}.name must be ${SLUG_NAME_HINT}`);
-      }
-      const worktreePath = requireString(rawWorktree, "path", `worktree.${worktreeId}`);
-      if (
-        !Array.isArray(rawWorktree.labels) ||
-        !rawWorktree.labels.every((label) => typeof label === "string")
-      ) {
-        throw new Error(`worktree.${worktreeId}.labels must be a string array`);
-      }
-      const worktree: HostWorktree = {
-        id: worktreeId,
-        name,
-        path: worktreePath,
-        labels: rawWorktree.labels as string[],
-      };
-      if (rawWorktree.setupScript !== undefined) {
-        if (typeof rawWorktree.setupScript !== "string") {
-          throw new Error(`worktree.${worktreeId}.setupScript must be a string`);
-        }
-        worktree.setupScript = rawWorktree.setupScript;
-      }
-      const overrides = parseProviderAccountOverrides(
-        rawWorktree.providerAccountOverrides,
-        `worktree.${worktreeId}`,
-      );
-      if (overrides !== undefined) worktree.providerAccountOverrides = overrides;
-      return worktree;
-    });
-
-    const repository: HostRepository = { id, path, defaultBranch, worktrees };
-    if (rawRepo.setupScript !== undefined) {
-      if (typeof rawRepo.setupScript !== "string") {
-        throw new Error(`repository.${id}.setupScript must be a string`);
-      }
-      repository.setupScript = rawRepo.setupScript;
-    }
-    if (rawRepo.terminalHookScript !== undefined) {
-      if (typeof rawRepo.terminalHookScript !== "string") {
-        throw new Error(`repository.${id}.terminalHookScript must be a string`);
-      }
-      repository.terminalHookScript = rawRepo.terminalHookScript;
-    }
-    const overrides = parseProviderAccountOverrides(
-      rawRepo.providerAccountOverrides,
-      `repository.${id}`,
-    );
-    if (overrides !== undefined) repository.providerAccountOverrides = overrides;
-    repositories.push(repository);
-  }
-
-  if (
-    value.capabilities !== undefined &&
-    (!Array.isArray(value.capabilities) ||
-      value.capabilities.length > HOST_CAPABILITIES.length ||
-      !value.capabilities.every(isHostCapability) ||
-      new Set(value.capabilities).size !== value.capabilities.length)
-  ) {
-    throw new Error("capabilities must be a supported capability array");
+    throw new TypeError("repositories must be an array");
   }
 
   return {
-    ...(typeof value.setupScript === "string" ? { setupScript: value.setupScript } : {}),
-    repositories,
+    ...(setupScript !== undefined ? { setupScript } : {}),
+    repositories: value.repositories.map(parseRepository),
     providerAccounts: parseProviderAccounts(value.providerAccounts),
-    capabilities: normalizeHostCapabilities(value.capabilities as HostCapability[] | undefined),
+    capabilities: parseCapabilities(value.capabilities),
   };
 }

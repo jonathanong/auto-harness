@@ -10,7 +10,7 @@ export function HostAdvancedTab({
   hostId: string;
   initialJson: string;
   initialVersion: number;
-  setupScript?: string | undefined;
+  setupScript: string | undefined;
   canWrite?: boolean;
 }) {
   return (

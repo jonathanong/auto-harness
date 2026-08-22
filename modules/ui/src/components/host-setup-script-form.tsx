@@ -14,11 +14,11 @@ export function HostSetupScriptForm({
   hostId,
   setupScript,
   mutate = mutateInventory,
-}: {
+}: Readonly<{
   hostId: string;
   setupScript?: string | undefined;
   mutate?: typeof mutateInventory;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
@@ -30,7 +30,8 @@ export function HostSetupScriptForm({
       onSubmit={(event) => {
         event.preventDefault();
         setSaved(false);
-        const nextScript = String(new FormData(event.currentTarget).get("setupScript") ?? "");
+        const setupScriptEntry = new FormData(event.currentTarget).get("setupScript");
+        const nextScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
         start(async () => {
           try {
             const result = await mutate(hostId, (current) =>
