@@ -452,8 +452,8 @@ The Provider accounts tab (replaces the old "Command profiles" tab) lists every 
 The Advanced tab has a structured form for the optional root `setupScript`. Its raw JSON editor
 (`HostConfigForm`, shared with the host pane's own Settings page) is reserved for bulk edits such as
 seeding many worktrees. It uses CodeMirror JSON highlighting and live syntax plus inventory-schema
-validation; Save stays disabled until the document is valid. Saving replaces the whole
-`repositories`/`providerAccounts` document, conditioned on the inventory version loaded with the
+validation; Save stays disabled until the document is valid. Saving replaces the whole inventory
+document, including the `setupScript` value in the editor, conditioned on the inventory version loaded with the
 editor. If another edit landed in the meantime, the save is rejected with a distinct "this host's
 inventory changed since you loaded this page" message instead of an opaque error or silent
 overwrite. Prefer the structured host/repository/worktree/account forms whenever possible.
