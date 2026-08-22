@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
+
 import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
@@ -27,6 +29,30 @@ describe("schedule UTC cron validation", () => {
     expect(
       plane.updateSchedule(schedule.id, { concurrencyId: "catalog-delete:command:cmd-base" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+  });
+
+  it("rejects schedule concurrency ids above the DynamoDB key limit", () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:00:00.000Z" });
+    seedBaseCommand(plane);
+    const input = {
+      repositoryId: "repo",
+      name: "bounded-lock",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 1,
+    };
+    expect(
+      plane.putSchedule({
+        ...input,
+        concurrencyId: ` ${"é".repeat(MAX_CONCURRENCY_ID_BYTES / 2)} `,
+      }).ok,
+    ).toBe(true);
+    const schedule = putScheduleOrThrow(plane, input);
+    expect(
+      plane.updateSchedule(schedule.id, {
+        concurrencyId: `é${"x".repeat(MAX_CONCURRENCY_ID_BYTES - 1)}`,
+      }),
+    ).toEqual({ ok: false, error: "concurrencyId must be at most 2048 bytes" });
   });
 
   it("rejects invalid server clocks, supplied cursors, and cron updates without changing a schedule", () => {

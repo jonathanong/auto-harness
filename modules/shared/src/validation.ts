@@ -30,10 +30,21 @@ export type ValidationResult<T> = { ok: true; value: T } | { ok: false; error: s
  */
 export const MAX_PROMPT_BYTES = 64 * 1024;
 
+/** DynamoDB partition keys are limited to 2,048 UTF-8 bytes. */
+export const MAX_CONCURRENCY_ID_BYTES = 2_048;
+
 /** Shared UTF-8 byte-length check for create and resume prompts. */
 export function promptByteLengthError(prompt: string): string | null {
   if (new TextEncoder().encode(prompt).length > MAX_PROMPT_BYTES) {
     return `prompt must be at most ${MAX_PROMPT_BYTES} bytes`;
+  }
+  return null;
+}
+
+/** Shared UTF-8 byte-length check for concurrency-lock partition keys. */
+export function concurrencyIdByteLengthError(concurrencyId: string): string | null {
+  if (new TextEncoder().encode(concurrencyId).length > MAX_CONCURRENCY_ID_BYTES) {
+    return `concurrencyId must be at most ${MAX_CONCURRENCY_ID_BYTES} bytes`;
   }
   return null;
 }
@@ -202,6 +213,8 @@ export function validateCreateSessionInput(input: {
     if (isReservedConcurrencyId(input.concurrencyId)) {
       return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
     }
+    const concurrencyIdBytes = concurrencyIdByteLengthError(input.concurrencyId);
+    if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
     concurrencyId = input.concurrencyId;
   }
 

@@ -1,4 +1,5 @@
 import {
+  concurrencyIdByteLengthError,
   isActiveSessionStatus,
   isReservedConcurrencyId,
   isValidScheduledBranchRef,
@@ -56,6 +57,9 @@ function preparePutSchedule(
   if (input.concurrencyId !== undefined && isReservedConcurrencyId(input.concurrencyId.trim())) {
     return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
+  const concurrencyId = input.concurrencyId?.trim();
+  const concurrencyIdBytes = concurrencyId ? concurrencyIdByteLengthError(concurrencyId) : null;
+  if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   if (input.nextRunAt !== undefined && !isValidUtcTimestamp(input.nextRunAt)) {
     return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
   }
@@ -84,7 +88,7 @@ function preparePutSchedule(
     lastRunAt: null,
     createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
-    concurrencyId: input.concurrencyId?.trim() || `schedule-${id}`,
+    concurrencyId: concurrencyId || `schedule-${id}`,
     ...(prompt !== undefined ? { prompt } : {}),
   };
   return { ok: true, schedule: rec };
@@ -160,6 +164,9 @@ export function prepareUpdateSchedule(
   if (patch.concurrencyId !== undefined && isReservedConcurrencyId(patch.concurrencyId.trim())) {
     return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
+  const concurrencyId = patch.concurrencyId?.trim();
+  const concurrencyIdBytes = concurrencyId ? concurrencyIdByteLengthError(concurrencyId) : null;
+  if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   const routing = validateTargetRouting({
     target: patch.target ?? existing.target,
     fallbacks: patch.fallbacks ?? existing.fallbacks,
@@ -177,7 +184,7 @@ export function prepareUpdateSchedule(
     queueTtlSeconds: routing.value.queueTtlSeconds,
     nextRunAt,
     ...(patch.concurrencyId !== undefined
-      ? { concurrencyId: patch.concurrencyId.trim() || `schedule-${id}` }
+      ? { concurrencyId: concurrencyId || `schedule-${id}` }
       : {}),
   };
   if (patch.prompt !== undefined) applyStoredPrompt(next, patch.prompt);
