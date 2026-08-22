@@ -109,6 +109,9 @@ file is validated before the service is restarted:
 pnpm local:daemon install-service --api-url 'https://new-control.example.com'
 ```
 
+On Linux, run this update as root when the existing mode-0600 env file is root-owned
+(for example, `sudo pnpm local:daemon install-service --api-url 'https://new-control.example.com'`).
+
 `status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
 local work above. On a deployed host, run `status` with the same persisted identity used by
 the service; it queries only that `hostId` and sends the API key as an authorization header.

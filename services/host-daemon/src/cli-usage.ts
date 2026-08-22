@@ -20,7 +20,8 @@ identity into a mode-0600 env file that is never committed. Every platform valid
 the effective persisted env before writing or restarting; it requires a bound host id,
 an HTTPS production control-plane URL, and a non-placeholder bound API key.
 --api-url updates only HARNESS_API_URL in an existing service env file, retaining the
-bound key without requiring it to be copied into the shell.
+bound key without requiring it to be copied into the shell. On Linux, run the update as
+root when the existing mode-0600 env file is root-owned.
 
 --ws overrides only the WebSocket target (REST still resolves from HARNESS_API_URL). It
 accepts a raw API Gateway endpoint directly — a deploy-day escape hatch if the CloudFront

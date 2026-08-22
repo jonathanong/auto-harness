@@ -52,23 +52,32 @@ export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
     return { state: "failed", reason: "systemd unit reported failure" };
   }
   return { state: "unknown", reason: "systemctl returned an unrecognized state" };
+function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string): number {
+  const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
+  const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
+  const stagedEnv = join(stagedDir, "host-daemon.env");
+  writeMode(ctx.fs, stagedUnit, unit, 0o644, true);
+  ctx.log(`Wrote ${stagedUnit}`);
+  if (envContents !== undefined) {
+    writeMode(ctx.fs, stagedEnv, envContents, 0o600, true);
+    ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
+  }
+  ctx.log(`Staged in ephemeral directory ${stagedDir}`);
+  ctx.log("Not running as root. Run:");
+  ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
+  if (envContents !== undefined) {
+    ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
+  }
+  ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
+  ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
+  ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
+  return 0;
 }
 
 export function installLinux(ctx: HostServiceContext): number {
   const envExists = ctx.fs.existsSync(LINUX_ENV_DEST);
   if (ctx.uid !== 0 && envExists && ctx.apiUrl === undefined) {
-    const unit = renderedUnit(ctx);
-    const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
-    const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
-    writeMode(ctx.fs, stagedUnit, unit, 0o644, true);
-    ctx.log(`Wrote ${stagedUnit}`);
-    ctx.log(`Staged in ephemeral directory ${stagedDir}`);
-    ctx.log("Not running as root. Run:");
-    ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
-    ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
-    ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
-    ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
-    return 0;
+    return stageLinux(ctx, renderedUnit(ctx));
   }
   if (ctx.uid !== 0 && envExists && ctx.apiUrl !== undefined) {
     ctx.error(
@@ -91,25 +100,7 @@ export function installLinux(ctx: HostServiceContext): number {
   const unit = renderedUnit(ctx);
   const writeEnv = !envExists || ctx.apiUrl !== undefined;
   if (ctx.uid !== 0) {
-    const stagedDir = ctx.fs.mkdtempSync(join(stageRoot(ctx), "auto-harness-host-service-"));
-    const stagedUnit = join(stagedDir, LINUX_SERVICE_NAME);
-    const stagedEnv = join(stagedDir, "host-daemon.env");
-    writeMode(ctx.fs, stagedUnit, unit, 0o644, true);
-    ctx.log(`Wrote ${stagedUnit}`);
-    if (writeEnv) {
-      writeMode(ctx.fs, stagedEnv, preparedEnv.contents, 0o600, true);
-      ctx.log(`Wrote ${stagedEnv} (mode 0600)`);
-    }
-    ctx.log(`Staged in ephemeral directory ${stagedDir}`);
-    ctx.log("Not running as root. Run:");
-    ctx.log(`  sudo install -d -m 0755 ${LINUX_ENV_DIR}`);
-    if (writeEnv) {
-      ctx.log(`  sudo install -m 0600 ${stagedEnv} ${LINUX_ENV_DEST}`);
-    }
-    ctx.log(`  sudo install -m 0644 ${stagedUnit} ${LINUX_UNIT_DEST}`);
-    ctx.log(`  sudo ${LINUX_RELOAD_COMMAND}`);
-    ctx.log(`  sudo ${LINUX_ENABLE_NOW_COMMAND}`);
-    return 0;
+    return stageLinux(ctx, unit, writeEnv ? preparedEnv.contents : undefined);
   }
 
   ctx.fs.mkdirSync(LINUX_ENV_DIR, { recursive: true, mode: 0o755 });

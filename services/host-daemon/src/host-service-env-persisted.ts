@@ -1,5 +1,6 @@
 import {
   renderEnvFile,
+  isProductionApiUrl,
   serviceEnv,
   updatePersistedApiUrl,
   validatePersistedEnvFile,
@@ -12,6 +13,12 @@ export function preparePersistedEnv(opts: {
   apiUrl?: string | undefined;
   capturePath?: boolean | undefined;
 }): { contents: string; errors: string[] } {
+  if (opts.apiUrl !== undefined && !isProductionApiUrl(opts.apiUrl)) {
+    const errors =
+      opts.existing === undefined ? ["HARNESS_API_URL"] : validatePersistedEnvFile(opts.existing);
+    if (!errors.includes("HARNESS_API_URL")) errors.push("HARNESS_API_URL");
+    return { contents: opts.existing ?? "", errors };
+  }
   let contents: string;
   if (opts.existing === undefined) {
     const env = serviceEnv(opts.env, opts.apiUrl);

@@ -56,11 +56,12 @@ export function pathFromEnv(env: NodeJS.ProcessEnv): string | undefined {
 
 function isPlaceholder(value: string): boolean {
   return (
-    value.length === 0 || /REPLACE_WITH|PLACEHOLDER|YOUR[_ -]|^<[^>]+>$|^\$\{[^}]+\}$/iu.test(value)
+    value.length === 0 ||
+    /^(?:REPLACE_WITH|PLACEHOLDER|YOUR[_ -]|<[^>]+>|\$\{[^}]+\})/iu.test(value)
   );
 }
 
-function isProductionApiUrl(value: string): boolean {
+export function isProductionApiUrl(value: string): boolean {
   if (/[\r\n]/u.test(value)) return false;
   let url: URL;
   try {
@@ -75,7 +76,8 @@ function isProductionApiUrl(value: string): boolean {
     hostname === "localhost" ||
     hostname.endsWith(".localhost") ||
     hostname.endsWith(".local") ||
-    hostname === "127.0.0.1" ||
+    hostname === "127" ||
+    hostname.startsWith("127.") ||
     hostname === "0.0.0.0" ||
     hostname === "::1"
   ) {
@@ -90,9 +92,7 @@ export function envIdentityErrors(env: NodeJS.ProcessEnv, _platform: string): st
   const apiUrl = env.HARNESS_API_URL?.trim() || env.HARNESS_API_HTTP?.trim() || "";
   const apiKey = env.HARNESS_API_KEY?.trim() ?? "";
   const errors: string[] = [];
-  if (isPlaceholder(hostId) || hostId === LOCAL_HOST_ID) {
-    errors.push("HARNESS_HOST_ID");
-  }
+  if (isPlaceholder(hostId) || hostId === LOCAL_HOST_ID) errors.push("HARNESS_HOST_ID");
   if (isPlaceholder(apiUrl) || !isProductionApiUrl(apiUrl)) {
     errors.push("HARNESS_API_URL");
   }
