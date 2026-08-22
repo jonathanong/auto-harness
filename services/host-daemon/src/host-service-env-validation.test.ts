@@ -44,6 +44,11 @@ describe("persisted service environment validation", () => {
         "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com/api\nHARNESS_API_KEY=secret\n",
       ),
     ).toEqual(["HARNESS_API_URL"]);
+    expect(
+      validatePersistedEnvFile(
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://id.execute-api.us-east-1.amazonaws.com.\nHARNESS_API_KEY=secret\n",
+      ),
+    ).toEqual(["HARNESS_API_URL"]);
   });
 
   it("reports only variable names and remediation, never persisted values", () => {

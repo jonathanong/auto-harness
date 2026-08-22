@@ -69,7 +69,10 @@ export function isProductionApiUrl(value: string): boolean {
   } catch {
     return false;
   }
-  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/gu, "");
+  const hostname = url.hostname
+    .toLowerCase()
+    .replace(/^\[|\]$/gu, "")
+    .replace(/\.$/u, "");
   if (
     url.protocol !== "https:" ||
     url.username !== "" ||
