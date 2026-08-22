@@ -53,6 +53,19 @@ describe("schedule UTC cron validation", () => {
         concurrencyId: `é${"x".repeat(MAX_CONCURRENCY_ID_BYTES - 1)}`,
       }),
     ).toEqual({ ok: false, error: "concurrencyId must be at most 2048 bytes" });
+    expect(
+      plane.putSchedule({
+        ...input,
+        id: "x".repeat(MAX_CONCURRENCY_ID_BYTES),
+      }),
+    ).toEqual({ ok: false, error: "concurrencyId must be at most 2048 bytes" });
+    plane.state.schedules.get(schedule.id)!.concurrencyId = "x".repeat(
+      MAX_CONCURRENCY_ID_BYTES + 1,
+    );
+    expect(plane.updateSchedule(schedule.id, { name: "still-bounded" })).toEqual({
+      ok: false,
+      error: "concurrencyId must be at most 2048 bytes",
+    });
   });
 
   it("rejects invalid server clocks, supplied cursors, and cron updates without changing a schedule", () => {

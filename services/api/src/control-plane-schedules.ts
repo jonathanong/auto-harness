@@ -54,12 +54,6 @@ function preparePutSchedule(
   if (input.ref !== undefined && !isValidScheduledBranchRef(input.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
   }
-  if (input.concurrencyId !== undefined && isReservedConcurrencyId(input.concurrencyId.trim())) {
-    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
-  }
-  const concurrencyId = input.concurrencyId?.trim();
-  const concurrencyIdBytes = concurrencyId ? concurrencyIdByteLengthError(concurrencyId) : null;
-  if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   if (input.nextRunAt !== undefined && !isValidUtcTimestamp(input.nextRunAt)) {
     return { ok: false, error: "nextRunAt must be an ISO-8601 UTC timestamp" };
   }
@@ -72,6 +66,11 @@ function preparePutSchedule(
   const labels = resolveTargetLabels(state, routing.value.target, routing.value.fallbacks);
   if (!labels.ok) return labels;
   const id = input.id ?? state.scheduleIdFactory();
+  const concurrencyId = input.concurrencyId?.trim() || `schedule-${id}`;
+  if (isReservedConcurrencyId(concurrencyId))
+    return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
+  const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
+  if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   const prompt = storedSchedulePrompt(input.prompt);
   const rec: ScheduleRecord = {
     id,
@@ -88,7 +87,7 @@ function preparePutSchedule(
     lastRunAt: null,
     createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
-    concurrencyId: concurrencyId || `schedule-${id}`,
+    concurrencyId,
     ...(prompt !== undefined ? { prompt } : {}),
   };
   return { ok: true, schedule: rec };
@@ -161,11 +160,14 @@ export function prepareUpdateSchedule(
   if (patch.ref !== undefined && !isValidScheduledBranchRef(patch.ref)) {
     return { ok: false, error: "ref must be a valid scheduled branch name" };
   }
-  if (patch.concurrencyId !== undefined && isReservedConcurrencyId(patch.concurrencyId.trim())) {
+  const concurrencyId =
+    patch.concurrencyId !== undefined
+      ? patch.concurrencyId.trim() || `schedule-${id}`
+      : existing.concurrencyId?.trim() || `schedule-${id}`;
+  if (isReservedConcurrencyId(concurrencyId)) {
     return { ok: false, error: "concurrencyId uses a reserved internal prefix" };
   }
-  const concurrencyId = patch.concurrencyId?.trim();
-  const concurrencyIdBytes = concurrencyId ? concurrencyIdByteLengthError(concurrencyId) : null;
+  const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
   if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   const routing = validateTargetRouting({
     target: patch.target ?? existing.target,
@@ -183,9 +185,7 @@ export function prepareUpdateSchedule(
     targetLabels: labels.labels,
     queueTtlSeconds: routing.value.queueTtlSeconds,
     nextRunAt,
-    ...(patch.concurrencyId !== undefined
-      ? { concurrencyId: concurrencyId || `schedule-${id}` }
-      : {}),
+    concurrencyId,
   };
   if (patch.prompt !== undefined) applyStoredPrompt(next, patch.prompt);
   return { ok: true, schedule: next };
