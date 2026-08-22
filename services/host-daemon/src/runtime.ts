@@ -15,6 +15,7 @@ export async function ensureDaemonReady(
   processRunner: ProcessRunner = new SpawnProcessRunner(),
 ): Promise<HostRuntimeReport> {
   const runtime = await probeGitReadiness(processRunner);
+  if (!runtime.gitReady) return runtime;
   const git = createGitClient(processRunner);
   const worktrees = new WorktreeManager(config, git);
   await worktrees.ensureAll();

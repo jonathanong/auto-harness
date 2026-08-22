@@ -44,6 +44,22 @@ describe("runtime helpers", () => {
     expect(calls.some((c) => c.includes("rev-parse"))).toBe(true);
   });
 
+  it("returns an unready runtime report without initializing worktrees", async () => {
+    const calls: string[] = [];
+    const runner: ProcessRunner = {
+      async run(opts) {
+        calls.push(opts.argv.join(" "));
+        return { exitCode: 1, timedOut: false, signal: null };
+      },
+    };
+
+    await expect(ensureDaemonReady(config, runner)).resolves.toMatchObject({
+      gitReady: false,
+      gitReadinessReason: "git_unavailable",
+    });
+    expect(calls).toEqual(["git --version"]);
+  });
+
   it("runAssignedSession completes", async () => {
     const runner: ProcessRunner = {
       async run(opts) {

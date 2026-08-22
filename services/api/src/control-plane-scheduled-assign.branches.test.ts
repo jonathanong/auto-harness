@@ -175,13 +175,22 @@ describe("scheduled assignment branch coverage", () => {
     expect(releaseScheduledLeaseLocal(current, row)).toBe(true);
   });
 
-  it("skips a host whose connection disappears after eligibility is computed", async () => {
+  it("skips a host whose connection becomes unready after eligibility is computed", async () => {
     const current = state();
     current.connections.set("c1", connection("h1", "c1"));
     current.hostConnection.set("h1", "c1");
     setDurableReadStorage(current, {
       getMainCheckoutCursor: async () => {
-        current.hostConnection.delete("h1");
+        current.connections.set("c2", {
+          ...connection("h1", "c2"),
+          runtime: {
+            daemonVersion: "test",
+            gitVersion: null,
+            gitReady: false,
+            gitReadinessReason: "git_unavailable",
+          },
+        });
+        current.hostConnection.set("h1", "c2");
         return "";
       },
       ensureMainCheckoutLeaseMap: async () => true,

@@ -115,7 +115,7 @@ export class DaemonLoop {
   }
   async start(): Promise<void> {
     this.runtime ??= await probeGitReadiness(this.processRunner);
-    await this.worktrees.ensureAll();
+    if (this.runtime.gitReady) await this.worktrees.ensureAll();
     this.transport.onMessage((msg) => {
       void this.handleServerMessage(msg).catch((err: unknown) => {
         this.onLog?.(`server message failed: ${err instanceof Error ? err.message : String(err)}`);
