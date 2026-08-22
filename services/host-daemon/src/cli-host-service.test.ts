@@ -74,6 +74,20 @@ describe("install-service CLI", () => {
     expect(a.errors[0]).toMatch(/HARNESS_ENV_FILE/);
   });
 
+  it("refuses to start with an invalid child environment allowlist", async () => {
+    const a = deps();
+    expect(
+      await runCli(
+        ["node", "x", "start"],
+        { HARNESS_CHILD_ENV_ALLOWLIST: "AGENT_BLACKBOARD_TOKEN" },
+        a,
+      ),
+    ).toBe(1);
+    expect(a.errors).toEqual([
+      "HARNESS_CHILD_ENV_ALLOWLIST undefined name: AGENT_BLACKBOARD_TOKEN",
+    ]);
+  });
+
   it("stringifies a non-Error HARNESS_ENV_FILE read failure", async () => {
     const a = deps({
       readFile: () => {

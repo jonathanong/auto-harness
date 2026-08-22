@@ -12,6 +12,7 @@ import {
 import type { DaemonConfig, HostIdentity } from "./config.ts";
 import { loadDaemonConfig, loadHostIdentity } from "./config.ts";
 import { printUsage } from "./cli-usage.ts";
+import { parseChildEnvAllowlist } from "./child-env.ts";
 import { loadEnvFileIfPresent } from "./host-service-env.ts";
 import {
   getHostServiceStatus,
@@ -217,6 +218,14 @@ export async function runCli(
   }
   if (command === "uninstall-service") {
     return deps.uninstallService({ env: resolvedEnv, log: deps.log, error: deps.error });
+  }
+
+  if (command === "start" || command === "run-session") {
+    const childEnvErrors = parseChildEnvAllowlist(resolvedEnv).errors;
+    if (childEnvErrors.length > 0) {
+      deps.error(childEnvErrors.join("; "));
+      return 1;
+    }
   }
 
   if (command === "status") {

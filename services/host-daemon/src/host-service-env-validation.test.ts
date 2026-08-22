@@ -59,6 +59,39 @@ describe("persisted service environment validation", () => {
     expect(message).not.toContain("secret");
   });
 
+  it("rejects invalid or missing persisted child environment names without exposing values", () => {
+    const errors = validatePersistedEnvFile(
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nHARNESS_CHILD_ENV_ALLOWLIST=TOKEN,HARNESS_API_KEY,not-valid!,TOKEN\nTOKEN=blackboard-secret\n",
+    );
+    expect(errors).toEqual([
+      "HARNESS_CHILD_ENV_ALLOWLIST reserved name: HARNESS_API_KEY",
+      "HARNESS_CHILD_ENV_ALLOWLIST invalid name: not-valid!",
+      "HARNESS_CHILD_ENV_ALLOWLIST duplicate name: TOKEN",
+    ]);
+    expect(errors.join(" ")).not.toContain("blackboard-secret");
+    expect(
+      validatePersistedEnvFile(
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nHARNESS_CHILD_ENV_ALLOWLIST=MISSING\n",
+      ),
+    ).toEqual(["HARNESS_CHILD_ENV_ALLOWLIST undefined name: MISSING"]);
+    expect(
+      preparePersistedEnv({
+        existing: undefined,
+        example:
+          "HARNESS_HOST_ID=\nHARNESS_API_URL=\nHARNESS_API_KEY=\nHARNESS_CHILD_ENV_ALLOWLIST=\n",
+        env: {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "https://control.example.com",
+          HARNESS_API_KEY: "secret",
+          HARNESS_CHILD_ENV_ALLOWLIST: "MISSING",
+        },
+      }),
+    ).toEqual({
+      contents: "",
+      errors: ["HARNESS_CHILD_ENV_ALLOWLIST undefined name: MISSING"],
+    });
+  });
+
   it("updates only the persisted API URL and retains the bound key", () => {
     const original =
       "# keep this\nHARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://old.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n";

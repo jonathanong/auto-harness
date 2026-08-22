@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { parseDaemonConfig } from "./config.ts";
 import type { ProcessRunner } from "./executor.ts";
@@ -8,6 +8,8 @@ import { baseAssign } from "./session-runner-test-helpers.ts";
 import { WorktreeManager } from "./worktree-manager.ts";
 
 describe("SessionRunner setup environment", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
   it("layers host setup before the effective worktree setup and forwards exports", async () => {
     const config = parseDaemonConfig({
       hostId: "a1",
@@ -75,5 +77,45 @@ describe("SessionRunner setup environment", () => {
       HOST_SETUP: "loaded",
       REPOSITORY_SETUP: "loaded",
     });
+  });
+
+  it("forwards persisted allowlisted variables when resume skips setup", async () => {
+    vi.stubEnv("HARNESS_CHILD_ENV_ALLOWLIST", "AGENT_BLACKBOARD_TOKEN");
+    vi.stubEnv("AGENT_BLACKBOARD_TOKEN", "persisted-token");
+    const config = parseDaemonConfig({
+      hostId: "a1",
+      setupScript: "must-not-run",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const git: GitClient = {
+      ensureRepo: async () => undefined,
+      ensureWorktree: async () => undefined,
+      checkoutRef: async () => undefined,
+      prepareMainCheckout: async () => undefined,
+      revParse: async () => "x",
+    };
+    const setupCalls: string[] = [];
+    let commandEnvironment: NodeJS.ProcessEnv | undefined;
+    const runner: ProcessRunner = {
+      async run(options) {
+        if (options.argv[1] === "-c") setupCalls.push("setup");
+        else commandEnvironment = options.env;
+        return { exitCode: 0, timedOut: false, signal: null };
+      },
+    };
+    const result = await new SessionRunner({
+      worktrees: new WorktreeManager(config, git),
+      processRunner: runner,
+    }).run(baseAssign({ resume: true }));
+    expect(result.status).toBe("completed");
+    expect(setupCalls).toEqual([]);
+    expect(commandEnvironment?.AGENT_BLACKBOARD_TOKEN).toBe("persisted-token");
   });
 });

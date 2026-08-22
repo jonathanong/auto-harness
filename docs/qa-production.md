@@ -42,8 +42,10 @@ Mint **two** service accounts per host before connecting the daemon:
 ### 2. Subscription CLIs need an unsandboxed shell
 
 The host daemon's child-process environment is a small explicit allowlist
-(`HARNESS_CHILD_ENV_ALLOWLIST`). It strips every `HARNESS_*` credential, and
-it strips CLI credential env vars too (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+(`HARNESS_CHILD_ENV_ALLOWLIST`). It strips every `HARNESS_*` credential and
+rejects malformed, reserved, duplicate, or undefined allowlist names before work starts. Variables
+required after native resume must come from the persisted daemon environment because resume skips
+setup scripts. It strips CLI credential env vars too (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 and similar) unless those names are allowlisted. A subscription-authenticated
 CLI (reads its own file under `$HOME`, no API key needed) works because
 `HOME` survives — but only if the daemon process itself has a real, logged-in

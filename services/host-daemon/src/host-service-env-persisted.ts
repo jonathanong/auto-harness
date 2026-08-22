@@ -5,6 +5,7 @@ import {
   updatePersistedApiUrl,
   validatePersistedEnvFile,
 } from "./host-service-env.ts";
+import { parseChildEnvAllowlist } from "./child-env.ts";
 
 export function preparePersistedEnv(opts: {
   existing: string | undefined;
@@ -22,6 +23,8 @@ export function preparePersistedEnv(opts: {
   let contents: string;
   if (opts.existing === undefined) {
     const env = serviceEnv(opts.env, opts.apiUrl);
+    const childEnvErrors = parseChildEnvAllowlist(env).errors;
+    if (childEnvErrors.length > 0) return { contents: "", errors: childEnvErrors };
     contents =
       opts.capturePath === undefined
         ? renderEnvFile(opts.example, env)

@@ -59,7 +59,7 @@ describe("renderEnvFile", () => {
   it("uses local defaults, HARNESS_API_HTTP, Path, and allowlisted extras", () => {
     const rendered = renderEnvFile(example, {
       HARNESS_API_HTTP: "http://127.0.0.1:7420",
-      HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN,HARNESS_SKIP,not valid",
+      HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN",
       GITHUB_TOKEN: "gh",
       Path: "C:\\Windows",
     });
@@ -70,8 +70,8 @@ describe("renderEnvFile", () => {
     expect(rendered).not.toMatch(/^HARNESS_SKIP=/m);
     expect(rendered).not.toContain("GITHUB_TOKEN=gh\nGITHUB_TOKEN");
     expect(rendered).toContain("PATH=C:\\Windows");
-    expect(renderEnvFile(example, { HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN" })).not.toContain(
-      "GITHUB_TOKEN=",
+    expect(() => renderEnvFile(example, { HARNESS_CHILD_ENV_ALLOWLIST: "GITHUB_TOKEN" })).toThrow(
+      "undefined name: GITHUB_TOKEN",
     );
     expect(renderEnvFile(example, { PATH: "/opt/homebrew/bin" }, { capturePath: false })).toContain(
       "PATH=/usr/bin",
