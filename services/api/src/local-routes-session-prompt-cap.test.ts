@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PROMPT_BYTES, promptByteLengthError } from "@auto-harness/shared";
+import {
+  MAX_CONCURRENCY_ID_BYTES,
+  MAX_PROMPT_BYTES,
+  promptByteLengthError,
+} from "@auto-harness/shared";
 
 import { ControlPlane } from "./control-plane.ts";
 import { baseSessionBody, seedBaseCommand } from "./control-plane-test-helpers.ts";
@@ -30,6 +34,24 @@ function finish(plane: ControlPlane, sessionId: string): void {
 }
 
 describe("session prompt byte cap on create and resume", () => {
+  it("rejects an oversized concurrency id before storage", async () => {
+    const plane = new ControlPlane();
+    seedBaseCommand(plane);
+    const { handler } = createLocalApp({ plane });
+    const response = await invokeHandler(
+      handler,
+      "POST",
+      "/api/v1/sessions",
+      baseSessionBody({ concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1) }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.json).toEqual({
+      error: { code: "VALIDATION_ERROR", message: "concurrencyId must be at most 2048 bytes" },
+    });
+    expect(plane.state.sessions.size).toBe(0);
+  });
+
   it("accepts 65536 UTF-8 bytes and rejects 65537 on both endpoints", async () => {
     const plane = new ControlPlane({
       idFactory: (() => {

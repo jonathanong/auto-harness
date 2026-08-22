@@ -81,6 +81,7 @@ export { isValidUtcTimestamp, nextCronOccurrence, parseCron } from "./cron.ts";
 export type { ValidationResult } from "./validation.ts";
 export {
   formatLogSortKey,
+  concurrencyIdByteLengthError,
   isSessionSource,
   isReservedConcurrencyId,
   isSessionErrorCode,
@@ -91,6 +92,7 @@ export {
   isActiveSessionStatus,
   isTerminalSessionStatus,
   MAX_PROMPT_BYTES,
+  MAX_CONCURRENCY_ID_BYTES,
   promptByteLengthError,
   validateCreateSessionInput,
 } from "./validation.ts";

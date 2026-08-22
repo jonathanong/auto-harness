@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHmac } from "node:crypto";
+import { MAX_CONCURRENCY_ID_BYTES } from "@auto-harness/shared";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import {
@@ -50,6 +51,9 @@ describe("session cursor primitives", () => {
     expect(() => normalizeQuery({ status: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ source: "bad" })).toThrow(InvalidSessionListQueryError);
     expect(() => normalizeQuery({ hostId: "" })).toThrow(InvalidSessionListQueryError);
+    expect(() =>
+      normalizeQuery({ concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1) }),
+    ).toThrow("concurrencyId must be at most 2048 bytes");
     expect(normalizeScope({ repositoryIds: ["b", "a", "a"], hostId: "host" })).toEqual({
       repositoryIds: ["a", "b"],
       hostId: "host",

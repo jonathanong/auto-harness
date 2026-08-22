@@ -1,4 +1,5 @@
 import {
+  concurrencyIdByteLengthError,
   isSessionSource,
   isSessionStatus,
   type SessionSource,
@@ -93,11 +94,16 @@ export function normalizeQuery(query: ListSessionsPageQuery): CursorQuery {
   if (source !== null && !isSessionSource(source)) {
     throw new InvalidSessionListQueryError("source must be a recognized session source");
   }
+  const concurrencyId = normalizeFilter(query.concurrencyId, "concurrencyId");
+  if (concurrencyId !== null) {
+    const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
+    if (concurrencyIdBytes) throw new InvalidSessionListQueryError(concurrencyIdBytes);
+  }
   return {
     repositoryId: normalizeFilter(query.repositoryId, "repositoryId"),
     status: status === null || status === "all" ? null : status,
     hostId: normalizeFilter(query.hostId, "hostId"),
-    concurrencyId: normalizeFilter(query.concurrencyId, "concurrencyId"),
+    concurrencyId,
     scheduleId: normalizeFilter(query.scheduleId, "scheduleId"),
     source,
   };

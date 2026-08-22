@@ -304,7 +304,7 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 | Timeout        | Dropdown + number | ✓        | Presets for 5 min, 15 min, 30 min, and 1 hour. Custom reveals a required positive-seconds input. The API receives numeric seconds. |
 | Priority       | Slider (0–100)    | ✗        | Default: 0. Visual indicator: low / normal / high / critical                                                                       |
 | Labels         | Labeled switches  | ✗        | Filter which worktrees can run this session. Each advertised label is a switch; leave all off to allow any worktree.               |
-| Concurrency ID | Text input        | ✗        | Optional global exact-match identity for deduplication and concurrency. A duplicate active request returns the existing session.   |
+| Concurrency ID | Text input        | ✗        | Optional global exact-match identity, at most 2,048 UTF-8 bytes. A duplicate active request returns the existing session.          |
 
 ### Submission
 
@@ -332,7 +332,7 @@ Displays all configured schedules in a table:
 | Enabled        | Accessible toggle switch; saves immediately and preserves the current state with a retry message if the update fails                                                            |
 | Last Run       | Relative time + status badge (success/failed)                                                                                                                                   |
 | Next Run       | Absolute time for next scheduled execution                                                                                                                                      |
-| Concurrency ID | Exact identity used to prevent overlapping automatic/manual runs; defaults to `schedule-${scheduleId}` for automatic fires                                                      |
+| Concurrency ID | Exact identity used to prevent overlapping automatic/manual runs; defaults to `schedule-${scheduleId}` and is limited to 2,048 UTF-8 bytes                                      |
 
 ### Schedule Detail
 

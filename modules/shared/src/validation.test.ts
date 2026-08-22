@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  concurrencyIdByteLengthError,
   isActiveSessionStatus,
   formatLogSortKey,
   isSessionErrorCode,
@@ -9,6 +10,7 @@ import {
   isTerminalSessionStatus,
   isUserRole,
   isWorktreeStatus,
+  MAX_CONCURRENCY_ID_BYTES,
   MAX_PROMPT_BYTES,
   promptByteLengthError,
   validateCreateSessionInput,
@@ -90,6 +92,19 @@ describe("promptByteLengthError", () => {
     expect(promptByteLengthError("x".repeat(MAX_PROMPT_BYTES))).toBeNull();
     expect(promptByteLengthError("x".repeat(MAX_PROMPT_BYTES + 1))).toBe(
       "prompt must be at most 65536 bytes",
+    );
+  });
+});
+
+describe("concurrencyIdByteLengthError", () => {
+  it("measures the DynamoDB key limit in UTF-8 bytes", () => {
+    expect(concurrencyIdByteLengthError("x".repeat(MAX_CONCURRENCY_ID_BYTES))).toBeNull();
+    expect(concurrencyIdByteLengthError("x".repeat(MAX_CONCURRENCY_ID_BYTES + 1))).toBe(
+      "concurrencyId must be at most 2048 bytes",
+    );
+    expect(concurrencyIdByteLengthError("é".repeat(MAX_CONCURRENCY_ID_BYTES / 2))).toBeNull();
+    expect(concurrencyIdByteLengthError(`é${"x".repeat(MAX_CONCURRENCY_ID_BYTES - 1)}`)).toBe(
+      "concurrencyId must be at most 2048 bytes",
     );
   });
 });
@@ -329,6 +344,12 @@ describe("validateCreateSessionInput", () => {
     expect(
       validateCreateSessionInput({ ...base, concurrencyId: "catalog-delete:repository:repo" }),
     ).toMatchObject({ ok: false, error: "concurrencyId uses a reserved internal prefix" });
+    expect(
+      validateCreateSessionInput({
+        ...base,
+        concurrencyId: "x".repeat(MAX_CONCURRENCY_ID_BYTES + 1),
+      }),
+    ).toEqual({ ok: false, error: "concurrencyId must be at most 2048 bytes" });
     expect(validateCreateSessionInput({ ...base, metadata: [] }).ok).toBe(false);
   });
 });
