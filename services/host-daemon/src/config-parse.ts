@@ -112,7 +112,7 @@ export function parseDaemonConfig(
   };
   if (raw.setupScript !== undefined) {
     if (typeof raw.setupScript !== "string") {
-      throw new Error("setupScript must be a string");
+      throw new TypeError("setupScript must be a string");
     }
     config.setupScript = raw.setupScript;
   }
