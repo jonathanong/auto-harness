@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { mutateInventory, updateHostSetupScript } from "@auto-harness/shared";
 import { Button } from "./button.tsx";
@@ -22,6 +22,12 @@ export function HostSetupScriptForm({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [script, setScript] = useState(setupScript ?? "");
+
+  useEffect(() => {
+    setScript(setupScript ?? "");
+    setSaved(false);
+  }, [setupScript]);
 
   return (
     <form
@@ -30,12 +36,10 @@ export function HostSetupScriptForm({
       onSubmit={(event) => {
         event.preventDefault();
         setSaved(false);
-        const setupScriptEntry = new FormData(event.currentTarget).get("setupScript");
-        const nextScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
         start(async () => {
           try {
             const result = await mutate(hostId, (current) =>
-              updateHostSetupScript(current, nextScript),
+              updateHostSetupScript(current, script),
             );
             if (!result.ok) {
               showToast(result.error, { variant: "destructive", pw: "host-setup-script-error" });
@@ -63,7 +67,8 @@ export function HostSetupScriptForm({
           id="hostSetupScript"
           name="setupScript"
           rows={6}
-          defaultValue={setupScript ?? ""}
+          value={script}
+          onChange={(event) => setScript(event.target.value)}
           className="font-mono text-xs"
           data-pw="host-setup-script"
         />

@@ -2,7 +2,7 @@
 
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { HostInventory } from "@auto-harness/shared";
+import { type HostInventory, type mutateInventory } from "@auto-harness/shared";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
 import { input, mount, repo, reset, setValue, submit } from "./action-form-test-helpers.ts";
@@ -41,6 +41,26 @@ describe("AddWorktreeForm errors", () => {
     input(document.querySelector('[data-pw="add-worktree-path-repo-1"]') as HTMLInputElement, "");
     await submit(form);
     expect(document.body.textContent).toContain("worktree name and absolute path are required");
+  });
+
+  it("omits a blank setup override so the worktree inherits repository setup", async () => {
+    let transformed: HostInventory | undefined;
+    const mutate: typeof mutateInventory = async (_hostId, transform) => {
+      transformed = transform(withRepo);
+      return { ok: false, error: "stop after transform" };
+    };
+    const view = mount(
+      <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
+    );
+    const form = open(view);
+    fill();
+    setValue(
+      document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
+      "   ",
+    );
+    await submit(form);
+    expect(transformed?.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    view.unmount();
   });
 
   it("reports a rejected write, an unknown repository, and a thrown error", async () => {

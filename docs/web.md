@@ -394,8 +394,10 @@ The Provider accounts tab shows, for each host the repository is attached to, a 
 
 Fleet-wide worktrees view, grouped by repository. Add worktree is available here and on a
 repository's Worktrees tab (pick a host when the catalog repo is attached to more than one).
-The add and edit forms expose the optional worktree setup script as well as scheduler labels. New
-worktrees start with no scheduler labels; edit a worktree to set or clear labels. A worktree
+The add and edit forms expose an optional worktree setup override as well as scheduler labels. A
+non-empty worktree script replaces the repository setup script; leave it blank to inherit the
+repository script. New worktrees start with no scheduler labels; edit a worktree to set or clear
+labels. A worktree
 with no labels accepts only sessions that also have no required labels; labeled sessions need
 every required label on the worktree. Each
 worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts,

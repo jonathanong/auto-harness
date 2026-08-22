@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { type HostInventory, type mutateInventory } from "@auto-harness/shared";
 
@@ -21,6 +22,18 @@ const failedMutation: typeof mutateInventory = async () => ({
 const rejectedMutation: typeof mutateInventory = async () => {
   throw new Error("offline");
 };
+
+function RefreshHarness() {
+  const [script, setScript] = useState("old");
+  return (
+    <>
+      <button type="button" data-pw="refresh-script" onClick={() => setScript("from refresh")}>
+        Refresh
+      </button>
+      <HostSetupScriptForm hostId="host" setupScript={script} />
+    </>
+  );
+}
 
 describe("HostSetupScriptForm", () => {
   it("updates only the host setup script and refreshes", async () => {
@@ -53,5 +66,14 @@ describe("HostSetupScriptForm", () => {
     await submit(field(rejected.container, "form-host-setup-script"));
     expect(field(document.body, "host-setup-script-error").textContent).toBe("offline");
     rejected.unmount();
+  });
+
+  it("synchronizes the controlled field when refreshed inventory changes the prop", () => {
+    const view = mount(<RefreshHarness />);
+    const textarea = field<HTMLTextAreaElement>(view.container, "host-setup-script");
+    setValue(textarea, "unsaved stale value");
+    act(() => field<HTMLButtonElement>(view.container, "refresh-script").click());
+    expect(textarea.value).toBe("from refresh");
+    view.unmount();
   });
 });

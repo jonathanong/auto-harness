@@ -139,6 +139,18 @@ describe("EditWorktreeForm", () => {
     view.unmount();
   });
 
+  it("clears a blank setup override so repository setup is inherited", async () => {
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(form());
+    press(field(view.container, "worktree-edit-open"));
+    setValue(field(document, "worktree-edit-setup-script"), "   ");
+    submit(field(document, "form-edit-worktree"));
+    await act(async () => Promise.resolve());
+    const body = putBody(fetch) as typeof inventory;
+    expect(body.repositories[0]?.worktrees[0]).not.toHaveProperty("setupScript");
+    view.unmount();
+  });
+
   it("uses missing-label fallbacks and displays a pending request failure", async () => {
     const { finish } = stubDeferredPut(inventory);
     // Deliberately simulates malformed data (missing labels) to exercise the component's

@@ -58,6 +58,7 @@ export function EditWorktreeForm({
               .filter(Boolean);
             const setupScriptEntry = fd.get("setupScript");
             const setupScript = typeof setupScriptEntry === "string" ? setupScriptEntry : "";
+            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",
@@ -74,7 +75,7 @@ export function EditWorktreeForm({
                   name: worktree.name,
                   path,
                   labels,
-                  setupScript,
+                  setupScript: worktreeSetupScript,
                 }),
               );
               if (!r.ok) {
@@ -110,7 +111,10 @@ export function EditWorktreeForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="worktreeSetupScript" tip="Optional worktree-scoped setup script">
+            <Label
+              htmlFor="worktreeSetupScript"
+              tip="Optional worktree override; leave blank to inherit repository setup"
+            >
               Setup Script
             </Label>
             <Textarea

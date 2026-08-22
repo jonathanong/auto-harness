@@ -83,6 +83,7 @@ export function AddWorktreeForm({
               .split(",")
               .map((s) => s.trim())
               .filter(Boolean);
+            const worktreeSetupScript = setupScript.trim() ? setupScript : undefined;
             start(async () => {
               try {
                 const r = await mutate(hostId, (current) =>
@@ -91,7 +92,9 @@ export function AddWorktreeForm({
                     name: wtName,
                     path: wtPath,
                     labels: requestedLabels,
-                    setupScript,
+                    ...(worktreeSetupScript !== undefined
+                      ? { setupScript: worktreeSetupScript }
+                      : {}),
                   }),
                 );
                 if (!r.ok) {
@@ -168,7 +171,7 @@ export function AddWorktreeForm({
           <div className="space-y-1">
             <Label
               htmlFor={`addWorktreeSetupScript-${repo.id}`}
-              tip="Optional setup run after the host and repository setup scripts"
+              tip="Optional worktree override; leave blank to inherit repository setup"
             >
               Setup Script
             </Label>
