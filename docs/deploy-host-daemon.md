@@ -72,10 +72,13 @@ unless `HARNESS_ENV_FILE` or the identity variables are supplied; a plain `pnpm 
 therefore checks the local-development identity, not the installed production identity. On macOS:
 
 ```bash
-HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
   pnpm local:daemon status
 ```
 
+The `env -u` options matter when the shell has stale local-development or other host credentials:
+explicit, nonempty environment variables take precedence over values loaded from the file.
 The command succeeds only when the LaunchAgent is running and the exact persisted host is online,
 non-draining, and explicitly Git-ready. Use `status --config-only` when you only need the configured
 inventory. Status output is bounded and never includes the persisted API key or raw service-manager
@@ -265,7 +268,8 @@ git checkout NEW_IMMUTABLE_REVISION
 CI=true corepack pnpm install --frozen-lockfile
 pnpm local:daemon install-service
 
-HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
   pnpm local:daemon status
 ```
 

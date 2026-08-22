@@ -118,14 +118,24 @@ On a deployed macOS host, load the LaunchAgent environment explicitly so `status
 identity as the service:
 
 ```bash
-HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
   pnpm local:daemon status
 ```
 
-The Linux equivalent uses `/etc/auto-harness/host-daemon.env`; Windows uses
-`%APPDATA%\auto-harness\host-daemon.env`. The status request queries only the resulting `hostId`
-and sends its API key as an authorization header without printing it. A result for `local-1` means
-the deployed identity was not loaded and does not verify the installed daemon.
+Clearing those four variables is required because explicit, nonempty shell values take precedence
+over values loaded from the file. The standard Linux environment file is root-owned and mode 0600,
+so run the equivalent check with elevated access while preserving the current pnpm path:
+
+```bash
+sudo env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  "PATH=$PATH" HARNESS_ENV_FILE=/etc/auto-harness/host-daemon.env \
+  pnpm local:daemon status
+```
+
+Windows uses `%APPDATA%\auto-harness\host-daemon.env`. The status request queries only the resulting
+`hostId` and sends its API key as an authorization header without printing it. A result for
+`local-1` means the deployed identity was not loaded and does not verify the installed daemon.
 
 Host install details: [deploy-host-daemon.md](deploy-host-daemon.md).
 

@@ -310,11 +310,13 @@ LaunchAgent environment. A plain status command falls back to the local-developm
 can misleadingly report a running LaunchAgent alongside an unreachable `local-1` control plane:
 
 ```bash
-HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
   pnpm local:daemon status
 ```
 
-**Gate:** status is `ready`, reports the expected production host ID, and shows `reachable: true`,
+Clearing the explicit identity variables ensures stale shell exports cannot override values from the
+persisted file. **Gate:** status is `ok`, reports the expected production host ID, and shows `reachable: true`,
 `online: true`, `draining: false`, and `gitReady: true`. Do not print the environment file; it
 contains the bound daemon key.
 
