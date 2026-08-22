@@ -24,7 +24,7 @@ Live streaming and agent control use the [WebSocket protocol](websocket.md). Cre
 
 **Phase 2+ fields on `POST /sessions`:** `ref` (a branch, tag, or SHA), a `target` plus ordered `fallbacks` (never a free-form `command`), `queueTtlSeconds`, an optional global exact-match `concurrencyId`, and `metadata`; response includes UI `url` and route labels. Provider targets use the provider's eligible account pool; providerless Commands (`providerId: null`) run ungated. Scheduled sessions run on the repository main checkout only when the host advertises the required capability. Resume pins **agent only** (D5). List search is client-side only (no DynamoDB full-text).
 
-`concurrencyId` is an exact, caller-chosen idempotency/concurrency identity shared by manual and scheduled creates. While its lock is held, a repeated create returns `200 OK` with the existing session and `created: false`; a new identity returns `201 Created` with `created: true`. A terminal session releases its lock, so a later request may retry with the same id. The lock is durable and atomic across API workers.
+`concurrencyId` is an exact, caller-chosen idempotency/concurrency identity shared by manual and scheduled creates. Its UTF-8 length is at most 2,048 bytes, including a schedule's derived `schedule-${scheduleId}` default; oversized session or schedule writes and exact-list filters return `400 VALIDATION_ERROR`. While its lock is held, a repeated create returns `200 OK` with the existing session and `created: false`; a new identity returns `201 Created` with `created: true`. A terminal session releases its lock, so a later request may retry with the same id. The lock is durable and atomic across API workers.
 
 **CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
 
@@ -438,7 +438,7 @@ one unbound (for anything that creates sessions).
 | `requiredLabels`  | string[] | ✗        | Worktree labels required. Default: `[]` (any worktree)                                                                                                                 |
 | `source`          | string   | ✗        | Origin of the session: `api`, `ui`, `webhook`, `schedule`. Default: `api`                                                                                              |
 | `type`            | string   | ✗        | Session type: `prompt` (runs in worktree) or `scheduled` (runs on main checkout). Default: `prompt`                                                                    |
-| `concurrencyId`   | string   | ✗        | Global exact-match identity. An active duplicate returns the existing session (`200`, `created: false`); terminal sessions release the identity for retry.             |
+| `concurrencyId`   | string   | ✗        | Global exact-match identity, at most 2,048 UTF-8 bytes. An active duplicate returns the existing session (`200`, `created: false`); terminal sessions release it.      |
 | `metadata`        | object   | ✗        | Caller-supplied, non-secret provenance carried with the session.                                                                                                       |
 
 Unknown target/fallback IDs, duplicate route references, or malformed target objects are rejected `400` at create time.
@@ -494,7 +494,7 @@ List sessions with optional filters.
 | `sort`          | string | Sort order: `latest` (default), `oldest`, `priority_desc`, `priority_asc`                                  |
 | `limit`         | number | Base-10 integer from 1 to 100 (default: 50)                                                                |
 | `cursor`        | string | Pagination cursor from previous response                                                                   |
-| `concurrencyId` | string | Exact concurrency identity (may span schedules and manual sessions)                                        |
+| `concurrencyId` | string | Exact concurrency identity, at most 2,048 UTF-8 bytes (may span schedules and manual sessions)             |
 | `scheduleId`    | string | Exact schedule provenance; used for one schedule's run history                                             |
 
 Results are scoped to the authenticated principal's allowed repositories and host binding
@@ -816,7 +816,7 @@ Create a scheduled task. **Operator or admin.**
 | `timeout`         | number   | ✗        | Max duration in seconds. Default: `3600` (1 hour)                                                                                                  |
 | `enabled`         | boolean  | ✗        | Default: `true`                                                                                                                                    |
 | `ref`             | string   | ✗        | Branch name to check out; must exist on an eligible host. Tags and SHAs are rejected.                                                              |
-| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire. Defaults to `schedule-${scheduleId}` for automatic fires; an explicit value is used as-is.              |
+| `concurrencyId`   | string   | ✗        | Global exact-match identity for each fire, at most 2,048 UTF-8 bytes. Defaults to `schedule-${scheduleId}`; the final derived value is validated.  |
 | `prompt`          | string   | ✗        | Prompt passed to the CLI when this schedule fires. Trimmed on write. Missing or blank stays empty — the server does not invent `scheduled:<name>`. |
 
 The server derives `nextRunAt` from `cron` and its UTC clock; clients cannot choose the
