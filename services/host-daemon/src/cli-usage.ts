@@ -3,7 +3,7 @@ export function printUsage(log: (msg: string) => void = console.log): void {
   auto-harness-host-daemon status [--config-only]
   auto-harness-host-daemon run-session --file session.json
   auto-harness-host-daemon start [--ws ws://host/ws]
-  auto-harness-host-daemon install-service
+  auto-harness-host-daemon install-service [--api-url https://control.example.com]
   auto-harness-host-daemon uninstall-service
 
 Identity (env; local defaults shown):
@@ -16,8 +16,12 @@ Identity (env; local defaults shown):
   HARNESS_CHILD_ENV_ALLOWLIST  optional comma-separated child-process variables (non-HARNESS_)
 
 install-service persists the daemon (systemd / LaunchAgent / logon task) from this
-identity into a mode-0600 env file that is never committed. On Linux it refuses
-local-1, http://127.0.0.1:7420, placeholders, and an empty HARNESS_API_KEY.
+identity into a mode-0600 env file that is never committed. Every platform validates
+the effective persisted env before writing or restarting; it requires a bound host id,
+an HTTPS production control-plane URL, and a non-placeholder bound API key.
+--api-url updates only HARNESS_API_URL in an existing service env file, retaining the
+bound key without requiring it to be copied into the shell. On Linux, run the update as
+root when the existing mode-0600 env file is root-owned.
 
 --ws overrides only the WebSocket target (REST still resolves from HARNESS_API_URL). It
 accepts a raw API Gateway endpoint directly — a deploy-day escape hatch if the CloudFront

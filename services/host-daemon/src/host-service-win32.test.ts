@@ -30,7 +30,10 @@ describe("install-service win32", () => {
 
   it("keeps env, reports create failure, and warns when /Run fails", () => {
     const envPath = "/Users/op/AppData/Roaming/auto-harness/host-daemon.env";
-    const fs = seededFs({ [envPath]: "KEEP=1\n" });
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
     const logs: string[] = [];
     expect(
       installHostService(
@@ -45,7 +48,7 @@ describe("install-service win32", () => {
         }),
       ),
     ).toBe(0);
-    expect(fs.files.get(envPath)).toBe("KEEP=1\n");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/schtasks \/Run failed/);
     const errors: string[] = [];
     expect(

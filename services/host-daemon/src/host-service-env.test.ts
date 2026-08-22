@@ -7,8 +7,8 @@ import {
   parseEnvFile,
   pathFromEnv,
   renderEnvFile,
-  warnOrRefuseIdentity,
 } from "./host-service-env.ts";
+import { warnOrRefuseIdentity } from "./host-service-env-identity.ts";
 
 const example = `# comment
 PATH=/usr/bin
@@ -127,6 +127,26 @@ describe("renderEnvFile", () => {
         "linux",
       ),
     ).toEqual([]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "http://control.example.com",
+          HARNESS_API_KEY: "secret",
+        },
+        "darwin",
+      ),
+    ).toEqual(["HARNESS_API_URL"]);
+    expect(
+      envIdentityErrors(
+        {
+          HARNESS_HOST_ID: "host-1",
+          HARNESS_API_URL: "not a URL",
+          HARNESS_API_KEY: "PLACEHOLDER_KEY",
+        },
+        "win32",
+      ),
+    ).toEqual(["HARNESS_API_URL", "HARNESS_API_KEY"]);
     expect(
       envIdentityErrors(
         {

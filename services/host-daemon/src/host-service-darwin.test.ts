@@ -38,7 +38,10 @@ describe("install-service darwin", () => {
 
   it("falls back to launchctl load and keeps an existing env file", () => {
     const envPath = "/Users/op/Library/Application Support/auto-harness/host-daemon.env";
-    const fs = seededFs({ [envPath]: "HARNESS_HOST_ID=old\n" });
+    const fs = seededFs({
+      [envPath]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://example.cloudfront.net\nHARNESS_API_KEY=secret\n",
+    });
     const spawn = recorder({
       "launchctl bootstrap gui/501 /Users/op/Library/LaunchAgents/com.auto-harness.host-daemon.plist":
         { status: 1, stdout: "", stderr: "no bootstrap" },
@@ -49,7 +52,7 @@ describe("install-service darwin", () => {
         baseOpts({ platform: "darwin", fs, run: spawn.run, log: (m) => logs.push(m) }),
       ),
     ).toBe(0);
-    expect(fs.files.get(envPath)).toBe("HARNESS_HOST_ID=old\n");
+    expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.at(-1)?.args[0]).toBe("load");
   });
@@ -108,25 +111,6 @@ describe("install-service darwin", () => {
         }),
       ),
     ).toBe(0);
-  });
-
-  it("warns but still writes when darwin identity is incomplete", () => {
-    const logs: string[] = [];
-    expect(
-      installHostService(
-        baseOpts({
-          platform: "darwin",
-          fs: seededFs(),
-          env: {
-            HARNESS_HOST_ID: "host-1",
-            HARNESS_API_URL: "https://example.cloudfront.net",
-          },
-          log: (m) => logs.push(m),
-          run: () => ({ status: 0, stdout: "", stderr: "" }),
-        }),
-      ),
-    ).toBe(0);
-    expect(logs.join("\n")).toMatch(/Warning:.*HARNESS_API_KEY/);
   });
 });
 

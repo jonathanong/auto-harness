@@ -89,9 +89,9 @@ a LaunchAgent as the current user on macOS (`HOME` kept for CLI creds), or a log
 task as the current user on Windows (not `LOCALSYSTEM`). Identity is read from `HARNESS_*` and
 written to a mode-0600 env file that is never committed.
 
-Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
-`HARNESS_API_KEY`. Use a bound host id, CloudFront `WebUrl`, and bound key (same recipe as
-[deploy-host-daemon.md](deploy-host-daemon.md)):
+Every platform validates the effective persisted env before writing service files or restarting:
+use a bound, non-placeholder host id, a non-local HTTPS production URL, and a bound key (same
+recipe as [deploy-host-daemon.md](deploy-host-daemon.md)):
 
 ```bash
 export HARNESS_HOST_ID='<bound-host-id>'
@@ -100,6 +100,17 @@ export HARNESS_API_KEY='hns_…'
 pnpm local:daemon install-service
 pnpm local:daemon uninstall-service
 ```
+
+To change a deployed control-plane URL without copying the persisted secret key, pass the
+non-secret replacement explicitly. Only `HARNESS_API_URL` is rewritten, and the resulting env
+file is validated before the service is restarted:
+
+```bash
+pnpm local:daemon install-service --api-url 'https://new-control.example.com'
+```
+
+On Linux, run this update as root when the existing mode-0600 env file is root-owned
+(for example, `sudo pnpm local:daemon install-service --api-url 'https://new-control.example.com'`).
 
 `status` / `run-session` / `start` still default to `local-1` and `http://127.0.0.1:7420` for
 local work above. On a deployed host, run `status` with the same persisted identity used by

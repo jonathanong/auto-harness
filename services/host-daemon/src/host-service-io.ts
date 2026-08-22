@@ -59,6 +59,8 @@ export type HostServiceRun = (
 
 export type HostServiceOpts = {
   env: NodeJS.ProcessEnv;
+  /** Optional non-secret URL replacement for an existing persisted env file. */
+  apiUrl?: string | undefined;
   log: (msg: string) => void;
   error: (msg: string) => void;
   platform?: string;
@@ -75,6 +77,7 @@ export type HostServiceOpts = {
 
 export type HostServiceContext = {
   env: NodeJS.ProcessEnv;
+  apiUrl?: string;
   log: (msg: string) => void;
   error: (msg: string) => void;
   platform: string;
@@ -185,6 +188,7 @@ export function resolveHostService(opts: HostServiceOpts): HostServiceContext {
   const home = resolveHome(opts.home, env, homedir);
   return {
     env,
+    ...(opts.apiUrl !== undefined ? { apiUrl: opts.apiUrl } : {}),
     log: opts.log,
     error: opts.error,
     platform: opts.platform ?? process.platform,

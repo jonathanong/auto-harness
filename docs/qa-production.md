@@ -300,9 +300,10 @@ export HARNESS_API_KEY='<bound-daemon-key>'
 pnpm local:daemon install-service
 ```
 
-Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`,
-placeholders, or an empty `HARNESS_API_KEY`. This production path uses
-`WebUrl` and the bound key. macOS and Windows warn and still write.
+Every platform refuses to write or restart with `local-1`, a local or malformed
+URL, placeholders, or an empty `HARNESS_API_KEY`. This production path uses
+`WebUrl` and the bound key. Existing persisted environments are validated before
+service-manager mutation.
 
 Foreground `pnpm local:daemon start` with the same env is fine for a
 one-shot unsandboxed sanity check; **persist is the path this runbook

@@ -274,7 +274,7 @@ describe("printUsage / main / defaults", () => {
     expect(lines[0]).toMatch(/local-1/);
     expect(lines[0]).toMatch(/install-service/);
     expect(lines[0]).toMatch(/uninstall-service/);
-    expect(lines[0]).toMatch(/On Linux it refuses/);
+    expect(lines[0]).toMatch(/Every platform validates/);
     const d = createDefaultRunSessionDeps();
     expect(typeof d.loadConfig).toBe("function");
     expect(d.installService).toBe(installHostService);
