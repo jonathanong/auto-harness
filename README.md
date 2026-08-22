@@ -31,7 +31,7 @@ The win is **time and throughput**. Cloud coordination is cheap; the scarce inpu
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | **CI goes red**                     | Kick off an agent against the failing repo, aimed at a fix and a PR—not a Slack pile-on                                            |
 | **You have a clear change in mind** | Describe the outcome; run it as a tracked session with logs you can audit                                                          |
-| **Work was interrupted mid-flight** | Resume the same session context on the same agent and worktree                                                                     |
+| **Work was interrupted mid-flight** | Resume the same CLI context on its agent while re-establishing the ref in an eligible worktree                                     |
 | **PRs stall in review**             | Shepherd changes forward—address comments, re-run checks, keep momentum                                                            |
 | **The repo needs steady care**      | Schedules for updates, lint, security patches—maintenance without calendar babysitting                                             |
 | **CI / bots fire and forget**       | GitHub Actions (or anything) calls the API and exits; humans watch **Slack** and/or **GitHub** (PRs, comments)—not the trigger job |

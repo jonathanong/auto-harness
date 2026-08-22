@@ -51,7 +51,7 @@ export function SessionCreateDetailFields({
         <Input
           id="concurrencyId"
           name="concurrencyId"
-          placeholder="filaments-pr-shepherd-123"
+          placeholder="filaments:shepherd:123"
           data-pw="create-session-concurrency-id"
         />
         <p className="text-xs text-muted-foreground">

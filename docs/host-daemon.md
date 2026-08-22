@@ -174,7 +174,7 @@ Orchestrates a single session after `session:assign`:
 4. **Setup:**
    - Normal run: run the optional host setup, then the effective assignment/worktree/repository
      setup (may initialize the shell environment, reset a branch, or install dependencies)
-   - **Resume** (`resume: true`): **skip destructive setup** (no `git reset --hard` / wipe). Optional light `resumeSetup` only if configured; default is leave the worktree as-is
+   - **Resume** (`resume: true`): skip every host/repository/worktree setup script; the assigned worktree still checks out the session `ref` (or default branch) before the native CLI resume command starts
 5. Spawn primary command via Executor (resume-aware argv when `resume: true`)
 6. Pipe output to Log Streamer
 7. On exit / timeout / cancel → `session:status`, release claim/lock, emit worktree status
@@ -199,9 +199,9 @@ sequenceDiagram
     participant CLI
 
     User->>API: POST /sessions/{id}/resume
-    API->>API: New session pinned to source agent+worktree
+    API->>API: New session pinned to source agent
     API->>Agent: session:assign { resume: true, worktreeId, … }
-    Agent->>Agent: Claim same worktree (no hard reset)
+    Agent->>Agent: Claim eligible worktree and check out ref
     Agent->>CLI: Resume / continue (tool-specific)
     CLI-->>Agent: output
     Agent->>API: session:log / session:status
@@ -209,28 +209,28 @@ sequenceDiagram
 
 #### Placement (control plane)
 
-| Rule           | Behavior                                                                                |
-| -------------- | --------------------------------------------------------------------------------------- |
-| Prefer         | Try the source `hostId` + `worktreeId` and native `cliResumeRef` first                  |
-| Re-route       | If unavailable, clear `cliResumeRef` and placement pins, then use target/fallback order |
-| Preserve       | Keep `resumedFromSessionId` on the fresh assignment for audit/history                   |
-| Same host disk | Native resume only makes sense on the machine that still has the worktree files         |
+| Rule             | Behavior                                                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------- |
+| Prefer           | Pin the source `hostId`; select any eligible repository worktree there for `cliResumeRef`         |
+| Re-establish ref | Check out the source session's `ref`, or its default branch, before starting the native CLI route |
+| Re-route         | If unavailable, clear `cliResumeRef` and the host pin, then use target/fallback order             |
+| Preserve         | Keep `resumedFromSessionId` on the fresh assignment for audit/history                             |
+| Same agent state | Native resume uses CLI conversation state stored outside the repository worktree                  |
 
 #### How the agent “tries to resume”
 
 Order of preference:
 
-1. **Native CLI resume** — if `cliResumeRef` is present (or the tool can resume by worktree path / last session), invoke the tool’s resume/continue mode (tool-specific flags; mapped in agent config per command family).
-2. **Workspace continue** — same worktree cwd, spawn the usual command with the **continuation prompt** so the model sees existing dirty tree / branch / files from the prior run.
-3. **Fresh route** — if the native route cannot be scheduled, discard the native ref/pins and execute the normal target/fallback chain. This is a fresh CLI run, but retains `resumedFromSessionId`.
+1. **Native CLI resume** — after the assigned worktree checks out `ref` (or the default branch), invoke the tool's resume/continue mode with `cliResumeRef` and the continuation prompt.
+2. **Fresh route** — if the native route cannot be scheduled, the control plane discards the native ref/host pin and executes the normal target/fallback chain. This is a fresh CLI run, but retains `resumedFromSessionId`.
 
 #### Must / must not
 
-| Must                                                                     | Must not                                                                                                               |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Use the assigned `worktreeId` only when native resume is selected        | Run full “fresh session” setup that discards prior work (`reset --hard` to main, delete branch, etc.) on native resume |
-| Stream logs and honor timeout/cancel as usual                            | Silently fall back to another worktree                                                                                 |
-| Preserve git working tree state from the prior session for native resume | Assume every CLI has native resume — a fresh fallback route is valid when native resume is unschedulable               |
+| Must                                                                                             | Must not                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| Use the scheduler-assigned eligible worktree and re-check out the stored `ref` or default branch | Pin native resume to the source worktree or depend on its dirty/uncommitted state                        |
+| Skip every configured setup script on native resume                                              | Run setup scripts that may reset, install, or otherwise mutate the re-established checkout               |
+| Stream logs and honor timeout/cancel as usual                                                    | Assume every CLI has native resume — a fresh fallback route is valid when native resume is unschedulable |
 
 #### Capturing `cliResumeRef`
 
