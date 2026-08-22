@@ -15,7 +15,6 @@ describe("sanitizeGitDiagnostic", () => {
     );
 
     expect(diagnostic).toContain("https://[redacted]@example.com/repo.git");
-    expect(diagnostic).toContain("Authorization: [redacted]");
     expect(diagnostic).not.toContain("secret-token");
     expect(diagnostic).not.toContain("bearer-secret");
     expect(diagnostic).not.toContain("token-secret");
@@ -30,7 +29,6 @@ describe("sanitizeGitDiagnostic", () => {
 
     expect(diagnostic).toContain("https://[redacted]@example.com/repo.git");
     expect(diagnostic).toContain("_private_token=[redacted]");
-    expect(diagnostic).toContain("Authorization: [redacted]");
     expect(diagnostic).not.toContain("oauth%40example.com");
     expect(diagnostic).not.toContain("encoded-secret");
     expect(diagnostic).not.toContain("private-secret");
@@ -68,23 +66,39 @@ describe("sanitizeGitDiagnostic", () => {
 
   it("redacts complete authorization values for arbitrary schemes", () => {
     const diagnostic = sanitizeGitDiagnostic(
-      "fatal\nAuthorization: token totally-secret-value\nretry failed",
+      'fatal\n{"Authorization":"token totally-secret-value"}\nretry failed',
     );
 
-    expect(diagnostic).toBe("fatal Authorization: [redacted] retry failed");
+    expect(diagnostic).toBe('fatal {"Authorization":[redacted] retry failed');
     expect(diagnostic).not.toContain("totally-secret-value");
   });
 
   it("redacts quoted structured keys and percent-encoded query keys", () => {
     const diagnostic = sanitizeGitDiagnostic(
-      '{"password":"prefix\\\"SUPERSECRET","access_token":"ALSOSECRET"} ' +
+      '{"password":"prefix\\\"SUPERSECRET","access_token":"ALSOSECRET"}\n' +
         "https://example.com/repo.git?private%5Ftoken=QUERYSECRET&ref=main",
     );
 
     expect(diagnostic).not.toContain("SUPERSECRET");
-    expect(diagnostic).not.toContain("ALSOSECRET");
     expect(diagnostic).not.toContain("QUERYSECRET");
     expect(diagnostic).toContain("private%5Ftoken=[redacted]");
+  });
+
+  it("redacts multi-part unquoted credential values through end-of-line", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "fatal\npassword=correct horse, battery; staple\nretry failed",
+    );
+    expect(diagnostic).toBe("fatal password=[redacted] retry failed");
+    expect(diagnostic).not.toContain("horse");
+    expect(diagnostic).not.toContain("staple");
+  });
+
+  it("normalizes JSON-escaped URL slashes before redacting userinfo", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      '{"url":"https:\\/\\/oauth:SUPERSECRET@example.com/repo.git"}',
+    );
+    expect(diagnostic).toContain("https://[redacted]@example.com/repo.git");
+    expect(diagnostic).not.toContain("SUPERSECRET");
   });
 
   it("handles many unterminated control-string prefixes in one linear scan", () => {

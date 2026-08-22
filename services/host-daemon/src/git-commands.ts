@@ -118,15 +118,14 @@ function removeTerminalControls(value: string): string {
  * diagnostics). Unknown output is retained only as a short, single-line excerpt.
  */
 export function sanitizeGitDiagnostic(stderr: string): string {
-  const withoutTerminalControls = removeTerminalControls(stderr);
+  const withoutTerminalControls = removeTerminalControls(stderr).replaceAll("\\/", "/");
   const withoutCredentials = redactQueryCredentials(withoutTerminalControls)
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
-    .replace(/\b(authorization)(\s*[:=]\s*)[^\r\n]+/gi, "$1$2[redacted]")
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
-      /(^|[^A-Za-z0-9])(["']?)(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,
+      /(^|[^A-Za-z0-9])(["']?)(authorization|token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)[^\r\n]+/gi,
       "$1$2$3$2$4[redacted]",
     )
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
       /\b(?:gh[pousr]_[A-Za-z0-9_-]+|github_pat_[A-Za-z0-9_-]+|glpat-[A-Za-z0-9_-]+|xox[baprs]-[A-Za-z0-9-]+|npm_[A-Za-z0-9]+|sk-[A-Za-z0-9_-]+)/g,
       "[redacted]",
