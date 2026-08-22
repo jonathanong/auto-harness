@@ -85,7 +85,7 @@ function removeTerminalControls(value: string): string {
       const next = value.charCodeAt(index + 1);
       if (next === 0x5b) index = skipCsi(value, index + 2);
       else if (next === 0x5d) index = skipControlString(value, index + 2, true);
-      else if (next === 0x50 || next === 0x5e || next === 0x5f) {
+      else if (next === 0x50 || next === 0x58 || next === 0x5e || next === 0x5f) {
         index = skipControlString(value, index + 2, false);
       } else index = skipEscapeSequence(value, index + 1);
       continue;
@@ -94,7 +94,7 @@ function removeTerminalControls(value: string): string {
       index = skipCsi(value, index + 1);
       continue;
     }
-    if (code === 0x9d || code === 0x90 || code === 0x9e || code === 0x9f) {
+    if (code === 0x9d || code === 0x90 || code === 0x98 || code === 0x9e || code === 0x9f) {
       index = skipControlString(value, index + 1, code === 0x9d);
       continue;
     }
@@ -124,7 +124,7 @@ export function sanitizeGitDiagnostic(stderr: string): string {
     .replace(/\b(authorization)(\s*[:=]\s*)[^\r\n]+/gi, "$1$2[redacted]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
-      /(^|[^A-Za-z0-9])(["']?)(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      /(^|[^A-Za-z0-9])(["']?)(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;]+)/gi,
       "$1$2$3$2$4[redacted]",
     )
     .replace(

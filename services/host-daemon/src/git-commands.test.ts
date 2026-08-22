@@ -77,7 +77,7 @@ describe("sanitizeGitDiagnostic", () => {
 
   it("redacts quoted structured keys and percent-encoded query keys", () => {
     const diagnostic = sanitizeGitDiagnostic(
-      '{"password":"SUPERSECRET","access_token":"ALSOSECRET"} ' +
+      '{"password":"prefix\\\"SUPERSECRET","access_token":"ALSOSECRET"} ' +
         "https://example.com/repo.git?private%5Ftoken=QUERYSECRET&ref=main",
     );
 
@@ -95,6 +95,15 @@ describe("sanitizeGitDiagnostic", () => {
     const diagnostic = sanitizeGitDiagnostic("fatal: gh\u001b(Bp_SUPERSECRET");
     expect(diagnostic).toBe("fatal: [redacted]");
     expect(diagnostic).not.toContain("SUPERSECRET");
+  });
+
+  it("removes seven-bit and C1 SOS strings before token matching", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      "fatal: gh\u001bXhidden\u001b\\p_FIRST gh\u0098hidden\u009cp_SECOND",
+    );
+    expect(diagnostic).toBe("fatal: [redacted] [redacted]");
+    expect(diagnostic).not.toContain("FIRST");
+    expect(diagnostic).not.toContain("SECOND");
   });
 
   it("redacts credentials containing terminal styling through runGit and gitFailure", async () => {
