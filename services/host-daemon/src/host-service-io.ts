@@ -51,7 +51,11 @@ function boundedOutput(value: string): string {
   return output;
 }
 
-export type HostServiceRun = (command: string, args: string[]) => HostServiceRunResult;
+export type HostServiceRun = (
+  command: string,
+  args: string[],
+  opts?: { timeoutMs?: number },
+) => HostServiceRunResult;
 
 export type HostServiceOpts = {
   env: NodeJS.ProcessEnv;
@@ -66,6 +70,7 @@ export type HostServiceOpts = {
   appData?: string;
   tmpDir?: string;
   uid?: number;
+  timeoutMs?: number;
 };
 
 export type HostServiceContext = {
@@ -84,6 +89,7 @@ export type HostServiceContext = {
   envExamplePath: string;
   unitTemplatePath: string;
   launcherPath: string;
+  timeoutMs?: number;
 };
 
 export const nodeHostServiceFs: HostServiceFs = {
@@ -127,8 +133,16 @@ export function resolveUid(
   return optsUid ?? getuid?.() ?? 1;
 }
 
-export function defaultHostServiceRun(command: string, args: string[]): HostServiceRunResult {
-  const result = spawnSync(command, args, { encoding: "utf8", shell: false });
+export function defaultHostServiceRun(
+  command: string,
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): HostServiceRunResult {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    shell: false,
+    ...(opts.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {}),
+  });
   if (result.error) {
     return { status: 1, stdout: "", stderr: result.error.message };
   }
@@ -182,6 +196,7 @@ export function resolveHostService(opts: HostServiceOpts): HostServiceContext {
     appData: opts.appData ?? env.APPDATA ?? join(home, "AppData", "Roaming"),
     tmpDir: opts.tmpDir ?? tmpdir(),
     uid: resolveUid(opts.uid, process.getuid),
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     envExamplePath: join(checkoutRoot, "services/host-daemon/systemd/host-daemon.env.example"),
     unitTemplatePath: join(
       checkoutRoot,

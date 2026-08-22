@@ -226,13 +226,16 @@ describe("status linux", () => {
 
   it("distinguishes missing and command failure with a fixed bounded command", () => {
     const calls: string[][] = [];
+    let timeoutMs: number | undefined;
     const missing = statusLinux(
       resolveHostService(
         baseOpts({
           platform: "linux",
           fs: seededFs(),
-          run: (_command, args) => {
+          timeoutMs: 17,
+          run: (_command, args, opts) => {
             calls.push(args);
+            timeoutMs = opts?.timeoutMs;
             return { status: 0, stdout: "LoadState=not-found\n", stderr: "" };
           },
         }),
@@ -245,5 +248,6 @@ describe("status linux", () => {
       "--property=LoadState,ActiveState,SubState,Result",
       "auto-harness-host-daemon.service",
     ]);
+    expect(timeoutMs).toBe(17);
   });
 });

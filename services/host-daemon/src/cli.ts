@@ -73,8 +73,49 @@ export type RunSessionDeps = {
   installService: (opts: HostServiceOpts) => number;
   uninstallService: (opts: HostServiceOpts) => number;
   statusService: (opts: HostServiceOpts) => HostServiceStatus;
-  fetchHostStatus: (identity: HostIdentity) => Promise<ControlPlaneHostStatus>;
+  fetchHostStatus: (
+    identity: HostIdentity,
+    signal?: AbortSignal,
+  ) => Promise<ControlPlaneHostStatus>;
 };
+
+const STATUS_TIMEOUT_MS = 10_000;
+
+type DeadlineResult<T> =
+  | { state: "fulfilled"; value: T }
+  | { state: "rejected" }
+  | { state: "timed_out" };
+
+async function settleWithin<T>(
+  operation: () => T | PromiseLike<T>,
+  timeoutMs: number,
+): Promise<DeadlineResult<T>> {
+  if (timeoutMs <= 0) return { state: "timed_out" };
+  return new Promise((finish) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      finish({ state: "timed_out" });
+    }, timeoutMs);
+    Promise.resolve()
+      .then(operation)
+      .then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          finish({ state: "fulfilled", value });
+        },
+        () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          finish({ state: "rejected" });
+        },
+      );
+  });
+}
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
   return {
@@ -91,7 +132,7 @@ export function createDefaultRunSessionDeps(): RunSessionDeps {
     installService: installHostService,
     uninstallService: uninstallHostService,
     statusService: getHostServiceStatus,
-    fetchHostStatus: fetchControlPlaneHostStatus,
+    fetchHostStatus: (identity, signal) => fetchControlPlaneHostStatus(identity, fetch, signal),
   };
 }
 
@@ -174,10 +215,16 @@ export async function runCli(
 
   if (command === "status") {
     const configOnly = args.includes("--config-only");
+    const deadline = Date.now() + STATUS_TIMEOUT_MS;
+    const remaining = (): number => deadline - Date.now();
     let config: DaemonConfig | undefined;
-    try {
-      config = await deps.loadConfig({ env: resolvedEnv });
-    } catch {
+    const configResult = await settleWithin(
+      () => deps.loadConfig({ env: resolvedEnv }),
+      remaining(),
+    );
+    if (configResult.state === "fulfilled") {
+      config = configResult.value;
+    } else {
       if (configOnly) {
         deps.error("Cannot load daemon configuration");
         return 1;
@@ -199,14 +246,24 @@ export async function runCli(
         env: resolvedEnv,
         log: () => undefined,
         error: () => undefined,
+        timeoutMs: Math.max(1, remaining()),
       });
     } catch {
       service = { state: "unknown", reason: "service status could not be determined" };
     }
+    if (remaining() <= 0) {
+      service = { state: "unknown", reason: "status check timed out" };
+    }
     let host: ControlPlaneHostStatus;
-    try {
-      host = await deps.fetchHostStatus(identity);
-    } catch {
+    const controller = new AbortController();
+    const hostResult = await settleWithin(
+      () => deps.fetchHostStatus(identity, controller.signal),
+      remaining(),
+    );
+    if (hostResult.state === "fulfilled") {
+      host = hostResult.value;
+    } else {
+      if (hostResult.state === "timed_out") controller.abort();
       host = {
         reachable: false,
         hostId: identity.hostId,

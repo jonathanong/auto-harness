@@ -488,6 +488,10 @@ export class DynamoPlaneStorageBase {
     return locks.getHostLock(this.ctx, hostId);
   }
 
+  getHostLockState(hostId: string): Promise<locks.HostLockState> {
+    return locks.getHostLockState(this.ctx, hostId);
+  }
+
   putConnection(conn: ConnectionRecord): Promise<void> {
     return locks.putConnection(this.ctx, conn);
   }

@@ -290,12 +290,27 @@ export async function releaseHostLock(
   }
 }
 
-export async function getHostLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
+export type HostLockState = {
+  connectionId: string | null;
+  draining: boolean;
+};
+
+export async function getHostLockState(
+  ctx: PlaneStorageCtx,
+  hostId: string,
+): Promise<HostLockState> {
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.hostLocks, Key: { hostId } }),
   );
-  if (res.Item?.disconnected === true) return null;
-  return (res.Item?.connectionId as string | undefined) ?? null;
+  if (res.Item?.disconnected === true) return { connectionId: null, draining: false };
+  return {
+    connectionId: (res.Item?.connectionId as string | undefined) ?? null,
+    draining: res.Item?.draining === true,
+  };
+}
+
+export async function getHostLock(ctx: PlaneStorageCtx, hostId: string): Promise<string | null> {
+  return (await getHostLockState(ctx, hostId)).connectionId;
 }
 
 export async function putConnection(ctx: PlaneStorageCtx, conn: ConnectionRecord): Promise<void> {

@@ -41,6 +41,7 @@ describe("fetchControlPlaneHostStatus", () => {
       accept: "application/json",
       authorization: "Bearer secret-token",
     });
+    expect(request?.init?.signal).toBeUndefined();
     expect(result).toMatchObject({
       reachable: true,
       hostId: "host-1",
@@ -51,6 +52,20 @@ describe("fetchControlPlaneHostStatus", () => {
       gitVersion: "2.45.0",
       gitReady: true,
     });
+  });
+
+  it("forwards an abort signal to the bounded control-plane request", async () => {
+    const controller = new AbortController();
+    let signal: AbortSignal | undefined;
+    await fetchControlPlaneHostStatus(
+      identity,
+      async (_url, init) => {
+        signal = init?.signal;
+        return new Response(JSON.stringify({ items: [] }), { status: 200 });
+      },
+      controller.signal,
+    );
+    expect(signal).toBe(controller.signal);
   });
 
   it("fails closed for absent, offline, and legacy readiness", async () => {

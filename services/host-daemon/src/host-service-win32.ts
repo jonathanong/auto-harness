@@ -30,7 +30,11 @@ function taskAbsent(result: HostServiceRunResult): boolean {
 }
 
 export function statusWin32(ctx: HostServiceContext): HostServiceStatus {
-  const result = ctx.run("schtasks", ["/Query", "/TN", WINDOWS_TASK_NAME, "/FO", "LIST", "/V"]);
+  const result = ctx.run(
+    "schtasks",
+    ["/Query", "/TN", WINDOWS_TASK_NAME, "/FO", "LIST", "/V"],
+    ctx.timeoutMs === undefined ? {} : { timeoutMs: ctx.timeoutMs },
+  );
   if (result.status !== 0) {
     return taskAbsent(result)
       ? { state: "missing", reason: "scheduled task is not installed" }

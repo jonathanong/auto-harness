@@ -48,13 +48,14 @@ function offlineStatus(identity: HostIdentity, reason: string): ControlPlaneHost
 export async function fetchControlPlaneHostStatus(
   identity: HostIdentity,
   fetchFn: typeof fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<ControlPlaneHostStatus> {
   const url = `${httpBaseFromApiUrl(identity.apiUrl)}/api/v1/hosts`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (identity.apiKey) headers.authorization = `Bearer ${identity.apiKey}`;
   let response: Response;
   try {
-    response = await fetchFn(url, { headers });
+    response = await fetchFn(url, { headers, ...(signal ? { signal } : {}) });
   } catch {
     return offlineStatus(identity, "control plane is unreachable");
   }

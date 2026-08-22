@@ -31,6 +31,14 @@ describe("resolveHostService / defaults", () => {
     expect(ctx.home).toBe("/h");
     expect(ctx.appData).toBe("/ad");
     expect(ctx.launcherPath).toContain("auto-harness-host-daemon.mjs");
+    expect(
+      resolveHostService({
+        env: {},
+        log: () => undefined,
+        error: () => undefined,
+        timeoutMs: 17,
+      }).timeoutMs,
+    ).toBe(17);
   });
 
   it("covers spawn/home/uid fallbacks", () => {

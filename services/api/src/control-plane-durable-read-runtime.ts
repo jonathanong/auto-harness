@@ -112,6 +112,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
     await Promise.all([refreshTargetCatalogDurable(state), listHostInventoriesDurable(state)]);
     return;
   }
+  const previousDraining = new Set(state.drainingHosts);
   const [connections] = await Promise.all([
     storage.listConnections(),
     refreshTargetCatalogDurable(state),
@@ -119,9 +120,28 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
   ]);
   state.connections.clear();
   state.hostConnection.clear();
+  state.drainingHosts.clear();
   for (const connection of connections) {
     if (connection.registered === false) continue;
     state.connections.set(connection.connectionId, { ...connection });
     state.hostConnection.set(connection.hostId, connection.connectionId);
+  }
+  if (typeof storage.getHostLockState === "function") {
+    const lockStates = await Promise.all(
+      connections.map(async (connection) => ({
+        hostId: connection.hostId,
+        connectionId: connection.connectionId,
+        lock: await storage.getHostLockState(connection.hostId),
+      })),
+    );
+    for (const { hostId, connectionId, lock } of lockStates) {
+      if (lock.connectionId === connectionId && lock.draining) state.drainingHosts.add(hostId);
+    }
+  } else {
+    // Keep legacy storage doubles compatible; production Dynamo storage always exposes
+    // getHostLockState, which is the authoritative drain read above.
+    for (const connection of connections) {
+      if (previousDraining.has(connection.hostId)) state.drainingHosts.add(connection.hostId);
+    }
   }
 }

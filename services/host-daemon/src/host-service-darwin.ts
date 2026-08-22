@@ -26,7 +26,11 @@ function launchDomain(uid: number): string {
 }
 
 export function statusDarwin(ctx: HostServiceContext): HostServiceStatus {
-  const result = ctx.run("launchctl", ["print", `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`]);
+  const result = ctx.run(
+    "launchctl",
+    ["print", `${launchDomain(ctx.uid)}/${DARWIN_LABEL}`],
+    ctx.timeoutMs === undefined ? {} : { timeoutMs: ctx.timeoutMs },
+  );
   if (result.status !== 0) {
     const output = `${result.stderr} ${result.stdout}`.toLowerCase();
     return /could not find|not found|no such service/.test(output)

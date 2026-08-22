@@ -31,12 +31,11 @@ function stageRoot(ctx: HostServiceContext): string {
 }
 
 export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
-  const result = ctx.run("systemctl", [
-    "show",
-    "--no-pager",
-    "--property=LoadState,ActiveState,SubState,Result",
-    LINUX_SERVICE_NAME,
-  ]);
+  const result = ctx.run(
+    "systemctl",
+    ["show", "--no-pager", "--property=LoadState,ActiveState,SubState,Result", LINUX_SERVICE_NAME],
+    ctx.timeoutMs === undefined ? {} : { timeoutMs: ctx.timeoutMs },
+  );
   const values = new Map<string, string>();
   for (const line of result.stdout.split(/\r?\n/)) {
     const separator = line.indexOf("=");

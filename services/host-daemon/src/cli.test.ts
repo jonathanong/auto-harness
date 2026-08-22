@@ -129,6 +129,19 @@ describe("runCli", () => {
     expect(a.errors.join("\n")).not.toContain("secret-token");
   });
 
+  it("fails closed when config loading exceeds the status deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = deps({ loadConfig: () => new Promise<DaemonConfig>(() => undefined) });
+      const result = runCli(["node", "x", "status"], {}, a);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toBe(1);
+      expect(JSON.parse(a.logs[0] ?? "").service.state).toBe("unknown");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("fails safely when config loading fails", async () => {
     const a = deps({
       loadConfig: async () => {
