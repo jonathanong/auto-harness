@@ -28,7 +28,8 @@ function optionalString(
   const value = obj[key];
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
-    throw new TypeError(`${ctx ? `${ctx}.` : ""}${key} must be a string`);
+    const prefix = ctx ? `${ctx}.` : "";
+    throw new TypeError(`${prefix}${key} must be a string`);
   }
   return value;
 }
@@ -125,7 +126,7 @@ export function parseHostInventory(value: unknown): HostInventory {
 
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
-    repositories: value.repositories.map(parseRepository),
+    repositories: value.repositories.map((repository, index) => parseRepository(repository, index)),
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),
   };
