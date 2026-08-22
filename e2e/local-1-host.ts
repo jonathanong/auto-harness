@@ -60,7 +60,13 @@ type HostRepo = {
   id: string;
   path: string;
   defaultBranch: string;
-  worktrees: Array<{ id: string; name: string; path: string; labels: string[] }>;
+  worktrees: Array<{
+    id: string;
+    name: string;
+    path: string;
+    labels: string[];
+    setupScript?: string;
+  }>;
 };
 
 async function getConfig(request: APIRequestContext) {

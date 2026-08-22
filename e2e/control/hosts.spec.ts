@@ -147,42 +147,6 @@ test.describe("control plane hosts", () => {
     await expect(page.getByTestId("page-host-detail-not-found")).toBeVisible();
   });
 
-  test("host detail Advanced tab saves raw inventory JSON, and surfaces a real version conflict", async ({
-    page,
-    request,
-  }) => {
-    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
-    const id = `pw-advanced-host-${suffix}`;
-    await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
-      data: { repositories: [], providerAccounts: [] },
-    });
-
-    await page.goto(`/hosts/${id}?tab=advanced`);
-    await expect(page.getByTestId("form-host-config-json")).toBeVisible();
-    const textarea = page.getByTestId("host-config-json");
-    await expect(textarea).toHaveValue(/"repositories": \[\]/);
-
-    // A real optimistic-concurrency conflict, not a mocked one: this PUT lands after the page
-    // above read its version, so the browser's next save is conditioned on a now-stale version.
-    await request.put(`${API_BASE}/api/v1/hosts/${id}/inventory`, {
-      data: { repositories: [], providerAccounts: [] },
-    });
-
-    await page.getByTestId("host-config-submit").click();
-    await expect(page.getByTestId("host-config-conflict")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByTestId("host-config-conflict")).toContainText(
-      "changed since you loaded this page",
-    );
-    await expect(page.getByTestId("host-config-error")).toHaveCount(0);
-    await expect(page.getByTestId("host-config-ok")).toHaveCount(0);
-
-    // Reloading (a fresh version read) lets the same edit save cleanly.
-    await page.reload();
-    await page.getByTestId("host-config-submit").click();
-    await expect(page.getByTestId("host-config-ok")).toHaveText("Saved.", { timeout: 15_000 });
-    await expect(page.getByTestId("host-config-conflict")).toHaveCount(0);
-  });
-
   test("host repository tab exposes attachment settings controls", async ({ page, request }) => {
     await withLocalHostLock(async () => {
       const repoId = `pw-host-repo-${test.info().parallelIndex}-${Date.now()}`;

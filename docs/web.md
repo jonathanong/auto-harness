@@ -394,7 +394,8 @@ The Provider accounts tab shows, for each host the repository is attached to, a 
 
 Fleet-wide worktrees view, grouped by repository. Add worktree is available here and on a
 repository's Worktrees tab (pick a host when the catalog repo is attached to more than one).
-New worktrees start with no scheduler labels; edit a worktree to set or clear labels. A worktree
+The add and edit forms expose the optional worktree setup script as well as scheduler labels. New
+worktrees start with no scheduler labels; edit a worktree to set or clear labels. A worktree
 with no labels accepts only sessions that also have no required labels; labeled sessions need
 every required label on the worktree. Each
 worktree's detail page has the same tab set as Repository Detail (Sessions, Provider accounts,
@@ -425,7 +426,7 @@ worktree, and active session details.
 
 Tabs: **Overview** (status, repository/worktree counts, connection time, and daemon restart
 observability) · **Repositories & Worktrees** (attach/detach, add worktrees) · **Provider accounts**
-· **Advanced** (raw inventory JSON editor).
+· **Advanced** (structured host setup plus raw inventory JSON editor).
 
 The Overview tab's Daemon block shows the detected restart count, daemon start time, and last-restart
 time (all relative, full timestamp on hover). A daemon process keeps one opaque instance id across
@@ -448,13 +449,14 @@ directory. The daemon runs `git worktree add` when the host is online.
 
 The Provider accounts tab (replaces the old "Command profiles" tab) lists every Provider Account attached to this host with its effective command (provider default unless overridden here) and a per-account override picker, plus a form to attach any not-yet-attached catalog account. This is the **only** place a Provider Account becomes eligible for scheduling on a host — the repository/worktree Provider accounts tabs above can only narrow or override an already-attached account, never attach a new one. An account's usage-limit cooldown is global across hosts; clearing it on the Provider page makes it eligible everywhere immediately.
 
-The Advanced tab's raw JSON editor (`HostConfigForm`, shared with the host pane's own Settings page)
-configures the optional root `setupScript` and replaces the whole `repositories`/`providerAccounts`
-document on save, conditioned on the inventory's version at the time the tab was loaded — if
-another edit landed in the meantime, the save is rejected with a distinct "this host's inventory
-changed since you loaded this page" message instead of either an opaque error or a silent
-overwrite. Prefer the per-repository/per-account forms elsewhere on this page; this editor exists
-for host-wide setup and bulk edits (e.g. seeding many worktrees at once).
+The Advanced tab has a structured form for the optional root `setupScript`. Its raw JSON editor
+(`HostConfigForm`, shared with the host pane's own Settings page) is reserved for bulk edits such as
+seeding many worktrees. It uses CodeMirror JSON highlighting and live syntax plus inventory-schema
+validation; Save stays disabled until the document is valid. Saving replaces the whole
+`repositories`/`providerAccounts` document, conditioned on the inventory version loaded with the
+editor. If another edit landed in the meantime, the save is rejected with a distinct "this host's
+inventory changed since you loaded this page" message instead of an opaque error or silent
+overwrite. Prefer the structured host/repository/worktree/account forms whenever possible.
 
 ---
 

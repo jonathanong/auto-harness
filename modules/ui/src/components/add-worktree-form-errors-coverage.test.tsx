@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostInventory } from "@auto-harness/shared";
 
 import { AddWorktreeForm } from "./add-worktree-form.tsx";
-import { input, mount, repo, reset, submit } from "./action-form-test-helpers.ts";
+import { input, mount, repo, reset, setValue, submit } from "./action-form-test-helpers.ts";
 
 afterEach(reset);
 
@@ -46,15 +46,24 @@ describe("AddWorktreeForm errors", () => {
   it("reports a rejected write, an unknown repository, and a thrown error", async () => {
     // Invoke the transform mutate() receives, rather than only asserting the component reacts
     // to a stubbed ok/error result — this actually exercises addHostWorktree.
-    const mutate = vi.fn((_hostId: string, transform: (current: HostInventory) => HostInventory) =>
-      Promise.resolve(transform(withRepo)).then(() => ({ ok: false as const, error: "denied" })),
+    let transformed: HostInventory | undefined;
+    const mutate = vi.fn(
+      (_hostId: string, transform: (current: HostInventory) => HostInventory) => {
+        transformed = transform(withRepo);
+        return Promise.resolve({ ok: false as const, error: "denied" });
+      },
     );
     const rejected = mount(
       <AddWorktreeForm hostId="host-1" repo={repo} repoName="Repo" mutate={mutate} />,
     );
     const rejectedForm = open(rejected);
     fill();
+    setValue(
+      document.querySelector('[data-pw="add-worktree-setup-script-repo-1"]') as HTMLTextAreaElement,
+      "pnpm install",
+    );
     await submit(rejectedForm);
+    expect(transformed?.repositories[0]?.worktrees[0]?.setupScript).toBe("pnpm install");
     expect(document.body.textContent).toContain("denied");
     rejected.unmount();
 

@@ -1,14 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-import { apiBase, apiErrorMessage } from "@auto-harness/shared";
+import { apiBase, apiErrorMessage, parseHostInventory } from "@auto-harness/shared";
 import { Alert } from "./alert.tsx";
 import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
+import { JsonEditor } from "./json-editor.tsx";
 import type { RequestFunction } from "./request-types.ts";
-import { Textarea } from "./textarea.tsx";
 import { dismissToast, showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
@@ -36,6 +36,14 @@ export function HostConfigForm({
   const [pending, start] = useTransition();
   const [conflict, setConflict] = useState(false);
   const [ok, setOk] = useState(false);
+  const [raw, setRaw] = useState(initialJson);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRaw(initialJson);
+    setConflict(false);
+    setOk(false);
+  }, [initialJson, initialVersion]);
 
   return (
     <form
@@ -46,13 +54,10 @@ export function HostConfigForm({
         dismissToast();
         setConflict(false);
         setOk(false);
-        const raw = String(new FormData(e.currentTarget).get("configJson") ?? "");
         let body: Record<string, unknown>;
         try {
           const parsed = JSON.parse(raw) as unknown;
-          if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-            throw new Error("must be a JSON object");
-          }
+          parseHostInventory(parsed);
           body = parsed as Record<string, unknown>;
         } catch {
           showToast("Invalid JSON", { variant: "destructive", pw: "host-config-error" });
@@ -85,19 +90,25 @@ export function HostConfigForm({
     >
       <div className="space-y-1">
         <Label
-          htmlFor="configJson"
+          id="configJsonLabel"
           tip="Full host inventory JSON (host setup, repositories, worktrees). Prefer the form UI when possible."
         >
           Host Config JSON
         </Label>
-        <Textarea
-          id="configJson"
-          name="configJson"
-          rows={18}
-          required
-          defaultValue={initialJson}
-          className="font-mono text-xs"
-          data-pw="host-config-json"
+        <JsonEditor
+          value={raw}
+          onChange={setRaw}
+          validate={(value) => {
+            try {
+              parseHostInventory(value);
+              return null;
+            } catch (error) {
+              return error instanceof Error ? error.message : String(error);
+            }
+          }}
+          onValidationChange={setValidationError}
+          labelledBy="configJsonLabel"
+          pw="host-config-json"
         />
       </div>
       {conflict ? (
@@ -112,7 +123,11 @@ export function HostConfigForm({
         </p>
       ) : null}
       <WithTooltip tip="Replace the entire host inventory for this hostId">
-        <Button type="submit" disabled={pending} data-pw="host-config-submit">
+        <Button
+          type="submit"
+          disabled={pending || validationError !== null}
+          data-pw="host-config-submit"
+        >
           {pending ? "Saving…" : "Save host config"}
         </Button>
       </WithTooltip>

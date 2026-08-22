@@ -111,6 +111,7 @@ export {
   type HostWorktree,
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
+export { parseHostInventory } from "./host-inventory-parse.ts";
 
 export {
   isHostRepositoryRegistration,

@@ -23,36 +23,41 @@ function createRequestFake(...replies: Reply[]) {
 afterEach(reset);
 
 describe("HostConfigForm", () => {
+  const validJson = JSON.stringify({ repositories: [], providerAccounts: [] });
+
   it("validates JSON before crossing the fetch boundary", () => {
     const { request, requests } = createRequestFake();
     const view = mount(
-      <HostConfigForm hostId="host/1" initialJson="{}" initialVersion={3} request={request} />,
+      <HostConfigForm
+        hostId="host/1"
+        initialJson="not-json"
+        initialVersion={3}
+        request={request}
+      />,
     );
     const form = view.container.querySelector("form")!;
-    const input = view.container.querySelector(
-      '[data-pw="host-config-json"]',
-    ) as HTMLTextAreaElement;
-    input.value = "not-json";
     act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     expect(view.container.querySelector('[data-pw="host-config-error"]')?.textContent).toBe(
       "Invalid JSON",
     );
     expect(requests).toHaveLength(0);
 
-    // Valid JSON that isn't an object (array, string, number, null) can't be merged with the
-    // outgoing version field — rejected the same way as unparseable JSON.
-    input.value = "[1, 2, 3]";
-    act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    expect(view.container.querySelector('[data-pw="host-config-error"]')?.textContent).toBe(
-      "Invalid JSON",
-    );
-    expect(requests).toHaveLength(0);
-    input.removeAttribute("name");
-    act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-    expect(view.container.querySelector('[data-pw="host-config-error"]')?.textContent).toBe(
-      "Invalid JSON",
-    );
+    expect(
+      view.container.querySelector('[data-pw="host-config-json-validation"]')?.textContent,
+    ).toContain("Unexpected");
     view.unmount();
+
+    const schemaView = mount(
+      <HostConfigForm hostId="host/1" initialJson="[]" initialVersion={3} request={request} />,
+    );
+    expect(
+      (schemaView.container.querySelector('[data-pw="host-config-submit"]') as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      schemaView.container.querySelector('[data-pw="host-config-json-validation"]')?.textContent,
+    ).toContain("body must be an object");
+    schemaView.unmount();
   });
 
   it("sends the version it was read at, and reports pending/server-error/saved states", async () => {
@@ -60,16 +65,17 @@ describe("HostConfigForm", () => {
     const pending = new Promise<Response>((done) => (resolve = done));
     const { request, requests, enqueue } = createRequestFake(pending);
     const view = mount(
-      <HostConfigForm hostId="host/1" initialJson="{}" initialVersion={3} request={request} />,
+      <HostConfigForm
+        hostId="host/1"
+        initialJson={validJson}
+        initialVersion={3}
+        request={request}
+      />,
     );
     const form = view.container.querySelector("form")!;
-    const input = view.container.querySelector(
-      '[data-pw="host-config-json"]',
-    ) as HTMLTextAreaElement;
     const submit = view.container.querySelector(
       '[data-pw="host-config-submit"]',
     ) as HTMLButtonElement;
-    input.value = JSON.stringify({ repositories: [] });
     act(() => submit.click());
     await act(async () => new Promise((done) => setTimeout(done, 0)));
     expect(requests).toEqual([
@@ -77,7 +83,7 @@ describe("HostConfigForm", () => {
         "/api/v1/hosts/host%2F1/inventory",
         expect.objectContaining({
           method: "PUT",
-          body: JSON.stringify({ repositories: [], version: 3 }),
+          body: JSON.stringify({ repositories: [], providerAccounts: [], version: 3 }),
         }),
       ],
     ]);
@@ -107,11 +113,14 @@ describe("HostConfigForm", () => {
   it("shows distinct conflict UI on a 409, instead of the generic error text", async () => {
     const { request, enqueue } = createRequestFake(new Response("conflict", { status: 409 }));
     const view = mount(
-      <HostConfigForm hostId="host/1" initialJson="{}" initialVersion={3} request={request} />,
+      <HostConfigForm
+        hostId="host/1"
+        initialJson={validJson}
+        initialVersion={3}
+        request={request}
+      />,
     );
     const form = view.container.querySelector("form")!;
-    (view.container.querySelector('[data-pw="host-config-json"]') as HTMLTextAreaElement).value =
-      JSON.stringify({ repositories: [] });
     act(() => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
     await act(async () => Promise.resolve());
     expect(view.container.querySelector('[data-pw="host-config-error"]')).toBeNull();
