@@ -75,6 +75,18 @@ describe("sanitizeGitDiagnostic", () => {
     expect(diagnostic).not.toContain("totally-secret-value");
   });
 
+  it("redacts quoted structured keys and percent-encoded query keys", () => {
+    const diagnostic = sanitizeGitDiagnostic(
+      '{"password":"SUPERSECRET","access_token":"ALSOSECRET"} ' +
+        "https://example.com/repo.git?private%5Ftoken=QUERYSECRET&ref=main",
+    );
+
+    expect(diagnostic).not.toContain("SUPERSECRET");
+    expect(diagnostic).not.toContain("ALSOSECRET");
+    expect(diagnostic).not.toContain("QUERYSECRET");
+    expect(diagnostic).toContain("private%5Ftoken=[redacted]");
+  });
+
   it("handles many unterminated control-string prefixes in one linear scan", () => {
     expect(sanitizeGitDiagnostic("\u001b]".repeat(32_000))).toBe("");
   });
@@ -139,6 +151,49 @@ describe("sanitizeGitDiagnostic", () => {
     const failure = gitFailure("git fetch failed", result.stderr);
     expect(failure.message).toBe("git fetch failed: [output chunk truncated]");
     expect(failure.message).not.toContain("SUPERSE");
+  });
+
+  it("drops executor-truncated continuations through the next real line break", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({ stream: "stderr", data: "safe line\nAuthorization: Bearer " });
+          options.onChunk({ stream: "stderr", data: "\n[output chunk truncated]\n" });
+          options.onChunk({ stream: "stderr", data: "dotted.secret.token\nstill safe" });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+
+    const failure = gitFailure("git fetch failed", result.stderr);
+    expect(failure.message).toContain("safe line");
+    expect(failure.message).toContain("still safe");
+    expect(failure.message).not.toContain("dotted.secret.token");
+  });
+
+  it("records multibyte capture truncation explicitly", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({
+            stream: "stderr",
+            data:
+              "safe line\n" +
+              "é".repeat(32_750) +
+              " https://oauth:SUPERSECRET@example.com/repo.git",
+          });
+          return { exitCode: 1, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+
+    const failure = gitFailure("git fetch failed", result.stderr);
+    expect(failure.message).toBe("git fetch failed: safe line");
+    expect(failure.message).not.toContain("SUPERSECRET");
   });
 
   it("returns an empty diagnostic when Git emitted no stderr", () => {

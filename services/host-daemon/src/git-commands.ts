@@ -20,9 +20,31 @@ function discardTrailingLine(value: string): string {
   return lastLineBreak < 0 ? "" : value.slice(0, lastLineBreak + 1);
 }
 
-function completeCapturedLines(value: string): string {
-  if (Buffer.byteLength(value, "utf8") <= MAX_CAPTURED_GIT_STDERR_BYTES) return value;
-  return discardTrailingLine(truncateUtf8(value, MAX_CAPTURED_GIT_STDERR_BYTES));
+function completeCapturedLines(value: string, truncated: boolean): string {
+  return truncated ? discardTrailingLine(value) : value;
+}
+
+const CREDENTIAL_QUERY_KEYS = new Set([
+  "token",
+  "access_token",
+  "private_token",
+  "password",
+  "passwd",
+  "secret",
+  "credential",
+  "api_key",
+]);
+
+function redactQueryCredentials(value: string): string {
+  return value.replace(/([?&])([^=\s&#]+)=([^&#\s]*)/g, (match, separator, encodedKey) => {
+    let key: string;
+    try {
+      key = decodeURIComponent(encodedKey).toLowerCase().replaceAll("-", "_");
+    } catch {
+      return match;
+    }
+    return CREDENTIAL_QUERY_KEYS.has(key) ? `${separator}${encodedKey}=[redacted]` : match;
+  });
 }
 
 function skipCsi(value: string, index: number): number {
@@ -87,13 +109,13 @@ function removeTerminalControls(value: string): string {
  */
 export function sanitizeGitDiagnostic(stderr: string): string {
   const withoutTerminalControls = removeTerminalControls(stderr);
-  const withoutCredentials = withoutTerminalControls
+  const withoutCredentials = redactQueryCredentials(withoutTerminalControls)
     .replace(/\b([a-z][a-z\d+.-]*:\/\/)[^\s/?#@]*@/gi, "$1[redacted]@")
     .replace(/\b(authorization)(\s*[:=]\s*)[^\r\n]+/gi, "$1$2[redacted]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [redacted]")
     .replace(
-      /(^|[^A-Za-z0-9])(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
-      "$1$2$3[redacted]",
+      /(^|[^A-Za-z0-9])(["']?)(token|access[_-]?token|private[_-]?token|password|passwd|secret|credential|api[_-]?key)\2(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      "$1$2$3$2$4[redacted]",
     )
     .replace(
       /\b(?:gh[pousr]_[A-Za-z0-9_-]+|github_pat_[A-Za-z0-9_-]+|glpat-[A-Za-z0-9_-]+|xox[baprs]-[A-Za-z0-9-]+|npm_[A-Za-z0-9]+|sk-[A-Za-z0-9_-]+)/g,
@@ -125,6 +147,8 @@ export async function runGit(
 ): Promise<GitResult> {
   let stdout = "";
   let stderr = "";
+  let stderrCaptureTruncated = false;
+  let discardStderrContinuation = false;
   const result = await runner.run({
     argv: ["git", ...args],
     cwd,
@@ -136,15 +160,27 @@ export async function runGit(
       } else {
         if (c.data.includes(OUTPUT_CHUNK_TRUNCATION_MARKER)) {
           stderr = discardTrailingLine(stderr);
+          discardStderrContinuation = true;
+          stderr = appendBounded(stderr, c.data, MAX_CAPTURED_GIT_STDERR_BYTES);
+          return;
         }
-        stderr = appendBounded(stderr, c.data, MAX_CAPTURED_GIT_STDERR_BYTES + 1);
+        let data = c.data;
+        if (discardStderrContinuation) {
+          const lineBreak = data.search(/[\r\n]/);
+          if (lineBreak < 0) return;
+          discardStderrContinuation = false;
+          data = data.slice(lineBreak + 1);
+        }
+        const remaining = MAX_CAPTURED_GIT_STDERR_BYTES - Buffer.byteLength(stderr, "utf8");
+        if (Buffer.byteLength(data, "utf8") > remaining) stderrCaptureTruncated = true;
+        stderr = appendBounded(stderr, data, MAX_CAPTURED_GIT_STDERR_BYTES);
       }
     },
   });
   return {
     exitCode: result.exitCode ?? 1,
     stdout,
-    stderr: sanitizeGitDiagnostic(completeCapturedLines(stderr)),
+    stderr: sanitizeGitDiagnostic(completeCapturedLines(stderr, stderrCaptureTruncated)),
   };
 }
 
