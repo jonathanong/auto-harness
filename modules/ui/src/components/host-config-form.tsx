@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { apiBase, apiErrorMessage, parseHostInventory } from "@auto-harness/shared";
 import { Alert } from "./alert.tsx";
@@ -38,11 +38,14 @@ export function HostConfigForm({
   const [ok, setOk] = useState(false);
   const [raw, setRaw] = useState(initialJson);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const savedRefreshVersionRef = useRef<number | null>(null);
 
   useEffect(() => {
     setRaw(initialJson);
     setConflict(false);
-    setOk(false);
+    const preserveSavedFeedback = savedRefreshVersionRef.current === initialVersion;
+    savedRefreshVersionRef.current = null;
+    if (!preserveSavedFeedback) setOk(false);
   }, [initialJson, initialVersion]);
 
   return (
@@ -83,6 +86,7 @@ export function HostConfigForm({
             });
             return;
           }
+          savedRefreshVersionRef.current = initialVersion + 1;
           setOk(true);
           router.refresh();
         });

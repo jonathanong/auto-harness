@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { act } from "react";
+import { act, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { mount, reset, router } from "./action-form-test-helpers.ts";
@@ -18,6 +18,27 @@ function createRequestFake(...replies: Reply[]) {
     return reply;
   };
   return { request, requests, enqueue: (...next: Reply[]) => queue.push(...next) };
+}
+
+function RefreshHarness({ request }: { request: ReturnType<typeof createRequestFake>["request"] }) {
+  const [version, setVersion] = useState(3);
+  return (
+    <>
+      <button
+        type="button"
+        data-pw="refresh-version"
+        onClick={() => setVersion((value) => value + 1)}
+      >
+        Refresh
+      </button>
+      <HostConfigForm
+        hostId="host/1"
+        initialJson={JSON.stringify({ repositories: [], providerAccounts: [] })}
+        initialVersion={version}
+        request={request}
+      />
+    </>
+  );
 }
 
 afterEach(reset);
@@ -134,6 +155,25 @@ describe("HostConfigForm", () => {
     await act(async () => Promise.resolve());
     expect(view.container.querySelector('[data-pw="host-config-conflict"]')).toBeNull();
     expect(view.container.querySelector('[data-pw="host-config-ok"]')?.textContent).toBe("Saved.");
+    view.unmount();
+  });
+
+  it("preserves Saved feedback through its own refresh, then clears it on a later refresh", async () => {
+    const { request } = createRequestFake(new Response(null, { status: 204 }));
+    const view = mount(<RefreshHarness request={request} />);
+    act(() =>
+      (view.container.querySelector('[data-pw="host-config-submit"]') as HTMLButtonElement).click(),
+    );
+    await act(async () => Promise.resolve());
+    expect(view.container.querySelector('[data-pw="host-config-ok"]')).not.toBeNull();
+
+    const refresh = view.container.querySelector(
+      '[data-pw="refresh-version"]',
+    ) as HTMLButtonElement;
+    act(() => refresh.click());
+    expect(view.container.querySelector('[data-pw="host-config-ok"]')).not.toBeNull();
+    act(() => refresh.click());
+    expect(view.container.querySelector('[data-pw="host-config-ok"]')).toBeNull();
     view.unmount();
   });
 });

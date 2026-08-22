@@ -24,7 +24,8 @@ async function readInventory(
     cache: "no-store",
   } as RequestInit);
   if (!res.ok) {
-    return { inventory: emptyHostInventory(), version: 0 };
+    if (res.status === 404) return { inventory: emptyHostInventory(), version: 0 };
+    throw new Error(await apiErrorMessage(res));
   }
   const cfg = (await res.json()) as Record<string, unknown>;
   const version = typeof cfg.version === "number" ? cfg.version : 0;
@@ -92,7 +93,13 @@ export async function mutateInventory(
     error: "host inventory changed while saving; try again",
   };
   for (let attempt = 0; attempt < MUTATE_ATTEMPTS; attempt += 1) {
-    const { inventory, version } = await readInventory(hostId);
+    let inventory: HostInventory;
+    let version: number;
+    try {
+      ({ inventory, version } = await readInventory(hostId));
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
     const result = await putInventory(hostId, mutate(inventory), version);
     if (result.ok) return result;
     if (!result.conflict) return result;
