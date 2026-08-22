@@ -33,6 +33,11 @@ API/UI: PUT /api/v1/hosts/:hostId/inventory — not a local config file.
 status reports local service state, this host's control-plane liveness and readiness, and
 configured inventory. It exits successfully only when the service is running and the exact
 host is online, non-draining, and explicitly Git-ready. Use status --config-only for the
-inventory-only output. Status output never includes API keys.
+inventory-only output. Deployed service environments are not discovered automatically; set
+HARNESS_ENV_FILE to the platform's persisted env file (for example,
+~/Library/Application Support/auto-harness/host-daemon.env on macOS). Nonempty identity variables
+in the invoking environment take precedence over file values, so clear stale HARNESS_HOST_ID,
+HARNESS_API_URL, HARNESS_API_HTTP, and HARNESS_API_KEY values first. Status output never includes
+API keys.
 `);
 }

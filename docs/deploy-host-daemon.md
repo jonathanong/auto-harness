@@ -64,12 +64,25 @@ pnpm local:daemon install-service --api-url 'https://new-control.example.com'
 
 The update path rewrites only `HARNESS_API_URL` and validates the resulting file before writing or
 restarting; it never prints or requires copying `HARNESS_API_KEY`. On Linux, run the update as root
-when the existing mode-0600 env file is root-owned. After installation, use `pnpm local:daemon status` to check the
-local service manager and the exact bound host in the control plane. The command succeeds
-only when the service is running, the host is online and non-draining, and the host reports
-explicit Git readiness; missing readiness data fails closed. Use `status --config-only` when you
-only need the configured inventory. Status output is bounded and never includes the
-persisted API key or raw service-manager diagnostics.
+when the existing mode-0600 env file is root-owned.
+
+After installation, point the interactive CLI at the persisted service environment when checking
+the deployed daemon. The CLI deliberately keeps its `local-1` / `http://127.0.0.1:7420` defaults
+unless `HARNESS_ENV_FILE` or the identity variables are supplied; a plain `pnpm local:daemon status`
+therefore checks the local-development identity, not the installed production identity. On macOS:
+
+```bash
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+  pnpm local:daemon status
+```
+
+The `env -u` options matter when the shell has stale local-development or other host credentials:
+explicit, nonempty environment variables take precedence over values loaded from the file.
+The command succeeds only when the LaunchAgent is running and the exact persisted host is online,
+non-draining, and explicitly Git-ready. Use `status --config-only` when you only need the configured
+inventory. Status output is bounded and never includes the persisted API key or raw service-manager
+diagnostics. Do not print the environment file: it contains the bound service-account key.
 
 | OS      | What it installs                                                                                                            |
 | ------- | --------------------------------------------------------------------------------------------------------------------------- |
@@ -243,6 +256,26 @@ Current path — an operator must **drain, deploy, then restart** ([host-daemon.
    ```
 
 5. Confirm re-register and capacity restored (`draining` cleared).
+
+On a macOS host installed as a LaunchAgent, perform the same drain-and-wait boundary, then update
+the checkout as the current user. Re-running `install-service` keeps the existing mode-0600
+environment file, rewrites the plist to the current checkout and Node paths, and restarts the
+LaunchAgent:
+
+```bash
+git fetch --all --tags
+git checkout NEW_IMMUTABLE_REVISION
+CI=true corepack pnpm install --frozen-lockfile
+pnpm local:daemon install-service
+
+env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+  HARNESS_ENV_FILE="$HOME/Library/Application Support/auto-harness/host-daemon.env" \
+  pnpm local:daemon status
+```
+
+Run these commands from the checkout that the LaunchAgent should execute. No `sudo` is required.
+If `status` reports `hostId: "local-1"`, the status process did not load the persisted environment;
+the LaunchAgent may still be running correctly, but that result does not verify the deployed host.
 
 Do **not** kill in-flight AI CLIs for routine upgrades.
 
