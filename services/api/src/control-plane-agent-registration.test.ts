@@ -61,4 +61,16 @@ describe("host registration repository inventory", () => {
       }),
     ]);
   });
+
+  it("exposes drain state in the host fleet view", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "draining-connection" });
+    expect(plane.registerHost({ hostId: "draining-host", worktrees: [], draining: true })).toEqual({
+      ok: true,
+      connectionId: "draining-connection",
+    });
+    expect(plane.listHosts().find((host) => host.hostId === "draining-host")).toMatchObject({
+      online: true,
+      draining: true,
+    });
+  });
 });

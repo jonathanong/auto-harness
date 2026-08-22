@@ -3,8 +3,32 @@ import type { HostServiceOpts } from "./host-service-io.ts";
 import { resolveHostService } from "./host-service-io.ts";
 import { installLinux, uninstallLinux } from "./host-service-linux.ts";
 import { installWin32, uninstallWin32 } from "./host-service-win32.ts";
+import { statusDarwin } from "./host-service-darwin.ts";
+import { statusLinux } from "./host-service-linux.ts";
+import { statusWin32 } from "./host-service-win32.ts";
 
 export type { HostServiceOpts } from "./host-service-io.ts";
+export type { HostServiceStatus } from "./host-service-io.ts";
+
+export function getHostServiceStatus(
+  opts: HostServiceOpts,
+): import("./host-service-io.ts").HostServiceStatus {
+  try {
+    const ctx = resolveHostService(opts);
+    switch (ctx.platform) {
+      case "linux":
+        return statusLinux(ctx);
+      case "darwin":
+        return statusDarwin(ctx);
+      case "win32":
+        return statusWin32(ctx);
+      default:
+        return { state: "unknown", reason: `service status is unsupported on ${ctx.platform}` };
+    }
+  } catch {
+    return { state: "unknown", reason: "service status could not be determined" };
+  }
+}
 
 export function installHostService(opts: HostServiceOpts): number {
   try {

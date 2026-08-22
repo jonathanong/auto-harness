@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { renderEnvFile, warnOrRefuseIdentity } from "./host-service-env.ts";
-import type { HostServiceContext } from "./host-service-io.ts";
+import type { HostServiceContext, HostServiceStatus } from "./host-service-io.ts";
 import { failedCommand, writeMode } from "./host-service-io.ts";
 import {
   LINUX_ENABLE_NOW_COMMAND,
@@ -28,6 +28,33 @@ function renderedUnit(ctx: HostServiceContext): string {
 
 function stageRoot(ctx: HostServiceContext): string {
   return ctx.env.XDG_RUNTIME_DIR?.trim() || ctx.tmpDir;
+}
+
+export function statusLinux(ctx: HostServiceContext): HostServiceStatus {
+  const result = ctx.run(
+    "systemctl",
+    ["show", "--no-pager", "--property=LoadState,ActiveState,SubState,Result", LINUX_SERVICE_NAME],
+    ctx.timeoutMs === undefined ? {} : { timeoutMs: ctx.timeoutMs },
+  );
+  const values = new Map<string, string>();
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const separator = line.indexOf("=");
+    if (separator > 0) values.set(line.slice(0, separator), line.slice(separator + 1));
+  }
+  if (values.get("LoadState") === "not-found") {
+    return { state: "missing", reason: "systemd unit is not installed" };
+  }
+  if (result.status !== 0) return { state: "unknown", reason: "systemctl status command failed" };
+  if (values.get("ActiveState") === "active" && values.get("SubState") === "running") {
+    return { state: "running", reason: "systemd unit is running" };
+  }
+  if (values.get("ActiveState") === "inactive") {
+    return { state: "stopped", reason: "systemd unit is inactive" };
+  }
+  if (values.get("ActiveState") === "failed" || values.get("Result") === "failed") {
+    return { state: "failed", reason: "systemd unit reported failure" };
+  }
+  return { state: "unknown", reason: "systemctl returned an unrecognized state" };
 }
 
 export function installLinux(ctx: HostServiceContext): number {

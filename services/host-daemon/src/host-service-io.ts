@@ -28,7 +28,34 @@ export type HostServiceRunResult = {
   stderr: string;
 };
 
-export type HostServiceRun = (command: string, args: string[]) => HostServiceRunResult;
+export type HostServiceState = "running" | "stopped" | "failed" | "missing" | "unknown";
+
+export type HostServiceStatus = {
+  state: HostServiceState;
+  reason: string;
+};
+
+/** Keep service-manager output bounded even when a platform command is noisy. */
+const MAX_HOST_SERVICE_OUTPUT_BYTES = 8 * 1024;
+
+function boundedOutput(value: string): string {
+  if (Buffer.byteLength(value, "utf8") <= MAX_HOST_SERVICE_OUTPUT_BYTES) return value;
+  let output = "";
+  let bytes = 0;
+  for (const character of value) {
+    const size = Buffer.byteLength(character, "utf8");
+    if (bytes + size > MAX_HOST_SERVICE_OUTPUT_BYTES) break;
+    output += character;
+    bytes += size;
+  }
+  return output;
+}
+
+export type HostServiceRun = (
+  command: string,
+  args: string[],
+  opts?: { timeoutMs?: number },
+) => HostServiceRunResult;
 
 export type HostServiceOpts = {
   env: NodeJS.ProcessEnv;
@@ -43,6 +70,7 @@ export type HostServiceOpts = {
   appData?: string;
   tmpDir?: string;
   uid?: number;
+  timeoutMs?: number;
 };
 
 export type HostServiceContext = {
@@ -61,6 +89,7 @@ export type HostServiceContext = {
   envExamplePath: string;
   unitTemplatePath: string;
   launcherPath: string;
+  timeoutMs?: number;
 };
 
 export const nodeHostServiceFs: HostServiceFs = {
@@ -104,15 +133,23 @@ export function resolveUid(
   return optsUid ?? getuid?.() ?? 1;
 }
 
-export function defaultHostServiceRun(command: string, args: string[]): HostServiceRunResult {
-  const result = spawnSync(command, args, { encoding: "utf8", shell: false });
+export function defaultHostServiceRun(
+  command: string,
+  args: string[],
+  opts: { timeoutMs?: number } = {},
+): HostServiceRunResult {
+  const result = spawnSync(command, args, {
+    encoding: "utf8",
+    shell: false,
+    ...(opts.timeoutMs !== undefined ? { timeout: opts.timeoutMs } : {}),
+  });
   if (result.error) {
     return { status: 1, stdout: "", stderr: result.error.message };
   }
   return {
     status: spawnStatus(result.status),
-    stdout: result.stdout,
-    stderr: result.stderr,
+    stdout: boundedOutput(result.stdout),
+    stderr: boundedOutput(result.stderr),
   };
 }
 
@@ -159,6 +196,7 @@ export function resolveHostService(opts: HostServiceOpts): HostServiceContext {
     appData: opts.appData ?? env.APPDATA ?? join(home, "AppData", "Roaming"),
     tmpDir: opts.tmpDir ?? tmpdir(),
     uid: resolveUid(opts.uid, process.getuid),
+    ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
     envExamplePath: join(checkoutRoot, "services/host-daemon/systemd/host-daemon.env.example"),
     unitTemplatePath: join(
       checkoutRoot,

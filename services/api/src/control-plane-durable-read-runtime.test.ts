@@ -183,4 +183,32 @@ describe("durable runtime read-through", () => {
     expect(state.drainingHosts).toEqual(new Set(["host"]));
     expect(state.disconnectedHosts).toEqual(new Map([["host", { lastHeartbeatAt: "t" }]]));
   });
+
+  it("refreshes drain state from the durable host lock", async () => {
+    const state = createControlPlaneState({
+      storage: {
+        listConnections: async () => [
+          {
+            connectionId: "connection",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+          },
+        ],
+        listHostInventories: async () => [],
+        listWorktrees: async () => [],
+        listAllWorktrees: async () => [],
+        listRepositories: async () => [],
+        listSchedules: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        getHostLockState: async () => ({ connectionId: "connection", draining: true }),
+      } as never,
+    });
+
+    await refreshSchedulerReadModel(state);
+    expect(state.drainingHosts).toEqual(new Set(["host"]));
+  });
 });

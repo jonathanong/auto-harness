@@ -1,6 +1,9 @@
+/* eslint-disable max-lines -- platform install and status mappings are tested together. */
 import { describe, expect, it } from "vitest";
 
 import { installHostService, uninstallHostService } from "./host-service.ts";
+import { resolveHostService } from "./host-service-io.ts";
+import { statusLinux } from "./host-service-linux.ts";
 import { baseOpts, recorder, seededFs, unitTemplate } from "./host-service-test-helpers.ts";
 import {
   LINUX_ENABLE_NOW_COMMAND,
@@ -196,5 +199,55 @@ describe("install-service linux", () => {
         }),
       ),
     ).toBe(0);
+  });
+});
+
+describe("status linux", () => {
+  it.each([
+    ["active", "running", "success", "running"],
+    ["inactive", "dead", "success", "stopped"],
+    ["failed", "failed", "success", "failed"],
+  ] as const)("maps systemd %s/%s to %s", (active, sub, _label, state) => {
+    const result = statusLinux(
+      resolveHostService(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          run: () => ({
+            status: 0,
+            stdout: `LoadState=loaded\nActiveState=${active}\nSubState=${sub}\nResult=success\n`,
+            stderr: "",
+          }),
+        }),
+      ),
+    );
+    expect(result.state).toBe(state);
+  });
+
+  it("distinguishes missing and command failure with a fixed bounded command", () => {
+    const calls: string[][] = [];
+    let timeoutMs: number | undefined;
+    const missing = statusLinux(
+      resolveHostService(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          timeoutMs: 17,
+          run: (_command, args, opts) => {
+            calls.push(args);
+            timeoutMs = opts?.timeoutMs;
+            return { status: 0, stdout: "LoadState=not-found\n", stderr: "" };
+          },
+        }),
+      ),
+    );
+    expect(missing).toEqual({ state: "missing", reason: "systemd unit is not installed" });
+    expect(calls[0]).toEqual([
+      "show",
+      "--no-pager",
+      "--property=LoadState,ActiveState,SubState,Result",
+      "auto-harness-host-daemon.service",
+    ]);
+    expect(timeoutMs).toBe(17);
   });
 });

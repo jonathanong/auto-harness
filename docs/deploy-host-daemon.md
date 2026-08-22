@@ -49,7 +49,12 @@ pnpm local:daemon install-service
 
 Linux refuses a new env file for `local-1`, `http://127.0.0.1:7420`, placeholders, or an empty
 `HARNESS_API_KEY`. macOS and Windows warn and still write. `status` / `run-session` / `start`
-keep the local defaults.
+keep the local defaults. After installation, use `pnpm local:daemon status` to check the
+local service manager and the exact bound host in the control plane. The command succeeds
+only when the service is running, the host is online and non-draining, and the host reports
+explicit Git readiness; missing readiness data fails closed. Use `status --config-only` when
+you only need the configured inventory. Status output is bounded and never includes the
+persisted API key or raw service-manager diagnostics.
 
 | OS      | What it installs                                                                                                            |
 | ------- | --------------------------------------------------------------------------------------------------------------------------- |

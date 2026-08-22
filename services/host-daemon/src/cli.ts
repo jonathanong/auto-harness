@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- CLI command dispatch and its bounded status report share one entrypoint. */
 import { readFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
@@ -8,11 +9,18 @@ import {
   type SessionAssign,
 } from "@auto-harness/shared";
 
-import type { DaemonConfig } from "./config.ts";
-import { loadDaemonConfig } from "./config.ts";
+import type { DaemonConfig, HostIdentity } from "./config.ts";
+import { loadDaemonConfig, loadHostIdentity } from "./config.ts";
 import { printUsage } from "./cli-usage.ts";
 import { loadEnvFileIfPresent } from "./host-service-env.ts";
-import { installHostService, uninstallHostService, type HostServiceOpts } from "./host-service.ts";
+import {
+  getHostServiceStatus,
+  installHostService,
+  uninstallHostService,
+  type HostServiceOpts,
+  type HostServiceStatus,
+} from "./host-service.ts";
+import { fetchControlPlaneHostStatus, type ControlPlaneHostStatus } from "./host-status.ts";
 import { ensureDaemonReady, runAssignedSession } from "./runtime.ts";
 import type { SessionRunResult } from "./session-runner.ts";
 
@@ -64,7 +72,50 @@ export type RunSessionDeps = {
   process?: Pick<NodeJS.Process, "on" | "off" | "exit">;
   installService: (opts: HostServiceOpts) => number;
   uninstallService: (opts: HostServiceOpts) => number;
+  statusService: (opts: HostServiceOpts) => HostServiceStatus;
+  fetchHostStatus: (
+    identity: HostIdentity,
+    signal?: AbortSignal,
+  ) => Promise<ControlPlaneHostStatus>;
 };
+
+const STATUS_TIMEOUT_MS = 10_000;
+
+type DeadlineResult<T> =
+  | { state: "fulfilled"; value: T }
+  | { state: "rejected" }
+  | { state: "timed_out" };
+
+async function settleWithin<T>(
+  operation: () => T | PromiseLike<T>,
+  timeoutMs: number,
+): Promise<DeadlineResult<T>> {
+  if (timeoutMs <= 0) return { state: "timed_out" };
+  return new Promise((finish) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      finish({ state: "timed_out" });
+    }, timeoutMs);
+    Promise.resolve()
+      .then(operation)
+      .then(
+        (value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          finish({ state: "fulfilled", value });
+        },
+        () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          finish({ state: "rejected" });
+        },
+      );
+  });
+}
 
 export function createDefaultRunSessionDeps(): RunSessionDeps {
   return {
@@ -80,7 +131,46 @@ export function createDefaultRunSessionDeps(): RunSessionDeps {
     runSession: (config, assign, onLog) => runAssignedSession(config, assign, onLog),
     installService: installHostService,
     uninstallService: uninstallHostService,
+    statusService: getHostServiceStatus,
+    fetchHostStatus: (identity, signal) => fetchControlPlaneHostStatus(identity, fetch, signal),
   };
+}
+
+function configuredInventory(config: DaemonConfig): Record<string, unknown> {
+  return {
+    hostId: config.hostId,
+    repositories: config.repositories.map((r) => ({
+      id: r.id,
+      path: r.path,
+      worktrees: r.worktrees.map((w) => ({
+        id: w.id,
+        name: w.name,
+        path: w.path,
+        labels: w.labels,
+      })),
+    })),
+  };
+}
+
+function statusIdentity(config: DaemonConfig | undefined, env: NodeJS.ProcessEnv): HostIdentity {
+  const envIdentity = loadHostIdentity(env);
+  const identity: HostIdentity = {
+    hostId: config?.hostId ?? envIdentity.hostId,
+    apiUrl: config?.apiUrl ?? envIdentity.apiUrl,
+  };
+  const apiKey = config?.apiKey ?? envIdentity.apiKey;
+  if (apiKey) identity.apiKey = apiKey;
+  return identity;
+}
+
+function statusIsReady(service: HostServiceStatus, host: ControlPlaneHostStatus): boolean {
+  return (
+    service.state === "running" &&
+    host.reachable &&
+    host.online === true &&
+    host.draining === false &&
+    host.gitReady === true
+  );
 }
 
 /**
@@ -124,27 +214,83 @@ export async function runCli(
   }
 
   if (command === "status") {
-    const config = await deps.loadConfig({ env: resolvedEnv });
+    const configOnly = args.includes("--config-only");
+    const deadline = Date.now() + STATUS_TIMEOUT_MS;
+    const remaining = (): number => deadline - Date.now();
+    let config: DaemonConfig | undefined;
+    const configResult = await settleWithin(
+      () => deps.loadConfig({ env: resolvedEnv }),
+      remaining(),
+    );
+    if (configResult.state === "fulfilled") {
+      config = configResult.value;
+    } else {
+      if (configOnly) {
+        deps.error("Cannot load daemon configuration");
+        return 1;
+      }
+    }
+    if (configOnly) {
+      if (!config) {
+        deps.error("Cannot load daemon configuration");
+        return 1;
+      }
+      deps.log(JSON.stringify(configuredInventory(config), null, 2));
+      return 0;
+    }
+
+    const identity = statusIdentity(config, resolvedEnv);
+    let service: HostServiceStatus;
+    try {
+      service = deps.statusService({
+        env: resolvedEnv,
+        log: () => undefined,
+        error: () => undefined,
+        timeoutMs: Math.max(1, remaining()),
+      });
+    } catch {
+      service = { state: "unknown", reason: "service status could not be determined" };
+    }
+    if (remaining() <= 0) {
+      service = { state: "unknown", reason: "status check timed out" };
+    }
+    let host: ControlPlaneHostStatus;
+    const controller = new AbortController();
+    const hostResult = await settleWithin(
+      () => deps.fetchHostStatus(identity, controller.signal),
+      remaining(),
+    );
+    if (hostResult.state === "fulfilled") {
+      host = hostResult.value;
+    } else {
+      if (hostResult.state === "timed_out") controller.abort();
+      host = {
+        reachable: false,
+        hostId: identity.hostId,
+        online: null,
+        connectedAt: null,
+        draining: null,
+        gitReady: null,
+        reason: "control plane is unreachable",
+      };
+    }
+    const ready = statusIsReady(service, host);
     deps.log(
       JSON.stringify(
         {
-          hostId: config.hostId,
-          repositories: config.repositories.map((r) => ({
-            id: r.id,
-            path: r.path,
-            worktrees: r.worktrees.map((w) => ({
-              id: w.id,
-              name: w.name,
-              path: w.path,
-              labels: w.labels,
-            })),
-          })),
+          status: ready ? "ok" : "failed",
+          service,
+          controlPlane: host,
+          inventory: config ? configuredInventory(config) : null,
         },
-        null,
+        (_key, value: unknown) =>
+          typeof value === "string" && identity.apiKey
+            ? value.split(identity.apiKey).join("[REDACTED]")
+            : value,
         2,
       ),
     );
-    return 0;
+    return ready ? 0 : 1;
   }
 
   if (command === "run-session") {
@@ -173,7 +319,6 @@ export async function runCli(
     const wsIdx = args.indexOf("--ws");
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
-      const { loadHostIdentity } = await import("./config.ts");
       const { startDaemon } = await import("./start-daemon.ts");
       const runtime = await deps.ensureReady(config);
       const { stop } = await startDaemon({

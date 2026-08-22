@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService, uninstallHostService } from "./host-service.ts";
+import { resolveHostService } from "./host-service-io.ts";
+import { statusWin32 } from "./host-service-win32.ts";
 import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
 
 describe("install-service win32", () => {
@@ -132,5 +134,65 @@ describe("install-service win32", () => {
       ),
     ).toBe(1);
     expect(endErrors.join("\n")).toMatch(/End/);
+  });
+});
+
+describe("status win32", () => {
+  it("maps the exact scheduled task status", () => {
+    const calls: string[][] = [];
+    const result = statusWin32(
+      resolveHostService(
+        baseOpts({
+          platform: "win32",
+          fs: seededFs(),
+          run: (_command, args) => {
+            calls.push(args);
+            return { status: 0, stdout: "Status: Running\n", stderr: "" };
+          },
+        }),
+      ),
+    );
+    expect(result.state).toBe("running");
+    expect(calls[0]).toEqual(["/Query", "/TN", "AutoHarnessHostDaemon", "/FO", "LIST", "/V"]);
+  });
+
+  it("maps missing, stopped, and unknown task responses", () => {
+    expect(
+      statusWin32(
+        resolveHostService(
+          baseOpts({
+            platform: "win32",
+            fs: seededFs(),
+            run: () => ({
+              status: 1,
+              stdout: "",
+              stderr: "ERROR: The system cannot find the file",
+            }),
+          }),
+        ),
+      ).state,
+    ).toBe("missing");
+    expect(
+      statusWin32(
+        resolveHostService(
+          baseOpts({
+            platform: "win32",
+            fs: seededFs(),
+            run: () => ({ status: 0, stdout: "Status: Ready\n", stderr: "" }),
+          }),
+        ),
+      ).state,
+    ).toBe("stopped");
+    expect(
+      statusWin32(
+        resolveHostService(
+          baseOpts({
+            platform: "win32",
+            fs: seededFs(),
+            run: () => ({ status: 0, stdout: "TaskName: AutoHarnessHostDaemon\n", stderr: "" }),
+          }),
+        ),
+      ).state,
+    ).toBe("unknown");
   });
 });

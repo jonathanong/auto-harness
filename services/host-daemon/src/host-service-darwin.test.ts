@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { installHostService, uninstallHostService } from "./host-service.ts";
+import { resolveHostService } from "./host-service-io.ts";
+import { statusDarwin } from "./host-service-darwin.ts";
 import { baseOpts, recorder, seededFs } from "./host-service-test-helpers.ts";
 
 describe("install-service darwin", () => {
@@ -125,5 +127,51 @@ describe("install-service darwin", () => {
       ),
     ).toBe(0);
     expect(logs.join("\n")).toMatch(/Warning:.*HARNESS_API_KEY/);
+  });
+});
+
+describe("status darwin", () => {
+  it("maps launchctl state and uses the per-user service label", () => {
+    const calls: string[][] = [];
+    const result = statusDarwin(
+      resolveHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          uid: 501,
+          run: (_command, args) => {
+            calls.push(args);
+            return { status: 0, stdout: "state = running\n", stderr: "" };
+          },
+        }),
+      ),
+    );
+    expect(result.state).toBe("running");
+    expect(calls[0]).toEqual(["print", "gui/501/com.auto-harness.host-daemon"]);
+  });
+
+  it("maps not-found and stopped launch agents", () => {
+    expect(
+      statusDarwin(
+        resolveHostService(
+          baseOpts({
+            platform: "darwin",
+            fs: seededFs(),
+            run: () => ({ status: 1, stdout: "", stderr: "Could not find service" }),
+          }),
+        ),
+      ).state,
+    ).toBe("missing");
+    expect(
+      statusDarwin(
+        resolveHostService(
+          baseOpts({
+            platform: "darwin",
+            fs: seededFs(),
+            run: () => ({ status: 0, stdout: "state = waiting\n", stderr: "" }),
+          }),
+        ),
+      ).state,
+    ).toBe("stopped");
   });
 });

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- status matrix coverage stays adjacent to CLI behavior. */
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it, vi } from "vitest";
@@ -41,6 +42,157 @@ describe("runCli", () => {
     const withCfg = deps();
     expect(await runCli(["node", "x", "status"], { HARNESS_HOST_ID: "a1" }, withCfg)).toBe(0);
     expect(withCfg.logs[0]).toContain("a1");
+  });
+
+  it("reports service, exact host, and inventory separately", async () => {
+    const a = deps({
+      statusService: () => ({ state: "running", reason: "systemd unit is running" }),
+      fetchHostStatus: async () => ({
+        reachable: true,
+        hostId: "a1",
+        online: true,
+        connectedAt: "2026-08-21T10:00:00.000Z",
+        draining: false,
+        gitReady: true,
+        reason: "host status received",
+      }),
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(0);
+    expect(JSON.parse(a.logs[0] ?? "")).toMatchObject({
+      status: "ok",
+      service: { state: "running" },
+      controlPlane: { hostId: "a1", online: true, draining: false, gitReady: true },
+      inventory: { hostId: "a1" },
+    });
+  });
+
+  it("preserves inventory-only output with --config-only", async () => {
+    const a = deps({
+      statusService: () => {
+        throw new Error("must not query service");
+      },
+      fetchHostStatus: async () => {
+        throw new Error("must not query control plane");
+      },
+    });
+    expect(await runCli(["node", "x", "status", "--config-only"], {}, a)).toBe(0);
+    expect(JSON.parse(a.logs[0] ?? "")).toEqual({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: ["codex"] }],
+        },
+      ],
+    });
+  });
+
+  it.each([
+    ["offline", { controlPlane: { online: false } }, "offline"],
+    ["draining", { controlPlane: { online: true, draining: true } }, "draining"],
+    ["missing service", { service: { state: "missing", reason: "not installed" } }, "missing"],
+    ["failed service", { service: { state: "failed", reason: "failed" } }, "failed"],
+    ["unreachable API", { controlPlane: { reachable: false } }, "unreachable"],
+    [
+      "legacy readiness",
+      { controlPlane: { online: true, draining: false, gitReady: null } },
+      "legacy",
+    ],
+  ] as const)("returns failure for %s", async (_name, override, _reason) => {
+    const a = deps({
+      statusService: () => override.service ?? { state: "running", reason: "running" },
+      fetchHostStatus: async () => ({
+        reachable: true,
+        hostId: "a1",
+        online: true,
+        connectedAt: "now",
+        draining: false,
+        gitReady: true,
+        reason: "host status received",
+        ...override.controlPlane,
+      }),
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(JSON.parse(a.logs[0] ?? "").status).toBe("failed");
+  });
+
+  it("does not disclose API keys or raw status errors", async () => {
+    const a = deps({
+      loadConfig: async () => ({ ...sampleConfig, apiKey: "secret-token" }),
+      fetchHostStatus: async () => {
+        throw new Error("secret-token raw failure");
+      },
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(a.logs.join("\n")).not.toContain("secret-token");
+    expect(a.errors.join("\n")).not.toContain("secret-token");
+  });
+
+  it("fails closed when config loading exceeds the status deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const a = deps({ loadConfig: () => new Promise<DaemonConfig>(() => undefined) });
+      const result = runCli(["node", "x", "status"], {}, a);
+      await vi.advanceTimersByTimeAsync(10_000);
+      await expect(result).resolves.toBe(1);
+      expect(JSON.parse(a.logs[0] ?? "").service.state).toBe("unknown");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails safely when config loading fails", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("inventory request failed");
+      },
+      statusService: () => ({ state: "unknown", reason: "not available" }),
+      fetchHostStatus: async (identity) => ({
+        reachable: false,
+        hostId: identity.hostId,
+        online: null,
+        connectedAt: null,
+        draining: null,
+        gitReady: null,
+        reason: "control plane is unreachable",
+      }),
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(JSON.parse(a.logs[0] ?? "").inventory).toBeNull();
+    expect(a.errors).toEqual([]);
+  });
+
+  it("reports a safe error when config-only loading fails", async () => {
+    const a = deps({
+      loadConfig: async () => {
+        throw new Error("secret-token inventory failure");
+      },
+    });
+    expect(await runCli(["node", "x", "status", "--config-only"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["Cannot load daemon configuration"]);
+    expect(a.errors.join("\n")).not.toContain("secret-token");
+  });
+
+  it("rejects an unexpectedly empty config in config-only mode", async () => {
+    const a = deps({ loadConfig: async () => undefined as never });
+    expect(await runCli(["node", "x", "status", "--config-only"], {}, a)).toBe(1);
+    expect(a.errors).toEqual(["Cannot load daemon configuration"]);
+  });
+
+  it("maps a thrown service-manager status to unknown", async () => {
+    const a = deps({
+      statusService: (opts) => {
+        opts.log("ignored service output");
+        opts.error("ignored service error");
+        throw new Error("raw service-manager output");
+      },
+    });
+    expect(await runCli(["node", "x", "status"], {}, a)).toBe(1);
+    expect(JSON.parse(a.logs[0] ?? "").service).toEqual({
+      state: "unknown",
+      reason: "service status could not be determined",
+    });
   });
 
   it("run-session requires --file and completes", async () => {
@@ -140,6 +292,25 @@ describe("printUsage / main / defaults", () => {
     log.mockRestore();
     error.mockRestore();
     expect(d.readFile(fileURLToPath(import.meta.url))).toContain("createDefaultRunSessionDeps");
+  });
+
+  it("default deps' host status closure forwards the fetch signal", async () => {
+    const d = createDefaultRunSessionDeps();
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await expect(
+        d.fetchHostStatus(
+          { hostId: "host", apiUrl: "https://control.example" },
+          new AbortController().signal,
+        ),
+      ).resolves.toMatchObject({ reachable: true, online: null });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("default deps' ensureReady/runSession close over the real runtime functions", async () => {
