@@ -179,8 +179,13 @@ jobs:
           node-version: "22.18"
           cache: pnpm
 
-      - name: Install
-        run: pnpm install --frozen-lockfile
+      - name: Install without lifecycle scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # The focused tests need node-pty's pinned prebuild preparation. Run only that trusted
+      # dependency's required scripts instead of enabling lifecycle scripts for the workspace.
+      - name: Prepare native PTY dependency
+        run: pnpm prepare:test:platform
 
       # Only native host-daemon boundaries are repeated off Linux: PTY, subprocesses,
       # git/worktree/path handling, host-service I/O, and one composed daemon run.

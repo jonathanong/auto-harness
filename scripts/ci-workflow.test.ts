@@ -96,10 +96,15 @@ describe("required CI check contract", () => {
     expect(platform).toContain("fail-fast: false");
     expect(platform).toContain("name: macos\n            runner: macos-latest");
     expect(platform).toContain("name: windows\n            runner: windows-latest");
+    expect(platform).toContain("run: pnpm install --frozen-lockfile --ignore-scripts");
+    expect(platform).toContain("run: pnpm prepare:test:platform");
     expect(platform).toContain("run: pnpm test:platform");
     expect(platform).not.toContain("run: pnpm test\n");
     expect(platform).not.toContain("run: pnpm local:dynamodb:ready");
     expect(platform).not.toContain("--coverage");
+    expect(rootPackage.scripts["prepare:test:platform"]).toBe(
+      "node services/host-daemon/node_modules/node-pty/scripts/prebuild.js && node services/host-daemon/node_modules/node-pty/scripts/post-install.js",
+    );
     expect(rootPackage.scripts["test:platform"]).toBe(
       "vitest run services/host-daemon/src/pty-runner.real.test.ts services/host-daemon/src/executor.test.ts services/host-daemon/src/git.real.test.ts services/host-daemon/src/host-service-io.test.ts integration/echo-orchestration.test.ts",
     );
