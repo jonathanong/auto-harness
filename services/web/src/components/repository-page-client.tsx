@@ -48,7 +48,7 @@ export function RepositoryPageClient({
   worktrees,
   canWriteInventory,
   canWriteCatalog,
-}: {
+}: Readonly<{
   initialItems: Repo[];
   initialNextCursor: string | null;
   initialPath: string;
@@ -58,7 +58,7 @@ export function RepositoryPageClient({
   worktrees: Wt[];
   canWriteInventory: boolean;
   canWriteCatalog: boolean;
-}) {
+}>) {
   const [items, setItems] = useState(initialItems);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);

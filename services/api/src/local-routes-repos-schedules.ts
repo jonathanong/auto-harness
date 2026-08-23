@@ -34,7 +34,7 @@ function readSingleRepositoryListQueryParam(
 
 function parseRepositoryListLimit(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
-  if (!/^[0-9]+$/.test(value)) {
+  if (!/^\d+$/.test(value)) {
     throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
   }
   const limit = Number(value);

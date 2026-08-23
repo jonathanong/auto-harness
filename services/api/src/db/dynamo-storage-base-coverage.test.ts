@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- one real-Dynamo adapter path avoids fixture churn. */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -63,6 +64,18 @@ describe("DynamoPlaneStorageBase", () => {
     expect((await storage.listLogs(log.sessionId)).at(-1)?.content).toBe("replayed duplicate");
     expect(await storage.queryLogs(log.sessionId, { limit: 10 })).toHaveLength(10);
     await storage.deleteLog(log.sessionId, log.timestampSeq);
+    await storage.putRepository({
+      id: "base-repository",
+      name: "base-repository",
+      url: "https://example.test/base-repository",
+      defaultBranch: "main",
+      createdAt: log.timestamp,
+      updatedAt: log.timestamp,
+    });
+    await expect(storage.listRepositoriesPage({ limit: 1 })).resolves.toMatchObject({
+      items: [{ id: "base-repository" }],
+      hasMore: false,
+    });
     expect(await storage.listSessionsByRepository("missing-repository")).toEqual([]);
     expect(await storage.countSessionsByRepository("missing-repository", "base-host")).toBe(0);
 

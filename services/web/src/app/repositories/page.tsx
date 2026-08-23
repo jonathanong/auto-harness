@@ -34,9 +34,9 @@ type Wt = {
 
 export default async function RepositoriesPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
+}>) {
   const rawSearchParams = await searchParams;
   const rawLimit = rawSearchParams.limit;
   const limit =

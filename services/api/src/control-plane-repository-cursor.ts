@@ -65,7 +65,9 @@ export function normalizeRepositoryScope(
 /** Normalize the scope for filtering while its digest is used in cursors. */
 export function normalizeRepositoryIds(scope: RepositoryListScope | undefined): string[] | null {
   const repositoryIds = scope?.repositoryIds;
-  return repositoryIds === undefined ? null : [...new Set(repositoryIds)].toSorted();
+  return repositoryIds === undefined
+    ? null
+    : [...new Set(repositoryIds)].toSorted((left, right) => left.localeCompare(right));
 }
 
 function cursorPayload(cursor: RepositoryCursor): string {

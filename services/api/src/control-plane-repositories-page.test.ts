@@ -36,6 +36,15 @@ function makeNumberedPlane(count: number): ControlPlane {
 }
 
 describe("listRepositoriesPage", () => {
+  it("exposes in-memory repository pages through the control-plane facade", () => {
+    const plane = makePlane();
+
+    expect(plane.listRepositoriesPage({ limit: 1 })).toMatchObject({
+      items: [{ id: "repository-a" }],
+      nextCursor: expect.any(String),
+    });
+  });
+
   it("pages in deterministic name/id order with a replayable cursor", () => {
     const plane = makePlane();
     const first = listRepositoriesPage(plane.state, { limit: 2 });
