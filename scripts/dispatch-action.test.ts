@@ -174,4 +174,19 @@ describe("dispatch action principal session drain operations", () => {
       `drain drain-1: ${server.origin}/api/v1/repositories/repo%2Fone/session-drains/drain-1`,
     );
   });
+
+  it("rejects a malformed successful dispatch response", async () => {
+    const server = await serve(() => ({ body: {} }));
+
+    const result = await runAction({
+      ...drainInputs(server.origin, "dispatch"),
+      prompt: "review",
+      target: '{"providerId":"codex"}',
+      timeout: "300",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/session without a valid id/);
+    expect(result.output).toEqual({});
+  });
 });

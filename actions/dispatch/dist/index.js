@@ -68,6 +68,22 @@ const validateDrain = (result, baseUrl, repositoryId, expectedOperationId) => {
   return { ...result, statusUrl };
 };
 
+const validateSession = (result) => {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    throw new Error("Auto Harness returned a malformed session response");
+  }
+  if (typeof result.id !== "string" || !result.id || /[\r\n]/.test(result.id)) {
+    throw new Error("Auto Harness returned a session without a valid id");
+  }
+  if (typeof result.url !== "string" || !result.url || /[\r\n]/.test(result.url)) {
+    throw new Error("Auto Harness returned a session without a valid url");
+  }
+  if (typeof result.created !== "boolean") {
+    throw new Error("Auto Harness returned a session without a created result");
+  }
+  return result;
+};
+
 const drainErrorDetails = (baseUrl, error) => {
   if (!error || typeof error !== "object" || typeof error.statusUrl !== "string") return "";
   try {
@@ -176,10 +192,11 @@ try {
       const drain = drainErrorDetails(baseUrl, result.error);
       throw new Error(result.error?.message ? `${result.error.message}${drain}` : `Auto Harness returned ${response.status}`);
     }
-    setOutput("session-id", result.id);
-    setOutput("session-url", result.url);
-    setOutput("created", String(result.created));
-    process.stdout.write(`Dispatched Auto Harness session ${result.id}\n`);
+    const session = validateSession(result);
+    setOutput("session-id", session.id);
+    setOutput("session-url", session.url);
+    setOutput("created", String(session.created));
+    process.stdout.write(`Dispatched Auto Harness session ${session.id}\n`);
   } else {
     const collection = `/repositories/${encodeURIComponent(repositoryId)}/session-drains`;
     const drainId = input("session-drain-id");
