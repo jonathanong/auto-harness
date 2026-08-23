@@ -25,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -37,6 +39,20 @@ jobs:
           # Native type stripping (no tsc/tsx). Node ≥ 22.18 unflags it.
           node-version: "22.18"
           cache: pnpm
+
+      - name: Reject pull request client version bumps
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          base_version="$(git show "${BASE_SHA}:modules/client/package.json" | jq --exit-status --raw-output .version)"
+          proposed_version="$(jq --exit-status --raw-output .version modules/client/package.json)"
+          if test "$base_version" != "$proposed_version"; then
+            echo "Client versions are created only by the Release client workflow; keep modules/client/package.json at ${base_version}." >&2
+            exit 1
+          fi
 
       - name: Install
         run: pnpm install --frozen-lockfile

@@ -9,78 +9,95 @@ const workflow = readFileSync(
 const publishJob = workflow.slice(workflow.indexOf("  publish:\n"));
 
 describe("client release workflow contract", () => {
-  it("only runs for a client version tag and serializes releases without cancellation", () => {
-    expect(workflow).toContain('tags: ["client-v*"]');
-    expect(workflow).toContain("group: release-client-${{ github.ref }}");
-    expect(workflow).not.toContain("group: release-client\n");
-    expect(workflow).toContain("cancel-in-progress: false");
+  it("is a manually selected main-only release", () => {
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("release_type:");
+    expect(workflow).toContain("required: true");
+    expect(workflow).toContain("type: choice");
+    expect(workflow).toContain("- patch");
+    expect(workflow).toContain("- minor");
+    expect(workflow).toContain("- major");
+    expect(workflow).not.toContain('tags: ["client-v*"]');
+    expect(workflow).not.toContain("concurrency:");
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("id-token: write");
+    expect(publishJob).toContain("github.ref == 'refs/heads/main'");
+    expect(publishJob).toContain(
+      "github.workflow_ref == format('{0}/.github/workflows/release-client.yml@refs/heads/main', github.repository)",
+    );
   });
 
-  it("publishes through the protected npm environment with a bounded job", () => {
+  it("uses the protected environment and release token only for Git transport", () => {
     expect(publishJob).toContain("timeout-minutes: 20");
     expect(publishJob).toContain("environment: npm-publish");
-  });
-
-  it("checks out and verifies the pushed tag commit with full history", () => {
-    expect(publishJob).toContain("ref: ${{ github.ref }}");
+    expect(publishJob).toContain("ref: main");
+    expect(publishJob).toContain("token: ${{ secrets.RELEASE_TOKEN }}");
+    expect(workflow.match(/\$\{\{ secrets\.RELEASE_TOKEN \}\}/g)).toEqual([
+      "${{ secrets.RELEASE_TOKEN }}",
+    ]);
     expect(publishJob).toContain("fetch-depth: 0");
     expect(publishJob).toContain("fetch-tags: true");
-    expect(publishJob).toContain("persist-credentials: false");
-    expect(publishJob).toContain("EVENT_SHA: ${{ github.sha }}");
-    expect(publishJob).toContain("refs/tags/${RELEASE_TAG}^{commit}");
-    expect(publishJob).toContain('"${EVENT_SHA}^{commit}"');
-    expect(publishJob).toContain('checked_out_commit="$(git rev-parse HEAD)"');
-    expect(publishJob).toContain('test "$tag_commit" = "$event_commit"');
-    expect(publishJob).toContain('test "$tag_commit" = "$checked_out_commit"');
+    expect(publishJob).toContain("persist-credentials: true");
+    expect(publishJob).toContain("git checkout --detach origin/main");
+    expect(publishJob).not.toContain("github.sha");
+    expect(publishJob).not.toContain("ref: ${{ github.ref }}");
+    expect(publishJob).not.toContain("EVENT_SHA:");
+    expect(publishJob).not.toContain("registry-url:");
+    expect(publishJob).toContain('test -z "${NPM_TOKEN:-}"');
+    expect(publishJob).toContain('test -z "${NODE_AUTH_TOKEN:-}"');
   });
 
-  it("requires the peeled tag commit to already be in origin/main", () => {
-    expect(publishJob).toContain("git fetch --no-tags origin main");
-    expect(publishJob).toContain('main_commit="$(git rev-parse FETCH_HEAD)"');
-    expect(publishJob).toContain('git merge-base --is-ancestor "$tag_commit" "$main_commit"');
+  it("resolves retries from an exact main tag and otherwise makes the chosen bump", () => {
+    expect(publishJob).toContain("RUN_ATTEMPT: ${{ github.run_attempt }}");
+    expect(publishJob).toContain("'' | *[!0-9]*) echo \"invalid GitHub run attempt");
+    expect(publishJob).toContain("if (( RUN_ATTEMPT < 1 )); then");
+    expect(publishJob).toContain('release_tag="client-v${manifest_version}"');
+    expect(publishJob).toContain('"refs/tags/${release_tag}^{commit}"');
+    expect(publishJob).toContain('if test "$tag_commit" = "$head_commit"; then');
+    expect(publishJob).toContain('release_mode="already-published"');
+    expect(publishJob).toContain('release_mode="retry-publish"');
+    expect(publishJob.match(/if \(\( RUN_ATTEMPT > 1 \)\); then/g)).toHaveLength(2);
+    expect(publishJob).toContain('git merge-base --is-ancestor "$tag_commit" "$head_commit"');
+    expect(publishJob).toContain('git checkout --detach "$release_tag"');
+    expect(publishJob).toContain('test "$(git rev-parse HEAD)" = "$tag_commit"');
+    expect(publishJob).toContain("release tag is not an ancestor of current main");
+    expect(publishJob).toContain("start_new_release");
+    expect(publishJob).toContain(
+      'pnpm --dir modules/client version "$RELEASE_TYPE" --no-git-tag-version',
+    );
+    expect(publishJob).not.toContain("npm --prefix modules/client version");
+    expect(publishJob).toContain(
+      'npm view "$manifest_name@$1" version --json --registry=https://registry.npmjs.org',
+    );
+    expect(publishJob).toContain("npm version already exists without a matching release tag");
   });
 
-  it("validates the exact package identity and version before checks and publish", () => {
-    expect(publishJob).toContain(
-      'manifest_name="$(node -p "require(\'./modules/client/package.json\').name")"',
-    );
-    expect(publishJob).toContain(
-      'manifest_version="$(node -p "require(\'./modules/client/package.json\').version")"',
-    );
-    expect(publishJob).toContain('test "$manifest_name" = "auto-harness-client"');
-    expect(publishJob).toContain('test "$RELEASE_TAG" = "client-v${manifest_version}"');
-    expect(publishJob).toContain(
-      "run: pnpm exec tsc --noEmit --project modules/client/tsconfig.json",
-    );
-    expect(publishJob).toContain("run: pnpm --filter auto-harness-client test");
-    expect(publishJob).toContain("run: pnpm --dir modules/client pack --dry-run");
-    expect(publishJob).toContain("run: npm publish --access public");
+  it("validates, atomically records, then OIDC-publishes the exact package", () => {
+    const resolve = publishJob.indexOf("name: Resolve new or interrupted release");
+    const install = publishJob.indexOf("name: Install release snapshot");
+    const validate = publishJob.indexOf("name: Validate package");
+    const commit = publishJob.indexOf("name: Commit and tag release");
+    const publish = publishJob.indexOf("name: Publish with npm OIDC provenance");
 
-    const manifestCheck = publishJob.indexOf("name: Validate release manifest");
-    const tagCheck = publishJob.indexOf("name: Verify release tag and ancestry");
-    const pnpmSetup = publishJob.indexOf("uses: pnpm/action-setup@");
-    const nodeSetup = publishJob.indexOf("uses: actions/setup-node@");
-    const install = publishJob.indexOf("run: pnpm install --frozen-lockfile --ignore-scripts");
-    const typecheck = publishJob.indexOf(
-      "run: pnpm exec tsc --noEmit --project modules/client/tsconfig.json",
+    expect(publishJob).toContain("pnpm install --frozen-lockfile --ignore-scripts");
+    expect(publishJob).toContain("pnpm exec tsc --noEmit --project modules/client/tsconfig.json");
+    expect(publishJob).toContain("pnpm --filter auto-harness-client test");
+    expect(publishJob).toContain("pnpm --dir modules/client pack --dry-run");
+    expect(publishJob).toContain('test "$(git rev-parse origin/main)" = "$RELEASE_BASE_SHA"');
+    expect(publishJob).toContain('test "$(git diff --name-only)" = "modules/client/package.json"');
+    expect(publishJob).toContain('git commit -m "release(client): v${RELEASE_VERSION}"');
+    expect(publishJob).toContain('git tag --annotate "$RELEASE_TAG"');
+    expect(publishJob).toContain(
+      'git push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"',
     );
-    const tests = publishJob.indexOf("run: pnpm --filter auto-harness-client test");
-    const pack = publishJob.indexOf("run: pnpm --dir modules/client pack --dry-run");
-    const publish = publishJob.indexOf("run: npm publish --access public");
-    expect(tagCheck).toBeGreaterThanOrEqual(0);
-    expect(manifestCheck).toBeGreaterThanOrEqual(0);
-    expect(tagCheck).toBeLessThan(manifestCheck);
-    expect(tagCheck).toBeLessThan(pnpmSetup);
-    expect(tagCheck).toBeLessThan(nodeSetup);
-    expect(tagCheck).toBeLessThan(install);
-    expect(manifestCheck).toBeLessThan(pnpmSetup);
-    expect(manifestCheck).toBeLessThan(nodeSetup);
-    expect(manifestCheck).toBeLessThan(install);
-    expect(manifestCheck).toBeLessThan(typecheck);
-    expect(typecheck).toBeLessThan(tests);
-    expect(tests).toBeLessThan(pack);
-    expect(pack).toBeLessThan(publish);
+    expect(publishJob).toContain(
+      "npm publish --provenance --access public --registry=https://registry.npmjs.org",
+    );
+    expect(publishJob).not.toContain("npm publish --access public\n");
+    expect(resolve).toBeGreaterThanOrEqual(0);
+    expect(install).toBeGreaterThan(resolve);
+    expect(validate).toBeGreaterThan(install);
+    expect(commit).toBeGreaterThan(validate);
+    expect(publish).toBeGreaterThan(commit);
   });
 });
