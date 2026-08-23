@@ -6,6 +6,20 @@ Examples use a typical monorepo shape (`codex-*` workflow names, `docs/prompts/â
 
 API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost model: [why.md](why.md), [costs.md](costs.md).
 
+## Packaged automation
+
+For GitHub workflows, `jonathanong/auto-harness/actions/dispatch@main` wraps the fire-and-forget
+session create call and returns `session-id`, `session-url`, and `created` outputs. It accepts the
+control-plane URL and service-account key as secrets plus repository, prompt, target JSON, and
+optional ref/concurrency/metadata inputs; see [`actions/dispatch`](../actions/dispatch/README.md).
+
+Node automation can use the dependency-free public `@auto-harness/client` package. Its methods
+cover session create/read/cancel, repository list, and pause/drain/activate. HTTP failures are
+`AutoHarnessError` instances with `status`, stable API `code`, and optional `retryAfter`.
+
+The source contract for this supported subset is [`docs/openapi.yaml`](openapi.yaml). Direct HTTP
+remains supported; all dispatch forms return after acceptance and never wait for completion.
+
 ---
 
 ## Requirements

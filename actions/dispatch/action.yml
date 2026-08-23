@@ -1,0 +1,40 @@
+name: Auto Harness dispatch
+description: Create an Auto Harness session and return immediately
+inputs:
+  server-url:
+    description: Auto Harness control-plane URL
+    required: true
+  api-key:
+    description: Auto Harness service-account API key
+    required: true
+  repository-id:
+    description: Auto Harness repository ID
+    required: true
+  prompt:
+    description: Prompt for the session
+    required: true
+  target:
+    description: JSON target, for example {"providerId":"codex"}
+    required: true
+  fallbacks:
+    description: Optional JSON array of fallback targets
+    required: false
+  ref:
+    description: Optional branch, tag, or SHA
+    required: false
+  concurrency-id:
+    description: Optional idempotency/concurrency identity
+    required: false
+  metadata:
+    description: Optional JSON object
+    required: false
+outputs:
+  session-id:
+    description: Created or deduplicated session ID
+  session-url:
+    description: Control-plane URL for the session
+  created:
+    description: Whether this invocation created a new session
+runs:
+  using: node20
+  main: dist/index.js

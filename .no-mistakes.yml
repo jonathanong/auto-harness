@@ -40,6 +40,10 @@ checks:
       command: [pnpm, --dir, modules/ui, exec, tsc, --noEmit]
       fileArgs: none
       always: true
+    - name: typecheck-client
+      command: [pnpm, exec, tsc, --noEmit, --project, modules/client/tsconfig.json]
+      fileArgs: none
+      always: true
 
 tests:
   vitest:
@@ -127,6 +131,8 @@ rules:
       - "**/next-env.d.ts"
   - rule: file-extension-policy
     scope: repository
+    exclude:
+      - "modules/client/**"
     options:
       scopes:
         - path: modules

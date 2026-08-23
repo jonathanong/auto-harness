@@ -26,7 +26,7 @@ Live streaming and agent control use the [WebSocket protocol](websocket.md). Cre
 
 `concurrencyId` is an exact, caller-chosen idempotency/concurrency identity shared by manual and scheduled creates. Its UTF-8 length is at most 2,048 bytes, including a schedule's derived `schedule-${scheduleId}` default; oversized session or schedule writes and exact-list filters return `400 VALIDATION_ERROR`. While its lock is held, a repeated create returns `200 OK` with the existing session and `created: false`; a new identity returns `201 Created` with `created: true`. A terminal session releases its lock, so a later request may retry with the same id. The lock is durable and atomic across API workers.
 
-**CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. Patterns: [harness.md](harness.md).
+**CI / repo harness:** create sessions with `POST /sessions` (or `/resume`) and **return immediately** — fire and forget. Do not hold the caller open for session completion; humans watch [Slack](integrations.md) and GitHub. The stable automation subset is described by [OpenAPI](openapi.yaml); packaged integrations and patterns are in [harness.md](harness.md).
 
 ## Audit logs
 

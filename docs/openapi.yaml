@@ -1,0 +1,213 @@
+openapi: 3.1.0
+info:
+  title: Auto Harness Automation API
+  version: 1.0.0
+  description: Stable, fire-and-forget automation surface for sessions and repository admission.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Create or deduplicate a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSession" }
+      responses:
+        "200":
+          description: Existing active session with the same concurrency ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getSession
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: cancelSession
+      responses:
+        "200":
+          description: Cancelled session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories:
+    get:
+      operationId: listRepositories
+      responses:
+        "200":
+          description: Repositories visible to the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/pause:
+    post:
+      operationId: pauseRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/drain:
+    post:
+      operationId: drainRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository draining, or paused when all leases have settled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/activate:
+    post:
+      operationId: activateRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+    RepositoryId:
+      name: repositoryId
+      in: path
+      required: true
+      schema: { type: string }
+  responses:
+    Conflict:
+      description: Conflict, including closed repository admission
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Target:
+      type: object
+      properties:
+        providerId: { type: string }
+        commandId: { type: string }
+      oneOf:
+        - required: [providerId]
+        - required: [commandId]
+      additionalProperties: false
+    CreateSession:
+      type: object
+      required: [repositoryId, prompt, target]
+      properties:
+        repositoryId: { type: string }
+        prompt: { type: string, minLength: 1 }
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks:
+          type: array
+          items: { $ref: "#/components/schemas/Target" }
+        ref: { type: string }
+        concurrencyId: { type: string, maxLength: 2048 }
+        queueTtlSeconds: { type: integer, minimum: 1 }
+        timeout: { type: number, exclusiveMinimum: 0 }
+        priority: { type: number }
+        requiredLabels:
+          type: array
+          items: { type: string }
+        metadata: { type: object, additionalProperties: true }
+      additionalProperties: false
+    Session:
+      type: object
+      required: [id, repositoryId, prompt, target, status, createdAt, url]
+      properties:
+        id: { type: string }
+        repositoryId: { type: string }
+        prompt: { type: string }
+        target: { $ref: "#/components/schemas/Target" }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        url: { type: string }
+      additionalProperties: true
+    SessionCreateResult:
+      allOf:
+        - $ref: "#/components/schemas/Session"
+        - type: object
+          required: [created]
+          properties:
+            created: { type: boolean }
+    Repository:
+      type: object
+      required: [id, name, url, defaultBranch]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        url: { type: string }
+        defaultBranch: { type: string }
+        admissionState:
+          type: string
+          enum: [active, paused, draining]
+          default: active
+        admissionStateChangedAt: { type: string, format: date-time }
+        drainRequestedAt: { type: string, format: date-time }
+        drainCompletedAt: { type: string, format: date-time }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [VALIDATION_ERROR, REPOSITORY_ADMISSION_CLOSED]
+            message: { type: string }
