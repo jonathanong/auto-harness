@@ -1,0 +1,92 @@
+import { createHmac } from "node:crypto";
+
+import { describe, expect, it } from "vitest";
+
+import { ControlPlane } from "./control-plane.ts";
+import { createLocalApp } from "./local-server.ts";
+import { invokeHandler } from "./local-server-test-helpers.ts";
+
+function signCursor(payload: string, secret: string): string {
+  return createHmac("sha256", secret).update(payload).digest("base64url");
+}
+
+describe("repository list pagination", () => {
+  it("enforces bounds, returns pages, and replays a cursor deterministically", async () => {
+    const plane = new ControlPlane({
+      repositoryIdFactory: (() => {
+        let n = 0;
+        return () => `repo-${++n}`;
+      })(),
+      sessionCursorSecret: "repository-pagination-test-secret",
+    });
+    for (const name of ["charlie", "alpha", "bravo"]) {
+      expect(plane.createRepository({ name, url: `/${name}` }).ok).toBe(true);
+    }
+    const { handler } = createLocalApp({ plane, rateLimitConfig: { enabled: false } });
+    const invoke = (path: string) => invokeHandler(handler, "GET", path);
+
+    expect((await invoke("/api/v1/repositories?limit=0")).status).toBe(400);
+    expect((await invoke("/api/v1/repositories?limit=101")).status).toBe(400);
+    expect((await invoke("/api/v1/repositories?limit=2&limit=2")).status).toBe(400);
+    expect((await invoke("/api/v1/repositories?limit=1")).json).toMatchObject({
+      items: [{ name: "alpha" }],
+      nextCursor: expect.any(String),
+    });
+    expect((await invoke("/api/v1/repositories?limit=100")).json).toMatchObject({
+      items: [{ name: "alpha" }, { name: "bravo" }, { name: "charlie" }],
+      nextCursor: null,
+    });
+
+    const first = await invoke("/api/v1/repositories?limit=2");
+    expect(first.status).toBe(200);
+    const firstPage = first.json as { items: Array<{ name: string }>; nextCursor: string };
+    expect(firstPage.items.map((repository) => repository.name)).toEqual(["alpha", "bravo"]);
+    expect(firstPage.nextCursor).toEqual(expect.any(String));
+
+    const second = await invoke(
+      `/api/v1/repositories?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor)}`,
+    );
+    const secondPage = second.json as { items: Array<{ name: string }>; nextCursor: string | null };
+    expect(secondPage.items.map((repository) => repository.name)).toEqual(["charlie"]);
+    expect(secondPage.nextCursor).toBeNull();
+
+    const replay = await invoke(
+      `/api/v1/repositories?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor)}`,
+    );
+    expect(replay.json).toEqual(second.json);
+    expect((await invoke("/api/v1/repositories?cursor=not-a-cursor")).status).toBe(400);
+
+    const malformedPayload = Buffer.from("{", "utf8").toString("base64url");
+    expect(() =>
+      plane.listRepositoriesPage({
+        cursor: `${malformedPayload}.${signCursor(malformedPayload, "repository-pagination-test-secret")}`,
+      }),
+    ).toThrow();
+    const invalidPosition = Buffer.from(
+      JSON.stringify({ version: 1, scope: null, position: { name: 1, id: "repo" } }),
+      "utf8",
+    ).toString("base64url");
+    expect(() =>
+      plane.listRepositoriesPage({
+        cursor: `${invalidPosition}.${signCursor(invalidPosition, "repository-pagination-test-secret")}`,
+      }),
+    ).toThrow();
+  });
+
+  it("filters visibility before applying the page size", () => {
+    const plane = new ControlPlane({ sessionCursorSecret: "repository-scope-test-secret" });
+    for (const [id, name] of [
+      ["repo-a", "alpha"],
+      ["repo-b", "bravo"],
+      ["repo-c", "charlie"],
+    ] as const) {
+      plane.createRepository({ id, name, url: `/${name}` });
+    }
+    const scoped = plane.listRepositoriesPage({ limit: 1, scope: ["repo-b", "repo-c"] });
+    expect(scoped.items.map((repository) => repository.id)).toEqual(["repo-b"]);
+    expect(scoped.nextCursor).toEqual(expect.any(String));
+    expect(() =>
+      plane.listRepositoriesPage({ cursor: scoped.nextCursor!, scope: ["repo-a", "repo-b"] }),
+    ).toThrow("invalid or mismatched repository cursor");
+  });
+});

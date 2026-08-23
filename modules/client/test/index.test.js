@@ -44,6 +44,29 @@ test("maps stable API errors and retry metadata", async () => {
   });
 });
 
+test("lists repositories with bounded pagination controls", async () => {
+  const requestedUrls = [];
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    fetch: async (url) => {
+      requestedUrls.push(url);
+      return requestedUrls.length === 1
+        ? Response.json({ items: [{ id: "repo-1" }], nextCursor: "cursor/one" })
+        : Response.json({ items: [{ id: "repo-2" }], nextCursor: null });
+    },
+  });
+  const first = await client.listRepositories({ limit: 1 });
+  assert.deepEqual(first, { items: [{ id: "repo-1" }], nextCursor: "cursor/one" });
+  await assert.deepEqual(await client.listRepositories({ limit: 1, cursor: first.nextCursor }), {
+    items: [{ id: "repo-2" }],
+    nextCursor: null,
+  });
+  assert.deepEqual(requestedUrls, [
+    "https://harness.test/api/v1/repositories?limit=1",
+    "https://harness.test/api/v1/repositories?limit=1&cursor=cursor%2Fone",
+  ]);
+});
+
 test("preserves DRAINING operation details for durable progress polling", async () => {
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",

@@ -425,7 +425,14 @@ Add a repository. **Admin only.**
 
 #### `GET /repositories`
 
-List all repositories.
+List repositories visible to the caller. Results are ordered by repository name and then ID.
+
+**Query parameters:**
+
+| Param    | Type   | Description                                         |
+| -------- | ------ | --------------------------------------------------- |
+| `limit`  | number | Base-10 integer from 1 to 100 (default: 50)         |
+| `cursor` | string | Opaque continuation cursor from a previous response |
 
 **Response:** `200 OK`
 
@@ -442,9 +449,15 @@ List all repositories.
       "scheduleCount": 2,
       "createdAt": "2026-08-01T00:00:00Z"
     }
-  ]
+  ],
+  "nextCursor": null
 }
 ```
+
+`nextCursor` is an opaque cursor when more repositories are available, or `null` on the final
+page. Visibility filtering is applied before `limit`; cursors are bound to the caller's repository
+scope and cannot be reused with a different scope. Invalid or repeated query parameters return a
+structured `400`.
 
 The three count fields are durable, index-backed totals for each repository visible to the
 authenticated principal. Host-bound credentials receive session and worktree totals for their host.

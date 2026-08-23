@@ -49,6 +49,13 @@ export type Repository = {
   drainCompletedAt?: string;
 };
 
+export type ListRepositoriesOptions = {
+  /** Number of repositories to return (1–100, default 50). */
+  limit?: number;
+  /** Opaque cursor returned by a previous page. */
+  cursor?: string;
+};
+
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
 /** Bounded, durable progress for the authenticated principal's repository session drain. */
@@ -100,7 +107,10 @@ export class AutoHarnessClient {
   ): Promise<SessionDrain>;
   getSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
   releaseSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
-  listRepositories(): Promise<{ items: Repository[] }>;
+  listRepositories(options?: ListRepositoriesOptions): Promise<{
+    items: Repository[];
+    nextCursor: string | null;
+  }>;
   pauseRepository(id: string): Promise<Repository>;
   drainRepository(id: string): Promise<Repository>;
   activateRepository(id: string): Promise<Repository>;

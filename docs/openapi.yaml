@@ -58,18 +58,15 @@ paths:
   /repositories:
     get:
       operationId: listRepositories
+      parameters:
+        - $ref: "#/components/parameters/RepositoryLimit"
+        - $ref: "#/components/parameters/RepositoryCursor"
       responses:
         "200":
           description: Repositories visible to the caller
           content:
             application/json:
-              schema:
-                type: object
-                required: [items]
-                properties:
-                  items:
-                    type: array
-                    items: { $ref: "#/components/schemas/Repository" }
+              schema: { $ref: "#/components/schemas/RepositoryPage" }
         default: { $ref: "#/components/responses/Error" }
   /repositories/{repositoryId}/pause:
     post:
@@ -182,6 +179,18 @@ components:
       schema:
         type: string
         pattern: "^[A-Za-z0-9._:-]{1,128}$"
+    RepositoryLimit:
+      name: limit
+      in: query
+      required: false
+      description: Number of repositories to return. Defaults to 50; maximum is 100.
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    RepositoryCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque continuation cursor returned by a previous response.
+      schema: { type: string }
   responses:
     Conflict:
       description: Conflict, including closed repository admission
@@ -271,6 +280,17 @@ components:
         admissionStateChangedAt: { type: string, format: date-time }
         drainRequestedAt: { type: string, format: date-time }
         drainCompletedAt: { type: string, format: date-time }
+    RepositoryPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Repository" }
+        nextCursor:
+          type: [string, "null"]
+          description: Opaque continuation cursor, or null when the page is complete.
     SessionDrain:
       type: object
       required:
