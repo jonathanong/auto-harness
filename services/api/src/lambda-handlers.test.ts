@@ -25,6 +25,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   const commands = new Map<string, Record<string, unknown>>();
   const drains = new Map<string, Record<string, unknown>>();
   const inventories = new Map<string, Record<string, unknown>>();
+  const mainCheckoutLeases = new Map<string, string>();
   const sessions = new Map<string, Record<string, unknown>>();
   const repositories = new Map<string, Record<string, unknown>>();
   const schedules = new Map<string, Record<string, unknown>>();
@@ -34,26 +35,18 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   const registrations: Array<Record<string, unknown>> = [];
   const schedulerCalls: string[] = [];
   const recordSchedulerCall = (call: string) => {
-    const previous = schedulerCalls.at(-1);
-    if (
-      call === "migration" ||
-      (call === "cron" && previous === "migration") ||
-      (call === "ack" && previous === "cron") ||
-      (call === "timeout" && previous === "ack") ||
-      (call === "refresh" && previous === "timeout") ||
-      (call === "stale" && previous === "refresh") ||
-      (call === "repositories" && previous === "stale") ||
-      (call === "session-drains" && previous === "repositories")
-    ) {
-      schedulerCalls.push(call);
-    } else if (call === "refresh" && previous === "session-drains") {
-      schedulerCalls.push("queued");
-    } else if (call === "refresh" && previous === "queued") {
-      schedulerCalls.push("scheduled");
-    }
+    schedulerCalls.push(call);
   };
   const storage = {
-    async acknowledgeSession() {
+    async acknowledgeSession(input?: Record<string, unknown>) {
+      const sessionId = input?.sessionId;
+      const session = sessionId ? sessions.get(String(sessionId)) : undefined;
+      if (session) {
+        sessions.set(String(sessionId), {
+          ...session,
+          ackReceivedAt: input?.acknowledgedAt,
+        });
+      }
       return true;
     },
     async deleteConnection(id: string) {
@@ -88,7 +81,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [...commands.values()];
     },
     async listConnections() {
-      recordSchedulerCall("refresh");
+      recordSchedulerCall("connections");
       return [...connections.values()];
     },
     async listHostInventories() {
@@ -105,7 +98,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [...repositories.values()];
     },
     async listAllSessions() {
-      recordSchedulerCall("ack");
+      recordSchedulerCall("sessions");
       return [...sessions.values()];
     },
     async listAllWorktrees() {
@@ -115,7 +108,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [];
     },
     async listSchedules() {
-      recordSchedulerCall("cron");
+      recordSchedulerCall("schedules");
       return [...schedules.values()];
     },
     async listSessionDrains() {
@@ -123,7 +116,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [...drains.values()];
     },
     async listSessionsByStatus(status: string, shard: number) {
-      if (status === "running") recordSchedulerCall("timeout");
+      if (status === "running") recordSchedulerCall(`running:${shard}`);
       return [...sessions.values()].filter(
         (session) => session.status === status && session.queueShard === shard,
       );
@@ -176,6 +169,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async releaseMainCheckoutSession(input: Record<string, unknown>) {
       const session = sessions.get(String(input.sessionId));
       if (!session) return false;
+      const leaseKey = `${String(input.hostId)}#${String(input.repositoryId)}`;
+      if (mainCheckoutLeases.get(leaseKey) !== input.sessionId) return false;
+      mainCheckoutLeases.delete(leaseKey);
       sessions.set(String(input.sessionId), {
         ...session,
         status: input.status,
@@ -186,7 +182,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return true;
     },
     async releaseHostConnection(hostId: string, connectionId: string) {
-      recordSchedulerCall("stale");
+      recordSchedulerCall("stale-release");
       if (hostLocks.get(hostId) !== connectionId) return false;
       hostLocks.delete(hostId);
       connections.delete(connectionId);
@@ -198,6 +194,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async tryAssignMainCheckoutSession(input: Record<string, unknown>) {
       const session = sessions.get(String(input.sessionId));
       if (!session || session.status !== "queued") return false;
+      const leaseKey = `${String(input.hostId)}#${String(input.repositoryId)}`;
+      if (mainCheckoutLeases.has(leaseKey)) return false;
+      mainCheckoutLeases.set(leaseKey, String(input.sessionId));
       sessions.set(String(input.sessionId), {
         ...session,
         status: "running",
@@ -205,7 +204,6 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
         attemptId: input.attemptId,
         assignmentConnectionId: input.connectionId,
         assignmentSentAt: input.now,
-        ackReceivedAt: input.now,
         mainCheckoutLease: true,
       });
       return true;
@@ -233,12 +231,22 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async tryClaimScheduleAndCreateSession(input: Record<string, unknown>) {
       const schedule = schedules.get(String(input.scheduleId));
       if (!schedule || schedule.nextRunAt !== input.expectedNextRunAt) return { kind: "lost" };
+      const session = input.session as Record<string, unknown>;
+      const activeDrain = [...drains.values()].find(
+        (drain) =>
+          drain.recordKey === "CURRENT" &&
+          drain.status === "draining" &&
+          drain.repositoryId === session.repositoryId &&
+          drain.principalId === session.principalId,
+      );
+      if (activeDrain) {
+        return { kind: "draining", operationId: activeDrain.operationId };
+      }
       schedules.set(String(input.scheduleId), {
         ...schedule,
         nextRunAt: input.newNextRunAt,
         lastRunAt: input.lastRunAt,
       });
-      const session = input.session as Record<string, unknown>;
       sessions.set(String(session.id), session);
       return { kind: "created" };
     },
@@ -307,6 +315,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     drains,
     hostLocks,
     inventories,
+    mainCheckoutLeases,
     management,
     plane,
     registrations,
@@ -399,6 +408,17 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     createdAt: "created",
     updatedAt: "updated",
   });
+  for (const id of ["repo-ack", "repo-timeout"]) {
+    fixture.repositories.set(id, {
+      id,
+      name: id,
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: "created",
+      updatedAt: "updated",
+    });
+  }
   fixture.repositories.set("repo-paused", {
     id: "repo-paused",
     name: "paused",
@@ -416,7 +436,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     lastHeartbeatAt: "2099-01-01T00:00:00.000Z",
     commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
-    repositoryIds: ["repo-active"],
+    repositoryIds: ["repo-active", "repo-ack", "repo-timeout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
   });
   fixture.connections.set("stale-connection", {
@@ -434,9 +454,12 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
   fixture.hostLocks.set("stale-host", "stale-connection");
   fixture.inventories.set("active-host", {
     hostId: "active-host",
-    repositories: [
-      { id: "repo-active", path: "/repo-active", defaultBranch: "main", worktrees: [] },
-    ],
+    repositories: ["repo-active", "repo-ack", "repo-timeout"].map((id) => ({
+      id,
+      path: `/${id}`,
+      defaultBranch: "main",
+      worktrees: [],
+    })),
     providerAccounts: [],
     commandProfiles: {},
     updatedAt: "2026-08-12T00:00:00.000Z",
@@ -467,6 +490,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
   fixture.sessions.set(
     "ack-session",
     schedulerSession("ack-session", "scheduled", {
+      repositoryId: "repo-ack",
       status: "running",
       startedAt: "2026-08-12T00:00:00.000Z",
       assignmentSentAt: "2026-01-01T00:00:00.000Z",
@@ -480,6 +504,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
   fixture.sessions.set(
     "timeout-session",
     schedulerSession("timeout-session", "scheduled", {
+      repositoryId: "repo-timeout",
       status: "running",
       startedAt: "2026-01-01T00:00:00.000Z",
       ackReceivedAt: "2026-01-01T00:00:00.000Z",
@@ -490,6 +515,8 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
       mainCheckoutLease: true,
     }),
   );
+  fixture.mainCheckoutLeases.set("active-host#repo-ack", "ack-session");
+  fixture.mainCheckoutLeases.set("active-host#repo-timeout", "timeout-session");
   fixture.sessions.set(
     "stale-session",
     schedulerSession("stale-session", "prompt", {
@@ -516,7 +543,7 @@ function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
     nextRunAt: "2026-08-12T00:00:00.000Z",
     lastRunAt: null,
     createdAt: "2026-08-12T00:00:00.000Z",
-    principalId: "principal",
+    principalId: "drain-principal",
   });
   fixture.drains.set("drain-operation", {
     scopeKey: "repo-active#principal",
@@ -869,30 +896,49 @@ describe("Lambda runtime adapters", () => {
   });
 
   it("runs a complete durable scheduler sweep and reports its work", async () => {
-    const fixture = runtimeFixture();
-    seedSchedulerSweep(fixture);
-    await expect((await fixture.runtime).cron()).resolves.toEqual({
-      ackDeadlinesEnforced: 2,
-      runningTimeoutsEnforced: 1,
-      queuedAssigned: 1,
-      repositoriesReconciled: 1,
-      sessionDrainsReconciled: 1,
-      scheduledAssigned: 2,
-      schedulesFired: 1,
-      staleHostsReclaimed: 1,
-    });
-    expect(fixture.schedulerCalls).toEqual([
-      "migration",
-      "cron",
-      "ack",
-      "timeout",
-      "refresh",
-      "stale",
-      "repositories",
-      "session-drains",
-      "queued",
-      "scheduled",
-    ]);
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-12T00:00:00.000Z");
+    try {
+      const fixture = runtimeFixture();
+      seedSchedulerSweep(fixture);
+      await expect((await fixture.runtime).cron()).resolves.toEqual({
+        ackDeadlinesEnforced: 1,
+        runningTimeoutsEnforced: 1,
+        queuedAssigned: 1,
+        repositoriesReconciled: 1,
+        sessionDrainsReconciled: 1,
+        scheduledAssigned: 1,
+        schedulesFired: 1,
+        staleHostsReclaimed: 1,
+      });
+      expect(fixture.schedulerCalls).toEqual([
+        "migration",
+        "schedules",
+        "sessions",
+        "connections",
+        "repositories",
+        "sessions",
+        "running:0",
+        "running:1",
+        "running:2",
+        "running:3",
+        "connections",
+        "repositories",
+        "stale-release",
+        "repositories",
+        "sessions",
+        "sessions",
+        "session-drains",
+        "sessions",
+        "connections",
+        "repositories",
+        "sessions",
+        "connections",
+        "repositories",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("posts through the management API and prunes gone connections", async () => {
