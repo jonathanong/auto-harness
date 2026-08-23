@@ -77,7 +77,7 @@ function stageLinux(ctx: HostServiceContext, unit: string, envContents?: string)
 }
 
 function activateLinux(ctx: HostServiceContext, envExists: boolean): number {
-  if (ctx.apiUrl !== undefined && envExists) {
+  if (envExists) {
     const enable = ctx.run("systemctl", ["enable", LINUX_SERVICE_NAME]);
     if (enable.status !== 0) return failedCommand(ctx.error, "systemctl enable", enable);
     const restart = ctx.run("systemctl", ["restart", LINUX_SERVICE_NAME]);

@@ -23,6 +23,12 @@ if [[ -n "${1:-}" ]]; then
   exit 2
 fi
 
+platform="$(uname -s)"
+if [[ "$platform" == "Linux" && "$(id -u)" -eq 0 ]]; then
+  echo "deploy:host must run as the checkout owner on Linux; it elevates only the systemd operations." >&2
+  exit 1
+fi
+
 if [[ "$(git branch --show-current)" != "main" ]]; then
   echo "deploy:host requires the main branch" >&2
   exit 1
@@ -37,24 +43,26 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
-platform="$(uname -s)"
-if [[ "$platform" == "Linux" && "$(id -u)" -ne 0 ]]; then
-  echo "deploy:host requires root on Linux so it can update the installed systemd service." >&2
-  exit 1
-fi
-
 pnpm install --frozen-lockfile --ignore-scripts
-pnpm local:daemon install-service
 
 case "$platform" in
-  Darwin) env_file="$HOME/Library/Application Support/auto-harness/host-daemon.env" ;;
-  Linux) env_file="/etc/auto-harness/host-daemon.env" ;;
+  Darwin)
+    pnpm local:daemon install-service
+    env_file="$HOME/Library/Application Support/auto-harness/host-daemon.env"
+    env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+      HARNESS_ENV_FILE="$env_file" \
+      pnpm local:daemon status
+    ;;
+  Linux)
+    pnpm_path="$(command -v pnpm)"
+    sudo env "PATH=$PATH" "$pnpm_path" local:daemon install-service
+    env_file="/etc/auto-harness/host-daemon.env"
+    sudo env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+      "PATH=$PATH" HARNESS_ENV_FILE="$env_file" \
+      "$pnpm_path" local:daemon status
+    ;;
   *)
     echo "deploy:host currently supports macOS and Linux service environments." >&2
     exit 1
     ;;
 esac
-
-env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
-  HARNESS_ENV_FILE="$env_file" \
-  pnpm local:daemon status

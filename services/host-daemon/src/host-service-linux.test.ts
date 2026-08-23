@@ -62,7 +62,8 @@ describe("install-service linux", () => {
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
     expect(spawn.calls.map((c) => [c.command, ...c.args].join(" "))).toEqual([
       "systemctl daemon-reload",
-      "systemctl enable --now auto-harness-host-daemon.service",
+      "systemctl enable auto-harness-host-daemon.service",
+      "systemctl restart auto-harness-host-daemon.service",
     ]);
   });
 
