@@ -167,9 +167,9 @@ describe("DynamoDB Local schedule catalog adapters", () => {
       }),
     ).resolves.toEqual({ kind: "lost" });
     await putSchedule(ctx, { ...schedule, id: "closed-schedule", nextRunAt: "closed-one" });
-    expect(await setRepositoryAdmissionState(ctx, "repository", "paused", "closed-at")).not.toBe(
-      null,
-    );
+    expect(
+      await setRepositoryAdmissionState(ctx, "repository", "paused", "closed-at"),
+    ).not.toBeNull();
     expect(
       await skipScheduleForClosedRepository(ctx, {
         scheduleId: "closed-schedule",
