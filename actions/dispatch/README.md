@@ -19,6 +19,11 @@ lists or individually cancels sessions in GitHub Actions: the control plane owns
 The action returns as soon as the session is accepted. Use the `session-id`, `session-url`, and
 `created` outputs for annotations or later automation.
 
+Every dispatch and drain request is bounded by `request-timeout-seconds`, including receiving the
+response body. It defaults to `30` seconds and must be a finite positive number no greater than
+`300`. The wait operation uses the shorter of this request timeout and the remaining
+`poll-timeout-seconds` deadline for each status request; it does not retry a timed-out request.
+
 ## Principal session drain
 
 Use one stable idempotency key per caller operation. Start returns the durable `operation-id` and

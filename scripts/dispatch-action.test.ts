@@ -34,7 +34,7 @@ describe("dispatch action principal session drain operations", () => {
     });
   });
 
-  it("gets a bounded drain status", async () => {
+  it("gets a bounded drain status with the default request timeout", async () => {
     const server = await serve(() => ({ body: drain("succeeded") }));
 
     const result = await runAction({
@@ -125,7 +125,7 @@ describe("dispatch action principal session drain operations", () => {
     const result = await runAction({
       ...drainInputs(server.origin, "wait-for-drain"),
       "poll-interval-seconds": "0.001",
-      "poll-timeout-seconds": "0.02",
+      "poll-timeout-seconds": "0.005",
       "session-drain-id": "drain-1",
     });
 

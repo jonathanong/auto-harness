@@ -11,6 +11,10 @@ inputs:
   api-key:
     description: Auto Harness service-account API key
     required: true
+  request-timeout-seconds:
+    description: Maximum time for each dispatch or drain request, including its response body (finite positive number, at most 300)
+    required: false
+    default: "30"
   repository-id:
     description: Auto Harness repository ID
     required: true

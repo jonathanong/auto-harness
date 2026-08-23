@@ -21,9 +21,23 @@ const setOutput = (name, value) => {
   appendFileSync(output, `${name}=${value}\n`, "utf8");
 };
 
-const positiveNumberInput = (name) => {
+const positiveNumberInput = (name, maximum) => {
   const value = Number(input(name, true));
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be a positive number`);
+  if (!Number.isFinite(value) || value <= 0 || (maximum !== undefined && value > maximum)) {
+    throw new Error(
+      maximum === undefined
+        ? `${name} must be a positive number`
+        : `${name} must be a finite positive number no greater than ${maximum}`,
+    );
+  }
+  return value;
+};
+
+const requestTimeoutSeconds = () => {
+  const value = Number(input("request-timeout-seconds") || "30");
+  if (!Number.isFinite(value) || value <= 0 || value > 300) {
+    throw new Error("request-timeout-seconds must be a finite positive number no greater than 300");
+  }
   return value;
 };
 
@@ -93,13 +107,11 @@ const drainErrorDetails = (baseUrl, error) => {
   }
 };
 
-const request = async (baseUrl, apiKey, path, method = "GET", headers = {}, deadline) => {
-  let signal;
-  if (deadline !== undefined) {
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
-    signal = AbortSignal.timeout(Math.max(1, Math.ceil(remainingMs)));
-  }
+const request = async (baseUrl, apiKey, path, method = "GET", headers = {}, options = {}) => {
+  const { body, deadline, drain: isDrain, timeoutMs } = options;
+  const remainingMs = deadline === undefined ? Number.POSITIVE_INFINITY : deadline - Date.now();
+  if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
+  const signal = AbortSignal.timeout(Math.max(1, Math.ceil(Math.min(timeoutMs, remainingMs))));
   let response;
   try {
     response = await fetch(`${baseUrl}/api/v1${path}`, {
@@ -109,18 +121,28 @@ const request = async (baseUrl, apiKey, path, method = "GET", headers = {}, dead
         authorization: `Bearer ${apiKey}`,
         ...headers,
       },
-      ...(signal ? { signal } : {}),
+      ...(body === undefined ? {} : { body }),
+      signal,
     });
+    const result = await response.json().catch((error) => {
+      if (signal.aborted) throw error;
+      return {};
+    });
+    if (!response.ok) {
+      const drain = drainErrorDetails(baseUrl, result.error);
+      throw new Error(result.error?.message ? `${result.error.message}${drain}` : `Auto Harness returned ${response.status}`);
+    }
+    return result;
   } catch (error) {
-    if (signal?.aborted) throw new Error("Timed out waiting for principal session drain");
+    if (signal.aborted) {
+      throw new Error(
+        isDrain || deadline !== undefined
+          ? "Timed out waiting for principal session drain"
+          : "Timed out waiting for Auto Harness request",
+      );
+    }
     throw error;
   }
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const drain = drainErrorDetails(baseUrl, result.error);
-    throw new Error(result.error?.message ? `${result.error.message}${drain}` : `Auto Harness returned ${response.status}`);
-  }
-  return result;
 };
 
 const setDrainOutputs = (result) => {
@@ -134,11 +156,11 @@ const setDrainOutputs = (result) => {
   setOutput("failure-code", result.failureCode ?? "");
 };
 
-const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operationId) => {
+const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operationId, requestTimeoutMs) => {
   const intervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
   const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1_000;
   let result = validateDrain(
-    await request(baseUrl, apiKey, path, "GET", {}, deadline),
+    await request(baseUrl, apiKey, path, "GET", {}, { deadline, drain: true, timeoutMs: requestTimeoutMs }),
     baseUrl,
     repositoryId,
     operationId,
@@ -148,7 +170,7 @@ const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operat
     if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remainingMs)));
     result = validateDrain(
-      await request(baseUrl, apiKey, path, "GET", {}, deadline),
+      await request(baseUrl, apiKey, path, "GET", {}, { deadline, drain: true, timeoutMs: requestTimeoutMs }),
       baseUrl,
       repositoryId,
       operationId,
@@ -165,6 +187,7 @@ const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operat
 try {
   const baseUrl = input("server-url", true).replace(/\/$/, "").replace(/\/api\/v1$/, "");
   const apiKey = input("api-key", true);
+  const requestTimeoutMs = requestTimeoutSeconds() * 1_000;
   const operation = input("operation") || "dispatch";
   const repositoryId = input("repository-id", true);
   if (operation === "dispatch") {
@@ -178,20 +201,9 @@ try {
       ...(input("concurrency-id") ? { concurrencyId: input("concurrency-id") } : {}),
       ...(input("metadata") ? { metadata: parseJson("metadata", input("metadata")) } : {}),
     };
-    const response = await fetch(`${baseUrl}/api/v1/sessions`, {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${apiKey}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const drain = drainErrorDetails(baseUrl, result.error);
-      throw new Error(result.error?.message ? `${result.error.message}${drain}` : `Auto Harness returned ${response.status}`);
-    }
+    const result = await request(baseUrl, apiKey, "/sessions", "POST", {
+      "content-type": "application/json",
+    }, { body: JSON.stringify(body), timeoutMs: requestTimeoutMs });
     const session = validateSession(result);
     setOutput("session-id", session.id);
     setOutput("session-url", session.url);
@@ -205,7 +217,7 @@ try {
       result = validateDrain(
         await request(baseUrl, apiKey, collection, "POST", {
           ...(input("idempotency-key") ? { "idempotency-key": input("idempotency-key") } : {}),
-        }),
+        }, { drain: true, timeoutMs: requestTimeoutMs }),
         baseUrl,
         repositoryId,
       );
@@ -217,10 +229,17 @@ try {
       if (!drainId) throw new Error("Input required and not supplied: session-drain-id");
       const path = `${collection}/${encodeURIComponent(drainId)}`;
       if (operation === "wait-for-drain") {
-        result = await waitForSucceededDrain(baseUrl, apiKey, path, repositoryId, drainId);
+        result = await waitForSucceededDrain(baseUrl, apiKey, path, repositoryId, drainId, requestTimeoutMs);
       } else {
         result = validateDrain(
-          await request(baseUrl, apiKey, operation === "release-drain" ? `${path}/release` : path, operation === "release-drain" ? "POST" : "GET"),
+          await request(
+            baseUrl,
+            apiKey,
+            operation === "release-drain" ? `${path}/release` : path,
+            operation === "release-drain" ? "POST" : "GET",
+            {},
+            { drain: true, timeoutMs: requestTimeoutMs },
+          ),
           baseUrl,
           repositoryId,
           drainId,

@@ -11,8 +11,10 @@ API: [api.md](api.md). Slack: [integrations.md](integrations.md). Why / cost mod
 For GitHub workflows, `jonathanong/auto-harness/actions/dispatch@main` wraps the fire-and-forget
 session create call and returns `session-id`, `session-url`, and `created` outputs. It accepts the
 control-plane URL and service-account key as secrets plus repository, prompt, target JSON, and
-optional ref/concurrency/metadata inputs. Its explicit principal session-drain modes start, poll,
-and release a durable drain for that same service account and repository; see
+optional ref/concurrency/metadata inputs. Each request, including response-body consumption, has
+a configurable `request-timeout-seconds` bound (default 30, maximum 300). Its explicit principal
+session-drain modes start, poll, and release a durable drain for that same service account and
+repository; see
 [`actions/dispatch`](../actions/dispatch/README.md).
 
 Node automation can use the dependency-free public `auto-harness-client` package. Its methods
