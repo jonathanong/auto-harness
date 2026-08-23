@@ -57,7 +57,9 @@ export async function loadServiceAccountData(): Promise<ServiceAccountData> {
   return {
     kind: "ready",
     accounts: accountBody.items ?? [],
-    repositories: repositories.items,
+    repositories: repositories.items.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    ),
     hostIds: (hostBody.items ?? []).flatMap((item) => {
       const hostId = item.hostId?.trim();
       return hostId ? [hostId] : [];

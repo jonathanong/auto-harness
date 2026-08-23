@@ -39,7 +39,9 @@ export async function loadUserAccounts(): Promise<UserAccountData> {
   return {
     kind: "ready",
     accounts: body.items ?? [],
-    repositories: repositories.items,
+    repositories: repositories.items.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    ),
   };
 }
 

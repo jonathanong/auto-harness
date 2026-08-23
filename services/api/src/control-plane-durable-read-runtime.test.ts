@@ -310,7 +310,9 @@ describe("durable runtime read-through", () => {
     );
     const plane = new ControlPlane({
       storage: {
-        countSessionsByRepository: async () => 2,
+        countSessionsByRepository: async () => {
+          throw unavailable;
+        },
         countWorktreesByRepository: async () => {
           throw unavailable;
         },
@@ -318,12 +320,32 @@ describe("durable runtime read-through", () => {
           throw unavailable;
         },
         listAllWorktrees: async () => [worktree, { ...worktree, id: "other", hostId: "other" }],
+        listAllSessions: async () => [
+          { ...session, hostId: "host" },
+          { ...session, id: "other", repositoryId: "other", hostId: "host" },
+        ],
         listSchedules: async () => [{ id: "schedule", repositoryId: "repository" }],
       } as never,
     });
 
     await expect(plane.listRepositoryCountsDurable(["repository"], "host")).resolves.toEqual(
-      new Map([["repository", { sessionCount: 2, worktreeCount: 1, scheduleCount: 1 }]]),
+      new Map([["repository", { sessionCount: 1, worktreeCount: 1, scheduleCount: 1 }]]),
+    );
+  });
+
+  it("does not hide unrelated session-count failures", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => {
+          throw new Error("session query unavailable");
+        },
+        countWorktreesByRepository: async () => 0,
+        countSchedulesByRepository: async () => 0,
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).rejects.toThrow(
+      "session query unavailable",
     );
   });
 

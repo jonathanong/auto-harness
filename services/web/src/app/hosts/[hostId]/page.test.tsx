@@ -11,7 +11,13 @@ const catalogOk = {
     providerAccounts: [],
   },
   "/api/v1/hosts": { items: [{ hostId: "host-a", online: true }] },
-  "/api/v1/repositories": { items: [{ id: "repo-a", name: "Repo A" }] },
+  "/api/v1/repositories": {
+    items: [
+      { id: "repo-c", name: "Zulu" },
+      { id: "repo-b", name: "Repo A" },
+      { id: "repo-a", name: "Repo A" },
+    ],
+  },
   "/api/v1/worktrees?hostId=host-a": { items: [] },
   "/api/v1/providers": { items: [] },
   "/api/v1/provider-accounts": { items: [] },

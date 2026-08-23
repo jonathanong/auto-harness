@@ -397,34 +397,27 @@ export async function countSessionsByRepository(
   repositoryId: string,
   hostId?: string,
 ): Promise<number> {
-  try {
-    let count = 0;
-    let startKey: Record<string, unknown> | undefined;
-    do {
-      const res = await ctx.doc.send(
-        new QueryCommand({
-          TableName: ctx.tables.sessions,
-          IndexName: SESSIONS_REPOSITORY_INDEX,
-          KeyConditionExpression: "repositoryId = :repositoryId",
-          ExpressionAttributeValues: {
-            ":repositoryId": repositoryId,
-            ...(hostId ? { ":hostId": hostId } : {}),
-          },
-          ...(hostId ? { FilterExpression: "hostId = :hostId" } : {}),
-          Select: "COUNT",
-          ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-        }),
-      );
-      count += res.Count ?? 0;
-      startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
-    } while (startKey !== undefined);
-    return count;
-  } catch (error) {
-    if (!isRepositoryIndexUnavailable(error)) throw error;
-    return (await listSessionsByRepositoryScan(ctx, repositoryId)).filter(
-      (session) => !hostId || session.hostId === hostId,
-    ).length;
-  }
+  let count = 0;
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: SESSIONS_REPOSITORY_INDEX,
+        KeyConditionExpression: "repositoryId = :repositoryId",
+        ExpressionAttributeValues: {
+          ":repositoryId": repositoryId,
+          ...(hostId ? { ":hostId": hostId } : {}),
+        },
+        ...(hostId ? { FilterExpression: "hostId = :hostId" } : {}),
+        Select: "COUNT",
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    count += res.Count ?? 0;
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
+  return count;
 }
 
 function isRepositoryIndexUnavailable(error: unknown): boolean {

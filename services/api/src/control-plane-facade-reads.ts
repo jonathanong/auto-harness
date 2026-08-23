@@ -49,6 +49,34 @@ async function repositoryWorktreeCounts(
   );
 }
 
+async function repositorySessionCounts(
+  state: ControlPlaneState,
+  repositoryIds: readonly string[],
+  hostId?: string,
+): Promise<number[]> {
+  if (state.storage) {
+    try {
+      return await Promise.all(
+        repositoryIds.map((repositoryId) =>
+          state.storage!.countSessionsByRepository(repositoryId, hostId),
+        ),
+      );
+    } catch (error) {
+      if (!indexUnavailable(error)) throw error;
+    }
+  }
+  const records = state.storage
+    ? await durableRuntime.listSessionsDurable(state)
+    : [...state.sessions.values()];
+  return repositoryIds.map(
+    (repositoryId) =>
+      records.filter(
+        (session) =>
+          session.repositoryId === repositoryId && (!hostId || session.hostId === hostId),
+      ).length,
+  );
+}
+
 async function repositoryScheduleCounts(
   state: ControlPlaneState,
   repositoryIds: readonly string[],
@@ -80,21 +108,7 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
     );
     if (repositoryIds.length === 0) return counts;
     const [sessionCounts, worktreeCounts, scheduleCounts] = await Promise.all([
-      this.state.storage
-        ? Promise.all(
-            repositoryIds.map((repositoryId) =>
-              this.state.storage!.countSessionsByRepository(repositoryId, hostId),
-            ),
-          )
-        : Promise.resolve(
-            repositoryIds.map(
-              (repositoryId) =>
-                [...this.state.sessions.values()].filter(
-                  (session) =>
-                    session.repositoryId === repositoryId && (!hostId || session.hostId === hostId),
-                ).length,
-            ),
-          ),
+      repositorySessionCounts(this.state, repositoryIds, hostId),
       repositoryWorktreeCounts(this.state, repositoryIds, hostId),
       repositoryScheduleCounts(this.state, repositoryIds),
     ]);

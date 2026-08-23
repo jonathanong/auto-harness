@@ -28,28 +28,21 @@ describe("DynamoDB repository session pagination", () => {
     });
   });
 
-  it("falls back to filtering the compatibility scan when counting", async () => {
+  it("exposes an unavailable count index so callers can batch the compatibility scan", async () => {
     const ctx = {
       doc: {
-        send: async (command: { input: Record<string, unknown> }) => {
-          if (command.input.IndexName) {
-            const error = new Error("index is still being created");
-            error.name = "ValidationException";
-            throw error;
-          }
-          return {
-            Items: [
-              { id: "one", repositoryId: "repo-1", hostId: "host-1", createdAt: "t" },
-              { id: "two", repositoryId: "repo-1", hostId: "host-2", createdAt: "t" },
-            ],
-          };
+        send: async () => {
+          const error = new Error("index is still being created");
+          error.name = "ValidationException";
+          throw error;
         },
       },
       tables: { sessions: "Sessions" },
     } as unknown as PlaneStorageCtx;
 
-    await expect(countSessionsByRepository(ctx, "repo-1", "host-1")).resolves.toBe(1);
-    await expect(countSessionsByRepository(ctx, "repo-1")).resolves.toBe(2);
+    await expect(countSessionsByRepository(ctx, "repo-1", "host-1")).rejects.toMatchObject({
+      name: "ValidationException",
+    });
   });
 
   it("normalizes empty count results and propagates unrelated count failures", async () => {

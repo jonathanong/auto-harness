@@ -27,6 +27,7 @@ describe("repository list pagination", () => {
 
     expect((await invoke("/api/v1/repositories?limit=0")).status).toBe(400);
     expect((await invoke("/api/v1/repositories?limit=101")).status).toBe(400);
+    expect((await invoke("/api/v1/repositories?limit=abc")).status).toBe(400);
     expect(() => plane.listRepositoriesPage({ limit: 1.5 })).toThrow("limit must be");
     expect((await invoke("/api/v1/repositories?limit=2&limit=2")).status).toBe(400);
     expect((await invoke("/api/v1/repositories?limit=1")).json).toMatchObject({
@@ -172,5 +173,21 @@ describe("repository list pagination", () => {
       },
       { limit: 1 },
     ]);
+  });
+
+  it("pages through durable storage adapters without a native page method", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        listRepositories: async () => [
+          { id: "repo-b", name: "Bravo", url: "/bravo" },
+          { id: "repo-a", name: "Alpha", url: "/alpha" },
+        ],
+      } as never,
+    });
+
+    await expect(plane.listRepositoriesPageDurable({ limit: 1 })).resolves.toMatchObject({
+      items: [{ id: "repo-a" }],
+      nextCursor: expect.any(String),
+    });
   });
 });
