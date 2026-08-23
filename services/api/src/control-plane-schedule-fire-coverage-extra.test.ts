@@ -250,4 +250,26 @@ describe("schedule fire residual coverage", () => {
       }),
     );
   });
+
+  it("explicitly disables a legacy fallback-heavy manual trigger", async () => {
+    const current = state(
+      schedule({
+        principalId: "principal",
+        fallbacks: Array.from({ length: 91 }, () => ({ commandId: "cmd" })),
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => ({
+          kind: "legacy_fallbacks",
+          fallbackCount: 91,
+        }),
+        disableLegacyFallbackScheduleAndAudit: async () => true,
+      },
+    );
+
+    await expect(triggerScheduleDurable(current, "nightly", NOW)).resolves.toEqual({
+      ok: false,
+      error: "schedule disabled: it has 91 persisted fallbacks; update it to at most 90",
+    });
+    expect(current.schedules.get("nightly")).toMatchObject({ enabled: false });
+  });
 });
