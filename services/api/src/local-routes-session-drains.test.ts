@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session-drain route outcomes share one authenticated harness. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -162,22 +163,17 @@ describe("session drain route outcomes", () => {
     expect(releases).toBe(2);
   });
 
-  it("records unknown and failed terminal states when releasing a drain", async () => {
+  it("passes the authenticated actor into the atomic release audit", async () => {
     const { plane, invoke, author } = await harness();
     const operationPath = "/api/v1/repositories/repo/session-drains/operation/release";
-    const metadata: unknown[] = [];
-    plane.appendAuditLog = async (record) => {
-      metadata.push(record.metadata);
+    const actors: unknown[] = [];
+    plane.releaseSessionDrainDurable = async (_repositoryId, _principalId, _operationId, actor) => {
+      actors.push(actor);
+      return drain({ status: "released" });
     };
-    plane.getSessionDrainDurable = async () => null;
-    plane.releaseSessionDrainDurable = async () => drain({ status: "released" });
     expect((await invoke("POST", operationPath, author.apiKey)).status).toBe(200);
-
-    plane.getSessionDrainDurable = async () => drain({ status: "failed" });
-    expect((await invoke("POST", operationPath, author.apiKey)).status).toBe(200);
-    expect(metadata).toEqual([
-      expect.objectContaining({ terminalStatus: "unknown", incomplete: false }),
-      expect.objectContaining({ terminalStatus: "failed", incomplete: true }),
+    expect(actors).toEqual([
+      expect.objectContaining({ id: author.account.id, kind: "service-account" }),
     ]);
   });
 

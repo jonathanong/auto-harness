@@ -129,7 +129,9 @@ describe("DynamoDB session drain activity ledger", () => {
 
     await expect(
       storage.listSessionsForDrain("repo", "principal", "operation", 1),
-    ).resolves.toMatchObject({ sessions: [{ id: "queued" }, { id: "done" }] });
+    ).resolves.toMatchObject({
+      sessions: [{ id: "queued" }, { id: "done" }, { id: "legacy" }],
+    });
     expect(
       commands
         .filter((command) => command.input.TableName === "Sessions")
