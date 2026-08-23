@@ -22,8 +22,13 @@ function hostPrincipal(hostId = "host-1") {
 
 function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hostPrincipal()) {
   const connections = new Map<string, Record<string, unknown>>();
+  const commands = new Map<string, Record<string, unknown>>();
+  const drains = new Map<string, Record<string, unknown>>();
+  const inventories = new Map<string, Record<string, unknown>>();
   const sessions = new Map<string, Record<string, unknown>>();
   const repositories = new Map<string, Record<string, unknown>>();
+  const schedules = new Map<string, Record<string, unknown>>();
+  const worktrees = new Map<string, Record<string, unknown>>();
   const hostLocks = new Map<string, string>();
   const deletedConnections: string[] = [];
   const registrations: Array<Record<string, unknown>> = [];
@@ -61,6 +66,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getHostLock(hostId: string) {
       return hostLocks.get(hostId) ?? null;
     },
+    async getMainCheckoutCursor() {
+      return null;
+    },
     async getHostInventory() {
       return null;
     },
@@ -70,17 +78,23 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getRepository(id: string) {
       return repositories.get(id) ?? null;
     },
-    async getWorktree() {
-      return null;
+    async getWorktree(id: string) {
+      return worktrees.get(id) ?? null;
+    },
+    async getSchedule(id: string) {
+      return schedules.get(id) ?? null;
     },
     async listCommands() {
-      return [];
+      return [...commands.values()];
     },
     async listConnections() {
       recordSchedulerCall("refresh");
       return [...connections.values()];
     },
     async listHostInventories() {
+      return [...inventories.values()];
+    },
+    async listLogs() {
       return [];
     },
     async listProviderAccounts() {
@@ -95,28 +109,33 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [...sessions.values()];
     },
     async listAllWorktrees() {
-      return [];
+      return [...worktrees.values()];
     },
     async listProviders() {
       return [];
     },
     async listSchedules() {
       recordSchedulerCall("cron");
-      return [];
+      return [...schedules.values()];
     },
     async listSessionDrains() {
       recordSchedulerCall("session-drains");
-      return [];
+      return [...drains.values()];
     },
-    async listSessionsByStatus(status: string) {
+    async listSessionsByStatus(status: string, shard: number) {
       if (status === "running") recordSchedulerCall("timeout");
+      return [...sessions.values()].filter(
+        (session) => session.status === status && session.queueShard === shard,
+      );
+    },
+    async listSessionsForDrain() {
       return [];
     },
-    async listWorktreesByHost() {
-      return [];
+    async listWorktreesByHost(hostId: string) {
+      return [...worktrees.values()].filter((worktree) => worktree.hostId === hostId);
     },
-    async listWorktreesForRepo() {
-      return [];
+    async listWorktreesForRepo(repositoryId: string) {
+      return [...worktrees.values()].filter((worktree) => worktree.repositoryId === repositoryId);
     },
     async completeRepositoryDrain(id: string, requestedAt: string, now: string) {
       const current = repositories.get(id);
@@ -140,14 +159,30 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
     },
+    async putArchive() {},
     async queryLogs() {
       return [];
     },
-    async putHostInventory() {},
+    async putHostInventory(record: Record<string, unknown>) {
+      inventories.set(String(record.hostId), record);
+    },
     async putHostInventoryFenced() {
       return { ok: true };
     },
-    async putWorktreeFenced() {
+    async putWorktreeFenced(record: Record<string, unknown>) {
+      worktrees.set(String(record.id), record);
+      return true;
+    },
+    async releaseMainCheckoutSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session) return false;
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: input.status,
+        worktreeId: null,
+        hostId: null,
+        ...(input.completedAt ? { completedAt: input.completedAt } : {}),
+      });
       return true;
     },
     async releaseHostConnection(hostId: string, connectionId: string) {
@@ -158,6 +193,71 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return true;
     },
     async setWorktreeOnlineFenced() {
+      return true;
+    },
+    async tryAssignMainCheckoutSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session || session.status !== "queued") return false;
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "running",
+        hostId: input.hostId,
+        attemptId: input.attemptId,
+        assignmentConnectionId: input.connectionId,
+        assignmentSentAt: input.now,
+        ackReceivedAt: input.now,
+        mainCheckoutLease: true,
+      });
+      return true;
+    },
+    async tryAssignSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      const worktree = worktrees.get(String(input.worktreeId));
+      if (!session || session.status !== "queued" || !worktree || worktree.status !== "idle") {
+        return false;
+      }
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "running",
+        worktreeId: input.worktreeId,
+        hostId: input.hostId,
+        attemptId: input.attemptId,
+      });
+      worktrees.set(String(input.worktreeId), {
+        ...worktree,
+        status: "busy",
+        currentSessionId: input.sessionId,
+      });
+      return true;
+    },
+    async tryClaimScheduleAndCreateSession(input: Record<string, unknown>) {
+      const schedule = schedules.get(String(input.scheduleId));
+      if (!schedule || schedule.nextRunAt !== input.expectedNextRunAt) return { kind: "lost" };
+      schedules.set(String(input.scheduleId), {
+        ...schedule,
+        nextRunAt: input.newNextRunAt,
+        lastRunAt: input.lastRunAt,
+      });
+      const session = input.session as Record<string, unknown>;
+      sessions.set(String(session.id), session);
+      return { kind: "created" };
+    },
+    async tryRequeueSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session) return false;
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "queued",
+        worktreeId: null,
+        hostId: null,
+      });
+      return true;
+    },
+    async ensureMainCheckoutLeaseMap() {
+      return true;
+    },
+    async updateSessionDrain(record: Record<string, unknown>) {
+      drains.set(String(record.operationId), record);
       return true;
     },
     async tryRegisterHost(input: Record<string, unknown>) {
@@ -202,8 +302,11 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   return {
     auth,
     connections,
+    commands,
     deletedConnections,
+    drains,
     hostLocks,
+    inventories,
     management,
     plane,
     registrations,
@@ -214,8 +317,10 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       management,
     }),
     sessions,
+    schedules,
     schedulerCalls,
     storage,
+    worktrees,
   };
 }
 
@@ -237,6 +342,196 @@ async function registerGatewayHost(
     requestContext: { connectionId, routeKey: "$default" },
   });
   return runtime;
+}
+
+function schedulerSession(
+  id: string,
+  type: "prompt" | "scheduled",
+  over: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    repositoryId: "repo-active",
+    prompt: id,
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: ["cmd"],
+    queueTtlSeconds: 3600,
+    queueExpiresAt: "2026-08-13T00:00:00.000Z",
+    timeout: 30,
+    priority: 0,
+    requiredLabels: [],
+    onConflict: "queue",
+    status: "queued",
+    queueShard: 0,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    type,
+    source: type === "scheduled" ? "schedule" : "api",
+    principalId: "principal",
+    ...over,
+  };
+}
+
+function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
+  fixture.commands.set("cmd", {
+    id: "cmd",
+    name: "cmd",
+    argv: ["echo"],
+    appendPrompt: true,
+    providerId: null,
+  });
+  fixture.repositories.set("repo-active", {
+    id: "repo-active",
+    name: "active",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  fixture.repositories.set("repo-draining", {
+    id: "repo-draining",
+    name: "draining",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "draining",
+    drainRequestedAt: "requested",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  fixture.repositories.set("repo-paused", {
+    id: "repo-paused",
+    name: "paused",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "paused",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  fixture.connections.set("active-connection", {
+    hostId: "active-host",
+    connectionId: "active-connection",
+    type: "host",
+    connectedAt: "2026-08-12T00:00:00.000Z",
+    lastHeartbeatAt: "2099-01-01T00:00:00.000Z",
+    commandProfiles: [],
+    capabilities: ["scheduled-main-checkout"],
+    repositoryIds: ["repo-active"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  fixture.connections.set("stale-connection", {
+    hostId: "stale-host",
+    connectionId: "stale-connection",
+    type: "host",
+    connectedAt: "2026-01-01T00:00:00.000Z",
+    lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+    commandProfiles: [],
+    capabilities: [],
+    repositoryIds: ["repo-paused"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  fixture.hostLocks.set("active-host", "active-connection");
+  fixture.hostLocks.set("stale-host", "stale-connection");
+  fixture.inventories.set("active-host", {
+    hostId: "active-host",
+    repositories: [
+      { id: "repo-active", path: "/repo-active", defaultBranch: "main", worktrees: [] },
+    ],
+    providerAccounts: [],
+    commandProfiles: {},
+    updatedAt: "2026-08-12T00:00:00.000Z",
+  });
+  fixture.worktrees.set("active-worktree", {
+    id: "active-worktree",
+    name: "active-worktree",
+    hostId: "active-host",
+    repositoryId: "repo-active",
+    path: "/repo-active/worktree",
+    labels: [],
+    status: "idle",
+    online: true,
+    connectionId: "active-connection",
+  });
+  fixture.worktrees.set("stale-worktree", {
+    id: "stale-worktree",
+    name: "stale-worktree",
+    hostId: "stale-host",
+    repositoryId: "repo-paused",
+    path: "/repo-paused/worktree",
+    labels: [],
+    status: "busy",
+    currentSessionId: "stale-session",
+    online: true,
+    connectionId: "stale-connection",
+  });
+  fixture.sessions.set(
+    "ack-session",
+    schedulerSession("ack-session", "scheduled", {
+      status: "running",
+      startedAt: "2026-08-12T00:00:00.000Z",
+      assignmentSentAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "ack-attempt",
+      hostId: "active-host",
+      worktreeId: null,
+      assignmentConnectionId: "active-connection",
+      mainCheckoutLease: true,
+    }),
+  );
+  fixture.sessions.set(
+    "timeout-session",
+    schedulerSession("timeout-session", "scheduled", {
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      ackReceivedAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "timeout-attempt",
+      hostId: "active-host",
+      worktreeId: null,
+      assignmentConnectionId: "active-connection",
+      mainCheckoutLease: true,
+    }),
+  );
+  fixture.sessions.set(
+    "stale-session",
+    schedulerSession("stale-session", "prompt", {
+      repositoryId: "repo-paused",
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "stale-attempt",
+      hostId: "stale-host",
+      worktreeId: "stale-worktree",
+    }),
+  );
+  fixture.sessions.set("queued-session", schedulerSession("queued-session", "prompt"));
+  fixture.schedules.set("due-schedule", {
+    id: "due-schedule",
+    repositoryId: "repo-active",
+    name: "due",
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: ["cmd"],
+    cron: "* * * * *",
+    enabled: true,
+    timeout: 30,
+    queueTtlSeconds: 3600,
+    nextRunAt: "2026-08-12T00:00:00.000Z",
+    lastRunAt: null,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    principalId: "principal",
+  });
+  fixture.drains.set("drain-operation", {
+    scopeKey: "repo-active#principal",
+    recordKey: "CURRENT",
+    operationId: "drain-operation",
+    repositoryId: "repo-active",
+    principalId: "principal",
+    status: "draining",
+    requestedAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z",
+    deadlineAt: "2026-08-13T00:00:00.000Z",
+    queuedCount: 0,
+    runningCount: 0,
+    cancelledCount: 0,
+  });
 }
 
 describe("Lambda runtime adapters", () => {
@@ -575,33 +870,16 @@ describe("Lambda runtime adapters", () => {
 
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     const fixture = runtimeFixture();
-    fixture.connections.set("stale-connection", {
-      connectionId: "stale-connection",
-      hostId: "stale-host",
-      registered: true,
-      connectedAt: "2026-01-01T00:00:00.000Z",
-      lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
-    });
-    fixture.hostLocks.set("stale-host", "stale-connection");
-    fixture.repositories.set("repo-1", {
-      id: "repo-1",
-      name: "repo",
-      url: "url",
-      defaultBranch: "main",
-      admissionState: "draining",
-      drainRequestedAt: "requested",
-      createdAt: "created",
-      updatedAt: "updated",
-    });
+    seedSchedulerSweep(fixture);
     await expect((await fixture.runtime).cron()).resolves.toEqual({
-      ackDeadlinesEnforced: 0,
-      runningTimeoutsEnforced: 0,
-      queuedAssigned: 0,
+      ackDeadlinesEnforced: 2,
+      runningTimeoutsEnforced: 1,
+      queuedAssigned: 1,
       repositoriesReconciled: 1,
-      sessionDrainsReconciled: 0,
-      scheduledAssigned: 0,
-      schedulesFired: 0,
-      staleHostsReclaimed: 0,
+      sessionDrainsReconciled: 1,
+      scheduledAssigned: 2,
+      schedulesFired: 1,
+      staleHostsReclaimed: 1,
     });
     expect(fixture.schedulerCalls).toEqual([
       "migration",
