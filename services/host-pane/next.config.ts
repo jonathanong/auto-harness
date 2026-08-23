@@ -31,6 +31,10 @@ const nextConfig: NextConfig = {
     externalDir: true,
     reactCompiler: true,
   },
+  // CI has a separate required Typecheck job covering every workspace package. Avoid
+  // repeating that work inside production-mode E2E builds; deploy/normal builds still fail
+  // on type errors.
+  typescript: { ignoreBuildErrors: process.env.HARNESS_E2E === "1" },
   // rewrites() below is baked into the build output at `next build` time — `next start`
   // just serves the frozen result, it does not re-read env vars at runtime. So e2e (which
   // needs a different apiUpstream, :7430 instead of :7420) needs an entirely separate

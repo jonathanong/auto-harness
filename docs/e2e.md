@@ -405,31 +405,35 @@ live in one PR description.
 
 ## CI notes
 
-GitHub Actions (`.github/workflows/ci.yml`) runs two independent, parallel jobs rather than
-one combined job — the required-auth suite is a handful of spec files with its own build, so
-running it after the full suite in the same job only added serial wall-clock time for no
-correctness reason. A required, no-op `playwright` job fans both back in (`needs: [playwright-e2e,
-playwright-auth]`, `if: always()`) so branch protection has a single stable check name to require
-regardless of which of the two jobs — or both — actually ran the work:
+GitHub Actions (`.github/workflows/ci.yml`) builds each production-mode E2E app once, then fans
+that output out to two full-suite shards and the required-auth suite. A required, no-op
+`playwright` job fans the test jobs back in (`needs: [playwright-e2e, playwright-auth]`, `if:
+always()`) so branch protection has one stable check name regardless of which shard fails:
 
-**`playwright-e2e`** — the full suite:
+**`playwright-build`** — the build producer:
 
-1. `pnpm install --frozen-lockfile`
-2. Install Chromium (`playwright install --with-deps`, browsers cached on `pnpm-lock.yaml`)
-3. Wipe `.next-e2e`, restore `.next-e2e/cache` (webpack / Next incremental; keyed on lockfile + source + Next config), then `next build` for control + host-pane
-4. `pnpm exec playwright test` — Playwright `webServer` starts DynamoDB Local (Docker), API, and both UIs via **`next start`**
-5. On failure, uploads `playwright-report/` and `test-results/` as the `playwright-report` artifact (7-day retention)
+1. Restore exact, per-app runtime archives keyed by the lockfile and all app/shared build inputs.
+2. On an exact miss, restore that app's `.next-e2e/cache`; install dependencies only when at least one app missed.
+3. Build only missed apps, building control and host-pane concurrently when both missed. E2E builds skip Next's duplicate typecheck because `static-code-analysis` is the required typecheck gate.
+4. Package the runnable `.next-e2e` outputs without their compiler caches and upload them as the one-day `playwright-next-build` artifact. Runtime caches accelerate later workflow runs; the artifact is the guaranteed handoff inside the current run.
 
-**`playwright-auth`** — the required-auth suite, same steps 1–2, then:
+**`playwright-e2e-1` / `playwright-e2e-2`** — the full-suite shards:
 
-3. Same wipe + `.next-e2e/cache` restore (separate auth key), then `next build` for control only, with `HARNESS_E2E_AUTH`/`HARNESS_AUTH_MODE`/`HARNESS_SESSION_SECRET`/`HARNESS_ADMINS` set at job level
-4. `pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control` against a fresh required-auth stack with fixed test-only credentials
-5. On failure, uploads the same paths as the `playwright-report-auth` artifact
+1. Install dependencies and Chromium (browser downloads cached on `pnpm-lock.yaml`).
+2. Download and extract both app runtimes from `playwright-next-build`.
+3. Run `pnpm exec playwright test --shard=<1|2>/2`; `fullyParallel: true` balances individual tests across the two runners.
+4. On failure, upload `playwright-report/` and `test-results/` as a shard-specific artifact.
 
-Both jobs build before testing — `pnpm test:e2e`/`pnpm test:e2e:auth` still do this in one
-step for local runs, but CI runs the build and the test as separate named steps so each
-phase's duration is visible on its own in the Actions UI. The full `.next-e2e` output is
-never cached (rewrites are baked at `next build` time); only `.next-e2e/cache` is.
+**`playwright-auth`** — the required-auth suite:
+
+1. Perform the same install and artifact download, extracting only the control runtime.
+2. Start that canonical build with `HARNESS_E2E_AUTH`/`HARNESS_AUTH_MODE`/`HARNESS_SESSION_SECRET`/`HARNESS_ADMINS` set at runtime.
+3. Run `pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control` against a fresh required-auth stack.
+4. On failure, upload the same paths as the `playwright-report-auth` artifact.
+
+Local `pnpm test:e2e` / `pnpm test:e2e:auth` remain self-contained build-then-test commands;
+the producer/artifact split is CI-only. Because rewrites are baked at `next build` time, changing
+the fixed CI API upstream requires a runtime-cache profile/key change as well.
 
 The `static-code-analysis` job also restores per-package `tsconfig.tsbuildinfo` files
 before `pnpm typecheck` (`tsc --noEmit` incremental). That is the typecheck gate only —

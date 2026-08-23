@@ -241,10 +241,113 @@ jobs:
       - name: Verify exact Dynamo adapter coverage
         run: pnpm check:coverage:dynamo-adapters
 
+  playwright-build:
+    name: playwright-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # next.config.ts bakes this rewrite target and the matching public URLs/CSP into the
+      # output. Keep the profile literal in the runtime-cache keys below in sync with it.
+      HARNESS_API_HTTP: http://127.0.0.1:7430
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      # Exact runnable-output caches make docs/API-only changes and same-source reruns skip
+      # next build entirely. They contain no credentials: auth is selected at next start time.
+      - name: Cache control E2E runtime archive
+        id: control-runtime-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/control-next-e2e.tgz
+          key: nextjs-runtime-control-${{ runner.os }}-${{ runner.arch }}-api7430-v1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'patches/**', 'tsconfig.base.json', 'services/web/package.json', 'services/web/src/**', 'services/web/public/**', 'services/web/next.config.ts', 'services/web/tsconfig.json', 'services/web/tailwind.config.ts', 'services/web/postcss.config.mjs', 'modules/ui/package.json', 'modules/ui/src/**', 'modules/shared/package.json', 'modules/shared/src/**') }}
+
+      - name: Cache host-pane E2E runtime archive
+        id: host-pane-runtime-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ${{ runner.temp }}/host-pane-next-e2e.tgz
+          key: nextjs-runtime-host-pane-${{ runner.os }}-${{ runner.arch }}-api7430-v1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'patches/**', 'tsconfig.base.json', 'services/host-pane/package.json', 'services/host-pane/src/**', 'services/host-pane/public/**', 'services/host-pane/next.config.ts', 'services/host-pane/tsconfig.json', 'services/host-pane/tailwind.config.ts', 'services/host-pane/postcss.config.mjs', 'modules/ui/package.json', 'modules/ui/src/**', 'modules/shared/package.json', 'modules/shared/src/**') }}
+
+      - name: Setup pnpm
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true' || steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 10.28.2
+
+      - name: Setup Node
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true' || steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22.18"
+          cache: pnpm
+
+      - name: Install
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true' || steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # On an exact runtime miss, retain Next's per-file compiler cache as a fallback. These
+      # paths are intentionally separate so changing one app does not invalidate the other.
+      - name: Cache control Next.js incremental output
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: services/web/.next-e2e/cache
+          key: nextjs-incremental-control-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/package.json', 'services/web/src/**', 'services/web/public/**', 'services/web/next.config.ts', 'services/web/tsconfig.json', 'services/web/tailwind.config.ts', 'services/web/postcss.config.mjs', 'modules/ui/package.json', 'modules/ui/src/**', 'modules/shared/package.json', 'modules/shared/src/**') }}
+          restore-keys: |
+            nextjs-incremental-control-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      - name: Cache host-pane Next.js incremental output
+        if: steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: services/host-pane/.next-e2e/cache
+          key: nextjs-incremental-host-pane-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/host-pane/package.json', 'services/host-pane/src/**', 'services/host-pane/public/**', 'services/host-pane/next.config.ts', 'services/host-pane/tsconfig.json', 'services/host-pane/tailwind.config.ts', 'services/host-pane/postcss.config.mjs', 'modules/ui/package.json', 'modules/ui/src/**', 'modules/shared/package.json', 'modules/shared/src/**') }}
+          restore-keys: |
+            nextjs-incremental-host-pane-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
+      - name: Build both E2E apps
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true' && steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        run: pnpm --parallel --filter @auto-harness/web --filter @auto-harness/host-pane run build:e2e
+
+      - name: Build control E2E app
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true' && steps.host-pane-runtime-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @auto-harness/web build:e2e
+
+      - name: Build host-pane E2E app
+        if: steps.control-runtime-cache.outputs.cache-hit == 'true' && steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @auto-harness/host-pane build:e2e
+
+      - name: Package control E2E runtime
+        if: steps.control-runtime-cache.outputs.cache-hit != 'true'
+        run: tar -czf "$RUNNER_TEMP/control-next-e2e.tgz" --exclude='services/web/.next-e2e/cache' services/web/.next-e2e
+
+      - name: Package host-pane E2E runtime
+        if: steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
+        run: tar -czf "$RUNNER_TEMP/host-pane-next-e2e.tgz" --exclude='services/host-pane/.next-e2e/cache' services/host-pane/.next-e2e
+
+      # Artifacts are the guaranteed within-run handoff; caches above are only accelerators
+      # across workflow runs and every miss regenerates the same canonical archives.
+      - name: Upload E2E runtime
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-next-build
+          path: |
+            ${{ runner.temp }}/control-next-e2e.tgz
+            ${{ runner.temp }}/host-pane-next-e2e.tgz
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
   playwright-e2e:
-    name: playwright-e2e
+    name: playwright-e2e-${{ matrix.shard }}
+    needs: playwright-build
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -280,40 +383,26 @@ jobs:
             pnpm exec playwright install --with-deps chromium
           fi
 
-      - name: Clean e2e build output
-        # Same wipe pnpm build:web:e2e does, run as its own step so it happens *before* the
-        # cache restore below repopulates .next-e2e/cache — restoring first would just get
-        # deleted by this rm -rf.
-        run: rm -rf services/web/.next-e2e services/host-pane/.next-e2e
-
-      - name: Cache Next.js build cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Download E2E runtime
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: |
-            services/web/.next-e2e/cache
-            services/host-pane/.next-e2e/cache
-          # Source-hash key so a same-source rerun hits fully; restore-keys falls back to the
-          # last lockfile-matched cache on a source change, since Next.js's cache is
-          # per-file/incremental, not all-or-nothing — a partial hit still beats a cold build.
-          key: nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'services/host-pane/src/**/*.[jt]s', 'services/host-pane/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}-${{ hashFiles('services/web/next.config.ts', 'services/host-pane/next.config.ts', 'services/web/tsconfig.json', 'services/host-pane/tsconfig.json', 'services/web/tailwind.config.ts', 'services/host-pane/tailwind.config.ts', 'services/web/postcss.config.mjs', 'services/host-pane/postcss.config.mjs', 'services/web/package.json', 'services/host-pane/package.json') }}
-          restore-keys: |
-            nextjs-e2e-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          name: playwright-next-build
+          path: ${{ runner.temp }}/playwright-next-build
 
-      - name: Build (e2e)
-        # Production next build for control + host-pane into .next-e2e — see docs/e2e.md.
-        # Calls each app's build:e2e directly (not the pnpm build:web:e2e wrapper), since that
-        # wrapper's own rm -rf already ran above.
-        run: pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/host-pane build:e2e
+      - name: Extract E2E runtime
+        run: |
+          tar -xzf "$RUNNER_TEMP/playwright-next-build/control-next-e2e.tgz"
+          tar -xzf "$RUNNER_TEMP/playwright-next-build/host-pane-next-e2e.tgz"
 
-      - name: Playwright E2E
+      - name: Playwright E2E shard ${{ matrix.shard }}/2
         # CI is set by Actions → no server reuse, 2 workers, retries, github reporter
-        run: pnpm exec playwright test
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/2
 
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/
@@ -322,6 +411,7 @@ jobs:
 
   playwright-auth:
     name: playwright-auth
+    needs: playwright-build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -367,21 +457,14 @@ jobs:
             pnpm exec playwright install --with-deps chromium
           fi
 
-      - name: Clean e2e build output
-        run: rm -rf services/web/.next-e2e
-
-      - name: Cache Next.js build cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Download E2E runtime
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          path: services/web/.next-e2e/cache
-          key: nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('services/web/src/**/*.[jt]s', 'services/web/src/**/*.[jt]sx', 'modules/**/src/**/*.[jt]s', 'modules/**/src/**/*.[jt]sx') }}-${{ hashFiles('services/web/next.config.ts', 'services/web/tsconfig.json', 'services/web/tailwind.config.ts', 'services/web/postcss.config.mjs', 'services/web/package.json') }}
-          restore-keys: |
-            nextjs-e2e-auth-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+          name: playwright-next-build
+          path: ${{ runner.temp }}/playwright-next-build
 
-      - name: Build (e2e, auth)
-        # Calls build:e2e directly (not the pnpm build:web:auth-e2e wrapper), since that
-        # wrapper's own rm -rf already ran above.
-        run: pnpm --filter @auto-harness/web build:e2e
+      - name: Extract control E2E runtime
+        run: tar -xzf "$RUNNER_TEMP/playwright-next-build/control-next-e2e.tgz"
 
       - name: Playwright E2E (required auth)
         run: pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control
