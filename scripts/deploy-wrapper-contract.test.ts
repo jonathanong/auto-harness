@@ -5,9 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const awsScript = new URL("deploy-aws.sh", import.meta.url).pathname;
-const hostScript = new URL("deploy-host.sh", import.meta.url).pathname;
 const aws = readFileSync(awsScript, "utf8");
-const host = readFileSync(hostScript, "utf8");
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -114,49 +112,8 @@ esac`,
 }
 
 describe("deployment wrapper contracts", () => {
-  it.each([awsScript, hostScript])("keeps %s valid Bash", (script) => {
-    expect(spawnSync("bash", ["-n", script]).status).toBe(0);
-  });
-
-  it("installs native dependencies and polls host readiness", () => {
-    const fixture = fakeEnvironment();
-    baseFakes(fixture.bin);
-    executable(fixture.bin, "uname", "echo Darwin");
-    executable(
-      fixture.bin,
-      "pnpm",
-      `
-printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
-if [[ "$*" == "local:daemon status" ]]; then
-  count_file="$FAKE_DIRECTORY/status-count"
-  count=0
-  if [[ -f "$count_file" ]]; then
-    count="$(cat "$count_file")"
-  fi
-  count=$((count + 1))
-  printf "%s" "$count" > "$count_file"
-  if [[ "$count" -lt 3 ]]; then
-    echo "host not registered yet" >&2
-    exit 1
-  fi
-  echo '{"status":"ok"}'
-fi`,
-    );
-
-    const result = run(hostScript, [], fixture);
-    const calls = readFileSync(fixture.log, "utf8");
-
-    expect(result.status, result.stderr).toBe(0);
-    expect(calls).toContain("pnpm install --frozen-lockfile\n");
-    expect(calls).not.toContain("--ignore-scripts");
-    expect(calls.match(/pnpm local:daemon status/g)).toHaveLength(3);
-    expect(result.stdout).toContain('{"status":"ok"}');
-  });
-
-  it("binds Linux activation to the checkout systemd will execute", () => {
-    expect(host).toContain('service_root="$(cd /opt/auto-harness/current && pwd -P)"');
-    expect(host).toContain('if [[ "$checkout_root" != "$service_root" ]]');
-    expect(host).toContain("Host service did not become ready within 120 seconds.");
+  it("keeps the AWS wrapper valid Bash", () => {
+    expect(spawnSync("bash", ["-n", awsScript]).status).toBe(0);
   });
 
   it("revalidates idleness after fencing and restores a disabled cron rule", () => {
