@@ -159,6 +159,27 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect(
       await updateRepositorySettings(ctx, repository.id, { name: "Admission updated" }, "t5"),
     ).toMatchObject({ name: "Admission updated", admissionState: "draining" });
+    expect(
+      await updateRepositorySettings(
+        ctx,
+        repository.id,
+        {
+          name: "Admission updated again",
+          url: "/updated",
+          defaultBranch: "trunk",
+          setupScript: "echo setup",
+          terminalHookScript: "echo done",
+        },
+        "t6",
+      ),
+    ).toMatchObject({
+      name: "Admission updated again",
+      url: "/updated",
+      defaultBranch: "trunk",
+      setupScript: "echo setup",
+      terminalHookScript: "echo done",
+      admissionState: "draining",
+    });
 
     await putSchedule(ctx, {
       id: "closed-schedule",
@@ -182,6 +203,12 @@ describe("DynamoDB Local basic catalog adapters", () => {
       expectedNextRunAt: "t1",
       newNextRunAt: "t2",
     };
+    await storage.completeRepositoryDrain(repository.id, "t4", "t7");
+    expect(await storage.setRepositoryAdmissionState(repository.id, "active", "t8")).toMatchObject({
+      admissionState: "active",
+    });
+    // The create transaction already observed closed admission. Activation racing this
+    // follow-up must not resurrect the occurrence as catch-up work.
     expect(await storage.skipScheduleForClosedRepository(skip)).toBe(true);
     expect(await storage.skipScheduleForClosedRepository(skip)).toBe(false);
   });

@@ -7,11 +7,13 @@ import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import {
+  getRepositoryDurable,
   getScheduleDurable,
   listSchedulesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -73,6 +75,10 @@ export async function triggerScheduleDurable(
   }
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
+  }
+  const repository = await getRepositoryDurable(state, schedule.repositoryId);
+  if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
+    return { ok: false, error: "repository admission is closed" };
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
   if (!newNextRunAt) return { ok: false, error: "invalid schedule cron or timestamp" };

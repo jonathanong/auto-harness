@@ -495,7 +495,15 @@ export async function listAllWorktrees(
 export async function listWorktreesForRepo(
   ctx: PlaneStorageCtx,
   repositoryId: string,
+  consistentRead = false,
 ): Promise<WorktreeRecord[]> {
+  // The repository GSI is eventually consistent. Drain completion must not infer that a
+  // lease is gone from a stale index, so use an authoritative base-table scan when requested.
+  if (consistentRead) {
+    return (await listAllWorktrees(ctx, true)).filter(
+      (worktree) => worktree.repositoryId === repositoryId,
+    );
+  }
   const records: WorktreeRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {

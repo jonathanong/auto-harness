@@ -700,7 +700,7 @@ export async function skipScheduleForActiveConcurrency(
   }
 }
 
-/** Advance a due cron cursor only while repository admission remains closed. */
+/** Advance an occurrence after its create transaction authoritatively observed closed admission. */
 export async function skipScheduleForClosedRepository(
   ctx: PlaneStorageCtx,
   opts: {
@@ -725,14 +725,6 @@ export async function skipScheduleForClosedRepository(
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
               },
-            },
-          },
-          {
-            ConditionCheck: {
-              TableName: ctx.tables.repositories,
-              Key: { id: opts.repositoryId },
-              ConditionExpression: "admissionState = :paused OR admissionState = :draining",
-              ExpressionAttributeValues: { ":paused": "paused", ":draining": "draining" },
             },
           },
         ],

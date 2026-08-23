@@ -121,7 +121,7 @@ async function reconcileOne(
   const remaining = (await state.storage.listAllSessions(true)).filter(
     (session) => session.repositoryId === repository.id,
   );
-  const worktrees = await state.storage.listWorktreesForRepo(repository.id);
+  const worktrees = await state.storage.listWorktreesForRepo(repository.id, true);
   const leased =
     remaining.some(
       (session) => isActiveSessionStatus(session.status) || session.mainCheckoutLease === true,

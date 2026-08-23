@@ -173,4 +173,25 @@ describe("DynamoDB storage pagination", () => {
       ExclusiveStartKey: { sessionId: "session-1", timestampSeq: "first" },
     });
   });
+
+  it("uses a consistent base-table scan when a repository lease fence needs authority", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [
+        { id: "held", repositoryId: "repo-1", currentSessionId: "session-1" },
+        { id: "other", repositoryId: "repo-2" },
+      ],
+    });
+    const ctx = {
+      doc: { send },
+      tables: { worktrees: "Worktrees" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(listWorktreesForRepo(ctx, "repo-1", true)).resolves.toEqual([
+      { id: "held", repositoryId: "repo-1", currentSessionId: "session-1" },
+    ]);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ ConsistentRead: true }) }),
+    );
+    expect(send.mock.calls[0]?.[0].input.IndexName).toBeUndefined();
+  });
 });

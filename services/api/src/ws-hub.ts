@@ -4,7 +4,7 @@ import type { Duplex } from "node:stream";
 
 import {
   HOST_CAPABILITIES,
-  GIT_READINESS_REASONS,
+  isHostRuntimeReport,
   isHostCapability,
   isValidCliResumeRef,
   isSessionStatus,
@@ -445,27 +445,7 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
 }
 
 function validRuntimeReport(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const runtime = value as Record<string, unknown>;
-  if (
-    !boundedText(runtime.daemonVersion, 128) ||
-    (runtime.gitVersion !== null && !boundedText(runtime.gitVersion, 128)) ||
-    typeof runtime.gitReady !== "boolean" ||
-    (runtime.environmentNames !== undefined &&
-      (!Array.isArray(runtime.environmentNames) ||
-        runtime.environmentNames.length > 256 ||
-        !runtime.environmentNames.every((name) => boundedText(name, 128)) ||
-        new Set(runtime.environmentNames).size !== runtime.environmentNames.length))
-  )
-    return false;
-  if (runtime.gitReady)
-    return runtime.gitVersion !== null && runtime.gitReadinessReason === undefined;
-  return (
-    typeof runtime.gitReadinessReason === "string" &&
-    (GIT_READINESS_REASONS as readonly string[])
-      .filter((reason) => reason !== "git_readiness_unreported")
-      .includes(runtime.gitReadinessReason)
-  );
+  return isHostRuntimeReport(value);
 }
 
 function isAllowedMessage(

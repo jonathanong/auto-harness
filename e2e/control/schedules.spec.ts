@@ -8,9 +8,18 @@ test.describe("control plane schedules", () => {
     });
     expect(command.ok()).toBe(true);
     const commandId = ((await command.json()) as { id: string }).id;
+    const repository = await request.post("/api/v1/repositories", {
+      data: {
+        name: `pw-run-now-repo-${suffix}`,
+        url: `/tmp/pw-run-now-repo-${suffix}`,
+        defaultBranch: "main",
+      },
+    });
+    expect(repository.ok()).toBe(true);
+    const repositoryId = ((await repository.json()) as { id: string }).id;
     const schedule = await request.post("/api/v1/schedules", {
       data: {
-        repositoryId: `pw-run-now-repo-${suffix}`,
+        repositoryId,
         name: `pw-run-now-${suffix}`,
         target: { commandId },
         cron: "0 * * * *",

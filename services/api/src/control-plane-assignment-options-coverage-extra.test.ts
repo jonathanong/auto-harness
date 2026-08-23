@@ -129,4 +129,23 @@ describe("assignment optional-field coverage", () => {
     await state.writeTail;
     expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
   });
+
+  it("expires queued work before a closed repository can suppress assignment", async () => {
+    const state = providerState();
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "paused",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.sessions.set("s", session({ queueExpiresAt: "2025-01-01T00:00:00.000Z" }));
+    const writes: SessionRecord[] = [];
+    state.storage = { putSession: async (row: SessionRecord) => writes.push(row) } as never;
+    expect(assignQueued(state)).toEqual([]);
+    await state.writeTail;
+    expect(writes[0]).toMatchObject({ status: "failed", errorCode: "queue_expired" });
+  });
 });

@@ -1,7 +1,12 @@
 /* eslint-disable max-lines, no-shadow -- the end-to-end WebSocket reporting flow stays in one auditable scenario. */
 import { test, expect } from "@playwright/test";
 
-import { putHostRepo, removeHostRepo, withLocalHostLock } from "../local-1-host.ts";
+import {
+  createCatalogRepository,
+  putHostRepo,
+  removeHostRepo,
+  withLocalHostLock,
+} from "../local-1-host.ts";
 import { API_BASE, WS_BASE } from "../harness-endpoints.ts";
 
 test.describe("control plane sessions", () => {
@@ -309,7 +314,7 @@ test.describe("control plane sessions", () => {
 
         const expiring = await request.post(`${API_BASE}/api/v1/sessions`, {
           data: {
-            repositoryId: repoId,
+            repositoryId,
             prompt: `expire-${id}`,
             target: { commandId },
             timeout: 30,
@@ -339,7 +344,7 @@ test.describe("control plane sessions", () => {
   }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-offline-host-${suffix}`;
-    const repoId = `pw-offline-repo-${suffix}`;
+    const repoId = await createCatalogRepository(request, `pw-offline-repo-${suffix}`);
     const worktreeId = `pw-offline-worktree-${suffix}`;
     const inventory = await request.put(`${API_BASE}/api/v1/hosts/${hostId}/inventory`, {
       data: {
@@ -490,7 +495,7 @@ test.describe("control plane sessions", () => {
   test("session detail reports CLI usage and configured cost", async ({ page, request }) => {
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-usage-host-${suffix}`;
-    const repoId = `pw-usage-repo-${suffix}`;
+    const repoId = await createCatalogRepository(request, `pw-usage-repo-${suffix}`);
     const worktreeId = `pw-usage-worktree-${suffix}`;
     const providerName = `pw-usage-provider-${suffix}`;
     let providerId: string | undefined;

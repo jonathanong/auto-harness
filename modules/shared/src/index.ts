@@ -47,6 +47,7 @@ export {
 
 export {
   GIT_READINESS_REASONS,
+  isHostRuntimeReport,
   type GitReadinessReason,
   type HostRuntimeReport,
 } from "./host-runtime.ts";

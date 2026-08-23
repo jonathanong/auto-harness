@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import {
+  isHostRuntimeReport,
   normalizeHostCapabilities,
   type HostRuntimeReport,
   type HostCapability,
@@ -335,6 +336,13 @@ export function registerHost(
     consumePendingConnection?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
+  if (
+    opts.runtime !== undefined &&
+    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
+    !isHostRuntimeReport(opts.runtime)
+  ) {
+    return { ok: false, error: "runtime report is invalid" };
+  }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {
     return { ok: false, error: nameError };
@@ -469,6 +477,13 @@ export async function registerHostDurable(
     consumePendingConnection?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
+  if (
+    opts.runtime !== undefined &&
+    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
+    !isHostRuntimeReport(opts.runtime)
+  ) {
+    return { ok: false, error: "runtime report is invalid" };
+  }
   if (!state.storage) {
     return registerHost(state, opts);
   }

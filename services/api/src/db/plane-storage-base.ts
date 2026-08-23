@@ -119,8 +119,8 @@ export class DynamoPlaneStorageBase {
     );
   }
 
-  listWorktreesForRepo(repositoryId: string): Promise<WorktreeRecord[]> {
-    return sessions.listWorktreesForRepo(this.ctx, repositoryId);
+  listWorktreesForRepo(repositoryId: string, consistentRead = false): Promise<WorktreeRecord[]> {
+    return sessions.listWorktreesForRepo(this.ctx, repositoryId, consistentRead);
   }
 
   tryClaimWorktree(opts: { worktreeId: string; sessionId: string; now: string }): Promise<boolean> {

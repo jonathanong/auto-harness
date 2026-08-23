@@ -6,6 +6,7 @@ import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   createRepository,
   completeRepositoryDrain,
+  skipScheduleForClosedRepository,
   putLogFenced,
   putLogsFenced,
   skipScheduleForActiveConcurrency,
@@ -92,6 +93,14 @@ describe("DynamoDB Local catalog transport failures", () => {
         newNextRunAt: "two",
         concurrencyId: "concurrency",
         sessionId: "session",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      skipScheduleForClosedRepository(unavailableCtx, {
+        scheduleId: "schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
       }),
     ).rejects.toThrow();
     unavailable.client.destroy();

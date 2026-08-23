@@ -1,8 +1,4 @@
-import {
-  hasHostCapability,
-  repositoryAdmissionState,
-  type HostWireMessage,
-} from "@auto-harness/shared";
+import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -18,6 +14,7 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
+import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -102,10 +99,7 @@ export async function assignScheduledQueuedDurable(
       .filter((session) => !session.retryAfter || Date.parse(session.retryAfter) <= Date.parse(now))
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
-      if (
-        repositoryAdmissionState(state.repositories.get(session.repositoryId)?.admissionState) !==
-        "active"
-      ) {
+      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState)) {
         await cancelSessionDurable(state, session.id);
         continue;
       }

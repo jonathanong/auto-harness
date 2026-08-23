@@ -99,6 +99,37 @@ describe("repository admission", () => {
     ]);
   });
 
+  it("keeps an in-memory drain open while a main-checkout lease remains", async () => {
+    const plane = new ControlPlane({
+      onHostMessage: () => undefined,
+    });
+    seedBaseCommand(plane);
+    plane.createRepository({ id: "repo-main", name: "repo", url: "url" });
+    const created = plane.createSession({
+      repositoryId: "repo-main",
+      prompt: "run",
+      target: { commandId: "cmd-base" },
+      timeout: 30,
+    });
+    if (!created.ok) throw new Error(created.error);
+    const session = plane.state.sessions.get(created.session.id)!;
+    session.status = "running";
+    session.hostId = "host-1";
+    plane.state.mainCheckoutLeases.set("host-1\0repo-main", {
+      sessionId: session.id,
+      connectionId: "connection-1",
+    });
+
+    await expect(plane.drainRepositoryDurable("repo-main")).resolves.toMatchObject({
+      ok: true,
+      repository: { admissionState: "draining" },
+    });
+    plane.state.mainCheckoutLeases.delete("host-1\0repo-main");
+    await expect(plane.reconcileRepositoryDrainsDurable()).resolves.toMatchObject([
+      { admissionState: "paused" },
+    ]);
+  });
+
   it("advances due closed schedule cursors before activation", async () => {
     const plane = new ControlPlane({ now: () => "2026-01-01T00:05:00.000Z" });
     seedBaseCommand(plane);

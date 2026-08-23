@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { API_BASE } from "../harness-endpoints.ts";
+import { createCatalogRepository } from "../local-1-host.ts";
 
 test("unknown host-pane session id shows a not-found state", async ({ page }) => {
   await page.goto("/sessions/does-not-exist-xyz");
@@ -13,9 +14,10 @@ test("host-pane session detail reports a live refresh failure", async ({ page, r
   });
   expect(command.ok()).toBe(true);
   const { id: commandId } = (await command.json()) as { id: string };
+  const repositoryId = await createCatalogRepository(request, `pw-live-error-repo-${suffix}`);
   const created = await request.post(`${API_BASE}/api/v1/sessions`, {
     data: {
-      repositoryId: `pw-live-error-repo-${suffix}`,
+      repositoryId,
       prompt: "show refresh error",
       target: { commandId },
       timeout: 30,

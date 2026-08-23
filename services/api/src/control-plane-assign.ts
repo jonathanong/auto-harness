@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { repositoryAdmissionState, type HostWireMessage } from "@auto-harness/shared";
+import { type HostWireMessage } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -22,6 +22,7 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 
 function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
@@ -48,11 +49,6 @@ export function assignQueued(
       .toSorted(compareSessionsForQueue);
 
     for (const session of queued) {
-      if (
-        repositoryAdmissionState(state.repositories.get(session.repositoryId)?.admissionState) !==
-        "active"
-      )
-        continue;
       if (Date.parse(session.queueExpiresAt) <= nowMs) {
         session.status = "failed";
         session.errorCode = "queue_expired";
@@ -61,6 +57,8 @@ export function assignQueued(
         persistExpired(state, session);
         continue;
       }
+      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
+        continue;
       if (session.hostId && session.worktreeId && session.ackReceivedAt) {
         continue;
       }
@@ -199,12 +197,6 @@ export async function assignQueuedDurable(
       .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
-      if (
-        repositoryAdmissionState(state.repositories.get(session.repositoryId)?.admissionState) !==
-        "active"
-      )
-        continue;
-      await listWorktreesForRepositoryDurable(state, session.repositoryId);
       if (Date.parse(session.queueExpiresAt) <= nowMs) {
         const expired = await state.storage.expireQueuedSession({
           sessionId: session.id,
@@ -222,6 +214,9 @@ export async function assignQueuedDurable(
           });
         continue;
       }
+      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
+        continue;
+      await listWorktreesForRepositoryDurable(state, session.repositoryId);
       if (session.hostId && session.worktreeId && session.ackReceivedAt) {
         continue;
       }

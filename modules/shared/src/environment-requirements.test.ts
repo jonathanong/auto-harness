@@ -21,6 +21,9 @@ describe("environment requirements", () => {
     expect(() => parseRequiredEnvironment(["HARNESS_API_KEY"])).toThrow(
       "invalid environment variable name",
     );
+    expect(() => parseRequiredEnvironment(["hArNeSs_api_key"])).toThrow(
+      "invalid environment variable name",
+    );
   });
 });
 
