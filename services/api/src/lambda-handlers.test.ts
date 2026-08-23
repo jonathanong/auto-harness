@@ -545,6 +545,12 @@ describe("Lambda runtime adapters", () => {
     const refreshSchedulerReadModelDurable = fixture.plane.refreshSchedulerReadModelDurable.bind(
       fixture.plane,
     );
+    vi.spyOn(fixture.plane, "migrateSessionDrainActivityLedgerPage").mockImplementation(
+      async () => {
+        order.push("migration");
+        return true;
+      },
+    );
     vi.spyOn(fixture.plane, "evaluateCronDurable").mockImplementation(async () => {
       order.push("cron");
       return [{ id: "scheduled-1" }] as never;
@@ -589,6 +595,7 @@ describe("Lambda runtime adapters", () => {
       staleHostsReclaimed: 2,
     });
     expect(order).toEqual([
+      "migration",
       "cron",
       "ack",
       "timeout",
