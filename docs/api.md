@@ -91,16 +91,17 @@ All errors return a consistent JSON body:
 }
 ```
 
-| Status | Code                          | Description                             |
-| ------ | ----------------------------- | --------------------------------------- |
-| 400    | `VALIDATION_ERROR`            | Invalid or missing request body fields  |
-| 401    | `UNAUTHORIZED`                | Missing or invalid token                |
-| 403    | `FORBIDDEN`                   | Insufficient role permissions           |
-| 404    | `NOT_FOUND`                   | Resource not found                      |
-| 409    | `CONFLICT`                    | Resource conflict (e.g. duplicate name) |
-| 409    | `REPOSITORY_ADMISSION_CLOSED` | Repository is paused or draining        |
-| 429    | `RATE_LIMITED`                | Too many requests; see `Retry-After`    |
-| 500    | `INTERNAL_ERROR`              | Unexpected server error                 |
+| Status | Code                          | Description                                                  |
+| ------ | ----------------------------- | ------------------------------------------------------------ |
+| 400    | `VALIDATION_ERROR`            | Invalid or missing request body fields                       |
+| 401    | `UNAUTHORIZED`                | Missing or invalid token                                     |
+| 403    | `FORBIDDEN`                   | Insufficient role permissions                                |
+| 404    | `NOT_FOUND`                   | Resource not found                                           |
+| 409    | `CONFLICT`                    | Resource conflict (e.g. duplicate name)                      |
+| 409    | `DRAINING`                    | This principal/repository scope is fenced by a session drain |
+| 409    | `REPOSITORY_ADMISSION_CLOSED` | Repository is paused or draining                             |
+| 429    | `RATE_LIMITED`                | Too many requests; see `Retry-After`                         |
+| 500    | `INTERNAL_ERROR`              | Unexpected server error                                      |
 
 Rate limit headers on all responses:
 
@@ -132,6 +133,33 @@ a legacy row means `active`.
 
 Paused or draining cron schedules advance to their next future occurrence without catch-up when
 the repository is activated. These operations require `repositories:operate` and are audited.
+
+### Principal session drains
+
+An authenticated author can stop only its own sessions for one repository without pausing work
+from the UI, another service account, or another repository:
+
+- `POST /repositories/:id/session-drains` commits the exact
+  `(repositoryId, authenticated principal)` admission fence and returns `202` with
+  `operationId`, `status`, and `statusUrl`. Send a stable `Idempotency-Key` (1–128 characters from
+  `A-Z a-z 0-9 . _ : -`) so an ambiguous retry returns the same retained operation even after
+  release or an API restart.
+- `GET /repositories/:id/session-drains/:operationId` reconciles and returns bounded counts plus
+  `draining`, `succeeded`, or `failed`. The scheduler continues reconciliation when nobody polls.
+  `succeeded` is durable proof that the exact scope has no queued/running session and no cancelled
+  session still holding a worktree or main-checkout lease.
+- `POST /repositories/:id/session-drains/:operationId/release` explicitly removes the fence after
+  either terminal result. Releasing `failed` permits new admission but does not change the retained
+  operation proof to success.
+
+While fenced, direct create, clone, resume, schedule fire, and assignment lose atomically with
+`409 DRAINING`; the error includes the operation ID and status URL. Running work receives the
+normal fenced `session:cancel` message and remains part of progress until its exact lease is
+released. Prompts, logs, metadata, and credentials never enter drain progress or audit metadata.
+
+This is distinct from repository drain above (all principals) and host update drain (one host,
+running work finishes). It requires `sessions:write`; repository scope and principal ownership are
+always derived from authentication and cannot be supplied in the request.
 
 ---
 

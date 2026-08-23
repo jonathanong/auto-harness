@@ -60,7 +60,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | Capability             | Meaning                                                                                                                                                                                                                       |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | _(authenticated read)_ | Any signed-in principal may `GET` sessions, logs, usage, catalog, hosts, worktrees, schedules, session-targets. Repo/host filters still apply. Not a stored capability — `read-only` has an empty grant list and still reads. |
-| `sessions:write`       | `POST /sessions`, clone, resume, cancel (own, unless `sessions:cancel-any`). Bound keys never author; see [Object-level rules](#object-level-rules).                                                                          |
+| `sessions:write`       | `POST /sessions`, clone, resume, cancel (own, unless `sessions:cancel-any`), and create/poll/release the caller's repository-principal session drain. Bound keys never author; see [Object-level rules](#object-level-rules). |
 | `sessions:cancel-any`  | Cancel any in-scope session, not only `metadata.createdBy`.                                                                                                                                                                   |
 | `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                 |
 | `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                 |
@@ -128,6 +128,7 @@ bound service-account, which `admin` is forbidden to be.
 | `/api/v1/sessions` (except archive)                                | authenticated                          | `sessions:write`     |
 | `/api/v1/sessions/:id/archive`                                     | authenticated                          | `sessions:archive`   |
 | `/api/v1/schedules`                                                | authenticated                          | `schedules:write`    |
+| `/api/v1/repositories/:id/session-drains`                          | authenticated                          | `sessions:write`     |
 | `/api/v1/hosts/drain`                                              | authenticated                          | `fleet:drain`        |
 | `/api/v1/hosts/:id/inventory`, `/api/v1/host-inventories`          | authenticated                          | `fleet:inventory`    |
 | `/api/v1/provider-accounts`                                        | authenticated                          | `providers:accounts` |

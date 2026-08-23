@@ -16,6 +16,7 @@ import { handleProviderAccountRoutes } from "./local-routes-provider-accounts.ts
 import { handleProviderRoutes } from "./local-routes-providers.ts";
 import { handleRepositoryRoutes, handleScheduleRoutes } from "./local-routes-repos-schedules.ts";
 import { handleSessionRoutes } from "./local-routes-sessions.ts";
+import { handleSessionDrainRoutes } from "./local-routes-session-drains.ts";
 import { handleSessionTargetRoutes } from "./local-routes-session-targets.ts";
 import { handleUsageRoutes } from "./local-routes-usage.ts";
 import { handleSlackIntegrationRoutes } from "./local-routes-slack-integration.ts";
@@ -139,6 +140,7 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     if (authRoute && (await handleAuthRoutes({ auth, ...ctx }))) return;
     if (await handleAuditLogRoutes(ctx)) return;
     if (await handleSessionRoutes(ctx)) return;
+    if (await handleSessionDrainRoutes(ctx)) return;
     if (await handleUsageRoutes(ctx)) return;
     if (await handleRepositoryRoutes(ctx)) return;
     if (await handleScheduleRoutes(ctx)) return;

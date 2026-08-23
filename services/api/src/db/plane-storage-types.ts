@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import type {
   Command,
@@ -80,6 +81,7 @@ export type ConnectionRecord = {
 export type ScheduleRecord = {
   id: string;
   repositoryId: string;
+  principalId?: string;
   name: string;
   target: TargetRef;
   fallbacks: TargetRef[];
@@ -143,6 +145,26 @@ export type RepositoryRecord = {
   drainCompletedAt?: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
+
+export type SessionDrainRecord = {
+  scopeKey: string;
+  recordKey: string;
+  operationId: string;
+  repositoryId: string;
+  principalId: string;
+  status: SessionDrainStatus;
+  requestedAt: string;
+  updatedAt: string;
+  deadlineAt: string;
+  queuedCount: number;
+  runningCount: number;
+  cancelledCount: number;
+  completedAt?: string;
+  releasedAt?: string;
+  failureCode?: "DEADLINE_EXCEEDED";
 };
 
 /** Enable/command override for a provider account at a repository or worktree scope. */

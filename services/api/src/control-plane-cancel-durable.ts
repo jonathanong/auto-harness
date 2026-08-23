@@ -26,8 +26,38 @@ export async function cancelSessionDurable(
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
   if (session.status === "running") {
-    if (!session.mainCheckoutLease) return cancelSession(state, id);
     const assignment = expectedAssignment ?? session;
+    if (!session.mainCheckoutLease) {
+      if (
+        assignment.status !== "running" ||
+        !assignment.worktreeId ||
+        !assignment.hostId ||
+        !assignment.assignmentConnectionId ||
+        !assignment.attemptId
+      ) {
+        return { ok: false, error: "session changed before cancellation" };
+      }
+      const completedAt = state.now();
+      const errorMessage = "cancelled by operator";
+      const cancelled = await state.storage.cancelRunningSession({
+        sessionId: id,
+        worktreeId: assignment.worktreeId,
+        hostId: assignment.hostId,
+        connectionId: assignment.assignmentConnectionId,
+        attemptId: assignment.attemptId,
+        queueShard: assignment.queueShard,
+        completedAt,
+        errorMessage,
+      });
+      if (!cancelled) return { ok: false, error: "session changed before cancellation" };
+      state.pendingAcks.delete(id);
+      session.status = "cancelled";
+      session.errorMessage = errorMessage;
+      session.completedAt = completedAt;
+      state.sessions.set(id, { ...session });
+      state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
+      return { ok: true, session: toPublic(state, session) };
+    }
     if (
       assignment.status !== "running" ||
       !assignment.mainCheckoutLease ||

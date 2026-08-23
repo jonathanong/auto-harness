@@ -24,6 +24,8 @@ export type ScheduleRecord = {
   createdAt: string;
   ref?: string;
   concurrencyId?: string;
+  /** Authenticated principal that owns sessions emitted by this schedule. */
+  principalId?: string;
   /** Prompt passed to the CLI when this schedule fires. Missing/blank stays empty. */
   prompt?: string;
   /** Computed for API responses; never persisted. */
@@ -67,6 +69,8 @@ export type ControlPlaneOptions = {
   providerAccountIdFactory?: () => string;
   commandIdFactory?: () => string;
   auditIdFactory?: () => string;
+  sessionDrainIdFactory?: () => string;
+  sessionDrainTimeoutMs?: number;
   shardCount?: number;
   ackDeadlineMs?: number;
   heartbeatStaleMs?: number;
@@ -80,7 +84,7 @@ export type ControlPlaneOptions = {
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
 };
 
-export type PublicSession = SessionRecord & { url: string };
+export type PublicSession = Omit<SessionRecord, "principalId"> & { url: string };
 
 export type PendingAck = {
   sessionId: string;

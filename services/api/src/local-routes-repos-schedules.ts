@@ -419,6 +419,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
+        ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
       });
       if (!result.ok) {
         if (
@@ -522,16 +523,32 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "schedule:trigger",
+          action:
+            result.code === "DRAINING" ? "session-drain:admission-rejected" : "schedule:trigger",
           resourceType: "schedule",
           resourceId: schedTrigger[1]!,
           ...(triggerExisting?.repositoryId ? { repositoryId: triggerExisting.repositoryId } : {}),
           outcome: "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         }))
       )
         return true;
-      const mapped = scheduleTriggerError(result.error);
-      send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
+      const mapped =
+        result.code === "DRAINING"
+          ? { status: 409, code: "DRAINING" }
+          : scheduleTriggerError(result.error);
+      send(res, mapped.status, {
+        error: {
+          code: mapped.code,
+          message: result.error,
+          ...(result.operationId
+            ? {
+                operationId: result.operationId,
+                statusUrl: `/api/v1/repositories/${encodeURIComponent(triggerExisting!.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+              }
+            : {}),
+        },
+      });
       return true;
     }
     if (!scoped(ctx, result.session.repositoryId)) {

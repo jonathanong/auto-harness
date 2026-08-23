@@ -9,6 +9,7 @@ describe("CDK table catalog", () => {
       "Repositories",
       "Worktrees",
       "Sessions",
+      "SessionDrains",
       "HostLocks",
       "ConcurrencyLocks",
       "SessionLogs",
@@ -37,6 +38,10 @@ describe("CDK table catalog", () => {
     expect(DYNAMO_TABLES.find((table) => table.name === "SessionLogs")).toMatchObject({
       sortKey: { name: "timestampSeq" },
       ttlAttribute: "ttl",
+    });
+    expect(DYNAMO_TABLES.find((table) => table.name === "SessionDrains")).toMatchObject({
+      partitionKey: { name: "scopeKey" },
+      sortKey: { name: "recordKey" },
     });
     expect(DYNAMO_TABLES.find((table) => table.name === "AuditLogs")).toMatchObject({
       partitionKey: { name: "scope" },

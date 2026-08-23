@@ -27,6 +27,7 @@ import {
   type DeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
+import { getSessionDrain, sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
@@ -59,8 +60,32 @@ class RepositoryAdmissionClosedError extends Error {
   }
 }
 
+class SessionDrainActiveError extends Error {
+  readonly operationId: string;
+
+  constructor(operationId: string) {
+    super("principal session admission is draining");
+    this.name = "SessionDrainActiveError";
+    this.operationId = operationId;
+  }
+}
+
 export function isRepositoryAdmissionClosed(err: unknown): boolean {
   return err instanceof Error && err.name === "RepositoryAdmissionClosedError";
+}
+
+export function sessionDrainOperationId(err: unknown): string | null {
+  return err instanceof SessionDrainActiveError ? err.operationId : null;
+}
+
+async function activeSessionDrainError(
+  ctx: PlaneStorageCtx,
+  session: SessionRecord,
+): Promise<SessionDrainActiveError> {
+  const drain = session.principalId
+    ? await getSessionDrain(ctx, session.repositoryId, session.principalId)
+    : null;
+  return new SessionDrainActiveError(drain?.operationId ?? "unknown");
 }
 
 export function isCreateSessionConflict(err: unknown): boolean {
@@ -99,6 +124,7 @@ export async function createSession(
   session: SessionRecord,
   markers: readonly DeletionMarker[] = [],
 ): Promise<CreateSessionResult> {
+  const drainCheck = sessionDrainAdmissionCheck(ctx, session.repositoryId, session.principalId);
   if (!session.concurrencyId) {
     try {
       await ctx.doc.send(
@@ -114,6 +140,7 @@ export async function createSession(
                 ExpressionAttributeValues: { ":active": "active" },
               },
             },
+            ...(drainCheck ? [drainCheck] : []),
             {
               Put: {
                 TableName: ctx.tables.sessions,
@@ -126,10 +153,16 @@ export async function createSession(
       );
     } catch (err) {
       if (isConditionalTransactionFailed(err)) {
-        if (isConditionalTransactionFailureAt(err, markers.length)) {
+        const repositoryIndex = markers.length;
+        const drainIndex = repositoryIndex + 1;
+        const sessionIndex = drainIndex + Number(!!drainCheck);
+        if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
           throw new RepositoryAdmissionClosedError();
         }
-        if (isConditionalTransactionFailureAt(err, markers.length + 1)) {
+        if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
+          throw await activeSessionDrainError(ctx, session);
+        }
+        if (isConditionalTransactionFailureAt(err, sessionIndex)) {
           throw new SessionIdCollisionError(session.id);
         }
         throw new CatalogDeletionInProgressError();
@@ -154,6 +187,7 @@ export async function createSession(
                 ExpressionAttributeValues: { ":active": "active" },
               },
             },
+            ...(drainCheck ? [drainCheck] : []),
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,
@@ -188,8 +222,13 @@ export async function createSession(
       if (isConditionalTransactionFailureAt(err, markerCount)) {
         throw new RepositoryAdmissionClosedError();
       }
-      const lockConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 1);
-      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 2);
+      const drainIndex = markerCount + 1;
+      if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
+        throw await activeSessionDrainError(ctx, session);
+      }
+      const lockIndex = drainIndex + Number(!!drainCheck);
+      const lockConditionFailed = isConditionalTransactionFailureAt(err, lockIndex);
+      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, lockIndex + 1);
       // When both conditions lose, the active lock is authoritative: it may
       // already own this same session ID and should still be returned as the
       // duplicate. A session-only collision can never succeed on retry.
@@ -570,6 +609,7 @@ export async function tryAssignSession(
     worktreeId: string;
     hostId: string;
     hostInventoryVersion: number | null;
+    principalId?: string;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -607,6 +647,7 @@ export async function tryAssignSession(
     sessionSets.push("resumeSpec = if_not_exists(resumeSpec, :resumeSpec)");
     sessionValues[":resumeSpec"] = opts.resumeSpec;
   }
+  const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -620,6 +661,7 @@ export async function tryAssignSession(
               ExpressionAttributeValues: { ":active": "active" },
             },
           },
+          ...(drainCheck ? [drainCheck] : []),
           {
             ConditionCheck: {
               TableName: ctx.tables.hostInventories,
@@ -810,6 +852,50 @@ export async function cancelQueuedSession(
   } catch (err) {
     if (isConditionalTransactionFailed(err)) return false;
     throw err;
+  }
+}
+
+/** Mark one exact running worktree assignment cancelled while retaining its lease for terminal ack. */
+export async function cancelRunningSession(
+  ctx: PlaneStorageCtx,
+  opts: {
+    sessionId: string;
+    worktreeId: string;
+    hostId: string;
+    connectionId: string;
+    attemptId: string;
+    queueShard: number;
+    completedAt: string;
+    errorMessage: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.sessions,
+        Key: { id: opts.sessionId },
+        UpdateExpression:
+          "SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage",
+        ConditionExpression:
+          "#s = :running AND worktreeId = :worktreeId AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":running": "running",
+          ":cancelled": "cancelled",
+          ":statusShard": statusShardAttr("cancelled", opts.queueShard),
+          ":completedAt": opts.completedAt,
+          ":errorMessage": opts.errorMessage,
+          ":worktreeId": opts.worktreeId,
+          ":hostId": opts.hostId,
+          ":connectionId": opts.connectionId,
+          ":attemptId": opts.attemptId,
+        },
+      }),
+    );
+    return true;
+  } catch (error) {
+    if (isConditionalFailed(error)) return false;
+    throw error;
   }
 }
 

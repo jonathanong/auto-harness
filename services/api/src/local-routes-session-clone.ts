@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.ts";
@@ -157,18 +158,32 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
       return respondAfterCloneAudit(
         ctx,
         {
-          action: "session:clone",
+          action: result.code === "DRAINING" ? "session-drain:admission-rejected" : "session:clone",
           resourceType: "session",
           resourceId: sourceId,
           repositoryId: source.repositoryId,
           outcome: "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         },
         () =>
           send(
             res,
-            result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
+            result.code === "CONFLICT" ||
+              result.code === "REPOSITORY_ADMISSION_CLOSED" ||
+              result.code === "DRAINING"
+              ? 409
+              : 400,
             {
-              error: { code: result.code ?? "CLONE_ERROR", message: result.error },
+              error: {
+                code: result.code ?? "CLONE_ERROR",
+                message: result.error,
+                ...(result.operationId
+                  ? {
+                      operationId: result.operationId,
+                      statusUrl: `/api/v1/repositories/${encodeURIComponent(source.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+                    }
+                  : {}),
+              },
             },
           ),
       );

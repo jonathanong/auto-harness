@@ -13,6 +13,7 @@ import { repositoryAdmissionFailure } from "./control-plane-repository-admission
 const DEFAULT_CONTINUATION_PROMPT = "Continue from the previous session.";
 
 export type ResumeOptions = {
+  principalId?: string;
   pinExpiresAt?: string;
   prompt?: string;
   timeout?: number;
@@ -139,6 +140,11 @@ export function prepareResumedSession(
     ...(source.resumeSpec !== undefined ? { resumeSpec: copyResumeSpec(source.resumeSpec) } : {}),
     ...(source.concurrencyId !== undefined ? { concurrencyId: source.concurrencyId } : {}),
     ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
+    ...(source.principalId !== undefined
+      ? { principalId: source.principalId }
+      : typeof source.metadata?.createdBy === "string"
+        ? { principalId: source.metadata.createdBy }
+        : {}),
     type: "prompt",
     source: "api",
   };

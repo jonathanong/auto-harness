@@ -91,6 +91,7 @@ function preparePutSchedule(
     createdAt: now,
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId,
+    ...(input.principalId !== undefined ? { principalId: input.principalId } : {}),
     ...(prompt !== undefined ? { prompt } : {}),
   };
   return { ok: true, schedule: rec };

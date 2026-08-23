@@ -32,6 +32,9 @@ export function requiredCapability(
   if (/^\/api\/v1\/repositories\/[^/]+\/(pause|drain|activate)$/.test(pathname)) {
     return write ? "repositories:operate" : "authenticated";
   }
+  if (/^\/api\/v1\/repositories\/[^/]+\/session-drains(?:\/[^/]+(?:\/release)?)?$/.test(pathname)) {
+    return write ? "sessions:write" : "authenticated";
+  }
   if (
     pathname === "/api/v1/host-inventories" ||
     /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)

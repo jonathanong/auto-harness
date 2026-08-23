@@ -101,6 +101,19 @@ export async function ensureControlPlaneTables(opts: {
   });
 
   await createIfMissing(ddb, {
+    TableName: names.sessionDrains,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "scopeKey", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "recordKey", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [
+      { AttributeName: "scopeKey", KeyType: KeyType.HASH },
+      { AttributeName: "recordKey", KeyType: KeyType.RANGE },
+    ],
+  });
+
+  await createIfMissing(ddb, {
     TableName: names.worktrees,
     BillingMode: BillingMode.PAY_PER_REQUEST,
     AttributeDefinitions: [

@@ -75,8 +75,9 @@ export class ControlPlaneBase {
 
   async createSessionDurable(
     body: unknown,
+    options: { principalId?: string } = {},
   ): Promise<Awaited<ReturnType<typeof durableSessions.createSessionDurable>>> {
-    return durableSessions.createSessionDurable(this.state, body);
+    return durableSessions.createSessionDurable(this.state, body, options);
   }
 
   getSession(id: string): PublicSession | null {
@@ -212,11 +213,10 @@ export class ControlPlaneBase {
 
   async resumeSessionDurable(
     sessionId: string,
-    opts: { pinExpiresAt?: string; prompt?: string; timeout?: number; priority?: number } = {},
+    opts: sessions.ResumeOptions = {},
   ): Promise<Awaited<ReturnType<typeof durableSessions.resumeSessionDurable>>> {
     return durableSessions.resumeSessionDurable(this.state, sessionId, opts);
   }
-
   putSchedule(input: {
     repositoryId: string;
     name: string;

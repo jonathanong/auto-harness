@@ -7,6 +7,7 @@ export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7423";
 export type DynamoTableNames = {
   users: string;
   sessions: string;
+  sessionDrains: string;
   worktrees: string;
   connections: string;
   sessionLogs: string;
@@ -33,6 +34,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
   return {
     users: `${p}-Users`,
     sessions: `${p}-Sessions`,
+    sessionDrains: `${p}-SessionDrains`,
     worktrees: `${p}-Worktrees`,
     connections: `${p}-Connections`,
     sessionLogs: `${p}-SessionLogs`,

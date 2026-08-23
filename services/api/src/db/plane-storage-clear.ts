@@ -14,11 +14,20 @@ import { deleteAuthAccount, listAuthAccounts } from "./plane-storage-auth.ts";
 import { listAllAuditLogs } from "./plane-storage-audit.ts";
 import { getSlackIntegration } from "./plane-storage-integrations.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
+import { listSessionDrains } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
+  for (const drain of await listSessionDrains(ctx)) {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.sessionDrains,
+        Key: { scopeKey: drain.scopeKey, recordKey: drain.recordKey },
+      }),
+    );
+  }
   await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);

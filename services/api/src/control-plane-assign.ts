@@ -287,6 +287,7 @@ export async function assignQueuedDurable(
             repositoryId: session.repositoryId,
             worktreeId: candidate.id,
             hostId: candidate.hostId,
+            ...(session.principalId ? { principalId: session.principalId } : {}),
             hostInventoryVersion: state.hostInventories.has(candidate.hostId)
               ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
               : null,

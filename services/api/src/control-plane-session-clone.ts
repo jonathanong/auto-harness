@@ -13,7 +13,7 @@ export type CloneOptions = {
   createdBy?: string;
 };
 
-export type CloneFailure = { ok: false; error: string; code?: string };
+export type CloneFailure = { ok: false; error: string; code?: string; operationId?: string };
 
 function validateCloneOverrides(opts: CloneOptions): string | null {
   const allowed = new Set(["prompt", "timeout", "priority", "createdBy"]);
@@ -89,6 +89,7 @@ export function prepareClonedSession(
     // concurrencyId, schedule provenance, audit metadata, or any runtime
     // assignment/lease/log fields from the source.
     ...(opts.createdBy !== undefined ? { metadata: { createdBy: opts.createdBy } } : {}),
+    ...(opts.createdBy !== undefined ? { principalId: opts.createdBy } : {}),
     type: "prompt",
     source: "api",
   };

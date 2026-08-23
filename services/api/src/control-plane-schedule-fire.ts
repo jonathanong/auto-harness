@@ -14,6 +14,8 @@ import {
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
+import { appendAuditLog } from "./control-plane-audit.ts";
+import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -64,7 +66,10 @@ export async function triggerScheduleDurable(
   state: ControlPlaneState,
   id: string,
   nowIso: string = state.now(),
-): Promise<{ ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
+> {
   if (!state.storage) {
     return triggerSchedule(state, id, nowIso);
   }
@@ -100,6 +105,14 @@ export async function triggerScheduleDurable(
   }
   if (outcome.kind === "admission_closed") {
     return { ok: false, error: "repository admission is closed" };
+  }
+  if (outcome.kind === "draining") {
+    return {
+      ok: false,
+      error: "principal session admission is draining",
+      code: "DRAINING",
+      operationId: outcome.operationId,
+    };
   }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
@@ -263,6 +276,32 @@ export async function tryClaimScheduleFireDurable(
     if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
     return null;
   }
+  if (outcome.kind === "draining") {
+    const skipped = await state.storage.skipScheduleForPrincipalDrain({
+      scheduleId,
+      repositoryId: schedule.repositoryId,
+      principalId: schedule.principalId!,
+      operationId: outcome.operationId,
+      expectedNextRunAt,
+      newNextRunAt,
+    });
+    if (skipped) {
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      await appendAuditLog(state, {
+        actor: SYSTEM_AUDIT_ACTOR,
+        action: "session-drain:admission-rejected",
+        resourceType: "schedule",
+        resourceId: scheduleId,
+        repositoryId: schedule.repositoryId,
+        outcome: "failed",
+        metadata: {
+          operationId: outcome.operationId,
+          principalId: schedule.principalId!,
+        },
+      });
+    }
+    return null;
+  }
   if (outcome.kind !== "created") {
     return null;
   }
@@ -308,6 +347,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   };
 }
 
@@ -330,6 +370,7 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
   ref?: string;
   concurrencyId?: string;
   scheduleId?: string;
+  metadata?: Record<string, unknown>;
 } {
   return {
     repositoryId: schedule.repositoryId,
@@ -343,5 +384,6 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
   };
 }

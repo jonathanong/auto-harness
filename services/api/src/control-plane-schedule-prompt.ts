@@ -13,6 +13,8 @@ export type ScheduleInput = {
   concurrencyId?: string;
   prompt?: string;
   id?: string;
+  /** Internal authenticated owner; public JSON cannot select another principal. */
+  principalId?: string;
 };
 
 /** Session prompt used when a schedule fires. Never invents `scheduled:<name>`. */

@@ -55,6 +55,11 @@ export const DYNAMO_TABLES: TableDef[] = [
     ],
   },
   {
+    name: "SessionDrains",
+    partitionKey: { name: "scopeKey", type: "S" },
+    sortKey: { name: "recordKey", type: "S" },
+  },
+  {
     name: "HostLocks",
     partitionKey: { name: "hostId", type: "S" },
   },

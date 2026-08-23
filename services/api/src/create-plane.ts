@@ -58,6 +58,12 @@ export async function createControlPlane(
     ...(options.reconnectGraceMs !== undefined
       ? { reconnectGraceMs: options.reconnectGraceMs }
       : {}),
+    ...(options.sessionDrainIdFactory !== undefined
+      ? { sessionDrainIdFactory: options.sessionDrainIdFactory }
+      : {}),
+    ...(options.sessionDrainTimeoutMs !== undefined
+      ? { sessionDrainTimeoutMs: options.sessionDrainTimeoutMs }
+      : {}),
     ...(options.usageLimitRetryCeiling !== undefined
       ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }
       : {}),

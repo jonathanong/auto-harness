@@ -253,6 +253,12 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Cancel            | `session:cancel` aborts setup or the primary command through the same SIGTERM → 5s → SIGKILL chain; report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 
+A repository-principal session drain uses this same cancel path. The control plane fences the
+exact assignment attempt before sending `session:cancel`; the daemon reports its normal terminal
+status and releases the worktree or main-checkout lock. A late acknowledgement, reconnect, or
+terminal report is accepted only for that fenced attempt and cannot revive it or disturb a newer
+assignment. The daemon does not list sessions or decide drain scope.
+
 The assigned command runs in a single `node-pty` terminal (`xterm-256color`,
 120 columns by 40 rows). Its merged terminal stream is reported as `stdout`,
 including ANSI control sequences exactly as the CLI emits them. Resume-reference

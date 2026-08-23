@@ -47,6 +47,11 @@ Prefer **control plane first**, then **agents**. Agent updates are manual today:
 request drain, wait for in-flight sessions, install the update, and restart the daemon. Automatic
 download/restart orchestration remains future work.
 
+Automation rollouts that need to quiesce only their own work use the authenticated
+repository-principal session-drain API instead. They must keep their external admission gates off,
+poll the durable operation to a terminal state, verify those gates again, then explicitly release
+the Auto Harness fence. This does not cancel GitHub Actions runs or manage repository variables.
+
 ### Teardown
 
 | Surface                                             | Where to look                                           |

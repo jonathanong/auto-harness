@@ -74,23 +74,41 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
       }
     : body;
   try {
-    const result = await plane.createSessionDurable(input);
+    const result = await plane.createSessionDurable(
+      input,
+      ctx.principal ? { principalId: ctx.principal.id } : {},
+    );
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "session:create",
+          action:
+            result.code === "DRAINING" ? "session-drain:admission-rejected" : "session:create",
           resourceType: "session",
           resourceId: "new",
           ...(repositoryId ? { repositoryId } : {}),
           outcome: "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         }))
       )
         return true;
       send(
         res,
-        result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
+        result.code === "CONFLICT" ||
+          result.code === "REPOSITORY_ADMISSION_CLOSED" ||
+          result.code === "DRAINING"
+          ? 409
+          : 400,
         {
-          error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
+          error: {
+            code: result.code ?? "VALIDATION_ERROR",
+            message: result.error,
+            ...(result.operationId
+              ? {
+                  operationId: result.operationId,
+                  statusUrl: `/api/v1/repositories/${encodeURIComponent(repositoryId!)}/session-drains/${encodeURIComponent(result.operationId)}`,
+                }
+              : {}),
+          },
         },
       );
       return true;

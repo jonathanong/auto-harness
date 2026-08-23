@@ -38,6 +38,11 @@ import {
   releaseConcurrencyLock,
 } from "./plane-storage-sessions.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
+import {
+  getSessionDrain,
+  sessionDrainAdmissionCheck,
+  sessionDrainScopeKey,
+} from "./plane-storage-session-drains.ts";
 
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
@@ -570,6 +575,7 @@ export type ScheduleCreateResult =
   | { kind: "created" }
   | { kind: "duplicate"; session: SessionRecord }
   | { kind: "admission_closed" }
+  | { kind: "draining"; operationId: string }
   | { kind: "lost" };
 
 export async function tryClaimScheduleAndCreateSession(
@@ -582,6 +588,11 @@ export async function tryClaimScheduleAndCreateSession(
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
+  const drainCheck = sessionDrainAdmissionCheck(
+    ctx,
+    opts.session.repositoryId,
+    opts.session.principalId,
+  );
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -600,6 +611,7 @@ export async function tryClaimScheduleAndCreateSession(
               },
             },
           },
+          ...(drainCheck ? [drainCheck] : []),
           {
             ConditionCheck: {
               TableName: ctx.tables.repositories,
@@ -633,13 +645,23 @@ export async function tryClaimScheduleAndCreateSession(
     return { kind: "created" };
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
-      if (isConditionalTransactionFailureAt(err, 1)) {
+      if (drainCheck && isConditionalTransactionFailureAt(err, 1)) {
+        const drain = await getSessionDrain(
+          ctx,
+          opts.session.repositoryId,
+          opts.session.principalId!,
+        );
+        return { kind: "draining", operationId: drain?.operationId ?? "unknown" };
+      }
+      const repositoryIndex = 1 + Number(!!drainCheck);
+      if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
         return { kind: "admission_closed" };
       }
-      // The schedule cursor is item 0, repository fence item 1, the session
-      // insert item 2, and the concurrency lock (when present) item 3. Only a failed lock
-      // condition means an active session can be a legitimate duplicate.
-      if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, 3)) {
+      // The schedule cursor is item 0, followed by the optional principal
+      // drain fence, repository fence, session insert, and optional lock.
+      const sessionIndex = 2 + Number(!!drainCheck);
+      const lockIndex = sessionIndex + 1;
+      if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, lockIndex)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
           const current = await getSession(ctx, lock.sessionId, true);
@@ -652,6 +674,58 @@ export async function tryClaimScheduleAndCreateSession(
       return { kind: "lost" };
     }
     throw err;
+  }
+}
+
+export async function skipScheduleForPrincipalDrain(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    repositoryId: string;
+    principalId: string;
+    operationId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt",
+              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.sessionDrains,
+              Key: {
+                scopeKey: sessionDrainScopeKey(opts.repositoryId, opts.principalId),
+                recordKey: "CURRENT",
+              },
+              ConditionExpression: "operationId = :operationId AND #status <> :released",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": opts.operationId,
+                ":released": "released",
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (error) {
+    return conditionalCatalogWriteOrThrow(error);
   }
 }
 

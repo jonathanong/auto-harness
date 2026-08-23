@@ -117,6 +117,7 @@ export async function assignScheduledQueuedDurable(
             (await state.storage.tryAssignMainCheckoutSession({
               sessionId: session.id,
               hostId,
+              ...(session.principalId ? { principalId: session.principalId } : {}),
               hostInventoryVersion: state.hostInventories.has(hostId)
                 ? (state.hostInventories.get(hostId)!.version ?? 0)
                 : null,

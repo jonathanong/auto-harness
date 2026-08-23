@@ -7,6 +7,7 @@ import {
   isConditionalTransactionFailed,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
+import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
 export {
   confirmMainCheckoutReconnect,
   markMainCheckoutReconnectPending,
@@ -45,6 +46,7 @@ export async function tryAssignMainCheckoutSession(
     sessionId: string;
     hostId: string;
     hostInventoryVersion: number | null;
+    principalId?: string;
     repositoryId: string;
     connectionId: string;
     now: string;
@@ -57,6 +59,7 @@ export async function tryAssignMainCheckoutSession(
   },
 ): Promise<boolean> {
   const lease = { sessionId: opts.sessionId, connectionId: opts.connectionId };
+  const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -79,6 +82,7 @@ export async function tryAssignMainCheckoutSession(
                   }),
             },
           },
+          ...(drainCheck ? [drainCheck] : []),
           {
             ConditionCheck: {
               TableName: ctx.tables.repositories,
