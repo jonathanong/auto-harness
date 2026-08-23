@@ -203,6 +203,9 @@ describe("durable schedule management updates", () => {
       expect(input.UpdateExpression).toContain("nextRunAt = :nextRunAt");
       expect(input.UpdateExpression).not.toContain("lastRunAt");
       expect(input.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
+      expect(input.ConditionExpression).toContain(
+        "attribute_not_exists(principalId) OR principalId = :principalId",
+      );
       expect(input.UpdateExpression).toContain("#ref = :ref");
       expect(input.UpdateExpression).toContain("concurrencyId = :concurrencyId");
       expect(input.UpdateExpression).toContain("prompt = :prompt");
@@ -214,7 +217,12 @@ describe("durable schedule management updates", () => {
     await expect(
       updateScheduleManagement(
         storage,
-        { ...schedule("main"), concurrencyId: "schedule-1", prompt: "review the repo" },
+        {
+          ...schedule("main"),
+          concurrencyId: "schedule-1",
+          prompt: "review the repo",
+          principalId: "principal",
+        },
         "old-next",
       ),
     ).resolves.toMatchObject({ nextRunAt: "fresh-next", lastRunAt: "fresh-last" });
@@ -224,6 +232,21 @@ describe("durable schedule management updates", () => {
     const storage = scheduleCtx(async (command) => {
       expect((command as UpdateCommand).input.UpdateExpression).toContain(
         "REMOVE #ref, concurrencyId",
+      );
+      throw { name: "ConditionalCheckFailedException" };
+    });
+
+    await expect(updateScheduleManagement(storage, schedule(), "old-next")).resolves.toBeNull();
+  });
+
+  it("atomically refuses to clear ownership from an already-owned schedule", async () => {
+    const storage = scheduleCtx(async (command) => {
+      expect(command).toBeInstanceOf(UpdateCommand);
+      expect((command as UpdateCommand).input.ConditionExpression).toContain(
+        "attribute_not_exists(principalId)",
+      );
+      expect((command as UpdateCommand).input.ExpressionAttributeValues).not.toHaveProperty(
+        ":principalId",
       );
       throw { name: "ConditionalCheckFailedException" };
     });

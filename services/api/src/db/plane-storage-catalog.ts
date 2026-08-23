@@ -287,7 +287,11 @@ export async function updateScheduleManagement(
       TableName: ctx.tables.schedules,
       Key: { id: rec.id },
       UpdateExpression: `SET ${set.join(", ")}${remove.length === 0 ? "" : ` REMOVE ${remove.join(", ")}`}`,
-      ConditionExpression: "attribute_exists(id) AND nextRunAt = :expectedNextRunAt",
+      ConditionExpression:
+        "attribute_exists(id) AND nextRunAt = :expectedNextRunAt AND " +
+        (rec.principalId === undefined
+          ? "attribute_not_exists(principalId)"
+          : "(attribute_not_exists(principalId) OR principalId = :principalId)"),
       ExpressionAttributeNames: { "#name": "name", "#ref": "ref" },
       ExpressionAttributeValues: {
         ":repositoryId": rec.repositoryId,
