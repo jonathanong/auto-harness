@@ -774,11 +774,14 @@ export async function skipScheduleForPrincipalDrain(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :nextRunAt",
-              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND repositoryId = :repositoryId AND principalId = :principalId",
               ExpressionAttributeValues: {
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
+                ":repositoryId": opts.repositoryId,
+                ":principalId": opts.principalId,
               },
             },
           },
@@ -828,11 +831,14 @@ export async function skipScheduleForPrincipalDrainAndAudit(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :nextRunAt",
-              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND repositoryId = :repositoryId AND principalId = :principalId",
               ExpressionAttributeValues: {
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
+                ":repositoryId": opts.repositoryId,
+                ":principalId": opts.principalId,
               },
             },
           },

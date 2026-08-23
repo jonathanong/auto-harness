@@ -190,8 +190,8 @@ export class AuthService {
   ): Promise<FencedAuthAccountDelete> {
     const user = this.users.get(username);
     if (!user) return "missing";
-    if (storage && fence) {
-      if (!storage.deleteAuthAccountFenced) return "fence-lost";
+    if (fence) {
+      if (!storage?.deleteAuthAccountFenced) return "fence-lost";
       const result = await storage.deleteAuthAccountFenced(user.id, fence);
       if (result === "fence-lost") return result;
       this.users.delete(username);
@@ -281,8 +281,8 @@ export class AuthService {
     fence: AuthAccountDeleteFence | undefined,
   ): Promise<FencedAuthAccountDelete> {
     if (!this.serviceAccounts.has(id)) return "missing";
-    if (storage && fence) {
-      if (!storage.deleteAuthAccountFenced) return "fence-lost";
+    if (fence) {
+      if (!storage?.deleteAuthAccountFenced) return "fence-lost";
       const result = await storage.deleteAuthAccountFenced(id, fence);
       if (result === "fence-lost") return result;
       this.serviceAccounts.delete(id);

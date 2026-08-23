@@ -349,14 +349,24 @@ describe("durable schedule management updates", () => {
         }),
       ]),
     );
+    const update = writes[1]?.TransactItems?.find((item) => item.Update)?.Update;
+    expect(update).toMatchObject({
+      ConditionExpression: expect.stringContaining("repositoryId = :repositoryId"),
+      ExpressionAttributeValues: expect.objectContaining({
+        ":repositoryId": "repo-1",
+        ":principalId": "principal-1",
+      }),
+    });
   });
 
   it("advances a schedule only while its principal drain remains active", async () => {
     let active = true;
+    const writes: TransactWriteCommandInput[] = [];
     const storage = new DynamoPlaneStorageBase(
       {
         send: async (command: unknown) => {
           expect(command).toBeInstanceOf(TransactWriteCommand);
+          writes.push((command as TransactWriteCommand).input);
           expect((command as TransactWriteCommand).input.TransactItems).toHaveLength(2);
           if (!active) {
             throw {
@@ -380,6 +390,14 @@ describe("durable schedule management updates", () => {
         newNextRunAt: "two",
       }),
     ).resolves.toBe(true);
+    const update = writes[0]?.TransactItems?.find((item) => item.Update)?.Update;
+    expect(update).toMatchObject({
+      ConditionExpression: expect.stringContaining("repositoryId = :repositoryId"),
+      ExpressionAttributeValues: expect.objectContaining({
+        ":repositoryId": "repo-1",
+        ":principalId": "principal-1",
+      }),
+    });
     active = false;
     await expect(
       storage.skipScheduleForPrincipalDrain({

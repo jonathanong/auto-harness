@@ -49,6 +49,19 @@ describe("fenced account deletion", () => {
     expect(auth.listUsers()).toEqual([]);
   });
 
+  it("keeps both account types when a requested fence has no storage", async () => {
+    const auth = new AuthService({ mode: "disabled" });
+    await auth.createUser({ username: "alice", password: "password", role: "operator" });
+    const service = await auth.createServiceAccount({ name: "agent", role: "operator" });
+
+    await expect(auth.deleteUserFenced("alice", undefined, fence)).resolves.toBe("fence-lost");
+    await expect(
+      auth.deleteServiceAccountFenced(service.account.id, undefined, fence),
+    ).resolves.toBe("fence-lost");
+    expect(auth.listUsers()).toHaveLength(1);
+    expect(auth.listServiceAccounts()).toHaveLength(1);
+  });
+
   it("evicts a stale cache miss, keeps fence loss cached, and never bypasses a requested fence", async () => {
     const auth = new AuthService({ mode: "disabled" });
     const first = await auth.createServiceAccount({ name: "first", role: "operator" });

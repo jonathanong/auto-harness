@@ -141,7 +141,7 @@ export function principalExistsCheck(
   ctx: PlaneStorageCtx,
   principalId: string | undefined,
 ): TransactionItem | null {
-  if (!principalId || principalId === "system") return null;
+  if (!principalId || principalId === "system" || principalId.startsWith("admin:")) return null;
   return {
     ConditionCheck: {
       TableName: ctx.tables.users,
