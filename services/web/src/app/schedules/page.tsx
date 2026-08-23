@@ -8,6 +8,7 @@ import { ScheduleCreateForm } from "../../components/schedule-create-form.tsx";
 import { ScheduleEnabledToggle } from "../../components/schedule-enabled-toggle.tsx";
 import { ScheduleTriggerButton } from "../../components/schedule-trigger-button.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { loadAllRepositoryPages } from "../../lib/repository-catalog.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 import { describeCron, routeLabel } from "../../lib/schedule-cron-label.ts";
 import type { SessionTarget } from "../../session-target.ts";
@@ -49,11 +50,13 @@ export default async function SchedulesPage({
     const [schedulesData, targetsData, repositoriesData] = await Promise.all([
       apiGet<{ items: Schedule[] }>("/api/v1/schedules"),
       apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
-      apiGet<{ items: Array<{ id: string; name: string }> }>("/api/v1/repositories"),
+      loadAllRepositoryPages((path) =>
+        apiGet<{ items: Array<{ id: string; name: string }> }>(path),
+      ),
     ]);
     items = schedulesData.items ?? [];
     targets = targetsData.items ?? [];
-    repositories = repositoriesData.items ?? [];
+    repositories = repositoriesData;
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }

@@ -21,6 +21,19 @@ const session = await harness.createSession({
 console.log(session.url);
 ```
 
+## Repository listing
+
+Repository listings are bounded pages. Pass the returned cursor to load the next page:
+
+```js
+let page = await harness.listRepositories({ limit: 50 });
+const repositories = [...page.items];
+while (page.nextCursor) {
+  page = await harness.listRepositories({ limit: 50, cursor: page.nextCursor });
+  repositories.push(...page.items);
+}
+```
+
 ## Principal session drains
 
 An automation principal can atomically stop admitting only its own sessions for one repository,

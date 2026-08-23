@@ -6,6 +6,7 @@ import { SessionFilters, WithTooltip } from "@auto-harness/ui";
 import { SessionsLive } from "../../components/sessions-live.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { apiGet } from "../../lib/api.ts";
+import { loadAllRepositoryPages } from "../../lib/repository-catalog.ts";
 import { parseSessionListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export default async function SessionsPage({
   let hosts: Array<{ id: string; label: string }> = [];
   const [sessionsResult, repositoriesResult, hostsResult] = await Promise.allSettled([
     apiGet<{ items: Session[]; nextCursor: string | null }>(path),
-    apiGet<{ items: Repository[] }>("/api/v1/repositories"),
+    loadAllRepositoryPages((pagePath) => apiGet<{ items: Repository[] }>(pagePath)),
     apiGet<{ items: Array<{ hostId: string }> }>("/api/v1/hosts"),
   ]);
   if (sessionsResult.status === "fulfilled") {
@@ -59,11 +60,11 @@ export default async function SessionsPage({
     nextCursor = sessionsResult.value.nextCursor ?? null;
   } else error = String(sessionsResult.reason);
   if (repositoriesResult.status === "fulfilled") {
-    repositories = (repositoriesResult.value.items ?? [])
+    repositories = repositoriesResult.value
       .map(({ id, name }) => ({ id, label: name }))
       .toSorted((a, b) => a.label.localeCompare(b.label));
     repositoryNames = Object.fromEntries(
-      (repositoriesResult.value.items ?? []).map((repository) => [repository.id, repository.name]),
+      repositoriesResult.value.map((repository) => [repository.id, repository.name]),
     );
   }
   if (hostsResult.status === "fulfilled") {

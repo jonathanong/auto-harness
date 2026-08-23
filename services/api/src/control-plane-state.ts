@@ -110,6 +110,7 @@ export type ControlPlaneState = {
   sessionDrainTimeoutMs: number;
   usageLimitRetryCeiling: number;
   archivePrefix: string;
+  /** Shared HMAC key for session-list and repository-list cursors. */
   sessionCursorSecret: string;
   onHostMessage: ((hostId: string, msg: HostWireMessage) => void) | undefined;
   /** Called only after a log is durable (or committed in the in-memory plane). */

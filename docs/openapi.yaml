@@ -58,18 +58,33 @@ paths:
   /repositories:
     get:
       operationId: listRepositories
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Base-10 integer repository page size (default 50, maximum 100)
+          schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor returned by the preceding repository page
+          schema: { type: string, minLength: 1 }
       responses:
         "200":
-          description: Repositories visible to the caller
+          description: Bounded page of repositories visible to the caller
           content:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, nextCursor]
                 properties:
                   items:
                     type: array
+                    maxItems: 100
                     items: { $ref: "#/components/schemas/Repository" }
+                  nextCursor:
+                    description: Opaque cursor for the next page, or null on the final page
+                    type: [string, "null"]
         default: { $ref: "#/components/responses/Error" }
   /repositories/{repositoryId}/pause:
     post:
@@ -264,6 +279,11 @@ components:
         name: { type: string }
         url: { type: string }
         defaultBranch: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        sessionCount: { type: integer, minimum: 0 }
+        worktreeCount: { type: integer, minimum: 0 }
+        scheduleCount: { type: integer, minimum: 0 }
         admissionState:
           type: string
           enum: [active, paused, draining]

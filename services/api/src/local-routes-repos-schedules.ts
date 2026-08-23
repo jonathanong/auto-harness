@@ -4,6 +4,10 @@ import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
 import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import {
+  InvalidRepositoryCursorError,
+  InvalidRepositoryListQueryError,
+} from "./control-plane-repositories-page.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -11,6 +15,37 @@ function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
 
 function hidden(res: RouteCtx["res"]): void {
   send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
+}
+
+type RepositoryListQueryParam = "limit" | "cursor";
+
+function readSingleRepositoryListQueryParam(
+  url: URL,
+  name: RepositoryListQueryParam,
+): string | undefined {
+  const values = url.searchParams.getAll(name);
+  if (values.length > 1) {
+    throw new InvalidRepositoryListQueryError(`${name} must appear only once`);
+  }
+  const value = values[0];
+  if (value === "") throw new InvalidRepositoryListQueryError(`${name} must not be empty`);
+  return value;
+}
+
+function parseRepositoryListLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^[0-9]+$/.test(value)) {
+    throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
+  }
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
+  }
+  return limit;
+}
+
+function repositoryListScope(ctx: RouteCtx) {
+  return ctx.principal ? { repositoryIds: ctx.principal.allowedRepositoryIds } : undefined;
 }
 
 function scheduleTriggerError(error: string): { status: number; code: string } {
@@ -30,18 +65,30 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
-      const repositories = (await plane.listRepositoriesDurable()).filter((repo) =>
-        scoped(ctx, repo.id),
-      );
+      const limit = parseRepositoryListLimit(readSingleRepositoryListQueryParam(url, "limit"));
+      const cursor = readSingleRepositoryListQueryParam(url, "cursor");
+      const page = await plane.listRepositoriesPageDurable({
+        ...(limit !== undefined ? { limit } : {}),
+        ...(cursor !== undefined ? { cursor } : {}),
+        ...(repositoryListScope(ctx) ? { scope: repositoryListScope(ctx) } : {}),
+      });
       const counts = await plane.listRepositoryCountsDurable(
-        repositories.map((repo) => repo.id),
+        page.items.map((repo) => repo.id),
         ctx.principal?.boundHostId,
       );
       send(res, 200, {
-        items: repositories.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
+        ...page,
+        items: page.items.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
       });
-    } catch {
-      sendInternalError(res);
+    } catch (error) {
+      if (
+        error instanceof InvalidRepositoryCursorError ||
+        error instanceof InvalidRepositoryListQueryError
+      ) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+      } else {
+        sendInternalError(res);
+      }
     }
     return true;
   }

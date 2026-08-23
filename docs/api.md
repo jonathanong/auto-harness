@@ -425,7 +425,19 @@ Add a repository. **Admin only.**
 
 #### `GET /repositories`
 
-List all repositories.
+List a bounded page of repositories visible to the authenticated principal.
+
+**Query parameters:**
+
+| Param    | Type   | Description                                      |
+| -------- | ------ | ------------------------------------------------ |
+| `limit`  | number | Base-10 integer from 1 to 100 (default: 50)      |
+| `cursor` | string | Opaque cursor returned by the preceding response |
+
+Repository visibility is applied before the page limit, so hidden repositories never consume a
+page slot. Results remain ordered by repository name, then repository ID. `nextCursor` is signed
+and bound to the caller's repository scope; malformed, tampered, or scope-mismatched cursors and
+invalid or duplicate parameters return structured `400 VALIDATION_ERROR` responses.
 
 **Response:** `200 OK`
 
@@ -442,13 +454,16 @@ List all repositories.
       "scheduleCount": 2,
       "createdAt": "2026-08-01T00:00:00Z"
     }
-  ]
+  ],
+  "nextCursor": "eyJ..."
 }
 ```
 
 The three count fields are durable, index-backed totals for each repository visible to the
 authenticated principal. Host-bound credentials receive session and worktree totals for their host.
 Session totals can briefly lag a just-committed write while DynamoDB propagates its repository index.
+`nextCursor` is `null` on the final page. Callers that require the complete visible catalog must
+continue until then; every individual response remains capped at 100 repositories.
 
 #### `GET /repositories/:id`
 
@@ -576,10 +591,11 @@ sort order, and principal scope; changing or tampering with those values returns
 limits, statuses, sources, empty filter values, and duplicate filter parameters return a structured `400`.
 
 For multi-worker deployments, set `HARNESS_CURSOR_SECRET` to the same stable secret on every API
-worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). If neither variable
-is set, a random process-local secret is used; cursors from that fallback are valid only in the
-same local-memory process and must not be used for a distributed deployment. Lambda mode always
-supplies a stable secret explicitly — every worker fetches the same value from the
+worker (or use the existing shared `HARNESS_SESSION_SECRET` as its fallback). The secret signs both
+session-list and repository-list cursors. If neither variable is set, a random process-local secret
+is used; cursors from that fallback are valid only in the same local-memory process and must not be
+used for a distributed deployment. Lambda mode always supplies a stable secret explicitly — every
+worker fetches the same value from the
 `HARNESS_CURSOR_SECRET_SSM_PARAM`-named SSM parameter at cold start
 ([deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)) — so the random fallback never
 applies there.

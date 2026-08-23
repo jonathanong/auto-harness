@@ -44,6 +44,46 @@ test("maps stable API errors and retry metadata", async () => {
   });
 });
 
+test("lists repository pages with a bounded limit and continuation cursor", async () => {
+  const requests = [];
+  const pages = [
+    { items: [{ id: "repo-1" }], nextCursor: "cursor-1" },
+    { items: [{ id: "repo-2" }], nextCursor: null },
+  ];
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test",
+    fetch: async (url, init) => {
+      requests.push([url, init?.method]);
+      return Response.json(pages.shift());
+    },
+  });
+
+  const first = await client.listRepositories({ limit: 1 });
+  const second = await client.listRepositories({ limit: 1, cursor: first.nextCursor });
+
+  assert.deepEqual(first, { items: [{ id: "repo-1" }], nextCursor: "cursor-1" });
+  assert.deepEqual(second, { items: [{ id: "repo-2" }], nextCursor: null });
+  assert.deepEqual(requests, [
+    ["https://harness.test/api/v1/repositories?limit=1", undefined],
+    ["https://harness.test/api/v1/repositories?limit=1&cursor=cursor-1", undefined],
+  ]);
+});
+
+test("preserves the no-argument repository listing URL", async () => {
+  let request;
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test/api/v1/",
+    fetch: async (url) => {
+      request = url;
+      return Response.json({ items: [], nextCursor: null });
+    },
+  });
+
+  await client.listRepositories();
+
+  assert.equal(request, "https://harness.test/api/v1/repositories");
+});
+
 test("preserves DRAINING operation details for durable progress polling", async () => {
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",

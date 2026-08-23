@@ -43,10 +43,25 @@ export type Repository = {
   name: string;
   url: string;
   defaultBranch: string;
+  createdAt?: string;
+  updatedAt?: string;
+  sessionCount?: number;
+  worktreeCount?: number;
+  scheduleCount?: number;
   admissionState?: "active" | "paused" | "draining";
   admissionStateChangedAt?: string;
   drainRequestedAt?: string;
   drainCompletedAt?: string;
+};
+
+export type ListRepositoriesOptions = {
+  limit?: number;
+  cursor?: string;
+};
+
+export type RepositoryPage = {
+  items: Repository[];
+  nextCursor: string | null;
 };
 
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
@@ -100,7 +115,7 @@ export class AutoHarnessClient {
   ): Promise<SessionDrain>;
   getSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
   releaseSessionDrain(repositoryId: string, operationId: string): Promise<SessionDrain>;
-  listRepositories(): Promise<{ items: Repository[] }>;
+  listRepositories(options?: ListRepositoriesOptions): Promise<RepositoryPage>;
   pauseRepository(id: string): Promise<Repository>;
   drainRepository(id: string): Promise<Repository>;
   activateRepository(id: string): Promise<Repository>;

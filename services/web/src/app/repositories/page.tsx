@@ -1,10 +1,12 @@
-import { WorktreesHierarchy, type WorktreeRepoGroup } from "@auto-harness/ui";
-
 import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
-import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
-import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
+import { RepositoryPageClient } from "../../components/repository-page-client.tsx";
 import { apiGet } from "../../lib/api.ts";
+import {
+  loadAllRepositoryPages,
+  repositoryPagePath,
+  type RepositoryPage,
+} from "../../lib/repository-catalog.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -30,44 +32,50 @@ type Wt = {
   labels?: string[];
 };
 
-export default async function RepositoriesPage() {
+export default async function RepositoriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const rawSearchParams = await searchParams;
+  const rawLimit = rawSearchParams.limit;
+  const limit =
+    typeof rawLimit === "string" && /^[1-9]\d*$/.test(rawLimit) && Number(rawLimit) <= 100
+      ? Number(rawLimit)
+      : undefined;
+  const repositoryPath = repositoryPagePath(
+    null,
+    limit ? `/api/v1/repositories?limit=${limit}` : undefined,
+  );
   const principal = await loadPrincipal();
   const canWriteCatalog = can(principal, "catalog:write");
   const canWriteInventory = can(principal, "fleet:inventory");
   let items: Repo[] = [];
+  let reposNextCursor: string | null = null;
+  let attachRepositories: Repo[] = [];
   let hostIds: string[] = [];
   let worktrees: Wt[] = [];
   let error: string | null = null;
   try {
     const [repos, hosts, wts] = await Promise.all([
-      apiGet<{ items: Repo[] }>("/api/v1/repositories"),
+      apiGet<RepositoryPage<Repo>>(repositoryPath),
       apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
     items = repos.items ?? [];
+    reposNextCursor = repos.nextCursor ?? null;
+    attachRepositories = canWriteInventory
+      ? await loadAllRepositoryPages(
+          (path) => apiGet<RepositoryPage<Repo>>(path),
+          repos,
+          repositoryPath,
+        )
+      : items;
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
-
-  const worktreesByRepo = new Map<string, Wt[]>();
-  for (const wt of worktrees) {
-    const list = worktreesByRepo.get(wt.repositoryId) ?? [];
-    list.push(wt);
-    worktreesByRepo.set(wt.repositoryId, list);
-  }
-  const groups: WorktreeRepoGroup[] = items.map((r) => ({
-    repositoryId: r.id,
-    repositoryName: r.name,
-    repoHrefBase: "/repositories",
-    repoUrl: r.url,
-    defaultBranch: r.defaultBranch ?? "main",
-    sessionCount: r.sessionCount,
-    worktreeCount: r.worktreeCount,
-    scheduleCount: r.scheduleCount,
-    worktrees: worktreesByRepo.get(r.id) ?? [],
-  }));
 
   return (
     <div className="space-y-8" data-pw="page-repositories">
@@ -86,36 +94,16 @@ export default async function RepositoriesPage() {
       {error ? (
         <ListApiError resource="repositories" message={error} selector="repositories" />
       ) : (
-        <>
-          {groups.length === 0 ? (
-            <div data-pw="worktrees-empty">
-              <PrimaryEmptyState title="No repositories configured." pw="repositories-empty">
-                <p>Register a catalog repository before attaching it to a host.</p>
-                {canWriteCatalog ? (
-                  <AddRepoDialog
-                    triggerLabel="Add one →"
-                    triggerPw="repositories-empty-add"
-                    dialogPw="repositories-empty-dialog"
-                  />
-                ) : null}
-              </PrimaryEmptyState>
-            </div>
-          ) : (
-            <WorktreesHierarchy
-              groups={groups}
-              showHost
-              hrefBase="/worktrees"
-              emptyMessage="No repositories registered yet."
-            />
-          )}
-
-          {canWriteInventory ? (
-            <div className="border-t border-border pt-6">
-              <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-              <AttachLocalRepoForm hostIds={hostIds} repos={items} />
-            </div>
-          ) : null}
-        </>
+        <RepositoryPageClient
+          initialItems={items}
+          initialNextCursor={reposNextCursor}
+          initialPath={repositoryPath}
+          attachRepositories={attachRepositories}
+          hostIds={hostIds}
+          worktrees={worktrees}
+          canWriteInventory={canWriteInventory}
+          canWriteCatalog={canWriteCatalog}
+        />
       )}
     </div>
   );

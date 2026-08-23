@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- repository pagination and retry coverage share this fixture. */
 import { test, expect } from "@playwright/test";
 
 test.describe("control plane repositories", () => {
@@ -58,6 +59,65 @@ test.describe("control plane repositories", () => {
     await expect(
       page.getByTestId("worktrees-hierarchy").or(page.getByTestId("worktrees-empty")),
     ).toBeVisible();
+  });
+
+  test("loads the next repository page, keeps the URL stable, and retries a failed continuation", async ({
+    page,
+    request,
+  }) => {
+    const suffix = `${test.info().parallelIndex}-${Date.now()}`;
+    const names = [`zz-pagination-a-${suffix}`, `zz-pagination-b-${suffix}`];
+    const hostId = `zz-pagination-host-${suffix}`;
+    const repositoryIds: string[] = [];
+    for (const name of names) {
+      const response = await request.post("/api/v1/repositories", {
+        data: { name, url: `/tmp/${name}`, defaultBranch: "main" },
+      });
+      expect(response.ok()).toBe(true);
+      repositoryIds.push(((await response.json()) as { id: string }).id);
+    }
+    await request.put(`/api/v1/hosts/${hostId}/inventory`, {
+      data: { repositories: [], providerAccounts: [], commandProfiles: {} },
+    });
+
+    let failed = false;
+    await page.route(/\/api\/v1\/repositories\?limit=1&cursor=/, async (route) => {
+      if (!failed) {
+        failed = true;
+        await route.fulfill({
+          status: 503,
+          json: { error: { message: "temporary catalog outage" } },
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    try {
+      await page.goto("/repositories?limit=1");
+      await expect(page).toHaveURL(/\/repositories\?limit=1$/);
+      await expect(page.getByTestId("repositories-load-more")).toBeVisible();
+      const repositoryGroups = page.locator('details[data-pw^="worktree-group-"]');
+      await expect(repositoryGroups).toHaveCount(1);
+      const attachSelector = page.getByTestId("attach-repo-catalog-id");
+      await expect(attachSelector.locator(`option[value="${repositoryIds[0]}"]`)).toHaveCount(1);
+      await expect(attachSelector.locator(`option[value="${repositoryIds[1]}"]`)).toHaveCount(1);
+      await page.getByTestId("repositories-load-more").click();
+      await expect(page.getByTestId("repositories-load-more-error")).toContainText(
+        "temporary catalog outage",
+      );
+      await expect(page).toHaveURL(/\/repositories\?limit=1$/);
+      await page.getByTestId("repositories-load-more-retry").click();
+      await expect(page.getByTestId("repositories-load-more-error")).toBeHidden();
+      await expect(repositoryGroups).toHaveCount(2);
+      await expect(page).toHaveURL(/\/repositories\?limit=1$/);
+    } finally {
+      await page.unroute(/\/api\/v1\/repositories\?limit=1&cursor=/);
+      await request.delete(`/api/v1/hosts/${hostId}/inventory`);
+      for (const repositoryId of repositoryIds) {
+        await request.delete(`/api/v1/repositories/${repositoryId}`);
+      }
+    }
   });
 
   test("pauses, drains, and activates repository admission", async ({ page, request }) => {

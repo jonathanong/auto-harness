@@ -56,6 +56,26 @@ describe("user-account API client", () => {
     await expect(loadUserAccounts()).rejects.toThrow("catalog offline");
   });
 
+  it("aggregates repository scope choices across cursor pages", async () => {
+    const fetch = replies(
+      json({ items: [] }),
+      json({ items: [{ id: "r-1", name: "First" }], nextCursor: "next" }),
+      json({ items: [{ id: "r-2", name: "Second" }], nextCursor: null }),
+    );
+    await expect(loadUserAccounts()).resolves.toMatchObject({
+      kind: "ready",
+      repositories: [
+        { id: "r-1", name: "First" },
+        { id: "r-2", name: "Second" },
+      ],
+    });
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/v1/repositories?cursor=next",
+      expect.objectContaining({ credentials: "same-origin" }),
+    );
+  });
+
   it("creates an account using only the supplied initial password", async () => {
     const account = { id: "user:alice", username: "alice", role: "admin", kind: "user" };
     const fetch = replies(json(account, 201));

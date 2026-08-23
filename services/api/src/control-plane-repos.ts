@@ -121,17 +121,19 @@ export function getRepository(state: ControlPlaneState, id: string): RepositoryR
 }
 
 export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
-  return [...state.repositories.values()]
-    .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .flatMap((r) => {
-      try {
-        return [{ ...r, admissionState: repositoryAdmissionState(r.admissionState) }];
-      } catch {
-        // A malformed persisted row must not hide healthy repositories from the catalog.
-        // Omit the invalid row until an operator repairs it; admission checks still fail closed.
-        return [];
-      }
-    });
+  return [...state.repositories.values()].toSorted(compareRepositories).flatMap((r) => {
+    try {
+      return [{ ...r, admissionState: repositoryAdmissionState(r.admissionState) }];
+    } catch {
+      // A malformed persisted row must not hide healthy repositories from the catalog.
+      // Omit the invalid row until an operator repairs it; admission checks still fail closed.
+      return [];
+    }
+  });
+}
+
+export function compareRepositories(a: RepositoryRecord, b: RepositoryRecord): number {
+  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
 export function updateRepository(

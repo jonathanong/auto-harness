@@ -19,7 +19,8 @@ Node automation can use the dependency-free public `auto-harness-client` package
 cover session create/read/cancel, principal session-drain start/read/release, repository list, and
 pause/drain/activate. HTTP failures are `AutoHarnessError` instances with `status`, stable API
 `code`, and optional `retryAfter`. A `409 DRAINING` error also carries `operationId` and `statusUrl`
-for durable progress polling.
+for durable progress polling. Repository listing returns one bounded page plus `nextCursor`; callers
+follow that cursor until it is `null` when they need the complete visible catalog.
 
 The source contract for this supported subset is [`docs/openapi.yaml`](openapi.yaml). Direct HTTP
 remains supported; all dispatch forms return after acceptance and never wait for completion.

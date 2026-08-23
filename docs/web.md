@@ -296,7 +296,7 @@ The "New Session" form can be opened from the dashboard or the sessions list pag
 
 | Field          | Type              | Required | Description                                                                                                                        |
 | -------------- | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| Repository     | Dropdown          | ✓        | Select from available repositories                                                                                                 |
+| Repository     | Dropdown          | ✓        | Select from all visible repositories                                                                                               |
 | Prompt         | Textarea          | ✓        | Multi-line prompt sent to the Session. Supports markdown preview.                                                                  |
 | Target         | Dropdown          | ✓        | Primary Provider or Command target, sourced from `GET /session-targets`; no free-text option                                       |
 | Fallbacks      | Ordered list      | ✗        | Add, remove, and reorder fallback Provider/Command targets; tried only when the preceding target has no eligible route             |
@@ -372,6 +372,10 @@ Expandable hierarchy of configured repositories and their worktrees. Each reposi
 | Sessions       | Count of total sessions       |
 | Worktrees      | Count of associated worktrees |
 | Schedules      | Count of associated schedules |
+
+The list loads the first bounded repository page and appends later pages with **Load more** without
+changing the browser URL. Repository selectors, filters, scope editors, and name lookups follow all
+repository cursors internally so pagination never truncates an operator's available choices.
 
 ### Add/Edit Repository
 

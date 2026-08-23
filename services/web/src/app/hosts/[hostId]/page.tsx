@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host catalog pages now aggregate bounded repository cursors. */
 import type { Command, HostInventory, Provider, ProviderAccount } from "@auto-harness/shared";
 import { SectionError, Tabs, type RepoCatalogEntry } from "@auto-harness/ui";
 
@@ -10,6 +11,7 @@ import { HostRepositoriesSection } from "../../../components/host-repositories-s
 import { ApiError, apiGet } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
+import { loadAllRepositoryPages, type RepositoryPage } from "../../../lib/repository-catalog.ts";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -101,8 +103,10 @@ export default async function HostDetailPage({
   let catalog: RepoCatalogEntry[] = [];
   let catalogError: string | null = null;
   try {
-    const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
-    catalog = (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+    const data = await apiGet<RepositoryPage<RepoCatalogEntry>>("/api/v1/repositories");
+    catalog = (
+      await loadAllRepositoryPages((path) => apiGet<RepositoryPage<RepoCatalogEntry>>(path), data)
+    ).toSorted((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     catalogError = errorMessage(error);
   }

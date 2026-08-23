@@ -3,6 +3,30 @@ import type { RepoCatalogEntry } from "@auto-harness/ui";
 
 import { apiGet } from "./api.ts";
 
+type RepositoryPage<T extends { id: string }> = { items?: T[]; nextCursor?: string | null };
+
+async function loadAllRepositoryPages<T extends { id: string }>(
+  initial: RepositoryPage<T>,
+): Promise<T[]> {
+  const items = [...(initial.items ?? [])];
+  let cursor = initial.nextCursor ?? null;
+  const seen = new Set<string>();
+  while (cursor) {
+    if (seen.has(cursor)) throw new Error("repository pagination cursor repeated");
+    seen.add(cursor);
+    const path = `/api/v1/repositories?cursor=${encodeURIComponent(cursor)}`;
+    const page = await apiGet<RepositoryPage<T>>(path);
+    items.push(...(page.items ?? []));
+    cursor = page.nextCursor ?? null;
+  }
+  const seenIds = new Set<string>();
+  return items.filter((item) => {
+    if (seenIds.has(item.id)) return false;
+    seenIds.add(item.id);
+    return true;
+  });
+}
+
 type LiveWorktree = { status?: string; online?: boolean };
 
 /** Control-plane worktree status/online for this agent, keyed by worktree id. */
@@ -24,8 +48,9 @@ export async function loadLiveWorktreesById(hostId: string): Promise<Record<stri
 /** Full catalog repository list, sorted by name — used for repo pickers. */
 export async function loadRepoCatalog(): Promise<RepoCatalogEntry[]> {
   try {
-    const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
-    return (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+    const data = await apiGet<RepositoryPage<RepoCatalogEntry>>("/api/v1/repositories");
+    const repositories = await loadAllRepositoryPages(data);
+    return repositories.toSorted((a, b) => a.name.localeCompare(b.name));
   } catch {
     return [];
   }

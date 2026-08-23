@@ -53,7 +53,7 @@ describe("primary list page states", () => {
       "/api/v1/hosts": { items: [] },
       "/api/v1/worktrees": { items: [] },
     });
-    const html = await renderPage(RepositoriesPage());
+    const html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="repositories-api-error"');
     expect(html).toContain('data-pw="repositories-api-retry"');
     expect(html).not.toContain("No repositories registered yet.");

@@ -141,11 +141,32 @@ describe("control catalog list routes", () => {
         ],
       },
     });
-    const html = await renderPage(RepositoriesPage());
+    const html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="page-repositories"');
     expect(html).toContain('data-pw="repo-link-r-1"');
     expect(html).toContain("feature");
     expect(html).toContain("Attach a repository to a host");
+  });
+
+  it("renders the first bounded repository page and exposes continuation", async () => {
+    stubApi({
+      "/api/v1/repositories?limit=1": {
+        items: [{ id: "r-1", name: "first", url: "/src/first" }],
+        nextCursor: "next-repository-page",
+      },
+      "/api/v1/repositories?limit=1&cursor=next-repository-page": {
+        items: [{ id: "r-2", name: "second", url: "/src/second" }],
+        nextCursor: null,
+      },
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(
+      RepositoriesPage({ searchParams: Promise.resolve({ limit: "1" }) }),
+    );
+    expect(html).toContain('data-pw="repo-link-r-1"');
+    expect(html).not.toContain('data-pw="repo-link-r-2"');
+    expect(html).toContain('data-pw="repositories-load-more"');
   });
 
   it("renders an empty repository hierarchy and API failure", async () => {
@@ -154,7 +175,7 @@ describe("control catalog list routes", () => {
       "/api/v1/hosts": {},
       "/api/v1/worktrees": {},
     });
-    let html = await renderPage(RepositoriesPage());
+    let html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("No repositories configured");
     expect(html).toContain('data-pw="repositories-empty-add"');
     stubApi({
@@ -162,14 +183,14 @@ describe("control catalog list routes", () => {
       "/api/v1/hosts": jsonResponse({}, 502),
       "/api/v1/worktrees": jsonResponse({}, 502),
     });
-    html = await renderPage(RepositoriesPage());
+    html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("offline");
     stubApi({
       "/api/v1/repositories": jsonResponse({}, 502),
       "/api/v1/hosts": { items: [] },
       "/api/v1/worktrees": { items: [] },
     });
-    html = await renderPage(RepositoriesPage());
+    html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("GET /api/v1/repositories");
   });
 });

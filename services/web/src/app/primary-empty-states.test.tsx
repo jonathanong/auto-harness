@@ -37,7 +37,7 @@ describe("primary control-plane empty states", () => {
       "/api/v1/hosts": {},
       "/api/v1/worktrees": {},
     });
-    html = await renderPage(RepositoriesPage());
+    html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="repositories-empty"');
     expect(html).toContain('data-pw="repositories-empty-add"');
     expect(html).toContain("No repositories configured");
