@@ -95,17 +95,34 @@ describe("schedule fire residual coverage", () => {
     await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
   });
 
-  it("leaves an ownerless legacy schedule due until an authenticated update claims it", async () => {
+  it("consumes and audits an ownerless legacy cron occurrence", async () => {
     let claims = 0;
+    let skipped = 0;
     const current = state(schedule(), {
       tryClaimScheduleAndCreateSession: async () => {
         claims += 1;
         return { kind: "created" };
       },
+      tryClaimSchedule: async () => {
+        skipped += 1;
+        return true;
+      },
     });
 
     await expect(evaluateCronDurable(current, NOW)).resolves.toEqual([]);
     expect(claims).toBe(0);
-    expect(current.schedules.get("nightly")?.nextRunAt).toBe(NOW);
+    expect(skipped).toBe(1);
+    expect(current.schedules.get("nightly")).toMatchObject({
+      nextRunAt: "2026-01-01T00:01:00.000Z",
+      lastRunAt: NOW,
+    });
+    expect([...current.auditLogs.values()]).toContainEqual(
+      expect.objectContaining({
+        action: "schedule:ownerless-occurrence-skipped",
+        resourceType: "schedule",
+        resourceId: "nightly",
+        outcome: "failed",
+      }),
+    );
   });
 });

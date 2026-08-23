@@ -57,6 +57,21 @@ beforeAll(async () => {
   });
 });
 
+async function putDrainTrackedSession(record: SessionRecord): Promise<void> {
+  if (!ctx.storage) throw new Error("DynamoDB Local is unavailable");
+  // Storage fixtures occasionally need an already-running/cancelled row. Seed
+  // it through the real admission path first so the scoped activity member is
+  // present, then replace only its lifecycle state.
+  await ctx.storage.createSession({
+    ...record,
+    status: "queued",
+    worktreeId: null,
+    hostId: null,
+    mainCheckoutLease: undefined,
+  });
+  await ctx.storage.putSession(record);
+}
+
 describe("principal-scoped durable session drains", () => {
   it("fences only the authenticated principal and retains terminal operation proof", async () => {
     if (!ctx.storage) {
@@ -274,7 +289,7 @@ describe("principal-scoped durable session drains", () => {
       online: true,
       currentSessionId: "session-drain-running",
     });
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-drain-running", "repo-drain-running", "principal-running", {
         status: "running",
         worktreeId: "worktree-drain-running",
@@ -283,7 +298,7 @@ describe("principal-scoped durable session drains", () => {
         attemptId: "attempt-drain-running",
       }),
     );
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-other-principal", "repo-drain-running", "principal-other"),
     );
     let now = "2026-01-01T00:00:00.000Z";
@@ -322,6 +337,10 @@ describe("principal-scoped durable session drains", () => {
         })
       ).ok,
     ).toBe(true);
+    await expect(ctx.storage.getSession("session-drain-running")).resolves.toMatchObject({
+      status: "cancelled",
+      worktreeId: null,
+    });
     await expect(
       plane.getSessionDrainDurable(
         "repo-drain-running",
@@ -338,10 +357,10 @@ describe("principal-scoped durable session drains", () => {
     }
     const repositoryId = "repo-drain-concurrent-count";
     await putActiveTestRepository(ctx.storage, repositoryId);
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-drain-concurrent-a", repositoryId, "principal-concurrent"),
     );
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-drain-concurrent-b", repositoryId, "principal-concurrent"),
     );
     const { plane: first } = await createControlPlane({
@@ -411,7 +430,7 @@ describe("principal-scoped durable session drains", () => {
         replaceExisting: true,
       }),
     ).toMatchObject({ ok: true });
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-drain-assignment", "repo-drain-assignment", "principal-assignment"),
     );
     await ctx.storage.createOrGetSessionDrain({
@@ -563,7 +582,7 @@ describe("principal-scoped durable session drains", () => {
       online: false,
       currentSessionId: "session-drain-timeout",
     });
-    await ctx.storage.putSession(
+    await putDrainTrackedSession(
       session("session-drain-timeout", "repo-drain-timeout", "principal-timeout", {
         status: "cancelled",
         completedAt: now,

@@ -12,12 +12,18 @@ import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.
 
 const conditionalTransaction = {
   name: "TransactionCanceledException",
-  CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+  CancellationReasons: [
+    { Code: "None" },
+    { Code: "None" },
+    { Code: "None" },
+    { Code: "None" },
+    { Code: "ConditionalCheckFailed" },
+  ],
 };
 function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   return {
     scopeKey: "",
-    recordKey: "",
+    recordKey: "CURRENT",
     operationId: "operation",
     repositoryId: "repo/one",
     principalId: "principal two",
@@ -69,6 +75,20 @@ describe("session drain Dynamo adapter residuals", () => {
     expect(scanInputs).toHaveLength(2);
   });
 
+  it("supports a strongly consistent scan for deletion guards", async () => {
+    const inputs: Record<string, unknown>[] = [];
+    await expect(
+      listSessionDrains(
+        ctx(async (command) => {
+          inputs.push(command.input ?? {});
+          return {};
+        }),
+        true,
+      ),
+    ).resolves.toEqual([]);
+    expect(inputs).toEqual([{ TableName: "session-drains", ConsistentRead: true }]);
+  });
+
   it("stops when a backend returns an empty pagination cursor", async () => {
     let scans = 0;
     await expect(
@@ -111,6 +131,12 @@ describe("session drain Dynamo adapter residuals", () => {
             ConditionExpression: "attribute_exists(id)",
           },
         },
+        {
+          ConditionCheck: {
+            TableName: "session-drains",
+            Key: { scopeKey: "__session-drain-ledger__" },
+          },
+        },
         { Put: { TableName: "session-drains", Item: { recordKey: "CURRENT" } } },
         { Put: { TableName: "session-drains", Item: { recordKey: "OP#operation" } } },
       ],
@@ -134,8 +160,20 @@ describe("session drain Dynamo adapter residuals", () => {
       return {};
     });
     await expect(createOrGetSessionDrain(missingStorage, record())).rejects.toThrow(
-      "session drain changed while replaying request",
+      "session drain scope is unavailable",
     );
+
+    await expect(
+      createOrGetSessionDrain(
+        ctx(async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+          };
+        }),
+        record(),
+      ),
+    ).rejects.toThrow("session drain scope is unavailable");
 
     call = 0;
     const currentStorage = ctx(async () => {

@@ -1,6 +1,10 @@
 import { TransactWriteCommand } from "@aws-sdk/lib-dynamodb";
 
 import { statusShardAttr } from "./dynamo.ts";
+import {
+  readSessionDrainActivity,
+  sessionDrainActivityDelete,
+} from "./plane-storage-session-drain-activity.ts";
 import { isConditionalTransactionFailed, type PlaneStorageCtx } from "./plane-storage-types.ts";
 
 type ReleaseMainCheckoutOptions = {
@@ -30,6 +34,11 @@ export async function releaseMainCheckoutSession(
   opts: ReleaseMainCheckoutOptions,
 ): Promise<boolean> {
   const isQueued = opts.status === "queued";
+  const before = isQueued ? null : await readSessionDrainActivity(ctx, opts.sessionId);
+  const cleanup =
+    isQueued || before?.session.cancelledByDrainOperationId
+      ? []
+      : sessionDrainActivityDelete(ctx, before?.activity ?? null);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -74,6 +83,7 @@ export async function releaseMainCheckoutSession(
                 },
               ]
             : []),
+          ...cleanup,
         ],
       }),
     );

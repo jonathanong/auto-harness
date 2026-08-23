@@ -163,7 +163,11 @@ export function prepareUpdateSchedule(
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const existing = state.schedules.get(id);
   if (!existing) return { ok: false, error: "schedule not found" };
-  if (existing.principalId && patch.principalId && patch.principalId !== existing.principalId) {
+  if (
+    existing.principalId &&
+    Object.hasOwn(patch, "principalId") &&
+    patch.principalId !== existing.principalId
+  ) {
     return { ok: false, error: "schedule ownership cannot be transferred" };
   }
   const now = state.now();

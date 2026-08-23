@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { DeleteCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 import { listAllSessions, listAllWorktrees } from "./plane-storage-sessions.ts";
@@ -14,20 +15,15 @@ import { deleteAuthAccount, listAuthAccounts } from "./plane-storage-auth.ts";
 import { listAllAuditLogs } from "./plane-storage-audit.ts";
 import { getSlackIntegration } from "./plane-storage-integrations.ts";
 import { listAllWebhookDeliveries } from "./plane-storage-webhook-outbox.ts";
-import { listSessionDrains } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
 
+const SESSION_DRAIN_LEDGER_SCOPE_KEY = "__session-drain-ledger__";
+const SESSION_DRAIN_LEDGER_RECORD_KEY = "ACTIVITY-V1";
+
 /** Test helper: wipe all items in every table (DynamoDB Local). */
 export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
-  for (const drain of await listSessionDrains(ctx)) {
-    await ctx.doc.send(
-      new DeleteCommand({
-        TableName: ctx.tables.sessionDrains,
-        Key: { scopeKey: drain.scopeKey, recordKey: drain.recordKey },
-      }),
-    );
-  }
+  await clearSessionDrains(ctx);
   await clearByKey(ctx, ctx.tables.notificationDeliveries, "id");
   for (const account of await listAuthAccounts(ctx)) {
     await deleteAuthAccount(ctx, account.id);
@@ -173,6 +169,35 @@ export async function clearAll(ctx: PlaneStorageCtx): Promise<void> {
       startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
     } while (startKey !== undefined);
   }
+}
+
+/**
+ * Keep the ledger-readiness marker: a test cleanup must not make subsequent
+ * principal drain creation fail closed. Other records include both drain rows
+ * and ACT members, neither of which is returned by listSessionDrains().
+ */
+async function clearSessionDrains(ctx: PlaneStorageCtx): Promise<void> {
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const result = await ctx.doc.send(
+      new ScanCommand({ TableName: ctx.tables.sessionDrains, ExclusiveStartKey: startKey }),
+    );
+    for (const item of result.Items ?? []) {
+      if (
+        item.scopeKey === SESSION_DRAIN_LEDGER_SCOPE_KEY &&
+        item.recordKey === SESSION_DRAIN_LEDGER_RECORD_KEY
+      ) {
+        continue;
+      }
+      await ctx.doc.send(
+        new DeleteCommand({
+          TableName: ctx.tables.sessionDrains,
+          Key: { scopeKey: item.scopeKey, recordKey: item.recordKey },
+        }),
+      );
+    }
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
 }
 
 async function clearByKey(ctx: PlaneStorageCtx, tableName: string, keyName: string): Promise<void> {

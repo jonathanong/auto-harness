@@ -1,7 +1,11 @@
 /* eslint-disable max-lines */
 import { createHash } from "node:crypto";
 
-import type { SessionDrainRecord } from "./db/plane-storage.ts";
+import {
+  isSessionDrainLedgerUnavailable,
+  isSessionDrainScopeUnavailable,
+  type SessionDrainRecord,
+} from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { appendAuditLog } from "./control-plane-audit.ts";
@@ -83,10 +87,16 @@ export async function reconcileSessionDrainDurable(
     state.shardCount,
   );
   const queuedCount = authoritative.filter((session) => session.status === "queued").length;
-  const cancelledCount = authoritative.filter(
-    (session) =>
-      session.status === "cancelled" && session.cancelledByDrainOperationId === drain.operationId,
-  ).length;
+  // ACT members are removed after a strong read proves their terminal state.
+  // Retain the durable monotonic total after cleanup rather than treating the
+  // next reconciliation's smaller live set as a conflicting regression.
+  const cancelledCount = Math.max(
+    drain.cancelledCount,
+    authoritative.filter(
+      (session) =>
+        session.status === "cancelled" && session.cancelledByDrainOperationId === drain.operationId,
+    ).length,
+  );
   const runningCount = authoritative.filter(
     (session) =>
       session.status === "running" ||
@@ -179,7 +189,22 @@ export async function createSessionDrainDurable(
     runningCount: 0,
     cancelledCount: 0,
   };
-  const result = await state.storage.createOrGetSessionDrain(record);
+  let result: { created: boolean; drain: SessionDrainRecord };
+  try {
+    result = await state.storage.createOrGetSessionDrain(record);
+  } catch (error) {
+    if (isSessionDrainLedgerUnavailable(error)) {
+      return {
+        error: "session drain activity ledger is still preparing",
+        code: "DRAIN_LEDGER_NOT_READY",
+      };
+    }
+    if (!isSessionDrainScopeUnavailable(error)) throw error;
+    if (!(await state.storage.getRepository(repositoryId))) {
+      return { error: "repository not found", code: "NOT_FOUND" };
+    }
+    return { error: "repository deletion is in progress", code: "CONFLICT" };
+  }
   return {
     created: result.created,
     drain: await reconcileSessionDrainDurable(state, result.drain),

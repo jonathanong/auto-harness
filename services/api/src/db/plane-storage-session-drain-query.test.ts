@@ -1,123 +1,132 @@
 import { describe, expect, it } from "vitest";
 
-import { listSessionsForDrain } from "./plane-storage-sessions.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
+import { listSessionDrainActivities } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 function context(send: (command: { input: Record<string, unknown> }) => Promise<unknown>) {
   return {
     doc: { send },
-    tables: { sessions: "Sessions" },
+    tables: { sessions: "Sessions", sessionDrains: "SessionDrains" },
   } as unknown as PlaneStorageCtx;
 }
 
-describe("DynamoDB session drain query", () => {
-  it("uses active status shards and the sparse attribution index", async () => {
+describe("DynamoDB session drain activity ledger", () => {
+  it("strongly queries only the principal ACT partition", async () => {
     const commands: Array<{ input: Record<string, unknown> }> = [];
     const ctx = context(async (command) => {
       commands.push(command);
-      if (command.input.IndexName === "cancelledByDrainOperationId-createdAt") {
-        return {
-          Items: [
-            {
-              id: "legacy",
-              repositoryId: "repo",
-              metadata: { createdBy: "principal" },
-              status: "cancelled",
-              cancelledByDrainOperationId: "operation",
-            },
-          ],
-        };
-      }
-      return command.input.ExpressionAttributeValues?.[":ss"] === "queued#0"
-        ? {
-            Items: [
-              { id: "owned", repositoryId: "repo", principalId: "principal", status: "queued" },
-              { id: "other", repositoryId: "repo", principalId: "other", status: "queued" },
-            ],
-          }
-        : {
-            Items: [
-              {
-                id: "running-other",
-                repositoryId: "repo",
-                principalId: "other",
-                status: "running",
-              },
-            ],
-          };
+      return { Items: [{ recordKey: "ACT#owned", sessionId: "owned" }] };
     });
 
-    await expect(
-      listSessionsForDrain(ctx, "repo", "principal", "operation", 1),
-    ).resolves.toMatchObject([{ id: "owned" }, { id: "legacy" }]);
-    expect(commands).toHaveLength(3);
+    await expect(listSessionDrainActivities(ctx, "repo", "principal")).resolves.toMatchObject([
+      { recordKey: "ACT#owned", sessionId: "owned" },
+    ]);
+    expect(commands).toHaveLength(1);
     expect(commands[0]?.input).toMatchObject({
-      IndexName: "statusShard-createdAt",
-      KeyConditionExpression: "statusShard = :ss",
+      TableName: "SessionDrains",
+      ConsistentRead: true,
+      KeyConditionExpression: "scopeKey = :scopeKey AND begins_with(recordKey, :activityPrefix)",
       ExpressionAttributeValues: {
-        ":repositoryId": "repo",
-        ":ss": "queued#0",
+        ":scopeKey": "repo#principal",
+        ":activityPrefix": "ACT#",
       },
     });
-    expect(commands[2]?.input).toMatchObject({
-      IndexName: "cancelledByDrainOperationId-createdAt",
-      KeyConditionExpression: "cancelledByDrainOperationId = :operationId",
-      ExpressionAttributeValues: { ":operationId": "operation" },
-    });
   });
 
-  it("pages the scoped query", async () => {
-    const pages = new Map<string, number>();
+  it("pages the bounded scope without consulting any Sessions index", async () => {
+    let page = 0;
     const ctx = context(async (command) => {
-      if (command.input.IndexName === "cancelledByDrainOperationId-createdAt") return { Items: [] };
-      const key = String(command.input.ExpressionAttributeValues?.[":ss"]);
-      const page = pages.get(key) ?? 0;
-      pages.set(key, page + 1);
       expect(command.input.ExclusiveStartKey).toEqual(page === 0 ? undefined : { id: "first" });
-      if (key !== "queued#0") return { Items: [] };
-      return page === 0
+      page += 1;
+      return page === 1
         ? {
-            Items: [
-              { id: "first", repositoryId: "repo", principalId: "principal", status: "queued" },
-            ],
+            Items: [{ recordKey: "ACT#first", sessionId: "first" }],
             LastEvaluatedKey: { id: "first" },
           }
-        : {
-            Items: [
-              { id: "second", repositoryId: "repo", principalId: "principal", status: "queued" },
-            ],
-          };
+        : { Items: [{ recordKey: "ACT#second", sessionId: "second" }] };
     });
 
-    await expect(
-      listSessionsForDrain(ctx, "repo", "principal", "operation", 1),
-    ).resolves.toMatchObject([{ id: "first" }, { id: "second" }]);
-    expect([...pages.values()].reduce((sum, count) => sum + count, 0)).toBe(3);
+    await expect(listSessionDrainActivities(ctx, "repo", "principal")).resolves.toMatchObject([
+      { sessionId: "first" },
+      { sessionId: "second" },
+    ]);
+    expect(page).toBe(2);
   });
 
-  it("falls back safely while the sparse migration index is unavailable", async () => {
-    const ctx = context(async (command) => {
-      if (command.input.IndexName === "cancelledByDrainOperationId-createdAt") {
-        throw { name: "ValidationException" };
-      }
-      if (command.input.IndexName === "repositoryId-createdAt") {
-        return {
-          Items: [
-            {
-              id: "cancelled",
-              repositoryId: "repo",
-              principalId: "principal",
-              status: "cancelled",
-              cancelledByDrainOperationId: "operation",
-            },
-          ],
-        };
-      }
-      return { Items: [] };
-    });
+  it("hydrates exact sessions strongly and deletes only terminal activity members", async () => {
+    const commands: Array<{ input: Record<string, unknown> }> = [];
+    const storage = new DynamoPlaneStorageBase(
+      {
+        send: async (command: { input: Record<string, unknown> }) => {
+          commands.push(command);
+          if (command.input.TableName === "SessionDrains" && command.input.KeyConditionExpression) {
+            return {
+              Items: [
+                {
+                  scopeKey: "repo#principal",
+                  recordKey: "ACT#queued",
+                  recordType: "activity",
+                  sessionId: "queued",
+                  repositoryId: "repo",
+                  principalId: "principal",
+                },
+                {
+                  scopeKey: "repo#principal",
+                  recordKey: "ACT#done",
+                  recordType: "activity",
+                  sessionId: "done",
+                  repositoryId: "repo",
+                  principalId: "principal",
+                },
+              ],
+            };
+          }
+          if (command.input.TableName === "Sessions") {
+            return command.input.Key?.id === "queued"
+              ? {
+                  Item: {
+                    id: "queued",
+                    repositoryId: "repo",
+                    principalId: "principal",
+                    status: "queued",
+                  },
+                }
+              : {
+                  Item: {
+                    id: "done",
+                    repositoryId: "repo",
+                    principalId: "principal",
+                    status: "completed",
+                  },
+                };
+          }
+          return {};
+        },
+      } as never,
+      { sessions: "Sessions", sessionDrains: "SessionDrains" } as never,
+    );
 
     await expect(
-      listSessionsForDrain(ctx, "repo", "principal", "operation", 1),
-    ).resolves.toMatchObject([{ id: "cancelled" }]);
+      storage.listSessionsForDrain("repo", "principal", "operation", 1),
+    ).resolves.toMatchObject([{ id: "queued" }, { id: "done" }]);
+    expect(
+      commands
+        .filter((command) => command.input.TableName === "Sessions")
+        .map((command) => command.input),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ ConsistentRead: true, Key: { id: "queued" } }),
+        expect.objectContaining({ ConsistentRead: true, Key: { id: "done" } }),
+      ]),
+    );
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          TableName: "SessionDrains",
+          Key: { scopeKey: "repo#principal", recordKey: "ACT#done" },
+        }),
+      }),
+    );
   });
 });

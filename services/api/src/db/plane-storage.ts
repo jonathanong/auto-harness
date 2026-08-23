@@ -24,6 +24,10 @@ export type {
   RepositoryRecord,
   SessionDrainRecord,
 } from "./plane-storage-types.ts";
+export {
+  isSessionDrainLedgerUnavailable,
+  isSessionDrainScopeUnavailable,
+} from "./plane-storage-session-drains.ts";
 
 /**
  * DynamoDB persistence for the control plane (DynamoDB Local or AWS).

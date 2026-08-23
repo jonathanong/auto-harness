@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 import { isUserRole } from "@auto-harness/shared";
@@ -5,6 +6,12 @@ import { isUserRole } from "@auto-harness/shared";
 import { auditActor } from "./audit.ts";
 import { assertAccountGrant, parseRepositoryScope, validateCredential } from "./auth-accounts.ts";
 import type { AuthService, Principal } from "./auth.ts";
+import {
+  deleteConflict,
+  dependenciesForPrincipal,
+  referencesFromState,
+  refreshDeleteReferences,
+} from "./control-plane-delete-guards.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
 
@@ -40,6 +47,16 @@ async function audit(
     });
     return false;
   }
+}
+
+async function accountDeleteConflict(
+  plane: ControlPlane,
+  principalId: string,
+): Promise<ReturnType<typeof deleteConflict>> {
+  const refs = plane.state.storage
+    ? await refreshDeleteReferences(plane.state)
+    : referencesFromState(plane.state);
+  return deleteConflict("account", dependenciesForPrincipal(refs, principalId));
 }
 
 export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean> {
@@ -101,6 +118,21 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
   const userMatch = /^\/api\/v1\/auth\/users\/([^/]+)$/.exec(url.pathname);
   if (userMatch && method === "DELETE") {
     const id = decodeURIComponent(userMatch[1]!);
+    const user = auth.listUsers().find((candidate) => candidate.username === id);
+    if (user) {
+      const conflict = await accountDeleteConflict(plane, user.id);
+      if (!conflict.ok) {
+        if (!(await audit(ctx, "user:delete", "user", id, "failed"))) return true;
+        send(res, 409, {
+          error: {
+            code: "CONFLICT",
+            message: conflict.error,
+            dependencies: conflict.dependencies,
+          },
+        });
+        return true;
+      }
+    }
     const removed = await auth.deleteUser(id, plane.state.storage);
     if (!(await audit(ctx, "user:delete", "user", id, removed ? "success" : "failed"))) return true;
     send(
@@ -177,6 +209,22 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
   const serviceMatch = /^\/api\/v1\/auth\/service-accounts\/([^/]+)$/.exec(url.pathname);
   if (!serviceMatch || method !== "DELETE") return false;
   const id = decodeURIComponent(serviceMatch[1]!);
+  const account = auth.listServiceAccounts().find((candidate) => candidate.id === id);
+  if (account) {
+    const conflict = await accountDeleteConflict(plane, account.id);
+    if (!conflict.ok) {
+      if (!(await audit(ctx, "service-account:delete", "service-account", id, "failed")))
+        return true;
+      send(res, 409, {
+        error: {
+          code: "CONFLICT",
+          message: conflict.error,
+          dependencies: conflict.dependencies,
+        },
+      });
+      return true;
+    }
+  }
   const removed = await auth.deleteServiceAccount(id, plane.state.storage);
   if (
     !(await audit(

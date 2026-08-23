@@ -40,6 +40,7 @@ import {
 import { nextPageKey } from "./plane-storage-types.ts";
 import {
   getSessionDrain,
+  sessionDrainActivityPut,
   sessionDrainAdmissionCheck,
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
@@ -591,11 +592,13 @@ export async function tryClaimScheduleAndCreateSession(
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
-  const drainCheck = sessionDrainAdmissionCheck(
-    ctx,
-    opts.session.repositoryId,
-    opts.session.principalId,
-  );
+  const principalId =
+    opts.session.principalId ??
+    (typeof opts.session.metadata?.createdBy === "string"
+      ? opts.session.metadata.createdBy
+      : undefined);
+  const drainCheck = sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId);
+  const activityPut = sessionDrainActivityPut(ctx, opts.session);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -631,6 +634,7 @@ export async function tryClaimScheduleAndCreateSession(
               ConditionExpression: "attribute_not_exists(id)",
             },
           },
+          ...(activityPut ? [activityPut] : []),
           ...(opts.session.concurrencyId
             ? [
                 {
@@ -649,11 +653,7 @@ export async function tryClaimScheduleAndCreateSession(
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
       if (drainCheck && isConditionalTransactionFailureAt(err, 1)) {
-        const drain = await getSessionDrain(
-          ctx,
-          opts.session.repositoryId,
-          opts.session.principalId!,
-        );
+        const drain = await getSessionDrain(ctx, opts.session.repositoryId, principalId!);
         return { kind: "draining", operationId: drain?.operationId ?? "unknown" };
       }
       const repositoryIndex = 1 + Number(!!drainCheck);
@@ -661,9 +661,10 @@ export async function tryClaimScheduleAndCreateSession(
         return { kind: "admission_closed" };
       }
       // The schedule cursor is item 0, followed by the optional principal
-      // drain fence, repository fence, session insert, and optional lock.
+      // drain fence, repository fence, session insert, optional activity
+      // member, and optional lock.
       const sessionIndex = 2 + Number(!!drainCheck);
-      const lockIndex = sessionIndex + 1;
+      const lockIndex = sessionIndex + 1 + Number(!!activityPut);
       if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, lockIndex)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {

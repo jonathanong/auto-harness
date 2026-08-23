@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -5,6 +6,7 @@ import {
   deleteConflict,
   dependenciesForAccount,
   dependenciesForCommand,
+  dependenciesForPrincipal,
   dependenciesForProvider,
   referencesFromState,
 } from "./control-plane-delete-guards.ts";
@@ -136,6 +138,53 @@ describe("catalog delete references", () => {
       createdAt: "2026-01-01T00:00:00.000Z",
     });
     expect(plane.deleteCommand("command")).toEqual({ ok: true });
+  });
+
+  it("blocks deleting an account that owns schedules or an unreleased drain", () => {
+    const refs = {
+      ...referencesFromState(setup().state),
+      schedules: [
+        {
+          id: "owned-schedule",
+          repositoryId: "repository",
+          principalId: "user:alice",
+          target: { commandId: "command" },
+          fallbacks: [],
+        },
+      ],
+      sessionDrains: [
+        {
+          recordKey: "CURRENT",
+          operationId: "active-drain",
+          repositoryId: "repository",
+          principalId: "user:alice",
+          status: "succeeded",
+        },
+        {
+          recordKey: "CURRENT",
+          operationId: "released-drain",
+          repositoryId: "repository",
+          principalId: "user:alice",
+          status: "released",
+        },
+        {
+          recordKey: "CURRENT",
+          operationId: "other-drain",
+          repositoryId: "repository",
+          principalId: "user:bob",
+          status: "draining",
+        },
+      ],
+    };
+
+    expect(dependenciesForPrincipal(refs, "user:alice")).toEqual([
+      { kind: "schedule", id: "owned-schedule" },
+      { kind: "session-drain", id: "active-drain", status: "succeeded" },
+    ]);
+    expect(deleteConflict("account", dependenciesForPrincipal(refs, "user:alice"))).toMatchObject({
+      ok: false,
+      conflict: true,
+    });
   });
 
   it("formats a conflict and reports an empty dependency set as safe", () => {

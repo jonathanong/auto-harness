@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { createSession, listAllSessions, listAllWorktrees } from "./plane-storage-sessions.ts";
+import {
+  createSession,
+  listAllSessions,
+  listAllWorktrees,
+  sessionDrainOperationId,
+} from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 const marker = [{ key: "repository:repo", now: "now" }];
@@ -25,7 +30,13 @@ const session = (extra: Record<string, unknown> = {}) =>
 const ctx = (send: (command: unknown) => Promise<unknown>) =>
   ({
     doc: { send },
-    tables: { sessions: "sessions", concurrencyLocks: "locks", worktrees: "worktrees" },
+    tables: {
+      sessions: "sessions",
+      repositories: "repositories",
+      sessionDrains: "session-drains",
+      concurrencyLocks: "locks",
+      worktrees: "worktrees",
+    },
   }) as unknown as PlaneStorageCtx;
 const cancelled = (failedIndex: number, count = 3) => ({
   name: "TransactionCanceledException",
@@ -35,6 +46,84 @@ const cancelled = (failedIndex: number, count = 3) => ({
 });
 
 describe("Dynamo session adapter mainline additions", () => {
+  it("atomically registers an ACT member for normal and concurrency-owned creation", async () => {
+    const commands: Array<{ input: { TransactItems?: Array<Record<string, unknown>> } }> = [];
+    const storage = ctx(async (command) => {
+      commands.push(command as { input: { TransactItems?: Array<Record<string, unknown>> } });
+      return {};
+    });
+
+    await expect(
+      createSession(storage, session({ id: "plain", principalId: "principal" })),
+    ).resolves.toMatchObject({ created: true });
+    await expect(
+      createSession(
+        storage,
+        session({
+          id: "concurrent",
+          concurrencyId: "same-work",
+          metadata: { createdBy: "legacy-principal" },
+        }),
+      ),
+    ).resolves.toMatchObject({ created: true });
+
+    expect(commands).toHaveLength(2);
+    expect(commands.map((command) => command.input.TransactItems)).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining([
+          expect.objectContaining({
+            Put: expect.objectContaining({
+              TableName: "session-drains",
+              Item: expect.objectContaining({
+                recordKey: "ACT#plain",
+                principalId: "principal",
+              }),
+            }),
+          }),
+        ]),
+        expect.arrayContaining([
+          expect.objectContaining({
+            Put: expect.objectContaining({
+              TableName: "session-drains",
+              Item: expect.objectContaining({
+                recordKey: "ACT#concurrent",
+                principalId: "legacy-principal",
+              }),
+            }),
+          }),
+        ]),
+      ]),
+    );
+  });
+
+  it("permits the session-protected ACT put to repair a stale member for a reused ID", async () => {
+    const commands: Array<{ input: { TransactItems?: Array<Record<string, unknown>> } }> = [];
+    await createSession(
+      ctx(async (command) => {
+        commands.push(command as { input: { TransactItems?: Array<Record<string, unknown>> } });
+        return {};
+      }),
+      session({ id: "reused", principalId: "principal" }),
+    );
+
+    const items = commands[0]?.input.TransactItems ?? [];
+    expect(items).toContainEqual(
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          TableName: "sessions",
+          ConditionExpression: "attribute_not_exists(id)",
+        }),
+      }),
+    );
+    const activity = items.find(
+      (item) => (item.Put as { TableName?: string } | undefined)?.TableName === "session-drains",
+    )?.Put as Record<string, unknown> | undefined;
+    expect(activity).toMatchObject({
+      Item: expect.objectContaining({ recordKey: "ACT#reused", principalId: "principal" }),
+    });
+    expect(activity).not.toHaveProperty("ConditionExpression");
+  });
+
   it("creates marker-fenced plain sessions and distinguishes marker and id conflicts", async () => {
     await expect(
       createSession(
@@ -75,6 +164,23 @@ describe("Dynamo session adapter mainline additions", () => {
         marker,
       ),
     ).rejects.toThrow("catalog deletion is in progress");
+  });
+
+  it("uses legacy metadata ownership for drain admission", async () => {
+    let calls = 0;
+    const rejected = createSession(
+      ctx(async () => {
+        calls += 1;
+        if (calls === 1) throw cancelled(2, 4);
+        return { Item: { operationId: "drain" } };
+      }),
+      session({ metadata: { createdBy: "principal" } }),
+      marker,
+    );
+
+    await expect(rejected).rejects.toSatisfy(
+      (error: unknown) => sessionDrainOperationId(error) === "drain",
+    );
   });
 
   it("sets a consistent read when listing all worktrees", async () => {

@@ -27,11 +27,19 @@ import {
   type DeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import { nextPageKey } from "./plane-storage-types.ts";
-import { getSessionDrain, sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
+import {
+  getSessionDrain,
+  sessionDrainActivityPut,
+  sessionDrainAdmissionCheck,
+} from "./plane-storage-session-drains.ts";
+import {
+  readSessionDrainActivity,
+  sessionDrainActivityDelete,
+} from "./plane-storage-session-drain-activity.ts";
+import { sessionPrincipalId } from "../control-plane-session-owner.ts";
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
-const SESSIONS_DRAIN_INDEX = "cancelledByDrainOperationId-createdAt";
 
 class SessionIdCollisionError extends Error {
   constructor(sessionId: string) {
@@ -83,9 +91,8 @@ async function activeSessionDrainError(
   ctx: PlaneStorageCtx,
   session: SessionRecord,
 ): Promise<SessionDrainActiveError> {
-  const drain = session.principalId
-    ? await getSessionDrain(ctx, session.repositoryId, session.principalId)
-    : null;
+  const principalId = sessionPrincipalId(session);
+  const drain = principalId ? await getSessionDrain(ctx, session.repositoryId, principalId) : null;
   return new SessionDrainActiveError(drain?.operationId ?? "unknown");
 }
 
@@ -125,7 +132,12 @@ export async function createSession(
   session: SessionRecord,
   markers: readonly DeletionMarker[] = [],
 ): Promise<CreateSessionResult> {
-  const drainCheck = sessionDrainAdmissionCheck(ctx, session.repositoryId, session.principalId);
+  const drainCheck = sessionDrainAdmissionCheck(
+    ctx,
+    session.repositoryId,
+    sessionPrincipalId(session),
+  );
+  const activityPut = sessionDrainActivityPut(ctx, session);
   if (!session.concurrencyId) {
     try {
       await ctx.doc.send(
@@ -149,6 +161,7 @@ export async function createSession(
                 ConditionExpression: "attribute_not_exists(id)",
               },
             },
+            ...(activityPut ? [activityPut] : []),
           ],
         }),
       );
@@ -203,6 +216,7 @@ export async function createSession(
                 ConditionExpression: "attribute_not_exists(id)",
               },
             },
+            ...(activityPut ? [activityPut] : []),
           ],
         }),
       );
@@ -354,107 +368,6 @@ export async function listSessionsByRepository(
     if (!isRepositoryIndexUnavailable(error)) throw error;
     return listSessionsByRepositoryScan(ctx, repositoryId);
   }
-}
-
-/**
- * Read only the durable rows that can affect a principal session drain.
- *
- * Query the active status index and a sparse attribution index so a repository
- * with a large retained history does not turn every drain retry into a
- * full-table scan. Principal ownership is checked after hydration so legacy
- * rows continue to use metadata.createdBy as their fallback owner.
- */
-export async function listSessionsForDrain(
-  ctx: PlaneStorageCtx,
-  repositoryId: string,
-  principalId: string,
-  operationId: string,
-  shardCount: number,
-): Promise<SessionRecord[]> {
-  const records: SessionRecord[] = [];
-  for (const status of ["queued", "running"] as const) {
-    for (let shard = 0; shard < shardCount; shard += 1) {
-      const rows = await querySessionsByStatus(ctx, status, shard, {
-        FilterExpression: "repositoryId = :repositoryId",
-        ExpressionAttributeValues: { ":repositoryId": repositoryId },
-      });
-      records.push(...rows);
-    }
-  }
-
-  // This sparse index contains only rows that have a drain attribution. It
-  // avoids walking the retained cancelled history on statusShard-createdAt.
-  let attributed: SessionRecord[];
-  try {
-    attributed = await querySessionsByDrainOperation(ctx, operationId);
-  } catch (error) {
-    if (!isRepositoryIndexUnavailable(error)) throw error;
-    // Compatibility path while an existing table's sparse GSI is being
-    // created. New/CDK tables use the bounded index immediately.
-    attributed = (await listSessionsByRepository(ctx, repositoryId)).filter(
-      (session) => session.cancelledByDrainOperationId === operationId,
-    );
-  }
-  records.push(...attributed.filter((session) => session.status === "cancelled"));
-  return records.filter((session) => {
-    const owner = session.principalId ?? session.metadata?.createdBy;
-    return session.repositoryId === repositoryId && owner === principalId;
-  });
-}
-
-async function querySessionsByStatus(
-  ctx: PlaneStorageCtx,
-  status: SessionStatus,
-  shard: number,
-  options: {
-    FilterExpression: string;
-    ExpressionAttributeValues: Record<string, unknown>;
-  },
-): Promise<SessionRecord[]> {
-  const records: SessionRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const res = await ctx.doc.send(
-      new QueryCommand({
-        TableName: ctx.tables.sessions,
-        IndexName: "statusShard-createdAt",
-        KeyConditionExpression: "statusShard = :ss",
-        ExpressionAttributeValues: {
-          ":ss": statusShardAttr(status, shard),
-          ...options.ExpressionAttributeValues,
-        },
-        FilterExpression: options.FilterExpression,
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
-    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (startKey !== undefined);
-  return records;
-}
-
-async function querySessionsByDrainOperation(
-  ctx: PlaneStorageCtx,
-  operationId: string,
-): Promise<SessionRecord[]> {
-  const records: SessionRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const res = await ctx.doc.send(
-      new QueryCommand({
-        TableName: ctx.tables.sessions,
-        IndexName: SESSIONS_DRAIN_INDEX,
-        KeyConditionExpression: "cancelledByDrainOperationId = :operationId",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":operationId": operationId, ":cancelled": "cancelled" },
-        FilterExpression: "#s = :cancelled",
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
-    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (startKey !== undefined);
-  return records;
 }
 
 /** Count a repository's sessions without materializing its retained history. */
@@ -858,6 +771,7 @@ export async function failExpiredResumeSession(
   ctx: PlaneStorageCtx,
   opts: { sessionId: string; queueShard: number; pinExpiresAt: string; concurrencyId?: string },
 ): Promise<boolean> {
+  const before = await readSessionDrainActivity(ctx, opts.sessionId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -893,6 +807,7 @@ export async function failExpiredResumeSession(
                 },
               ]
             : []),
+          ...sessionDrainActivityDelete(ctx, before?.activity ?? null),
         ],
       }),
     );
@@ -917,6 +832,7 @@ export async function cancelQueuedSession(
     drainOperationId?: string;
   },
 ): Promise<boolean> {
+  const before = opts.drainOperationId ? null : await readSessionDrainActivity(ctx, opts.sessionId);
   const drainUpdate = opts.drainOperationId
     ? ", cancelledByDrainOperationId = :drainOperationId"
     : "";
@@ -951,6 +867,7 @@ export async function cancelQueuedSession(
           },
         ]
       : []),
+    ...sessionDrainActivityDelete(ctx, before?.activity ?? null),
   ];
   try {
     await ctx.doc.send(new TransactWriteCommand({ TransactItems: items }));
@@ -1064,6 +981,12 @@ export async function releaseCancelledSessionWorktree(
     concurrencyId?: string | undefined;
   },
 ): Promise<boolean> {
+  const before = await readSessionDrainActivity(ctx, opts.sessionId);
+  // A drain-owned cancellation remains in the ledger until its operation has
+  // reconciled it. Ordinary cancellations are terminal activity and can go.
+  const cleanup = before?.session.cancelledByDrainOperationId
+    ? []
+    : sessionDrainActivityDelete(ctx, before?.activity ?? null);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1132,6 +1055,7 @@ export async function releaseCancelledSessionWorktree(
                 },
               ]
             : []),
+          ...cleanup,
         ],
       }),
     );
@@ -1410,6 +1334,12 @@ export async function finishSession(
     concurrencyId?: string;
   },
 ): Promise<boolean> {
+  const before =
+    opts.status === "queued" ? null : await readSessionDrainActivity(ctx, opts.sessionId);
+  const cleanup =
+    opts.status === "queued" || before?.session.cancelledByDrainOperationId
+      ? []
+      : sessionDrainActivityDelete(ctx, before?.activity ?? null);
   const values: Record<string, unknown> = {
     ":status": opts.status,
     ":statusShard": statusShardAttr(opts.status, opts.queueShard),
@@ -1493,12 +1423,16 @@ export async function finishSession(
       },
     });
   }
+  transactItems.push(...cleanup);
   try {
     await ctx.doc.send(new TransactWriteCommand({ TransactItems: transactItems }));
     return true;
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
       const current = await getSession(ctx, opts.sessionId);
+      if (current?.status === opts.status && cleanup.length) {
+        await ctx.doc.send(new TransactWriteCommand({ TransactItems: cleanup }));
+      }
       return current?.status === opts.status;
     }
     throw err;
@@ -1510,29 +1444,37 @@ export async function expireQueuedSession(
   ctx: PlaneStorageCtx,
   opts: { sessionId: string; queueShard: number; queueExpiresAt: string; completedAt: string },
 ): Promise<boolean> {
+  const before = await readSessionDrainActivity(ctx, opts.sessionId);
   try {
     await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.sessions,
-        Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET #s = :failed, statusShard = :statusShard, completedAt = :completedAt, errorCode = :code, errorMessage = :message",
-        ConditionExpression: "#s = :queued AND queueExpiresAt = :expiresAt",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: {
-          ":queued": "queued",
-          ":failed": "failed",
-          ":statusShard": statusShardAttr("failed", opts.queueShard),
-          ":completedAt": opts.completedAt,
-          ":expiresAt": opts.queueExpiresAt,
-          ":code": "queue_expired",
-          ":message": "queue TTL expired before capacity became available",
-        },
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessions,
+              Key: { id: opts.sessionId },
+              UpdateExpression:
+                "SET #s = :failed, statusShard = :statusShard, completedAt = :completedAt, errorCode = :code, errorMessage = :message",
+              ConditionExpression: "#s = :queued AND queueExpiresAt = :expiresAt",
+              ExpressionAttributeNames: { "#s": "status" },
+              ExpressionAttributeValues: {
+                ":queued": "queued",
+                ":failed": "failed",
+                ":statusShard": statusShardAttr("failed", opts.queueShard),
+                ":completedAt": opts.completedAt,
+                ":expiresAt": opts.queueExpiresAt,
+                ":code": "queue_expired",
+                ":message": "queue TTL expired before capacity became available",
+              },
+            },
+          },
+          ...sessionDrainActivityDelete(ctx, before?.activity ?? null),
+        ],
       }),
     );
     return true;
   } catch (err) {
-    if (isConditionalFailed(err)) return false;
+    if (isConditionalTransactionFailed(err)) return false;
     throw err;
   }
 }

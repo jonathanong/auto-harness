@@ -23,6 +23,10 @@ describe("schedule routing policy", () => {
       ok: false,
       error: "schedule ownership cannot be transferred",
     });
+    expect(plane.updateSchedule(schedule.id, { principalId: "" })).toEqual({
+      ok: false,
+      error: "schedule ownership cannot be transferred",
+    });
   });
 
   it("rejects non-branch schedule refs at create and update", () => {

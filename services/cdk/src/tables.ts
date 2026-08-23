@@ -52,11 +52,6 @@ export const DYNAMO_TABLES: TableDef[] = [
         partitionKey: { name: "repositoryId", type: "S" },
         sortKey: { name: "createdAt", type: "S" },
       },
-      {
-        name: "cancelledByDrainOperationId-createdAt",
-        partitionKey: { name: "cancelledByDrainOperationId", type: "S" },
-        sortKey: { name: "createdAt", type: "S" },
-      },
     ],
   },
   {

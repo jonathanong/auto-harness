@@ -76,36 +76,50 @@ export class DynamoPlaneStorageBase {
   async listSessionsForDrain(
     repositoryId: string,
     principalId: string,
-    operationId: string,
-    shardCount: number,
+    _operationId: string,
+    _shardCount: number,
   ): Promise<SessionRecord[]> {
-    const records = await sessions.listSessionsForDrain(
+    const activities = await sessionDrains.listSessionDrainActivities(
       this.ctx,
       repositoryId,
       principalId,
-      operationId,
-      shardCount,
     );
-    const occupiedIds = new Set<string>();
-    for (const worktree of await sessions.listWorktreesForRepo(this.ctx, repositoryId)) {
-      if (worktree.currentSessionId) occupiedIds.add(worktree.currentSessionId);
-    }
-    for (const inventory of await catalog.listHostInventories(this.ctx)) {
-      const lease = await mainCheckout.getMainCheckoutLease(
-        this.ctx,
-        inventory.hostId,
-        repositoryId,
+    const records: SessionRecord[] = [];
+    // A principal may have a long activity history after an outage. Bound the
+    // exact strong reads instead of creating an unbounded Promise.all burst.
+    const exactReadConcurrency = 20;
+    for (let offset = 0; offset < activities.length; offset += exactReadConcurrency) {
+      const resolved = await Promise.all(
+        activities.slice(offset, offset + exactReadConcurrency).map(async (activity) => ({
+          activity,
+          session: await sessions.getSession(this.ctx, activity.sessionId, true),
+        })),
       );
-      if (lease) occupiedIds.add(lease.sessionId);
+      for (const { activity, session } of resolved) {
+        const owner = session?.principalId ?? session?.metadata?.createdBy;
+        const stillOccupiesScope =
+          session?.status === "queued" ||
+          session?.status === "running" ||
+          (session?.status === "cancelled" &&
+            (session.worktreeId != null || session.mainCheckoutLease === true));
+        if (
+          session &&
+          session.repositoryId === repositoryId &&
+          owner === principalId &&
+          stillOccupiesScope
+        ) {
+          records.push(session);
+          continue;
+        }
+        // Session IDs and principal ownership are immutable after admission.
+        // A missing or terminal exact row can therefore only make this member
+        // stale. Deleting with both immutable attributes avoids racing a
+        // hand-repaired/recreated activity row.
+        await sessionDrains.deleteSessionDrainActivity(this.ctx, activity);
+        if (session?.repositoryId === repositoryId && owner === principalId) records.push(session);
+      }
     }
-    const occupied = await Promise.all(
-      [...occupiedIds].map((sessionId) => sessions.getSession(this.ctx, sessionId, true)),
-    );
-    for (const session of occupied) {
-      const owner = session?.principalId ?? session?.metadata?.createdBy;
-      if (session?.repositoryId === repositoryId && owner === principalId) records.push(session);
-    }
-    return [...new Map(records.map((session) => [session.id, session])).values()];
+    return records;
   }
 
   countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
@@ -140,8 +154,8 @@ export class DynamoPlaneStorageBase {
     return sessionDrains.getSessionDrainOperation(this.ctx, repositoryId, principalId, operationId);
   }
 
-  listSessionDrains(): Promise<SessionDrainRecord[]> {
-    return sessionDrains.listSessionDrains(this.ctx);
+  listSessionDrains(consistentRead = false): Promise<SessionDrainRecord[]> {
+    return sessionDrains.listSessionDrains(this.ctx, consistentRead);
   }
 
   updateSessionDrain(record: SessionDrainRecord): Promise<boolean> {

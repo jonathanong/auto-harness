@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
@@ -34,11 +35,59 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
       schedules: "Schedules",
       concurrencyLocks: "Locks",
       repositories: "Repositories",
+      sessionDrains: "SessionDrains",
     } as never,
   };
 }
 
 describe("durable schedule creation", () => {
+  it("registers the scheduled session ACT member in the cursor/admission transaction", async () => {
+    let input: { TransactItems?: Array<Record<string, unknown>> } | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "session-activity",
+          repositoryId: "repo-1",
+          principalId: "principal",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetLabels: ["command"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+          concurrencyId: "schedule-1",
+        },
+      }),
+    ).resolves.toEqual({ kind: "created" });
+
+    expect(input?.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          TableName: "SessionDrains",
+          Item: expect.objectContaining({
+            scopeKey: "repo-1#principal",
+            recordKey: "ACT#session-activity",
+          }),
+        }),
+      }),
+    );
+  });
+
   it("reads host inventory strongly consistently after UI mutations", async () => {
     const ctx: PlaneStorageCtx = {
       doc: {

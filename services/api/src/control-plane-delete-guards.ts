@@ -38,6 +38,7 @@ export type DeleteReferences = {
   schedules: ReadonlyArray<{
     id: string;
     repositoryId: string;
+    principalId?: string;
     target: TargetRef;
     fallbacks: TargetRef[];
   }>;
@@ -46,6 +47,7 @@ export type DeleteReferences = {
     recordKey: string;
     operationId: string;
     repositoryId: string;
+    principalId: string;
     status: string;
   }>;
   worktrees: ReadonlyArray<{ id: string; repositoryId: string }>;
@@ -94,7 +96,7 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
   ] = await Promise.all([
     state.storage.listSchedules(),
     state.storage.listAllSessions(true),
-    state.storage.listSessionDrains(),
+    state.storage.listSessionDrains(true),
     state.storage.listAllWorktrees(true),
     state.storage.listHostInventories(),
     state.storage.listProviders(),
@@ -188,6 +190,29 @@ export function dependenciesForRepository(refs: DeleteReferences, id: string): D
     ...refs.inventories
       .filter((inventory) => inventory.repositories.some((repository) => repository.id === id))
       .map((inventory) => ({ kind: "host-inventory" as const, id: inventory.hostId })),
+  ]);
+}
+
+/**
+ * An account cannot disappear while it still owns runnable scheduled work or
+ * an unreleased principal-admission fence. Keeping the owner durable avoids
+ * silently turning either record into an unactionable legacy row.
+ */
+export function dependenciesForPrincipal(refs: DeleteReferences, id: string): DeleteDependency[] {
+  return unique([
+    ...refs.schedules
+      .filter((schedule) => schedule.principalId === id)
+      .map((schedule) => ({ kind: "schedule" as const, id: schedule.id })),
+    ...refs.sessionDrains
+      .filter(
+        (drain) =>
+          drain.recordKey === "CURRENT" && drain.principalId === id && drain.status !== "released",
+      )
+      .map((drain) => ({
+        kind: "session-drain" as const,
+        id: drain.operationId,
+        status: drain.status,
+      })),
   ]);
 }
 

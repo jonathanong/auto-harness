@@ -44,6 +44,7 @@ export type CronResult = {
   ackDeadlinesEnforced: number;
   runningTimeoutsEnforced: number;
   repositoriesReconciled: number;
+  sessionDrainsReconciled: number;
   queuedAssigned: number;
   scheduledAssigned: number;
   schedulesFired: number;

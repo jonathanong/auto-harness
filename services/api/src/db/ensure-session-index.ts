@@ -9,17 +9,13 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 const INDEX_NAME = "repositoryId-createdAt";
-const DRAIN_INDEX_NAME = "cancelledByDrainOperationId-createdAt";
 
 /** Add access paths to Sessions tables created before the durable drain indexes. */
 export async function ensureSessionsRepositoryIndex(
   client: DynamoDBClient,
   tableName: string,
 ): Promise<void> {
-  for (const [indexName, hashAttribute] of [
-    [INDEX_NAME, "repositoryId"],
-    [DRAIN_INDEX_NAME, "cancelledByDrainOperationId"],
-  ] as const) {
+  for (const [indexName, hashAttribute] of [[INDEX_NAME, "repositoryId"]] as const) {
     let table;
     try {
       table = await client.send(new DescribeTableCommand({ TableName: tableName }));

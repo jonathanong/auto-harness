@@ -11,6 +11,10 @@ import {
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionDrainRecord } from "./db/plane-storage.ts";
 import type { SessionRecord } from "./db/types.ts";
+import {
+  SessionDrainLedgerUnavailableError,
+  SessionDrainScopeUnavailableError,
+} from "./db/plane-storage-session-drains.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -105,6 +109,50 @@ describe("session drain residual outcomes", () => {
       code: "NOT_FOUND",
     });
     await expect(getSessionDrainDurable(state, "repo", "principal", "missing")).resolves.toBeNull();
+  });
+
+  it("distinguishes repository deletion from an active drain replay", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      getRepository: async () => ({
+        id: "repo",
+        name: "repo",
+        url: "/repo",
+        defaultBranch: "main",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      createOrGetSessionDrain: async () => {
+        throw new SessionDrainScopeUnavailableError();
+      },
+    });
+
+    await expect(createSessionDrainDurable(state, "repo", "principal")).resolves.toEqual({
+      error: "repository deletion is in progress",
+      code: "CONFLICT",
+    });
+  });
+
+  it("fails closed while the strongly-consistent activity ledger is preparing", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      getRepository: async () => ({
+        id: "repo",
+        name: "repo",
+        url: "/repo",
+        defaultBranch: "main",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      createOrGetSessionDrain: async () => {
+        throw new SessionDrainLedgerUnavailableError();
+      },
+    });
+
+    await expect(createSessionDrainDurable(state, "repo", "principal")).resolves.toEqual({
+      error: "session drain activity ledger is still preparing",
+      code: "DRAIN_LEDGER_NOT_READY",
+    });
   });
 
   it("recomputes cancellation counts from durable attribution after a lost update", async () => {

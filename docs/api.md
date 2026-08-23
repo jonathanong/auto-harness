@@ -152,15 +152,26 @@ from the UI, another service account, or another repository:
   either terminal result. Releasing `failed` permits new admission but does not change the retained
   operation proof to success.
 
-While fenced, direct create, clone, resume, schedule fire, and assignment lose atomically with
+While fenced, direct create, clone, resume, schedule fire, and assignment fail atomically with
 `409 DRAINING`; the error includes the operation ID and status URL. Running work receives the
 normal fenced `session:cancel` message and remains part of progress until its exact lease is
 released. Prompts, logs, metadata, and credentials never enter drain progress or audit metadata.
 
+Drain completion is proved from a strongly consistent activity ledger: each principal-owned
+session writes an `ACT#sessionId` member in its `(repository, principal)` partition in the same
+transaction as admission and the drain fence, then reconciliation strongly reads that bounded
+partition and each exact session row. It never infers quiescence from an eventually consistent
+secondary index. On the first deployment that enables this ledger, startup performs one
+strongly-consistent backfill of active owned sessions before writing its readiness marker; drain
+requests fail closed until that marker exists. Roll upgrades must retire all older control-plane
+writers before that first bootstrap, since an old binary could otherwise admit an untracked
+session during the one-time scan.
+
 Durable schedules have an authenticated owner. Legacy schedules created before ownership was
-persisted are deliberately inert: durable manual trigger and cron do not mint sessions or advance
-their cursor until an authenticated, repository-scoped schedule edit claims ownership for that
-principal. The owner is derived from authentication and cannot be supplied in schedule JSON.
+persisted are deliberately inert: durable manual trigger and cron do not mint sessions, and cron
+consumes each due occurrence with an operator-visible audit event until an authenticated,
+repository-scoped schedule edit claims ownership for that principal. The owner is derived from
+authentication and cannot be supplied in schedule JSON.
 
 This is distinct from repository drain above (all principals) and host update drain (one host,
 running work finishes). It requires `sessions:write`; repository scope and principal ownership are

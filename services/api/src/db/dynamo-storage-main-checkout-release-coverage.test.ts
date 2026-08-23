@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
+import { sessionDrainActivityKey, sessionDrainScopeKey } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
@@ -58,6 +59,8 @@ describe("DynamoDB Local main-checkout release", () => {
         TableName: tables.sessions,
         Item: {
           id: opts.sessionId,
+          repositoryId: opts.repositoryId,
+          principalId: "principal",
           status: "running",
           statusShard: "running#2",
           hostId: opts.hostId,
@@ -69,6 +72,19 @@ describe("DynamoDB Local main-checkout release", () => {
           assignmentSentAt: "sent",
           reconnectDeadlineAt: "deadline",
           ackReceivedAt: "ack",
+        },
+      }),
+    );
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.sessionDrains,
+        Item: {
+          scopeKey: sessionDrainScopeKey(opts.repositoryId, "principal"),
+          recordKey: sessionDrainActivityKey(opts.sessionId),
+          recordType: "activity",
+          sessionId: opts.sessionId,
+          repositoryId: opts.repositoryId,
+          principalId: "principal",
         },
       }),
     );
@@ -156,6 +172,20 @@ describe("DynamoDB Local main-checkout release", () => {
           new GetCommand({
             TableName: tables.concurrencyLocks,
             Key: { concurrencyId: opts.concurrencyId },
+          }),
+        )
+      ).Item,
+    ).toBeUndefined();
+    expect(
+      (
+        await ctx.doc.send(
+          new GetCommand({
+            TableName: tables.sessionDrains,
+            Key: {
+              scopeKey: sessionDrainScopeKey(opts.repositoryId, "principal"),
+              recordKey: sessionDrainActivityKey(opts.sessionId),
+            },
+            ConsistentRead: true,
           }),
         )
       ).Item,

@@ -231,17 +231,40 @@ export async function tryClaimScheduleFireDurable(
   }
   await refreshTargetCatalogDurable(state);
   const schedule = await getScheduleDurable(state, scheduleId);
-  if (
-    !schedule ||
-    !schedule.enabled ||
-    !schedule.principalId ||
-    schedule.nextRunAt !== expectedNextRunAt
-  ) {
+  if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
     return null;
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
   if (!newNextRunAt) return null;
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
+    return null;
+  }
+  if (!schedule.principalId) {
+    // Legacy rows without an authenticated owner cannot safely author a
+    // session. Consume this occurrence with the same cursor CAS used by a
+    // normal claim so cron does not hot-loop until an operator claims it.
+    const skipped = await state.storage.tryClaimSchedule(
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      nowIso,
+    );
+    if (skipped) {
+      state.schedules.set(scheduleId, {
+        ...schedule,
+        nextRunAt: newNextRunAt,
+        lastRunAt: nowIso,
+      });
+      await appendAuditLog(state, {
+        actor: SYSTEM_AUDIT_ACTOR,
+        action: "schedule:ownerless-occurrence-skipped",
+        resourceType: "schedule",
+        resourceId: scheduleId,
+        repositoryId: schedule.repositoryId,
+        outcome: "failed",
+        metadata: { reason: "schedule must be claimed by an authenticated principal" },
+      });
+    }
     return null;
   }
   const target = resolveScheduledTarget(state, schedule);
