@@ -284,7 +284,7 @@ jobs:
 
       - name: Install
         if: steps.control-runtime-cache.outputs.cache-hit != 'true' || steps.host-pane-runtime-cache.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       # On an exact runtime miss, retain Next's per-file compiler cache as a fallback. These
       # paths are intentionally separate so changing one app does not invalidate the other.

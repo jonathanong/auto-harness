@@ -141,6 +141,7 @@ describe("required CI check contract", () => {
     );
     expect(build).toContain("path: services/web/.next-e2e/cache");
     expect(build).toContain("path: services/host-pane/.next-e2e/cache");
+    expect(build).toContain("run: pnpm install --frozen-lockfile --ignore-scripts");
     expect(build).toContain(
       "run: pnpm --parallel --filter @auto-harness/web --filter @auto-harness/host-pane run build:e2e",
     );
