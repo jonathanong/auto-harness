@@ -48,7 +48,9 @@ function normalizeLimit(limit: number | undefined): number {
 }
 
 function normalizeScope(scope: readonly string[] | undefined): CursorScope {
-  return scope === undefined ? null : [...new Set(scope)].toSorted();
+  return scope === undefined
+    ? null
+    : [...new Set(scope)].toSorted((left, right) => left.localeCompare(right));
 }
 
 function compareRepositories(a: RepositoryRecord, b: RepositoryRecord): number {
