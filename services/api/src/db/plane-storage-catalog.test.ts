@@ -14,6 +14,7 @@ import {
   disableLegacyFallbackScheduleAndAudit,
   listSchedules,
   putSchedule,
+  skipScheduleBeforeActivationCutoff,
   skipScheduleForClosedRepository,
   skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
@@ -256,6 +257,7 @@ describe("durable schedule creation", () => {
         expectedNextRunAt: "one",
         newNextRunAt: "two",
         lastRunAt: "one",
+        activationCutoffAt: "one",
         session: {
           id: "session-activity",
           repositoryId: "repo-1",
@@ -316,6 +318,17 @@ describe("durable schedule creation", () => {
           }),
         }),
       ]),
+    );
+    expect(input?.TransactItems?.[0]?.Update?.ConditionExpression).toContain(
+      "nextRunAt >= :activationCutoffAt",
+    );
+    expect(input?.TransactItems).toContainEqual(
+      expect.objectContaining({
+        ConditionCheck: expect.objectContaining({
+          TableName: "Repositories",
+          ConditionExpression: expect.stringContaining("activationCutoffAt = :activationCutoffAt"),
+        }),
+      }),
     );
   });
 
@@ -544,6 +557,46 @@ describe("durable schedule creation", () => {
 });
 
 describe("durable schedule management updates", () => {
+  it("fences a stale occurrence to the active repository cutover", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await expect(
+      skipScheduleBeforeActivationCutoff(storage, {
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        activationCutoffAt: "2026-01-01T00:02:00.000Z",
+        expectedNextRunAt: "2026-01-01T00:01:00.000Z",
+        newNextRunAt: "2026-01-01T00:03:00.000Z",
+      }),
+    ).resolves.toBe(true);
+    const [scheduleItem, repository] = input?.TransactItems ?? [];
+    expect(scheduleItem?.Update?.ConditionExpression).toContain("nextRunAt < :activationCutoffAt");
+    expect(scheduleItem?.Update?.ExpressionAttributeValues).toMatchObject({
+      ":repositoryId": "repo-1",
+      ":activationCutoffAt": "2026-01-01T00:02:00.000Z",
+    });
+    expect(repository?.ConditionCheck?.ConditionExpression).toContain(
+      "activationCutoffAt = :activationCutoffAt",
+    );
+
+    const rejected = scheduleCtx(async () => {
+      throw { name: "ConditionalCheckFailedException" };
+    });
+    await expect(
+      skipScheduleBeforeActivationCutoff(rejected, {
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        activationCutoffAt: "2026-01-01T00:02:00.000Z",
+        expectedNextRunAt: "2026-01-01T00:01:00.000Z",
+        newNextRunAt: "2026-01-01T00:03:00.000Z",
+      }),
+    ).resolves.toBe(false);
+  });
+
   it("binds closed schedule cursor CAS to the schedule repository", async () => {
     let input: TransactWriteCommandInput | undefined;
     const storage = scheduleCtx(async (command) => {

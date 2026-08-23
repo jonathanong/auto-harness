@@ -733,8 +733,9 @@ export class DynamoPlaneStorageBase {
     id: string,
     state: import("@auto-harness/shared").RepositoryAdmissionState,
     now: string,
+    activationCutoffAt?: string,
   ): Promise<RepositoryRecord | null> {
-    return catalog.setRepositoryAdmissionState(this.ctx, id, state, now);
+    return catalog.setRepositoryAdmissionState(this.ctx, id, state, now, activationCutoffAt);
   }
 
   completeRepositoryDrain(
@@ -790,6 +791,7 @@ export class DynamoPlaneStorageBase {
     expectedNextRunAt: string;
     newNextRunAt: string;
     lastRunAt: string;
+    activationCutoffAt?: string;
     session: import("./types.ts").SessionRecord;
   }): Promise<catalog.ScheduleCreateResult> {
     return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);
@@ -802,6 +804,16 @@ export class DynamoPlaneStorageBase {
     newNextRunAt: string;
   }): Promise<boolean> {
     return catalog.skipScheduleForClosedRepository(this.ctx, opts);
+  }
+
+  skipScheduleBeforeActivationCutoff(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    activationCutoffAt: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  }): Promise<boolean> {
+    return catalog.skipScheduleBeforeActivationCutoff(this.ctx, opts);
   }
 
   skipScheduleForPrincipalDrain(opts: {

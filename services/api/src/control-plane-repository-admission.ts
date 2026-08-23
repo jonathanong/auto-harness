@@ -31,12 +31,15 @@ function transitionInMemory(
     return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
   }
   const now = state.now();
+  const reopening =
+    admissionState === "active" && repositoryAdmissionState(current.admissionState) !== "active";
   const repository: RepositoryRecord = {
     ...current,
     admissionState,
     admissionStateChangedAt: now,
     updatedAt: now,
     ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
+    ...(reopening ? { activationCutoffAt: now } : {}),
   };
   if (admissionState === "draining") delete repository.drainCompletedAt;
   if (admissionState === "active") {
@@ -50,10 +53,7 @@ async function skipDueSchedulesBeforeActivation(
   state: ControlPlaneState,
   repositoryId: string,
 ): Promise<void> {
-  // A schedule can become due while a large schedule scan is in progress. Run
-  // one bounded follow-up pass using the latest observed clock so activation
-  // cannot immediately replay an occurrence that crossed its due boundary
-  // during the first pass.
+  // A bounded follow-up catches occurrences that become due during the first scan.
   for (let pass = 0; pass < 2; pass += 1) {
     const now = state.now();
     const schedules = state.storage
@@ -88,23 +88,25 @@ export async function setRepositoryAdmissionDurable(
   id: string,
   admissionState: "active" | "paused",
 ): Promise<{ ok: true; repository: RepositoryRecord } | RepositoryAdmissionFailure> {
-  if (!state.storage) {
-    if (admissionState === "active") await skipDueSchedulesBeforeActivation(state, id);
-    return transitionInMemory(state, id, admissionState);
-  }
+  if (!state.storage && admissionState === "active")
+    await skipDueSchedulesBeforeActivation(state, id);
+  if (!state.storage) return transitionInMemory(state, id, admissionState);
+  let reopening = false;
   if (admissionState === "active") {
     const current = await state.storage.getRepository(id);
     if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
-    cache(state, current);
     if (repositoryAdmissionState(current.admissionState) === "draining") {
       return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
     }
+    reopening = repositoryAdmissionState(current.admissionState) !== "active";
     await skipDueSchedulesBeforeActivation(state, id);
   }
+  const transitionedAt = state.now();
   const repository = await state.storage.setRepositoryAdmissionState(
     id,
     admissionState,
-    state.now(),
+    transitionedAt,
+    reopening ? transitionedAt : undefined,
   );
   if (repository) return { ok: true, repository: cache(state, repository) };
   const current = await state.storage.getRepository(id);

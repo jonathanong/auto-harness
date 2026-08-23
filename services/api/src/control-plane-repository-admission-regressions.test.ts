@@ -33,6 +33,41 @@ describe("repository admission regressions", () => {
     expect(plane.getSchedule("schedule-1")?.nextRunAt).toBe("2026-01-01T00:03:00.000Z");
   });
 
+  it("does not replay an occurrence that becomes due during the final activation scan", async () => {
+    let activation = false;
+    let activationCalls = 0;
+    const plane = new ControlPlane({
+      now: () => {
+        if (!activation) return "2026-01-01T00:00:00.000Z";
+        activationCalls += 1;
+        return activationCalls <= 2 ? "2026-01-01T00:00:00.000Z" : "2026-01-01T00:02:00.000Z";
+      },
+    });
+    seedBaseCommand(plane);
+    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    await plane.pauseRepositoryDurable("repo-1");
+    expect(
+      plane.putSchedule({
+        id: "schedule-1",
+        repositoryId: "repo-1",
+        name: "schedule",
+        target: { commandId: "cmd-base" },
+        cron: "* * * * *",
+        timeout: 30,
+      }).ok,
+    ).toBe(true);
+    activation = true;
+
+    await expect(plane.activateRepositoryDurable("repo-1")).resolves.toMatchObject({
+      ok: true,
+      repository: { activationCutoffAt: "2026-01-01T00:02:00.000Z" },
+    });
+    expect(plane.getSchedule("schedule-1")?.nextRunAt).toBe("2026-01-01T00:01:00.000Z");
+
+    expect(plane.evaluateCron("2026-01-01T00:02:00.000Z")).toEqual([]);
+    expect(plane.getSchedule("schedule-1")?.nextRunAt).toBe("2026-01-01T00:03:00.000Z");
+  });
+
   it("clears a completed timestamp when an in-memory drain is reopened", async () => {
     const plane = new ControlPlane();
     plane.createRepository({ id: "repo-1", name: "repo", url: "url" });

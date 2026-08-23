@@ -195,6 +195,11 @@ export function tryClaimScheduleFire(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
+  const activationCutoffAt = state.repositories.get(schedule.repositoryId)?.activationCutoffAt;
+  if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
+    schedule.nextRunAt = newNextRunAt;
+    return null;
+  }
   const target = resolveScheduledTarget(state, schedule);
   if (!target.ok) {
     return null;
@@ -266,6 +271,20 @@ export async function tryClaimScheduleFireDurable(
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
     return null;
   }
+  const repository = await getRepositoryDurable(state, schedule.repositoryId);
+  if (!repository) return null;
+  const activationCutoffAt = repository.activationCutoffAt;
+  if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
+    const skipped = await state.storage.skipScheduleBeforeActivationCutoff({
+      scheduleId,
+      repositoryId: schedule.repositoryId,
+      activationCutoffAt,
+      expectedNextRunAt,
+      newNextRunAt,
+    });
+    if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+    return null;
+  }
   if (!schedule.principalId) {
     // Legacy rows without an authenticated owner cannot safely author a
     // session. Consume this occurrence with the same cursor CAS used by a
@@ -298,6 +317,7 @@ export async function tryClaimScheduleFireDurable(
     expectedNextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
+    ...(activationCutoffAt ? { activationCutoffAt } : {}),
     session,
   });
   if (outcome.kind === "duplicate") {
