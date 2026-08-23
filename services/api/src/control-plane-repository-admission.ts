@@ -38,6 +38,7 @@ function transitionInMemory(
     updatedAt: now,
     ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
   };
+  if (admissionState === "draining") delete repository.drainCompletedAt;
   if (admissionState === "active") {
     delete repository.drainRequestedAt;
     delete repository.drainCompletedAt;
@@ -49,29 +50,35 @@ async function skipDueSchedulesBeforeActivation(
   state: ControlPlaneState,
   repositoryId: string,
 ): Promise<void> {
-  const now = state.now();
-  const schedules = state.storage
-    ? await state.storage.listSchedules()
-    : [...state.schedules.values()];
-  for (const schedule of schedules) {
-    if (
-      schedule.repositoryId !== repositoryId ||
-      !schedule.enabled ||
-      Date.parse(schedule.nextRunAt) > Date.parse(now)
-    )
-      continue;
-    const nextRunAt = nextCronOccurrence(schedule.cron, now);
-    if (!nextRunAt) continue;
-    if (
-      !state.storage ||
-      (await state.storage.skipScheduleForClosedRepository({
-        scheduleId: schedule.id,
-        repositoryId,
-        expectedNextRunAt: schedule.nextRunAt,
-        newNextRunAt: nextRunAt,
-      }))
-    ) {
-      state.schedules.set(schedule.id, { ...schedule, nextRunAt });
+  // A schedule can become due while a large schedule scan is in progress. Run
+  // one bounded follow-up pass using the latest observed clock so activation
+  // cannot immediately replay an occurrence that crossed its due boundary
+  // during the first pass.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const now = state.now();
+    const schedules = state.storage
+      ? await state.storage.listSchedules()
+      : [...state.schedules.values()];
+    for (const schedule of schedules) {
+      if (
+        schedule.repositoryId !== repositoryId ||
+        !schedule.enabled ||
+        Date.parse(schedule.nextRunAt) > Date.parse(now)
+      )
+        continue;
+      const nextRunAt = nextCronOccurrence(schedule.cron, now);
+      if (!nextRunAt) continue;
+      if (
+        !state.storage ||
+        (await state.storage.skipScheduleForClosedRepository({
+          scheduleId: schedule.id,
+          repositoryId,
+          expectedNextRunAt: schedule.nextRunAt,
+          newNextRunAt: nextRunAt,
+        }))
+      ) {
+        state.schedules.set(schedule.id, { ...schedule, nextRunAt });
+      }
     }
   }
 }

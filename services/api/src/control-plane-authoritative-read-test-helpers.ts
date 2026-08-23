@@ -102,6 +102,7 @@ export function createAuthoritativeReadStorage() {
         !repository ||
         repositoryAdmissionOpen(repository.admissionState) ||
         !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
         schedule.nextRunAt !== expectedNextRunAt
       )
         return false;

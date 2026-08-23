@@ -1060,11 +1060,13 @@ export async function skipScheduleForClosedRepository(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :nextRunAt",
-              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND repositoryId = :repositoryId",
               ExpressionAttributeValues: {
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
+                ":repositoryId": opts.repositoryId,
               },
             },
           },

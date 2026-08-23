@@ -14,6 +14,7 @@ import {
   disableLegacyFallbackScheduleAndAudit,
   listSchedules,
   putSchedule,
+  skipScheduleForClosedRepository,
   skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
   tryClaimScheduleAndCreateSession,
@@ -543,6 +544,26 @@ describe("durable schedule creation", () => {
 });
 
 describe("durable schedule management updates", () => {
+  it("binds closed schedule cursor CAS to the schedule repository", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await expect(
+      skipScheduleForClosedRepository(storage, {
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        expectedNextRunAt: "old-next",
+        newNextRunAt: "new-next",
+      }),
+    ).resolves.toBe(true);
+    const update = input?.TransactItems?.[0]?.Update;
+    expect(update?.ConditionExpression).toContain("repositoryId = :repositoryId");
+    expect(update?.ExpressionAttributeValues).toMatchObject({ ":repositoryId": "repo-1" });
+  });
+
   it("rejects a schedule update that exceeds DynamoDB's transaction action limit", async () => {
     const ctx = scheduleCtx(async () => {
       throw new Error("must not write");
