@@ -8,13 +8,50 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: release-client
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm-publish
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
+      - name: Verify release tag and ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          tag_commit="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
+          event_commit="$(git rev-parse --verify "${EVENT_SHA}^{commit}")"
+          checked_out_commit="$(git rev-parse HEAD)"
+
+          test "$tag_commit" = "$event_commit"
+          test "$tag_commit" = "$checked_out_commit"
+
+          git fetch --no-tags origin main
+          main_commit="$(git rev-parse FETCH_HEAD)"
+          git merge-base --is-ancestor "$tag_commit" "$main_commit"
+      - name: Validate release manifest
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          manifest_name="$(node -p "require('./modules/client/package.json').name")"
+          manifest_version="$(node -p "require('./modules/client/package.json').version")"
+
+          test "$manifest_name" = "auto-harness-client"
+          test "$RELEASE_TAG" = "client-v${manifest_version}"
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 10.28.2
@@ -22,14 +59,8 @@ jobs:
         with:
           node-version: 24
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - name: Validate release tag
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: >
-          node -e "const manifest = require('./modules/client/package.json');
-          if (process.env.RELEASE_TAG !== 'client-v' + manifest.version)
-          throw new Error('release tag must match client package version')"
       - run: pnpm exec tsc --noEmit --project modules/client/tsconfig.json
       - run: pnpm --filter auto-harness-client test
+      - run: pnpm --dir modules/client pack --dry-run
       - run: npm publish --access public
         working-directory: modules/client
