@@ -13,6 +13,8 @@ import {
   isActiveSession,
   putSchedule,
   scheduleAttributes,
+  setRepositoryAdmissionState,
+  skipScheduleForClosedRepository,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
@@ -164,5 +166,25 @@ describe("DynamoDB Local schedule catalog adapters", () => {
         } as never,
       }),
     ).resolves.toEqual({ kind: "lost" });
+    await putSchedule(ctx, { ...schedule, id: "closed-schedule", nextRunAt: "closed-one" });
+    expect(await setRepositoryAdmissionState(ctx, "repository", "paused", "closed-at")).not.toBe(
+      null,
+    );
+    expect(
+      await skipScheduleForClosedRepository(ctx, {
+        scheduleId: "closed-schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "closed-one",
+        newNextRunAt: "closed-two",
+      }),
+    ).toBe(true);
+    expect(
+      await skipScheduleForClosedRepository(ctx, {
+        scheduleId: "closed-schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "closed-one",
+        newNextRunAt: "closed-three",
+      }),
+    ).toBe(false);
   });
 });

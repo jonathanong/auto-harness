@@ -13,6 +13,7 @@ import {
   setRepositoryAdmissionState,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
+  updateRepositorySettings,
   updateScheduleManagement,
 } from "./plane-storage-catalog.ts";
 let client: DynamoDBClient;
@@ -54,6 +55,9 @@ describe("DynamoDB Local catalog transport failures", () => {
     ).rejects.toThrow();
     await expect(
       setRepositoryAdmissionState(unavailableCtx, "repository", "paused", "t"),
+    ).rejects.toThrow();
+    await expect(
+      updateRepositorySettings(unavailableCtx, "repository", { name: "Repository" }, "t"),
     ).rejects.toThrow();
     await expect(
       completeRepositoryDrain(unavailableCtx, "repository", "requested", "t"),
