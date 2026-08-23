@@ -49,6 +49,19 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       }
       return true;
     },
+    async cancelQueuedSession(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      if (!session || session.status !== "queued") return false;
+      sessions.set(sessionId, {
+        ...session,
+        status: "cancelled",
+        completedAt: input.completedAt,
+        errorMessage: input.errorMessage,
+        cancelledByDrainOperationId: input.drainOperationId,
+      });
+      return true;
+    },
     async deleteConnection(id: string) {
       deletedConnections.push(id);
       connections.delete(id);
@@ -121,8 +134,10 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
         (session) => session.status === status && session.queueShard === shard,
       );
     },
-    async listSessionsForDrain() {
-      return [];
+    async listSessionsForDrain(repositoryId: string, principalId: string) {
+      return [...sessions.values()].filter(
+        (session) => session.repositoryId === repositoryId && session.principalId === principalId,
+      );
     },
     async listWorktreesByHost(hostId: string) {
       return [...worktrees.values()].filter((worktree) => worktree.hostId === hostId);
@@ -904,7 +919,7 @@ describe("Lambda runtime adapters", () => {
       await expect((await fixture.runtime).cron()).resolves.toEqual({
         ackDeadlinesEnforced: 1,
         runningTimeoutsEnforced: 1,
-        queuedAssigned: 1,
+        queuedAssigned: 0,
         repositoriesReconciled: 1,
         sessionDrainsReconciled: 1,
         scheduledAssigned: 1,
