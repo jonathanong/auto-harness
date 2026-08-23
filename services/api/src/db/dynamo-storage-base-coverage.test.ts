@@ -147,9 +147,9 @@ describe("DynamoPlaneStorageBase", () => {
       await storage.skipScheduleBeforeActivationCutoff({
         scheduleId: "missing-cutover",
         repositoryId: "repository",
-        activationCutoffAt: "later",
-        expectedNextRunAt: "t",
-        newNextRunAt: "later",
+        activationCutoffAt: "2026-01-01T00:01:00.000Z",
+        expectedNextRunAt: "2026-01-01T00:00:00.000Z",
+        newNextRunAt: "2026-01-01T00:02:00.000Z",
       }),
     ).toBe(false);
     expect(
