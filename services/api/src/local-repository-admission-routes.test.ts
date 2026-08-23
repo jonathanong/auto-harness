@@ -6,8 +6,8 @@ import { invokeHandler } from "./local-server-test-helpers.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
-function invoke(plane: ControlPlane, path: string) {
-  return invokeHandler(createLocalApp({ plane }).handler, "POST", path, {});
+function invoke(plane: ControlPlane, path: string, body: unknown = {}) {
+  return invokeHandler(createLocalApp({ plane }).handler, "POST", path, body);
 }
 
 function seededPlane(): ControlPlane {
@@ -90,6 +90,18 @@ describe("repository admission routes", () => {
     expect(await invoke(plane, "/api/v1/repositories/repository/pause")).toMatchObject({
       status: 200,
       json: { admissionState: "paused" },
+    });
+    expect(
+      await invoke(plane, "/api/v1/schedules", {
+        repositoryId: "repository",
+        name: "blocked schedule",
+        target: { commandId: "command" },
+        cron: "* * * * *",
+        timeout: 60,
+      }),
+    ).toMatchObject({
+      status: 409,
+      json: { error: { code: "REPOSITORY_ADMISSION_CLOSED" } },
     });
     expect(await invoke(plane, "/api/v1/schedules/schedule/trigger")).toMatchObject({
       status: 409,

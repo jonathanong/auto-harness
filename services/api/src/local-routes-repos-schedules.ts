@@ -431,7 +431,13 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           }))
         )
           return true;
-        send(res, 400, { error: { code: "VALIDATION_ERROR", message: result.error } });
+        const admissionClosed = result.code === "REPOSITORY_ADMISSION_CLOSED";
+        send(res, admissionClosed ? 409 : 400, {
+          error: {
+            code: admissionClosed ? "REPOSITORY_ADMISSION_CLOSED" : "VALIDATION_ERROR",
+            message: result.error,
+          },
+        });
         return true;
       }
       if (

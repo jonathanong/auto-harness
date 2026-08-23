@@ -19,7 +19,11 @@ describe("schedule repository admission", () => {
         cron: "* * * * *",
         timeout: 30,
       }),
-    ).resolves.toEqual({ ok: false, error: "repository admission is paused" });
+    ).resolves.toEqual({
+      ok: false,
+      error: "repository admission is paused",
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
     expect(plane.getSchedule("schedule-1")).toBeNull();
   });
 });

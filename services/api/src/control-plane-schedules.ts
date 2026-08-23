@@ -38,7 +38,7 @@ export {
 export function putSchedule(
   state: ControlPlaneState,
   input: ScheduleInput,
-): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string; code?: string } {
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   state.schedules.set(result.schedule.id, result.schedule);
@@ -106,14 +106,14 @@ export async function putScheduleDurable(
       return { ok: false, error: "repository not found" };
     }
     const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
-    if (admissionFailure) return { ok: false, error: admissionFailure.error };
+    if (admissionFailure) return admissionFailure;
     return putSchedule(state, input);
   }
   await refreshTargetCatalogDurable(state);
   const repository = await getRepositoryDurable(state, input.repositoryId);
   if (!repository) return { ok: false, error: "repository not found" };
   const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
-  if (admissionFailure) return { ok: false, error: admissionFailure.error };
+  if (admissionFailure) return admissionFailure;
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   await state.storage.putSchedule(
