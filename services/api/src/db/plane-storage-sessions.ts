@@ -36,6 +36,7 @@ import {
 } from "./plane-storage-session-drains.ts";
 import {
   readSessionDrainActivity,
+  sessionDrainActivityForScope,
   sessionDrainActivityDelete,
 } from "./plane-storage-session-drain-activity.ts";
 import { sessionPrincipalId } from "../control-plane-session-owner.ts";
@@ -855,6 +856,10 @@ export async function cancelQueuedSession(
   },
 ): Promise<boolean> {
   const before = opts.drainOperationId ? null : await readSessionDrainActivity(ctx, opts.sessionId);
+  const activity =
+    opts.drainOperationId && opts.drainRepositoryId && opts.drainPrincipalId
+      ? sessionDrainActivityForScope(opts.drainRepositoryId, opts.drainPrincipalId, opts.sessionId)
+      : (before?.activity ?? null);
   const drainUpdate = opts.drainOperationId
     ? ", cancelledByDrainOperationId = :drainOperationId"
     : "";
@@ -889,7 +894,7 @@ export async function cancelQueuedSession(
           },
         ]
       : []),
-    ...sessionDrainActivityDelete(ctx, before?.activity ?? null),
+    ...sessionDrainActivityDelete(ctx, activity),
     ...(opts.drainOperationId && opts.drainRepositoryId && opts.drainPrincipalId
       ? sessionDrainCancellationUpdates(ctx, {
           repositoryId: opts.drainRepositoryId,

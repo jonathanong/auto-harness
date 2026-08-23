@@ -9,7 +9,7 @@ import {
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
 import { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
-import { releaseCancelledSessionWorktree } from "./plane-storage-sessions.ts";
+import { cancelQueuedSession, releaseCancelledSessionWorktree } from "./plane-storage-sessions.ts";
 import type { AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
@@ -73,6 +73,56 @@ function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unk
 }
 
 describe("session drain Dynamo adapter residuals", () => {
+  it("deletes a drain-cancelled queued session's ACT member with its counters", async () => {
+    let input: Record<string, unknown> | undefined;
+    const storage = ctx(async (command) => {
+      input = command.input;
+      return {};
+    });
+
+    await expect(
+      cancelQueuedSession(storage, {
+        sessionId: "session",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+        drainOperationId: "operation",
+        drainRepositoryId: "repo/one",
+        drainPrincipalId: "principal two",
+      }),
+    ).resolves.toBe(true);
+
+    expect(input?.TransactItems).toEqual([
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "sessions",
+          Key: { id: "session" },
+          ConditionExpression: "#s = :queued",
+        }),
+      }),
+      {
+        Delete: {
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "ACT#session" },
+        },
+      },
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "CURRENT" },
+          UpdateExpression: "ADD cancelledCount :one",
+        }),
+      }),
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "OP#operation" },
+          UpdateExpression: "ADD cancelledCount :one",
+        }),
+      }),
+    ]);
+  });
+
   it("builds encoded scope and optional admission checks", () => {
     const storage = ctx(async () => ({}));
     expect(sessionDrainScopeKey("repo/one", "principal two")).toBe("repo%2Fone#principal%20two");
