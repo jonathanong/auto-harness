@@ -36,6 +36,23 @@ export async function putActiveTestRepository(
   });
 }
 
+/** Seed the durable owner row required by principal-owned test fixtures. */
+export async function putTestPrincipal(
+  storage: Pick<DynamoPlaneStorage, "putAuthAccount">,
+  id: string,
+): Promise<void> {
+  await storage.putAuthAccount({
+    id,
+    username: id,
+    name: id,
+    kind: "service-account",
+    role: "operator",
+    apiKeyHash: `test-key-${id}`,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
 /** Per-file DynamoDB Local fixture with an isolated table prefix. */
 export function createDynamoTestCtx(label: string): DynamoTestCtx {
   const ctx: DynamoTestCtx = {

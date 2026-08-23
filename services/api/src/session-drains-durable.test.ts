@@ -4,7 +4,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { AuthService } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { reconcileSessionDrainDurable } from "./control-plane-session-drains.ts";
-import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
+import {
+  createDynamoTestCtx,
+  putActiveTestRepository,
+  putTestPrincipal,
+} from "./db/dynamo-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -55,6 +59,17 @@ beforeAll(async () => {
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   });
+  await Promise.all(
+    [
+      "principal-assignment",
+      "principal-concurrent",
+      "principal-delete-fence",
+      "principal-drain-main",
+      "principal-idempotent",
+      "principal-running",
+      "principal-timeout",
+    ].map((id) => putTestPrincipal(ctx.storage!, id)),
+  );
 });
 
 async function putDrainTrackedSession(record: SessionRecord): Promise<void> {
@@ -92,16 +107,22 @@ describe("principal-scoped durable session drains", () => {
       secret: "d".repeat(32),
       admins: admins(),
     });
-    const principalA = await auth.createServiceAccount({
-      name: "filaments-a",
-      role: "operator",
-      allowedRepositoryIds: ["repo-drain"],
-    });
-    const principalB = await auth.createServiceAccount({
-      name: "filaments-b",
-      role: "operator",
-      allowedRepositoryIds: ["repo-drain"],
-    });
+    const principalA = await auth.createServiceAccount(
+      {
+        name: "filaments-a",
+        role: "operator",
+        allowedRepositoryIds: ["repo-drain"],
+      },
+      ctx.storage,
+    );
+    const principalB = await auth.createServiceAccount(
+      {
+        name: "filaments-b",
+        role: "operator",
+        allowedRepositoryIds: ["repo-drain"],
+      },
+      ctx.storage,
+    );
     const { handler } = createLocalApp({
       plane,
       authService: auth,

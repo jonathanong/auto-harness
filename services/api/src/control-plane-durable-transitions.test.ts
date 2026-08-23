@@ -12,14 +12,18 @@ import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
 import { appendLogDurable } from "./control-plane-messages.ts";
 import { tryClaimScheduleFireDurable } from "./control-plane-schedule-fire.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
-import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
+import {
+  createDynamoTestCtx,
+  putActiveTestRepository,
+  putTestPrincipal,
+} from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Durable");
 
 beforeAll(async () => {
   if (!ctx.storage) return;
-  await Promise.all(
-    [
+  await Promise.all([
+    ...[
       "repo-cancelled-late-terminal",
       "repo-durable",
       "repo-failing-log",
@@ -38,7 +42,13 @@ beforeAll(async () => {
       "repo-schedule",
       "coverage-repo",
     ].map((id) => putActiveTestRepository(ctx.storage!, id)),
-  );
+    ...[
+      "principal-manual",
+      "principal-review",
+      "principal-review-account",
+      "principal-schedule",
+    ].map((id) => putTestPrincipal(ctx.storage!, id)),
+  ]);
 });
 
 describe("durable control-plane transitions", () => {
