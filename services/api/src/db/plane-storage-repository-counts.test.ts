@@ -33,7 +33,7 @@ describe("repository-indexed catalog counts", () => {
   });
 
   it("counts schedules without a host filter", async () => {
-    const send = vi.fn().mockResolvedValue({ Count: 4 });
+    const send = vi.fn().mockResolvedValueOnce({ Count: 4 }).mockResolvedValueOnce({});
     const ctx = {
       doc: { send },
       tables: { schedules: "Schedules" },
@@ -44,5 +44,6 @@ describe("repository-indexed catalog counts", () => {
     expect(send.mock.calls[0]?.[0].input.ExpressionAttributeValues).toEqual({
       ":repositoryId": "repo",
     });
+    await expect(countSchedulesByRepository(ctx, "empty-repo")).resolves.toBe(0);
   });
 });

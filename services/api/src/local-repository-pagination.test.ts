@@ -27,6 +27,7 @@ describe("repository list pagination", () => {
 
     expect((await invoke("/api/v1/repositories?limit=0")).status).toBe(400);
     expect((await invoke("/api/v1/repositories?limit=101")).status).toBe(400);
+    expect(() => plane.listRepositoriesPage({ limit: 1.5 })).toThrow("limit must be");
     expect((await invoke("/api/v1/repositories?limit=2&limit=2")).status).toBe(400);
     expect((await invoke("/api/v1/repositories?limit=1")).json).toMatchObject({
       items: [{ name: "alpha" }],
@@ -62,6 +63,17 @@ describe("repository list pagination", () => {
         cursor: `${malformedPayload}.${signCursor(malformedPayload, "repository-pagination-test-secret")}`,
       }),
     ).toThrow();
+    const nullPayload = Buffer.from("null", "utf8").toString("base64url");
+    expect(() =>
+      plane.listRepositoriesPage({
+        cursor: `${nullPayload}.${signCursor(nullPayload, "repository-pagination-test-secret")}`,
+      }),
+    ).toThrow();
+    const objectPayload = Buffer.from(
+      JSON.stringify({ version: 1, scopeDigest: "wrong", position: { name: "n", id: "id" } }),
+      "utf8",
+    ).toString("base64url");
+    expect(() => plane.listRepositoriesPage({ cursor: `${objectPayload}.a` })).toThrow();
     const invalidPosition = Buffer.from(
       JSON.stringify({ version: 1, scope: null, position: { name: 1, id: "repo" } }),
       "utf8",
@@ -132,9 +144,25 @@ describe("repository list pagination", () => {
     const first = await plane.listRepositoriesPageDurable({ limit: 1, scope });
     expect(first.items).toMatchObject([{ id: "repo-a", admissionState: "active" }]);
     expect(first.nextCursor?.length).toBeLessThan(500);
+    expect(() => plane.listRepositoriesPage({ cursor: first.nextCursor!, scope })).toThrow(
+      "invalid or mismatched repository cursor",
+    );
     await expect(
       plane.listRepositoriesPageDurable({ limit: 1, scope, cursor: first.nextCursor! }),
     ).resolves.toEqual({ items: [], nextCursor: null });
+
+    const memory = new ControlPlane({
+      sessionCursorSecret: "repository-durable-page-secret",
+    });
+    memory.createRepository({ id: "one", name: "one", url: "/one" });
+    memory.createRepository({ id: "two", name: "two", url: "/two" });
+    const positionCursor = memory.listRepositoriesPage({ limit: 1 }).nextCursor!;
+    await expect(plane.listRepositoriesPageDurable({ cursor: positionCursor })).rejects.toThrow(
+      "invalid or mismatched repository cursor",
+    );
+    await expect(plane.listRepositoriesPageDurable({ limit: 1 })).resolves.toMatchObject({
+      items: [{ id: "repo-a" }],
+    });
     expect(queries).toEqual([
       { limit: 1, allowedRepositoryIds: scope.toSorted((a, b) => a.localeCompare(b)) },
       {
@@ -142,6 +170,7 @@ describe("repository list pagination", () => {
         startKey: { id: "repo-a" },
         allowedRepositoryIds: scope.toSorted((a, b) => a.localeCompare(b)),
       },
+      { limit: 1 },
     ]);
   });
 });

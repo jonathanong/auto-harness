@@ -36,5 +36,12 @@ describe("repository storage pages", () => {
       listRepositoriesPage(ctx, { limit: 1, allowedRepositoryIds: [] }),
     ).resolves.toEqual({ items: [], nextKey: null });
     expect(send).toHaveBeenCalledTimes(2);
+
+    send.mockResolvedValueOnce({ Items: [] });
+    await expect(listRepositoriesPage(ctx, { limit: 1 })).resolves.toEqual({
+      items: [],
+      nextKey: null,
+    });
+    expect(send).toHaveBeenCalledTimes(3);
   });
 });
