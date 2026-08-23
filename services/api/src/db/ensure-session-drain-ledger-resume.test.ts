@@ -68,6 +68,21 @@ describe("session drain activity-ledger migration resume", () => {
     expect(calls.some((call) => call.input.TableName === "Sessions")).toBe(false);
   });
 
+  it("propagates a non-conditional migration lease failure", async () => {
+    const unavailable = new Error("migration table unavailable");
+    await expect(
+      migrateSessionDrainActivityLedgerPage(
+        {
+          send: async (command: { input: Record<string, unknown> }) => {
+            if (command.input.Key?.recordKey === "ACTIVITY-V1") return {};
+            throw unavailable;
+          },
+        } as never,
+        tables,
+      ),
+    ).rejects.toBe(unavailable);
+  });
+
   it("reports incomplete when a stale finalizer loses its fence before READY", async () => {
     let calls = 0;
     const transactionError = Object.assign(new Error("lost fence"), {

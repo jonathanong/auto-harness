@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { releaseSessionDrain, updateSessionDrain } from "./plane-storage-session-drains.ts";
+import {
+  claimSessionDrainReconcile,
+  releaseSessionDrain,
+  updateSessionDrain,
+} from "./plane-storage-session-drains.ts";
 import type { AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
@@ -50,6 +54,25 @@ function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unk
 }
 
 describe("session drain update and release races", () => {
+  it("only suppresses conditional failures while claiming reconciliation", async () => {
+    await expect(
+      claimSessionDrainReconcile(
+        ctx(async () => Promise.reject(conditional)),
+        record(),
+        "owner",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      claimSessionDrainReconcile(
+        ctx(async () => Promise.reject(new Error("offline"))),
+        record(),
+        "owner",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).rejects.toThrow("offline");
+  });
+
   it("classifies update failures without hiding transport failures", async () => {
     await expect(
       updateSessionDrain(

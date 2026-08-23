@@ -36,6 +36,17 @@ function audit(): AuditLogRecord {
 }
 
 describe("session drain update fencing", () => {
+  it("requires a durable audit record before a terminal checkpoint", async () => {
+    const storage = {
+      doc: { send: async () => ({}) },
+      tables: { sessionDrains: "session-drains" },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(updateSessionDrain(storage, record())).rejects.toThrow(
+      "terminal session drain updates require an audit record",
+    );
+  });
+
   it("does not allow a stale count to overwrite a newer cancellation count", async () => {
     let input: Record<string, unknown> | undefined;
     const storage = {

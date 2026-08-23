@@ -54,4 +54,44 @@ describe("durable session principal fence", () => {
       ]),
     );
   });
+
+  it("rejects admission when the principal condition loses", async () => {
+    const ctx = {
+      doc: {
+        send: async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+          };
+        },
+      },
+      tables: {
+        concurrencyLocks: "Locks",
+        repositories: "Repositories",
+        sessionDrains: "SessionDrains",
+        sessions: "Sessions",
+        users: "Users",
+      },
+    } as unknown as PlaneStorageCtx;
+
+    await expect(
+      createSession(ctx, {
+        id: "session",
+        repositoryId: "repository",
+        principalId: "principal",
+        prompt: "test",
+        target: { commandId: "command" },
+        fallbacks: [],
+        targetLabels: ["command"],
+        queueTtlSeconds: 60,
+        queueExpiresAt: "2026-01-01T00:01:00.000Z",
+        timeout: 30,
+        priority: 0,
+        requiredLabels: [],
+        status: "queued",
+        queueShard: 0,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).rejects.toThrow("catalog deletion is in progress");
+  });
 });

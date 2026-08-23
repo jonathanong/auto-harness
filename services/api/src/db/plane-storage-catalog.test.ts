@@ -327,6 +327,44 @@ describe("durable schedule creation", () => {
     ).resolves.toEqual({ kind: "admission_closed" });
   });
 
+  it("does not claim a schedule when its principal no longer exists", async () => {
+    const ctx = scheduleCtx(async () => {
+      throw {
+        name: "TransactionCanceledException",
+        CancellationReasons: [
+          { Code: "None" },
+          { Code: "None" },
+          { Code: "ConditionalCheckFailed" },
+        ],
+      };
+    });
+    await expect(
+      tryClaimScheduleAndCreateSession(ctx, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "session-principal-race",
+          repositoryId: "repo-1",
+          principalId: "principal",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetLabels: ["command"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+        },
+      }),
+    ).resolves.toEqual({ kind: "lost" });
+  });
+
   it("reports an unknown drain when its fence wins before the follow-up read", async () => {
     const ctx = scheduleCtx(async (command) => {
       if (command instanceof GetCommand) return {};
