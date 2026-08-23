@@ -47,7 +47,10 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
-            const requiredEnvironment = String(fd.get("requiredEnvironment") ?? "")
+            const requiredEnvironmentEntry = fd.get("requiredEnvironment");
+            const requiredEnvironment = (
+              typeof requiredEnvironmentEntry === "string" ? requiredEnvironmentEntry : ""
+            )
               .split(/[\s,]+/)
               .filter(Boolean);
             if (!path) {

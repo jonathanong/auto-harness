@@ -1,4 +1,4 @@
-const ENVIRONMENT_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const ENVIRONMENT_NAME = /^[A-Za-z_]\w*$/;
 
 export function parseRequiredEnvironment(
   value: unknown,
@@ -15,5 +15,5 @@ export function parseRequiredEnvironment(
   if (invalid !== undefined) {
     throw new TypeError(`${context} contains an invalid environment variable name`);
   }
-  return [...value].toSorted();
+  return [...value].toSorted((a, b) => a.localeCompare(b));
 }

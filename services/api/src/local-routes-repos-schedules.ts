@@ -123,12 +123,10 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       return true;
     }
     try {
-      const result =
-        operation === "pause"
-          ? await plane.pauseRepositoryDurable(id)
-          : operation === "drain"
-            ? await plane.drainRepositoryDurable(id)
-            : await plane.activateRepositoryDurable(id);
+      let result;
+      if (operation === "pause") result = await plane.pauseRepositoryDurable(id);
+      else if (operation === "drain") result = await plane.drainRepositoryDurable(id);
+      else result = await plane.activateRepositoryDurable(id);
       if (!result.ok) {
         if (
           !(await writeRouteAudit(ctx, {

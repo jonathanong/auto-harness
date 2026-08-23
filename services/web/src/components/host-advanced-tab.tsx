@@ -7,14 +7,14 @@ export function HostAdvancedTab({
   setupScript,
   requiredEnvironment,
   canWrite = true,
-}: {
+}: Readonly<{
   hostId: string;
   initialJson: string;
   initialVersion: number;
   setupScript: string | undefined;
-  requiredEnvironment?: string[] | undefined;
+  requiredEnvironment: string[] | undefined;
   canWrite?: boolean;
-}) {
+}>) {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">

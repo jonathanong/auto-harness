@@ -339,7 +339,12 @@ export async function runCli(
       const { startDaemon } = await import("./start-daemon.ts");
       const ready = await deps.ensureReady(config);
       const runtime = ready
-        ? { ...ready, environmentNames: Object.keys(createChildEnv(resolvedEnv)).toSorted() }
+        ? {
+            ...ready,
+            environmentNames: Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
+              a.localeCompare(b),
+            ),
+          }
         : ready;
       const { stop } = await startDaemon({
         config,

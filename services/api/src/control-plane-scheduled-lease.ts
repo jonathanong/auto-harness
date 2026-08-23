@@ -9,11 +9,7 @@ export function releaseScheduledLeaseLocal(
     return false;
   const key = `${session.hostId}\0${session.repositoryId}`;
   const lease = state.mainCheckoutLeases.get(key);
-  if (
-    !lease ||
-    lease.sessionId !== session.id ||
-    lease.connectionId !== session.assignmentConnectionId
-  )
+  if (lease?.sessionId !== session.id || lease?.connectionId !== session.assignmentConnectionId)
     return false;
   state.mainCheckoutLeases.delete(key);
   return true;

@@ -9,11 +9,11 @@ export function RepositoryAdmissionControls({
   repositoryId,
   state = "active",
   request = fetch,
-}: {
+}: Readonly<{
   repositoryId: string;
   state?: RepositoryAdmissionState;
   request?: typeof fetch;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirmDrain, setConfirmDrain] = useState(false);
