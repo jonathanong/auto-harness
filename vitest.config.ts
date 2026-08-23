@@ -1,5 +1,32 @@
 import { defineConfig } from "vitest/config";
 
+import {
+  AGGREGATE_COVERAGE_EXCLUDE,
+  COVERAGE_INCLUDE,
+  PATCH_COVERAGE_EXCLUDE,
+} from "./scripts/coverage-scope.mts";
+
+const patchCoverageOutput = process.env.VITEST_PATCH_COVERAGE_PATH;
+const coverageCollection = patchCoverageOutput
+  ? // The custom module wraps the V8 provider and supports its full option set. Vitest's
+    // CustomProviderOptions type omits those underlying-provider fields, so expose the
+    // runtime object as V8-compatible after preserving provider: "custom" in its value.
+    ({
+      provider: "custom",
+      customProviderModule: "./scripts/scoped-v8-coverage-provider.mts",
+      include: [...COVERAGE_INCLUDE],
+      exclude: [...PATCH_COVERAGE_EXCLUDE],
+    } as unknown as {
+      provider: "v8";
+      include: string[];
+      exclude: string[];
+    })
+  : {
+      provider: "v8" as const,
+      include: [...COVERAGE_INCLUDE],
+      exclude: [...AGGREGATE_COVERAGE_EXCLUDE],
+    };
+
 export default defineConfig({
   test: {
     // Cap the shared worker pool at 2: GitHub-hosted standard runners have 2 vCPUs, and a
@@ -35,45 +62,7 @@ export default defineConfig({
       },
     ],
     coverage: {
-      provider: "v8",
-      include: ["modules/*/src/**/*.{ts,tsx}", "services/*/src/**/*.{ts,tsx}"],
-      exclude: [
-        "**/*.test.{ts,tsx}",
-        "**/*-test-helpers.{ts,tsx}",
-        "**/*.d.ts",
-        "**/dist/**",
-        "**/.next/**",
-        "**/types.ts",
-        "**/*-types.ts",
-        "**/next.config.ts",
-        "**/tailwind.config.ts",
-        // Exact paths, not a `**` glob: these two are pure type-only files today, but a
-        // glob would silently drop coverage on any future file that happens to share the
-        // name, anywhere in the repo.
-        "modules/shared/src/session.ts",
-        "modules/shared/src/providers.ts",
-        // Thin entrypoints; services/host-daemon/src/cli.ts is real argv-parsing and
-        // dispatch logic and stays in the include set.
-        "services/{api,cdk}/src/cli.ts",
-        // Follow-up DynamoDB storage-adapter coverage tranches retain the split
-        // implementations. The core client/table/bootstrap adapter is covered here
-        // with real-Dynamo integration tests.
-        "**/db/plane-storage-auth.ts",
-        "**/db/plane-storage-clear.ts",
-        "**/db/plane-storage-deletion-markers.ts",
-        "**/db/plane-storage-main-checkout-read.ts",
-        "**/db/plane-storage-main-checkout-reconnect.ts",
-        "**/db/plane-storage-main-checkout.ts",
-        "**/db/plane-storage-provider-account-updates.ts",
-        "**/db/plane-storage-provider-accounts.ts",
-        "**/db/plane-storage-reconnect-rollback.ts",
-        "**/db/plane-storage-reconnect.ts",
-        "**/create-plane.ts",
-        // Public barrels / re-exports register as uncovered functions in v8 coverage.
-        "**/modules/ui/src/index.ts",
-        "**/services/web/src/lib/api.ts",
-        "**/services/host-pane/src/index.ts",
-      ],
+      ...coverageCollection,
       // Vitest checks thresholds on every `--coverage` run, including a single CI shard's
       // partial subset of files — there's no built-in "skip on shard, enforce once merged"
       // behavior. `pnpm test:shard` sets this so each shard only collects coverage; `pnpm

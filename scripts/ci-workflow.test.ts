@@ -57,6 +57,8 @@ describe("required CI check contract", () => {
     const shard = job("vitest-shard");
     expect(shard).toContain("run: pnpm local:dynamodb:ready");
     expect(shard).toContain("run: pnpm test:shard");
+    expect(shard).toContain("VITEST_PATCH_COVERAGE_PATH:");
+    expect(shard).toContain("name: vitest-patch-${{ matrix.shard }}");
     expect(shard).not.toContain("run: pnpm check:coverage:dynamo-adapters");
   });
 
@@ -66,12 +68,20 @@ describe("required CI check contract", () => {
     // the load-bearing coverage gate. No DynamoDB is needed to merge blobs.
     const fanIn = job("vitest");
     expect(fanIn).toContain("run: pnpm test:merge");
+    expect(fanIn).toContain("name: Download supplemental patch coverage");
+    expect(fanIn).toContain("pattern: vitest-patch-*");
     expect(fanIn).toContain("run: pnpm check:coverage:patch");
     expect(fanIn).toContain("COVERAGE_BASE_SHA:");
     expect(fanIn).toContain("fetch-depth: 0");
     expect(fanIn).toContain("run: pnpm check:coverage:dynamo-adapters");
     expect(fanIn).not.toContain("run: pnpm local:dynamodb:ready");
     expect(fanIn).not.toContain("services:\n      dynamodb:");
+    expect(fanIn.indexOf("run: pnpm test:merge")).toBeLessThan(
+      fanIn.indexOf("name: Download supplemental patch coverage"),
+    );
+    expect(fanIn.indexOf("name: Download supplemental patch coverage")).toBeLessThan(
+      fanIn.indexOf("run: pnpm check:coverage:patch"),
+    );
   });
 
   it("runs DynamoDB Local as a native services: container, not a docker compose step", () => {
@@ -92,6 +102,7 @@ describe("required CI check contract", () => {
     expect(shard).toContain("--shard=${{ matrix.shard }}/2");
     expect(shard).toContain("--outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json");
     expect(shard).toContain("name: vitest-blob-${{ matrix.shard }}");
+    expect(shard).toContain("path: coverage/patch-${{ matrix.shard }}.lcov");
   });
 
   it("runs only the focused native test command on macOS and Windows", () => {
