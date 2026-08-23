@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import {
   GetCommand,
   ScanCommand,
@@ -6,8 +7,13 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 
-import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
-import { isConditionalFailed, isConditionalTransactionFailed } from "./plane-storage-types.ts";
+import {
+  isConditionalFailed,
+  isConditionalTransactionFailed,
+  nextPageKey,
+  type PlaneStorageCtx,
+  type SessionDrainRecord,
+} from "./plane-storage-types.ts";
 import { markerConditions, withMarkerTable } from "./plane-storage-deletion-markers.ts";
 
 export function sessionDrainScopeKey(repositoryId: string, principalId: string): string {
@@ -189,8 +195,9 @@ export async function releaseSessionDrain(
     );
     return (result.Attributes as SessionDrainRecord | undefined) ?? null;
   } catch (error) {
-    if (isConditionalFailed(error)) return null;
-    throw error;
+    if (!isConditionalFailed(error)) throw error;
+    const current = await getSessionDrain(ctx, repositoryId, principalId);
+    return current?.operationId === operationId && current.status === "released" ? current : null;
   }
 }
 
@@ -202,7 +209,7 @@ export async function listSessionDrains(ctx: PlaneStorageCtx): Promise<SessionDr
       new ScanCommand({ TableName: ctx.tables.sessionDrains, ExclusiveStartKey: startKey }),
     );
     records.push(...((result.Items ?? []) as SessionDrainRecord[]));
-    startKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey);
   return records;
 }

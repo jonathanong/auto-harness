@@ -69,6 +69,19 @@ describe("session drain Dynamo adapter residuals", () => {
     expect(scanInputs).toHaveLength(2);
   });
 
+  it("stops when a backend returns an empty pagination cursor", async () => {
+    let scans = 0;
+    await expect(
+      listSessionDrains(
+        ctx(async () => {
+          scans += 1;
+          return { Items: [record()], LastEvaluatedKey: {} };
+        }),
+      ),
+    ).resolves.toHaveLength(1);
+    expect(scans).toBe(1);
+  });
+
   it("creates a new operation and reports conditional replay failures safely", async () => {
     let createInput: Record<string, unknown> | undefined;
     await expect(

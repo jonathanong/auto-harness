@@ -6,7 +6,6 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { appendAuditLog } from "./control-plane-audit.ts";
 import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
-import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 const MAX_CANCELLATIONS_PER_RECONCILE = 100;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -22,18 +21,6 @@ function drainOperationId(
     .update(`${repositoryId}\0${principalId}\0${idempotencyKey}`)
     .digest("hex")
     .slice(0, 32)}`;
-}
-
-function belongsToScope(
-  session: {
-    repositoryId: string;
-    principalId?: string;
-    metadata?: Record<string, unknown>;
-  },
-  repositoryId: string,
-  principalId: string,
-): boolean {
-  return session.repositoryId === repositoryId && sessionPrincipalId(session) === principalId;
 }
 
 function stillOccupiesScope(session: {
@@ -53,8 +40,11 @@ export async function reconcileSessionDrainDurable(
   drain: SessionDrainRecord,
 ): Promise<SessionDrainRecord> {
   if (!state.storage || drain.status !== "draining") return drain;
-  const sessions = (await state.storage.listAllSessions(true)).filter((session) =>
-    belongsToScope(session, drain.repositoryId, drain.principalId),
+  const sessions = await state.storage.listSessionsForDrain(
+    drain.repositoryId,
+    drain.principalId,
+    drain.operationId,
+    state.shardCount,
   );
   for (const session of sessions
     .filter((candidate) => candidate.status === "queued" || candidate.status === "running")
@@ -86,8 +76,11 @@ export async function reconcileSessionDrainDurable(
     }
   }
 
-  const authoritative = (await state.storage.listAllSessions(true)).filter((session) =>
-    belongsToScope(session, drain.repositoryId, drain.principalId),
+  const authoritative = await state.storage.listSessionsForDrain(
+    drain.repositoryId,
+    drain.principalId,
+    drain.operationId,
+    state.shardCount,
   );
   const queuedCount = authoritative.filter((session) => session.status === "queued").length;
   const cancelledCount = authoritative.filter(

@@ -31,6 +31,7 @@ import { getSessionDrain, sessionDrainAdmissionCheck } from "./plane-storage-ses
 
 const MAX_CREATE_SESSION_ATTEMPTS = 3;
 const SESSIONS_REPOSITORY_INDEX = "repositoryId-createdAt";
+const SESSIONS_DRAIN_INDEX = "cancelledByDrainOperationId-createdAt";
 
 class SessionIdCollisionError extends Error {
   constructor(sessionId: string) {
@@ -353,6 +354,107 @@ export async function listSessionsByRepository(
     if (!isRepositoryIndexUnavailable(error)) throw error;
     return listSessionsByRepositoryScan(ctx, repositoryId);
   }
+}
+
+/**
+ * Read only the durable rows that can affect a principal session drain.
+ *
+ * Query the active status index and a sparse attribution index so a repository
+ * with a large retained history does not turn every drain retry into a
+ * full-table scan. Principal ownership is checked after hydration so legacy
+ * rows continue to use metadata.createdBy as their fallback owner.
+ */
+export async function listSessionsForDrain(
+  ctx: PlaneStorageCtx,
+  repositoryId: string,
+  principalId: string,
+  operationId: string,
+  shardCount: number,
+): Promise<SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  for (const status of ["queued", "running"] as const) {
+    for (let shard = 0; shard < shardCount; shard += 1) {
+      const rows = await querySessionsByStatus(ctx, status, shard, {
+        FilterExpression: "repositoryId = :repositoryId",
+        ExpressionAttributeValues: { ":repositoryId": repositoryId },
+      });
+      records.push(...rows);
+    }
+  }
+
+  // This sparse index contains only rows that have a drain attribution. It
+  // avoids walking the retained cancelled history on statusShard-createdAt.
+  let attributed: SessionRecord[];
+  try {
+    attributed = await querySessionsByDrainOperation(ctx, operationId);
+  } catch (error) {
+    if (!isRepositoryIndexUnavailable(error)) throw error;
+    // Compatibility path while an existing table's sparse GSI is being
+    // created. New/CDK tables use the bounded index immediately.
+    attributed = (await listSessionsByRepository(ctx, repositoryId)).filter(
+      (session) => session.cancelledByDrainOperationId === operationId,
+    );
+  }
+  records.push(...attributed.filter((session) => session.status === "cancelled"));
+  return records.filter((session) => {
+    const owner = session.principalId ?? session.metadata?.createdBy;
+    return session.repositoryId === repositoryId && owner === principalId;
+  });
+}
+
+async function querySessionsByStatus(
+  ctx: PlaneStorageCtx,
+  status: SessionStatus,
+  shard: number,
+  options: {
+    FilterExpression: string;
+    ExpressionAttributeValues: Record<string, unknown>;
+  },
+): Promise<SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: "statusShard-createdAt",
+        KeyConditionExpression: "statusShard = :ss",
+        ExpressionAttributeValues: {
+          ":ss": statusShardAttr(status, shard),
+          ...options.ExpressionAttributeValues,
+        },
+        FilterExpression: options.FilterExpression,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
+  return records;
+}
+
+async function querySessionsByDrainOperation(
+  ctx: PlaneStorageCtx,
+  operationId: string,
+): Promise<SessionRecord[]> {
+  const records: SessionRecord[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await ctx.doc.send(
+      new QueryCommand({
+        TableName: ctx.tables.sessions,
+        IndexName: SESSIONS_DRAIN_INDEX,
+        KeyConditionExpression: "cancelledByDrainOperationId = :operationId",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: { ":operationId": operationId, ":cancelled": "cancelled" },
+        FilterExpression: "#s = :cancelled",
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    records.push(...(res.Items ?? []).map((i) => itemToSession(i as Record<string, unknown>)));
+    startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (startKey !== undefined);
+  return records;
 }
 
 /** Count a repository's sessions without materializing its retained history. */

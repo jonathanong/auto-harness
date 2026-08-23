@@ -6,6 +6,22 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
   const storage = state.storage as unknown as Record<string, unknown>;
   storage.getSession ??= async (id: string) => copy(state.sessions.get(id));
   storage.listAllSessions ??= async () => list(state.sessions);
+  storage.listSessionsForDrain ??= async (
+    repositoryId: string,
+    principalId: string,
+    operationId: string,
+    _shardCount: number,
+  ) =>
+    list(state.sessions).filter((session) => {
+      const owner = session.principalId ?? session.metadata?.createdBy;
+      return (
+        session.repositoryId === repositoryId &&
+        owner === principalId &&
+        (session.status === "queued" ||
+          session.status === "running" ||
+          (session.status === "cancelled" && session.cancelledByDrainOperationId === operationId))
+      );
+    });
   storage.listSessionsByStatus ??= async (status: string, shard: number) =>
     list(state.sessions).filter(
       (session) => session.status === status && session.queueShard === shard,

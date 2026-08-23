@@ -20,7 +20,6 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
-import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 function sessionDrainFailure(
   error: unknown,
@@ -92,15 +91,10 @@ export async function resumeSessionDurable(
   | { ok: false; error: string; code?: string; operationId?: string }
 > {
   if (!state.storage) {
-    const source = state.sessions.get(sessionId);
-    if (opts.principalId && (!source || sessionPrincipalId(source) !== opts.principalId))
-      return { ok: false, error: "source session belongs to another principal", code: "FORBIDDEN" };
     return resumeSession(state, sessionId, opts);
   }
   await getSessionRecordDurable(state, sessionId);
   const source = state.sessions.get(sessionId);
-  if (opts.principalId && (!source || sessionPrincipalId(source) !== opts.principalId))
-    return { ok: false, error: "source session belongs to another principal", code: "FORBIDDEN" };
   if (source) await getRepositoryDurable(state, source.repositoryId);
   const prepared = prepareResumedSession(state, sessionId, opts);
   if (!prepared.ok) return prepared;

@@ -177,9 +177,12 @@ describe("principal-scoped durable session drains", () => {
       {},
       principalB.apiKey,
     );
-    expect(crossPrincipalResume.status).toBe(403);
-    expect(crossPrincipalResume.json).toMatchObject({
-      error: { code: "FORBIDDEN" },
+    expect(crossPrincipalResume.status).toBe(201);
+    expect(
+      await ctx.storage.getSession((crossPrincipalResume.json as { id: string }).id),
+    ).toMatchObject({
+      principalId: principalB.account.id,
+      metadata: { createdBy: principalB.account.id },
     });
     await expect(
       plane.cloneSessionDurable("principal-drain-source", {

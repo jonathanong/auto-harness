@@ -81,7 +81,8 @@ describe("session drain update and release races", () => {
     ).resolves.toBeNull();
     await expect(
       releaseSessionDrain(
-        ctx(async () => {
+        ctx(async (command) => {
+          if (command.input?.ConsistentRead) return {};
           throw conditional;
         }),
         "repo",
@@ -101,5 +102,43 @@ describe("session drain update and release races", () => {
         "now",
       ),
     ).rejects.toThrow("offline");
+  });
+
+  it("replays an already-released operation without accepting a different owner", async () => {
+    let call = 0;
+    await expect(
+      releaseSessionDrain(
+        ctx(async (command) => {
+          call += 1;
+          if (call === 1) throw conditional;
+          expect(command.input).toMatchObject({
+            Key: { recordKey: "CURRENT" },
+            ConsistentRead: true,
+          });
+          return {
+            Item: record({ status: "released", operationId: "operation", releasedAt: "released" }),
+          };
+        }),
+        "repo",
+        "principal",
+        "operation",
+        "retry",
+      ),
+    ).resolves.toMatchObject({ status: "released", releasedAt: "released" });
+
+    call = 0;
+    await expect(
+      releaseSessionDrain(
+        ctx(async () => {
+          call += 1;
+          if (call === 1) throw conditional;
+          return { Item: record({ status: "released", operationId: "different" }) };
+        }),
+        "repo",
+        "principal",
+        "operation",
+        "retry",
+      ),
+    ).resolves.toBeNull();
   });
 });

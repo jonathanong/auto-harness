@@ -124,6 +124,25 @@ describe("session drain route outcomes", () => {
     expect((await invoke("POST", `${operationPath}/release`, author.apiKey)).status).toBe(409);
   });
 
+  it("returns success when release is retried after its response was lost", async () => {
+    const { plane, invoke, author } = await harness();
+    const operationPath = "/api/v1/repositories/repo/session-drains/operation";
+    plane.getSessionDrainDurable = async () => drain({ status: "succeeded" });
+    let releases = 0;
+    plane.releaseSessionDrainDurable = async () => {
+      releases += 1;
+      return drain({ status: "released", releasedAt: "2026-01-01T00:01:00.000Z" });
+    };
+
+    await expect(invoke("POST", `${operationPath}/release`, author.apiKey)).resolves.toMatchObject({
+      status: 200,
+    });
+    await expect(invoke("POST", `${operationPath}/release`, author.apiKey)).resolves.toMatchObject({
+      status: 200,
+    });
+    expect(releases).toBe(2);
+  });
+
   it("fails closed when any durable operation throws", async () => {
     const { plane, invoke, author } = await harness();
     const collection = "/api/v1/repositories/repo/session-drains";

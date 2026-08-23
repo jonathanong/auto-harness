@@ -73,6 +73,41 @@ export class DynamoPlaneStorageBase {
     return sessions.listSessionsByRepository(this.ctx, repositoryId);
   }
 
+  async listSessionsForDrain(
+    repositoryId: string,
+    principalId: string,
+    operationId: string,
+    shardCount: number,
+  ): Promise<SessionRecord[]> {
+    const records = await sessions.listSessionsForDrain(
+      this.ctx,
+      repositoryId,
+      principalId,
+      operationId,
+      shardCount,
+    );
+    const occupiedIds = new Set<string>();
+    for (const worktree of await sessions.listWorktreesForRepo(this.ctx, repositoryId)) {
+      if (worktree.currentSessionId) occupiedIds.add(worktree.currentSessionId);
+    }
+    for (const inventory of await catalog.listHostInventories(this.ctx)) {
+      const lease = await mainCheckout.getMainCheckoutLease(
+        this.ctx,
+        inventory.hostId,
+        repositoryId,
+      );
+      if (lease) occupiedIds.add(lease.sessionId);
+    }
+    const occupied = await Promise.all(
+      [...occupiedIds].map((sessionId) => sessions.getSession(this.ctx, sessionId, true)),
+    );
+    for (const session of occupied) {
+      const owner = session?.principalId ?? session?.metadata?.createdBy;
+      if (session?.repositoryId === repositoryId && owner === principalId) records.push(session);
+    }
+    return [...new Map(records.map((session) => [session.id, session])).values()];
+  }
+
   countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
     return sessions.countSessionsByRepository(this.ctx, repositoryId, hostId);
   }
