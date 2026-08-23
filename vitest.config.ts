@@ -2,10 +2,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // Pin the shared worker pool at 2: GitHub-hosted standard runners have 2 vCPUs, and a
+    // Cap the shared worker pool at 2: GitHub-hosted standard runners have 2 vCPUs, and a
     // larger local pool contends against the single DynamoDB Local endpoint used by tests.
+    // Leave the minimum unset so focused runs can still request `--maxWorkers=1`.
     maxWorkers: 2,
-    minWorkers: 2,
     projects: [
       {
         // Next preserves JSX for its own compiler; direct server-component tests need
