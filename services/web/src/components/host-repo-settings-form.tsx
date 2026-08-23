@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mutateInventory, upsertHostRepository, type HostRepository } from "@auto-harness/shared";
+import {
+  mutateInventory,
+  parseRequiredEnvironment,
+  upsertHostRepository,
+  type HostRepository,
+} from "@auto-harness/shared";
 import {
   Button,
   Dialog,
@@ -48,11 +53,24 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
             const requiredEnvironmentEntry = fd.get("requiredEnvironment");
-            const requiredEnvironment = (
+            const requiredEnvironmentNames = (
               typeof requiredEnvironmentEntry === "string" ? requiredEnvironmentEntry : ""
             )
               .split(/[\s,]+/)
               .filter(Boolean);
+            let requiredEnvironment: string[];
+            try {
+              requiredEnvironment = parseRequiredEnvironment(
+                requiredEnvironmentNames,
+                `repository.${repo.id}.requiredEnvironment`,
+              );
+            } catch (error) {
+              showToast(error instanceof Error ? error.message : String(error), {
+                variant: "destructive",
+                pw: `repo-settings-error-${repo.id}`,
+              });
+              return;
+            }
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",

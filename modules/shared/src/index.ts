@@ -48,6 +48,8 @@ export {
 export {
   GIT_READINESS_REASONS,
   isHostRuntimeReport,
+  MAX_RUNTIME_ENVIRONMENT_NAMES,
+  MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH,
   type GitReadinessReason,
   type HostRuntimeReport,
 } from "./host-runtime.ts";

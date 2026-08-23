@@ -13,6 +13,7 @@ import type { RepositoryAdmissionFailure } from "./control-plane-repository-admi
 
 function cache(state: ControlPlaneState, repository: RepositoryRecord): RepositoryRecord {
   state.repositories.set(repository.id, { ...repository });
+  state.repositoryRevision += 1;
   return { ...repository };
 }
 

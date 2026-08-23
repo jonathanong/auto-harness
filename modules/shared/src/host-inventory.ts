@@ -1,6 +1,7 @@
 /* eslint-disable max-lines -- inventory transformations share one immutable update surface. */
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 import type { HostCapability } from "./host-capabilities.ts";
+import { parseRequiredEnvironment } from "./environment-requirements.ts";
 
 /**
  * Per-scope override of a provider account's enablement/command, on a
@@ -54,7 +55,10 @@ export type HostInventory = {
   capabilities?: HostCapability[] | undefined;
 };
 
-export { emptyHostInventory } from "./host-inventory-empty.ts";
+/** Empty host inventory for “add agent” before any repositories are attached. */
+export function emptyHostInventory(): HostInventory {
+  return { repositories: [], providerAccounts: [], capabilities: [] };
+}
 
 /** Suggested path only — never auto-persist without explicit worktree create. */
 export function defaultWorktreePath(repoPath: string, worktreeName: string): string {
@@ -118,8 +122,15 @@ export function upsertHostRepository(
 ): HostInventory {
   const base = cloneInventory(existing);
   const prev = base.repositories.find((r) => r.id === entry.id);
+  const requiredEnvironment =
+    entry.requiredEnvironment === undefined
+      ? undefined
+      : parseRequiredEnvironment(
+          entry.requiredEnvironment,
+          `repository.${entry.id}.requiredEnvironment`,
+        );
   base.repositories = base.repositories.filter((r) => r.id !== entry.id);
-  base.repositories.push({
+  const repository: HostRepository = {
     ...prev,
     id: entry.id,
     path: entry.path,
@@ -128,11 +139,13 @@ export function upsertHostRepository(
     ...(entry.terminalHookScript !== undefined
       ? { terminalHookScript: entry.terminalHookScript }
       : {}),
-    ...(entry.requiredEnvironment !== undefined
-      ? { requiredEnvironment: [...entry.requiredEnvironment] }
-      : {}),
     worktrees: prev ? prev.worktrees.map((w) => ({ ...w, labels: [...w.labels] })) : [],
-  });
+  };
+  if (requiredEnvironment !== undefined) {
+    if (requiredEnvironment.length) repository.requiredEnvironment = requiredEnvironment;
+    else delete repository.requiredEnvironment;
+  }
+  base.repositories.push(repository);
   return base;
 }
 

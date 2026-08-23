@@ -34,6 +34,7 @@ export function createRepository(
   const result = prepareCreateRepository(state, input);
   if (!result.ok) return result;
   state.repositories.set(result.repository.id, result.repository);
+  state.repositoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
   }
@@ -97,15 +98,20 @@ export async function createRepositoryDurable(
   if (!state.storage.createRepository) {
     await state.storage.putRepository({ ...result.repository });
     state.repositories.set(result.repository.id, result.repository);
+    state.repositoryRevision += 1;
     return { ok: true, repository: { ...result.repository } };
   }
   const created = await state.storage.createRepository({ ...result.repository });
   if (!created) {
     const authoritative = await state.storage.getRepository(result.repository.id);
-    if (authoritative) state.repositories.set(authoritative.id, authoritative);
+    if (authoritative) {
+      state.repositories.set(authoritative.id, authoritative);
+      state.repositoryRevision += 1;
+    }
     return { ok: false, error: "repository already exists" };
   }
   state.repositories.set(result.repository.id, result.repository);
+  state.repositoryRevision += 1;
   return { ok: true, repository: { ...result.repository } };
 }
 
@@ -134,6 +140,7 @@ export function updateRepository(
   const result = prepareUpdateRepository(state, id, patch);
   if (!result.ok) return result;
   state.repositories.set(id, result.repository);
+  state.repositoryRevision += 1;
   if (state.storage) {
     queueWrite(state, async (storage) => {
       await storage!.updateRepositorySettings(id, patch, result.repository.updatedAt);
@@ -196,5 +203,6 @@ export async function updateRepositoryDurable(
   );
   if (!updated) return { ok: false, error: "repository not found" };
   state.repositories.set(id, updated);
+  state.repositoryRevision += 1;
   return { ok: true, repository: { ...updated } };
 }

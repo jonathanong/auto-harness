@@ -4,6 +4,8 @@ import { basename, resolve } from "node:path";
 
 import {
   installCrashLogging,
+  MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH,
+  MAX_RUNTIME_ENVIRONMENT_NAMES,
   onShutdownSignal,
   type LifecycleLogger,
   type SessionAssign,
@@ -338,12 +340,21 @@ export async function runCli(
     try {
       const { startDaemon } = await import("./start-daemon.ts");
       const ready = await deps.ensureReady(config);
+      const environmentNames = Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
+        a.localeCompare(b),
+      );
+      if (
+        environmentNames.length > MAX_RUNTIME_ENVIRONMENT_NAMES ||
+        environmentNames.some((name) => name.length > MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH)
+      ) {
+        throw new Error(
+          `child environment exceeds runtime report limits (${MAX_RUNTIME_ENVIRONMENT_NAMES} names, ${MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH} characters per name)`,
+        );
+      }
       const runtime = ready
         ? {
             ...ready,
-            environmentNames: Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
-              a.localeCompare(b),
-            ),
+            environmentNames,
           }
         : ready;
       const { stop } = await startDaemon({

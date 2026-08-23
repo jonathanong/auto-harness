@@ -47,13 +47,22 @@ export const getRepositoryDurable = (state: ControlPlaneState, id: string) =>
     (storage, recordId) => storage.getRepository(recordId),
     id,
   );
-export const listRepositoriesDurable = (state: ControlPlaneState) =>
-  list<RepositoryRecord>(
-    state,
-    state.repositories,
-    (storage) => storage.listRepositories(),
-    (record) => record.id,
-  );
+export async function listRepositoriesDurable(
+  state: ControlPlaneState,
+): Promise<RepositoryRecord[]> {
+  if (!state.storage) {
+    return [...state.repositories.values()].map((record) => ({ ...record }));
+  }
+  // A scan that started before a durable admission transition can finish afterward and
+  // otherwise restore its stale admission state in the cache. Retry after local mutations.
+  for (;;) {
+    const revision = state.repositoryRevision;
+    const records = await state.storage.listRepositories();
+    if (revision === state.repositoryRevision) {
+      return replace(state.repositories, records, (record) => record.id);
+    }
+  }
+}
 
 export const getScheduleDurable = (state: ControlPlaneState, id: string) =>
   get<ScheduleRecord>(

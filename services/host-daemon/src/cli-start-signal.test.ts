@@ -154,4 +154,51 @@ describe("runCli start signal handling", () => {
       await server.close();
     }
   });
+
+  it("rejects an oversized complete environment report, including LC_* names", async () => {
+    const tokenNames = Array.from(
+      { length: 260 },
+      (_, index) => `TOKEN_${String(index).padStart(3, "0")}`,
+    );
+    const errors: string[] = [];
+    const deps = minimalDeps({
+      error: (message) => errors.push(message),
+      ensureReady: async () => ({
+        daemonVersion: "test",
+        gitVersion: "2.50.0",
+        gitReady: true,
+      }),
+    });
+    await expect(
+      runCli(
+        ["node", "x", "start"],
+        {
+          HARNESS_CHILD_ENV_ALLOWLIST: tokenNames.join(","),
+          LC_ALL: "C",
+          ...Object.fromEntries(tokenNames.map((name) => [name, name])),
+        },
+        deps,
+      ),
+    ).resolves.toBe(1);
+    expect(errors).toEqual([
+      "child environment exceeds runtime report limits (256 names, 128 characters per name)",
+    ]);
+  });
+
+  it("rejects an overlong name in the complete environment report", async () => {
+    const overlongName = `LC_${"A".repeat(126)}`;
+    const errors: string[] = [];
+    const deps = minimalDeps({
+      error: (message) => errors.push(message),
+      ensureReady: async () => ({
+        daemonVersion: "test",
+        gitVersion: "2.50.0",
+        gitReady: true,
+      }),
+    });
+    await expect(runCli(["node", "x", "start"], { [overlongName]: "C" }, deps)).resolves.toBe(1);
+    expect(errors).toEqual([
+      "child environment exceeds runtime report limits (256 names, 128 characters per name)",
+    ]);
+  });
 });

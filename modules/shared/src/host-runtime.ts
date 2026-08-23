@@ -6,8 +6,8 @@ export const GIT_READINESS_REASONS = [
   "git_readiness_unreported",
 ] as const;
 
-const MAX_RUNTIME_ENVIRONMENT_NAMES = 256;
-const MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH = 128;
+export const MAX_RUNTIME_ENVIRONMENT_NAMES = 256;
+export const MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH = 128;
 
 function boundedRuntimeText(candidate: unknown): candidate is string {
   return typeof candidate === "string" && candidate.length > 0 && candidate.length <= 128;
