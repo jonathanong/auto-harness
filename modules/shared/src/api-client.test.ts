@@ -1,6 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { apiBase, apiErrorMessage, apiGet, resolveServerApiBase } from "./api-client.ts";
+
+beforeEach(() => {
+  vi.stubEnv("HARNESS_API_HTTP", undefined);
+  vi.stubEnv("HARNESS_API_URL", undefined);
+});
+
+afterEach(() => vi.unstubAllEnvs());
 
 function withWindow<T>(fn: () => T): T {
   const original = (globalThis as { window?: unknown }).window;
@@ -17,11 +24,6 @@ function withWindow<T>(fn: () => T): T {
 }
 
 describe("resolveServerApiBase", () => {
-  afterEach(() => {
-    delete process.env.HARNESS_API_HTTP;
-    delete process.env.HARNESS_API_URL;
-  });
-
   it("falls back to the local default when nothing is set", () => {
     expect(resolveServerApiBase()).toBe("http://127.0.0.1:7420");
   });
@@ -49,10 +51,6 @@ describe("resolveServerApiBase", () => {
 });
 
 describe("apiBase", () => {
-  afterEach(() => {
-    delete process.env.HARNESS_API_HTTP;
-  });
-
   it("returns empty string in the browser (same-origin)", () => {
     withWindow(() => {
       expect(apiBase()).toBe("");
@@ -66,10 +64,6 @@ describe("apiBase", () => {
 });
 
 describe("apiGet", () => {
-  afterEach(() => {
-    delete process.env.HARNESS_API_HTTP;
-  });
-
   it("returns parsed JSON on success", async () => {
     process.env.HARNESS_API_HTTP = "http://example.test:9005";
     const original = globalThis.fetch;

@@ -2,10 +2,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    // GitHub-hosted standard runners give 2 vCPUs; pin the shared worker pool to match instead
-    // of letting Vitest's default (`availableParallelism() - 1`) over-subscribe and thrash.
-    maxWorkers: process.env.CI ? 2 : undefined,
-    minWorkers: process.env.CI ? 2 : undefined,
+    // Cap the shared worker pool at 2: GitHub-hosted standard runners have 2 vCPUs, and a
+    // larger local pool contends against the single DynamoDB Local endpoint used by tests.
+    // Leave the minimum unset so focused runs can still request `--maxWorkers=1`.
+    maxWorkers: 2,
     projects: [
       {
         // Next preserves JSX for its own compiler; direct server-component tests need
