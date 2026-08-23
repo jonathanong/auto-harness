@@ -95,15 +95,9 @@ describe("session drain transactional audits", () => {
     setDurableReadStorage(state, {
       getSessionDrainOperation: async () => failed,
       getSessionDrain: async () => failed,
-      releaseSessionDrain: async (
-        _repositoryId: string,
-        _principalId: string,
-        _operationId: string,
-        _now: string,
-        audit: unknown,
-      ) => {
+      releaseSessionDrain: async (released: SessionDrainRecord, audit: unknown) => {
         releaseAudits.push(audit);
-        return { ...failed, status: "released" as const };
+        return released;
       },
     });
 

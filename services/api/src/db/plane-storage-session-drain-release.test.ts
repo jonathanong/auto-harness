@@ -101,36 +101,25 @@ describe("session drain update and release races", () => {
   it("classifies release outcomes without hiding transport failures", async () => {
     await expect(
       releaseSessionDrain(
-        ctx(async (command) =>
-          "TransactItems" in (command.input ?? {}) ? {} : { Item: record({ status: "released" }) },
-        ),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        ctx(async () => ({})),
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
         audit(),
       ),
     ).resolves.toMatchObject({ status: "released" });
     await expect(
       releaseSessionDrain(
         ctx(async () => ({})),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
         audit(),
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ status: "released", operationId: "operation" });
     await expect(
       releaseSessionDrain(
         ctx(async (command) => {
           if (command.input?.ConsistentRead) return {};
           throw conditional;
         }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
         audit(),
       ),
     ).resolves.toBeNull();
@@ -139,13 +128,26 @@ describe("session drain update and release races", () => {
         ctx(async () => {
           throw new Error("offline");
         }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
         audit(),
       ),
     ).rejects.toThrow("offline");
+  });
+
+  it("returns the released operation snapshot without rereading a replacement current drain", async () => {
+    let calls = 0;
+    const released = record({ status: "released", releasedAt: "now", updatedAt: "now" });
+    await expect(
+      releaseSessionDrain(
+        ctx(async () => {
+          calls += 1;
+          return calls === 1 ? {} : { Item: record({ operationId: "replacement" }) };
+        }),
+        released,
+        audit(),
+      ),
+    ).resolves.toEqual(released);
+    expect(calls).toBe(1);
   });
 
   it("replays an already-released operation without accepting a different owner", async () => {
@@ -163,10 +165,7 @@ describe("session drain update and release races", () => {
             Item: record({ status: "released", operationId: "operation", releasedAt: "released" }),
           };
         }),
-        "repo",
-        "principal",
-        "operation",
-        "retry",
+        record({ status: "released", releasedAt: "retry", updatedAt: "retry" }),
         audit(),
       ),
     ).resolves.toMatchObject({ status: "released", releasedAt: "released" });
@@ -179,10 +178,7 @@ describe("session drain update and release races", () => {
           if (call === 1) throw conditional;
           return { Item: record({ status: "released", operationId: "different" }) };
         }),
-        "repo",
-        "principal",
-        "operation",
-        "retry",
+        record({ status: "released", releasedAt: "retry", updatedAt: "retry" }),
         audit(),
       ),
     ).resolves.toBeNull();

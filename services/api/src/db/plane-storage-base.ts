@@ -187,20 +187,10 @@ export class DynamoPlaneStorageBase {
   }
 
   releaseSessionDrain(
-    repositoryId: string,
-    principalId: string,
-    operationId: string,
-    now: string,
+    released: SessionDrainRecord,
     audit: import("../audit-types.ts").AuditLogRecord,
   ): Promise<SessionDrainRecord | null> {
-    return sessionDrains.releaseSessionDrain(
-      this.ctx,
-      repositoryId,
-      principalId,
-      operationId,
-      now,
-      audit,
-    );
+    return sessionDrains.releaseSessionDrain(this.ctx, released, audit);
   }
 
   putUsageRecord(

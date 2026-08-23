@@ -429,10 +429,7 @@ export async function claimSessionDrainReconcile(
 
 export async function releaseSessionDrain(
   ctx: PlaneStorageCtx,
-  repositoryId: string,
-  principalId: string,
-  operationId: string,
-  now: string,
+  released: SessionDrainRecord,
   audit: AuditLogRecord,
 ): Promise<SessionDrainRecord | null> {
   try {
@@ -443,7 +440,7 @@ export async function releaseSessionDrain(
             Update: {
               TableName: ctx.tables.sessionDrains,
               Key: {
-                scopeKey: sessionDrainScopeKey(repositoryId, principalId),
+                scopeKey: sessionDrainScopeKey(released.repositoryId, released.principalId),
                 recordKey: "CURRENT",
               },
               UpdateExpression: "SET #status = :released, releasedAt = :now, updatedAt = :now",
@@ -451,11 +448,11 @@ export async function releaseSessionDrain(
                 "operationId = :operationId AND #status IN (:succeeded, :failed)",
               ExpressionAttributeNames: { "#status": "status" },
               ExpressionAttributeValues: {
-                ":operationId": operationId,
+                ":operationId": released.operationId,
                 ":succeeded": "succeeded",
                 ":failed": "failed",
                 ":released": "released",
-                ":now": now,
+                ":now": released.updatedAt,
               },
             },
           },
@@ -463,11 +460,13 @@ export async function releaseSessionDrain(
         ],
       }),
     );
-    return getSessionDrain(ctx, repositoryId, principalId);
+    return released;
   } catch (error) {
     if (!isConditionalTransactionFailed(error)) throw error;
-    const current = await getSessionDrain(ctx, repositoryId, principalId);
-    return current?.operationId === operationId && current.status === "released" ? current : null;
+    const current = await getSessionDrain(ctx, released.repositoryId, released.principalId);
+    return current?.operationId === released.operationId && current.status === "released"
+      ? current
+      : null;
   }
 }
 

@@ -326,13 +326,7 @@ export async function releaseSessionDrainDurable(
     updatedAt: state.now(),
   };
   const audit = drainAuditRecord(releaseRecord, "release", actor, current.status);
-  const released = await state.storage.releaseSessionDrain(
-    repositoryId,
-    principalId,
-    operationId,
-    releaseRecord.updatedAt,
-    audit,
-  );
+  const released = await state.storage.releaseSessionDrain(releaseRecord, audit);
   if (released) state.auditLogs.set(audit.id, audit);
   return released;
 }
