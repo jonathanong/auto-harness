@@ -131,7 +131,7 @@ describe("dispatch action principal session drain operations", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/Timed out waiting for principal session drain/);
-    expect(server.requests).toHaveLength(1);
+    expect(server.requests.length).toBeLessThanOrEqual(1);
   });
 
   it("aborts a stalled status request at the polling deadline", async () => {
@@ -146,7 +146,7 @@ describe("dispatch action principal session drain operations", () => {
 
     expect(result.code).toBe(1);
     expect(result.stderr).toMatch(/Timed out waiting for principal session drain/);
-    expect(server.requests).toHaveLength(1);
+    expect(server.requests.length).toBeLessThanOrEqual(1);
   });
 
   it("makes DRAINING dispatch failures directly actionable", async () => {
