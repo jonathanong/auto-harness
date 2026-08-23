@@ -31,13 +31,13 @@ describe("client release workflow contract", () => {
     expect(publishJob).toContain("timeout-minutes: 20");
     expect(publishJob).toContain("environment: npm-publish");
     expect(publishJob).toContain("ref: main");
-    expect(publishJob).toContain("token: ${{ secrets.RELEASE_TOKEN }}");
+    expect(publishJob).toContain("RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}");
     expect(workflow.match(/\$\{\{ secrets\.RELEASE_TOKEN \}\}/g)).toEqual([
       "${{ secrets.RELEASE_TOKEN }}",
     ]);
     expect(publishJob).toContain("fetch-depth: 0");
     expect(publishJob).toContain("fetch-tags: true");
-    expect(publishJob).toContain("persist-credentials: true");
+    expect(publishJob).toContain("persist-credentials: false");
     expect(publishJob).toContain("git checkout --detach origin/main");
     expect(publishJob).not.toContain("github.sha");
     expect(publishJob).not.toContain("ref: ${{ github.ref }}");
@@ -49,22 +49,28 @@ describe("client release workflow contract", () => {
 
   it("resolves retries from an exact main tag and otherwise makes the chosen bump", () => {
     expect(publishJob).toContain("RUN_ATTEMPT: ${{ github.run_attempt }}");
+    expect(publishJob).toContain("RUN_ID: ${{ github.run_id }}");
     expect(publishJob).toContain("'' | *[!0-9]*) echo \"invalid GitHub run attempt");
     expect(publishJob).toContain("if (( RUN_ATTEMPT < 1 )); then");
     expect(publishJob).toContain('release_tag="client-v${manifest_version}"');
     expect(publishJob).toContain('"refs/tags/${release_tag}^{commit}"');
     expect(publishJob).toContain('if test "$tag_commit" = "$head_commit"; then');
-    expect(publishJob).toContain('release_mode="already-published"');
+    expect(publishJob).not.toContain('release_mode="already-published"');
     expect(publishJob).toContain('release_mode="retry-publish"');
+    expect(publishJob.match(/unpublished release belongs to another run/g)).toHaveLength(2);
+    expect(publishJob).toContain("Release client v${manifest_version} from GitHub Actions run");
     expect(publishJob.match(/if \(\( RUN_ATTEMPT > 1 \)\); then/g)).toHaveLength(2);
+    expect(publishJob.match(/rerun is already published or was superseded/g)).toHaveLength(2);
     expect(publishJob).toContain('git merge-base --is-ancestor "$tag_commit" "$head_commit"');
     expect(publishJob).toContain('git checkout --detach "$release_tag"');
     expect(publishJob).toContain('test "$(git rev-parse HEAD)" = "$tag_commit"');
     expect(publishJob).toContain("release tag is not an ancestor of current main");
     expect(publishJob).toContain("start_new_release");
     expect(publishJob).toContain(
-      'pnpm --dir modules/client version "$RELEASE_TYPE" --no-git-tag-version',
+      "fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2)",
     );
+    expect(publishJob).not.toContain("pnpm --dir modules/client version");
+    expect(publishJob).not.toContain("pnpm --dir modules/client pkg set");
     expect(publishJob).not.toContain("npm --prefix modules/client version");
     expect(publishJob).toContain(
       'npm view "$manifest_name@$1" version --json --registry=https://registry.npmjs.org',
@@ -77,6 +83,7 @@ describe("client release workflow contract", () => {
     const install = publishJob.indexOf("name: Install release snapshot");
     const validate = publishJob.indexOf("name: Validate package");
     const commit = publishJob.indexOf("name: Commit and tag release");
+    const push = publishJob.indexOf("name: Push release commit and tag");
     const publish = publishJob.indexOf("name: Publish with npm OIDC provenance");
 
     expect(publishJob).toContain("pnpm install --frozen-lockfile --ignore-scripts");
@@ -87,9 +94,11 @@ describe("client release workflow contract", () => {
     expect(publishJob).toContain('test "$(git diff --name-only)" = "modules/client/package.json"');
     expect(publishJob).toContain('git commit -m "release(client): v${RELEASE_VERSION}"');
     expect(publishJob).toContain('git tag --annotate "$RELEASE_TAG"');
+    expect(publishJob).toContain("Release client v${RELEASE_VERSION} from GitHub Actions run");
     expect(publishJob).toContain(
-      'git push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"',
+      'push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"',
     );
+    expect(publishJob).toContain("AUTHORIZATION: basic ${auth_header}");
     expect(publishJob).toContain(
       "npm publish --provenance --access public --registry=https://registry.npmjs.org",
     );
@@ -98,6 +107,7 @@ describe("client release workflow contract", () => {
     expect(install).toBeGreaterThan(resolve);
     expect(validate).toBeGreaterThan(install);
     expect(commit).toBeGreaterThan(validate);
-    expect(publish).toBeGreaterThan(commit);
+    expect(push).toBeGreaterThan(commit);
+    expect(publish).toBeGreaterThan(push);
   });
 });

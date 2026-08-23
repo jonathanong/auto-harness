@@ -27,14 +27,12 @@ jobs:
     timeout-minutes: 20
     environment: npm-publish
     steps:
-      # RELEASE_TOKEN is used only for Git transport. npm authentication remains OIDC.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: main
-          token: ${{ secrets.RELEASE_TOKEN }}
           fetch-depth: 0
           fetch-tags: true
-          persist-credentials: true
+          persist-credentials: false
       - name: Checkout current origin/main
         run: |
           set -euo pipefail
@@ -53,6 +51,7 @@ jobs:
         env:
           RELEASE_TYPE: ${{ inputs.release_type }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
 
@@ -69,6 +68,9 @@ jobs:
             echo "invalid GitHub run attempt: $RUN_ATTEMPT" >&2
             exit 1
           fi
+          case "$RUN_ID" in
+            '' | *[!0-9]*) echo "invalid GitHub run ID: $RUN_ID" >&2; exit 1 ;;
+          esac
 
           npm_version_exists() {
             local output_file="$RUNNER_TEMP/npm-version.json"
@@ -90,8 +92,24 @@ jobs:
               *) echo "unsupported release type: $RELEASE_TYPE" >&2; exit 1 ;;
             esac
 
-            pnpm --dir modules/client version "$RELEASE_TYPE" --no-git-tag-version
+            next_version="$(node -e '
+              const fs = require("node:fs");
+              const [manifestPath, version, releaseType] = process.argv.slice(1);
+              const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.exec(version);
+              if (!match) throw new Error("unsupported current version: " + version);
+              let [major, minor, patch] = match.slice(1).map(Number);
+              if (releaseType === "major") [major, minor, patch] = [major + 1, 0, 0];
+              if (releaseType === "minor") [minor, patch] = [minor + 1, 0];
+              if (releaseType === "patch") patch += 1;
+              const nextVersion = [major, minor, patch].join(".");
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+              if (manifest.version !== version) throw new Error("client manifest changed while resolving release");
+              manifest.version = nextVersion;
+              fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+              process.stdout.write(nextVersion);
+            ' modules/client/package.json "$manifest_version" "$RELEASE_TYPE")"
             manifest_version="$(node -p "require('./modules/client/package.json').version")"
+            test "$manifest_version" = "$next_version"
             release_tag="client-v${manifest_version}"
 
             if git rev-parse --verify --quiet "refs/tags/${release_tag}" >/dev/null; then
@@ -108,15 +126,22 @@ jobs:
           release_tag="client-v${manifest_version}"
           if git rev-parse --verify --quiet "refs/tags/${release_tag}^{commit}" >/dev/null; then
             tag_commit="$(git rev-parse "refs/tags/${release_tag}^{commit}")"
+            tag_subject="$(git for-each-ref --format='%(contents:subject)' "refs/tags/${release_tag}")"
+            expected_tag_subject="Release client v${manifest_version} from GitHub Actions run ${RUN_ID}"
             head_commit="$(git rev-parse HEAD)"
             if test "$tag_commit" = "$head_commit"; then
               if npm_version_exists "$manifest_version"; then
                 if (( RUN_ATTEMPT > 1 )); then
-                  release_mode="already-published"
+                  echo "rerun is already published or was superseded; start a fresh workflow dispatch for another release" >&2
+                  exit 1
                 else
                   start_new_release
                 fi
               else
+                if test "$tag_subject" != "$expected_tag_subject"; then
+                  echo "unpublished release belongs to another run; this run was superseded" >&2
+                  exit 1
+                fi
                 release_mode="retry-publish"
               fi
             else
@@ -126,11 +151,16 @@ jobs:
               fi
               if npm_version_exists "$manifest_version"; then
                 if (( RUN_ATTEMPT > 1 )); then
-                  release_mode="already-published"
+                  echo "rerun is already published or was superseded; start a fresh workflow dispatch for another release" >&2
+                  exit 1
                 else
                   start_new_release
                 fi
               else
+                if test "$tag_subject" != "$expected_tag_subject"; then
+                  echo "unpublished release belongs to another run; this run was superseded" >&2
+                  exit 1
+                fi
                 git checkout --detach "$release_tag"
                 test "$(git rev-parse HEAD)" = "$tag_commit"
                 release_mode="retry-publish"
@@ -144,12 +174,11 @@ jobs:
             echo "RELEASE_MODE=$release_mode"
             echo "RELEASE_VERSION=$manifest_version"
             echo "RELEASE_TAG=$release_tag"
+            echo "RELEASE_RUN_ID=$RUN_ID"
           } >> "$GITHUB_ENV"
       - name: Install release snapshot
-        if: env.RELEASE_MODE != 'already-published'
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Validate package
-        if: env.RELEASE_MODE != 'already-published'
         run: |
           set -euo pipefail
 
@@ -171,10 +200,19 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- modules/client/package.json
           git commit -m "release(client): v${RELEASE_VERSION}"
-          git tag --annotate "$RELEASE_TAG" --message "Release client v${RELEASE_VERSION}"
-          git push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"
+          git tag --annotate "$RELEASE_TAG" \
+            --message "Release client v${RELEASE_VERSION} from GitHub Actions run ${RELEASE_RUN_ID}"
+      - name: Push release commit and tag
+        if: env.RELEASE_MODE == 'new'
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          auth_header="$(printf 'x-access-token:%s' "$RELEASE_TOKEN" | base64 | tr -d '\n')"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth_header}" \
+            push --atomic origin HEAD:refs/heads/main "refs/tags/${RELEASE_TAG}"
       - name: Publish with npm OIDC provenance
-        if: env.RELEASE_MODE != 'already-published'
         run: |
           set -euo pipefail
 
