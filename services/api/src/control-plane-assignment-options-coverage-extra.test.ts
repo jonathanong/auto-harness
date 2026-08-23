@@ -108,6 +108,23 @@ describe("assignment optional-field coverage", () => {
     ]);
   });
 
+  it("uses legacy metadata ownership for the durable assignment drain fence", async () => {
+    const state = providerState();
+    state.sessions.set("s", session({ metadata: { createdBy: "principal-legacy" } }));
+    let assignedPrincipalId: string | undefined;
+    setDurableReadStorage(state, {
+      tryAssignSession: async (opts: { principalId?: string }) => {
+        assignedPrincipalId = opts.principalId;
+        return true;
+      },
+      expireQueuedSession: async () => false,
+      clearResumePin: async () => true,
+    });
+
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(assignedPrincipalId).toBe("principal-legacy");
+  });
+
   it("keeps a future pin when durable clearing loses the fence", async () => {
     const state = providerState();
     state.sessions.set(

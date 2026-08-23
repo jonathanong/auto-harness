@@ -120,4 +120,22 @@ describe("scheduled assignment branch coverage", () => {
     await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
     expect(calls).toEqual(["map", "map-ok", "claim-lost"]);
   });
+
+  it("uses legacy metadata ownership for the durable main-checkout drain fence", async () => {
+    const state = baseState();
+    addHost(state, "host", "connection");
+    state.sessions.set("run", queued("run", { metadata: { createdBy: "principal-legacy" } }));
+    let assignedPrincipalId: string | undefined;
+    setDurableReadStorage(state, {
+      getMainCheckoutCursor: async () => null,
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { principalId?: string }) => {
+        assignedPrincipalId = opts.principalId;
+        return true;
+      },
+    });
+
+    await expect(assignScheduledQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(assignedPrincipalId).toBe("principal-legacy");
+  });
 });

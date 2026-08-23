@@ -8,6 +8,7 @@ import {
 
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 import { isConditionalFailed, isConditionalTransactionFailed } from "./plane-storage-types.ts";
+import { markerConditions, withMarkerTable } from "./plane-storage-deletion-markers.ts";
 
 export function sessionDrainScopeKey(repositoryId: string, principalId: string): string {
   return `${encodeURIComponent(repositoryId)}#${encodeURIComponent(principalId)}`;
@@ -77,6 +78,19 @@ export async function createOrGetSessionDrain(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          ...withMarkerTable(
+            ctx,
+            markerConditions([
+              { key: `repository:${record.repositoryId}`, now: record.requestedAt },
+            ]),
+          ),
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: record.repositoryId },
+              ConditionExpression: "attribute_exists(id)",
+            },
+          },
           {
             Put: {
               TableName: ctx.tables.sessionDrains,
@@ -126,11 +140,13 @@ export async function updateSessionDrain(
           Put: {
             TableName: ctx.tables.sessionDrains,
             Item: { ...record, scopeKey, recordKey },
-            ConditionExpression: "operationId = :operationId AND #status = :draining",
+            ConditionExpression:
+              "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount",
             ExpressionAttributeNames: { "#status": "status" },
             ExpressionAttributeValues: {
               ":operationId": record.operationId,
               ":draining": "draining",
+              ":cancelledCount": record.cancelledCount,
             },
           },
         })),

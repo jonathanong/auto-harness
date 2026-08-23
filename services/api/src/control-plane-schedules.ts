@@ -78,6 +78,7 @@ function preparePutSchedule(
   const rec: ScheduleRecord = {
     id,
     repositoryId: input.repositoryId,
+    ...(input.principalId ? { principalId: input.principalId } : {}),
     name: input.name,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
@@ -89,6 +90,7 @@ function preparePutSchedule(
     nextRunAt,
     lastRunAt: null,
     createdAt: now,
+    ...(input.principalId !== undefined ? { principalId: input.principalId } : {}),
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId,
     ...(input.principalId !== undefined ? { principalId: input.principalId } : {}),
@@ -161,6 +163,9 @@ export function prepareUpdateSchedule(
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const existing = state.schedules.get(id);
   if (!existing) return { ok: false, error: "schedule not found" };
+  if (existing.principalId && patch.principalId && patch.principalId !== existing.principalId) {
+    return { ok: false, error: "schedule ownership cannot be transferred" };
+  }
   const now = state.now();
   if (!isValidUtcTimestamp(now)) {
     return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };

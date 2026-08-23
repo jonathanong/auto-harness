@@ -812,15 +812,18 @@ export async function cancelQueuedSession(
     completedAt: string;
     errorMessage: string;
     concurrencyId?: string;
+    drainOperationId?: string;
   },
 ): Promise<boolean> {
+  const drainUpdate = opts.drainOperationId
+    ? ", cancelledByDrainOperationId = :drainOperationId"
+    : "";
   const items: Array<Record<string, unknown>> = [
     {
       Update: {
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null REMOVE reconnectDeadlineAt, assignmentConnectionId",
+        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage, worktreeId = :null, hostId = :null${drainUpdate} REMOVE reconnectDeadlineAt, assignmentConnectionId`,
         ConditionExpression: "#s = :queued",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
@@ -830,6 +833,7 @@ export async function cancelQueuedSession(
           ":completedAt": opts.completedAt,
           ":errorMessage": opts.errorMessage,
           ":null": null,
+          ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
         },
       },
     },
@@ -867,15 +871,18 @@ export async function cancelRunningSession(
     queueShard: number;
     completedAt: string;
     errorMessage: string;
+    drainOperationId?: string;
   },
 ): Promise<boolean> {
+  const drainUpdate = opts.drainOperationId
+    ? ", cancelledByDrainOperationId = :drainOperationId"
+    : "";
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage",
+        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, errorMessage = :errorMessage${drainUpdate}`,
         ConditionExpression:
           "#s = :running AND worktreeId = :worktreeId AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId",
         ExpressionAttributeNames: { "#s": "status" },
@@ -889,6 +896,7 @@ export async function cancelRunningSession(
           ":hostId": opts.hostId,
           ":connectionId": opts.connectionId,
           ":attemptId": opts.attemptId,
+          ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
         },
       }),
     );

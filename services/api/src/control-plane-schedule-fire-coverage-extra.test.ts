@@ -64,8 +64,15 @@ describe("schedule fire residual coverage", () => {
     });
   });
 
+  it("rejects an ownerless legacy schedule before a durable manual trigger", async () => {
+    await expect(triggerScheduleDurable(state(schedule()), "nightly")).resolves.toEqual({
+      ok: false,
+      error: "schedule must be claimed by an authenticated principal",
+    });
+  });
+
   it("rejects an invalid persisted cursor before a durable claim", async () => {
-    const current = state(schedule({ nextRunAt: "not-a-time" }));
+    const current = state(schedule({ nextRunAt: "not-a-time", principalId: "principal" }));
     await expect(triggerScheduleDurable(current, "nightly")).resolves.toEqual({
       ok: false,
       error: "invalid schedule cron or timestamp",
@@ -77,14 +84,28 @@ describe("schedule fire residual coverage", () => {
   });
 
   it("returns null when a durable fire loses the schedule cursor", async () => {
-    const current = state(schedule(), {
+    const current = state(schedule({ principalId: "principal" }), {
       tryClaimScheduleAndCreateSession: async () => ({ kind: "stale" }),
     });
     await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
   });
 
   it("returns null when a claimed schedule no longer has a valid cron", async () => {
-    const current = state(schedule({ cron: "invalid" }));
+    const current = state(schedule({ cron: "invalid", principalId: "principal" }));
     await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
+  });
+
+  it("leaves an ownerless legacy schedule due until an authenticated update claims it", async () => {
+    let claims = 0;
+    const current = state(schedule(), {
+      tryClaimScheduleAndCreateSession: async () => {
+        claims += 1;
+        return { kind: "created" };
+      },
+    });
+
+    await expect(evaluateCronDurable(current, NOW)).resolves.toEqual([]);
+    expect(claims).toBe(0);
+    expect(current.schedules.get("nightly")?.nextRunAt).toBe(NOW);
   });
 });

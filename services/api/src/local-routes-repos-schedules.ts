@@ -405,6 +405,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       const result = await plane.putScheduleDurable({
         repositoryId: body.repositoryId,
+        ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
         name: body.name,
         target: body.target,
         ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
@@ -676,6 +677,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
           ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+          ...(ctx.principal && !existing?.principalId ? { principalId: ctx.principal.id } : {}),
         });
         if (!result.ok) {
           if (

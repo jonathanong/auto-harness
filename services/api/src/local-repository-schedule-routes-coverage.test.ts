@@ -186,6 +186,7 @@ describe("repository and schedule route coverage", () => {
         throw new Error("claim failed");
       },
     });
+    plane.state.schedules.get("schedule")!.principalId = "principal";
     const response = await invoke(plane, "POST", "/api/v1/schedules/schedule/trigger", {});
     expect(response).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });

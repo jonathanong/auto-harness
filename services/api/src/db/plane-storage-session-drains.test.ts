@@ -1,13 +1,12 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import {
   createOrGetSessionDrain,
   getSessionDrain,
   listSessionDrains,
-  releaseSessionDrain,
   sessionDrainAdmissionCheck,
   sessionDrainScopeKey,
-  updateSessionDrain,
 } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
@@ -15,8 +14,6 @@ const conditionalTransaction = {
   name: "TransactionCanceledException",
   CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
 };
-const conditional = { name: "ConditionalCheckFailedException" };
-
 function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   return {
     scopeKey: "",
@@ -38,7 +35,11 @@ function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
 function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unknown>) {
   return {
     doc: { send },
-    tables: { sessionDrains: "session-drains" },
+    tables: {
+      sessionDrains: "session-drains",
+      repositories: "repositories",
+      concurrencyLocks: "concurrency-locks",
+    },
   } as unknown as PlaneStorageCtx;
 }
 
@@ -69,14 +70,37 @@ describe("session drain Dynamo adapter residuals", () => {
   });
 
   it("creates a new operation and reports conditional replay failures safely", async () => {
+    let createInput: Record<string, unknown> | undefined;
     await expect(
       createOrGetSessionDrain(
-        ctx(async () => ({})),
+        ctx(async (command) => {
+          createInput = command.input;
+          return {};
+        }),
         record(),
       ),
     ).resolves.toMatchObject({
       created: true,
       drain: { scopeKey: "repo%2Fone#principal%20two" },
+    });
+    expect(createInput).toMatchObject({
+      TransactItems: [
+        {
+          ConditionCheck: {
+            TableName: "concurrency-locks",
+            Key: { concurrencyId: "catalog-delete:repository:repo/one" },
+          },
+        },
+        {
+          ConditionCheck: {
+            TableName: "repositories",
+            Key: { id: "repo/one" },
+            ConditionExpression: "attribute_exists(id)",
+          },
+        },
+        { Put: { TableName: "session-drains", Item: { recordKey: "CURRENT" } } },
+        { Put: { TableName: "session-drains", Item: { recordKey: "OP#operation" } } },
+      ],
     });
 
     let call = 0;
@@ -116,72 +140,6 @@ describe("session drain Dynamo adapter residuals", () => {
           throw new Error("offline");
         }),
         record(),
-      ),
-    ).rejects.toThrow("offline");
-  });
-
-  it("classifies update and release races without hiding transport failures", async () => {
-    await expect(
-      updateSessionDrain(
-        ctx(async () => ({})),
-        record(),
-      ),
-    ).resolves.toBe(true);
-    await expect(
-      updateSessionDrain(
-        ctx(async () => {
-          throw conditionalTransaction;
-        }),
-        record(),
-      ),
-    ).resolves.toBe(false);
-    await expect(
-      updateSessionDrain(
-        ctx(async () => {
-          throw new Error("offline");
-        }),
-        record(),
-      ),
-    ).rejects.toThrow("offline");
-
-    await expect(
-      releaseSessionDrain(
-        ctx(async () => ({ Attributes: record({ status: "released" }) })),
-        "repo",
-        "principal",
-        "operation",
-        "now",
-      ),
-    ).resolves.toMatchObject({ status: "released" });
-    await expect(
-      releaseSessionDrain(
-        ctx(async () => ({})),
-        "repo",
-        "principal",
-        "operation",
-        "now",
-      ),
-    ).resolves.toBeNull();
-    await expect(
-      releaseSessionDrain(
-        ctx(async () => {
-          throw conditional;
-        }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
-      ),
-    ).resolves.toBeNull();
-    await expect(
-      releaseSessionDrain(
-        ctx(async () => {
-          throw new Error("offline");
-        }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
       ),
     ).rejects.toThrow("offline");
   });

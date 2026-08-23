@@ -157,6 +157,11 @@ While fenced, direct create, clone, resume, schedule fire, and assignment lose a
 normal fenced `session:cancel` message and remains part of progress until its exact lease is
 released. Prompts, logs, metadata, and credentials never enter drain progress or audit metadata.
 
+Durable schedules have an authenticated owner. Legacy schedules created before ownership was
+persisted are deliberately inert: durable manual trigger and cron do not mint sessions or advance
+their cursor until an authenticated, repository-scoped schedule edit claims ownership for that
+principal. The owner is derived from authentication and cannot be supplied in schedule JSON.
+
 This is distinct from repository drain above (all principals) and host update drain (one host,
 running work finishes). It requires `sessions:write`; repository scope and principal ownership are
 always derived from authentication and cannot be supplied in the request.

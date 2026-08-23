@@ -231,6 +231,7 @@ export class DynamoPlaneStorageBase {
     completedAt: string;
     deadlineAt: string;
     errorMessage: string;
+    drainOperationId?: string;
   }): Promise<boolean> {
     return mainCheckout.cancelRunningMainCheckoutSession(this.ctx, opts);
   }
@@ -336,6 +337,7 @@ export class DynamoPlaneStorageBase {
     completedAt: string;
     errorMessage: string;
     concurrencyId?: string;
+    drainOperationId?: string;
   }): Promise<boolean> {
     return sessions.cancelQueuedSession(this.ctx, opts);
   }

@@ -56,14 +56,14 @@ export async function reconcileSessionDrainDurable(
   const sessions = (await state.storage.listAllSessions(true)).filter((session) =>
     belongsToScope(session, drain.repositoryId, drain.principalId),
   );
-  let cancelledCount = drain.cancelledCount;
   for (const session of sessions
     .filter((candidate) => candidate.status === "queued" || candidate.status === "running")
     .slice(0, MAX_CANCELLATIONS_PER_RECONCILE)) {
     state.sessions.set(session.id, { ...session });
-    const result = await cancelSessionDurable(state, session.id);
+    const result = await cancelSessionDurable(state, session.id, {
+      drainOperationId: drain.operationId,
+    });
     if (result.ok) {
-      cancelledCount += 1;
       await appendAuditLog(state, {
         actor: SYSTEM_AUDIT_ACTOR,
         action: "session-drain:cancel",
@@ -90,6 +90,10 @@ export async function reconcileSessionDrainDurable(
     belongsToScope(session, drain.repositoryId, drain.principalId),
   );
   const queuedCount = authoritative.filter((session) => session.status === "queued").length;
+  const cancelledCount = authoritative.filter(
+    (session) =>
+      session.status === "cancelled" && session.cancelledByDrainOperationId === drain.operationId,
+  ).length;
   const runningCount = authoritative.filter(
     (session) =>
       session.status === "running" ||

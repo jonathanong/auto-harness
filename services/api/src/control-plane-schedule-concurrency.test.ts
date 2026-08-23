@@ -18,6 +18,7 @@ function makeDurableSchedulePlane() {
   plane.createRepository({ id: "repo-1", name: "repo-1", url: "r" });
   const schedule = putScheduleOrThrow(plane, {
     repositoryId: "repo-1",
+    principalId: "principal-1",
     name: "nightly",
     target: { commandId: "cmd-base" },
     cron: "* * * * *",

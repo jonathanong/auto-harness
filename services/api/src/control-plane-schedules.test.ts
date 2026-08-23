@@ -1,9 +1,30 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { putScheduleOrThrow, seedBaseCommand } from "./control-plane-test-helpers.ts";
 
 describe("schedule routing policy", () => {
+  it("allows one legacy ownership claim but rejects ownership transfer", () => {
+    const plane = new ControlPlane();
+    seedBaseCommand(plane);
+    const schedule = putScheduleOrThrow(plane, {
+      repositoryId: "repo-1",
+      name: "legacy",
+      target: { commandId: "cmd-base" },
+      cron: "* * * * *",
+      timeout: 1,
+    });
+    expect(plane.updateSchedule(schedule.id, { principalId: "principal-a" })).toMatchObject({
+      ok: true,
+      schedule: { principalId: "principal-a" },
+    });
+    expect(plane.updateSchedule(schedule.id, { principalId: "principal-b" })).toEqual({
+      ok: false,
+      error: "schedule ownership cannot be transferred",
+    });
+  });
+
   it("rejects non-branch schedule refs at create and update", () => {
     const plane = new ControlPlane();
     seedBaseCommand(plane);

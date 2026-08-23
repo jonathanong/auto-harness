@@ -106,4 +106,39 @@ describe("session drain residual outcomes", () => {
     });
     await expect(getSessionDrainDurable(state, "repo", "principal", "missing")).resolves.toBeNull();
   });
+
+  it("recomputes cancellation counts from durable attribution after a lost update", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const session = queuedLegacy();
+    let durableDrain = drain();
+    let updateCalls = 0;
+    state.sessions.set(session.id, session);
+    setDurableReadStorage(state, {
+      getSession: async () => ({ ...session }),
+      listAllSessions: async () => [{ ...session }],
+      cancelQueuedSession: async (options: { drainOperationId?: string }) => {
+        if (session.status !== "queued") return false;
+        session.status = "cancelled";
+        session.cancelledByDrainOperationId = options.drainOperationId;
+        return true;
+      },
+      updateSessionDrain: async (updated: SessionDrainRecord) => {
+        updateCalls += 1;
+        if (updateCalls === 1) return false;
+        durableDrain = { ...updated };
+        return true;
+      },
+      getSessionDrainOperation: async () => durableDrain,
+    });
+
+    const first = await reconcileSessionDrainDurable(state, drain());
+    expect(first).toMatchObject({ status: "draining", cancelledCount: 0 });
+
+    const recovered = await reconcileSessionDrainDurable(state, first);
+    expect(recovered).toMatchObject({
+      status: "succeeded",
+      cancelledCount: 1,
+    });
+    expect(session.cancelledByDrainOperationId).toBe("operation");
+  });
 });

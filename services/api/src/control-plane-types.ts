@@ -84,7 +84,9 @@ export type ControlPlaneOptions = {
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
 };
 
-export type PublicSession = Omit<SessionRecord, "principalId"> & { url: string };
+export type PublicSession = Omit<SessionRecord, "principalId" | "cancelledByDrainOperationId"> & {
+  url: string;
+};
 
 export type PendingAck = {
   sessionId: string;

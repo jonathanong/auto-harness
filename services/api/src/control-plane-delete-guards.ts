@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import type { TargetRef } from "@auto-harness/shared";
 import { isActiveSessionStatus } from "@auto-harness/shared";
 
@@ -17,7 +18,8 @@ export type DeleteDependency = {
     | "provider-account"
     | "command"
     | "worktree"
-    | "host-inventory";
+    | "host-inventory"
+    | "session-drain";
   id: string;
   status?: string;
   /** Precise location when a host inventory's provider-account command override owns the ref. */
@@ -40,6 +42,12 @@ export type DeleteReferences = {
     fallbacks: TargetRef[];
   }>;
   sessions: ReadonlyArray<SessionRecord>;
+  sessionDrains: ReadonlyArray<{
+    recordKey: string;
+    operationId: string;
+    repositoryId: string;
+    status: string;
+  }>;
   worktrees: ReadonlyArray<{ id: string; repositoryId: string }>;
   inventories: ReadonlyArray<{
     hostId: string;
@@ -62,6 +70,7 @@ export function referencesFromState(state: ControlPlaneState): DeleteReferences 
   return {
     schedules: [...state.schedules.values()],
     sessions: [...state.sessions.values()],
+    sessionDrains: [],
     worktrees: [...state.worktrees.values()],
     inventories: [...state.hostInventories.values()],
     providers: [...state.providers.values()],
@@ -73,17 +82,35 @@ export function referencesFromState(state: ControlPlaneState): DeleteReferences 
 /** Fetch the objects which can hold a live catalog reference before a durable delete. */
 export async function refreshDeleteReferences(state: ControlPlaneState): Promise<DeleteReferences> {
   if (!state.storage) return referencesFromState(state);
-  const [schedules, sessions, worktrees, inventories, providers, accounts, commands] =
-    await Promise.all([
-      state.storage.listSchedules(),
-      state.storage.listAllSessions(true),
-      state.storage.listAllWorktrees(true),
-      state.storage.listHostInventories(),
-      state.storage.listProviders(),
-      state.storage.listProviderAccounts(),
-      state.storage.listCommands(),
-    ]);
-  return { schedules, sessions, worktrees, inventories, providers, accounts, commands };
+  const [
+    schedules,
+    sessions,
+    sessionDrains,
+    worktrees,
+    inventories,
+    providers,
+    accounts,
+    commands,
+  ] = await Promise.all([
+    state.storage.listSchedules(),
+    state.storage.listAllSessions(true),
+    state.storage.listSessionDrains(),
+    state.storage.listAllWorktrees(true),
+    state.storage.listHostInventories(),
+    state.storage.listProviders(),
+    state.storage.listProviderAccounts(),
+    state.storage.listCommands(),
+  ]);
+  return {
+    schedules,
+    sessions,
+    sessionDrains,
+    worktrees,
+    inventories,
+    providers,
+    accounts,
+    commands,
+  };
 }
 
 export function dependenciesForProvider(refs: DeleteReferences, id: string): DeleteDependency[] {
@@ -145,6 +172,16 @@ export function dependenciesForRepository(refs: DeleteReferences, id: string): D
     ...live(refs.sessions)
       .filter((session) => session.repositoryId === id)
       .map(sessionDependency),
+    ...refs.sessionDrains
+      .filter(
+        (drain) =>
+          drain.recordKey === "CURRENT" && drain.repositoryId === id && drain.status !== "released",
+      )
+      .map((drain) => ({
+        kind: "session-drain" as const,
+        id: drain.operationId,
+        status: drain.status,
+      })),
     ...refs.worktrees
       .filter((worktree) => worktree.repositoryId === id)
       .map((worktree) => ({ kind: "worktree" as const, id: worktree.id })),
@@ -163,7 +200,6 @@ export function deleteConflict(subject: string, dependencies: DeleteDependency[]
     error: `cannot delete ${subject}; referenced by ${dependencies.map(deleteDependencyLabel).join(", ")}`,
   };
 }
-
 const live = (sessions: ReadonlyArray<SessionRecord>) =>
   sessions.filter((session) => isActiveSessionStatus(session.status));
 const sessionDependency = (session: SessionRecord): DeleteDependency => ({

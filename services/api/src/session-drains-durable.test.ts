@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
+import { reconcileSessionDrainDurable } from "./control-plane-session-drains.ts";
 import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
@@ -123,6 +124,17 @@ describe("principal-scoped durable session drains", () => {
       cancelledCount: 1,
     });
     expect((await ctx.storage.getSession(initialId))?.status).toBe("cancelled");
+    expect(await ctx.storage.getSession(initialId)).toMatchObject({
+      cancelledByDrainOperationId: "principal-drain-operation",
+    });
+    const cancelledPublic = await invoke(
+      "GET",
+      `/api/v1/sessions/${initialId}`,
+      undefined,
+      principalA.apiKey,
+    );
+    expect(cancelledPublic.status).toBe(200);
+    expect(cancelledPublic.json).not.toHaveProperty("cancelledByDrainOperationId");
 
     const replay = await invoke(
       "POST",
@@ -291,6 +303,7 @@ describe("principal-scoped durable session drains", () => {
     expect(await ctx.storage.getSession("session-drain-running")).toMatchObject({
       status: "cancelled",
       worktreeId: "worktree-drain-running",
+      cancelledByDrainOperationId: "running-drain-operation",
     });
     expect((await ctx.storage.getSession("session-other-principal"))?.status).toBe("queued");
 
@@ -313,6 +326,57 @@ describe("principal-scoped durable session drains", () => {
         "running-drain-operation",
       ),
     ).resolves.toMatchObject({ status: "succeeded", runningCount: 0, cancelledCount: 1 });
+  });
+
+  it("counts cancellations exactly once across concurrent reconcilers", async () => {
+    if (!ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const repositoryId = "repo-drain-concurrent-count";
+    await putActiveTestRepository(ctx.storage, repositoryId);
+    await ctx.storage.putSession(
+      session("session-drain-concurrent-a", repositoryId, "principal-concurrent"),
+    );
+    await ctx.storage.putSession(
+      session("session-drain-concurrent-b", repositoryId, "principal-concurrent"),
+    );
+    const { plane: first } = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    const { plane: second } = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+    const operationId = "concurrent-count-operation";
+    await ctx.storage.createOrGetSessionDrain({
+      scopeKey: "",
+      recordKey: "",
+      operationId,
+      repositoryId,
+      principalId: "principal-concurrent",
+      status: "draining",
+      requestedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      deadlineAt: "2026-01-01T00:15:00.000Z",
+      queuedCount: 2,
+      runningCount: 0,
+      cancelledCount: 0,
+    });
+    const current = await ctx.storage.getSessionDrain(repositoryId, "principal-concurrent");
+    if (!current) throw new Error("expected concurrent drain");
+    await Promise.all([
+      reconcileSessionDrainDurable(first.state, current),
+      reconcileSessionDrainDurable(second.state, current),
+    ]);
+    await expect(
+      ctx.storage.getSessionDrainOperation(repositoryId, "principal-concurrent", operationId),
+    ).resolves.toMatchObject({ status: "succeeded", cancelledCount: 2 });
   });
 
   it("blocks assignment for a session queued before the drain fence commits", async () => {
@@ -380,6 +444,46 @@ describe("principal-scoped durable session drains", () => {
         "assignment-drain-operation",
       ),
     ).resolves.toMatchObject({ status: "released" });
+  });
+
+  it("blocks repository deletion until its current drain is explicitly released", async () => {
+    if (!ctx.storage) {
+      expect(true).toBe(true);
+      return;
+    }
+    const repositoryId = "repo-drain-delete-fence";
+    await putActiveTestRepository(ctx.storage, repositoryId);
+    const { plane } = await createControlPlane({
+      tablePrefix: ctx.prefix,
+      skipEnsureTables: true,
+      sessionDrainIdFactory: () => "delete-fence-operation",
+      now: () => "2026-01-01T00:00:00.000Z",
+      shardCount: 1,
+    });
+
+    const started = await plane.createSessionDrainDurable(repositoryId, "principal-delete-fence");
+    expect(started).toMatchObject({ drain: { status: "succeeded" } });
+    if (!("drain" in started)) throw new Error("expected a created drain");
+    await expect(plane.deleteRepositoryDurable(repositoryId)).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+      dependencies: [
+        {
+          kind: "session-drain",
+          id: started.drain.operationId,
+          status: "succeeded",
+        },
+      ],
+    });
+
+    await expect(
+      plane.releaseSessionDrainDurable(
+        repositoryId,
+        "principal-delete-fence",
+        started.drain.operationId,
+      ),
+    ).resolves.toMatchObject({ status: "released" });
+    await expect(plane.deleteRepositoryDurable(repositoryId)).resolves.toEqual({ ok: true });
   });
 
   it("replays an idempotency key after release and explicitly releases failed drains", async () => {
@@ -542,6 +646,9 @@ describe("principal-scoped durable session drains", () => {
       drain: { status: "draining", runningCount: 1, cancelledCount: 1 },
     });
     expect(outbound).toContainEqual({ type: "session:cancel", sessionId: assigned.id });
+    expect(await ctx.storage.getSession(assigned.id)).toMatchObject({
+      cancelledByDrainOperationId: "operation-drain-main",
+    });
     await expect(
       plane.handleHostMessageDurable(
         {

@@ -15,6 +15,7 @@ import {
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
+import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -112,12 +113,13 @@ export async function assignScheduledQueuedDurable(
         const target = resolveScheduledSessionTarget(state, catalog, session, hostId);
         if (!target) continue;
         const attemptId = state.attemptIdFactory();
+        const principalId = sessionPrincipalId(session);
         const won = state.storage
           ? (await state.storage.ensureMainCheckoutLeaseMap(hostId, connectionId)) &&
             (await state.storage.tryAssignMainCheckoutSession({
               sessionId: session.id,
               hostId,
-              ...(session.principalId ? { principalId: session.principalId } : {}),
+              ...(principalId ? { principalId } : {}),
               hostInventoryVersion: state.hostInventories.has(hostId)
                 ? (state.hostInventories.get(hostId)!.version ?? 0)
                 : null,

@@ -81,6 +81,9 @@ export async function triggerScheduleDurable(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  if (!schedule.principalId) {
+    return { ok: false, error: "schedule must be claimed by an authenticated principal" };
+  }
   const repository = await getRepositoryDurable(state, schedule.repositoryId);
   if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
     return { ok: false, error: "repository admission is closed" };
@@ -228,7 +231,12 @@ export async function tryClaimScheduleFireDurable(
   }
   await refreshTargetCatalogDurable(state);
   const schedule = await getScheduleDurable(state, scheduleId);
-  if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
+  if (
+    !schedule ||
+    !schedule.enabled ||
+    !schedule.principalId ||
+    schedule.nextRunAt !== expectedNextRunAt
+  ) {
     return null;
   }
   const newNextRunAt = nextRunAt(schedule, nowIso);
