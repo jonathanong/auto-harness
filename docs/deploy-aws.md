@@ -256,9 +256,11 @@ The first revision containing the principal session-drain activity ledger has a
 one-time mixed-version constraint. Before running `update`, stop external session
 admission and disable the environment's EventBridge cron rule. Wait for in-flight
 REST, WebSocket, and cron Lambda invocations to finish, then keep that gate in
-place while `update` replaces every runtime writer. A new runtime cold start
-strongly backfills active owned sessions and publishes the ledger readiness
-marker only after the scan completes. Verify the `SessionDrains` table contains
+place while `update` replaces every runtime writer. The EventBridge scheduler
+then performs the strongly-consistent backfill in durable, fenced pages and
+publishes the ledger readiness marker only after its final checkpoint. REST and
+WebSocket cold starts never scan session history; drain admission fails closed
+while the marker is absent. Verify the `SessionDrains` table contains
 `scopeKey=__session-drain-ledger__` and `recordKey=ACTIVITY-V1`, then re-enable
 cron and external admission.
 

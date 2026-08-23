@@ -6,6 +6,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import { releaseWorktree } from "./control-plane-worktree-release.ts";
+import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 /** Persist a queued cancellation and its lock release as one durable transition. */
 export async function cancelSessionDurable(
@@ -23,6 +24,7 @@ export async function cancelSessionDurable(
   const expectedAssignment = cached ? { ...cached } : undefined;
   const session = await getSessionDurable(state, id);
   if (!session) return { ok: false, error: "session not found" };
+  const drainScope = options.drainOperationId ? sessionPrincipalId(session) : undefined;
   if (isTerminalSessionStatus(session.status)) {
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
@@ -50,6 +52,9 @@ export async function cancelSessionDurable(
         completedAt,
         errorMessage,
         ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
+        ...(options.drainOperationId && drainScope
+          ? { drainRepositoryId: session.repositoryId, drainPrincipalId: drainScope }
+          : {}),
       });
       if (!cancelled) return { ok: false, error: "session changed before cancellation" };
       state.pendingAcks.delete(id);
@@ -88,6 +93,9 @@ export async function cancelSessionDurable(
       deadlineAt,
       errorMessage,
       ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
+      ...(options.drainOperationId && drainScope
+        ? { drainRepositoryId: session.repositoryId, drainPrincipalId: drainScope }
+        : {}),
     });
     if (!cancelled) return { ok: false, error: "session changed before cancellation" };
     state.pendingAcks.delete(id);
@@ -118,6 +126,9 @@ export async function cancelSessionDurable(
     errorMessage,
     ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
     ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
+    ...(options.drainOperationId && drainScope
+      ? { drainRepositoryId: session.repositoryId, drainPrincipalId: drainScope }
+      : {}),
   });
   if (!cancelled) return { ok: false, error: "session changed before cancellation" };
 

@@ -52,12 +52,13 @@ describe("session drain activity-ledger bootstrap", () => {
 
     expect(calls.map((call) => call.input.TableName)).toEqual([
       "SessionDrains",
+      "SessionDrains",
       "Sessions",
       undefined,
-      "SessionDrains",
+      undefined,
     ]);
-    expect(calls[1]?.input).toMatchObject({ ConsistentRead: true });
-    expect(calls[2]?.input).toMatchObject({
+    expect(calls[2]?.input).toMatchObject({ ConsistentRead: true, Limit: 100 });
+    expect(calls[3]?.input).toMatchObject({
       RequestItems: {
         SessionDrains: [
           {
@@ -90,12 +91,17 @@ describe("session drain activity-ledger bootstrap", () => {
         ],
       },
     });
-    expect(calls[3]?.input).toMatchObject({
-      Item: {
-        scopeKey: "__session-drain-ledger__",
-        recordKey: "ACTIVITY-V1",
-      },
-      ConditionExpression: "attribute_not_exists(scopeKey)",
+    expect(calls[4]?.input).toMatchObject({
+      TransactItems: expect.arrayContaining([
+        expect.objectContaining({
+          Put: expect.objectContaining({
+            Item: expect.objectContaining({
+              scopeKey: "__session-drain-ledger__",
+              recordKey: "ACTIVITY-V1",
+            }),
+          }),
+        }),
+      ]),
     });
   });
 

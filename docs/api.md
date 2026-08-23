@@ -144,7 +144,7 @@ from the UI, another service account, or another repository:
   `operationId`, `status`, and `statusUrl`. Send a stable `Idempotency-Key` (1–128 characters from
   `A-Z a-z 0-9 . _ : -`) so an ambiguous retry returns the same retained operation even after
   release or an API restart.
-- `GET /repositories/:id/session-drains/:operationId` reconciles and returns bounded counts plus
+- `GET /repositories/:id/session-drains/:operationId` reconciles one bounded activity page and returns counts plus
   `draining`, `succeeded`, or `failed`. The scheduler continues reconciliation when nobody polls.
   `succeeded` is durable proof that the exact scope has no queued/running session and no cancelled
   session still holding a worktree or main-checkout lease.

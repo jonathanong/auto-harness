@@ -27,6 +27,7 @@ import * as mainCheckout from "./plane-storage-main-checkout.ts";
 import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
+import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -38,6 +39,11 @@ export class DynamoPlaneStorageBase {
 
   constructor(doc: DynamoDBDocumentClient, tables: DynamoTableNames) {
     this.ctx = { doc, tables };
+  }
+
+  /** Bounded deployment migration; scheduler callers run at most one page. */
+  migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
+    return migrateSessionDrainActivityLedgerPage(this.ctx.doc, this.ctx.tables);
   }
 
   putSession(session: SessionRecord): Promise<void> {
@@ -78,19 +84,21 @@ export class DynamoPlaneStorageBase {
     principalId: string,
     _operationId: string,
     _shardCount: number,
-  ): Promise<SessionRecord[]> {
-    const activities = await sessionDrains.listSessionDrainActivities(
+    cursor?: Record<string, unknown>,
+  ): Promise<{ sessions: SessionRecord[]; nextKey?: Record<string, unknown> }> {
+    const page = await sessionDrains.listSessionDrainActivityPage(
       this.ctx,
       repositoryId,
       principalId,
+      cursor,
     );
     const records: SessionRecord[] = [];
     // A principal may have a long activity history after an outage. Bound the
     // exact strong reads instead of creating an unbounded Promise.all burst.
     const exactReadConcurrency = 20;
-    for (let offset = 0; offset < activities.length; offset += exactReadConcurrency) {
+    for (let offset = 0; offset < page.records.length; offset += exactReadConcurrency) {
       const resolved = await Promise.all(
-        activities.slice(offset, offset + exactReadConcurrency).map(async (activity) => ({
+        page.records.slice(offset, offset + exactReadConcurrency).map(async (activity) => ({
           activity,
           session: await sessions.getSession(this.ctx, activity.sessionId, true),
         })),
@@ -119,7 +127,7 @@ export class DynamoPlaneStorageBase {
         if (session?.repositoryId === repositoryId && owner === principalId) records.push(session);
       }
     }
-    return records;
+    return { sessions: records, ...(page.nextKey ? { nextKey: page.nextKey } : {}) };
   }
 
   countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
@@ -158,8 +166,20 @@ export class DynamoPlaneStorageBase {
     return sessionDrains.listSessionDrains(this.ctx, consistentRead);
   }
 
+  listSessionDrainReconcileCandidates(limit?: number): Promise<SessionDrainRecord[]> {
+    return sessionDrains.listSessionDrainReconcileCandidates(this.ctx, limit);
+  }
+
   updateSessionDrain(record: SessionDrainRecord): Promise<boolean> {
     return sessionDrains.updateSessionDrain(this.ctx, record);
+  }
+
+  claimSessionDrainReconcile(
+    record: SessionDrainRecord,
+    owner: string,
+    now: string,
+  ): Promise<SessionDrainRecord | null> {
+    return sessionDrains.claimSessionDrainReconcile(this.ctx, record, owner, now);
   }
 
   releaseSessionDrain(
@@ -387,6 +407,8 @@ export class DynamoPlaneStorageBase {
     errorMessage: string;
     concurrencyId?: string;
     drainOperationId?: string;
+    drainRepositoryId?: string;
+    drainPrincipalId?: string;
   }): Promise<boolean> {
     return sessions.cancelQueuedSession(this.ctx, opts);
   }

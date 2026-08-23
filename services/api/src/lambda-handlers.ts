@@ -232,6 +232,8 @@ export async function createLambdaRuntime(
   return {
     async cron() {
       return runInvocation(async () => {
+        // Bounded and resumable: never make Lambda initialization scan history.
+        await created.plane.migrateSessionDrainActivityLedgerPage();
         const schedulesFired = await created.plane.evaluateCronDurable();
         const ackDeadlinesEnforced = await created.plane.enforceAckDeadlinesDurable();
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
