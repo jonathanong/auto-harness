@@ -84,7 +84,17 @@ describe("DynamoPlaneStorageBase", () => {
     expect((await storage.getAuthAccount(account.id))?.username).toBe(account.username);
     expect((await storage.getAuthAccountByUsername(account.username))?.id).toBe(account.id);
     expect((await storage.listAuthAccounts()).map(({ id }) => id)).toContain(account.id);
-    await storage.deleteAuthAccount(account.id);
+    expect(await storage.acquireDeletionMarker(`principal:${account.id}`, "owner", markerAt)).toBe(
+      true,
+    );
+    expect(
+      await storage.deleteAuthAccountFenced(account.id, {
+        key: `principal:${account.id}`,
+        owner: "owner",
+        now: markerAt,
+      }),
+    ).toBe("deleted");
+    await storage.releaseDeletionMarker(`principal:${account.id}`, "owner");
     expect(await storage.getAuthAccount(account.id)).toBeNull();
 
     expect(
@@ -138,6 +148,36 @@ describe("DynamoPlaneStorageBase", () => {
         newNextRunAt: "later",
         concurrencyId: "concurrency",
         sessionId: "session",
+      }),
+    ).toBe(false);
+    const audit = {
+      id: "base-audit",
+      createdAt: markerAt,
+      actor: { id: "system", kind: "system" as const, role: "system" as const },
+      action: "schedule:skip",
+      resourceType: "schedule",
+      resourceId: "missing",
+      outcome: "failed" as const,
+      metadata: {},
+    };
+    expect(
+      await storage.skipOwnerlessScheduleAndAudit({
+        scheduleId: "missing-ownerless",
+        expectedNextRunAt: "t",
+        newNextRunAt: "later",
+        lastRunAt: "t",
+        audit,
+      }),
+    ).toBe(false);
+    expect(
+      await storage.skipScheduleForPrincipalDrainAndAudit({
+        scheduleId: "missing-principal",
+        repositoryId: "repository",
+        principalId: "principal",
+        operationId: "operation",
+        expectedNextRunAt: "t",
+        newNextRunAt: "later",
+        audit: { ...audit, id: "base-principal-audit" },
       }),
     ).toBe(false);
   });
