@@ -57,6 +57,26 @@ export function triggerSchedule(
   return { ok: true, session: result.session, created: result.created };
 }
 
+async function disableLegacyFallbackTrigger(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  fallbackCount: number,
+): Promise<{ ok: false; error: string }> {
+  const disabled = await disableLegacyFallbackSchedule(
+    state,
+    schedule,
+    schedule.nextRunAt,
+    fallbackCount,
+  );
+  if (disabled) state.schedules.set(schedule.id, { ...schedule, enabled: false });
+  return {
+    ok: false,
+    error: disabled
+      ? `schedule disabled: it has ${fallbackCount} persisted fallbacks; update it to at most ${MAX_FALLBACKS}`
+      : "schedule changed concurrently; legacy fallback disable was not applied",
+  };
+}
+
 /**
  * Durable manual trigger. Unlike cron, an operator-triggered run is allowed
  * before nextRunAt; the expected cursor still prevents two API processes from
@@ -118,21 +138,7 @@ export async function triggerScheduleDurable(
     };
   }
   if (outcome.kind === "legacy_fallbacks") {
-    const disabled = await disableLegacyFallbackSchedule(
-      state,
-      schedule,
-      schedule.nextRunAt,
-      outcome.fallbackCount,
-    );
-    if (disabled) {
-      state.schedules.set(id, { ...schedule, enabled: false });
-    }
-    return {
-      ok: false,
-      error: disabled
-        ? `schedule disabled: it has ${outcome.fallbackCount} persisted fallbacks; update it to at most ${MAX_FALLBACKS}`
-        : "schedule changed concurrently; legacy fallback disable was not applied",
-    };
+    return disableLegacyFallbackTrigger(state, schedule, outcome.fallbackCount);
   }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
