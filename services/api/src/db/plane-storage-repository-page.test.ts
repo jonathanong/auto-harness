@@ -90,7 +90,7 @@ describe("Dynamo repository keyset pages", () => {
         Items: [repository("alpha", "alpha"), repository("bravo", "bravo")],
         LastEvaluatedKey: { id: "bravo" },
       })
-      .mockResolvedValueOnce({ Items: [repository("charlie", "charlie")] });
+      .mockResolvedValueOnce({ Items: [undefined, repository("charlie", "charlie")] });
     await expect(
       listRepositoriesPage(context(sparseSend), {
         limit: 1,
