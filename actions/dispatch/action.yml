@@ -1,6 +1,10 @@
 name: Auto Harness dispatch
-description: Create an Auto Harness session and return immediately
+description: Dispatch a session or manage the authenticated principal's repository session drain
 inputs:
+  operation:
+    description: dispatch (default), start-drain, get-drain, wait-for-drain, or release-drain
+    required: false
+    default: dispatch
   server-url:
     description: Auto Harness control-plane URL
     required: true
@@ -12,10 +16,10 @@ inputs:
     required: true
   prompt:
     description: Prompt for the session
-    required: true
+    required: false
   target:
     description: JSON target, for example {"providerId":"codex"}
-    required: true
+    required: false
   fallbacks:
     description: Optional JSON array of fallback targets
     required: false
@@ -28,6 +32,20 @@ inputs:
   metadata:
     description: Optional JSON object
     required: false
+  idempotency-key:
+    description: Stable 1-128 character Idempotency-Key for start-drain retries
+    required: false
+  session-drain-id:
+    description: Durable operation ID for get-drain, wait-for-drain, or release-drain
+    required: false
+  poll-interval-seconds:
+    description: Delay between wait-for-drain status requests
+    required: false
+    default: "5"
+  poll-timeout-seconds:
+    description: Maximum wait-for-drain time before this action fails
+    required: false
+    default: "900"
 outputs:
   session-id:
     description: Created or deduplicated session ID
@@ -35,6 +53,22 @@ outputs:
     description: Control-plane URL for the session
   created:
     description: Whether this invocation created a new session
+  operation-id:
+    description: Durable principal session-drain operation ID
+  status-url:
+    description: Absolute URL for polling the principal session drain
+  drain-status:
+    description: draining, succeeded, failed, or released
+  drain-terminal:
+    description: Whether the returned drain status is terminal; wait-for-drain succeeds only for succeeded
+  queued-count:
+    description: Matching queued sessions remaining
+  running-count:
+    description: Matching running or lease-holding cancelled sessions remaining
+  cancelled-count:
+    description: Number of cancellation mutations attempted by the drain
+  failure-code:
+    description: Terminal drain failure code, when status is failed
 runs:
   using: node20
   main: dist/index.js

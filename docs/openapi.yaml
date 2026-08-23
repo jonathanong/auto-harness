@@ -108,6 +108,51 @@ paths:
               schema: { $ref: "#/components/schemas/Repository" }
         "409": { $ref: "#/components/responses/Conflict" }
         default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+    post:
+      operationId: startSessionDrain
+      summary: Atomically drain the authenticated principal's sessions for one repository
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Durable drain created or resumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains/{operationId}:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+      - $ref: "#/components/parameters/SessionDrainOperationId"
+    get:
+      operationId: getSessionDrain
+      summary: Get bounded durable progress or terminal proof for a principal session drain
+      responses:
+        "200":
+          description: Current or terminal drain status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains/{operationId}/release:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+      - $ref: "#/components/parameters/SessionDrainOperationId"
+    post:
+      operationId: releaseSessionDrain
+      summary: Explicitly release a terminal principal session-drain admission fence
+      responses:
+        "200":
+          description: Released drain; a failed operation remains failed in its retained proof
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
 components:
   securitySchemes:
     bearerAuth:
@@ -124,6 +169,19 @@ components:
       in: path
       required: true
       schema: { type: string }
+    SessionDrainOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Stable caller identity for retrying startSessionDrain after ambiguous delivery
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._:-]{1,128}$"
   responses:
     Conflict:
       description: Conflict, including closed repository admission
@@ -199,6 +257,37 @@ components:
         admissionStateChangedAt: { type: string, format: date-time }
         drainRequestedAt: { type: string, format: date-time }
         drainCompletedAt: { type: string, format: date-time }
+    SessionDrain:
+      type: object
+      required:
+        - operationId
+        - repositoryId
+        - status
+        - statusUrl
+        - requestedAt
+        - updatedAt
+        - deadlineAt
+        - queuedCount
+        - runningCount
+        - cancelledCount
+      properties:
+        operationId: { type: string }
+        repositoryId: { type: string }
+        status:
+          type: string
+          enum: [draining, succeeded, failed, released]
+        statusUrl:
+          type: string
+          description: API-relative URL for polling this operation
+        requestedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deadlineAt: { type: string, format: date-time }
+        queuedCount: { type: integer, minimum: 0 }
+        runningCount: { type: integer, minimum: 0 }
+        cancelledCount: { type: integer, minimum: 0 }
+        completedAt: { type: string, format: date-time }
+        releasedAt: { type: string, format: date-time }
+        failureCode: { type: string }
     Error:
       type: object
       required: [error]
@@ -209,5 +298,11 @@ components:
           properties:
             code:
               type: string
-              examples: [VALIDATION_ERROR, REPOSITORY_ADMISSION_CLOSED]
+              examples: [VALIDATION_ERROR, DRAINING, REPOSITORY_ADMISSION_CLOSED]
             message: { type: string }
+            operationId:
+              type: string
+              description: Present for DRAINING admission rejections
+            statusUrl:
+              type: string
+              description: API-relative durable drain URL present for DRAINING admission rejections

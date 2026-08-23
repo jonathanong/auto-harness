@@ -19,3 +19,28 @@ const session = await harness.createSession({
 });
 console.log(session.url);
 ```
+
+## Principal session drains
+
+An automation principal can atomically stop admitting only its own sessions for one repository,
+then wait for the control plane to cancel and settle that exact scope. This is not repository or
+host drain. Use a stable idempotency key when retries may be ambiguous, poll the durable operation,
+and release the fence explicitly only after recording its terminal result.
+
+```js
+const drain = await harness.startSessionDrain("repo-1", {
+  idempotencyKey: `deploy-${process.env.GITHUB_RUN_ID}`,
+});
+
+let progress = drain;
+while (progress.status === "draining") {
+  await new Promise((resolve) => setTimeout(resolve, 5_000));
+  progress = await harness.getSessionDrain("repo-1", drain.operationId);
+}
+if (progress.status !== "succeeded") throw new Error(`Drain failed: ${progress.failureCode}`);
+await harness.releaseSessionDrain("repo-1", drain.operationId);
+```
+
+When create, clone, or resume loses to the fence, `AutoHarnessError` has `code === "DRAINING"`
+plus the durable `operationId` and API-relative `statusUrl`; follow that operation rather than
+reimplementing pagination or cancellation reconciliation.

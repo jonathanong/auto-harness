@@ -5,6 +5,8 @@ export class AutoHarnessError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.retryAfter = options.retryAfter;
+    this.operationId = options.operationId;
+    this.statusUrl = options.statusUrl;
   }
 }
 
@@ -31,6 +33,8 @@ export class AutoHarnessClient {
           status: response.status,
           code: error?.code ?? "HTTP_ERROR",
           retryAfter: response.headers.get("retry-after") ?? undefined,
+          operationId: error?.operationId,
+          statusUrl: error?.statusUrl,
         },
       );
     }
@@ -47,6 +51,34 @@ export class AutoHarnessClient {
 
   cancelSession(id) {
     return this.request(`/sessions/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+  }
+
+  /**
+   * Atomically fence this authenticated principal's session admission for one repository and
+   * begin cancelling its existing work. Reuse an idempotency key after an ambiguous retry.
+   */
+  startSessionDrain(repositoryId, options = {}) {
+    return this.request(`/repositories/${encodeURIComponent(repositoryId)}/session-drains`, {
+      method: "POST",
+      ...(options.idempotencyKey === undefined
+        ? {}
+        : { headers: { "idempotency-key": options.idempotencyKey } }),
+    });
+  }
+
+  /** Get bounded durable progress or terminal proof for one principal session drain. */
+  getSessionDrain(repositoryId, operationId) {
+    return this.request(
+      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}`,
+    );
+  }
+
+  /** Explicitly reopen admission after a succeeded or failed principal session drain. */
+  releaseSessionDrain(repositoryId, operationId) {
+    return this.request(
+      `/repositories/${encodeURIComponent(repositoryId)}/session-drains/${encodeURIComponent(operationId)}/release`,
+      { method: "POST" },
+    );
   }
 
   listRepositories() {
