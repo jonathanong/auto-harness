@@ -236,8 +236,8 @@ jobs:
           path: .vitest-reports
           merge-multiple: true
 
-      # Recomputes coverage from the merged shard blobs and enforces the 99% aggregate
-      # thresholds (plus every per-file override) — the load-bearing coverage gate.
+      # Recomputes coverage from the merged shard blobs and enforces the aggregate
+      # thresholds (98/97/99/98, plus every per-file override).
       - name: Merge shards and verify coverage
         run: pnpm test:merge
 

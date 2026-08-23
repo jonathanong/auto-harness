@@ -14,6 +14,7 @@ import {
   listWorktreesForRepo,
   createSession,
   acknowledgeSession,
+  cancelRunningSession,
 } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
@@ -138,5 +139,47 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
     } as unknown as PlaneStorageCtx;
 
     await expect(acknowledgeSession(ctx, "session", "acknowledged")).resolves.toBe(false);
+  });
+
+  it("fences running cancellation and preserves non-conditional failures", async () => {
+    const commands: UpdateCommand[] = [];
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(UpdateCommand);
+          commands.push(command as UpdateCommand);
+          return {};
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    const options = {
+      sessionId: "session",
+      worktreeId: "worktree",
+      hostId: "host",
+      connectionId: "connection",
+      attemptId: "attempt",
+      queueShard: 0,
+      completedAt: "done",
+      errorMessage: "cancelled",
+    };
+
+    await expect(cancelRunningSession(ctx, options)).resolves.toBe(true);
+    await expect(
+      cancelRunningSession(ctx, { ...options, drainOperationId: "drain" }),
+    ).resolves.toBe(true);
+    expect(commands[0]?.input.UpdateExpression).not.toContain("cancelledByDrainOperationId");
+    expect(commands[1]?.input).toMatchObject({
+      UpdateExpression: expect.stringContaining("cancelledByDrainOperationId"),
+      ExpressionAttributeValues: { ":drainOperationId": "drain" },
+    });
+
+    const conditional = {
+      ...ctx,
+      doc: { send: async () => Promise.reject({ name: "ConditionalCheckFailedException" }) },
+    };
+    await expect(cancelRunningSession(conditional, options)).resolves.toBe(false);
+    const offline = { ...ctx, doc: { send: async () => Promise.reject(new Error("offline")) } };
+    await expect(cancelRunningSession(offline, options)).rejects.toThrow("offline");
   });
 });

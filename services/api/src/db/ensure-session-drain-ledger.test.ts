@@ -24,6 +24,12 @@ describe("session drain activity-ledger bootstrap", () => {
                 principalId: "principal",
                 status: "completed",
               },
+              {
+                id: "running",
+                repositoryId: "repo",
+                principalId: "principal",
+                status: "running",
+              },
             ],
           };
         }
@@ -52,6 +58,15 @@ describe("session drain activity-ledger bootstrap", () => {
                 scopeKey: "repo#legacy-principal",
                 recordKey: "ACT#queued",
                 sessionId: "queued",
+              },
+            },
+          },
+          {
+            PutRequest: {
+              Item: {
+                scopeKey: "repo#principal",
+                recordKey: "ACT#running",
+                sessionId: "running",
               },
             },
           },

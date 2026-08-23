@@ -84,6 +84,10 @@ describe("control-plane native resume", () => {
       resumeRefCapture: { stream: "stdout", linePrefix: "id: " },
     });
     expect(plane.resumeSession("s1", { prompt: "" }).ok).toBe(false);
+    expect(plane.resumeSession("s1", { principalId: 1 } as never)).toEqual({
+      ok: false,
+      error: "principalId must be a string",
+    });
     expect(plane.resumeSession("s1", { prompt: 1 } as never).ok).toBe(false);
     expect(plane.resumeSession("s1", { timeout: 0 }).ok).toBe(false);
     expect(plane.resumeSession("s1", { timeout: "slow" } as never).ok).toBe(false);
@@ -97,6 +101,44 @@ describe("control-plane native resume", () => {
     source.hostId = null;
     source.pinnedHostId = null;
     expect(plane.resumeSession("s1").ok).toBe(true);
+  });
+
+  it("carries the authenticated principal across resumed sessions", () => {
+    const plane = new ControlPlane({
+      idFactory: (() => {
+        let id = 0;
+        return () => `s${++id}`;
+      })(),
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [{ id: "wt", name: "wt", repositoryId: "repo", path: "/wt", labels: [] }],
+      commandProfiles: [],
+    });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    plane.state.sessions.get(sourceId)!.principalId = "creator";
+    plane.assignQueued();
+    acknowledge(plane, sourceId);
+    finish(plane, sourceId);
+
+    const resumed = plane.resumeSession(sourceId);
+    expect(resumed).toMatchObject({ ok: true });
+    expect(plane.state.sessions.get("s2")).toMatchObject({ principalId: "creator" });
+    const overridden = plane.resumeSession(sourceId, { principalId: "operator" });
+    expect(overridden).toMatchObject({ ok: true });
+    expect(plane.state.sessions.get("s3")).toMatchObject({
+      metadata: { createdBy: "operator" },
+      principalId: "operator",
+    });
   });
 
   it("inserts -- before a leading-dash resume prompt in the argv template only when appendPromptSeparator opts in", () => {
