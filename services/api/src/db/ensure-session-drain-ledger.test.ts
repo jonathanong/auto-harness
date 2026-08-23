@@ -1,7 +1,7 @@
 /* eslint-disable max-lines -- migration coverage cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
-import { ensureSessionDrainActivityLedger } from "./ensure-session-drain-ledger.ts";
+import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 
 describe("session drain activity-ledger bootstrap", () => {
   it("backs up active metadata-owned sessions before conditionally publishing readiness", async () => {
@@ -45,7 +45,7 @@ describe("session drain activity-ledger bootstrap", () => {
       },
     } as never;
 
-    await ensureSessionDrainActivityLedger(doc, {
+    await migrateSessionDrainActivityLedgerPage(doc, {
       sessions: "Sessions",
       sessionDrains: "SessionDrains",
     });
@@ -107,7 +107,7 @@ describe("session drain activity-ledger bootstrap", () => {
 
   it("uses one strong ready read after bootstrap", async () => {
     const calls: Array<{ input: Record<string, unknown> }> = [];
-    await ensureSessionDrainActivityLedger(
+    await migrateSessionDrainActivityLedgerPage(
       {
         send: async (command: { input: Record<string, unknown> }) => {
           calls.push(command);
@@ -147,7 +147,7 @@ describe("session drain activity-ledger bootstrap", () => {
       },
     } as never;
 
-    await ensureSessionDrainActivityLedger(doc, {
+    await migrateSessionDrainActivityLedgerPage(doc, {
       sessions: "Sessions",
       sessionDrains: "SessionDrains",
     });
@@ -158,7 +158,7 @@ describe("session drain activity-ledger bootstrap", () => {
     vi.useFakeTimers();
     try {
       let batchWrites = 0;
-      const promise = ensureSessionDrainActivityLedger(
+      const promise = migrateSessionDrainActivityLedgerPage(
         {
           send: async (command: { input: Record<string, unknown> }) => {
             if (command.input.Key?.recordKey === "ACTIVITY-V1") return {};

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ensureSessionDrainActivityLedger } from "./ensure-session-drain-ledger.ts";
+import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 
 const tables = { sessions: "Sessions", sessionDrains: "SessionDrains" };
 
@@ -27,8 +27,8 @@ describe("session drain activity-ledger migration resume", () => {
       },
     } as never;
 
-    await expect(ensureSessionDrainActivityLedger(doc, tables)).resolves.toBe(false);
-    await expect(ensureSessionDrainActivityLedger(doc, tables)).resolves.toBe(true);
+    await expect(migrateSessionDrainActivityLedgerPage(doc, tables)).resolves.toBe(false);
+    await expect(migrateSessionDrainActivityLedgerPage(doc, tables)).resolves.toBe(true);
 
     const scans = calls.filter((call) => call.input.TableName === "Sessions");
     expect(scans).toHaveLength(2);
@@ -53,7 +53,7 @@ describe("session drain activity-ledger migration resume", () => {
       name: "ConditionalCheckFailedException",
     });
     await expect(
-      ensureSessionDrainActivityLedger(
+      migrateSessionDrainActivityLedgerPage(
         {
           send: async (command: { input: Record<string, unknown> }) => {
             calls.push(command);
@@ -74,7 +74,7 @@ describe("session drain activity-ledger migration resume", () => {
       name: "TransactionCanceledException",
     });
     await expect(
-      ensureSessionDrainActivityLedger(
+      migrateSessionDrainActivityLedgerPage(
         {
           send: async (command: { input: Record<string, unknown> }) => {
             calls += 1;

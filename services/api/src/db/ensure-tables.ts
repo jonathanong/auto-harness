@@ -17,7 +17,7 @@ import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
-import { ensureSessionDrainActivityLedger } from "./ensure-session-drain-ledger.ts";
+import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
@@ -115,7 +115,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "recordKey", KeyType: KeyType.RANGE },
     ],
   });
-  await ensureSessionDrainActivityLedger(DynamoDBDocumentClient.from(ddb), {
+  await migrateSessionDrainActivityLedgerPage(DynamoDBDocumentClient.from(ddb), {
     sessions: names.sessions,
     sessionDrains: names.sessionDrains,
   });

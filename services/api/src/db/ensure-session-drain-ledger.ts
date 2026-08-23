@@ -185,5 +185,3 @@ export async function migrateSessionDrainActivityLedgerPage(
   }
   return true;
 }
-
-export const ensureSessionDrainActivityLedger = migrateSessionDrainActivityLedgerPage;
