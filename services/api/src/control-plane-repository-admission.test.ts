@@ -415,4 +415,273 @@ describe("repository admission", () => {
     expect(skipped).toEqual(["due"]);
     await expect(drainRepositoryDurable(state, "repo")).resolves.toMatchObject({ ok: true });
   });
+
+  it("retries a pause that races a non-reopening activation as a fresh reopening", async () => {
+    let repository = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "created",
+      admissionState: "active" as const,
+    };
+    let schedule = {
+      id: "schedule",
+      repositoryId: "repo",
+      enabled: true,
+      nextRunAt: "2026-01-01T00:01:00.000Z",
+      cron: "* * * * *",
+    };
+    const writes: Array<{ at: string; cutoff?: string }> = [];
+    let scans = 0;
+    const timestamps = [
+      "2026-01-01T00:05:00.000Z",
+      "2026-01-01T00:05:00.000Z",
+      "2026-01-01T00:05:00.000Z",
+      "2026-01-01T00:06:00.000Z",
+      "2026-01-01T00:06:00.000Z",
+      "2026-01-01T00:07:00.000Z",
+    ];
+    const storage = {
+      getRepository: async () => ({ ...repository }),
+      listSchedules: async () => {
+        scans += 1;
+        return [{ ...schedule }];
+      },
+      skipScheduleForClosedRepository: async ({
+        expectedNextRunAt,
+        newNextRunAt,
+      }: {
+        expectedNextRunAt: string;
+        newNextRunAt: string;
+      }) => {
+        if (repository.admissionState !== "paused" || schedule.nextRunAt !== expectedNextRunAt)
+          return false;
+        schedule = { ...schedule, nextRunAt: newNextRunAt };
+        return true;
+      },
+      setRepositoryAdmissionState: async (
+        _id: string,
+        _state: string,
+        at: string,
+        cutoff?: string,
+      ) => {
+        writes.push({ at, cutoff });
+        if (writes.length === 1) {
+          repository = { ...repository, admissionState: "paused" };
+          return null;
+        }
+        repository = {
+          ...repository,
+          admissionState: "active",
+          activationCutoffAt: cutoff,
+          updatedAt: at,
+        };
+        return { ...repository };
+      },
+    };
+    const state = {
+      now: () => timestamps.shift() ?? "unexpected",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage,
+    } as never;
+
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: true,
+      repository: {
+        admissionState: "active",
+        activationCutoffAt: "2026-01-01T00:07:00.000Z",
+      },
+    });
+    expect(writes).toEqual([
+      { at: "2026-01-01T00:05:00.000Z", cutoff: undefined },
+      { at: "2026-01-01T00:07:00.000Z", cutoff: "2026-01-01T00:07:00.000Z" },
+    ]);
+    expect(scans).toBe(4);
+  });
+
+  it("returns the concurrent active winner after a non-reopening activation loses", async () => {
+    const initial = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "created",
+      admissionState: "active" as const,
+    };
+    const winner = { ...initial, updatedAt: "winner" };
+    let reads = 0;
+    let writes = 0;
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage: {
+        getRepository: async () => ({ ...(reads++ === 0 ? initial : winner) }),
+        listSchedules: async () => [],
+        setRepositoryAdmissionState: async () => {
+          writes += 1;
+          return null;
+        },
+      },
+    } as never;
+
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: true,
+      repository: winner,
+    });
+    expect(writes).toBe(1);
+  });
+
+  it("keeps a lost pause write conflicting even when another writer leaves the row active", async () => {
+    const active = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "winner",
+      admissionState: "active" as const,
+    };
+    let writes = 0;
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage: {
+        getRepository: async () => ({ ...active }),
+        setRepositoryAdmissionState: async () => {
+          writes += 1;
+          return null;
+        },
+      },
+    } as never;
+
+    await expect(setRepositoryAdmissionDurable(state, "repo", "paused")).resolves.toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+    expect(writes).toBe(1);
+  });
+
+  it("reports drain and deletion winners after a non-reopening activation loses", async () => {
+    const initial = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "created",
+      admissionState: "active" as const,
+    };
+    for (const winner of [{ ...initial, admissionState: "draining" as const }, null]) {
+      let reads = 0;
+      let writes = 0;
+      const state = {
+        now: () => "2026-01-01T00:05:00.000Z",
+        repositories: new Map(),
+        schedules: new Map(),
+        repositoryRevision: 0,
+        storage: {
+          getRepository: async () => {
+            reads += 1;
+            return reads === 1 ? { ...initial } : winner && { ...winner };
+          },
+          listSchedules: async () => [],
+          setRepositoryAdmissionState: async () => {
+            writes += 1;
+            return null;
+          },
+        },
+      } as never;
+
+      await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject(
+        winner ? { ok: false, code: "CONFLICT" } : { ok: false, code: "NOT_FOUND" },
+      );
+      expect(writes).toBe(1);
+    }
+  });
+
+  it("bounds a pause-race activation retry when the reopening write also loses", async () => {
+    let repository = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "created",
+      admissionState: "active" as const,
+    };
+    let writes = 0;
+    let scans = 0;
+    const storage = {
+      getRepository: async () => ({ ...repository }),
+      listSchedules: async () => {
+        scans += 1;
+        return [];
+      },
+      setRepositoryAdmissionState: async () => {
+        writes += 1;
+        repository = { ...repository, admissionState: "paused" };
+        return null;
+      },
+    };
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage,
+    } as never;
+
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+    expect(writes).toBe(2);
+    expect(scans).toBe(4);
+  });
+
+  it("treats a legacy missing admission state as an active non-reopening row", async () => {
+    const legacy = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "created",
+      updatedAt: "created",
+    };
+    const cutoffs: Array<string | undefined> = [];
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage: {
+        getRepository: async () => ({ ...legacy }),
+        listSchedules: async () => [],
+        setRepositoryAdmissionState: async (
+          _id: string,
+          _state: string,
+          _at: string,
+          cutoff?: string,
+        ) => {
+          cutoffs.push(cutoff);
+          return { ...legacy, admissionState: "active" as const };
+        },
+      },
+    } as never;
+
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: true,
+      repository: { admissionState: "active" },
+    });
+    expect(cutoffs).toEqual([undefined]);
+  });
 });

@@ -147,6 +147,7 @@ export class AutoHarnessFoundationStack extends Stack {
       statements: [
         new iam.PolicyStatement({
           actions: [
+            "dynamodb:BatchGetItem",
             "dynamodb:BatchWriteItem",
             "dynamodb:ConditionCheckItem",
             "dynamodb:DeleteItem",

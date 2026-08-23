@@ -161,7 +161,11 @@ describe("AutoHarnessFoundationStack", () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           Match.objectLike({
-            Action: Match.arrayWith(["dynamodb:Query", "dynamodb:UpdateItem"]),
+            Action: Match.arrayWith([
+              "dynamodb:BatchGetItem",
+              "dynamodb:Query",
+              "dynamodb:UpdateItem",
+            ]),
             Effect: "Allow",
           }),
         ]),
