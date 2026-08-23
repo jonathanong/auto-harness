@@ -11,7 +11,8 @@ const publishJob = workflow.slice(workflow.indexOf("  publish:\n"));
 describe("client release workflow contract", () => {
   it("only runs for a client version tag and serializes releases without cancellation", () => {
     expect(workflow).toContain('tags: ["client-v*"]');
-    expect(workflow).toContain("group: release-client");
+    expect(workflow).toContain("group: release-client-${{ github.ref }}");
+    expect(workflow).not.toContain("group: release-client\n");
     expect(workflow).toContain("cancel-in-progress: false");
     expect(workflow).toContain("contents: read");
     expect(workflow).toContain("id-token: write");
