@@ -58,7 +58,9 @@
     "local:api-smoke": "node scripts/local-api-smoke.mts",
     "local:cloud-e2e": "node scripts/phase3-cloud-e2e.mts",
     "local:phase2-post": "node scripts/phase2-post-session.mts",
-    "local:manage-verify": "node scripts/manage-verify.mts"
+    "local:manage-verify": "node scripts/manage-verify.mts",
+    "deploy:aws": "bash scripts/deploy-aws.sh",
+    "deploy:host": "bash scripts/deploy-host.sh"
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.45.1",

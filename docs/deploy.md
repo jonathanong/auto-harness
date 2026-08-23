@@ -37,6 +37,18 @@ Architecture: [aws.md](aws.md). Auth: [auth.md](auth.md).
 
 ### Updates
 
+From a clean `main` checkout, the supported update path is two commands, in order:
+
+```bash
+pnpm deploy:aws
+pnpm deploy:host
+```
+
+The AWS command fast-forwards `main`, installs the lockfile, updates and health-checks the control
+plane, and handles the one-time session-drain ledger scheduler gate. The host command installs the
+same locked checkout, gracefully restarts the persisted daemon service, and verifies its production
+identity. Environment and first-rollout details remain in the surface-specific runbooks below.
+
 | What changed                   | Where to look                                         |
 | ------------------------------ | ----------------------------------------------------- |
 | Local monorepo / API process   | [deploy-local.md](deploy-local.md#update)             |

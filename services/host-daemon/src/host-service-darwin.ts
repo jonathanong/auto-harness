@@ -89,10 +89,12 @@ export function installDarwin(ctx: HostServiceContext): number {
   if (boot.status !== 0) {
     const load = ctx.run("launchctl", ["load", "-w", paths.plist]);
     if (load.status !== 0) return failedCommand(ctx.error, "launchctl bootstrap/load", load);
-  } else {
-    const kick = ctx.run("launchctl", ["kickstart", "-k", `${domain}/${DARWIN_LABEL}`]);
-    if (kick.status !== 0) return failedCommand(ctx.error, "launchctl kickstart", kick);
   }
+  const service = `${domain}/${DARWIN_LABEL}`;
+  const kick = ctx.run("launchctl", ["kickstart", "-k", service]);
+  if (kick.status !== 0) return failedCommand(ctx.error, "launchctl kickstart", kick);
+  const verify = ctx.run("launchctl", ["print", service]);
+  if (verify.status !== 0) return failedCommand(ctx.error, "launchctl verification", verify);
   ctx.log(`Enabled LaunchAgent ${DARWIN_LABEL} as the current user`);
   return 0;
 }
