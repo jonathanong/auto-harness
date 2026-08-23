@@ -729,6 +729,12 @@ export class DynamoPlaneStorageBase {
     return catalog.listRepositories(this.ctx);
   }
 
+  listRepositoriesPage(
+    query: import("./plane-storage-types.ts").RepositoryPageQuery,
+  ): Promise<import("./plane-storage-types.ts").RepositoryPage> {
+    return catalog.listRepositoriesPage(this.ctx, query);
+  }
+
   setRepositoryAdmissionState(
     id: string,
     state: import("@auto-harness/shared").RepositoryAdmissionState,

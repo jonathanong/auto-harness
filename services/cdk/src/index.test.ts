@@ -35,6 +35,13 @@ describe("CDK table catalog", () => {
         sortKey: { name: "id", type: "S" },
       },
     ]);
+    expect(DYNAMO_TABLES.find((table) => table.name === "Repositories")?.gsis).toEqual([
+      {
+        name: "catalogScope-catalogSort",
+        partitionKey: { name: "catalogScope", type: "S" },
+        sortKey: { name: "catalogSort", type: "S" },
+      },
+    ]);
     expect(DYNAMO_TABLES.find((table) => table.name === "SessionLogs")).toMatchObject({
       sortKey: { name: "timestampSeq" },
       ttlAttribute: "ttl",

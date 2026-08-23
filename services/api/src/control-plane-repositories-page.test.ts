@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import {
@@ -94,14 +94,38 @@ describe("listRepositoriesPage", () => {
 
   it("uses the durable repository catalog before paging", async () => {
     const records = [repository("repository-b", "bravo"), repository("repository-a", "alpha")];
+    const listRepositories = vi.fn(async () => records.map((record) => ({ ...record })));
+    const storageListRepositoriesPage = vi.fn(async () => ({
+      items: [repository("repository-a", "alpha")],
+      hasMore: true,
+    }));
     const plane = new ControlPlane({
       sessionCursorSecret: "repository-page-test-secret",
-      storage: { listRepositories: async () => records.map((record) => ({ ...record })) } as never,
+      storage: { listRepositories, listRepositoriesPage: storageListRepositoriesPage } as never,
     });
 
     await expect(plane.listRepositoriesPageDurable({ limit: 1 })).resolves.toMatchObject({
       items: [{ id: "repository-a" }],
       nextCursor: expect.any(String),
     });
+    expect(listRepositories).not.toHaveBeenCalled();
+    expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 1 });
+  });
+
+  it("retains full-list paging compatibility for legacy storage adapters", async () => {
+    const listRepositories = vi.fn(async () => [
+      repository("repository-b", "bravo"),
+      repository("repository-a", "alpha"),
+    ]);
+    const plane = new ControlPlane({
+      sessionCursorSecret: "repository-page-test-secret",
+      storage: { listRepositories } as never,
+    });
+
+    await expect(plane.listRepositoriesPageDurable({ limit: 1 })).resolves.toMatchObject({
+      items: [{ id: "repository-a" }],
+      nextCursor: expect.any(String),
+    });
+    expect(listRepositories).toHaveBeenCalledOnce();
   });
 });

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- catalog page scenarios share one route fixture. */
 import React from "react";
 import { describe, expect, it } from "vitest";
 
@@ -167,6 +168,29 @@ describe("control catalog list routes", () => {
     expect(html).toContain('data-pw="repo-link-r-1"');
     expect(html).not.toContain('data-pw="repo-link-r-2"');
     expect(html).toContain('data-pw="repositories-load-more"');
+  });
+
+  it("keeps the first page and attach picker when catalog preload continuation fails", async () => {
+    stubApi({
+      "/api/v1/repositories?limit=1": {
+        items: [{ id: "r-1", name: "first", url: "/src/first" }],
+        nextCursor: "preload-fails",
+      },
+      "/api/v1/repositories?limit=1&cursor=preload-fails": jsonResponse(
+        { error: { message: "catalog temporarily unavailable" } },
+        503,
+      ),
+      "/api/v1/hosts": { items: [{ hostId: "host-1" }] },
+      "/api/v1/worktrees": { items: [] },
+    });
+    const html = await renderPage(
+      RepositoriesPage({ searchParams: Promise.resolve({ limit: "1" }) }),
+    );
+    expect(html).toContain('data-pw="page-repositories"');
+    expect(html).not.toContain('data-pw="repositories-api-error"');
+    expect(html).toContain('data-pw="repositories-load-more"');
+    expect(html).toContain('data-pw="attach-repo-catalog-id"');
+    expect(html).toContain('value="r-1"');
   });
 
   it("renders an empty repository hierarchy and API failure", async () => {

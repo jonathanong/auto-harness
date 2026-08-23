@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { ControlPlaneState } from "./control-plane-state.ts";
 
@@ -15,7 +15,11 @@ export type ListRepositoriesPageQuery = {
   scope?: RepositoryListScope | undefined;
 };
 
-export type RepositoryCursorScope = { repositoryIds: string[] | null };
+/**
+ * The cursor stores a digest rather than the complete allow-list. This keeps
+ * cursors bounded even when a principal can see a large number of repositories.
+ */
+export type RepositoryCursorScope = { repositoryIdsDigest: string | null };
 export type RepositoryCursorPosition = { name: string; id: string };
 export type RepositoryCursor = {
   version: 1;
@@ -49,10 +53,19 @@ export function normalizeRepositoryLimit(limit: number | undefined): number {
 export function normalizeRepositoryScope(
   scope: RepositoryListScope | undefined,
 ): RepositoryCursorScope {
-  const repositoryIds = scope?.repositoryIds;
+  const repositoryIds = normalizeRepositoryIds(scope);
   return {
-    repositoryIds: repositoryIds === undefined ? null : [...new Set(repositoryIds)].toSorted(),
+    repositoryIdsDigest:
+      repositoryIds === null
+        ? null
+        : createHash("sha256").update(JSON.stringify(repositoryIds)).digest("base64url"),
   };
+}
+
+/** Normalize the scope for filtering while its digest is used in cursors. */
+export function normalizeRepositoryIds(scope: RepositoryListScope | undefined): string[] | null {
+  const repositoryIds = scope?.repositoryIds;
+  return repositoryIds === undefined ? null : [...new Set(repositoryIds)].toSorted();
 }
 
 function cursorPayload(cursor: RepositoryCursor): string {

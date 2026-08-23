@@ -133,7 +133,9 @@ export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
 }
 
 export function compareRepositories(a: RepositoryRecord, b: RepositoryRecord): number {
-  return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
+  // Repository names are validated ASCII slugs and generated IDs are ASCII.
+  // Keep this bytewise order aligned with Dynamo's catalogSort GSI key.
+  return a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 export function updateRepository(

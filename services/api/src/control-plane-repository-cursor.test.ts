@@ -16,7 +16,7 @@ const state = { sessionCursorSecret: "secret" } as ControlPlaneState;
 const base = {
   version: 1 as const,
   domain: "repositories" as const,
-  scope: { repositoryIds: null },
+  scope: { repositoryIdsDigest: null },
 };
 
 describe("repository cursor primitives", () => {
@@ -27,9 +27,9 @@ describe("repository cursor primitives", () => {
     for (const value of [0, -1, 1.5, 101, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => normalizeRepositoryLimit(value)).toThrow(InvalidRepositoryListQueryError);
     }
-    expect(normalizeRepositoryScope(undefined)).toEqual({ repositoryIds: null });
+    expect(normalizeRepositoryScope(undefined)).toEqual({ repositoryIdsDigest: null });
     expect(normalizeRepositoryScope({ repositoryIds: ["b", "a", "a"] })).toEqual({
-      repositoryIds: ["a", "b"],
+      repositoryIdsDigest: "BHPvLcDTJKtlnTWAwRNOnYEgNZBcR4H91tUpsMaGDhM",
     });
   });
 
@@ -47,7 +47,7 @@ describe("repository cursor primitives", () => {
     expect(() =>
       decodeRepositoryCursor(state, encoded, {
         ...base,
-        scope: { repositoryIds: ["repository-a"] },
+        scope: normalizeRepositoryScope({ repositoryIds: ["repository-a"] }),
       }),
     ).toThrow(InvalidRepositoryCursorError);
 
@@ -84,5 +84,19 @@ describe("repository cursor primitives", () => {
     expect(() => decodeRepositoryCursor(state, malformed, base)).toThrow(
       InvalidRepositoryCursorError,
     );
+  });
+
+  it("keeps scoped cursors bounded for large repository allow-lists", () => {
+    const repositoryIds = Array.from({ length: 10_000 }, (_, index) => `repository-${index}`);
+    const scope = normalizeRepositoryScope({ repositoryIds });
+    const cursor: RepositoryCursor = {
+      ...base,
+      scope,
+      position: { name: "alpha", id: "repository-a" },
+    };
+    const encoded = encodeRepositoryCursor(state, cursor);
+
+    expect(encoded.length).toBeLessThan(500);
+    expect(decodeRepositoryCursor(state, encoded, { ...base, scope })).toEqual(cursor.position);
   });
 });

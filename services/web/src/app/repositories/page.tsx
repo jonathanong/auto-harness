@@ -64,13 +64,20 @@ export default async function RepositoriesPage({
     ]);
     items = repos.items ?? [];
     reposNextCursor = repos.nextCursor ?? null;
-    attachRepositories = canWriteInventory
-      ? await loadAllRepositoryPages(
+    attachRepositories = items;
+    if (canWriteInventory && repos.nextCursor) {
+      try {
+        attachRepositories = await loadAllRepositoryPages(
           (path) => apiGet<RepositoryPage<Repo>>(path),
           repos,
           repositoryPath,
-        )
-      : items;
+        );
+      } catch {
+        // Keep the first page and its continuation cursor usable. A transient preload failure
+        // must not turn a successful catalog response into a blank/error repository page.
+        attachRepositories = items;
+      }
+    }
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {

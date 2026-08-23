@@ -25,6 +25,13 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "Repositories",
     partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "catalogScope-catalogSort",
+        partitionKey: { name: "catalogScope", type: "S" },
+        sortKey: { name: "catalogSort", type: "S" },
+      },
+    ],
   },
   {
     name: "Worktrees",

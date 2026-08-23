@@ -1,4 +1,5 @@
 import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from "./db/dynamo.ts";
+import { ensureRepositoryCatalogIndex } from "./db/ensure-repository-catalog-index.ts";
 import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
@@ -34,6 +35,10 @@ export async function createControlPlane(
   const tables = tableNames(prefix);
   if (!options.skipEnsureTables) {
     await ensureControlPlaneTables({ client, prefix });
+  } else {
+    // AWS tables are provisioned by CDK, so Lambda skips CreateTable. Backfill
+    // repository catalog keys that predate paged listing before serving reads.
+    await ensureRepositoryCatalogIndex(client, doc, tables.repositories);
   }
   const storage = new DynamoPlaneStorage(doc, tables);
   const plane = new ControlPlane({

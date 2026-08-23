@@ -17,6 +17,7 @@ import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
+import { ensureRepositoryCatalogIndex } from "./ensure-repository-catalog-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
@@ -183,12 +184,29 @@ export async function ensureControlPlaneTables(opts: {
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
   });
 
-  await createIfMissing(ddb, {
+  const repositoriesCreated = await createIfMissing(ddb, {
     TableName: names.repositories,
     BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
+    AttributeDefinitions: [
+      { AttributeName: "id", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "catalogScope", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "catalogSort", AttributeType: ScalarAttributeType.S },
+    ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "catalogScope-catalogSort",
+        KeySchema: [
+          { AttributeName: "catalogScope", KeyType: KeyType.HASH },
+          { AttributeName: "catalogSort", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
   });
+  if (!repositoriesCreated) {
+    await ensureRepositoryCatalogIndex(ddb, DynamoDBDocumentClient.from(ddb), names.repositories);
+  }
 
   await createIfMissing(ddb, {
     TableName: names.archives,

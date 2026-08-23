@@ -230,27 +230,31 @@ historical session-log record. This avoids periodic full-state rehydration durin
 
 ### Tables and access patterns
 
-| Table                  | PK                | SK             | GSIs                    | Primary access patterns                                                |
-| ---------------------- | ----------------- | -------------- | ----------------------- | ---------------------------------------------------------------------- |
-| Users                  | `id`              | —              | `username`              | Login by username                                                      |
-| Repositories           | `id`              | —              | —                       | CRUD by id                                                             |
-| Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees                                              |
-| Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                                                    |
-| HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock                                       |
-| ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock                                           |
-| SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; TTL attribute configured on the table, unused today |
-| Schedules              | `id`              | —              | —                       | CRUD by id                                                             |
-| Connections            | `connectionId`    | —              | —                       | Connection state                                                       |
-| Archives               | `key`             | —              | —                       | Archive metadata                                                       |
-| HostInventories        | `hostId`          | —              | —                       | Host inventory                                                         |
-| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query                                         |
-| RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL                                     |
-| Providers              | `id`              | —              | —                       | Provider catalog                                                       |
-| ProviderAccounts       | `id`              | —              | —                       | Provider account catalog                                               |
-| Commands               | `id`              | —              | —                       | Command catalog                                                        |
-| Integrations           | `id`              | —              | —                       | Encrypted integration configuration                                    |
-| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox                                         |
-| WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry                                      |
+| Table                  | PK                | SK             | GSIs                       | Primary access patterns                                                |
+| ---------------------- | ----------------- | -------------- | -------------------------- | ---------------------------------------------------------------------- |
+| Users                  | `id`              | —              | `username`                 | Login by username                                                      |
+| Repositories           | `id`              | —              | `catalogScope-catalogSort` | CRUD by id; bounded name/id catalog pages                              |
+| Worktrees              | `id`              | —              | `repositoryId-id`          | List repository worktrees                                              |
+| Sessions               | `id`              | —              | `statusShard-createdAt`    | Sharded queue query                                                    |
+| HostLocks              | `hostId`          | —              | —                          | Conditional host assignment lock                                       |
+| ConcurrencyLocks       | `concurrencyId`   | —              | —                          | Conditional concurrency lock                                           |
+| SessionLogs            | `sessionId`       | `timestampSeq` | —                          | Append/range read; TTL attribute configured on the table, unused today |
+| Schedules              | `id`              | —              | —                          | CRUD by id                                                             |
+| Connections            | `connectionId`    | —              | —                          | Connection state                                                       |
+| Archives               | `key`             | —              | —                          | Archive metadata                                                       |
+| HostInventories        | `hostId`          | —              | —                          | Host inventory                                                         |
+| AuditLogs              | `scope` (`audit`) | `timestampId`  | —                          | Append-only newest-first query                                         |
+| RateLimits             | `bucketKey`       | —              | —                          | Atomic fixed-window counters + TTL                                     |
+| Providers              | `id`              | —              | —                          | Provider catalog                                                       |
+| ProviderAccounts       | `id`              | —              | —                          | Provider account catalog                                               |
+| Commands               | `id`              | —              | —                          | Command catalog                                                        |
+| Integrations           | `id`              | —              | —                          | Encrypted integration configuration                                    |
+| NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`     | Leased durable delivery outbox                                         |
+| WebhookDeliveries      | `id`              | —              | `state-dueAt`              | Bounded future outbox lease/retry                                      |
+
+Repository list pages query the `catalogScope-catalogSort` GSI by the durable name/id keyset.
+At startup, the control plane waits for this GSI and backfills its sparse key attributes on
+repositories written before the index existed; this setup scan is never part of a page request.
 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
