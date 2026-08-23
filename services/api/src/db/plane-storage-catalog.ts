@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import {
+  BatchGetCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
@@ -19,6 +20,8 @@ import {
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
+  type RepositoryPage,
+  type RepositoryPageQuery,
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
 import {
@@ -490,47 +493,74 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   return records;
 }
 
-export type RepositoryStoragePageQuery = {
-  limit: number;
-  startKey?: Record<string, unknown>;
-  allowedRepositoryIds?: readonly string[];
-};
+function scopeOffset(startKey: Record<string, unknown> | undefined): number {
+  const value = startKey?.scopeOffset;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
 
-export type RepositoryStoragePage = {
-  items: RepositoryRecord[];
-  nextKey: Record<string, unknown> | null;
-};
+async function listAllowedRepositoriesPage(
+  ctx: PlaneStorageCtx,
+  query: RepositoryPageQuery,
+  repositoryIds: readonly string[],
+): Promise<RepositoryPage> {
+  if (repositoryIds.length === 0) return { items: [], nextKey: null };
+  const offset = scopeOffset(query.startKey);
+  const ids = repositoryIds.slice(offset, offset + query.limit);
+  if (ids.length === 0) return { items: [], nextKey: null };
+  const response = await ctx.doc.send(
+    new BatchGetCommand({
+      RequestItems: {
+        [ctx.tables.repositories]: {
+          Keys: ids.map((id) => ({ id })),
+          ConsistentRead: true,
+        },
+      },
+    }),
+  );
+  if ((response.UnprocessedKeys?.[ctx.tables.repositories]?.Keys?.length ?? 0) > 0) {
+    throw new Error("repository page read was throttled");
+  }
+  const byId = new Map(
+    catalogPageItems(
+      response.Responses?.[ctx.tables.repositories] as RepositoryRecord[] | undefined,
+    ).map((record) => [record.id, record] as const),
+  );
+  const nextOffset = offset + ids.length;
+  return {
+    items: ids.flatMap((id) => {
+      const record = byId.get(id);
+      return record ? [record] : [];
+    }),
+    nextKey: nextOffset < repositoryIds.length ? { scopeOffset: nextOffset } : null,
+  };
+}
 
-/**
- * Traverse the repository table once across cursor pages. DynamoDB Scan has no
- * global ordering guarantee, so the LastEvaluatedKey is the storage-owned
- * continuation boundary; callers must treat it as opaque.
- */
+/** Read one strongly consistent, bounded page from the repository table. */
 export async function listRepositoriesPage(
   ctx: PlaneStorageCtx,
-  query: RepositoryStoragePageQuery,
-): Promise<RepositoryStoragePage> {
-  const allowed = query.allowedRepositoryIds ? new Set(query.allowedRepositoryIds) : undefined;
-  if (allowed?.size === 0) return { items: [], nextKey: null };
-  const items: RepositoryRecord[] = [];
-  let nextKey = query.startKey;
-  do {
-    const response = await ctx.doc.send(
-      new ScanCommand({
-        ConsistentRead: true,
-        TableName: ctx.tables.repositories,
-        Limit: query.limit - items.length,
-        ...(nextKey ? { ExclusiveStartKey: nextKey } : {}),
-      }),
-    );
-    items.push(
-      ...catalogPageItems(response.Items as RepositoryRecord[] | undefined).filter(
-        (repository) => !allowed || allowed.has(repository.id),
-      ),
-    );
-    nextKey = nextPageKey(response.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (items.length < query.limit && nextKey);
-  return { items, nextKey: nextKey ?? null };
+  query: RepositoryPageQuery,
+): Promise<RepositoryPage> {
+  if (query.allowedRepositoryIds !== undefined) {
+    return listAllowedRepositoriesPage(ctx, query, query.allowedRepositoryIds);
+  }
+  const result = await ctx.doc.send(
+    new ScanCommand({
+      TableName: ctx.tables.repositories,
+      ConsistentRead: true,
+      Limit: query.limit + 1,
+      ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
+    }),
+  );
+  const items = catalogPageItems(result.Items as RepositoryRecord[] | undefined);
+  const pageItems = items.slice(0, query.limit);
+  const lookahead = pageItems.at(-1);
+  return {
+    items: pageItems,
+    nextKey:
+      items.length > query.limit && lookahead
+        ? { id: lookahead.id }
+        : (nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined) ?? null),
+  };
 }
 
 export async function setRepositoryAdmissionState(

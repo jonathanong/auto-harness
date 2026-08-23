@@ -91,15 +91,15 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return repos.listRepositories(this.state);
   }
 
-  async listRepositoriesDurable(): Promise<RepositoryRecord[]> {
-    await durableCatalog.listRepositoriesDurable(this.state);
-    return repos.listRepositories(this.state);
-  }
-
   listRepositoriesPage(
     query?: repositoryPages.ListRepositoriesPageQuery,
   ): repositoryPages.ListRepositoriesPageResult {
     return repositoryPages.listRepositoriesPage(this.state, query ?? {});
+  }
+
+  async listRepositoriesDurable(): Promise<RepositoryRecord[]> {
+    await durableCatalog.listRepositoriesDurable(this.state);
+    return repos.listRepositories(this.state);
   }
 
   async listRepositoriesPageDurable(

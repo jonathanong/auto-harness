@@ -21,7 +21,6 @@ type Session = {
   errorCode?: string | null;
 };
 type Repository = { id: string; name: string };
-
 export default async function SessionsPage({
   searchParams,
 }: {

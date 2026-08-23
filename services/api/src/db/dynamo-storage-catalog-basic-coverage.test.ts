@@ -16,6 +16,7 @@ import {
   listArchives,
   listHostInventories,
   listRepositories,
+  listRepositoriesPage,
   putArchive,
   putHostInventory,
   putRepository,
@@ -60,6 +61,10 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect((await getRepository(ctx, repository.id))?.name).toBe("Changed");
     expect(await getRepository(ctx, "missing")).toBeNull();
     expect((await listRepositories(ctx)).map(({ id }) => id)).toContain(repository.id);
+    await expect(listRepositoriesPage(ctx, { limit: 1 })).resolves.toEqual({
+      items: [{ ...repository, name: "Changed" }],
+      nextKey: null,
+    });
     const deletionAt = "2026-01-01T00:00:00.000Z";
     await acquireDeletionMarker(ctx, "repository:repository", "owner", deletionAt);
     await deleteRepository(ctx, repository.id, [

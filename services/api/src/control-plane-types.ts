@@ -79,7 +79,7 @@ export type ControlPlaneOptions = {
   archivePrefix?: string;
   /** Optional object-store boundary. Dynamo archive metadata remains durable separately. */
   archiveWriter?: ArchiveWriter | undefined;
-  /** HMAC secret used to sign session-list cursors across API workers. */
+  /** HMAC secret used to sign stable list cursors across API workers. */
   sessionCursorSecret?: string;
   onHostMessage?: (hostId: string, msg: HostWireMessage) => void;
 };

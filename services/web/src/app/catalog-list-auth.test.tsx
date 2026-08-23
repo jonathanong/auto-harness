@@ -47,7 +47,7 @@ describe("control catalog list capability gates", () => {
       "/api/v1/hosts": {},
       "/api/v1/worktrees": {},
     });
-    let html = await renderPage(RepositoriesPage());
+    let html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("No repositories configured");
     expect(html).not.toContain('data-pw="add-repo-open"');
     expect(html).not.toContain('data-pw="repositories-empty-add"');
@@ -59,7 +59,7 @@ describe("control catalog list capability gates", () => {
       "/api/v1/hosts": { items: [{ hostId: "host-1" }] },
       "/api/v1/worktrees": { items: [] },
     });
-    html = await renderPage(RepositoriesPage());
+    html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain('data-pw="page-repositories"');
     expect(html).not.toContain("Attach a repository to a host");
     expect(html).not.toContain('data-pw="add-repo-open"');

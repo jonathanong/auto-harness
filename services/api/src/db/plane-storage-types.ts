@@ -153,6 +153,19 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
+/** The durable form of a repository-list query. Storage continuation keys stay opaque. */
+export type RepositoryPageQuery = {
+  limit: number;
+  startKey?: Record<string, unknown> | undefined;
+  /** Undefined means unrestricted; an empty array is an empty principal scope. */
+  allowedRepositoryIds?: readonly string[] | undefined;
+};
+
+export type RepositoryPage = {
+  items: RepositoryRecord[];
+  nextKey: Record<string, unknown> | null;
+};
+
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";
 
 export type SessionDrainRecord = {

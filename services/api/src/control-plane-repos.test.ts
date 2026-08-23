@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
+import { compareRepositories } from "./control-plane-repos.ts";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 
 const repository = (id: string, admissionState?: string): RepositoryRecord => ({
@@ -23,4 +24,17 @@ it("omits malformed persisted admission rows while listing healthy repositories"
   await expect(plane.listRepositoriesDurable()).resolves.toMatchObject([
     { id: "healthy", admissionState: "active" },
   ]);
+});
+
+it("orders repositories bytewise by name and then id", () => {
+  const first = repository("a");
+  const second = repository("b");
+  const sameNameFirst = { ...first, name: "same" };
+  const sameNameSecond = { ...second, name: "same" };
+
+  expect(compareRepositories(first, second)).toBe(-1);
+  expect(compareRepositories(second, first)).toBe(1);
+  expect(compareRepositories(sameNameFirst, sameNameSecond)).toBe(-1);
+  expect(compareRepositories(sameNameSecond, sameNameFirst)).toBe(1);
+  expect(compareRepositories(sameNameFirst, sameNameFirst)).toBe(0);
 });

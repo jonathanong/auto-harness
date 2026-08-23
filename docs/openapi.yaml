@@ -63,7 +63,7 @@ paths:
         - $ref: "#/components/parameters/RepositoryCursor"
       responses:
         "200":
-          description: Repositories visible to the caller
+          description: Bounded page of repositories visible to the caller
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RepositoryPage" }
@@ -273,13 +273,8 @@ components:
         name: { type: string }
         url: { type: string }
         defaultBranch: { type: string }
-        admissionState:
-          type: string
-          enum: [active, paused, draining]
-          default: active
-        admissionStateChangedAt: { type: string, format: date-time }
-        drainRequestedAt: { type: string, format: date-time }
-        drainCompletedAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
         sessionCount:
           type: integer
           minimum: 0
@@ -292,6 +287,13 @@ components:
           type: integer
           minimum: 0
           description: Eventually consistent repository schedule total on list responses.
+        admissionState:
+          type: string
+          enum: [active, paused, draining]
+          default: active
+        admissionStateChangedAt: { type: string, format: date-time }
+        drainRequestedAt: { type: string, format: date-time }
+        drainCompletedAt: { type: string, format: date-time }
     RepositoryPage:
       type: object
       required: [items, nextCursor]

@@ -739,8 +739,8 @@ export class DynamoPlaneStorageBase {
   }
 
   listRepositoriesPage(
-    query: catalog.RepositoryStoragePageQuery,
-  ): Promise<catalog.RepositoryStoragePage> {
+    query: import("./plane-storage-types.ts").RepositoryPageQuery,
+  ): Promise<import("./plane-storage-types.ts").RepositoryPage> {
     return catalog.listRepositoriesPage(this.ctx, query);
   }
 

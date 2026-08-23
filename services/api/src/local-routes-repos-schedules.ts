@@ -17,18 +17,12 @@ function hidden(res: RouteCtx["res"]): void {
   send(res, 404, { error: { code: "NOT_FOUND", message: "resource not found" } });
 }
 
-function scheduleTriggerError(error: string): { status: number; code: string } {
-  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
-  if (/repository admission is (?:closed|paused|draining)/i.test(error)) {
-    return { status: 409, code: "REPOSITORY_ADMISSION_CLOSED" };
-  }
-  if (/disabled|concurrent|updated|claimed|already active|conflict/i.test(error)) {
-    return { status: 409, code: "CONFLICT" };
-  }
-  return { status: 400, code: "TRIGGER_ERROR" };
-}
+type RepositoryListQueryParam = "limit" | "cursor";
 
-function readRepositoryQueryParam(url: URL, name: "limit" | "cursor"): string | undefined {
+function readSingleRepositoryListQueryParam(
+  url: URL,
+  name: RepositoryListQueryParam,
+): string | undefined {
   const values = url.searchParams.getAll(name);
   if (values.length > 1) {
     throw new InvalidRepositoryListQueryError(`${name} must appear only once`);
@@ -38,7 +32,7 @@ function readRepositoryQueryParam(url: URL, name: "limit" | "cursor"): string | 
   return value;
 }
 
-function parseRepositoryLimit(value: string | undefined): number | undefined {
+function parseRepositoryListLimit(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   if (!/^\d+$/.test(value)) {
     throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
@@ -50,27 +44,41 @@ function parseRepositoryLimit(value: string | undefined): number | undefined {
   return limit;
 }
 
+function repositoryListScope(ctx: RouteCtx) {
+  return ctx.principal ? { repositoryIds: ctx.principal.allowedRepositoryIds } : undefined;
+}
+
+function scheduleTriggerError(error: string): { status: number; code: string } {
+  if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/repository admission is (?:closed|paused|draining)/i.test(error)) {
+    return { status: 409, code: "REPOSITORY_ADMISSION_CLOSED" };
+  }
+  if (/disabled|concurrent|updated|claimed|already active|conflict/i.test(error)) {
+    return { status: 409, code: "CONFLICT" };
+  }
+  return { status: 400, code: "TRIGGER_ERROR" };
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
-      const limit = parseRepositoryLimit(readRepositoryQueryParam(url, "limit"));
-      const cursor = readRepositoryQueryParam(url, "cursor");
+      const limit = parseRepositoryListLimit(readSingleRepositoryListQueryParam(url, "limit"));
+      const cursor = readSingleRepositoryListQueryParam(url, "cursor");
       const page = await plane.listRepositoriesPageDurable({
         ...(limit !== undefined ? { limit } : {}),
         ...(cursor !== undefined ? { cursor } : {}),
-        ...(ctx.principal ? { scope: ctx.principal.allowedRepositoryIds } : {}),
+        ...(repositoryListScope(ctx) ? { scope: repositoryListScope(ctx) } : {}),
       });
-      const repositories = page.items.filter((repo) => scoped(ctx, repo.id));
       const counts = await plane.listRepositoryCountsDurable(
-        repositories.map((repo) => repo.id),
+        page.items.map((repo) => repo.id),
         ctx.principal?.boundHostId,
       );
       send(res, 200, {
-        items: repositories.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
-        nextCursor: page.nextCursor,
+        ...page,
+        items: page.items.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
       });
     } catch (error) {
       if (

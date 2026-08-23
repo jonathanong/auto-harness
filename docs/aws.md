@@ -217,7 +217,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | ---------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `HARNESS_ADMINS_SSM_PARAM`         | ✓         | SSM SecureString parameter _name_ holding the base64 JSON admin bootstrap list — never the value itself; fetched at cold start ([deploy-aws.md](deploy-aws.md)) |
 | `HARNESS_SESSION_SECRET_SSM_PARAM` | ✓         | SSM SecureString parameter _name_ holding the UI session-cookie JWT signing secret                                                                              |
-| `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable session-list cursors                                                                   |
+| `HARNESS_CURSOR_SECRET_SSM_PARAM`  | ✓         | SSM SecureString parameter _name_ holding the shared HMAC key for stable list cursors                                                                           |
 | `TABLE_*` or single table prefix   | ✓         | DynamoDB table names (from CDK)                                                                                                                                 |
 | `ARCHIVE_BUCKET`                   | ✓         | S3 bucket name                                                                                                                                                  |
 | `WS_API_ENDPOINT`                  | ✓         | Management API endpoint for `postToConnection`                                                                                                                  |
@@ -233,7 +233,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | Table                  | PK                | SK             | GSIs                    | Primary access patterns                                                |
 | ---------------------- | ----------------- | -------------- | ----------------------- | ---------------------------------------------------------------------- |
 | Users                  | `id`              | —              | `username`              | Login by username                                                      |
-| Repositories           | `id`              | —              | —                       | CRUD by id                                                             |
+| Repositories           | `id`              | —              | —                       | CRUD by id; bounded strongly consistent catalog pages                  |
 | Worktrees              | `id`              | —              | `repositoryId-id`       | List repository worktrees                                              |
 | Sessions               | `id`              | —              | `statusShard-createdAt` | Sharded queue query                                                    |
 | HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock                                       |
@@ -252,14 +252,17 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | NotificationDeliveries | `id`              | —              | `status-nextAttemptAt`  | Leased durable delivery outbox                                         |
 | WebhookDeliveries      | `id`              | —              | `state-dueAt`           | Bounded future outbox lease/retry                                      |
 
+Unrestricted repository pages use bounded, strongly consistent table scans with opaque storage
+continuations. Scoped principals use strongly consistent keyed reads of only their allowed IDs.
+
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
 **Capacity:** on-demand for all tables.
 
 Direct table setup starts the `Schedules.repositoryId-id` migration without waiting for a
-potentially long backfill. Repository listing temporarily falls back to one strongly consistent
-Schedules scan per API page when DynamoDB reports that the index is missing or backfilling; CDK
-deployments wait for the index through the stack update lifecycle.
+potentially long backfill. Repository-scoped schedule counts temporarily fall back to one strongly
+consistent Schedules scan per API request when DynamoDB reports that the index is missing or
+backfilling; CDK deployments wait for the index through the stack update lifecycle.
 
 `AuditLogs.timestampId` is `<ISO createdAt>#<event id>`, so concurrent writers
 remain totally ordered even when their timestamps are equal. The API cursor

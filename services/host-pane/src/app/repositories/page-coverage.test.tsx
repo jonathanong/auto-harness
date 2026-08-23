@@ -49,6 +49,40 @@ describe("host-pane repositories route", () => {
     expect(markup).toContain("Add repository");
   });
 
+  it("follows repository catalog cursors without changing attached inventory", async () => {
+    process.env.HARNESS_HOST_ID = "host-a";
+    const calls: string[] = [];
+    setApiTransportForTests(async (input) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/inventory")) {
+        return Response.json({
+          repositories: [
+            {
+              id: "repo-known",
+              path: "/work/known",
+              worktrees: [{ id: "attached", name: "main", path: "/work/known", labels: [] }],
+            },
+          ],
+        });
+      }
+      if (url.includes("/worktrees?hostId=")) return Response.json({ items: [] });
+      if (url.includes("cursor=next")) {
+        return Response.json({ items: [{ id: "repo-next", name: "Next repo" }] });
+      }
+      return Response.json({
+        items: [{ id: "repo-known", name: "Known repo" }],
+        nextCursor: "next",
+      });
+    });
+
+    const markup = renderToStaticMarkup(await RepositoriesPage());
+
+    expect(calls.some((url) => url.includes("cursor=next"))).toBe(true);
+    expect(markup).toContain("Known repo");
+    expect(markup).toContain("attached");
+  });
+
   it("renders the empty inventory state when API requests fail", async () => {
     setApiTransportForTests(async () => {
       throw new Error("offline");

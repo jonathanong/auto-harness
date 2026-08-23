@@ -44,7 +44,7 @@ test("maps stable API errors and retry metadata", async () => {
   });
 });
 
-test("lists repositories with bounded pagination controls", async () => {
+test("lists repository pages with bounded pagination controls", async () => {
   const requestedUrls = [];
   const client = new AutoHarnessClient({
     baseUrl: "https://harness.test",
@@ -57,7 +57,7 @@ test("lists repositories with bounded pagination controls", async () => {
   });
   const first = await client.listRepositories({ limit: 1 });
   assert.deepEqual(first, { items: [{ id: "repo-1" }], nextCursor: "cursor/one" });
-  await assert.deepEqual(await client.listRepositories({ limit: 1, cursor: first.nextCursor }), {
+  assert.deepEqual(await client.listRepositories({ limit: 1, cursor: first.nextCursor }), {
     items: [{ id: "repo-2" }],
     nextCursor: null,
   });
@@ -65,6 +65,21 @@ test("lists repositories with bounded pagination controls", async () => {
     "https://harness.test/api/v1/repositories?limit=1",
     "https://harness.test/api/v1/repositories?limit=1&cursor=cursor%2Fone",
   ]);
+});
+
+test("preserves the no-argument repository listing URL", async () => {
+  let request;
+  const client = new AutoHarnessClient({
+    baseUrl: "https://harness.test/api/v1/",
+    fetch: async (url) => {
+      request = url;
+      return Response.json({ items: [], nextCursor: null });
+    },
+  });
+
+  await client.listRepositories();
+
+  assert.equal(request, "https://harness.test/api/v1/repositories");
 });
 
 test("preserves DRAINING operation details for durable progress polling", async () => {
