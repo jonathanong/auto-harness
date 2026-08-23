@@ -44,7 +44,9 @@ export default async function RepositoriesPage() {
       apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
-    items = repos;
+    items = repos.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    );
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {

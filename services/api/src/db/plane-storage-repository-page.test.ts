@@ -4,17 +4,11 @@ import { listRepositoriesPage } from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 describe("repository storage pages", () => {
-  it("continues a bounded scan without rescanning filtered rows", async () => {
-    const send = vi
-      .fn()
-      .mockResolvedValueOnce({
-        Items: [{ id: "hidden", name: "Hidden" }],
-        LastEvaluatedKey: { id: "hidden" },
-      })
-      .mockResolvedValueOnce({
-        Items: [{ id: "visible", name: "Visible" }],
-        LastEvaluatedKey: { id: "visible" },
-      });
+  it("bounds each filtered page by evaluated rows", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Items: [{ id: "hidden", name: "Hidden" }],
+      LastEvaluatedKey: { id: "hidden" },
+    });
     const ctx = {
       doc: { send },
       tables: { repositories: "Repositories" },
@@ -23,14 +17,20 @@ describe("repository storage pages", () => {
     await expect(
       listRepositoriesPage(ctx, { limit: 1, allowedRepositoryIds: ["visible"] }),
     ).resolves.toEqual({
-      items: [{ id: "visible", name: "Visible" }],
-      nextKey: { id: "visible" },
+      items: [],
+      nextKey: { id: "hidden" },
     });
-    expect(send).toHaveBeenCalledTimes(2);
+    expect(send).toHaveBeenCalledOnce();
     expect(send.mock.calls[0]?.[0].input).toMatchObject({ Limit: 1, ConsistentRead: true });
+    await expect(
+      listRepositoriesPage(ctx, { limit: 1, startKey: { id: "before-hidden" } }),
+    ).resolves.toEqual({
+      items: [{ id: "hidden", name: "Hidden" }],
+      nextKey: { id: "hidden" },
+    });
     expect(send.mock.calls[1]?.[0].input).toMatchObject({
       Limit: 1,
-      ExclusiveStartKey: { id: "hidden" },
+      ExclusiveStartKey: { id: "before-hidden" },
     });
     await expect(
       listRepositoriesPage(ctx, { limit: 1, allowedRepositoryIds: [] }),

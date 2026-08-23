@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { normalizeRepositoryRecords } from "./control-plane-repository-normalization.ts";
 import { listRepositories } from "./control-plane-repos.ts";
 
 export type ListRepositoriesPageQuery = {
@@ -168,7 +169,7 @@ export async function listRepositoriesPageDurable(
     ...(decoded?.storageKey ? { startKey: decoded.storageKey } : {}),
     ...(scope ? { allowedRepositoryIds: scope } : {}),
   });
-  const items = page.items.toSorted(compareRepositories);
+  const items = normalizeRepositoryRecords(page.items).toSorted(compareRepositories);
   return {
     items,
     nextCursor: page.nextKey

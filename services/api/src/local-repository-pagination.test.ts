@@ -98,7 +98,19 @@ describe("repository list pagination", () => {
         listRepositoriesPage: async (query: Record<string, unknown>) => {
           queries.push(query);
           return query.startKey
-            ? { items: [], nextKey: null }
+            ? {
+                items: [
+                  {
+                    id: "invalid",
+                    name: "Invalid",
+                    url: "/invalid",
+                    admissionState: "invalid",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                  },
+                ],
+                nextKey: null,
+              }
             : {
                 items: [
                   {
@@ -118,6 +130,7 @@ describe("repository list pagination", () => {
     const scope = Array.from({ length: 500 }, (_, index) => `repository-${index}`);
     scope.push("repo-a");
     const first = await plane.listRepositoriesPageDurable({ limit: 1, scope });
+    expect(first.items).toMatchObject([{ id: "repo-a", admissionState: "active" }]);
     expect(first.nextCursor?.length).toBeLessThan(500);
     await expect(
       plane.listRepositoriesPageDurable({ limit: 1, scope, cursor: first.nextCursor! }),
