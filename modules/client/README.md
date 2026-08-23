@@ -15,6 +15,7 @@ const session = await harness.createSession({
   repositoryId: "repo-1",
   prompt: "Review the latest changes",
   target: { providerId: "codex" },
+  timeout: 1_800,
   concurrencyId: `github-${process.env.GITHUB_RUN_ID}`,
 });
 console.log(session.url);

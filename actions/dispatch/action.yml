@@ -20,6 +20,9 @@ inputs:
   target:
     description: JSON target, for example {"providerId":"codex"}
     required: false
+  timeout:
+    description: Maximum session runtime in seconds (required for dispatch)
+    required: false
   fallbacks:
     description: Optional JSON array of fallback targets
     required: false
@@ -30,7 +33,7 @@ inputs:
     description: Optional idempotency/concurrency identity
     required: false
   metadata:
-    description: Optional JSON object
+    description: Optional JSON object with string, number, boolean, or null values
     required: false
   idempotency-key:
     description: Stable 1-128 character Idempotency-Key for start-drain retries

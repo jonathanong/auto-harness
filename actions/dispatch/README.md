@@ -12,6 +12,7 @@ lists or individually cancels sessions in GitHub Actions: the control plane owns
     repository-id: repo-1
     prompt: Review this pull request
     target: '{"providerId":"codex"}'
+    timeout: "1800"
     concurrency-id: github-${{ github.run_id }}
 ```
 

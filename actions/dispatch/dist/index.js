@@ -133,6 +133,7 @@ try {
       repositoryId,
       prompt: input("prompt", true),
       target: parseJson("target", input("target", true)),
+      timeout: positiveNumberInput("timeout"),
       ...(input("fallbacks") ? { fallbacks: parseJson("fallbacks", input("fallbacks")) } : {}),
       ...(input("ref") ? { ref: input("ref") } : {}),
       ...(input("concurrency-id") ? { concurrencyId: input("concurrency-id") } : {}),

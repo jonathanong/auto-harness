@@ -2,6 +2,9 @@ export type TargetRef =
   | { commandId: string; providerId?: never }
   | { providerId: string; commandId?: never };
 
+/** Values accepted for a session metadata entry. */
+export type SessionMetadataValue = string | number | boolean | null;
+
 export type CreateSessionInput = {
   repositoryId: string;
   prompt: string;
@@ -10,10 +13,10 @@ export type CreateSessionInput = {
   ref?: string;
   concurrencyId?: string;
   queueTtlSeconds?: number;
-  timeout?: number;
+  timeout: number;
   priority?: number;
   requiredLabels?: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, SessionMetadataValue>;
 };
 
 export type Session = CreateSessionInput & {
