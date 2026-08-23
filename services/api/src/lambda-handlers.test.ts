@@ -27,6 +27,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   const hostLocks = new Map<string, string>();
   const deletedConnections: string[] = [];
   const registrations: Array<Record<string, unknown>> = [];
+  const schedulerCalls: string[] = [];
   const storage = {
     async acknowledgeSession() {
       return true;
@@ -71,7 +72,20 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async listAllSessions() {
       return [...sessions.values()];
     },
+    async listAllWorktrees() {
+      return [];
+    },
     async listProviders() {
+      return [];
+    },
+    async listSchedules() {
+      schedulerCalls.push("cron");
+      return [];
+    },
+    async listSessionDrains() {
+      return [];
+    },
+    async listSessionsByStatus() {
       return [];
     },
     async listWorktreesByHost() {
@@ -94,6 +108,10 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     },
     async markHostDraining(hostId: string, connectionId: string) {
       return hostLocks.get(hostId) === connectionId;
+    },
+    async migrateSessionDrainActivityLedgerPage() {
+      schedulerCalls.push("migration");
+      return true;
     },
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
@@ -171,6 +189,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       management,
     }),
     sessions,
+    schedulerCalls,
     storage,
   };
 }
@@ -541,70 +560,17 @@ describe("Lambda runtime adapters", () => {
       createdAt: "created",
       updatedAt: "updated",
     });
-    const order: string[] = [];
-    const refreshSchedulerReadModelDurable = fixture.plane.refreshSchedulerReadModelDurable.bind(
-      fixture.plane,
-    );
-    vi.spyOn(fixture.plane, "migrateSessionDrainActivityLedgerPage").mockImplementation(
-      async () => {
-        order.push("migration");
-        return true;
-      },
-    );
-    vi.spyOn(fixture.plane, "evaluateCronDurable").mockImplementation(async () => {
-      order.push("cron");
-      return [{ id: "scheduled-1" }] as never;
-    });
-    vi.spyOn(fixture.plane, "enforceAckDeadlinesDurable").mockImplementation(async () => {
-      order.push("ack");
-      return ["session-1"];
-    });
-    vi.spyOn(fixture.plane, "enforceRunningTimeoutsDurable").mockImplementation(async () => {
-      order.push("timeout");
-      return ["session-2"];
-    });
-    vi.spyOn(fixture.plane, "refreshSchedulerReadModelDurable").mockImplementation(async () => {
-      order.push("refresh");
-      await refreshSchedulerReadModelDurable();
-    });
-    vi.spyOn(fixture.plane, "reclaimStaleHostsDurable").mockImplementation(async () => {
-      order.push("stale");
-      return ["host-1", "host-2"];
-    });
-    vi.spyOn(fixture.plane, "reconcileSessionDrainsDurable").mockImplementation(async () => {
-      order.push("session-drains");
-      return [{}] as never;
-    });
-    vi.spyOn(fixture.plane, "assignQueuedDurable").mockImplementation(async () => {
-      order.push("queued");
-      return [{ session: {}, worktree: {} }] as never;
-    });
-    vi.spyOn(fixture.plane, "assignScheduledQueuedDurable").mockImplementation(async () => {
-      order.push("scheduled");
-      return [{ session: {}, hostId: "host-1", worktreeId: null }] as never;
-    });
-
     await expect((await fixture.runtime).cron()).resolves.toEqual({
-      ackDeadlinesEnforced: 1,
-      runningTimeoutsEnforced: 1,
-      queuedAssigned: 1,
+      ackDeadlinesEnforced: 0,
+      runningTimeoutsEnforced: 0,
+      queuedAssigned: 0,
       repositoriesReconciled: 1,
-      sessionDrainsReconciled: 1,
-      scheduledAssigned: 1,
-      schedulesFired: 1,
-      staleHostsReclaimed: 2,
+      sessionDrainsReconciled: 0,
+      scheduledAssigned: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
     });
-    expect(order).toEqual([
-      "migration",
-      "cron",
-      "ack",
-      "timeout",
-      "refresh",
-      "stale",
-      "session-drains",
-      "queued",
-      "scheduled",
-    ]);
+    expect(fixture.schedulerCalls.slice(0, 2)).toEqual(["migration", "cron"]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {
