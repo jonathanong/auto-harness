@@ -46,6 +46,12 @@ esac`,
   executable(bin, "sleep", 'printf "sleep %s\\n" "$*" >> "$FAKE_LOG"');
 }
 
+function position(source: string, fragment: string): number {
+  const index = source.indexOf(fragment);
+  expect(index, `missing script contract: ${fragment}`).toBeGreaterThanOrEqual(0);
+  return index;
+}
+
 describe("host deployment wrapper contracts", () => {
   it("keeps the host wrapper valid Bash", () => {
     expect(spawnSync("bash", ["-n", hostScript]).status).toBe(0);
@@ -95,9 +101,60 @@ fi`,
     expect(result.stdout).toContain('{"status":"ok"}');
   });
 
+  it("rejects a mismatched Linux service checkout before activation", () => {
+    const fixture = fakeEnvironment();
+    const serviceRoot = join(fixture.directory, "service-checkout");
+    mkdirSync(serviceRoot);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; validate_linux_checkout Linux "$2" "$3"',
+        "deploy-host-test",
+        hostScript,
+        fixture.directory,
+        serviceRoot,
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("deploy:host must run from");
+    expect(position(host, "validate_linux_checkout")).toBeLessThan(
+      position(host, "pnpm install --frozen-lockfile"),
+    );
+  });
+
+  it("terminates a status command at the end-to-end readiness deadline", () => {
+    const fixture = fakeEnvironment();
+    executable(fixture.bin, "never-ready", 'trap "" TERM\n/bin/sleep 30');
+    const startedAt = Date.now();
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-c",
+        'source "$1"; wait_for_host_readiness 1 "$2"',
+        "deploy-host-test",
+        hostScript,
+        join(fixture.bin, "never-ready"),
+      ],
+      { encoding: "utf8", timeout: 5_000 },
+    );
+
+    expect(result.signal).toBeNull();
+    expect(result.status).toBe(1);
+    expect(Date.now() - startedAt).toBeLessThan(4_000);
+    expect(result.stderr).toContain("within 1 seconds");
+  });
+
   it("binds Linux activation to the checkout systemd will execute", () => {
-    expect(host).toContain('service_root="$(cd /opt/auto-harness/current && pwd -P)"');
+    expect(host).toContain('service_root="$(cd "$service_checkout" && pwd -P)"');
     expect(host).toContain('if [[ "$checkout_root" != "$service_root" ]]');
-    expect(host).toContain("Host service did not become ready within 120 seconds.");
+    expect(host).toContain(
+      'validate_linux_checkout "$platform" "$(pwd -P)" /opt/auto-harness/current',
+    );
+    expect(host).toContain("wait_for_host_readiness 120");
   });
 });
