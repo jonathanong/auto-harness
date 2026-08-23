@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { loadCoverageConfig } from "coverage-check";
 import { describe, expect, it } from "vitest";
 
 const THRESHOLD_PATH_EXCEPTIONS = new Set([
@@ -13,10 +14,18 @@ function parseJsonc(text: string): unknown {
 describe("config file globs", () => {
   it("uses the shared coverage scope and recursive threshold paths", () => {
     const source = readFileSync(new URL("../vitest.config.ts", import.meta.url), "utf8");
-    expect(source).toContain('from "./scripts/coverage-scope.mts"');
-    expect(source).toContain("include: [...COVERAGE_INCLUDE]");
-    expect(source).toContain("exclude: [...PATCH_COVERAGE_EXCLUDE]");
-    expect(source).toContain("exclude: [...AGGREGATE_COVERAGE_EXCLUDE]");
+    const config = loadCoverageConfig(".coverage-rules.yml");
+    const { scope } = config;
+    expect(scope).toBeDefined();
+    expect(scope?.include).toEqual(["modules/*/src/**/*.{ts,tsx}", "services/*/src/**/*.{ts,tsx}"]);
+    expect(config.rules).toEqual([
+      { paths: "modules/**", patch_coverage_min: 99 },
+      { paths: "services/**", patch_coverage_min: 99 },
+    ]);
+    expect(source).toContain('customProviderModule: "coverage-check/vitest"');
+    expect(source).toContain("include: [...scope.include]");
+    expect(source).toContain("exclude: [...scope.ignored]");
+    expect(source).toContain("exclude: [...scope.ignored, ...scope.supplemental]");
     expect(source).toContain('provider: "custom"');
 
     const coverageStart = source.indexOf("coverage: {");
