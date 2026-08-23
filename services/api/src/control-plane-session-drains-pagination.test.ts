@@ -8,7 +8,7 @@ import type { SessionRecord } from "./db/types.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
-function drain(): SessionDrainRecord {
+function drain(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   return {
     scopeKey: "repo#principal",
     recordKey: "CURRENT",
@@ -22,6 +22,7 @@ function drain(): SessionDrainRecord {
     queuedCount: 0,
     runningCount: 0,
     cancelledCount: 0,
+    ...over,
   };
 }
 
@@ -43,6 +44,17 @@ function queuedSession(index: number): SessionRecord {
     queueShard: 0,
     createdAt: NOW,
     metadata: { createdBy: "principal" },
+  };
+}
+
+function runningSession(index: number): SessionRecord {
+  return {
+    ...queuedSession(index),
+    status: "running",
+    worktreeId: `worktree-${index}`,
+    hostId: "host",
+    assignmentConnectionId: "connection",
+    attemptId: "attempt",
   };
 }
 
@@ -121,5 +133,53 @@ describe("session drain reconciliation pagination", () => {
     expect(durableDrain).toMatchObject({ status: "succeeded", cancelledCount: 101 });
     expect(activities).toEqual([]);
     expect(pageReads).toBeGreaterThan(4);
+  });
+
+  it("keeps aggregate live counts when a deadline expires on a later page", async () => {
+    let now = NOW;
+    const state = createControlPlaneState({ now: () => now });
+    const first = runningSession(1);
+    const second = queuedSession(2);
+    let durableDrain = drain({ deadlineAt: "2026-01-01T00:00:01.000Z" });
+    const terminalAudits: unknown[] = [];
+    setDurableReadStorage(state, {
+      listSessionsForDrain: async (
+        _repo,
+        _principal,
+        _operation,
+        _shards,
+        cursor?: { page?: number },
+      ) =>
+        cursor?.page === 2 ? { sessions: [second] } : { sessions: [first], nextKey: { page: 2 } },
+      cancelQueuedSession: async () => false,
+      cancelRunningSession: async () => false,
+      updateSessionDrain: async (updated: SessionDrainRecord, audit: unknown) => {
+        durableDrain = { ...updated };
+        if (audit) terminalAudits.push(audit);
+        return true;
+      },
+    });
+
+    durableDrain = await reconcileSessionDrainDurable(state, durableDrain);
+    expect(durableDrain).toMatchObject({
+      status: "draining",
+      activityCursor: { page: 2 },
+      queuedCount: 0,
+      runningCount: 1,
+    });
+
+    now = "2026-01-01T00:00:01.000Z";
+    durableDrain = await reconcileSessionDrainDurable(state, durableDrain);
+    expect(durableDrain).toMatchObject({
+      status: "failed",
+      queuedCount: 1,
+      runningCount: 1,
+      failureCode: "DEADLINE_EXCEEDED",
+    });
+    expect(terminalAudits).toEqual([
+      expect.objectContaining({
+        metadata: expect.objectContaining({ queuedCount: 1, runningCount: 1 }),
+      }),
+    ]);
   });
 });

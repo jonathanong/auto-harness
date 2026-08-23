@@ -19,8 +19,10 @@ function drainAuditRecord(
   drain: SessionDrainRecord,
   event: "create" | "succeeded" | "failed" | "release",
   actor: AuditActor,
+  terminalStatus?: "succeeded" | "failed",
 ): AuditLogRecord {
   const terminal = event === "succeeded" || event === "failed";
+  const release = event === "release";
   return newAuditRecord(
     {
       actor,
@@ -31,9 +33,14 @@ function drainAuditRecord(
       outcome: event === "failed" ? "failed" : "success",
       metadata: {
         operationId: drain.operationId,
-        ...(terminal
+        ...(terminal || release
           ? {
-              status: drain.status,
+              ...(terminal
+                ? { status: drain.status }
+                : {
+                    terminalStatus,
+                    incomplete: terminalStatus === "failed",
+                  }),
               principalId: drain.principalId,
               queuedCount: drain.queuedCount,
               runningCount: drain.runningCount,
@@ -147,7 +154,7 @@ export async function reconcileSessionDrainDurable(
   const authoritative = page.sessions.map(
     (session) => reconciledSessions.get(session.id) ?? session,
   );
-  const queuedCount = authoritative.filter((session) => session.status === "queued").length;
+  const pageQueuedCount = authoritative.filter((session) => session.status === "queued").length;
   // ACT members are removed after a strong read proves their terminal state.
   // Retain the durable monotonic total after cleanup rather than treating the
   // next reconciliation's smaller live set as a conflicting regression.
@@ -158,11 +165,17 @@ export async function reconcileSessionDrainDurable(
         session.status === "cancelled" && session.cancelledByDrainOperationId === drain.operationId,
     ).length,
   );
-  const runningCount = authoritative.filter(
+  const pageRunningCount = authoritative.filter(
     (session) =>
       session.status === "running" ||
       (session.status === "cancelled" && (!!session.worktreeId || !!session.mainCheckoutLease)),
   ).length;
+  // The activity cursor divides one strongly-consistent sweep across bounded
+  // calls. Keep its observed live count accumulated until that sweep finishes;
+  // replacing it with only this page makes deadline failures and terminal
+  // audits claim a large drain had no outstanding work.
+  const queuedCount = (drain.activityCursor ? drain.queuedCount : 0) + pageQueuedCount;
+  const runningCount = (drain.activityCursor ? drain.runningCount : 0) + pageRunningCount;
   const now = state.now();
   // A final page following an earlier cursor cannot prove that older members
   // are gone. Reset and require a complete fresh strong sweep before terminal
@@ -312,7 +325,7 @@ export async function releaseSessionDrainDurable(
     releasedAt: state.now(),
     updatedAt: state.now(),
   };
-  const audit = drainAuditRecord(releaseRecord, "release", actor);
+  const audit = drainAuditRecord(releaseRecord, "release", actor, current.status);
   const released = await state.storage.releaseSessionDrain(
     repositoryId,
     principalId,

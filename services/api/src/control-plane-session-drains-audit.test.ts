@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
-import { createSessionDrainDurable } from "./control-plane-session-drains.ts";
+import {
+  createSessionDrainDurable,
+  releaseSessionDrainDurable,
+} from "./control-plane-session-drains.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { SessionDrainRecord } from "./db/plane-storage.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
-function drain(): SessionDrainRecord {
+function drain(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   return {
     scopeKey: "repo#principal",
     recordKey: "OP#drain-audit",
@@ -21,6 +24,7 @@ function drain(): SessionDrainRecord {
     queuedCount: 0,
     runningCount: 0,
     cancelledCount: 0,
+    ...over,
   };
 }
 
@@ -76,5 +80,54 @@ describe("session drain transactional audits", () => {
         expect.objectContaining({ action: "session-drain:succeeded" }),
       ]),
     );
+  });
+
+  it("retains failed terminal context in the transactional release audit", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const failed = drain({
+      status: "failed",
+      failureCode: "DEADLINE_EXCEEDED",
+      queuedCount: 2,
+      runningCount: 1,
+      cancelledCount: 3,
+    });
+    const releaseAudits: unknown[] = [];
+    setDurableReadStorage(state, {
+      getSessionDrainOperation: async () => failed,
+      getSessionDrain: async () => failed,
+      releaseSessionDrain: async (
+        _repositoryId: string,
+        _principalId: string,
+        _operationId: string,
+        _now: string,
+        audit: unknown,
+      ) => {
+        releaseAudits.push(audit);
+        return { ...failed, status: "released" as const };
+      },
+    });
+
+    await expect(
+      releaseSessionDrainDurable(state, "repo", "principal", "drain-audit", {
+        id: "actor-id",
+        kind: "service-account",
+        role: "author",
+      }),
+    ).resolves.toMatchObject({ status: "released" });
+    expect(releaseAudits).toEqual([
+      expect.objectContaining({
+        action: "session-drain:release",
+        actor: { id: "actor-id", kind: "service-account", role: "author" },
+        metadata: expect.objectContaining({
+          operationId: "drain-audit",
+          terminalStatus: "failed",
+          incomplete: true,
+          queuedCount: 2,
+          runningCount: 1,
+          cancelledCount: 3,
+          failureCode: "DEADLINE_EXCEEDED",
+        }),
+      }),
+    ]);
   });
 });
