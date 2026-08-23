@@ -51,7 +51,12 @@ describe("schedule pages", () => {
         ],
       },
       "/api/v1/session-targets": { items: [{ id: "target-1", label: "Claude" }] },
-      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Harness" }] },
+      "/api/v1/repositories": {
+        items: [
+          { id: "repo-2", name: "Zebra" },
+          { id: "repo-1", name: "Harness" },
+        ],
+      },
     });
 
     const html = await renderPage(
@@ -66,6 +71,7 @@ describe("schedule pages", () => {
     expect(html).toContain('href="/sessions/session%2Factive"');
     expect(html).toContain("Edit Nightly");
     expect(html).toContain("removed-repo");
+    expect(html.indexOf("Harness")).toBeLessThan(html.indexOf("Zebra"));
   });
 
   it("renders read-only defaults without authoring controls", async () => {

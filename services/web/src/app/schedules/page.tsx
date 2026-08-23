@@ -53,7 +53,9 @@ export default async function SchedulesPage({
     ]);
     items = schedulesData.items ?? [];
     targets = targetsData.items ?? [];
-    repositories = repositoriesData;
+    repositories = repositoriesData.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    );
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
