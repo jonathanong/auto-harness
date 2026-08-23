@@ -196,40 +196,53 @@ describe("session drain activity-ledger bootstrap", () => {
 
   it("paginates sparse scans and accepts a concurrent readiness publisher", async () => {
     let scans = 0;
+    let claims = 0;
+    let readyReads = 0;
     const conditional = Object.assign(new Error("published"), {
       name: "ConditionalCheckFailedException",
     });
     const calls: Array<Record<string, unknown>> = [];
-    await expect(
-      ensureSessionDrainActivityLedger(
-        {
-          send: async (command: { input: Record<string, unknown> }) => {
-            calls.push(command.input);
-            if (command.input.Key?.recordKey === "ACTIVITY-V1") return {};
-            if (command.input.TableName === "Sessions") {
-              scans += 1;
-              return scans === 1
-                ? {
-                    Items: [
-                      {
-                        id: "cancelled-main",
-                        repositoryId: "repo",
-                        principalId: "principal",
-                        status: "cancelled",
-                        mainCheckoutLease: true,
-                      },
-                    ],
-                    LastEvaluatedKey: { id: "cancelled-main" },
-                  }
-                : {};
-            }
-            if (command.input.RequestItems) return {};
-            throw conditional;
-          },
-        } as never,
-        { sessions: "Sessions", sessionDrains: "SessionDrains" },
-      ),
-    ).resolves.toBeUndefined();
+    const doc = {
+      send: async (command: { input: Record<string, unknown> }) => {
+        calls.push(command.input);
+        if (command.input.Key?.recordKey === "ACTIVITY-V1") {
+          readyReads += 1;
+          return readyReads === 3 ? { Item: { recordType: "activity-ledger-v1" } } : {};
+        }
+        if (String(command.input.UpdateExpression).startsWith("SET recordType")) {
+          claims += 1;
+          return {
+            Attributes: {
+              fence: claims,
+              ...(claims === 2 ? { nextKey: { id: "cancelled-main" } } : {}),
+            },
+          };
+        }
+        if (command.input.TableName === "Sessions") {
+          scans += 1;
+          return scans === 1
+            ? {
+                Items: [
+                  {
+                    id: "cancelled-main",
+                    repositoryId: "repo",
+                    principalId: "principal",
+                    status: "cancelled",
+                    mainCheckoutLease: true,
+                  },
+                ],
+                LastEvaluatedKey: { id: "cancelled-main" },
+              }
+            : {};
+        }
+        if (command.input.RequestItems || command.input.UpdateExpression) return {};
+        throw conditional;
+      },
+    } as never;
+    const tables = { sessions: "Sessions", sessionDrains: "SessionDrains" };
+
+    await expect(migrateSessionDrainActivityLedgerPage(doc, tables)).resolves.toBe(false);
+    await expect(migrateSessionDrainActivityLedgerPage(doc, tables)).resolves.toBe(true);
     expect(scans).toBe(2);
     expect(calls.find((call) => call.ExclusiveStartKey)).toMatchObject({
       ExclusiveStartKey: { id: "cancelled-main" },
