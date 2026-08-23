@@ -140,6 +140,9 @@ describe("DynamoDB Local basic catalog adapters", () => {
       admissionState: "paused",
     });
     expect(
+      await storage.setRepositoryAdmissionState(repository.id, "active", "t1a", "t1a"),
+    ).toMatchObject({ admissionState: "active", activationCutoffAt: "t1a" });
+    expect(
       await storage.setRepositoryAdmissionState(repository.id, "draining", "t2"),
     ).toMatchObject({ admissionState: "draining", drainRequestedAt: "t2" });
     expect(await storage.setRepositoryAdmissionState(repository.id, "active", "t3")).toBeNull();

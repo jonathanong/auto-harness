@@ -333,9 +333,17 @@ describe("repository admission", () => {
       drainRequestedAt: "requested",
     };
     const skipped: string[] = [];
+    let dueNextRunAt = "2026-01-01T00:00:00.000Z";
     const storage = {
       getRepository: async () => paused,
       listSchedules: async () => [
+        {
+          id: "due",
+          repositoryId: "repo",
+          enabled: true,
+          nextRunAt: dueNextRunAt,
+          cron: "* * * * *",
+        },
         {
           id: "wrong",
           repositoryId: "other",
@@ -365,9 +373,17 @@ describe("repository admission", () => {
           cron: "invalid",
         },
       ],
-      skipScheduleForClosedRepository: async ({ scheduleId }: { scheduleId: string }) => (
-        skipped.push(scheduleId), true
-      ),
+      skipScheduleForClosedRepository: async ({
+        scheduleId,
+        newNextRunAt,
+      }: {
+        scheduleId: string;
+        newNextRunAt: string;
+      }) => {
+        skipped.push(scheduleId);
+        dueNextRunAt = newNextRunAt;
+        return true;
+      },
       setRepositoryAdmissionState: async (_id: string, state: string) =>
         state === "draining" ? draining : active,
       listAllSessions: async () => [],
@@ -386,7 +402,7 @@ describe("repository admission", () => {
     await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
       ok: true,
     });
-    expect(skipped).toEqual([]);
+    expect(skipped).toEqual(["due"]);
     await expect(drainRepositoryDurable(state, "repo")).resolves.toMatchObject({ ok: true });
   });
 });

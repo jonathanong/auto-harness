@@ -144,6 +144,15 @@ describe("DynamoPlaneStorageBase", () => {
       }),
     ).toBe(false);
     expect(
+      await storage.skipScheduleBeforeActivationCutoff({
+        scheduleId: "missing-cutover",
+        repositoryId: "repository",
+        activationCutoffAt: "later",
+        expectedNextRunAt: "t",
+        newNextRunAt: "later",
+      }),
+    ).toBe(false);
+    expect(
       await storage.skipScheduleForActiveConcurrency({
         scheduleId: "missing",
         expectedNextRunAt: "t",
