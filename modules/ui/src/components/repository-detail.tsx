@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { RepositoryAdmissionState } from "@auto-harness/shared";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
@@ -13,7 +14,7 @@ export type RepositorySummary = {
   defaultBranch?: string | null;
   setupScript?: string | null;
   terminalHookScript?: string | null;
-  admissionState?: "active" | "paused" | "draining";
+  admissionState?: RepositoryAdmissionState;
   admissionStateChangedAt?: string | null;
 };
 

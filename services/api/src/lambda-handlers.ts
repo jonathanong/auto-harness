@@ -43,6 +43,7 @@ export type LambdaRuntime = {
 export type CronResult = {
   ackDeadlinesEnforced: number;
   runningTimeoutsEnforced: number;
+  repositoriesReconciled: number;
   queuedAssigned: number;
   scheduledAssigned: number;
   schedulesFired: number;

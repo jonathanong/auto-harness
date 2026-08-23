@@ -110,6 +110,24 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, runtime: { daemonVersion: "0.0.0", gitVersion: null, gitReady: true } },
       {
         ...registration,
+        runtime: {
+          daemonVersion: "0.0.0",
+          gitVersion: "2.36.0",
+          gitReady: true,
+          environmentNames: {},
+        },
+      },
+      {
+        ...registration,
+        runtime: {
+          daemonVersion: "0.0.0",
+          gitVersion: "2.36.0",
+          gitReady: true,
+          environmentNames: ["TOKEN", "TOKEN"],
+        },
+      },
+      {
+        ...registration,
         runtime: { daemonVersion: "0.0.0", gitVersion: null, gitReady: false },
       },
       {

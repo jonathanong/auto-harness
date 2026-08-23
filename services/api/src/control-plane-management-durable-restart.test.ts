@@ -29,6 +29,17 @@ function catalogStorage() {
     listAuditLogs: async () => ({ items: [] }),
     listAllAuditLogs: async () => [],
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
+    updateRepositorySettings: async (
+      id: string,
+      patch: Partial<RepositoryRecord>,
+      updatedAt: string,
+    ) => {
+      const current = repositories.get(id);
+      if (!current) return null;
+      const updated = { ...current, ...patch, updatedAt };
+      repositories.set(id, updated);
+      return { ...updated };
+    },
     getRepository: async (id: string) => get(repositories, id),
     listRepositories: async () => [...repositories.values()].map((record) => ({ ...record })),
     deleteRepository: async (id: string) => repositories.delete(id),

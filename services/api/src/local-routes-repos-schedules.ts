@@ -154,6 +154,16 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
         return true;
       send(res, 200, result.repository);
     } catch {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: `repository:${operation}`,
+          resourceType: "repository",
+          resourceId: id,
+          repositoryId: id,
+          outcome: "failed",
+        }))
+      )
+        return true;
       sendInternalError(res);
     }
     return true;

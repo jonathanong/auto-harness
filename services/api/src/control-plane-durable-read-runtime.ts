@@ -5,6 +5,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { selectLogs } from "./log-query.ts";
 import {
   listHostInventoriesDurable,
+  listRepositoriesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 
@@ -109,7 +110,11 @@ export async function listWorktreesForRepositoryDurable(
 export async function refreshSchedulerReadModel(state: ControlPlaneState): Promise<void> {
   const storage: DynamoPlaneStorage | undefined = state.storage;
   if (!storage) {
-    await Promise.all([refreshTargetCatalogDurable(state), listHostInventoriesDurable(state)]);
+    await Promise.all([
+      refreshTargetCatalogDurable(state),
+      listHostInventoriesDurable(state),
+      listRepositoriesDurable(state),
+    ]);
     return;
   }
   const previousDraining = new Set(state.drainingHosts);
@@ -117,6 +122,7 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
     storage.listConnections(),
     refreshTargetCatalogDurable(state),
     listHostInventoriesDurable(state),
+    listRepositoriesDurable(state),
   ]);
   state.connections.clear();
   state.hostConnection.clear();

@@ -12,6 +12,7 @@ const auditStorage = {
   putAuditLog: async () => undefined,
   listAuditLogs: async () => ({ items: [] }),
   listAllAuditLogs: async () => [],
+  getRepository: async () => null,
 };
 
 function unavailablePlane(): ControlPlane {

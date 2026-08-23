@@ -135,7 +135,9 @@ export function updateRepository(
   if (!result.ok) return result;
   state.repositories.set(id, result.repository);
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
+    queueWrite(state, async (storage) => {
+      await storage!.updateRepositorySettings(id, patch, result.repository.updatedAt);
+    });
   }
   return { ok: true, repository: { ...result.repository } };
 }
@@ -187,7 +189,12 @@ export async function updateRepositoryDurable(
   await listRepositoriesDurable(state);
   const result = prepareUpdateRepository(state, id, patch);
   if (!result.ok) return result;
-  await state.storage.putRepository({ ...result.repository });
-  state.repositories.set(id, result.repository);
-  return { ok: true, repository: { ...result.repository } };
+  const updated = await state.storage.updateRepositorySettings(
+    id,
+    patch,
+    result.repository.updatedAt,
+  );
+  if (!updated) return { ok: false, error: "repository not found" };
+  state.repositories.set(id, updated);
+  return { ok: true, repository: { ...updated } };
 }

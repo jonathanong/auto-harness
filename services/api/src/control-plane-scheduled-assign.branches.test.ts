@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- scheduled assignment branch cases share compact state builders. */
 import { describe, expect, it } from "vitest";
 
 import { createControlPlaneState } from "./control-plane-state.ts";
@@ -72,6 +73,25 @@ function state() {
 }
 
 describe("scheduled assignment branch coverage", () => {
+  it("cancels a queued occurrence when repository admission is closed", async () => {
+    const current = state();
+    current.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "paused",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    current.sessions.set("s", session());
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(current.sessions.get("s")).toMatchObject({
+      status: "cancelled",
+      completedAt: NOW,
+    });
+  });
+
   it("filters stale, unsupported, repository-missing, draining, disconnected, and leased hosts", async () => {
     const current = state();
     const good = connection("h1", "good");

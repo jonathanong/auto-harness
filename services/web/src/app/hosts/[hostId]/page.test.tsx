@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host route states are covered through one shared fixture. */
 import { afterEach, describe, expect, it } from "vitest";
 
 import { jsonResponse, renderPage, stubApi } from "../../route-test-helpers.tsx";
@@ -35,6 +36,32 @@ describe("host detail route", () => {
     );
     expect(html).toContain('data-pw="page-host-detail"');
     expect(html).not.toContain("-error");
+  });
+
+  it("shows repository environment readiness and missing variable names", async () => {
+    stubApi({
+      ...catalogOk,
+      "/api/v1/hosts": {
+        items: [
+          {
+            hostId: "host-a",
+            online: true,
+            environmentReadiness: {
+              "repo-a": { required: ["TOKEN"], missing: ["TOKEN"], ready: false },
+            },
+          },
+        ],
+      },
+    });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "host-a" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(html).toContain('data-pw="host-environment-readiness-repo-a"');
+    expect(html).toContain("Repo A:");
+    expect(html).toContain("Missing TOKEN");
   });
 
   it("shows a genuine not-found for a host with no inventory and no agent record", async () => {

@@ -11,7 +11,7 @@ export function parseRequiredEnvironment(
   if (new Set(value).size !== value.length) {
     throw new TypeError(`${context} must not contain duplicate names`);
   }
-  const invalid = value.find((name) => !ENVIRONMENT_NAME.test(name));
+  const invalid = value.find((name) => !ENVIRONMENT_NAME.test(name) || name.startsWith("HARNESS_"));
   if (invalid !== undefined) {
     throw new TypeError(`${context} contains an invalid environment variable name`);
   }

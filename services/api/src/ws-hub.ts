@@ -450,7 +450,12 @@ function validRuntimeReport(value: unknown): boolean {
   if (
     !boundedText(runtime.daemonVersion, 128) ||
     (runtime.gitVersion !== null && !boundedText(runtime.gitVersion, 128)) ||
-    typeof runtime.gitReady !== "boolean"
+    typeof runtime.gitReady !== "boolean" ||
+    (runtime.environmentNames !== undefined &&
+      (!Array.isArray(runtime.environmentNames) ||
+        runtime.environmentNames.length > 256 ||
+        !runtime.environmentNames.every((name) => boundedText(name, 128)) ||
+        new Set(runtime.environmentNames).size !== runtime.environmentNames.length))
   )
     return false;
   if (runtime.gitReady)

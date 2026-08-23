@@ -8,9 +8,6 @@ import { RepositoryAdmissionControls } from "./repository-admission-controls.tsx
 
 const failingRequest = async () =>
   new Response(JSON.stringify({ error: { message: "drain failed" } }), { status: 409 });
-const successfulRequest = async () =>
-  new Response(JSON.stringify({ admissionState: "active" }), { status: 200 });
-
 describe("RepositoryAdmissionControls", () => {
   it("pauses an active repository and refreshes", async () => {
     const requests: string[] = [];
@@ -36,6 +33,11 @@ describe("RepositoryAdmissionControls", () => {
   });
 
   it("offers activation while paused and disables it while draining", async () => {
+    const requests: string[] = [];
+    const successfulRequest = async (input: RequestInfo | URL) => {
+      requests.push(String(input));
+      return new Response(JSON.stringify({ admissionState: "active" }), { status: 200 });
+    };
     const paused = mountForm(
       <RepositoryAdmissionControls
         repositoryId="repo"
@@ -45,6 +47,8 @@ describe("RepositoryAdmissionControls", () => {
     );
     press(field(paused.container, "repository-activate"));
     await act(async () => Promise.resolve());
+    expect(requests).toEqual(["/api/v1/repositories/repo/activate"]);
+    expect(router.refresh).toHaveBeenCalled();
     paused.unmount();
     const draining = mountForm(
       <RepositoryAdmissionControls repositoryId="repo" state="draining" />,

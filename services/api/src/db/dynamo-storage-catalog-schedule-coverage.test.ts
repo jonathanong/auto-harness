@@ -3,7 +3,7 @@ import {
   DeleteTableCommand,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -57,6 +57,12 @@ describe("DynamoDB Local schedule catalog adapters", () => {
   });
 
   it("fences scheduled writes", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.repositories,
+        Item: { id: "repository", name: "repository", url: "url", defaultBranch: "main" },
+      }),
+    );
     const schedule = {
       id: "schedule",
       repositoryId: "repository",

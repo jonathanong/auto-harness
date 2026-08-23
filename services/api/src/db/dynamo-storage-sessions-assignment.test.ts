@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- assignment transaction fences share one DynamoDB fixture. */
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -51,6 +52,12 @@ beforeAll(async () => {
   client = clients.client;
   tables = await ensureControlPlaneTables({ client, prefix: `AhD35Assign${process.pid}` });
   ctx = { doc: clients.doc, tables };
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: tables.repositories,
+      Item: { id: "repo", name: "repo", url: "url", defaultBranch: "main" },
+    }),
+  );
 });
 afterAll(async () => {
   await Promise.all(
@@ -71,6 +78,7 @@ describe("DynamoDB Local session assignment", () => {
     expect(
       await tryAcquireHostLock(ctx, {
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "one",
         replaceExisting: false,
       }),
@@ -140,6 +148,7 @@ describe("DynamoDB Local session assignment", () => {
         repositoryId: "repo",
         worktreeId: "assignment-worktree",
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "one",
         now: "2025-01-01T00:00:00.000Z",
         attemptId: "attempt",
@@ -161,6 +170,7 @@ describe("DynamoDB Local session assignment", () => {
         repositoryId: "repo",
         worktreeId: "assignment-worktree",
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "one",
         now: "2025-01-01T00:00:01.000Z",
         attemptId: "again",
@@ -184,6 +194,7 @@ describe("DynamoDB Local session assignment", () => {
         repositoryId: "repo",
         worktreeId: "no-lease-worktree",
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "stale",
         now: "2025-01-01T00:00:00.000Z",
         attemptId: "attempt",
@@ -198,5 +209,36 @@ describe("DynamoDB Local session assignment", () => {
         queueShard: 0,
       }),
     ).toBe(false);
+
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostInventories,
+        Item: { hostId: "host", version: 2, repositories: [], providerAccounts: [] },
+      }),
+    );
+    await putSession(ctx, { ...session, id: "stale-inventory" });
+    await putWorktree(ctx, { ...worktree, id: "stale-inventory-worktree" });
+    expect(
+      await tryAssignSession(ctx, {
+        sessionId: "stale-inventory",
+        repositoryId: "repo",
+        worktreeId: "stale-inventory-worktree",
+        hostId: "host",
+        hostInventoryVersion: 1,
+        connectionId: "one",
+        now: "2025-01-01T00:00:02.000Z",
+        attemptId: "stale-inventory-attempt",
+        resolvedArgv: ["echo"],
+        resolvedRoute: {
+          targetIndex: 0,
+          commandId: "command",
+          hostId: "host",
+          worktreeId: "stale-inventory-worktree",
+          attemptId: "stale-inventory-attempt",
+        },
+        queueShard: 0,
+      }),
+    ).toBe(false);
+    expect((await getWorktree(ctx, "stale-inventory-worktree"))?.status).toBe("idle");
   });
 });

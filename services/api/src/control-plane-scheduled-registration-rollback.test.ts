@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const ctx = createDynamoTestCtx("SchedRegRollback");
@@ -14,9 +14,11 @@ describe("scheduled registration rollback", () => {
     const repositoryId = "repo-rollback";
     const sessionId = "session-rollback";
     const oldConnectionId = "connection-rollback-old";
+    await putActiveTestRepository(ctx.storage, repositoryId);
     expect(
       await ctx.storage.tryRegisterHost({
         hostId,
+        hostInventoryVersion: null,
         replaceExisting: true,
         connection: {
           connectionId: oldConnectionId,
@@ -56,6 +58,7 @@ describe("scheduled registration rollback", () => {
       await ctx.storage.tryAssignMainCheckoutSession({
         sessionId,
         hostId,
+        hostInventoryVersion: null,
         repositoryId,
         connectionId: oldConnectionId,
         now: NOW,

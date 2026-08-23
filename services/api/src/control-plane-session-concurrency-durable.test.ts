@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const ctx = createDynamoTestCtx("SessionConcurrency");
@@ -9,6 +9,7 @@ const ctx = createDynamoTestCtx("SessionConcurrency");
 describe("durable session concurrency", () => {
   it("validates, atomically deduplicates, and releases terminal concurrency ids", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-1");
     await ctx.storage.putCommand({
       id: "cmd-concurrency",
       name: "concurrency",
@@ -109,6 +110,7 @@ describe("durable session concurrency", () => {
 
   it("creates a pinned resume atomically and deduplicates an active resume", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-resume");
     await ctx.storage.putCommand({
       id: "cmd-resume-concurrency",
       name: "resume concurrency",

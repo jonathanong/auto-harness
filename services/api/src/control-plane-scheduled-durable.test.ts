@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
 import type { SessionRecord } from "./db/types.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("SchedLease");
 
 describe("durable scheduled main-checkout leases", () => {
   it("allows one concurrent claim and releases only the owning terminal session", async () => {
     if (!ctx.available || !ctx.storage) return expect(true).toBe(true);
+    await putActiveTestRepository(ctx.storage, "repository");
     await ctx.storage.putCommand({
       id: "command",
       name: "echo",

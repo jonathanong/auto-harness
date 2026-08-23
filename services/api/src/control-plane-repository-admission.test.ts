@@ -60,6 +60,65 @@ describe("repository admission", () => {
     });
   });
 
+  it("keeps an in-memory drain open until its worktree lease is released", async () => {
+    const messages: unknown[] = [];
+    const plane = new ControlPlane({ onHostMessage: (_hostId, message) => messages.push(message) });
+    seedBaseCommand(plane);
+    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    const created = plane.createSession({
+      repositoryId: "repo-1",
+      prompt: "run",
+      target: { commandId: "cmd-base" },
+      timeout: 30,
+    });
+    if (!created.ok) throw new Error(created.error);
+    const session = plane.state.sessions.get(created.session.id)!;
+    session.status = "running";
+    session.hostId = "host-1";
+    session.worktreeId = "worktree-1";
+    plane.seedWorktree({
+      id: "worktree-1",
+      name: "worktree",
+      hostId: "host-1",
+      repositoryId: "repo-1",
+      path: "/repo",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: session.id,
+    });
+
+    await expect(plane.drainRepositoryDurable("repo-1")).resolves.toMatchObject({
+      ok: true,
+      repository: { admissionState: "draining" },
+    });
+    expect(messages).toContainEqual({ type: "session:cancel", sessionId: session.id });
+    delete plane.state.worktrees.get("worktree-1")!.currentSessionId;
+    await expect(plane.reconcileRepositoryDrainsDurable()).resolves.toMatchObject([
+      { admissionState: "paused" },
+    ]);
+  });
+
+  it("advances due closed schedule cursors before activation", async () => {
+    const plane = new ControlPlane({ now: () => "2026-01-01T00:05:00.000Z" });
+    seedBaseCommand(plane);
+    plane.createRepository({ id: "repo-1", name: "repo", url: "url" });
+    await plane.pauseRepositoryDurable("repo-1");
+    expect(
+      plane.putSchedule({
+        id: "schedule-1",
+        repositoryId: "repo-1",
+        name: "schedule",
+        target: { commandId: "cmd-base" },
+        cron: "* * * * *",
+        timeout: 30,
+        nextRunAt: "2026-01-01T00:01:00.000Z",
+      }).ok,
+    ).toBe(true);
+    await expect(plane.activateRepositoryDurable("repo-1")).resolves.toMatchObject({ ok: true });
+    expect(plane.getSchedule("schedule-1")?.nextRunAt).toBe("2026-01-01T00:06:00.000Z");
+  });
+
   it("reconciles a durable drain after leases clear", async () => {
     const draining = {
       id: "repo-1",
@@ -78,7 +137,7 @@ describe("repository admission", () => {
       repositories,
       storage: {
         listRepositories: async () => [draining],
-        listSessionsByRepository: async () => [],
+        listAllSessions: async () => [],
         listWorktreesForRepo: async () => [],
         completeRepositoryDrain: async () => completed,
       },

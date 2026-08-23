@@ -44,6 +44,7 @@ export async function tryAssignMainCheckoutSession(
   opts: {
     sessionId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     repositoryId: string;
     connectionId: string;
     now: string;
@@ -62,10 +63,28 @@ export async function tryAssignMainCheckoutSession(
         TransactItems: [
           {
             ConditionCheck: {
+              TableName: ctx.tables.hostInventories,
+              Key: { hostId: opts.hostId },
+              ConditionExpression:
+                opts.hostInventoryVersion === null
+                  ? "attribute_not_exists(hostId)"
+                  : "version = :inventoryVersion OR (attribute_not_exists(version) AND :inventoryVersion = :zero)",
+              ...(opts.hostInventoryVersion === null
+                ? {}
+                : {
+                    ExpressionAttributeValues: {
+                      ":inventoryVersion": opts.hostInventoryVersion,
+                      ":zero": 0,
+                    },
+                  }),
+            },
+          },
+          {
+            ConditionCheck: {
               TableName: ctx.tables.repositories,
               Key: { id: opts.repositoryId },
               ConditionExpression:
-                "attribute_not_exists(admissionState) OR admissionState = :active",
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
               ExpressionAttributeValues: { ":active": "active" },
             },
           },

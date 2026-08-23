@@ -5,12 +5,13 @@ import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ScheduledProvider");
 const NOW = "2026-01-01T00:00:00.000Z";
 
 async function plane(connectionId: string, hostId: string, repositoryId: string) {
+  await putActiveTestRepository(ctx.storage!, repositoryId);
   const created = await createControlPlane({
     tablePrefix: ctx.prefix,
     skipEnsureTables: true,

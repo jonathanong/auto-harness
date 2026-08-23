@@ -23,6 +23,7 @@ function hostPrincipal(hostId = "host-1") {
 function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hostPrincipal()) {
   const connections = new Map<string, Record<string, unknown>>();
   const sessions = new Map<string, Record<string, unknown>>();
+  const repositories = new Map<string, Record<string, unknown>>();
   const hostLocks = new Map<string, string>();
   const deletedConnections: string[] = [];
   const registrations: Array<Record<string, unknown>> = [];
@@ -46,6 +47,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getSession(id: string) {
       return sessions.get(id) ?? null;
     },
+    async getRepository(id: string) {
+      return repositories.get(id) ?? null;
+    },
     async getWorktree() {
       return null;
     },
@@ -61,11 +65,32 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async listProviderAccounts() {
       return [];
     },
+    async listRepositories() {
+      return [...repositories.values()];
+    },
+    async listAllSessions() {
+      return [...sessions.values()];
+    },
     async listProviders() {
       return [];
     },
     async listWorktreesByHost() {
       return [];
+    },
+    async listWorktreesForRepo() {
+      return [];
+    },
+    async completeRepositoryDrain(id: string, requestedAt: string, now: string) {
+      const current = repositories.get(id);
+      if (!current || current.drainRequestedAt !== requestedAt) return null;
+      const completed = {
+        ...current,
+        admissionState: "paused",
+        admissionStateChangedAt: now,
+        drainCompletedAt: now,
+      };
+      repositories.set(id, completed);
+      return completed;
     },
     async markHostDraining(hostId: string, connectionId: string) {
       return hostLocks.get(hostId) === connectionId;
@@ -139,6 +164,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     management,
     plane,
     registrations,
+    repositories,
     runtime: createLambdaRuntime({
       auth: auth as never,
       created: { plane, storage } as never,
@@ -470,6 +496,16 @@ describe("Lambda runtime adapters", () => {
 
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     const fixture = runtimeFixture();
+    fixture.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "draining",
+      drainRequestedAt: "requested",
+      createdAt: "created",
+      updatedAt: "updated",
+    });
     const order: string[] = [];
     const refreshSchedulerReadModelDurable = fixture.plane.refreshSchedulerReadModelDurable.bind(
       fixture.plane,
@@ -494,10 +530,6 @@ describe("Lambda runtime adapters", () => {
       order.push("stale");
       return ["host-1", "host-2"];
     });
-    vi.spyOn(fixture.plane, "reconcileRepositoryDrainsDurable").mockImplementation(async () => {
-      order.push("repository-drains");
-      return [{ id: "repo-1" }] as never;
-    });
     vi.spyOn(fixture.plane, "assignQueuedDurable").mockImplementation(async () => {
       order.push("queued");
       return [{ session: {}, worktree: {} }] as never;
@@ -516,16 +548,7 @@ describe("Lambda runtime adapters", () => {
       schedulesFired: 1,
       staleHostsReclaimed: 2,
     });
-    expect(order).toEqual([
-      "cron",
-      "ack",
-      "timeout",
-      "refresh",
-      "stale",
-      "repository-drains",
-      "queued",
-      "scheduled",
-    ]);
+    expect(order).toEqual(["cron", "ack", "timeout", "refresh", "stale", "queued", "scheduled"]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {

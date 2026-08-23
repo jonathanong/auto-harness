@@ -110,9 +110,9 @@ export function HostSetupScriptForm({
         />
       </div>
       <div className="flex items-center gap-3">
-        <WithTooltip tip="Save only the host-wide setup script">
+        <WithTooltip tip="Save the host-wide setup script and required environment">
           <Button type="submit" disabled={pending} data-pw="host-setup-script-submit">
-            {pending ? "Saving…" : "Save host setup"}
+            {pending ? "Saving…" : "Save host setup and environment"}
           </Button>
         </WithTooltip>
         {saved ? (

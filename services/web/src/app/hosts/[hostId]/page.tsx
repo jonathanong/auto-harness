@@ -28,6 +28,7 @@ type Agent = {
   gitVersion?: string | null;
   gitReady?: boolean;
   gitReadinessReason?: string | null;
+  environmentReadiness?: Record<string, { required: string[]; missing: string[]; ready: boolean }>;
 };
 type LiveWorktree = { id: string; hostId?: string; status?: string; online?: boolean };
 
@@ -163,6 +164,7 @@ export default async function HostDetailPage({
                 agentsError={agentsError}
                 repoCount={repoCount}
                 worktreeCount={worktreeCount}
+                repositoryNames={namesById}
               />
             ),
           },

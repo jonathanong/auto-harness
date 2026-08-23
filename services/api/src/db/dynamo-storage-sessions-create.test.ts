@@ -40,6 +40,12 @@ beforeAll(async () => {
   client = clients.client;
   tables = await ensureControlPlaneTables({ client, prefix: `AhD35Create${process.pid}` });
   ctx = { doc: clients.doc, tables };
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: tables.repositories,
+      Item: { id: "repo", name: "repo", url: "url", defaultBranch: "main" },
+    }),
+  );
 });
 afterAll(async () => {
   await Promise.all(
@@ -168,11 +174,14 @@ describe("DynamoDB Local session creation", () => {
         Item: { id: "closed-repo", admissionState: "paused" },
       }),
     );
-    await createSession(ctx, {
+    const rejected = createSession(ctx, {
       ...base,
       id: "closed-session",
       repositoryId: "closed-repo",
       status: "queued",
-    }).catch((error: unknown) => expect(isRepositoryAdmissionClosed(error)).toBe(true));
+    });
+    await expect(rejected).rejects.toSatisfy((error: unknown) =>
+      isRepositoryAdmissionClosed(error),
+    );
   });
 });

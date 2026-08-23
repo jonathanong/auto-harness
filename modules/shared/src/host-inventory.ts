@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- inventory transformations share one immutable update surface. */
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 import type { HostCapability } from "./host-capabilities.ts";
 
@@ -69,6 +70,9 @@ function cloneInventory(existing: HostInventory | null | undefined): HostInvento
     repositories: existing?.repositories
       ? existing.repositories.map((r) => ({
           ...r,
+          ...(r.requiredEnvironment !== undefined
+            ? { requiredEnvironment: [...r.requiredEnvironment] }
+            : {}),
           worktrees: r.worktrees.map((w) => ({ ...w, labels: [...w.labels] })),
         }))
       : [],

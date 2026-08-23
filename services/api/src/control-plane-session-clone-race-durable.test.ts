@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("SessionCloneRace");
 
 describe("durable session clone races", () => {
   it("creates two independent clones across API workers", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-clone-race");
     await ctx.storage.putCommand({
       id: "cmd-clone-race",
       name: "clone race",

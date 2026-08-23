@@ -17,6 +17,7 @@ import {
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -104,8 +105,10 @@ export async function assignScheduledQueuedDurable(
       if (
         repositoryAdmissionState(state.repositories.get(session.repositoryId)?.admissionState) !==
         "active"
-      )
+      ) {
+        await cancelSessionDurable(state, session.id);
         continue;
+      }
       for (const { hostId, connectionId } of await eligibleHosts(state, session.repositoryId)) {
         const connection = state.connections.get(connectionId);
         if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
@@ -118,6 +121,9 @@ export async function assignScheduledQueuedDurable(
             (await state.storage.tryAssignMainCheckoutSession({
               sessionId: session.id,
               hostId,
+              hostInventoryVersion: state.hostInventories.has(hostId)
+                ? (state.hostInventories.get(hostId)!.version ?? 0)
+                : null,
               repositoryId: session.repositoryId,
               connectionId,
               now,

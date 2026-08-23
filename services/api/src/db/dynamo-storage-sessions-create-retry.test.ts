@@ -18,6 +18,12 @@ beforeAll(async () => {
   doc = clients.doc;
   tables = await ensureControlPlaneTables({ client, prefix: `AhD35CreateRetry${process.pid}` });
   ctx = { doc, tables };
+  await doc.send(
+    new PutCommand({
+      TableName: tables.repositories,
+      Item: { id: "repo", name: "repo", url: "url", defaultBranch: "main" },
+    }),
+  );
 });
 
 afterAll(async () => {

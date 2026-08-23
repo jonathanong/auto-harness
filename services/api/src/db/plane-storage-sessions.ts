@@ -110,7 +110,7 @@ export async function createSession(
                 TableName: ctx.tables.repositories,
                 Key: { id: session.repositoryId },
                 ConditionExpression:
-                  "attribute_not_exists(admissionState) OR admissionState = :active",
+                  "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
                 ExpressionAttributeValues: { ":active": "active" },
               },
             },
@@ -150,7 +150,7 @@ export async function createSession(
                 TableName: ctx.tables.repositories,
                 Key: { id: session.repositoryId },
                 ConditionExpression:
-                  "attribute_not_exists(admissionState) OR admissionState = :active",
+                  "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
                 ExpressionAttributeValues: { ":active": "active" },
               },
             },
@@ -561,6 +561,7 @@ export async function tryAssignSession(
     repositoryId: string;
     worktreeId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -607,8 +608,26 @@ export async function tryAssignSession(
               TableName: ctx.tables.repositories,
               Key: { id: opts.repositoryId },
               ConditionExpression:
-                "attribute_not_exists(admissionState) OR admissionState = :active",
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
               ExpressionAttributeValues: { ":active": "active" },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostInventories,
+              Key: { hostId: opts.hostId },
+              ConditionExpression:
+                opts.hostInventoryVersion === null
+                  ? "attribute_not_exists(hostId)"
+                  : "version = :inventoryVersion OR (attribute_not_exists(version) AND :inventoryVersion = :zero)",
+              ...(opts.hostInventoryVersion === null
+                ? {}
+                : {
+                    ExpressionAttributeValues: {
+                      ":inventoryVersion": opts.hostInventoryVersion,
+                      ":zero": 0,
+                    },
+                  }),
             },
           },
           {

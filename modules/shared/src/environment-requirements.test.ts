@@ -18,13 +18,19 @@ describe("environment requirements", () => {
     expect(() => parseRequiredEnvironment(["TOKEN=value"])).toThrow(
       "invalid environment variable name",
     );
+    expect(() => parseRequiredEnvironment(["HARNESS_API_KEY"])).toThrow(
+      "invalid environment variable name",
+    );
   });
 });
 
 describe("repository admission compatibility", () => {
-  it("treats missing and unknown legacy values as active", () => {
+  it("treats only missing legacy values as active and rejects malformed states", () => {
     expect(repositoryAdmissionState(undefined)).toBe("active");
-    expect(repositoryAdmissionState("future-state")).toBe("active");
+    expect(repositoryAdmissionState("active")).toBe("active");
+    expect(() => repositoryAdmissionState("future-state")).toThrow(
+      "invalid repository admission state",
+    );
     expect(repositoryAdmissionState("paused")).toBe("paused");
     expect(repositoryAdmissionClosedMessage("draining")).toBe("repository admission is draining");
   });

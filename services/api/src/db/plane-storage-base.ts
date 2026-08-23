@@ -132,6 +132,7 @@ export class DynamoPlaneStorageBase {
     repositoryId: string;
     worktreeId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -162,6 +163,7 @@ export class DynamoPlaneStorageBase {
   tryAssignMainCheckoutSession(opts: {
     sessionId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     repositoryId: string;
     connectionId: string;
     now: string;
@@ -577,6 +579,19 @@ export class DynamoPlaneStorageBase {
 
   putRepository(rec: RepositoryRecord): Promise<void> {
     return catalog.putRepository(this.ctx, rec);
+  }
+
+  updateRepositorySettings(
+    id: string,
+    patch: Partial<
+      Pick<
+        RepositoryRecord,
+        "name" | "url" | "defaultBranch" | "setupScript" | "terminalHookScript"
+      >
+    >,
+    updatedAt: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.updateRepositorySettings(this.ctx, id, patch, updatedAt);
   }
 
   createRepository(rec: RepositoryRecord): Promise<boolean> {

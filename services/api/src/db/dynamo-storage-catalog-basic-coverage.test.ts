@@ -20,6 +20,7 @@ import {
   putHostInventory,
   putRepository,
   putSchedule,
+  updateRepositorySettings,
 } from "./plane-storage-catalog.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -148,6 +149,16 @@ describe("DynamoDB Local basic catalog adapters", () => {
       admissionState: "paused",
       drainCompletedAt: "t3",
     });
+    const restartedDrain = await storage.setRepositoryAdmissionState(
+      repository.id,
+      "draining",
+      "t4",
+    );
+    expect(restartedDrain).toMatchObject({ admissionState: "draining" });
+    expect(restartedDrain).not.toHaveProperty("drainCompletedAt");
+    expect(
+      await updateRepositorySettings(ctx, repository.id, { name: "Admission updated" }, "t5"),
+    ).toMatchObject({ name: "Admission updated", admissionState: "draining" });
 
     await putSchedule(ctx, {
       id: "closed-schedule",

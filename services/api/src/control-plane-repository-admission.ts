@@ -1,10 +1,12 @@
 import {
   isActiveSessionStatus,
+  nextCronOccurrence,
   repositoryAdmissionState,
   type RepositoryAdmissionState,
 } from "@auto-harness/shared";
 
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
+import { cancelSession } from "./control-plane-lifecycle.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { RepositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
@@ -42,12 +44,55 @@ function transitionInMemory(
   return { ok: true, repository: cache(state, repository) };
 }
 
+async function skipDueSchedulesBeforeActivation(
+  state: ControlPlaneState,
+  repositoryId: string,
+): Promise<void> {
+  const now = state.now();
+  const schedules = state.storage
+    ? await state.storage.listSchedules()
+    : [...state.schedules.values()];
+  for (const schedule of schedules) {
+    if (
+      schedule.repositoryId !== repositoryId ||
+      !schedule.enabled ||
+      Date.parse(schedule.nextRunAt) > Date.parse(now)
+    )
+      continue;
+    const nextRunAt = nextCronOccurrence(schedule.cron, now);
+    if (!nextRunAt) continue;
+    if (
+      !state.storage ||
+      (await state.storage.skipScheduleForClosedRepository({
+        scheduleId: schedule.id,
+        repositoryId,
+        expectedNextRunAt: schedule.nextRunAt,
+        newNextRunAt: nextRunAt,
+      }))
+    ) {
+      state.schedules.set(schedule.id, { ...schedule, nextRunAt });
+    }
+  }
+}
+
 export async function setRepositoryAdmissionDurable(
   state: ControlPlaneState,
   id: string,
   admissionState: "active" | "paused",
 ): Promise<{ ok: true; repository: RepositoryRecord } | RepositoryAdmissionFailure> {
-  if (!state.storage) return transitionInMemory(state, id, admissionState);
+  if (!state.storage) {
+    if (admissionState === "active") await skipDueSchedulesBeforeActivation(state, id);
+    return transitionInMemory(state, id, admissionState);
+  }
+  if (admissionState === "active") {
+    const current = await state.storage.getRepository(id);
+    if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
+    cache(state, current);
+    if (repositoryAdmissionState(current.admissionState) === "draining") {
+      return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
+    }
+    await skipDueSchedulesBeforeActivation(state, id);
+  }
   const repository = await state.storage.setRepositoryAdmissionState(
     id,
     admissionState,
@@ -65,13 +110,17 @@ async function reconcileOne(
   repository: RepositoryRecord,
 ): Promise<RepositoryRecord> {
   if (!state.storage || !repository.drainRequestedAt) return repository;
-  const sessions = await state.storage.listSessionsByRepository(repository.id);
+  const sessions = (await state.storage.listAllSessions(true)).filter(
+    (session) => session.repositoryId === repository.id,
+  );
   for (const session of sessions
     .filter((item) => isActiveSessionStatus(item.status))
     .slice(0, 100)) {
     await cancelSessionDurable(state, session.id);
   }
-  const remaining = await state.storage.listSessionsByRepository(repository.id);
+  const remaining = (await state.storage.listAllSessions(true)).filter(
+    (session) => session.repositoryId === repository.id,
+  );
   const worktrees = await state.storage.listWorktreesForRepo(repository.id);
   const leased =
     remaining.some(
@@ -86,6 +135,35 @@ async function reconcileOne(
   return completed ? cache(state, completed) : repository;
 }
 
+function hasInMemoryRepositoryLease(state: ControlPlaneState, repositoryId: string): boolean {
+  return (
+    [...state.mainCheckoutLeases.keys()].some((key) => key.endsWith(`\0${repositoryId}`)) ||
+    [...state.worktrees.values()].some(
+      (worktree) => worktree.repositoryId === repositoryId && !!worktree.currentSessionId,
+    )
+  );
+}
+
+function reconcileInMemory(
+  state: ControlPlaneState,
+  repository: RepositoryRecord,
+): RepositoryRecord {
+  for (const session of state.sessions.values()) {
+    if (session.repositoryId === repository.id && isActiveSessionStatus(session.status)) {
+      cancelSession(state, session.id);
+    }
+  }
+  if (hasInMemoryRepositoryLease(state, repository.id)) return repository;
+  const now = state.now();
+  return cache(state, {
+    ...repository,
+    admissionState: "paused",
+    admissionStateChangedAt: now,
+    drainCompletedAt: now,
+    updatedAt: now,
+  });
+}
+
 export async function drainRepositoryDurable(
   state: ControlPlaneState,
   id: string,
@@ -93,21 +171,7 @@ export async function drainRepositoryDurable(
   if (!state.storage) {
     const transitioned = transitionInMemory(state, id, "draining");
     if (!transitioned.ok) return transitioned;
-    for (const session of state.sessions.values()) {
-      if (session.repositoryId === id && isActiveSessionStatus(session.status)) {
-        const now = state.now();
-        session.status = "cancelled";
-        session.errorMessage = "cancelled by repository drain";
-        session.completedAt = now;
-      }
-    }
-    const completed = {
-      ...transitioned.repository,
-      admissionState: "paused" as const,
-      admissionStateChangedAt: state.now(),
-      drainCompletedAt: state.now(),
-    };
-    return { ok: true, repository: cache(state, completed) };
+    return { ok: true, repository: reconcileInMemory(state, transitioned.repository) };
   }
   const draining = await state.storage.setRepositoryAdmissionState(id, "draining", state.now());
   if (!draining) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
@@ -119,11 +183,14 @@ export async function drainRepositoryDurable(
 export async function reconcileRepositoryDrainsDurable(
   state: ControlPlaneState,
 ): Promise<RepositoryRecord[]> {
-  if (!state.storage) return [];
-  const repositories = (await state.storage.listRepositories()).filter(
-    (repository) => repositoryAdmissionState(repository.admissionState) === "draining",
-  );
+  const repositories = (
+    state.storage ? await state.storage.listRepositories() : [...state.repositories.values()]
+  ).filter((repository) => repositoryAdmissionState(repository.admissionState) === "draining");
   const reconciled: RepositoryRecord[] = [];
-  for (const repository of repositories) reconciled.push(await reconcileOne(state, repository));
+  for (const repository of repositories) {
+    reconciled.push(
+      state.storage ? await reconcileOne(state, repository) : reconcileInMemory(state, repository),
+    );
+  }
   return reconciled;
 }

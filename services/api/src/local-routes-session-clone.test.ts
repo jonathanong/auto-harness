@@ -179,6 +179,7 @@ describe("session clone route", () => {
     conflictPlane.state.commands.set(concurrentCommand.id, concurrentCommand);
     conflictPlane.state.storage = {
       getSession: async () => source,
+      getRepository: async () => null,
       putAuditLog: async () => undefined,
       listCommands: async () => [command],
       listProviders: async () => [],

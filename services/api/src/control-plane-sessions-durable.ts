@@ -14,7 +14,10 @@ import {
   isRepositoryAdmissionClosed,
 } from "./db/plane-storage-sessions.ts";
 import { getSessionDurable as getSessionRecordDurable } from "./control-plane-durable-read-runtime.ts";
-import { refreshTargetCatalogDurable } from "./control-plane-durable-read-catalog.ts";
+import {
+  getRepositoryDurable,
+  refreshTargetCatalogDurable,
+} from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
 /** Durable REST create path: DynamoDB owns the concurrency-id compare-and-create. */
@@ -27,6 +30,13 @@ export async function createSessionDurable(
 > {
   if (!state.storage) return createSession(state, body);
   await refreshTargetCatalogDurable(state);
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    typeof (body as { repositoryId?: unknown }).repositoryId === "string"
+  ) {
+    await getRepositoryDurable(state, (body as { repositoryId: string }).repositoryId);
+  }
   const prepared = validateSessionCreate(state, body);
   if (!prepared.ok) return prepared;
   let result;
@@ -67,6 +77,8 @@ export async function resumeSessionDurable(
     return resumeSession(state, sessionId, opts);
   }
   await getSessionRecordDurable(state, sessionId);
+  const source = state.sessions.get(sessionId);
+  if (source) await getRepositoryDurable(state, source.repositoryId);
   const prepared = prepareResumedSession(state, sessionId, opts);
   if (!prepared.ok) return prepared;
   // Durable preparation deliberately skips process-local deduplication; the
@@ -121,6 +133,7 @@ export async function cloneSessionDurable(
       state.storage.listProviderAccounts(),
     ]);
     if (!source) return { ok: false, error: "session not found", code: "NOT_FOUND" };
+    const repository = await state.storage.getRepository(source.repositoryId);
     state.sessions.set(source.id, { ...source });
     // Catalog scans are an authorization-time snapshot. Keep them isolated so
     // a concurrent management write cannot be erased from the shared cache.
@@ -129,6 +142,7 @@ export async function cloneSessionDurable(
       commands: new Map(commands.map((command) => [command.id, command])),
       providers: new Map(providers.map((provider) => [provider.id, provider])),
       providerAccounts: new Map(accounts.map((account) => [account.id, account])),
+      repositories: new Map(repository ? [[repository.id, repository]] : []),
     };
   }
   const prepared = prepareClonedSession(cloneState, sessionId, opts);

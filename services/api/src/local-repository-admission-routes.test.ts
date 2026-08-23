@@ -49,6 +49,38 @@ function seededPlane(): ControlPlane {
 }
 
 describe("repository admission routes", () => {
+  it("audits a failed admission operation before returning an internal error", async () => {
+    const audits: Array<{ action?: string; outcome?: string }> = [];
+    const plane = new ControlPlane({
+      now: () => NOW,
+      storage: {
+        setRepositoryAdmissionState: async () => {
+          throw new Error("storage unavailable");
+        },
+        putAuditLog: async (record: { action?: string; outcome?: string }) => {
+          audits.push(record);
+        },
+      } as never,
+    });
+    plane.state.repositories.set("repository", {
+      id: "repository",
+      name: "repository",
+      url: "/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    expect(await invoke(plane, "/api/v1/repositories/repository/pause")).toMatchObject({
+      status: 500,
+    });
+    expect(audits).toContainEqual(
+      expect.objectContaining({
+        action: "repository:pause",
+        outcome: "failed",
+      }),
+    );
+  });
+
   it("operates admission and returns stable conflicts", async () => {
     const plane = seededPlane();
     expect(await invoke(plane, "/api/v1/repositories/missing/pause")).toMatchObject({

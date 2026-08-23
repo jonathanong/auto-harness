@@ -4,7 +4,9 @@ export type RepositoryAdmissionState = (typeof REPOSITORY_ADMISSION_STATES)[numb
 
 /** Rows written before repository admission controls are treated as active. */
 export function repositoryAdmissionState(value: unknown): RepositoryAdmissionState {
-  return value === "paused" || value === "draining" ? value : "active";
+  if (value === undefined || value === "active") return "active";
+  if (value === "paused" || value === "draining") return value;
+  throw new TypeError("invalid repository admission state");
 }
 
 export function repositoryAdmissionClosedMessage(state: RepositoryAdmissionState): string {

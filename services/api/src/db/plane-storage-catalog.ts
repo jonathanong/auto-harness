@@ -363,6 +363,49 @@ export async function putRepository(ctx: PlaneStorageCtx, rec: RepositoryRecord)
   );
 }
 
+/** Update operator-editable settings without overwriting admission/drain fields. */
+export async function updateRepositorySettings(
+  ctx: PlaneStorageCtx,
+  id: string,
+  patch: Partial<
+    Pick<RepositoryRecord, "name" | "url" | "defaultBranch" | "setupScript" | "terminalHookScript">
+  >,
+  updatedAt: string,
+): Promise<RepositoryRecord | null> {
+  const names: Record<string, string> = { "#updatedAt": "updatedAt" };
+  const values: Record<string, unknown> = { ":updatedAt": updatedAt };
+  const sets = ["#updatedAt = :updatedAt"];
+  for (const key of [
+    "name",
+    "url",
+    "defaultBranch",
+    "setupScript",
+    "terminalHookScript",
+  ] as const) {
+    if (patch[key] === undefined) continue;
+    names[`#${key}`] = key;
+    values[`:${key}`] = patch[key];
+    sets.push(`#${key} = :${key}`);
+  }
+  try {
+    const result = await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.repositories,
+        Key: { id },
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ConditionExpression: "attribute_exists(id)",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return catalogItem(result.Attributes as RepositoryRecord | undefined);
+  } catch (error) {
+    if (isConditionalFailed(error)) return null;
+    throw error;
+  }
+}
+
 /** Insert a repository without allowing a stale process to overwrite it. */
 export async function createRepository(
   ctx: PlaneStorageCtx,
@@ -387,7 +430,7 @@ export async function getRepository(
   id: string,
 ): Promise<RepositoryRecord | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.repositories, Key: { id } }),
+    new GetCommand({ TableName: ctx.tables.repositories, Key: { id }, ConsistentRead: true }),
   );
   return catalogItem(res.Item as RepositoryRecord | undefined);
 }
@@ -426,7 +469,7 @@ export async function setRepositoryAdmissionState(
         Key: { id },
         UpdateExpression: [
           "SET #state = :state, admissionStateChangedAt = :now, updatedAt = :now",
-          ...(draining ? [", drainRequestedAt = :now"] : []),
+          ...(draining ? [", drainRequestedAt = :now REMOVE drainCompletedAt"] : []),
           ...(activating ? [" REMOVE drainRequestedAt, drainCompletedAt"] : []),
         ].join(""),
         ConditionExpression: resumingAdmission
@@ -562,7 +605,7 @@ export async function tryClaimScheduleAndCreateSession(
               TableName: ctx.tables.repositories,
               Key: { id: opts.session.repositoryId },
               ConditionExpression:
-                "attribute_not_exists(admissionState) OR admissionState = :active",
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
               ExpressionAttributeValues: { ":active": "active" },
             },
           },
