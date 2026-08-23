@@ -111,6 +111,7 @@ export async function reconcileSessionDrainDurable(
     nextKey?: Record<string, unknown>;
   };
   let cancelledThisPage = 0;
+  const reconciledSessions = new Map<string, import("./db/types.ts").SessionRecord>();
   for (const session of page.sessions
     .filter((candidate) => candidate.status === "queued" || candidate.status === "running")
     .slice(0, MAX_CANCELLATIONS_PER_RECONCILE)) {
@@ -118,6 +119,7 @@ export async function reconcileSessionDrainDurable(
     const result = await cancelSessionDurable(state, session.id, {
       drainOperationId: drain.operationId,
     });
+    reconciledSessions.set(session.id, state.sessions.get(session.id) ?? session);
     if (result.ok) {
       cancelledThisPage += 1;
       await appendCancellationAudit(state, {
@@ -142,7 +144,9 @@ export async function reconcileSessionDrainDurable(
     }
   }
 
-  const authoritative = page.sessions.map((session) => state.sessions.get(session.id) ?? session);
+  const authoritative = page.sessions.map(
+    (session) => reconciledSessions.get(session.id) ?? session,
+  );
   const queuedCount = authoritative.filter((session) => session.status === "queued").length;
   // ACT members are removed after a strong read proves their terminal state.
   // Retain the durable monotonic total after cleanup rather than treating the

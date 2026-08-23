@@ -47,6 +47,30 @@ function queuedSession(index: number): SessionRecord {
 }
 
 describe("session drain reconciliation pagination", () => {
+  it("does not replace a strong terminal row with a stale process cache entry", async () => {
+    const state = createControlPlaneState({ now: () => "2026-01-01T00:16:00.000Z" });
+    const stale = queuedSession(1);
+    const terminal: SessionRecord = {
+      ...stale,
+      status: "cancelled",
+      cancelledByDrainOperationId: "operation",
+    };
+    state.sessions.set(stale.id, stale);
+    let durableDrain = drain();
+    setDurableReadStorage(state, {
+      listSessionsForDrain: async () => ({ sessions: [terminal] }),
+      updateSessionDrain: async (updated: SessionDrainRecord) => {
+        durableDrain = { ...updated };
+        return true;
+      },
+      getSessionDrainOperation: async () => durableDrain,
+    });
+
+    await expect(reconcileSessionDrainDurable(state, durableDrain)).resolves.toMatchObject({
+      status: "succeeded",
+    });
+  });
+
   it("reconciles more than one hundred queued sessions in bounded resumable pages", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const activities = Array.from({ length: 101 }, (_, index) => queuedSession(index));
