@@ -96,6 +96,8 @@ describe("DynamoPlaneStorageBase", () => {
     ).toBe("deleted");
     await storage.releaseDeletionMarker(`principal:${account.id}`, "owner");
     expect(await storage.getAuthAccount(account.id)).toBeNull();
+    await storage.putAuthAccount({ ...account, id: "base-user-unfenced", username: "unfenced" });
+    await storage.deleteAuthAccount("base-user-unfenced");
 
     expect(
       await storage.failExpiredResumeSession({
