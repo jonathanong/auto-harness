@@ -515,15 +515,18 @@ export async function setRepositoryAdmissionState(
               ]
             : []),
         ].join(""),
-        ConditionExpression: resumingAdmission
-          ? "attribute_exists(id) AND (attribute_not_exists(#state) OR #state <> :draining)"
-          : "attribute_exists(id)",
+        ConditionExpression: activating
+          ? "attribute_exists(id) AND #state = :paused"
+          : resumingAdmission
+            ? "attribute_exists(id) AND (attribute_not_exists(#state) OR #state <> :draining)"
+            : "attribute_exists(id)",
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: {
           ":state": state,
           ":now": now,
           ...(activating ? { ":activationCutoffAt": activationCutoffAt } : {}),
-          ...(resumingAdmission ? { ":draining": "draining" } : {}),
+          ...(activating ? { ":paused": "paused" } : {}),
+          ...(resumingAdmission && !activating ? { ":draining": "draining" } : {}),
         },
         ReturnValues: "ALL_NEW",
       }),
@@ -732,6 +735,7 @@ export async function tryClaimScheduleAndCreateSession(
     newNextRunAt: string;
     lastRunAt: string;
     activationCutoffAt?: string;
+    expectedNextRunAtEpochMs?: number;
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
@@ -770,15 +774,20 @@ export async function tryClaimScheduleAndCreateSession(
               UpdateExpression: "SET nextRunAt = :n, lastRunAt = :l",
               ConditionExpression: [
                 "nextRunAt = :e AND enabled = :true",
-                ...(opts.activationCutoffAt ? ["AND nextRunAt >= :activationCutoffAt"] : []),
+                ...(opts.expectedNextRunAtEpochMs !== undefined && opts.activationCutoffAt
+                  ? ["AND :expectedNextRunAtEpochMs >= :activationCutoffEpochMs"]
+                  : []),
               ].join(" "),
               ExpressionAttributeValues: {
                 ":n": opts.newNextRunAt,
                 ":l": opts.lastRunAt,
                 ":e": opts.expectedNextRunAt,
                 ":true": true,
-                ...(opts.activationCutoffAt
-                  ? { ":activationCutoffAt": opts.activationCutoffAt }
+                ...(opts.expectedNextRunAtEpochMs !== undefined && opts.activationCutoffAt
+                  ? {
+                      ":expectedNextRunAtEpochMs": opts.expectedNextRunAtEpochMs,
+                      ":activationCutoffEpochMs": Date.parse(opts.activationCutoffAt),
+                    }
                   : {}),
               },
             },
@@ -1139,11 +1148,12 @@ export async function skipScheduleBeforeActivationCutoff(
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :nextRunAt",
               ConditionExpression:
-                "nextRunAt = :expectedNextRunAt AND nextRunAt < :activationCutoffAt AND enabled = :true AND repositoryId = :repositoryId",
+                "nextRunAt = :expectedNextRunAt AND :expectedNextRunAtEpochMs < :activationCutoffEpochMs AND enabled = :true AND repositoryId = :repositoryId",
               ExpressionAttributeValues: {
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
-                ":activationCutoffAt": opts.activationCutoffAt,
+                ":expectedNextRunAtEpochMs": Date.parse(opts.expectedNextRunAt),
+                ":activationCutoffEpochMs": Date.parse(opts.activationCutoffAt),
                 ":true": true,
                 ":repositoryId": opts.repositoryId,
               },

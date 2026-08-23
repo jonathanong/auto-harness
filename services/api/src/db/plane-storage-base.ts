@@ -792,6 +792,7 @@ export class DynamoPlaneStorageBase {
     newNextRunAt: string;
     lastRunAt: string;
     activationCutoffAt?: string;
+    expectedNextRunAtEpochMs?: number;
     session: import("./types.ts").SessionRecord;
   }): Promise<catalog.ScheduleCreateResult> {
     return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);

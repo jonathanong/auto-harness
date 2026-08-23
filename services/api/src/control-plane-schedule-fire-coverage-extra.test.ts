@@ -148,6 +148,23 @@ describe("schedule fire residual coverage", () => {
     });
   });
 
+  it("fences a durable manual trigger to the current activation generation", async () => {
+    let observedCutoff: string | undefined;
+    const current = state(schedule({ principalId: "principal" }), {
+      tryClaimScheduleAndCreateSession: async (opts: { activationCutoffAt?: string }) => {
+        observedCutoff = opts.activationCutoffAt;
+        return { kind: "created" };
+      },
+    });
+    current.repositories.get("repo")!.activationCutoffAt = "2026-01-01T00:02:00.000Z";
+
+    await expect(triggerScheduleDurable(current, "nightly")).resolves.toMatchObject({
+      ok: true,
+      created: true,
+    });
+    expect(observedCutoff).toBe("2026-01-01T00:02:00.000Z");
+  });
+
   it("returns no durable cron work for a malformed evaluation timestamp", async () => {
     await expect(evaluateCronDurable(state(schedule()), "not-a-time")).resolves.toEqual([]);
   });
@@ -201,6 +218,29 @@ describe("schedule fire residual coverage", () => {
     expect(current.sessions).toHaveLength(0);
   });
 
+  it("claims a legacy offset cursor using numeric cutoff ordering", async () => {
+    let claim: { activationCutoffAt?: string; expectedNextRunAtEpochMs?: number } | undefined;
+    const cursor = "2026-01-01T01:45:00+01:00";
+    const current = state(schedule({ principalId: "principal", nextRunAt: cursor }), {
+      tryClaimScheduleAndCreateSession: async (opts: {
+        activationCutoffAt?: string;
+        expectedNextRunAtEpochMs?: number;
+      }) => {
+        claim = opts;
+        return { kind: "created" };
+      },
+    });
+    current.repositories.get("repo")!.activationCutoffAt = "2026-01-01T00:30:00.000Z";
+
+    await expect(
+      tryClaimScheduleFireDurable(current, "nightly", cursor, "2026-01-01T01:00:00.000Z"),
+    ).resolves.toMatchObject({ id: "run" });
+    expect(claim).toMatchObject({
+      activationCutoffAt: "2026-01-01T00:30:00.000Z",
+      expectedNextRunAtEpochMs: Date.parse(cursor),
+    });
+  });
+
   it("leaves a stale cutoff occurrence for a concurrent close and reopen", async () => {
     let observedCutoff: string | undefined;
     const current = state(
@@ -236,6 +276,34 @@ describe("schedule fire residual coverage", () => {
       nextRunAt: "2026-01-01T00:01:00.000Z",
     });
     expect(current.sessions).toHaveLength(0);
+  });
+
+  it("consumes a stale cutoff cursor through the closed-repository CAS", async () => {
+    let cutoffSkips = 0;
+    const current = state(
+      schedule({ principalId: "principal", nextRunAt: "2026-01-01T00:01:00.000Z" }),
+      {
+        skipScheduleBeforeActivationCutoff: async () => {
+          cutoffSkips += 1;
+          current.repositories.get("repo")!.admissionState = "paused";
+          return false;
+        },
+      },
+    );
+    Object.assign(current.repositories.get("repo")!, {
+      activationCutoffAt: "2026-01-01T00:02:00.000Z",
+    });
+
+    await expect(
+      tryClaimScheduleFireDurable(
+        current,
+        "nightly",
+        "2026-01-01T00:01:00.000Z",
+        "2026-01-01T00:03:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    expect(cutoffSkips).toBe(1);
+    expect(current.schedules.get("nightly")?.nextRunAt).toBe("2026-01-01T00:04:00.000Z");
   });
 
   it("consumes and audits an ownerless legacy cron occurrence", async () => {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- admission transitions and reconciliation share the same state machine. */
 import {
   isActiveSessionStatus,
   nextCronOccurrence,
@@ -111,6 +112,12 @@ export async function setRepositoryAdmissionDurable(
   if (repository) return { ok: true, repository: cache(state, repository) };
   const current = await state.storage.getRepository(id);
   if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
+  if (
+    admissionState === "active" &&
+    repositoryAdmissionState(current.admissionState) === "active"
+  ) {
+    return { ok: true, repository: cache(state, current) };
+  }
   cache(state, current);
   return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
 }

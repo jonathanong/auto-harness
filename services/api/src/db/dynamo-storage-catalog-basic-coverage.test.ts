@@ -139,9 +139,14 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect(await storage.setRepositoryAdmissionState(repository.id, "paused", "t1")).toMatchObject({
       admissionState: "paused",
     });
-    expect(
-      await storage.setRepositoryAdmissionState(repository.id, "active", "t1a", "t1a"),
-    ).toMatchObject({ admissionState: "active", activationCutoffAt: "t1a" });
+    const activations = await Promise.all([
+      storage.setRepositoryAdmissionState(repository.id, "active", "t1a", "t1a"),
+      storage.setRepositoryAdmissionState(repository.id, "active", "t1b", "t1b"),
+    ]);
+    expect(activations.filter(Boolean)).toHaveLength(1);
+    expect((await storage.getRepository(repository.id))?.activationCutoffAt).toBe(
+      activations.find(Boolean)?.activationCutoffAt,
+    );
     expect(
       await storage.setRepositoryAdmissionState(repository.id, "draining", "t2"),
     ).toMatchObject({ admissionState: "draining", drainRequestedAt: "t2" });

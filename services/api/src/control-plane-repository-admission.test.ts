@@ -259,6 +259,16 @@ describe("repository admission", () => {
       code: "CONFLICT",
     });
 
+    storage.getRepository = async () => ({
+      ...repository,
+      admissionState: "active",
+      activationCutoffAt: "winner",
+    });
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: true,
+      repository: { activationCutoffAt: "winner" },
+    });
+
     storage.setRepositoryAdmissionState = async () => null;
     await expect(drainRepositoryDurable(state, "missing")).resolves.toMatchObject({
       ok: false,

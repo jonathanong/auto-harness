@@ -13,7 +13,10 @@ import {
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
-import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
+import {
+  repositoryAdmissionFailure,
+  repositoryAdmissionOpen,
+} from "./control-plane-repository-admission-state.ts";
 import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 
@@ -120,6 +123,7 @@ export async function triggerScheduleDurable(
     expectedNextRunAt: schedule.nextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
+    ...(repository.activationCutoffAt ? { activationCutoffAt: repository.activationCutoffAt } : {}),
     session,
   });
   if (outcome.kind === "duplicate") {
@@ -275,13 +279,24 @@ export async function tryClaimScheduleFireDurable(
   if (!repository) return null;
   const activationCutoffAt = repository.activationCutoffAt;
   if (activationCutoffAt && Date.parse(expectedNextRunAt) < Date.parse(activationCutoffAt)) {
-    const skipped = await state.storage.skipScheduleBeforeActivationCutoff({
-      scheduleId,
-      repositoryId: schedule.repositoryId,
-      activationCutoffAt,
-      expectedNextRunAt,
-      newNextRunAt,
-    });
+    let skipped = false;
+    if (repositoryAdmissionOpen(repository.admissionState)) {
+      skipped = await state.storage.skipScheduleBeforeActivationCutoff({
+        scheduleId,
+        repositoryId: schedule.repositoryId,
+        activationCutoffAt,
+        expectedNextRunAt,
+        newNextRunAt,
+      });
+    }
+    if (!skipped) {
+      skipped = await state.storage.skipScheduleForClosedRepository({
+        scheduleId,
+        repositoryId: schedule.repositoryId,
+        expectedNextRunAt,
+        newNextRunAt,
+      });
+    }
     if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
     return null;
   }
@@ -317,7 +332,12 @@ export async function tryClaimScheduleFireDurable(
     expectedNextRunAt,
     newNextRunAt,
     lastRunAt: nowIso,
-    ...(activationCutoffAt ? { activationCutoffAt } : {}),
+    ...(activationCutoffAt
+      ? {
+          activationCutoffAt,
+          expectedNextRunAtEpochMs: Date.parse(expectedNextRunAt),
+        }
+      : {}),
     session,
   });
   if (outcome.kind === "duplicate") {

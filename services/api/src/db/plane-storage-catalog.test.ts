@@ -257,7 +257,8 @@ describe("durable schedule creation", () => {
         expectedNextRunAt: "one",
         newNextRunAt: "two",
         lastRunAt: "one",
-        activationCutoffAt: "one",
+        activationCutoffAt: "1970-01-01T00:00:00.002Z",
+        expectedNextRunAtEpochMs: 1,
         session: {
           id: "session-activity",
           repositoryId: "repo-1",
@@ -320,7 +321,7 @@ describe("durable schedule creation", () => {
       ]),
     );
     expect(input?.TransactItems?.[0]?.Update?.ConditionExpression).toContain(
-      "nextRunAt >= :activationCutoffAt",
+      ":expectedNextRunAtEpochMs >= :activationCutoffEpochMs",
     );
     expect(input?.TransactItems).toContainEqual(
       expect.objectContaining({
@@ -568,16 +569,19 @@ describe("durable schedule management updates", () => {
       skipScheduleBeforeActivationCutoff(storage, {
         scheduleId: "schedule-1",
         repositoryId: "repo-1",
-        activationCutoffAt: "2026-01-01T00:02:00.000Z",
-        expectedNextRunAt: "2026-01-01T00:01:00.000Z",
+        activationCutoffAt: "2026-01-01T00:30:00.000Z",
+        expectedNextRunAt: "2026-01-01T01:00:00+01:00",
         newNextRunAt: "2026-01-01T00:03:00.000Z",
       }),
     ).resolves.toBe(true);
     const [scheduleItem, repository] = input?.TransactItems ?? [];
-    expect(scheduleItem?.Update?.ConditionExpression).toContain("nextRunAt < :activationCutoffAt");
+    expect(scheduleItem?.Update?.ConditionExpression).toContain(
+      ":expectedNextRunAtEpochMs < :activationCutoffEpochMs",
+    );
     expect(scheduleItem?.Update?.ExpressionAttributeValues).toMatchObject({
       ":repositoryId": "repo-1",
-      ":activationCutoffAt": "2026-01-01T00:02:00.000Z",
+      ":expectedNextRunAtEpochMs": Date.parse("2026-01-01T01:00:00+01:00"),
+      ":activationCutoffEpochMs": Date.parse("2026-01-01T00:30:00.000Z"),
     });
     expect(repository?.ConditionCheck?.ConditionExpression).toContain(
       "activationCutoffAt = :activationCutoffAt",

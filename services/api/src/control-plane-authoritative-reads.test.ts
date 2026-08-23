@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- authoritative cross-plane scenarios share one storage fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -20,6 +21,51 @@ function options(storage: never) {
 }
 
 describe("authoritative durable reads", () => {
+  it("retains activation cutoffs and consumes stale cursors in the shared storage fake", async () => {
+    const storage = createAuthoritativeReadStorage() as unknown as {
+      putRepository(record: Record<string, unknown>): Promise<void>;
+      putSchedule(record: Record<string, unknown>): Promise<void>;
+      setRepositoryAdmissionState(
+        id: string,
+        state: string,
+        now: string,
+        activationCutoffAt?: string,
+      ): Promise<Record<string, unknown> | null>;
+      skipScheduleBeforeActivationCutoff(opts: Record<string, string>): Promise<boolean>;
+      getSchedule(id: string): Promise<Record<string, unknown> | null>;
+    };
+    await storage.putRepository({
+      id: "repo",
+      admissionState: "paused",
+      createdAt: now(),
+      updatedAt: now(),
+    });
+    await storage.putSchedule({
+      id: "schedule",
+      repositoryId: "repo",
+      enabled: true,
+      nextRunAt: "2026-01-01T00:01:00.000Z",
+    });
+    await expect(
+      storage.setRepositoryAdmissionState(
+        "repo",
+        "active",
+        "2026-01-01T00:02:00.000Z",
+        "2026-01-01T00:02:00.000Z",
+      ),
+    ).resolves.toMatchObject({ activationCutoffAt: "2026-01-01T00:02:00.000Z" });
+    await expect(
+      storage.skipScheduleBeforeActivationCutoff({
+        scheduleId: "schedule",
+        repositoryId: "repo",
+        activationCutoffAt: "2026-01-01T00:02:00.000Z",
+        expectedNextRunAt: "2026-01-01T00:01:00.000Z",
+        newNextRunAt: "2026-01-01T00:03:00.000Z",
+      }),
+    ).resolves.toBe(true);
+    expect((await storage.getSchedule("schedule"))?.nextRunAt).toBe("2026-01-01T00:03:00.000Z");
+  });
+
   it("refreshes a stale closed admission cache before durable session creation", async () => {
     const storage = createAuthoritativeReadStorage();
     const writer = new ControlPlane(options(storage));
