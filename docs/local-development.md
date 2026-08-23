@@ -270,7 +270,7 @@ pnpm local:manage-verify  # repo/schedule CRUD, cancel, drain, web manage routes
 # optional UI: pnpm local:web
 ```
 
-`pnpm check` runs oxlint, oxfmt, typecheck, vitest — both the unit project (**lines 98 / branches 97 / functions 99 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`; `vitest.config.ts` is the authoritative exclude/deny-list) and the integration project (`integration/`, no coverage gate of its own) — the exact Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes). CI also requires **99% patch line coverage**, computed locally by intersecting changed executable lines with the merged LCOV report; no coverage data is sent to a third party.
+`pnpm check` runs oxlint, oxfmt, typecheck, vitest — both the unit project (**lines 98 / branches 97 / functions 99 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`; `scripts/coverage-scope.mts` is the authoritative aggregate/supplemental/ignored scope) and the integration project (`integration/`, no coverage gate of its own) — the exact Dynamo adapter verifier, knip, dependency-cruiser, lychee, and [`no-mistakes`](https://github.com/jonathanong/no-mistakes). CI also requires **99% patch line coverage**, computed locally by intersecting changed executable lines with the merged aggregate LCOV and supplemental shard LCOV. Supplemental files are filtered from the normal coverage map before aggregate thresholds run, and no coverage data is sent to a third party.
 
 `pnpm test:platform` is the small cross-platform slice repeated by CI on macOS and Windows. It
 checks the native PTY and child-process boundaries, real Git worktrees and paths, host-service I/O,

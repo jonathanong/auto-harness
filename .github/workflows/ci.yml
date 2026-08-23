@@ -141,8 +141,12 @@ jobs:
       # Both the unit and integration vitest projects (vitest.config.ts) are split across
       # shards together and recombined in the vitest fan-in job below — one blob report per
       # shard, no coverage thresholds evaluated here (that happens once, on merged data).
+      # The custom provider also writes patch-only LCOV before filtering those files back out
+      # of the aggregate blob, so the aggregate denominator remains unchanged.
       - name: Test (shard ${{ matrix.shard }}/2)
         run: pnpm test:shard --shard=${{ matrix.shard }}/2 --outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json
+        env:
+          VITEST_PATCH_COVERAGE_PATH: coverage/patch-${{ matrix.shard }}.lcov
 
       - name: Upload coverage blob
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -150,6 +154,13 @@ jobs:
           name: vitest-blob-${{ matrix.shard }}
           path: .vitest-reports/
           include-hidden-files: true
+          retention-days: 1
+
+      - name: Upload supplemental patch coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: vitest-patch-${{ matrix.shard }}
+          path: coverage/patch-${{ matrix.shard }}.lcov
           retention-days: 1
 
   vitest-platform:
@@ -240,6 +251,16 @@ jobs:
       # thresholds (98/97/99/98, plus every per-file override).
       - name: Merge shards and verify coverage
         run: pnpm test:merge
+
+      # Download after test:merge because Vitest cleans coverage/ before writing the merged
+      # aggregate reports. These fragments contain only patch-eligible files that are excluded
+      # from the aggregate map.
+      - name: Download supplemental patch coverage
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: vitest-patch-*
+          path: coverage/patch
+          merge-multiple: true
 
       - name: Verify patch coverage
         run: pnpm check:coverage:patch

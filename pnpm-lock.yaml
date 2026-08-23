@@ -16,6 +16,9 @@ importers:
       '@ast-grep/cli':
         specifier: ^0.45.1
         version: 0.45.1
+      '@jridgewell/trace-mapping':
+        specifier: ^0.3.31
+        version: 0.3.31
       '@playwright/test':
         specifier: ^1.62.1
         version: 1.62.1
@@ -37,6 +40,9 @@ importers:
       knip:
         specifier: ^5.61.3
         version: 5.88.1(@types/node@22.20.1)(typescript@5.9.3)
+      minimatch:
+        specifier: ^10.2.6
+        version: 10.2.6
       no-mistakes:
         specifier: ^0.48.0
         version: 0.48.0
