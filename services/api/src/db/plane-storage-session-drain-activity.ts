@@ -7,11 +7,9 @@ import type { SessionRecord } from "./types.ts";
 
 type TransactionItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
-export type SessionDrainActivityKey = { scopeKey: string; recordKey: string; sessionId: string };
+type SessionDrainActivityKey = { scopeKey: string; recordKey: string; sessionId: string };
 
-export function sessionDrainActivityForSession(
-  session: SessionRecord,
-): SessionDrainActivityKey | null {
+function sessionDrainActivityForSession(session: SessionRecord): SessionDrainActivityKey | null {
   const principalId = sessionPrincipalId(session);
   if (!principalId) return null;
   return {

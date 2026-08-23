@@ -55,7 +55,7 @@ export function sessionDrainScopeKey(repositoryId: string, principalId: string):
  * base-table row, not a secondary-index projection, so its absence can be
  * proved with a strongly consistent query.
  */
-export type SessionDrainActivityRecord = {
+type SessionDrainActivityRecord = {
   scopeKey: string;
   recordKey: string;
   recordType: "activity";
