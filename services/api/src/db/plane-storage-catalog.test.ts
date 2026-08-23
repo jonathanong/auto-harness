@@ -7,6 +7,7 @@ import {
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
 } from "./plane-storage-catalog.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx, ScheduleRecord } from "./plane-storage-types.ts";
 
 function schedule(ref?: string): ScheduleRecord {
@@ -196,6 +197,30 @@ describe("durable schedule creation", () => {
 });
 
 describe("durable schedule management updates", () => {
+  it("advances a schedule only while its principal drain remains active", async () => {
+    const storage = new DynamoPlaneStorageBase(
+      {
+        send: async (command: unknown) => {
+          expect(command).toBeInstanceOf(TransactWriteCommand);
+          expect((command as TransactWriteCommand).input.TransactItems).toHaveLength(2);
+          return {};
+        },
+      } as never,
+      { schedules: "Schedules", sessionDrains: "SessionDrains" } as never,
+    );
+
+    await expect(
+      storage.skipScheduleForPrincipalDrain({
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        principalId: "principal-1",
+        operationId: "drain-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+      }),
+    ).resolves.toBe(true);
+  });
+
   it("updates operator fields without replacing a cron-advanced cursor", async () => {
     const storage = scheduleCtx(async (command) => {
       expect(command).toBeInstanceOf(UpdateCommand);
