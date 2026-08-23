@@ -577,6 +577,11 @@ export async function setRepositoryAdmissionState(
   let conditionExpression = "attribute_exists(id)";
   if (activating) {
     conditionExpression += " AND #state = :paused";
+  } else if (state === "active") {
+    // A caller that observed an already-active (including legacy) row must
+    // not reopen a repository that was paused between its read and this
+    // write. A reopening write supplies a fresh activation cutoff instead.
+    conditionExpression += " AND (attribute_not_exists(#state) OR #state = :active)";
   } else if (resumingAdmission) {
     conditionExpression += " AND (attribute_not_exists(#state) OR #state <> :draining)";
   }
@@ -601,7 +606,10 @@ export async function setRepositoryAdmissionState(
           ":now": now,
           ...(activating ? { ":activationCutoffAt": activationCutoffAt } : {}),
           ...(activating ? { ":paused": "paused" } : {}),
-          ...(resumingAdmission && !activating ? { ":draining": "draining" } : {}),
+          ...(state === "active" && !activating ? { ":active": "active" } : {}),
+          ...(resumingAdmission && !activating && state !== "active"
+            ? { ":draining": "draining" }
+            : {}),
         },
         ReturnValues: "ALL_NEW",
       }),

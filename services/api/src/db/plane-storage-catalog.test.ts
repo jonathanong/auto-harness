@@ -14,6 +14,7 @@ import {
   disableLegacyFallbackScheduleAndAudit,
   listSchedules,
   putSchedule,
+  setRepositoryAdmissionState,
   skipScheduleBeforeActivationCutoff,
   skipScheduleForClosedRepository,
   skipOwnerlessScheduleAndAudit,
@@ -56,6 +57,30 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
     } as never,
   };
 }
+
+describe("repository admission storage", () => {
+  it("fences a non-reopening activation to active or legacy rows", async () => {
+    let input: UpdateCommand["input"] | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as UpdateCommand).input;
+      return { Attributes: { id: "repo-1", admissionState: "active" } };
+    });
+
+    await expect(
+      setRepositoryAdmissionState(storage, "repo-1", "active", "2026-01-01T00:00:00.000Z"),
+    ).resolves.toMatchObject({ admissionState: "active" });
+
+    expect(input).toMatchObject({
+      ConditionExpression:
+        "attribute_exists(id) AND (attribute_not_exists(#state) OR #state = :active)",
+      ExpressionAttributeNames: { "#state": "admissionState" },
+      ExpressionAttributeValues: {
+        ":active": "active",
+      },
+    });
+    expect(input?.ExpressionAttributeValues).not.toHaveProperty(":draining");
+  });
+});
 
 describe("durable schedule creation", () => {
   it("allows eventually consistent schedule scans when requested", async () => {

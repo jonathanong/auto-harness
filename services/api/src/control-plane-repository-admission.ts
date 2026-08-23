@@ -92,30 +92,60 @@ export async function setRepositoryAdmissionDurable(
   if (!state.storage && admissionState === "active")
     await skipDueSchedulesBeforeActivation(state, id);
   if (!state.storage) return transitionInMemory(state, id, admissionState);
-  let reopening = false;
-  if (admissionState === "active") {
+  if (admissionState !== "active") {
+    const transitionedAt = state.now();
+    const repository = await state.storage.setRepositoryAdmissionState(
+      id,
+      admissionState,
+      transitionedAt,
+    );
+    if (repository) return { ok: true, repository: cache(state, repository) };
     const current = await state.storage.getRepository(id);
     if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
-    if (repositoryAdmissionState(current.admissionState) === "draining") {
-      return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
-    }
-    reopening = repositoryAdmissionState(current.admissionState) !== "active";
-    await skipDueSchedulesBeforeActivation(state, id);
+    cache(state, current);
+    return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
   }
+
+  const current = await state.storage.getRepository(id);
+  if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
+  if (repositoryAdmissionState(current.admissionState) === "draining") {
+    return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
+  }
+  const reopening = repositoryAdmissionState(current.admissionState) !== "active";
+  await skipDueSchedulesBeforeActivation(state, id);
   const transitionedAt = state.now();
   const repository = await state.storage.setRepositoryAdmissionState(
     id,
-    admissionState,
+    "active",
     transitionedAt,
     reopening ? transitionedAt : undefined,
   );
   if (repository) return { ok: true, repository: cache(state, repository) };
-  const current = await state.storage.getRepository(id);
+
+  const afterFirstWrite = await state.storage.getRepository(id);
+  if (!afterFirstWrite) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
+  if (repositoryAdmissionState(afterFirstWrite.admissionState) === "active") {
+    return { ok: true, repository: cache(state, afterFirstWrite) };
+  }
+  if (!reopening && repositoryAdmissionState(afterFirstWrite.admissionState) === "paused") {
+    // A pause raced a no-op activation. Repeat the complete closed-schedule
+    // scan and reopen with a new cutoff. This is deliberately the only retry:
+    // activation issues at most two conditional writes.
+    await skipDueSchedulesBeforeActivation(state, id);
+    const retryAt = state.now();
+    const retried = await state.storage.setRepositoryAdmissionState(id, "active", retryAt, retryAt);
+    if (retried) return { ok: true, repository: cache(state, retried) };
+  }
+  return repositoryAdmissionWriteLost(state, id);
+}
+
+async function repositoryAdmissionWriteLost(
+  state: ControlPlaneState,
+  id: string,
+): Promise<RepositoryAdmissionFailure | { ok: true; repository: RepositoryRecord }> {
+  const current = await state.storage!.getRepository(id);
   if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
-  if (
-    admissionState === "active" &&
-    repositoryAdmissionState(current.admissionState) === "active"
-  ) {
+  if (repositoryAdmissionState(current.admissionState) === "active") {
     return { ok: true, repository: cache(state, current) };
   }
   cache(state, current);
