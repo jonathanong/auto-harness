@@ -1,7 +1,5 @@
-import { LOCAL_HOST_ID } from "@auto-harness/shared";
-
 import { headers } from "next/headers";
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, collectCursorPages, LOCAL_HOST_ID } from "@auto-harness/shared";
 
 type ApiTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -39,18 +37,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 /** Follow an opaque API cursor until the complete catalog has been loaded. */
 export async function apiGetAllPages<T>(path: string): Promise<T[]> {
-  const items: T[] = [];
-  const seen = new Set<string>();
-  let requestPath = path;
-  while (true) {
-    const page = await apiGet<{ items?: T[]; nextCursor?: string | null }>(requestPath);
-    items.push(...(page.items ?? []));
-    const cursor = page.nextCursor ?? null;
-    if (!cursor) return items;
-    if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
-    seen.add(cursor);
-    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`;
-  }
+  return collectCursorPages<T>(path, (requestPath) => apiGet(requestPath));
 }
 
 async function incomingAuthHeaders(): Promise<Record<string, string> | undefined> {

@@ -272,4 +272,34 @@ describe("durable runtime read-through", () => {
       }),
     ).resolves.toMatchObject({ items: [] });
   });
+
+  it("uses repository indexes for page counts instead of catalog scans", async () => {
+    const worktreeCalls: Array<[string, string | undefined]> = [];
+    const scheduleCalls: string[] = [];
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => 2,
+        countWorktreesByRepository: async (repositoryId: string, hostId?: string) => {
+          worktreeCalls.push([repositoryId, hostId]);
+          return 3;
+        },
+        countSchedulesByRepository: async (repositoryId: string) => {
+          scheduleCalls.push(repositoryId);
+          return 4;
+        },
+        listAllWorktrees: async () => {
+          throw new Error("unexpected worktree scan");
+        },
+        listSchedules: async () => {
+          throw new Error("unexpected schedule scan");
+        },
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"], "host")).resolves.toEqual(
+      new Map([["repository", { sessionCount: 2, worktreeCount: 3, scheduleCount: 4 }]]),
+    );
+    expect(worktreeCalls).toEqual([["repository", "host"]]);
+    expect(scheduleCalls).toEqual(["repository"]);
+  });
 });

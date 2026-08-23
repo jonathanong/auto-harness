@@ -16,7 +16,10 @@ import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
-import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
+import {
+  ensureSchedulesRepositoryIndex,
+  ensureSessionsRepositoryIndex,
+} from "./ensure-session-index.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
@@ -139,7 +142,6 @@ export async function ensureControlPlaneTables(opts: {
       },
     ],
   });
-
   await createIfMissing(ddb, {
     TableName: names.connections,
     BillingMode: BillingMode.PAY_PER_REQUEST,
@@ -179,9 +181,23 @@ export async function ensureControlPlaneTables(opts: {
   await createIfMissing(ddb, {
     TableName: names.schedules,
     BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
+    AttributeDefinitions: [
+      { AttributeName: "id", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
+    ],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: "repositoryId-id",
+        KeySchema: [
+          { AttributeName: "repositoryId", KeyType: KeyType.HASH },
+          { AttributeName: "id", KeyType: KeyType.RANGE },
+        ],
+        Projection: { ProjectionType: ProjectionType.ALL },
+      },
+    ],
   });
+  await ensureSchedulesRepositoryIndex(ddb, names.schedules);
 
   await createIfMissing(ddb, {
     TableName: names.repositories,

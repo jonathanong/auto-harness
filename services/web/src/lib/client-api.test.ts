@@ -55,11 +55,13 @@ describe("browser API client", () => {
       .mockResolvedValueOnce(Response.json({ items: [{ id: "one" }], nextCursor: "next/page" }))
       .mockResolvedValueOnce(Response.json({ items: [{ id: "two" }], nextCursor: null }));
     vi.stubGlobal("fetch", fetchMock);
-    await expect(apiFetchAllPages<{ id: string }>("/api/v1/repositories")).resolves.toMatchObject({
+    await expect(
+      apiFetchAllPages<{ id: string }>("/api/v1/repositories?limit=100"),
+    ).resolves.toMatchObject({
       items: [{ id: "one" }, { id: "two" }],
       response: expect.objectContaining({ ok: true }),
     });
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/repositories?cursor=next%2Fpage");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/repositories?limit=100&cursor=next%2Fpage");
 
     vi.stubGlobal(
       "fetch",

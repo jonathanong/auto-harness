@@ -14,11 +14,10 @@ describe("apiGetAllPages", () => {
         : Response.json({ items: [{ id: "second" }], nextCursor: null });
     });
 
-    await expect(apiGetAllPages<{ id: string }>("/api/v1/repositories")).resolves.toEqual([
-      { id: "first" },
-      { id: "second" },
-    ]);
-    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?cursor=next%2Fpage$/);
+    await expect(apiGetAllPages<{ id: string }>("/api/v1/repositories?limit=100")).resolves.toEqual(
+      [{ id: "first" }, { id: "second" }],
+    );
+    expect(requests[1]).toMatch(/\/api\/v1\/repositories\?limit=100&cursor=next%2Fpage$/);
   });
 
   it("rejects a replayed continuation instead of looping forever", async () => {

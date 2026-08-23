@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, collectCursorPages } from "@auto-harness/shared";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,18 +34,7 @@ export async function apiGet<T>(
 
 /** Follow an opaque API cursor until the complete catalog has been loaded. */
 export async function apiGetAllPages<T>(path: string): Promise<T[]> {
-  const items: T[] = [];
-  const seen = new Set<string>();
-  let requestPath = path;
-  while (true) {
-    const page = await apiGet<{ items?: T[]; nextCursor?: string | null }>(requestPath);
-    items.push(...(page.items ?? []));
-    const cursor = page.nextCursor ?? null;
-    if (!cursor) return items;
-    if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
-    seen.add(cursor);
-    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`;
-  }
+  return collectCursorPages<T>(path, (requestPath) => apiGet(requestPath));
 }
 
 async function incomingAuthHeaders(): Promise<Record<string, string> | undefined> {

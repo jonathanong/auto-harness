@@ -1,5 +1,7 @@
 "use client";
 
+import { collectCursorPages } from "@auto-harness/shared";
+
 import { loginPath } from "./auth-session.ts";
 
 /** Browser API client: same-origin cookies plus a usable expired-session escape hatch. */
@@ -26,18 +28,10 @@ export async function apiFetchAllPages<T>(
   path: string,
   init?: RequestInit,
 ): Promise<ApiFetchPageResult<T>> {
-  const items: T[] = [];
-  const seen = new Set<string>();
-  let requestPath = path;
-  while (true) {
-    const response = await apiFetch(requestPath, init);
-    if (!response.ok) return { response, items: [] };
-    const page = (await response.json()) as { items?: T[]; nextCursor?: string | null };
-    items.push(...(page.items ?? []));
-    const cursor = page.nextCursor ?? null;
-    if (!cursor) return { response, items };
-    if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
-    seen.add(cursor);
-    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`;
-  }
+  let response!: Response;
+  const items = await collectCursorPages<T>(path, async (requestPath) => {
+    response = await apiFetch(requestPath, init);
+    return response.ok ? response.json() : {};
+  });
+  return { response, items };
 }

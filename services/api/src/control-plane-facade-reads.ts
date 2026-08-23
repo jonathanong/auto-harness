@@ -19,7 +19,8 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
       repositoryIds.map((id) => [id, { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]),
     );
     if (repositoryIds.length === 0) return counts;
-    const [sessionCounts, worktreeRecords, scheduleRecords] = await Promise.all([
+    const storage = this.state.storage;
+    const [sessionCounts, worktreeCounts, scheduleCounts] = await Promise.all([
       this.state.storage
         ? Promise.all(
             repositoryIds.map((repositoryId) =>
@@ -35,21 +36,43 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
                 ).length,
             ),
           ),
-      durableRuntime.listWorktreesDurable(this.state),
-      durableCatalog.listSchedulesDurable(this.state),
+      storage && typeof storage.countWorktreesByRepository === "function"
+        ? Promise.all(
+            repositoryIds.map((repositoryId) =>
+              storage.countWorktreesByRepository(repositoryId, hostId),
+            ),
+          )
+        : durableRuntime
+            .listWorktreesDurable(this.state)
+            .then((records) =>
+              repositoryIds.map(
+                (repositoryId) =>
+                  records.filter(
+                    (worktree) =>
+                      worktree.repositoryId === repositoryId &&
+                      (!hostId || worktree.hostId === hostId),
+                  ).length,
+              ),
+            ),
+      storage && typeof storage.countSchedulesByRepository === "function"
+        ? Promise.all(
+            repositoryIds.map((repositoryId) => storage.countSchedulesByRepository(repositoryId)),
+          )
+        : durableCatalog
+            .listSchedulesDurable(this.state)
+            .then((records) =>
+              repositoryIds.map(
+                (repositoryId) =>
+                  records.filter((schedule) => schedule.repositoryId === repositoryId).length,
+              ),
+            ),
     ]);
     repositoryIds.forEach((repositoryId, index) => {
-      counts.get(repositoryId)!.sessionCount = sessionCounts[index] ?? 0;
+      const count = counts.get(repositoryId)!;
+      count.sessionCount = sessionCounts[index] ?? 0;
+      count.worktreeCount = worktreeCounts[index] ?? 0;
+      count.scheduleCount = scheduleCounts[index] ?? 0;
     });
-    for (const worktree of worktreeRecords) {
-      if (hostId && worktree.hostId !== hostId) continue;
-      const count = counts.get(worktree.repositoryId);
-      if (count) count.worktreeCount += 1;
-    }
-    for (const schedule of scheduleRecords) {
-      const count = counts.get(schedule.repositoryId);
-      if (count) count.scheduleCount += 1;
-    }
     return counts;
   }
 
