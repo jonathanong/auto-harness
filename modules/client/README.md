@@ -9,6 +9,7 @@ import { AutoHarnessClient } from "auto-harness-client";
 const harness = new AutoHarnessClient({
   baseUrl: process.env.AUTO_HARNESS_URL,
   apiKey: process.env.AUTO_HARNESS_API_KEY,
+  requestTimeoutMs: 30_000,
 });
 
 const session = await harness.createSession({
@@ -20,6 +21,14 @@ const session = await harness.createSession({
 });
 console.log(session.url);
 ```
+
+## Request deadlines
+
+Every request has a deadline that includes receiving and consuming the JSON response body.
+`requestTimeoutMs` defaults to `30_000` and must be a finite positive number no greater than
+`300_000`. On expiry, the client throws `AutoHarnessRequestTimeoutError`, with
+`code === "REQUEST_TIMEOUT"` and the configured `timeoutMs`. The client never retries requests
+automatically; reuse an idempotency key where an ambiguous `POST` may safely be retried.
 
 ## Repository listing
 
