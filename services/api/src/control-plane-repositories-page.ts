@@ -12,7 +12,6 @@ export {
   InvalidRepositoryCursorError,
   InvalidRepositoryListQueryError,
   type ListRepositoriesPageQuery,
-  type RepositoryListScope,
 } from "./control-plane-repository-cursor.ts";
 import type { ListRepositoriesPageQuery } from "./control-plane-repository-cursor.ts";
 

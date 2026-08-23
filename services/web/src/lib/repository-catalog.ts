@@ -3,9 +3,7 @@ export type RepositoryPage<T = { id: string }> = {
   nextCursor?: string | null;
 };
 
-export type RepositoryPageFetcher<T extends { id: string }> = (
-  path: string,
-) => Promise<RepositoryPage<T>>;
+type RepositoryPageFetcher<T extends { id: string }> = (path: string) => Promise<RepositoryPage<T>>;
 
 /** Return the API path for a repository page while keeping the cursor opaque. */
 export function repositoryPagePath(
