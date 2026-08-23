@@ -1,5 +1,9 @@
 import { BatchGetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { delay } = vi.hoisted(() => ({ delay: vi.fn().mockResolvedValue(undefined) }));
+
+vi.mock("node:timers/promises", () => ({ setTimeout: delay }));
 
 import { listRepositoriesPage } from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx, RepositoryRecord } from "./plane-storage-types.ts";
@@ -23,6 +27,10 @@ function context(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
 }
 
 describe("Dynamo repository pages", () => {
+  beforeEach(() => {
+    delay.mockClear();
+  });
+
   it("uses a bounded strongly consistent table scan and its opaque continuation", async () => {
     const send = vi.fn().mockResolvedValue({
       Items: [repository("alpha"), repository("bravo")],
@@ -72,6 +80,8 @@ describe("Dynamo repository pages", () => {
         },
       },
     });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(delay).not.toHaveBeenCalled();
   });
 
   it("replays a restricted offset, restores id order, and exhausts the scope", async () => {
@@ -91,7 +101,7 @@ describe("Dynamo repository pages", () => {
     });
   });
 
-  it("short-circuits exhausted scopes and fails retryably on unprocessed keys", async () => {
+  it("short-circuits exhausted scopes", async () => {
     const emptySend = vi.fn();
     await expect(
       listRepositoriesPage(context(emptySend), { limit: 1, allowedRepositoryIds: [] }),
@@ -104,7 +114,72 @@ describe("Dynamo repository pages", () => {
       }),
     ).resolves.toEqual({ items: [], nextKey: null });
     expect(emptySend).not.toHaveBeenCalled();
+  });
 
+  it("retries only unprocessed keys, merges partial results, and restores the scope order", async () => {
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Responses: { Repositories: [repository("bravo")] },
+        UnprocessedKeys: { Repositories: { Keys: [{ id: "alpha" }, { id: "charlie" }] } },
+      })
+      .mockResolvedValueOnce({
+        Responses: { Repositories: [repository("charlie"), repository("alpha")] },
+      });
+
+    await expect(
+      listRepositoriesPage(context(send), {
+        limit: 3,
+        allowedRepositoryIds: ["alpha", "bravo", "charlie", "delta"],
+      }),
+    ).resolves.toEqual({
+      items: [repository("alpha"), repository("bravo"), repository("charlie")],
+      nextKey: { scopeOffset: 3 },
+    });
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls.map(([command]) => command.input.RequestItems)).toEqual([
+      {
+        Repositories: {
+          Keys: [{ id: "alpha" }, { id: "bravo" }, { id: "charlie" }],
+          ConsistentRead: true,
+        },
+      },
+      {
+        Repositories: {
+          Keys: [{ id: "alpha" }, { id: "charlie" }],
+          ConsistentRead: true,
+        },
+      },
+    ]);
+    expect(delay).toHaveBeenCalledTimes(1);
+    const retryDelay = delay.mock.calls[0]?.[0];
+    expect(retryDelay).toBeGreaterThanOrEqual(50);
+    expect(retryDelay).toBeLessThan(100);
+  });
+
+  it("propagates an SDK failure after a partial response without another retry", async () => {
+    const failure = new Error("DynamoDB unavailable");
+    const send = vi
+      .fn()
+      .mockResolvedValueOnce({
+        Responses: { Repositories: [repository("bravo")] },
+        UnprocessedKeys: { Repositories: { Keys: [{ id: "alpha" }] } },
+      })
+      .mockRejectedValueOnce(failure);
+
+    await expect(
+      listRepositoriesPage(context(send), {
+        limit: 2,
+        allowedRepositoryIds: ["alpha", "bravo"],
+      }),
+    ).rejects.toBe(failure);
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(delay).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails after five bounded attempts with the existing throttling error", async () => {
     const throttledSend = vi.fn().mockResolvedValue({
       UnprocessedKeys: { Repositories: { Keys: [{ id: "alpha" }] } },
     });
@@ -114,6 +189,19 @@ describe("Dynamo repository pages", () => {
         allowedRepositoryIds: ["alpha"],
       }),
     ).rejects.toThrow("repository page read was throttled");
+    expect(throttledSend).toHaveBeenCalledTimes(5);
+    expect(delay).toHaveBeenCalledTimes(4);
+    const retryDelays = delay.mock.calls.map(([milliseconds]) => milliseconds);
+    expect(retryDelays).toHaveLength(4);
+    expect(retryDelays[0]).toBeGreaterThanOrEqual(50);
+    expect(retryDelays[0]).toBeLessThan(100);
+    expect(retryDelays[1]).toBeGreaterThanOrEqual(100);
+    expect(retryDelays[1]).toBeLessThan(200);
+    expect(retryDelays[2]).toBeGreaterThanOrEqual(200);
+    expect(retryDelays[2]).toBeLessThan(400);
+    expect(retryDelays[3]).toBeGreaterThanOrEqual(400);
+    expect(retryDelays[3]).toBeLessThan(800);
+    expect(retryDelays.reduce((total, milliseconds) => total + milliseconds, 0)).toBeLessThan(1500);
   });
 
   it("treats absent response collections and scan cursors as empty", async () => {
