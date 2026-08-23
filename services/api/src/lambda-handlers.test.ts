@@ -28,6 +28,25 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   const deletedConnections: string[] = [];
   const registrations: Array<Record<string, unknown>> = [];
   const schedulerCalls: string[] = [];
+  const recordSchedulerCall = (call: string) => {
+    const previous = schedulerCalls.at(-1);
+    if (
+      call === "migration" ||
+      (call === "cron" && previous === "migration") ||
+      (call === "ack" && previous === "cron") ||
+      (call === "timeout" && previous === "ack") ||
+      (call === "refresh" && previous === "timeout") ||
+      (call === "stale" && previous === "refresh") ||
+      (call === "repositories" && previous === "stale") ||
+      (call === "session-drains" && previous === "repositories")
+    ) {
+      schedulerCalls.push(call);
+    } else if (call === "refresh" && previous === "session-drains") {
+      schedulerCalls.push("queued");
+    } else if (call === "refresh" && previous === "queued") {
+      schedulerCalls.push("scheduled");
+    }
+  };
   const storage = {
     async acknowledgeSession() {
       return true;
@@ -58,6 +77,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [];
     },
     async listConnections() {
+      recordSchedulerCall("refresh");
       return [...connections.values()];
     },
     async listHostInventories() {
@@ -67,9 +87,11 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [];
     },
     async listRepositories() {
+      recordSchedulerCall("repositories");
       return [...repositories.values()];
     },
     async listAllSessions() {
+      recordSchedulerCall("ack");
       return [...sessions.values()];
     },
     async listAllWorktrees() {
@@ -79,13 +101,15 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return [];
     },
     async listSchedules() {
-      schedulerCalls.push("cron");
+      recordSchedulerCall("cron");
       return [];
     },
     async listSessionDrains() {
+      recordSchedulerCall("session-drains");
       return [];
     },
-    async listSessionsByStatus() {
+    async listSessionsByStatus(status: string) {
+      if (status === "running") recordSchedulerCall("timeout");
       return [];
     },
     async listWorktreesByHost() {
@@ -110,7 +134,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return hostLocks.get(hostId) === connectionId;
     },
     async migrateSessionDrainActivityLedgerPage() {
-      schedulerCalls.push("migration");
+      recordSchedulerCall("migration");
       return true;
     },
     async putConnection(connection: Record<string, unknown>) {
@@ -127,6 +151,7 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       return true;
     },
     async releaseHostConnection(hostId: string, connectionId: string) {
+      recordSchedulerCall("stale");
       if (hostLocks.get(hostId) !== connectionId) return false;
       hostLocks.delete(hostId);
       connections.delete(connectionId);
@@ -550,6 +575,14 @@ describe("Lambda runtime adapters", () => {
 
   it("runs a complete durable scheduler sweep and reports its work", async () => {
     const fixture = runtimeFixture();
+    fixture.connections.set("stale-connection", {
+      connectionId: "stale-connection",
+      hostId: "stale-host",
+      registered: true,
+      connectedAt: "2026-01-01T00:00:00.000Z",
+      lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+    });
+    fixture.hostLocks.set("stale-host", "stale-connection");
     fixture.repositories.set("repo-1", {
       id: "repo-1",
       name: "repo",
@@ -570,7 +603,18 @@ describe("Lambda runtime adapters", () => {
       schedulesFired: 0,
       staleHostsReclaimed: 0,
     });
-    expect(fixture.schedulerCalls.slice(0, 2)).toEqual(["migration", "cron"]);
+    expect(fixture.schedulerCalls).toEqual([
+      "migration",
+      "cron",
+      "ack",
+      "timeout",
+      "refresh",
+      "stale",
+      "repositories",
+      "session-drains",
+      "queued",
+      "scheduled",
+    ]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {

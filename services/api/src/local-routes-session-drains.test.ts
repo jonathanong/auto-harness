@@ -188,7 +188,12 @@ describe("session drain route outcomes", () => {
     expect((await invoke("POST", path, author.apiKey, "ledger")).status).toBe(409);
     expect(storage!.createCalls).toEqual([
       expect.objectContaining({
-        record: expect.objectContaining({ operationId: expect.any(String) }),
+        record: expect.objectContaining({
+          operationId: `drain-${createHash("sha256")
+            .update(`repo\0${author.account.id}\0ledger`)
+            .digest("hex")
+            .slice(0, 32)}`,
+        }),
         actor: expect.objectContaining({
           actor: expect.objectContaining({ id: author.account.id, kind: "service-account" }),
         }),
