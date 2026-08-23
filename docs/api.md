@@ -462,7 +462,8 @@ structured `400`.
 
 The three count fields are durable, index-backed totals for each repository visible to the
 authenticated principal. Host-bound credentials receive session and worktree totals for their host.
-Session totals can briefly lag a just-committed write while DynamoDB propagates its repository index.
+Session, worktree, and schedule totals can briefly lag a just-committed write while DynamoDB
+propagates their repository indexes.
 
 #### `GET /repositories/:id`
 

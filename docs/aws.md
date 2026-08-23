@@ -239,7 +239,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | HostLocks              | `hostId`          | —              | —                       | Conditional host assignment lock                                       |
 | ConcurrencyLocks       | `concurrencyId`   | —              | —                       | Conditional concurrency lock                                           |
 | SessionLogs            | `sessionId`       | `timestampSeq` | —                       | Append/range read; TTL attribute configured on the table, unused today |
-| Schedules              | `id`              | —              | —                       | CRUD by id                                                             |
+| Schedules              | `id`              | —              | `repositoryId-id`       | CRUD by id; count schedules by repository                              |
 | Connections            | `connectionId`    | —              | —                       | Connection state                                                       |
 | Archives               | `key`             | —              | —                       | Archive metadata                                                       |
 | HostInventories        | `hostId`          | —              | —                       | Host inventory                                                         |

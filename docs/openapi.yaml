@@ -280,6 +280,18 @@ components:
         admissionStateChangedAt: { type: string, format: date-time }
         drainRequestedAt: { type: string, format: date-time }
         drainCompletedAt: { type: string, format: date-time }
+        sessionCount:
+          type: integer
+          minimum: 0
+          description: Eventually consistent repository session total on list responses.
+        worktreeCount:
+          type: integer
+          minimum: 0
+          description: Eventually consistent repository worktree total on list responses.
+        scheduleCount:
+          type: integer
+          minimum: 0
+          description: Eventually consistent repository schedule total on list responses.
     RepositoryPage:
       type: object
       required: [items, nextCursor]
