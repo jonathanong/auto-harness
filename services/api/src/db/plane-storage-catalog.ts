@@ -512,18 +512,24 @@ export async function listRepositoriesPage(
 ): Promise<RepositoryStoragePage> {
   const allowed = query.allowedRepositoryIds ? new Set(query.allowedRepositoryIds) : undefined;
   if (allowed?.size === 0) return { items: [], nextKey: null };
-  const response = await ctx.doc.send(
-    new ScanCommand({
-      ConsistentRead: true,
-      TableName: ctx.tables.repositories,
-      Limit: query.limit,
-      ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
-    }),
-  );
-  const items = catalogPageItems(response.Items as RepositoryRecord[] | undefined).filter(
-    (repository) => !allowed || allowed.has(repository.id),
-  );
-  const nextKey = nextPageKey(response.LastEvaluatedKey as Record<string, unknown> | undefined);
+  const items: RepositoryRecord[] = [];
+  let nextKey = query.startKey;
+  do {
+    const response = await ctx.doc.send(
+      new ScanCommand({
+        ConsistentRead: true,
+        TableName: ctx.tables.repositories,
+        Limit: query.limit - items.length,
+        ...(nextKey ? { ExclusiveStartKey: nextKey } : {}),
+      }),
+    );
+    items.push(
+      ...catalogPageItems(response.Items as RepositoryRecord[] | undefined).filter(
+        (repository) => !allowed || allowed.has(repository.id),
+      ),
+    );
+    nextKey = nextPageKey(response.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (items.length < query.limit && nextKey);
   return { items, nextKey: nextKey ?? null };
 }
 

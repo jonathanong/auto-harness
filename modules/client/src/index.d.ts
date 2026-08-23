@@ -43,6 +43,9 @@ export type Repository = {
   name: string;
   url: string;
   defaultBranch: string;
+  sessionCount?: number;
+  worktreeCount?: number;
+  scheduleCount?: number;
   admissionState?: "active" | "paused" | "draining";
   admissionStateChangedAt?: string;
   drainRequestedAt?: string;
