@@ -3,7 +3,7 @@ import type { HostRepository } from "@auto-harness/shared";
 
 import { attachmentsForRepo } from "../../components/add-worktree-attachments.ts";
 import { AddWorktreeForRepo } from "../../components/add-worktree-for-repo.tsx";
-import { apiGet } from "../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +28,10 @@ export default async function WorktreesPage() {
   try {
     const [wts, repos] = await Promise.all([
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
-      apiGet<{ items: Repo[] }>("/api/v1/repositories"),
+      apiGetAllPages<Repo>("/api/v1/repositories"),
     ]);
     items = wts.items ?? [];
-    namesById = Object.fromEntries((repos.items ?? []).map((r) => [r.id, r.name]));
+    namesById = Object.fromEntries(repos.map((r) => [r.id, r.name]));
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }

@@ -4,7 +4,7 @@ import { AddRepoDialog } from "../../components/add-repo-dialog.tsx";
 import { AttachLocalRepoForm } from "../../components/attach-local-repo-form.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
 import { PrimaryEmptyState } from "../../components/primary-empty-state.tsx";
-import { apiGet } from "../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +40,11 @@ export default async function RepositoriesPage() {
   let error: string | null = null;
   try {
     const [repos, hosts, wts] = await Promise.all([
-      apiGet<{ items: Repo[] }>("/api/v1/repositories"),
+      apiGetAllPages<Repo>("/api/v1/repositories"),
       apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
-    items = repos.items ?? [];
+    items = repos;
     hostIds = (hosts.items ?? []).map((h) => h.hostId);
     worktrees = wts.items ?? [];
   } catch (e) {

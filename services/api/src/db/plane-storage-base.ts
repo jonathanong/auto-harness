@@ -729,6 +729,12 @@ export class DynamoPlaneStorageBase {
     return catalog.listRepositories(this.ctx);
   }
 
+  listRepositoriesPage(
+    query: catalog.RepositoryStoragePageQuery,
+  ): Promise<catalog.RepositoryStoragePage> {
+    return catalog.listRepositoriesPage(this.ctx, query);
+  }
+
   setRepositoryAdmissionState(
     id: string,
     state: import("@auto-harness/shared").RepositoryAdmissionState,

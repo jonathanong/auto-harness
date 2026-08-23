@@ -18,3 +18,26 @@ export async function apiFetch(
   }
   return response;
 }
+
+type ApiFetchPageResult<T> = { response: Response; items: T[] };
+
+/** Browser-side equivalent of apiGetAllPages that preserves HTTP error responses for callers. */
+export async function apiFetchAllPages<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<ApiFetchPageResult<T>> {
+  const items: T[] = [];
+  const seen = new Set<string>();
+  let requestPath = path;
+  while (true) {
+    const response = await apiFetch(requestPath, init);
+    if (!response.ok) return { response, items: [] };
+    const page = (await response.json()) as { items?: T[]; nextCursor?: string | null };
+    items.push(...(page.items ?? []));
+    const cursor = page.nextCursor ?? null;
+    if (!cursor) return { response, items };
+    if (seen.has(cursor)) throw new Error(`repeated pagination cursor for ${path}`);
+    seen.add(cursor);
+    requestPath = `${path}${path.includes("?") ? "&" : "?"}cursor=${encodeURIComponent(cursor)}`;
+  }
+}

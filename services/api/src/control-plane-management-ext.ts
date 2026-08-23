@@ -105,8 +105,7 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
   async listRepositoriesPageDurable(
     query?: repositoryPages.ListRepositoriesPageQuery,
   ): Promise<repositoryPages.ListRepositoriesPageResult> {
-    const records = await this.listRepositoriesDurable();
-    return repositoryPages.listRepositoriesPage(this.state, query ?? {}, records);
+    return repositoryPages.listRepositoriesPageDurable(this.state, query ?? {});
   }
 
   updateRepository(

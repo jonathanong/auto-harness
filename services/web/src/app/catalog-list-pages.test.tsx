@@ -159,8 +159,8 @@ describe("control catalog list routes", () => {
     expect(html).toContain('data-pw="repositories-empty-add"');
     stubApi({
       "/api/v1/repositories": "__throw_string__",
-      "/api/v1/hosts": jsonResponse({}, 502),
-      "/api/v1/worktrees": jsonResponse({}, 502),
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/worktrees": { items: [] },
     });
     html = await renderPage(RepositoriesPage());
     expect(html).toContain("offline");

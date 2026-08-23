@@ -425,7 +425,8 @@ Add a repository. **Admin only.**
 
 #### `GET /repositories`
 
-List repositories visible to the caller. Results are ordered by repository name and then ID.
+List repositories visible to the caller. The continuation cursor owns traversal order; clients that
+present a full catalog should collect every page before applying display sorting.
 
 **Query parameters:**
 

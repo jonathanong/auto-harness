@@ -1,5 +1,5 @@
 import { CreateSessionForm } from "../../../components/create-session-form.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import type { SessionTarget } from "../../../session-target.ts";
 import {
   cloneSourceId,
@@ -26,7 +26,7 @@ export default async function NewSessionPage({
   if (query.cloneFrom !== undefined && !requestedCloneId) errors.push("clone source: invalid id");
   const [targetResult, repositoryResult, worktreeResult, sourceResult] = await Promise.allSettled([
     apiGet<{ items: SessionTarget[] }>("/api/v1/session-targets"),
-    apiGet<{ items: Array<{ id: string; name: string }> }>("/api/v1/repositories"),
+    apiGetAllPages<{ id: string; name: string }>("/api/v1/repositories"),
     apiGet<{ items: Array<{ online?: boolean; labels?: string[] }> }>("/api/v1/worktrees"),
     requestedCloneId
       ? apiGet<SessionCloneSource>(`/api/v1/sessions/${encodeURIComponent(requestedCloneId)}`)
@@ -35,9 +35,7 @@ export default async function NewSessionPage({
   if (targetResult.status === "fulfilled") targets = targetResult.value.items ?? [];
   else errors.push(`targets: ${String(targetResult.reason)}`);
   if (repositoryResult.status === "fulfilled") {
-    repositories = (repositoryResult.value.items ?? []).toSorted((a, b) =>
-      a.name.localeCompare(b.name),
-    );
+    repositories = repositoryResult.value.toSorted((a, b) => a.name.localeCompare(b.name));
   } else errors.push(`repositories: ${String(repositoryResult.reason)}`);
   if (worktreeResult.status === "fulfilled") {
     availableLabels = [

@@ -490,6 +490,49 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
   return records;
 }
 
+export type RepositoryStoragePageQuery = {
+  limit: number;
+  startKey?: Record<string, unknown>;
+  allowedRepositoryIds?: readonly string[];
+};
+
+export type RepositoryStoragePage = {
+  items: RepositoryRecord[];
+  nextKey: Record<string, unknown> | null;
+};
+
+/**
+ * Traverse the repository table once across cursor pages. DynamoDB Scan has no
+ * global ordering guarantee, so the LastEvaluatedKey is the storage-owned
+ * continuation boundary; callers must treat it as opaque.
+ */
+export async function listRepositoriesPage(
+  ctx: PlaneStorageCtx,
+  query: RepositoryStoragePageQuery,
+): Promise<RepositoryStoragePage> {
+  const allowed = query.allowedRepositoryIds ? new Set(query.allowedRepositoryIds) : undefined;
+  if (allowed?.size === 0) return { items: [], nextKey: null };
+  const items: RepositoryRecord[] = [];
+  let startKey = query.startKey;
+  do {
+    const response = await ctx.doc.send(
+      new ScanCommand({
+        ConsistentRead: true,
+        TableName: ctx.tables.repositories,
+        Limit: Math.max(query.limit - items.length, 1),
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    items.push(
+      ...catalogPageItems(response.Items as RepositoryRecord[] | undefined).filter(
+        (repository) => !allowed || allowed.has(repository.id),
+      ),
+    );
+    startKey = nextPageKey(response.LastEvaluatedKey as Record<string, unknown> | undefined);
+  } while (items.length < query.limit && startKey !== undefined);
+  return { items, nextKey: startKey ?? null };
+}
+
 export async function setRepositoryAdmissionState(
   ctx: PlaneStorageCtx,
   id: string,

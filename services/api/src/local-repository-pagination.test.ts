@@ -89,4 +89,46 @@ describe("repository list pagination", () => {
       plane.listRepositoriesPage({ cursor: scoped.nextCursor!, scope: ["repo-a", "repo-b"] }),
     ).toThrow("invalid or mismatched repository cursor");
   });
+
+  it("passes opaque continuation keys to durable storage with a fixed-size scope binding", async () => {
+    const queries: Array<Record<string, unknown>> = [];
+    const plane = new ControlPlane({
+      sessionCursorSecret: "repository-durable-page-secret",
+      storage: {
+        listRepositoriesPage: async (query: Record<string, unknown>) => {
+          queries.push(query);
+          return query.startKey
+            ? { items: [], nextKey: null }
+            : {
+                items: [
+                  {
+                    id: "repo-a",
+                    name: "Alpha",
+                    url: "/alpha",
+                    defaultBranch: "main",
+                    createdAt: "2026-01-01T00:00:00.000Z",
+                    updatedAt: "2026-01-01T00:00:00.000Z",
+                  },
+                ],
+                nextKey: { id: "repo-a" },
+              };
+        },
+      } as never,
+    });
+    const scope = Array.from({ length: 500 }, (_, index) => `repository-${index}`);
+    scope.push("repo-a");
+    const first = await plane.listRepositoriesPageDurable({ limit: 1, scope });
+    expect(first.nextCursor?.length).toBeLessThan(500);
+    await expect(
+      plane.listRepositoriesPageDurable({ limit: 1, scope, cursor: first.nextCursor! }),
+    ).resolves.toEqual({ items: [], nextCursor: null });
+    expect(queries).toEqual([
+      { limit: 1, allowedRepositoryIds: scope.toSorted((a, b) => a.localeCompare(b)) },
+      {
+        limit: 1,
+        startKey: { id: "repo-a" },
+        allowedRepositoryIds: scope.toSorted((a, b) => a.localeCompare(b)),
+      },
+    ]);
+  });
 });

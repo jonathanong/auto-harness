@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -35,8 +35,9 @@ export class InvalidRepositoryListQueryError extends Error {
 type CursorScope = string[] | null;
 type RepositoryCursor = {
   version: 1;
-  scope: CursorScope;
-  position: { name: string; id: string };
+  scopeDigest: string;
+  position?: { name: string; id: string };
+  storageKey?: Record<string, unknown>;
 };
 
 function normalizeLimit(limit: number | undefined): number {
@@ -57,6 +58,10 @@ function compareRepositories(a: RepositoryRecord, b: RepositoryRecord): number {
   return a.name.localeCompare(b.name) || a.id.localeCompare(b.id);
 }
 
+function digestScope(scope: CursorScope): string {
+  return createHash("sha256").update(JSON.stringify(scope)).digest("base64url");
+}
+
 function payload(cursor: RepositoryCursor): string {
   return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
 }
@@ -74,7 +79,7 @@ function decodeCursor(
   state: ControlPlaneState,
   encoded: string,
   scope: CursorScope,
-): RepositoryCursor["position"] {
+): RepositoryCursor {
   const parts = encoded.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) throw new InvalidRepositoryCursorError();
   const expected = sign(state, parts[0]);
@@ -93,15 +98,20 @@ function decodeCursor(
   const cursor = decoded as Partial<RepositoryCursor>;
   if (
     cursor.version !== 1 ||
-    JSON.stringify(cursor.scope) !== JSON.stringify(scope) ||
-    !cursor.position ||
-    typeof cursor.position !== "object" ||
-    typeof cursor.position.name !== "string" ||
-    typeof cursor.position.id !== "string"
+    cursor.scopeDigest !== digestScope(scope) ||
+    (cursor.position !== undefined &&
+      (typeof cursor.position !== "object" ||
+        typeof cursor.position.name !== "string" ||
+        typeof cursor.position.id !== "string")) ||
+    (cursor.storageKey !== undefined &&
+      (!cursor.storageKey ||
+        typeof cursor.storageKey !== "object" ||
+        Array.isArray(cursor.storageKey))) ||
+    (cursor.position === undefined) === (cursor.storageKey === undefined)
   ) {
     throw new InvalidRepositoryCursorError();
   }
-  return cursor.position;
+  return cursor as RepositoryCursor;
 }
 
 /** Scope and all visibility filtering are applied before slicing. */
@@ -112,7 +122,9 @@ export function listRepositoriesPage(
 ): ListRepositoriesPageResult {
   const limit = normalizeLimit(query.limit);
   const scope = normalizeScope(query.scope);
-  const position = query.cursor ? decodeCursor(state, query.cursor, scope) : undefined;
+  const decoded = query.cursor ? decodeCursor(state, query.cursor, scope) : undefined;
+  if (decoded?.storageKey) throw new InvalidRepositoryCursorError();
+  const position = decoded?.position;
   let rows = records
     .filter((repository) => scope === null || scope.includes(repository.id))
     .toSorted(compareRepositories);
@@ -129,7 +141,42 @@ export function listRepositoriesPage(
     items: page.map((repository) => ({ ...repository })),
     nextCursor:
       rows.length > page.length && last
-        ? encodeCursor(state, { version: 1, scope, position: { name: last.name, id: last.id } })
+        ? encodeCursor(state, {
+            version: 1,
+            scopeDigest: digestScope(scope),
+            position: { name: last.name, id: last.id },
+          })
         : null,
+  };
+}
+
+/** Use the storage-owned continuation key so each Dynamo row is read at most once per traversal. */
+export async function listRepositoriesPageDurable(
+  state: ControlPlaneState,
+  query: ListRepositoriesPageQuery = {},
+): Promise<ListRepositoriesPageResult> {
+  if (!state.storage) return listRepositoriesPage(state, query);
+  if (typeof state.storage.listRepositoriesPage !== "function") {
+    return listRepositoriesPage(state, query, await state.storage.listRepositories());
+  }
+  const limit = normalizeLimit(query.limit);
+  const scope = normalizeScope(query.scope);
+  const decoded = query.cursor ? decodeCursor(state, query.cursor, scope) : undefined;
+  if (decoded?.position) throw new InvalidRepositoryCursorError();
+  const page = await state.storage.listRepositoriesPage({
+    limit,
+    ...(decoded?.storageKey ? { startKey: decoded.storageKey } : {}),
+    ...(scope ? { allowedRepositoryIds: scope } : {}),
+  });
+  const items = page.items.toSorted(compareRepositories);
+  return {
+    items,
+    nextCursor: page.nextKey
+      ? encodeCursor(state, {
+          version: 1,
+          scopeDigest: digestScope(scope),
+          storageKey: page.nextKey,
+        })
+      : null,
   };
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apiFetch } from "./client-api.ts";
+import { apiFetch, apiFetchAllPages } from "./client-api.ts";
 
 describe("browser API client", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -47,5 +47,37 @@ describe("browser API client", () => {
       vi.fn(async () => new Response(null, { status: 401 })),
     );
     await expect(apiFetch("/api/v1/sessions")).resolves.toBeInstanceOf(Response);
+  });
+
+  it("loads browser catalog pages and preserves an HTTP failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ items: [{ id: "one" }], nextCursor: "next/page" }))
+      .mockResolvedValueOnce(Response.json({ items: [{ id: "two" }], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(apiFetchAllPages<{ id: string }>("/api/v1/repositories")).resolves.toMatchObject({
+      items: [{ id: "one" }, { id: "two" }],
+      response: expect.objectContaining({ ok: true }),
+    });
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/v1/repositories?cursor=next%2Fpage");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 503 })),
+    );
+    await expect(apiFetchAllPages("/api/v1/repositories")).resolves.toMatchObject({
+      items: [],
+      response: expect.objectContaining({ status: 503 }),
+    });
+  });
+
+  it("rejects a replayed browser continuation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ items: [], nextCursor: "repeated" })),
+    );
+    await expect(apiFetchAllPages("/api/v1/repositories")).rejects.toThrow(
+      "repeated pagination cursor",
+    );
   });
 });
