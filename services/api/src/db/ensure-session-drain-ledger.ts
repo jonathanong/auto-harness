@@ -11,13 +11,9 @@ import { randomInt, randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import type { DynamoTableNames } from "./dynamo.ts";
-import { sessionPrincipalId } from "../control-plane-session-owner.ts";
-import { itemToSession, nextPageKey } from "./plane-storage-types.ts";
-import {
-  sessionDrainActivityKey,
-  sessionDrainLedgerReadyRecord,
-  sessionDrainScopeKey,
-} from "./plane-storage-session-drains.ts";
+import { nextPageKey } from "./plane-storage-types.ts";
+import { sessionDrainLedgerReadyRecord } from "./plane-storage-session-drains.ts";
+import { sessionDrainLedgerActivityForItem } from "./session-drain-ledger-migration.ts";
 
 const LEDGER_SCOPE_KEY = "__session-drain-ledger__";
 const LEDGER_RECORD_KEY = "ACTIVITY-V1";
@@ -31,19 +27,6 @@ const BASE_RETRY_DELAY_MS = 50;
 type PendingWrite = NonNullable<
   NonNullable<BatchWriteCommandInput["RequestItems"]>[string]
 >[number];
-
-function canStillAffectDrain(session: {
-  status: string;
-  worktreeId?: string | null;
-  mainCheckoutLease?: boolean;
-}): boolean {
-  return (
-    session.status === "queued" ||
-    session.status === "running" ||
-    (session.status === "cancelled" &&
-      (session.worktreeId != null || session.mainCheckoutLease === true))
-  );
-}
 
 function isConditionalFailure(error: unknown): boolean {
   return (
@@ -81,27 +64,13 @@ async function writeActivities(
   }
 }
 
-function activityForItem(item: Record<string, unknown>): Record<string, unknown> | null {
-  const session = itemToSession(item);
-  const principalId = sessionPrincipalId(session);
-  if (!principalId || !canStillAffectDrain(session)) return null;
-  return {
-    scopeKey: sessionDrainScopeKey(session.repositoryId, principalId),
-    recordKey: sessionDrainActivityKey(session.id),
-    recordType: "activity",
-    sessionId: session.id,
-    repositoryId: session.repositoryId,
-    principalId,
-  };
-}
-
 async function backfillPage(
   doc: DynamoDBDocumentClient,
   tableName: string,
   items: Record<string, unknown>[],
 ): Promise<void> {
   const activities = items
-    .map(activityForItem)
+    .map(sessionDrainLedgerActivityForItem)
     .filter((activity): activity is Record<string, unknown> => activity !== null);
   await writeActivities(doc, tableName, activities);
 }
@@ -205,12 +174,16 @@ export async function migrateSessionDrainActivityLedgerPage(
     );
   } catch (error) {
     if (!isConditionalFailure(error)) throw error;
+    const published = await doc.send(
+      new GetCommand({
+        TableName: tables.sessionDrains,
+        Key: { scopeKey: LEDGER_SCOPE_KEY, recordKey: LEDGER_RECORD_KEY },
+        ConsistentRead: true,
+      }),
+    );
+    return published.Item?.recordType === "activity-ledger-v1";
   }
   return true;
 }
 
-/**
- * Compatibility alias for local provisioning. Production Lambda paths must
- * call the bounded migration page from the scheduler, never during startup.
- */
 export const ensureSessionDrainActivityLedger = migrateSessionDrainActivityLedgerPage;

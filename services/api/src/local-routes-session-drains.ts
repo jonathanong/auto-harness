@@ -82,7 +82,6 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
         repositoryId,
         ctx.principal.id,
         operationId,
-        auditActor(ctx.principal),
       );
       if (!drain) {
         send(ctx.res, 404, { error: { code: "NOT_FOUND", message: "session drain not found" } });
@@ -96,6 +95,7 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
         repositoryId,
         ctx.principal.id,
         operationId,
+        auditActor(ctx.principal),
       );
       if (!drain) {
         send(ctx.res, 409, {

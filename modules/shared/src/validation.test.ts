@@ -234,7 +234,7 @@ describe("validateCreateSessionInput", () => {
   it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
     // 92 routes + repository/principal markers + cursor/repository/drain checks +
     // concurrency/session/activity writes = DynamoDB's 100-action maximum.
-    expect(MAX_FALLBACKS).toBe(91);
+    expect(MAX_FALLBACKS).toBe(90);
     const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
       commandId: `fallback-${index}`,
     }));

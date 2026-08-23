@@ -349,6 +349,7 @@ export async function updateSessionDrain(
     throw new Error("terminal session drain updates require an audit record");
   }
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
+  const { reconcileLeaseOwner, reconcileLeaseUntil: _reconcileLeaseUntil, ...checkpoint } = record;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -356,10 +357,13 @@ export async function updateSessionDrain(
           ...["CURRENT", `OP#${record.operationId}`].map((recordKey) => ({
             Put: {
               TableName: ctx.tables.sessionDrains,
-              Item: { ...record, scopeKey, recordKey },
+              // Checkpointing releases the short reconcile lease atomically. A
+              // crashed worker leaves its old lease to expire; a successful
+              // worker never delays the next bounded page or status poll.
+              Item: { ...checkpoint, scopeKey, recordKey },
               ConditionExpression:
                 "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount" +
-                (recordKey.startsWith("OP#") && record.reconcileLeaseOwner
+                (recordKey.startsWith("OP#") && reconcileLeaseOwner
                   ? " AND reconcileLeaseOwner = :leaseOwner"
                   : ""),
               ExpressionAttributeNames: { "#status": "status" },
@@ -367,8 +371,8 @@ export async function updateSessionDrain(
                 ":operationId": record.operationId,
                 ":draining": "draining",
                 ":cancelledCount": record.cancelledCount,
-                ...(record.reconcileLeaseOwner
-                  ? { ":leaseOwner": record.reconcileLeaseOwner }
+                ...(recordKey.startsWith("OP#") && reconcileLeaseOwner
+                  ? { ":leaseOwner": reconcileLeaseOwner }
                   : {}),
               },
             },
@@ -524,11 +528,17 @@ export async function listSessionDrainReconcileCandidates(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
+    let stoppedAtCandidate: Record<string, unknown> | undefined;
     for (const item of (result.Items ?? []) as SessionDrainRecord[]) {
       if (item.recordKey === "CURRENT" && item.status === "draining") candidates.push(item);
-      if (candidates.length === limit) break;
+      if (candidates.length === limit) {
+        stoppedAtCandidate = { scopeKey: item.scopeKey, recordKey: item.recordKey };
+        break;
+      }
     }
-    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+    startKey =
+      stoppedAtCandidate ??
+      nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
     if (!startKey) break;
   }
   if (startKey) {

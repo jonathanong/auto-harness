@@ -31,9 +31,9 @@ function drainAuditRecord(
       outcome: event === "failed" ? "failed" : "success",
       metadata: {
         operationId: drain.operationId,
-        status: terminal ? drain.status : undefined,
         ...(terminal
           ? {
+              status: drain.status,
               principalId: drain.principalId,
               queuedCount: drain.queuedCount,
               runningCount: drain.runningCount,
@@ -142,7 +142,7 @@ export async function reconcileSessionDrainDurable(
     }
   }
 
-  const authoritative = page.sessions;
+  const authoritative = page.sessions.map((session) => state.sessions.get(session.id) ?? session);
   const queuedCount = authoritative.filter((session) => session.status === "queued").length;
   // ACT members are removed after a strong read proves their terminal state.
   // Retain the durable monotonic total after cleanup rather than treating the
@@ -183,9 +183,9 @@ export async function reconcileSessionDrainDurable(
     delete updated.activityCursor;
   }
   const terminalAudit =
-    updated.status === "draining"
-      ? undefined
-      : drainAuditRecord(updated, updated.status, SYSTEM_AUDIT_ACTOR);
+    updated.status === "succeeded" || updated.status === "failed"
+      ? drainAuditRecord(updated, updated.status, SYSTEM_AUDIT_ACTOR)
+      : undefined;
   if (!(await state.storage.updateSessionDrain(updated, terminalAudit))) {
     return (
       (await state.storage.getSessionDrainOperation(

@@ -81,6 +81,7 @@ beforeAll(async () => {
       "principal-delete-fence",
       "principal-drain-main",
       "principal-idempotent",
+      "principal-other",
       "principal-running",
       "principal-timeout",
     ].map((id) => putTestPrincipal(ctx.storage!, id)),

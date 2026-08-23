@@ -23,6 +23,7 @@ import {
 } from "./plane-storage-types.ts";
 import {
   markerConditions,
+  principalExistsCheck,
   withMarkerTable,
   type DeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
@@ -139,12 +140,14 @@ export async function createSession(
     sessionPrincipalId(session),
   );
   const activityPut = sessionDrainActivityPut(ctx, session);
+  const principalCheck = principalExistsCheck(ctx, sessionPrincipalId(session));
   if (!session.concurrencyId) {
     try {
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
             ...withMarkerTable(ctx, markerConditions([...markers])),
+            ...(principalCheck ? [principalCheck] : []),
             {
               ConditionCheck: {
                 TableName: ctx.tables.repositories,
@@ -168,9 +171,19 @@ export async function createSession(
       );
     } catch (err) {
       if (isConditionalTransactionFailed(err)) {
-        const repositoryIndex = markers.length;
+        const principalIndex = markers.length;
+        const repositoryIndex = principalIndex + Number(!!principalCheck);
         const drainIndex = repositoryIndex + 1;
         const sessionIndex = drainIndex + Number(!!drainCheck);
+        if (
+          (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) ||
+          (markers.length &&
+            [...Array(markers.length).keys()].some((index) =>
+              isConditionalTransactionFailureAt(err, index),
+            ))
+        ) {
+          throw new CatalogDeletionInProgressError();
+        }
         if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
           throw new RepositoryAdmissionClosedError();
         }
@@ -193,6 +206,7 @@ export async function createSession(
         new TransactWriteCommand({
           TransactItems: [
             ...withMarkerTable(ctx, markerConditions([...markers])),
+            ...(principalCheck ? [principalCheck] : []),
             {
               ConditionCheck: {
                 TableName: ctx.tables.repositories,
@@ -235,10 +249,15 @@ export async function createSession(
       ) {
         throw new CatalogDeletionInProgressError();
       }
-      if (isConditionalTransactionFailureAt(err, markerCount)) {
+      const principalIndex = markerCount;
+      if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
+        throw new CatalogDeletionInProgressError();
+      }
+      const repositoryIndex = principalIndex + Number(!!principalCheck);
+      if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
         throw new RepositoryAdmissionClosedError();
       }
-      const drainIndex = markerCount + 1;
+      const drainIndex = repositoryIndex + 1;
       if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
         throw await activeSessionDrainError(ctx, session);
       }

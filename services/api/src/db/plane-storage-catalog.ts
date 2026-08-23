@@ -680,13 +680,15 @@ export async function tryClaimScheduleAndCreateSession(
       ? opts.session.metadata.createdBy
       : undefined);
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId);
+  const principalCheck = principalExistsCheck(ctx, principalId);
   const activityPut = sessionDrainActivityPut(ctx, opts.session);
   const markerChecks = withMarkerTable(
     ctx,
     markerConditions(scheduleClaimMarkers(opts.lastRunAt, opts.session)),
   );
   const drainIndex = 1;
-  const repositoryIndex = drainIndex + Number(!!drainCheck);
+  const principalIndex = drainIndex + Number(!!drainCheck);
+  const repositoryIndex = principalIndex + Number(!!principalCheck);
   const markerStartIndex = repositoryIndex + 1;
   const sessionIndex = markerStartIndex + markerChecks.length;
   try {
@@ -708,6 +710,7 @@ export async function tryClaimScheduleAndCreateSession(
             },
           },
           ...(drainCheck ? [drainCheck] : []),
+          ...(principalCheck ? [principalCheck] : []),
           {
             ConditionCheck: {
               TableName: ctx.tables.repositories,
@@ -755,6 +758,9 @@ export async function tryClaimScheduleAndCreateSession(
       if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
         const drain = await getSessionDrain(ctx, opts.session.repositoryId, principalId!);
         return { kind: "draining", operationId: drain?.operationId ?? "unknown" };
+      }
+      if (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) {
+        return { kind: "lost" };
       }
       if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
         return { kind: "admission_closed" };

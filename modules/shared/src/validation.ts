@@ -60,9 +60,9 @@ const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
 // Scheduled claims combine reference-marker checks for every route with the
 // cursor, repository, drain, session, activity, and concurrency-lock actions.
-// 91 fallbacks keeps the authenticated worst case within DynamoDB's 100-action
+// 90 fallbacks keeps the authenticated worst case within DynamoDB's 100-action
 // limit even when the principal marker is present.
-export const MAX_FALLBACKS = 91;
+export const MAX_FALLBACKS = 90;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;

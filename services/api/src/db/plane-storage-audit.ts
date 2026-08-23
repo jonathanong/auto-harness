@@ -73,7 +73,10 @@ function fromItem(item: AuditItem): AuditLogRecord {
 export async function putAuditLog(ctx: PlaneStorageCtx, record: AuditLogRecord): Promise<void> {
   await ctx.doc.send(
     new PutCommand({
-      ...auditLogTransactPut(ctx, record).Put,
+      TableName: ctx.tables.auditLogs,
+      Item: auditLogItem(record),
+      ConditionExpression: "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
+      ExpressionAttributeNames: { "#scope": "scope" },
     }),
   );
 }

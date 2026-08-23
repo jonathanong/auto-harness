@@ -184,5 +184,14 @@ describe("DynamoDB session drain activity ledger", () => {
         }),
       }),
     );
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Item: expect.objectContaining({
+            nextKey: { scopeKey: "repo#principal", recordKey: "CURRENT" },
+          }),
+        }),
+      }),
+    );
   });
 });

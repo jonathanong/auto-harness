@@ -150,6 +150,13 @@ describe("durable schedule creation", () => {
       expect.arrayContaining([
         expect.objectContaining({
           ConditionCheck: expect.objectContaining({
+            TableName: "Users",
+            Key: { id: "principal" },
+            ConditionExpression: "attribute_exists(id)",
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
             TableName: "Locks",
             Key: { concurrencyId: "catalog-delete:repository:repo-1" },
           }),
@@ -178,6 +185,7 @@ describe("durable schedule creation", () => {
       throw {
         name: "TransactionCanceledException",
         CancellationReasons: [
+          { Code: "None" },
           { Code: "None" },
           { Code: "None" },
           { Code: "None" },
