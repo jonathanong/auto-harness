@@ -19,8 +19,19 @@ export type CreateSessionInput = {
   metadata?: Record<string, SessionMetadataValue>;
 };
 
-export type Session = CreateSessionInput & {
+export type Session = {
   id: string;
+  repositoryId: string;
+  prompt: string;
+  target: TargetRef;
+  fallbacks?: TargetRef[];
+  ref?: string;
+  concurrencyId?: string;
+  queueTtlSeconds?: number;
+  timeout?: number;
+  priority?: number;
+  requiredLabels?: string[];
+  metadata?: Record<string, SessionMetadataValue>;
   status: string;
   createdAt: string;
   url: string;

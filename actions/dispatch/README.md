@@ -5,7 +5,7 @@ owns the authenticated service account's principal session drain for a single re
 lists or individually cancels sessions in GitHub Actions: the control plane owns that durable work.
 
 ```yaml
-- uses: jonathanong/auto-harness/actions/dispatch@main
+- uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
     api-key: ${{ secrets.AUTO_HARNESS_API_KEY }}
@@ -30,7 +30,7 @@ whatever caller-side failure handling records that result.
 ```yaml
 - name: Start this service account's repository drain
   id: drain
-  uses: jonathanong/auto-harness/actions/dispatch@main
+  uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:
     operation: start-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -40,7 +40,7 @@ whatever caller-side failure handling records that result.
 
 - name: Wait for terminal proof
   id: drain-status
-  uses: jonathanong/auto-harness/actions/dispatch@main
+  uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:
     operation: wait-for-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
@@ -52,7 +52,7 @@ whatever caller-side failure handling records that result.
 
 - name: Reopen this principal's admission after recording the result
   if: always()
-  uses: jonathanong/auto-harness/actions/dispatch@main
+  uses: jonathanong/auto-harness/actions/dispatch@512d03c89dd3511a0d1f644692767371f9a04ce2
   with:
     operation: release-drain
     server-url: ${{ secrets.AUTO_HARNESS_URL }}
