@@ -20,13 +20,23 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 /** Minimal accepting WS server so `start`'s real startDaemon has somewhere to register. */
-async function acceptingServer(): Promise<{ port: number; close(): Promise<void> }> {
+async function acceptingServer(): Promise<{
+  port: number;
+  registeredEnvironmentNames(): string[] | undefined;
+  close(): Promise<void>;
+}> {
   const server = createServer();
   const wss = new WebSocketServer({ server, path: "/ws" });
+  let environmentNames: string[] | undefined;
   wss.on("connection", (socket) => {
     socket.on("message", (raw) => {
-      const message = JSON.parse(String(raw)) as { type?: string; hostId?: string };
+      const message = JSON.parse(String(raw)) as {
+        type?: string;
+        hostId?: string;
+        runtime?: { environmentNames?: string[] };
+      };
       if (message.type === "host:register") {
+        environmentNames = message.runtime?.environmentNames;
         socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
       } else if (message.type === "host:status") {
         // Acknowledges the drain announcement `stop()` sends; without this
@@ -43,6 +53,7 @@ async function acceptingServer(): Promise<{ port: number; close(): Promise<void>
   if (!address || typeof address === "string") throw new Error("no port");
   return {
     port: address.port,
+    registeredEnvironmentNames: () => environmentNames,
     async close() {
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve, reject) =>
@@ -114,6 +125,11 @@ describe("runCli start signal handling", () => {
     try {
       const deps = minimalDeps({
         process: proc,
+        ensureReady: async () => ({
+          daemonVersion: "test",
+          gitVersion: "2.50.0",
+          gitReady: true,
+        }),
         loadConfig: async () =>
           emptyDaemonConfig({
             hostId: "cli-start-test",
@@ -123,10 +139,15 @@ describe("runCli start signal handling", () => {
       });
       const resultPromise = runCli(
         ["node", "x", "start", "--ws", `http://127.0.0.1:${server.port}`],
-        {},
+        {
+          HARNESS_CHILD_ENV_ALLOWLIST: "SECOND_TOKEN,FIRST_TOKEN",
+          FIRST_TOKEN: "first",
+          SECOND_TOKEN: "second",
+        },
         deps,
       );
       await waitFor(() => proc.hasListener("SIGINT") && proc.hasListener("SIGTERM"));
+      expect(server.registeredEnvironmentNames()).toEqual(["FIRST_TOKEN", "SECOND_TOKEN"]);
       proc.fire("SIGINT");
       expect(await resultPromise).toBe(0);
     } finally {
