@@ -164,6 +164,80 @@ describe("schedule fire residual coverage", () => {
     await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
   });
 
+  it("fences a stale due occurrence at the repository activation cutoff", async () => {
+    let skipped = 0;
+    let claimed = 0;
+    const current = state(
+      schedule({
+        principalId: "principal",
+        nextRunAt: "2026-01-01T00:01:00.000Z",
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => {
+          claimed += 1;
+          return { kind: "created" };
+        },
+        skipScheduleBeforeActivationCutoff: async () => {
+          skipped += 1;
+          return true;
+        },
+      },
+    );
+    current.repositories.get("repo")!.activationCutoffAt = "2026-01-01T00:02:00.000Z";
+
+    await expect(
+      tryClaimScheduleFireDurable(
+        current,
+        "nightly",
+        "2026-01-01T00:01:00.000Z",
+        "2026-01-01T00:03:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    expect(skipped).toBe(1);
+    expect(claimed).toBe(0);
+    expect(current.schedules.get("nightly")).toMatchObject({
+      nextRunAt: "2026-01-01T00:04:00.000Z",
+    });
+    expect(current.sessions).toHaveLength(0);
+  });
+
+  it("leaves a stale cutoff occurrence for a concurrent close and reopen", async () => {
+    let observedCutoff: string | undefined;
+    const current = state(
+      schedule({
+        principalId: "principal",
+        nextRunAt: "2026-01-01T00:01:00.000Z",
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => ({ kind: "created" }),
+        skipScheduleBeforeActivationCutoff: async ({
+          activationCutoffAt,
+        }: {
+          activationCutoffAt: string;
+        }) => {
+          observedCutoff = activationCutoffAt;
+          current.repositories.get("repo")!.activationCutoffAt = "2026-01-01T00:04:00.000Z";
+          return false;
+        },
+      },
+    );
+    current.repositories.get("repo")!.activationCutoffAt = "2026-01-01T00:02:00.000Z";
+
+    await expect(
+      tryClaimScheduleFireDurable(
+        current,
+        "nightly",
+        "2026-01-01T00:01:00.000Z",
+        "2026-01-01T00:03:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    expect(observedCutoff).toBe("2026-01-01T00:02:00.000Z");
+    expect(current.schedules.get("nightly")).toMatchObject({
+      nextRunAt: "2026-01-01T00:01:00.000Z",
+    });
+    expect(current.sessions).toHaveLength(0);
+  });
+
   it("consumes and audits an ownerless legacy cron occurrence", async () => {
     let claims = 0;
     let skipped = 0;
