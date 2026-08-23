@@ -1,0 +1,322 @@
+openapi: 3.1.0
+info:
+  title: Auto Harness Automation API
+  version: 1.0.0
+  description: Stable, fire-and-forget automation surface for sessions and repository admission.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /sessions:
+    post:
+      operationId: createSession
+      summary: Create or deduplicate a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSession" }
+      responses:
+        "200":
+          description: Existing active session with the same concurrency ID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionCreateResult" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    get:
+      operationId: getSession
+      responses:
+        "200":
+          description: Session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        default: { $ref: "#/components/responses/Error" }
+  /sessions/{sessionId}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/SessionId"
+    post:
+      operationId: cancelSession
+      responses:
+        "200":
+          description: Cancelled session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories:
+    get:
+      operationId: listRepositories
+      responses:
+        "200":
+          description: Repositories visible to the caller
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/pause:
+    post:
+      operationId: pauseRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository paused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/drain:
+    post:
+      operationId: drainRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository draining, or paused when all leases have settled
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/activate:
+    post:
+      operationId: activateRepository
+      parameters:
+        - $ref: "#/components/parameters/RepositoryId"
+      responses:
+        "200":
+          description: Repository active
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+    post:
+      operationId: startSessionDrain
+      summary: Atomically drain the authenticated principal's sessions for one repository
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      responses:
+        "202":
+          description: Durable drain created or resumed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        "400": { $ref: "#/components/responses/Error" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains/{operationId}:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+      - $ref: "#/components/parameters/SessionDrainOperationId"
+    get:
+      operationId: getSessionDrain
+      summary: Get bounded durable progress or terminal proof for a principal session drain
+      responses:
+        "200":
+          description: Current or terminal drain status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        default: { $ref: "#/components/responses/Error" }
+  /repositories/{repositoryId}/session-drains/{operationId}/release:
+    parameters:
+      - $ref: "#/components/parameters/RepositoryId"
+      - $ref: "#/components/parameters/SessionDrainOperationId"
+    post:
+      operationId: releaseSessionDrain
+      summary: Explicitly release a terminal principal session-drain admission fence
+      responses:
+        "200":
+          description: Released drain; a failed operation remains failed in its retained proof
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDrain" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        default: { $ref: "#/components/responses/Error" }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string }
+    RepositoryId:
+      name: repositoryId
+      in: path
+      required: true
+      schema: { type: string }
+    SessionDrainOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Stable caller identity for retrying startSessionDrain after ambiguous delivery
+      schema:
+        type: string
+        pattern: "^[A-Za-z0-9._:-]{1,128}$"
+  responses:
+    Conflict:
+      description: Conflict, including closed repository admission
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Error:
+      description: Error response
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+  schemas:
+    Target:
+      type: object
+      properties:
+        providerId: { type: string, minLength: 1 }
+        commandId: { type: string, minLength: 1 }
+      oneOf:
+        - required: [providerId]
+        - required: [commandId]
+      additionalProperties: false
+    CreateSession:
+      type: object
+      required: [repositoryId, prompt, target, timeout]
+      properties:
+        repositoryId: { type: string }
+        prompt:
+          type: string
+          minLength: 1
+          description: At most 65,536 UTF-8 bytes.
+        target: { $ref: "#/components/schemas/Target" }
+        fallbacks:
+          type: array
+          items: { $ref: "#/components/schemas/Target" }
+        ref: { type: string }
+        concurrencyId:
+          type: string
+          minLength: 1
+          description: At most 2,048 UTF-8 bytes.
+        queueTtlSeconds: { type: integer, minimum: 1, maximum: 2592000 }
+        timeout: { type: number, exclusiveMinimum: 0, maximum: 604800 }
+        priority: { type: number, minimum: -10000, maximum: 10000 }
+        requiredLabels:
+          type: array
+          maxItems: 16
+          items: { type: string, minLength: 1, maxLength: 64 }
+        metadata:
+          type: object
+          additionalProperties:
+            oneOf:
+              - type: string
+              - type: number
+              - type: boolean
+              - type: "null"
+      additionalProperties: false
+    Session:
+      type: object
+      required: [id, repositoryId, prompt, target, status, createdAt, url]
+      properties:
+        id: { type: string }
+        repositoryId: { type: string }
+        prompt: { type: string }
+        target: { $ref: "#/components/schemas/Target" }
+        status: { type: string }
+        createdAt: { type: string, format: date-time }
+        url: { type: string }
+      additionalProperties: true
+    SessionCreateResult:
+      allOf:
+        - $ref: "#/components/schemas/Session"
+        - type: object
+          required: [created]
+          properties:
+            created: { type: boolean }
+    Repository:
+      type: object
+      required: [id, name, url, defaultBranch]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        url: { type: string }
+        defaultBranch: { type: string }
+        admissionState:
+          type: string
+          enum: [active, paused, draining]
+          default: active
+        admissionStateChangedAt: { type: string, format: date-time }
+        drainRequestedAt: { type: string, format: date-time }
+        drainCompletedAt: { type: string, format: date-time }
+    SessionDrain:
+      type: object
+      required:
+        - operationId
+        - repositoryId
+        - status
+        - statusUrl
+        - requestedAt
+        - updatedAt
+        - deadlineAt
+        - queuedCount
+        - runningCount
+        - cancelledCount
+      properties:
+        operationId: { type: string }
+        repositoryId: { type: string }
+        status:
+          type: string
+          enum: [draining, succeeded, failed, released]
+        statusUrl:
+          type: string
+          description: API-relative URL for polling this operation
+        requestedAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        deadlineAt: { type: string, format: date-time }
+        queuedCount: { type: integer, minimum: 0 }
+        runningCount: { type: integer, minimum: 0 }
+        cancelledCount: { type: integer, minimum: 0 }
+        completedAt: { type: string, format: date-time }
+        releasedAt: { type: string, format: date-time }
+        failureCode: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: [VALIDATION_ERROR, DRAINING, REPOSITORY_ADMISSION_CLOSED]
+            message: { type: string }
+            operationId:
+              type: string
+              description: Present for DRAINING admission rejections
+            statusUrl:
+              type: string
+              description: API-relative durable drain URL present for DRAINING admission rejections

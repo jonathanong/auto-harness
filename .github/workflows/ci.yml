@@ -20,6 +20,8 @@ jobs:
     name: static-code-analysis
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -70,11 +72,15 @@ jobs:
         run: >
           pnpm --dir modules/shared exec tsc --noEmit
           && pnpm --dir modules/ui exec tsc --noEmit
+          && pnpm exec tsc --noEmit --project modules/client/tsconfig.json
           && pnpm --dir services/cdk exec tsc --noEmit
           && pnpm --dir services/host-pane exec tsc --noEmit
           && pnpm --dir services/web exec tsc --noEmit
           && pnpm --dir services/host-daemon exec tsc --noEmit
           && pnpm --dir services/api exec tsc --noEmit
+
+      - name: Client package tests
+        run: pnpm --dir modules/client test
 
       - name: Knip
         run: pnpm knip

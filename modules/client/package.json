@@ -1,0 +1,33 @@
+{
+  "name": "auto-harness-client",
+  "version": "0.1.1",
+  "description": "Dependency-free client for the Auto Harness automation API",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jonathanong/auto-harness.git",
+    "directory": "modules/client"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "src"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
