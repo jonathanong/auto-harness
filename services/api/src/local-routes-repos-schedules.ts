@@ -3,6 +3,7 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
+import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -405,7 +406,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       const result = await plane.putScheduleDurable({
         repositoryId: body.repositoryId,
-        ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
+        principalId: ctx.principal?.id ?? SYSTEM_AUDIT_ACTOR.id,
         name: body.name,
         target: body.target,
         ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
@@ -420,7 +421,6 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
         ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
         ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
         ...(typeof body.id === "string" ? { id: body.id } : {}),
-        ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
       });
       if (!result.ok) {
         if (
@@ -677,7 +677,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
           ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
-          ...(ctx.principal && !existing?.principalId ? { principalId: ctx.principal.id } : {}),
+          ...(!existing?.principalId
+            ? { principalId: ctx.principal?.id ?? SYSTEM_AUDIT_ACTOR.id }
+            : {}),
         });
         if (!result.ok) {
           if (

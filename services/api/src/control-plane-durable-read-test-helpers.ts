@@ -6,6 +6,7 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
   const storage = state.storage as unknown as Record<string, unknown>;
   storage.getSession ??= async (id: string) => copy(state.sessions.get(id));
   storage.listAllSessions ??= async () => list(state.sessions);
+  storage.listSessionDrains ??= async () => [];
   storage.listSessionsForDrain ??= async (
     repositoryId: string,
     principalId: string,

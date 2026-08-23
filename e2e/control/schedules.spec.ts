@@ -140,6 +140,7 @@ test.describe("control plane schedules", () => {
     expect(await (await request.get(`/api/v1/schedules/${scheduleId}`)).json()).toMatchObject({
       enabled: false,
     });
+    await page.reload();
     const cron = page.getByTestId(`schedule-cron-${scheduleId}`);
     await expect(cron).toHaveText("Every hour at minute 30");
     await expect(cron).toHaveAttribute("title", "Cron: 30 * * * *");

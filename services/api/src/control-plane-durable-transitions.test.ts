@@ -225,6 +225,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-durable",
       repositoryId: "repo-schedule",
+      principalId: "principal-schedule",
       name: "nightly",
       target: { commandId: "cmd-schedule" },
       fallbacks: [],
@@ -270,6 +271,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-evaluate",
       repositoryId: "repo-schedule",
+      principalId: "principal-schedule",
       name: "evaluate",
       target: { commandId: "cmd-schedule" },
       fallbacks: [],
@@ -334,6 +336,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-manual-durable",
       repositoryId: "repo-manual-durable",
+      principalId: "principal-manual",
       name: "manual",
       target: { commandId: "cmd-manual-durable" },
       fallbacks: [],
@@ -1161,6 +1164,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-review-missing-target",
       repositoryId: "repo-review-target",
+      principalId: "principal-review",
       name: "missing target",
       target: { commandId: "cmd-review-durable" },
       fallbacks: [],
@@ -1207,6 +1211,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-review-missing-account",
       repositoryId: "repo-review-account",
+      principalId: "principal-review-account",
       name: "missing account",
       target: { providerId: "provider-review-missing" },
       fallbacks: [],

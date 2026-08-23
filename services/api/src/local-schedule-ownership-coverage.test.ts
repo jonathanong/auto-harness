@@ -105,4 +105,51 @@ describe("legacy schedule ownership", () => {
     expect(created).toMatchObject({ status: 201, json: { principalId: account.id } });
     expect(createdPrincipalId).toBe(account.id);
   });
+
+  it("uses the system principal when authentication is disabled", async () => {
+    let createdPrincipalId: string | undefined;
+    const plane = new ControlPlane({
+      storage: {
+        putSchedule: async (record: { principalId?: string }) => {
+          createdPrincipalId = record.principalId;
+        },
+      } as never,
+      now: () => NOW,
+    });
+    plane.state.repositories.set("repository", {
+      id: "repository",
+      name: "repository",
+      url: "/repository",
+      defaultBranch: "main",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    plane.state.commands.set("command", {
+      id: "command",
+      name: "command",
+      argv: ["echo"],
+      appendPrompt: true,
+      providerId: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    addDurableReadDefaults(plane.state);
+
+    const { handler } = createLocalApp({
+      plane,
+      authMode: "disabled",
+      rateLimitConfig: { enabled: false },
+    });
+    const created = await invokeHandler(handler, "POST", "/api/v1/schedules", {
+      id: "new-schedule",
+      repositoryId: "repository",
+      name: "new schedule",
+      target: { commandId: "command" },
+      cron: "* * * * *",
+      timeout: 60,
+    });
+
+    expect(created).toMatchObject({ status: 201, json: { principalId: "system" } });
+    expect(createdPrincipalId).toBe("system");
+  });
 });
