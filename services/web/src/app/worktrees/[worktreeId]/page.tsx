@@ -11,9 +11,8 @@ import {
 
 import { EditWorktreeForm } from "../../../components/edit-worktree-form.tsx";
 import { ProviderScopeTable } from "../../../components/provider-scope-table.tsx";
-import { apiGet } from "../../../lib/api.ts";
+import { apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
-import { loadAllRepositoryPages, type RepositoryPage } from "../../../lib/repository-catalog.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -74,12 +73,8 @@ export default async function WorktreeDetailPage({
   let repoName: string | undefined;
   let sessions: Session[] = [];
   try {
-    const repos = await apiGet<RepositoryPage<Repo>>("/api/v1/repositories");
-    const allRepos = await loadAllRepositoryPages(
-      (path) => apiGet<RepositoryPage<Repo>>(path),
-      repos,
-    );
-    const repo = allRepos.find((r) => r.id === worktree!.repositoryId);
+    const repos = await apiGetAllPages<Repo>("/api/v1/repositories");
+    const repo = repos.find((r) => r.id === worktree!.repositoryId);
     repoPath = repo?.url;
     repoName = repo?.name;
   } catch {

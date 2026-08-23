@@ -55,7 +55,9 @@ export type Repository = {
 };
 
 export type ListRepositoriesOptions = {
+  /** Number of repositories to return (1–100, default 50). */
   limit?: number;
+  /** Opaque cursor returned by a previous page. */
   cursor?: string;
 };
 

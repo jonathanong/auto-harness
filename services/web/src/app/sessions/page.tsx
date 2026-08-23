@@ -5,8 +5,7 @@ import { SessionFilters, WithTooltip } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
 import { ListApiError } from "../../components/list-page-states.tsx";
-import { apiGet } from "../../lib/api.ts";
-import { loadAllRepositoryPages } from "../../lib/repository-catalog.ts";
+import { apiGet, apiGetAllPages } from "../../lib/api.ts";
 import { parseSessionListState } from "../../lib/url-state.ts";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +51,7 @@ export default async function SessionsPage({
   let hosts: Array<{ id: string; label: string }> = [];
   const [sessionsResult, repositoriesResult, hostsResult] = await Promise.allSettled([
     apiGet<{ items: Session[]; nextCursor: string | null }>(path),
-    loadAllRepositoryPages((pagePath) => apiGet<{ items: Repository[] }>(pagePath)),
+    apiGetAllPages<Repository>("/api/v1/repositories"),
     apiGet<{ items: Array<{ hostId: string }> }>("/api/v1/hosts"),
   ]);
   if (sessionsResult.status === "fulfilled") {

@@ -124,6 +124,7 @@ describe("control catalog list routes", () => {
         items: [
           { id: "r-1", name: "harness", url: "/src/harness" },
           { id: "r-2", name: "empty", url: "/src/empty" },
+          { id: "r-0", name: "empty", url: "/src/empty-copy" },
         ],
       },
       "/api/v1/hosts": { items: [{ hostId: "host-1" }] },
@@ -147,6 +148,12 @@ describe("control catalog list routes", () => {
     expect(html).toContain('data-pw="repo-link-r-1"');
     expect(html).toContain("feature");
     expect(html).toContain("Attach a repository to a host");
+    expect(html.indexOf('data-pw="repo-link-r-2"')).toBeLessThan(
+      html.indexOf('data-pw="repo-link-r-1"'),
+    );
+    expect(html.indexOf('data-pw="repo-link-r-0"')).toBeLessThan(
+      html.indexOf('data-pw="repo-link-r-2"'),
+    );
   });
 
   it("renders the first bounded repository page and exposes continuation", async () => {
@@ -204,8 +211,8 @@ describe("control catalog list routes", () => {
     expect(html).toContain('data-pw="repositories-empty-add"');
     stubApi({
       "/api/v1/repositories": "__throw_string__",
-      "/api/v1/hosts": jsonResponse({}, 502),
-      "/api/v1/worktrees": jsonResponse({}, 502),
+      "/api/v1/hosts": { items: [] },
+      "/api/v1/worktrees": { items: [] },
     });
     html = await renderPage(RepositoriesPage({ searchParams: Promise.resolve({}) }));
     expect(html).toContain("offline");

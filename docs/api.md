@@ -425,7 +425,9 @@ Add a repository. **Admin only.**
 
 #### `GET /repositories`
 
-List a bounded page of repositories visible to the authenticated principal.
+List a bounded page of repositories visible to the authenticated principal. The continuation cursor
+owns traversal order; clients that present a full catalog should collect every page before applying
+their own display sorting.
 
 **Query parameters:**
 
@@ -459,11 +461,19 @@ invalid or duplicate parameters return structured `400 VALIDATION_ERROR` respons
 }
 ```
 
+`nextCursor` is an opaque cursor when more repositories are available, or `null` on the final
+page. Visibility filtering is applied before `limit`; cursors are bound to the caller's repository
+scope and cannot be reused with a different scope. Invalid or repeated query parameters return a
+structured `400`.
+
 The three count fields are durable, index-backed totals for each repository visible to the
 authenticated principal. Host-bound credentials receive session and worktree totals for their host.
-Session totals can briefly lag a just-committed write while DynamoDB propagates its repository index.
-`nextCursor` is `null` on the final page. Callers that require the complete visible catalog must
-continue until then; every individual response remains capped at 100 repositories.
+Session, worktree, and schedule totals can briefly lag a just-committed write while DynamoDB
+propagates their repository indexes. During an index creation/backfill, one strongly consistent
+table scan supplies the affected count family for the whole repository page; normal indexed reads
+resume as soon as DynamoDB makes the index queryable. `nextCursor` is `null` on the final page.
+Callers that require the complete visible catalog must continue until then; every individual
+response remains capped at 100 repositories.
 
 #### `GET /repositories/:id`
 

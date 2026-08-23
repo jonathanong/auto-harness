@@ -1,10 +1,6 @@
 import { apiErrorMessage, type UserRole } from "@auto-harness/shared";
 
-import { apiFetch } from "../lib/client-api.ts";
-import {
-  loadAllBrowserRepositories,
-  RepositoryCatalogError,
-} from "../lib/repository-catalog-browser.ts";
+import { apiFetch, apiFetchAllPages } from "../lib/client-api.ts";
 import type { RepositoryOption } from "./service-account-api.ts";
 
 export type UserAccountRole = UserRole;
@@ -34,20 +30,18 @@ export async function loadUserAccounts(): Promise<UserAccountData> {
   if (response.status === 401) return { kind: "unauthorized" };
   if (response.status === 403) return { kind: "forbidden" };
   if (!response.ok) throw new Error(await apiErrorMessage(response));
+  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories", {
+    cache: "no-store",
+  });
+  if (repositories.response.status === 401) return { kind: "unauthorized" };
+  if (!repositories.response.ok) throw new Error(await apiErrorMessage(repositories.response));
   const body = (await response.json()) as { items?: UserAccount[] };
-  let repositoryBody: RepositoryOption[];
-  try {
-    repositoryBody = await loadAllBrowserRepositories<RepositoryOption>();
-  } catch (error) {
-    if (error instanceof RepositoryCatalogError && error.status === 401) {
-      return { kind: "unauthorized" };
-    }
-    throw error;
-  }
   return {
     kind: "ready",
     accounts: body.items ?? [],
-    repositories: repositoryBody,
+    repositories: repositories.items.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    ),
   };
 }
 

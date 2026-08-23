@@ -32,6 +32,12 @@ type Wt = {
   labels?: string[];
 };
 
+function sortRepositories(repositories: Repo[]): Repo[] {
+  return repositories.toSorted(
+    (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+  );
+}
+
 export default async function RepositoriesPage({
   searchParams,
 }: Readonly<{
@@ -62,15 +68,17 @@ export default async function RepositoriesPage({
       apiGet<{ items: Host[] }>("/api/v1/hosts"),
       apiGet<{ items: Wt[] }>("/api/v1/worktrees"),
     ]);
-    items = repos.items ?? [];
+    items = sortRepositories(repos.items ?? []);
     reposNextCursor = repos.nextCursor ?? null;
     attachRepositories = items;
     if (canWriteInventory && repos.nextCursor) {
       try {
-        attachRepositories = await loadAllRepositoryPages(
-          (path) => apiGet<RepositoryPage<Repo>>(path),
-          repos,
-          repositoryPath,
+        attachRepositories = sortRepositories(
+          await loadAllRepositoryPages(
+            (path) => apiGet<RepositoryPage<Repo>>(path),
+            repos,
+            repositoryPath,
+          ),
         );
       } catch {
         // Keep the first page and its continuation cursor usable. A transient preload failure

@@ -239,7 +239,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | HostLocks              | `hostId`          | —              | —                          | Conditional host assignment lock                                       |
 | ConcurrencyLocks       | `concurrencyId`   | —              | —                          | Conditional concurrency lock                                           |
 | SessionLogs            | `sessionId`       | `timestampSeq` | —                          | Append/range read; TTL attribute configured on the table, unused today |
-| Schedules              | `id`              | —              | —                          | CRUD by id                                                             |
+| Schedules              | `id`              | —              | `repositoryId-id`          | CRUD by id; count schedules by repository                              |
 | Connections            | `connectionId`    | —              | —                          | Connection state                                                       |
 | Archives               | `key`             | —              | —                          | Archive metadata                                                       |
 | HostInventories        | `hostId`          | —              | —                          | Host inventory                                                         |
@@ -259,6 +259,11 @@ repositories written before the index existed; this setup scan is never part of 
 > Worktrees are **registered by agents** on `host:register` and updated on status changes. They are not created via REST.
 
 **Capacity:** on-demand for all tables.
+
+Direct table setup starts the `Schedules.repositoryId-id` migration without waiting for a
+potentially long backfill. Repository listing temporarily falls back to one strongly consistent
+Schedules scan per API page when DynamoDB reports that the index is missing or backfilling; CDK
+deployments wait for the index through the stack update lifecycle.
 
 `AuditLogs.timestampId` is `<ISO createdAt>#<event id>`, so concurrent writers
 remain totally ordered even when their timestamps are equal. The API cursor

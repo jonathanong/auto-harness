@@ -1,5 +1,6 @@
 import type { WorktreeRecord } from "./db/types.ts";
 import type { LogQuery, LogRecord, PublicSession, ScheduleRecord } from "./control-plane-types.ts";
+import type { ControlPlaneState } from "./control-plane-state.ts";
 import { toPublic } from "./control-plane-state.ts";
 import * as agents from "./control-plane-agents.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
@@ -8,6 +9,93 @@ import * as schedules from "./control-plane-schedules.ts";
 import * as sessions from "./control-plane-sessions.ts";
 import { ControlPlaneAuditFacade } from "./control-plane-audit-facade.ts";
 import * as usage from "./control-plane-usage.ts";
+
+function indexUnavailable(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ValidationException" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string" &&
+    /index|backfill/i.test((error as { message: string }).message)
+  );
+}
+
+async function repositoryWorktreeCounts(
+  state: ControlPlaneState,
+  repositoryIds: readonly string[],
+  hostId?: string,
+): Promise<number[]> {
+  const storage = state.storage;
+  if (storage && typeof storage.countWorktreesByRepository === "function") {
+    try {
+      return await Promise.all(
+        repositoryIds.map((repositoryId) =>
+          storage.countWorktreesByRepository(repositoryId, hostId),
+        ),
+      );
+    } catch (error) {
+      if (!indexUnavailable(error)) throw error;
+    }
+  }
+  const records = await durableRuntime.listWorktreesDurable(state);
+  return repositoryIds.map(
+    (repositoryId) =>
+      records.filter(
+        (worktree) =>
+          worktree.repositoryId === repositoryId && (!hostId || worktree.hostId === hostId),
+      ).length,
+  );
+}
+
+async function repositorySessionCounts(
+  state: ControlPlaneState,
+  repositoryIds: readonly string[],
+  hostId?: string,
+): Promise<number[]> {
+  if (state.storage) {
+    try {
+      return await Promise.all(
+        repositoryIds.map((repositoryId) =>
+          state.storage!.countSessionsByRepository(repositoryId, hostId),
+        ),
+      );
+    } catch (error) {
+      if (!indexUnavailable(error)) throw error;
+    }
+  }
+  const records = state.storage
+    ? await durableRuntime.listSessionsDurable(state)
+    : [...state.sessions.values()];
+  return repositoryIds.map(
+    (repositoryId) =>
+      records.filter(
+        (session) =>
+          session.repositoryId === repositoryId && (!hostId || session.hostId === hostId),
+      ).length,
+  );
+}
+
+async function repositoryScheduleCounts(
+  state: ControlPlaneState,
+  repositoryIds: readonly string[],
+): Promise<number[]> {
+  const storage = state.storage;
+  if (storage && typeof storage.countSchedulesByRepository === "function") {
+    try {
+      return await Promise.all(
+        repositoryIds.map((repositoryId) => storage.countSchedulesByRepository(repositoryId)),
+      );
+    } catch (error) {
+      if (!indexUnavailable(error)) throw error;
+    }
+  }
+  const records = await durableCatalog.listSchedulesDurable(state);
+  return repositoryIds.map(
+    (repositoryId) => records.filter((schedule) => schedule.repositoryId === repositoryId).length,
+  );
+}
 
 /** Durable read-through facade kept separate from mutation-heavy base methods. */
 export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
@@ -19,37 +107,17 @@ export class ControlPlaneReadFacade extends ControlPlaneAuditFacade {
       repositoryIds.map((id) => [id, { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]),
     );
     if (repositoryIds.length === 0) return counts;
-    const [sessionCounts, worktreeRecords, scheduleRecords] = await Promise.all([
-      this.state.storage
-        ? Promise.all(
-            repositoryIds.map((repositoryId) =>
-              this.state.storage!.countSessionsByRepository(repositoryId, hostId),
-            ),
-          )
-        : Promise.resolve(
-            repositoryIds.map(
-              (repositoryId) =>
-                [...this.state.sessions.values()].filter(
-                  (session) =>
-                    session.repositoryId === repositoryId && (!hostId || session.hostId === hostId),
-                ).length,
-            ),
-          ),
-      durableRuntime.listWorktreesDurable(this.state),
-      durableCatalog.listSchedulesDurable(this.state),
+    const [sessionCounts, worktreeCounts, scheduleCounts] = await Promise.all([
+      repositorySessionCounts(this.state, repositoryIds, hostId),
+      repositoryWorktreeCounts(this.state, repositoryIds, hostId),
+      repositoryScheduleCounts(this.state, repositoryIds),
     ]);
     repositoryIds.forEach((repositoryId, index) => {
-      counts.get(repositoryId)!.sessionCount = sessionCounts[index] ?? 0;
+      const count = counts.get(repositoryId)!;
+      count.sessionCount = sessionCounts[index] ?? 0;
+      count.worktreeCount = worktreeCounts[index] ?? 0;
+      count.scheduleCount = scheduleCounts[index] ?? 0;
     });
-    for (const worktree of worktreeRecords) {
-      if (hostId && worktree.hostId !== hostId) continue;
-      const count = counts.get(worktree.repositoryId);
-      if (count) count.worktreeCount += 1;
-    }
-    for (const schedule of scheduleRecords) {
-      const count = counts.get(schedule.repositoryId);
-      if (count) count.scheduleCount += 1;
-    }
     return counts;
   }
 

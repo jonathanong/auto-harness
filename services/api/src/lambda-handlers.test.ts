@@ -22,13 +22,44 @@ function hostPrincipal(hostId = "host-1") {
 
 function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hostPrincipal()) {
   const connections = new Map<string, Record<string, unknown>>();
+  const commands = new Map<string, Record<string, unknown>>();
+  const drains = new Map<string, Record<string, unknown>>();
+  const inventories = new Map<string, Record<string, unknown>>();
+  const mainCheckoutLeases = new Map<string, string>();
   const sessions = new Map<string, Record<string, unknown>>();
   const repositories = new Map<string, Record<string, unknown>>();
+  const schedules = new Map<string, Record<string, unknown>>();
+  const worktrees = new Map<string, Record<string, unknown>>();
   const hostLocks = new Map<string, string>();
   const deletedConnections: string[] = [];
   const registrations: Array<Record<string, unknown>> = [];
+  const schedulerCalls: string[] = [];
+  const recordSchedulerCall = (call: string) => {
+    schedulerCalls.push(call);
+  };
   const storage = {
-    async acknowledgeSession() {
+    async acknowledgeSession(input?: Record<string, unknown>) {
+      const sessionId = input?.sessionId;
+      const session = sessionId ? sessions.get(String(sessionId)) : undefined;
+      if (session) {
+        sessions.set(String(sessionId), {
+          ...session,
+          ackReceivedAt: input?.acknowledgedAt,
+        });
+      }
+      return true;
+    },
+    async cancelQueuedSession(input: Record<string, unknown>) {
+      const sessionId = String(input.sessionId);
+      const session = sessions.get(sessionId);
+      if (!session || session.status !== "queued") return false;
+      sessions.set(sessionId, {
+        ...session,
+        status: "cancelled",
+        completedAt: input.completedAt,
+        errorMessage: input.errorMessage,
+        cancelledByDrainOperationId: input.drainOperationId,
+      });
       return true;
     },
     async deleteConnection(id: string) {
@@ -41,6 +72,9 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getHostLock(hostId: string) {
       return hostLocks.get(hostId) ?? null;
     },
+    async getMainCheckoutCursor() {
+      return null;
+    },
     async getHostInventory() {
       return null;
     },
@@ -50,35 +84,66 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async getRepository(id: string) {
       return repositories.get(id) ?? null;
     },
-    async getWorktree() {
-      return null;
+    async getWorktree(id: string) {
+      return worktrees.get(id) ?? null;
+    },
+    async getSchedule(id: string) {
+      return schedules.get(id) ?? null;
     },
     async listCommands() {
-      return [];
+      return [...commands.values()];
     },
     async listConnections() {
+      recordSchedulerCall("connections");
       return [...connections.values()];
     },
     async listHostInventories() {
+      return [...inventories.values()];
+    },
+    async listLogs() {
       return [];
     },
     async listProviderAccounts() {
       return [];
     },
     async listRepositories() {
+      recordSchedulerCall("repositories");
       return [...repositories.values()];
     },
     async listAllSessions() {
+      recordSchedulerCall("sessions");
       return [...sessions.values()];
+    },
+    async listAllWorktrees() {
+      return [...worktrees.values()];
     },
     async listProviders() {
       return [];
     },
-    async listWorktreesByHost() {
-      return [];
+    async listSchedules() {
+      recordSchedulerCall("schedules");
+      return [...schedules.values()];
     },
-    async listWorktreesForRepo() {
-      return [];
+    async listSessionDrains() {
+      recordSchedulerCall("session-drains");
+      return [...drains.values()];
+    },
+    async listSessionsByStatus(status: string, shard: number) {
+      if (status === "running") recordSchedulerCall(`running:${shard}`);
+      return [...sessions.values()].filter(
+        (session) => session.status === status && session.queueShard === shard,
+      );
+    },
+    async listSessionsForDrain(repositoryId: string, principalId: string) {
+      return [...sessions.values()].filter(
+        (session) => session.repositoryId === repositoryId && session.principalId === principalId,
+      );
+    },
+    async listWorktreesByHost(hostId: string) {
+      return [...worktrees.values()].filter((worktree) => worktree.hostId === hostId);
+    },
+    async listWorktreesForRepo(repositoryId: string) {
+      return [...worktrees.values()].filter((worktree) => worktree.repositoryId === repositoryId);
     },
     async completeRepositoryDrain(id: string, requestedAt: string, now: string) {
       const current = repositories.get(id);
@@ -95,26 +160,127 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
     async markHostDraining(hostId: string, connectionId: string) {
       return hostLocks.get(hostId) === connectionId;
     },
+    async migrateSessionDrainActivityLedgerPage() {
+      recordSchedulerCall("migration");
+      return true;
+    },
     async putConnection(connection: Record<string, unknown>) {
       connections.set(String(connection.connectionId), connection);
     },
+    async putArchive() {},
     async queryLogs() {
       return [];
     },
-    async putHostInventory() {},
+    async putHostInventory(record: Record<string, unknown>) {
+      inventories.set(String(record.hostId), record);
+    },
     async putHostInventoryFenced() {
       return { ok: true };
     },
-    async putWorktreeFenced() {
+    async putWorktreeFenced(record: Record<string, unknown>) {
+      worktrees.set(String(record.id), record);
+      return true;
+    },
+    async releaseMainCheckoutSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session) return false;
+      const leaseKey = `${String(input.hostId)}#${String(input.repositoryId)}`;
+      if (mainCheckoutLeases.get(leaseKey) !== input.sessionId) return false;
+      mainCheckoutLeases.delete(leaseKey);
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: input.status,
+        worktreeId: null,
+        hostId: null,
+        ...(input.completedAt ? { completedAt: input.completedAt } : {}),
+      });
       return true;
     },
     async releaseHostConnection(hostId: string, connectionId: string) {
+      recordSchedulerCall("stale-release");
       if (hostLocks.get(hostId) !== connectionId) return false;
       hostLocks.delete(hostId);
       connections.delete(connectionId);
       return true;
     },
     async setWorktreeOnlineFenced() {
+      return true;
+    },
+    async tryAssignMainCheckoutSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session || session.status !== "queued") return false;
+      const leaseKey = `${String(input.hostId)}#${String(input.repositoryId)}`;
+      if (mainCheckoutLeases.has(leaseKey)) return false;
+      mainCheckoutLeases.set(leaseKey, String(input.sessionId));
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "running",
+        hostId: input.hostId,
+        attemptId: input.attemptId,
+        assignmentConnectionId: input.connectionId,
+        assignmentSentAt: input.now,
+        mainCheckoutLease: true,
+      });
+      return true;
+    },
+    async tryAssignSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      const worktree = worktrees.get(String(input.worktreeId));
+      if (!session || session.status !== "queued" || !worktree || worktree.status !== "idle") {
+        return false;
+      }
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "running",
+        worktreeId: input.worktreeId,
+        hostId: input.hostId,
+        attemptId: input.attemptId,
+      });
+      worktrees.set(String(input.worktreeId), {
+        ...worktree,
+        status: "busy",
+        currentSessionId: input.sessionId,
+      });
+      return true;
+    },
+    async tryClaimScheduleAndCreateSession(input: Record<string, unknown>) {
+      const schedule = schedules.get(String(input.scheduleId));
+      if (!schedule || schedule.nextRunAt !== input.expectedNextRunAt) return { kind: "lost" };
+      const session = input.session as Record<string, unknown>;
+      const activeDrain = [...drains.values()].find(
+        (drain) =>
+          drain.recordKey === "CURRENT" &&
+          drain.status === "draining" &&
+          drain.repositoryId === session.repositoryId &&
+          drain.principalId === session.principalId,
+      );
+      if (activeDrain) {
+        return { kind: "draining", operationId: activeDrain.operationId };
+      }
+      schedules.set(String(input.scheduleId), {
+        ...schedule,
+        nextRunAt: input.newNextRunAt,
+        lastRunAt: input.lastRunAt,
+      });
+      sessions.set(String(session.id), session);
+      return { kind: "created" };
+    },
+    async tryRequeueSession(input: Record<string, unknown>) {
+      const session = sessions.get(String(input.sessionId));
+      if (!session) return false;
+      sessions.set(String(input.sessionId), {
+        ...session,
+        status: "queued",
+        worktreeId: null,
+        hostId: null,
+      });
+      return true;
+    },
+    async ensureMainCheckoutLeaseMap() {
+      return true;
+    },
+    async updateSessionDrain(record: Record<string, unknown>) {
+      drains.set(String(record.operationId), record);
       return true;
     },
     async tryRegisterHost(input: Record<string, unknown>) {
@@ -159,8 +325,12 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
   return {
     auth,
     connections,
+    commands,
     deletedConnections,
+    drains,
     hostLocks,
+    inventories,
+    mainCheckoutLeases,
     management,
     plane,
     registrations,
@@ -171,7 +341,10 @@ function runtimeFixture(principal: ReturnType<typeof hostPrincipal> | null = hos
       management,
     }),
     sessions,
+    schedules,
+    schedulerCalls,
     storage,
+    worktrees,
   };
 }
 
@@ -193,6 +366,214 @@ async function registerGatewayHost(
     requestContext: { connectionId, routeKey: "$default" },
   });
   return runtime;
+}
+
+function schedulerSession(
+  id: string,
+  type: "prompt" | "scheduled",
+  over: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    repositoryId: "repo-active",
+    prompt: id,
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: ["cmd"],
+    queueTtlSeconds: 3600,
+    queueExpiresAt: "2026-08-13T00:00:00.000Z",
+    timeout: 30,
+    priority: 0,
+    requiredLabels: [],
+    onConflict: "queue",
+    status: "queued",
+    queueShard: 0,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    type,
+    source: type === "scheduled" ? "schedule" : "api",
+    principalId: "principal",
+    ...over,
+  };
+}
+
+function seedSchedulerSweep(fixture: ReturnType<typeof runtimeFixture>) {
+  fixture.commands.set("cmd", {
+    id: "cmd",
+    name: "cmd",
+    argv: ["echo"],
+    appendPrompt: true,
+    providerId: null,
+  });
+  fixture.repositories.set("repo-active", {
+    id: "repo-active",
+    name: "active",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  fixture.repositories.set("repo-draining", {
+    id: "repo-draining",
+    name: "draining",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "draining",
+    drainRequestedAt: "requested",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  for (const id of ["repo-ack", "repo-timeout"]) {
+    fixture.repositories.set(id, {
+      id,
+      name: id,
+      url: "url",
+      defaultBranch: "main",
+      admissionState: "active",
+      createdAt: "created",
+      updatedAt: "updated",
+    });
+  }
+  fixture.repositories.set("repo-paused", {
+    id: "repo-paused",
+    name: "paused",
+    url: "url",
+    defaultBranch: "main",
+    admissionState: "paused",
+    createdAt: "created",
+    updatedAt: "updated",
+  });
+  fixture.connections.set("active-connection", {
+    hostId: "active-host",
+    connectionId: "active-connection",
+    type: "host",
+    connectedAt: "2026-08-12T00:00:00.000Z",
+    lastHeartbeatAt: "2099-01-01T00:00:00.000Z",
+    commandProfiles: [],
+    capabilities: ["scheduled-main-checkout"],
+    repositoryIds: ["repo-active", "repo-ack", "repo-timeout"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  fixture.connections.set("stale-connection", {
+    hostId: "stale-host",
+    connectionId: "stale-connection",
+    type: "host",
+    connectedAt: "2026-01-01T00:00:00.000Z",
+    lastHeartbeatAt: "2026-01-01T00:00:00.000Z",
+    commandProfiles: [],
+    capabilities: [],
+    repositoryIds: ["repo-paused"],
+    runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+  });
+  fixture.hostLocks.set("active-host", "active-connection");
+  fixture.hostLocks.set("stale-host", "stale-connection");
+  fixture.inventories.set("active-host", {
+    hostId: "active-host",
+    repositories: ["repo-active", "repo-ack", "repo-timeout"].map((id) => ({
+      id,
+      path: `/${id}`,
+      defaultBranch: "main",
+      worktrees: [],
+    })),
+    providerAccounts: [],
+    commandProfiles: {},
+    updatedAt: "2026-08-12T00:00:00.000Z",
+  });
+  fixture.worktrees.set("active-worktree", {
+    id: "active-worktree",
+    name: "active-worktree",
+    hostId: "active-host",
+    repositoryId: "repo-active",
+    path: "/repo-active/worktree",
+    labels: [],
+    status: "idle",
+    online: true,
+    connectionId: "active-connection",
+  });
+  fixture.worktrees.set("stale-worktree", {
+    id: "stale-worktree",
+    name: "stale-worktree",
+    hostId: "stale-host",
+    repositoryId: "repo-paused",
+    path: "/repo-paused/worktree",
+    labels: [],
+    status: "busy",
+    currentSessionId: "stale-session",
+    online: true,
+    connectionId: "stale-connection",
+  });
+  fixture.sessions.set(
+    "ack-session",
+    schedulerSession("ack-session", "scheduled", {
+      repositoryId: "repo-ack",
+      status: "running",
+      startedAt: "2026-08-12T00:00:00.000Z",
+      assignmentSentAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "ack-attempt",
+      hostId: "active-host",
+      worktreeId: null,
+      assignmentConnectionId: "active-connection",
+      mainCheckoutLease: true,
+    }),
+  );
+  fixture.sessions.set(
+    "timeout-session",
+    schedulerSession("timeout-session", "scheduled", {
+      repositoryId: "repo-timeout",
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      ackReceivedAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "timeout-attempt",
+      hostId: "active-host",
+      worktreeId: null,
+      assignmentConnectionId: "active-connection",
+      mainCheckoutLease: true,
+    }),
+  );
+  fixture.mainCheckoutLeases.set("active-host#repo-ack", "ack-session");
+  fixture.mainCheckoutLeases.set("active-host#repo-timeout", "timeout-session");
+  fixture.sessions.set(
+    "stale-session",
+    schedulerSession("stale-session", "prompt", {
+      repositoryId: "repo-paused",
+      status: "running",
+      startedAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "stale-attempt",
+      hostId: "stale-host",
+      worktreeId: "stale-worktree",
+    }),
+  );
+  fixture.sessions.set("queued-session", schedulerSession("queued-session", "prompt"));
+  fixture.schedules.set("due-schedule", {
+    id: "due-schedule",
+    repositoryId: "repo-active",
+    name: "due",
+    target: { commandId: "cmd" },
+    fallbacks: [],
+    targetLabels: ["cmd"],
+    cron: "* * * * *",
+    enabled: true,
+    timeout: 30,
+    queueTtlSeconds: 3600,
+    nextRunAt: "2026-08-12T00:00:00.000Z",
+    lastRunAt: null,
+    createdAt: "2026-08-12T00:00:00.000Z",
+    principalId: "drain-principal",
+  });
+  fixture.drains.set("drain-operation", {
+    scopeKey: "repo-active#principal",
+    recordKey: "CURRENT",
+    operationId: "drain-operation",
+    repositoryId: "repo-active",
+    principalId: "principal",
+    status: "draining",
+    requestedAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z",
+    deadlineAt: "2026-08-13T00:00:00.000Z",
+    queuedCount: 0,
+    runningCount: 0,
+    cancelledCount: 0,
+  });
 }
 
 describe("Lambda runtime adapters", () => {
@@ -530,81 +911,49 @@ describe("Lambda runtime adapters", () => {
   });
 
   it("runs a complete durable scheduler sweep and reports its work", async () => {
-    const fixture = runtimeFixture();
-    fixture.repositories.set("repo-1", {
-      id: "repo-1",
-      name: "repo",
-      url: "url",
-      defaultBranch: "main",
-      admissionState: "draining",
-      drainRequestedAt: "requested",
-      createdAt: "created",
-      updatedAt: "updated",
-    });
-    const order: string[] = [];
-    const refreshSchedulerReadModelDurable = fixture.plane.refreshSchedulerReadModelDurable.bind(
-      fixture.plane,
-    );
-    vi.spyOn(fixture.plane, "migrateSessionDrainActivityLedgerPage").mockImplementation(
-      async () => {
-        order.push("migration");
-        return true;
-      },
-    );
-    vi.spyOn(fixture.plane, "evaluateCronDurable").mockImplementation(async () => {
-      order.push("cron");
-      return [{ id: "scheduled-1" }] as never;
-    });
-    vi.spyOn(fixture.plane, "enforceAckDeadlinesDurable").mockImplementation(async () => {
-      order.push("ack");
-      return ["session-1"];
-    });
-    vi.spyOn(fixture.plane, "enforceRunningTimeoutsDurable").mockImplementation(async () => {
-      order.push("timeout");
-      return ["session-2"];
-    });
-    vi.spyOn(fixture.plane, "refreshSchedulerReadModelDurable").mockImplementation(async () => {
-      order.push("refresh");
-      await refreshSchedulerReadModelDurable();
-    });
-    vi.spyOn(fixture.plane, "reclaimStaleHostsDurable").mockImplementation(async () => {
-      order.push("stale");
-      return ["host-1", "host-2"];
-    });
-    vi.spyOn(fixture.plane, "reconcileSessionDrainsDurable").mockImplementation(async () => {
-      order.push("session-drains");
-      return [{}] as never;
-    });
-    vi.spyOn(fixture.plane, "assignQueuedDurable").mockImplementation(async () => {
-      order.push("queued");
-      return [{ session: {}, worktree: {} }] as never;
-    });
-    vi.spyOn(fixture.plane, "assignScheduledQueuedDurable").mockImplementation(async () => {
-      order.push("scheduled");
-      return [{ session: {}, hostId: "host-1", worktreeId: null }] as never;
-    });
-
-    await expect((await fixture.runtime).cron()).resolves.toEqual({
-      ackDeadlinesEnforced: 1,
-      runningTimeoutsEnforced: 1,
-      queuedAssigned: 1,
-      repositoriesReconciled: 1,
-      sessionDrainsReconciled: 1,
-      scheduledAssigned: 1,
-      schedulesFired: 1,
-      staleHostsReclaimed: 2,
-    });
-    expect(order).toEqual([
-      "migration",
-      "cron",
-      "ack",
-      "timeout",
-      "refresh",
-      "stale",
-      "session-drains",
-      "queued",
-      "scheduled",
-    ]);
+    vi.useFakeTimers();
+    vi.setSystemTime("2026-08-12T00:00:00.000Z");
+    try {
+      const fixture = runtimeFixture();
+      seedSchedulerSweep(fixture);
+      await expect((await fixture.runtime).cron()).resolves.toEqual({
+        ackDeadlinesEnforced: 1,
+        runningTimeoutsEnforced: 1,
+        queuedAssigned: 0,
+        repositoriesReconciled: 1,
+        sessionDrainsReconciled: 1,
+        scheduledAssigned: 1,
+        schedulesFired: 1,
+        staleHostsReclaimed: 1,
+      });
+      expect(fixture.schedulerCalls).toEqual([
+        "migration",
+        "schedules",
+        "sessions",
+        "connections",
+        "repositories",
+        "sessions",
+        "running:0",
+        "running:1",
+        "running:2",
+        "running:3",
+        "connections",
+        "repositories",
+        "stale-release",
+        "repositories",
+        "sessions",
+        "sessions",
+        "session-drains",
+        "sessions",
+        "connections",
+        "repositories",
+        "sessions",
+        "connections",
+        "repositories",
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("posts through the management API and prunes gone connections", async () => {

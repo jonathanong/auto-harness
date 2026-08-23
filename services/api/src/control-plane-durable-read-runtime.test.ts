@@ -272,4 +272,112 @@ describe("durable runtime read-through", () => {
       }),
     ).resolves.toMatchObject({ items: [] });
   });
+
+  it("uses repository indexes for page counts instead of catalog scans", async () => {
+    const worktreeCalls: Array<[string, string | undefined]> = [];
+    const scheduleCalls: string[] = [];
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => 2,
+        countWorktreesByRepository: async (repositoryId: string, hostId?: string) => {
+          worktreeCalls.push([repositoryId, hostId]);
+          return 3;
+        },
+        countSchedulesByRepository: async (repositoryId: string) => {
+          scheduleCalls.push(repositoryId);
+          return 4;
+        },
+        listAllWorktrees: async () => {
+          throw new Error("unexpected worktree scan");
+        },
+        listSchedules: async () => {
+          throw new Error("unexpected schedule scan");
+        },
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"], "host")).resolves.toEqual(
+      new Map([["repository", { sessionCount: 2, worktreeCount: 3, scheduleCount: 4 }]]),
+    );
+    expect(worktreeCalls).toEqual([["repository", "host"]]);
+    expect(scheduleCalls).toEqual(["repository"]);
+  });
+
+  it("uses one strong scan while repository count indexes are backfilling", async () => {
+    const unavailable = Object.assign(
+      new Error("Cannot read from backfilling global secondary index"),
+      { name: "ValidationException" },
+    );
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => {
+          throw unavailable;
+        },
+        countWorktreesByRepository: async () => {
+          throw unavailable;
+        },
+        countSchedulesByRepository: async () => {
+          throw unavailable;
+        },
+        listAllWorktrees: async () => [worktree, { ...worktree, id: "other", hostId: "other" }],
+        listAllSessions: async () => [
+          { ...session, hostId: "host" },
+          { ...session, id: "other", repositoryId: "other", hostId: "host" },
+        ],
+        listSchedules: async () => [{ id: "schedule", repositoryId: "repository" }],
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"], "host")).resolves.toEqual(
+      new Map([["repository", { sessionCount: 1, worktreeCount: 1, scheduleCount: 1 }]]),
+    );
+  });
+
+  it("does not hide unrelated session-count failures", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => {
+          throw new Error("session query unavailable");
+        },
+        countWorktreesByRepository: async () => 0,
+        countSchedulesByRepository: async () => 0,
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).rejects.toThrow(
+      "session query unavailable",
+    );
+  });
+
+  it("does not hide unrelated indexed-count failures", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => 0,
+        countWorktreesByRepository: async () => {
+          throw new Error("credentials expired");
+        },
+        countSchedulesByRepository: async () => 0,
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).rejects.toThrow(
+      "credentials expired",
+    );
+  });
+
+  it("does not hide unrelated schedule-count failures", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => 0,
+        countWorktreesByRepository: async () => 0,
+        countSchedulesByRepository: async () => {
+          throw new Error("schedule table unavailable");
+        },
+      } as never,
+    });
+
+    await expect(plane.listRepositoryCountsDurable(["repository"])).rejects.toThrow(
+      "schedule table unavailable",
+    );
+  });
 });

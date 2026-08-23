@@ -4,6 +4,7 @@ import {
   DeleteTableCommand,
   DescribeTableCommand,
   KeyType,
+  ResourceInUseException,
   UpdateTableCommand,
   ScalarAttributeType,
   type DynamoDBClient,
@@ -82,6 +83,17 @@ describe("ensureSessionsRepositoryIndex", () => {
     expect((commands[1] as UpdateTableCommand).input).toMatchObject({
       AttributeDefinitions: [{ AttributeName: "repositoryId", AttributeType: "S" }],
     });
+  });
+
+  it("accepts an index migration already in progress", async () => {
+    const mockedClient = {
+      send: async (command: unknown) => {
+        if (command instanceof DescribeTableCommand) return { Table: {} };
+        throw new ResourceInUseException({ $metadata: {}, message: "busy" });
+      },
+    } as never;
+
+    await expect(ensureSessionsRepositoryIndex(mockedClient, "Sessions")).resolves.toBeUndefined();
   });
 
   it("propagates an unexpected index update failure", async () => {

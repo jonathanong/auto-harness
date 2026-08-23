@@ -86,8 +86,7 @@ export class AutoHarnessClient {
     if (options.limit !== undefined) query.set("limit", String(options.limit));
     if (options.cursor !== undefined) query.set("cursor", options.cursor);
     const suffix = query.toString();
-    const path = suffix ? `/repositories?${suffix}` : "/repositories";
-    return this.request(path);
+    return this.request(suffix ? `/repositories?${suffix}` : "/repositories");
   }
 
   pauseRepository(id) {
