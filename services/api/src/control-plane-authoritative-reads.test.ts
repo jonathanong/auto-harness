@@ -172,6 +172,10 @@ describe("authoritative durable reads", () => {
     const storage = createAuthoritativeReadStorage();
     const writer = new ControlPlane(options(storage));
     const scheduler = new ControlPlane(options(storage));
+    expect(
+      (await writer.createRepositoryDurable({ name: "repository", url: "https://example.test/r" }))
+        .ok,
+    ).toBe(true);
     expect((await writer.createCommandDurable({ name: "command", argv: ["echo"] })).ok).toBe(true);
     expect(
       (

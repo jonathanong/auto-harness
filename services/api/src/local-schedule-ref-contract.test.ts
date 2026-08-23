@@ -8,6 +8,7 @@ describe("schedule ref REST contract", () => {
   it("rejects tag/SHA refs for schedules but retains prompt-session refs", async () => {
     const plane = new ControlPlane({ scheduleIdFactory: () => "schedule" });
     plane.createCommand({ id: "command", name: "command", argv: ["echo"], providerId: null });
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
     const { handler } = createLocalApp({ plane });
     const invoke = (method: string, path: string, body?: unknown) =>
       invokeHandler(handler, method, path, body);

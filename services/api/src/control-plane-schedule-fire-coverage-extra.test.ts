@@ -32,6 +32,16 @@ function schedule(over: Partial<ScheduleRecord> = {}): ScheduleRecord {
 
 function state(row: ScheduleRecord, storage: object = {}) {
   const current = createControlPlaneState({ idFactory: () => "run", now: () => NOW });
+  current.repositories.set(row.repositoryId, {
+    id: row.repositoryId,
+    name: row.repositoryId,
+    url: `https://example.test/${row.repositoryId}`,
+    defaultBranch: "main",
+    admissionState: "active",
+    admissionStateChangedAt: NOW,
+    createdAt: NOW,
+    updatedAt: NOW,
+  });
   current.commands.set("cmd", {
     id: "cmd",
     name: "cmd",

@@ -12,6 +12,11 @@ describe("schedule cursor route contract", () => {
       scheduleIdFactory: () => "schedule-1",
     });
     seedBaseCommand(plane);
+    plane.createRepository({
+      id: "repo-1",
+      name: "repo-1",
+      url: "https://example.test/repo-1",
+    });
     const { handler } = createLocalApp({ plane });
     const invoke = (method: string, path: string, body?: unknown) =>
       invokeHandler(handler, method, path, body);
