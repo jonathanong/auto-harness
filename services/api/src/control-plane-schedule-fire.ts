@@ -250,6 +250,10 @@ export async function tryClaimScheduleFireDurable(
     return null;
   }
   if (outcome.kind === "admission_closed") {
+    // The failed create is advisory: this transaction is the authoritative
+    // closed observation because it also CASes the cursor. Activation uses the
+    // same primitive before changing admission to active, so either caller
+    // consumes this occurrence while closed or a competing cursor update wins.
     const skipped = await state.storage.skipScheduleForClosedRepository({
       scheduleId,
       repositoryId: schedule.repositoryId,

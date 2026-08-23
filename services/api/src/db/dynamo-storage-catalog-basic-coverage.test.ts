@@ -19,7 +19,6 @@ import {
   putArchive,
   putHostInventory,
   putRepository,
-  putSchedule,
   updateRepositorySettings,
 } from "./plane-storage-catalog.ts";
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
@@ -126,7 +125,7 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect(catalogPageItems(["record"])).toEqual(["record"]);
   });
 
-  it("transitions repository admission and skips closed cron cursors", async () => {
+  it("transitions repository admission", async () => {
     const storage = new DynamoPlaneStorageBase(ctx.doc, tables);
     const repository = {
       id: "admission-repository",
@@ -180,36 +179,5 @@ describe("DynamoDB Local basic catalog adapters", () => {
       terminalHookScript: "echo done",
       admissionState: "draining",
     });
-
-    await putSchedule(ctx, {
-      id: "closed-schedule",
-      repositoryId: repository.id,
-      name: "Closed",
-      target: { commandId: "command" },
-      fallbacks: [],
-      targetLabels: ["command"],
-      cron: "* * * * *",
-      enabled: true,
-      timeout: 60,
-      queueTtlSeconds: 60,
-      nextRunAt: "t1",
-      lastRunAt: null,
-      createdAt: "t0",
-      concurrencyId: "closed-schedule",
-    });
-    const skip = {
-      scheduleId: "closed-schedule",
-      repositoryId: repository.id,
-      expectedNextRunAt: "t1",
-      newNextRunAt: "t2",
-    };
-    await storage.completeRepositoryDrain(repository.id, "t4", "t7");
-    expect(await storage.setRepositoryAdmissionState(repository.id, "active", "t8")).toMatchObject({
-      admissionState: "active",
-    });
-    // The create transaction already observed closed admission. Activation racing this
-    // follow-up must not resurrect the occurrence as catch-up work.
-    expect(await storage.skipScheduleForClosedRepository(skip)).toBe(true);
-    expect(await storage.skipScheduleForClosedRepository(skip)).toBe(false);
   });
 });

@@ -30,7 +30,11 @@ function schedule(ref?: string): ScheduleRecord {
 function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
   return {
     doc: { send } as never,
-    tables: { schedules: "Schedules", concurrencyLocks: "Locks" } as never,
+    tables: {
+      schedules: "Schedules",
+      concurrencyLocks: "Locks",
+      repositories: "Repositories",
+    } as never,
   };
 }
 

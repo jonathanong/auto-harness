@@ -700,7 +700,15 @@ export async function skipScheduleForActiveConcurrency(
   }
 }
 
-/** Advance an occurrence after its create transaction authoritatively observed closed admission. */
+/**
+ * Atomically acknowledge a closed-admission occurrence by advancing its cursor.
+ *
+ * A failed create transaction is only an advisory observation: activation may
+ * run before this follow-up starts. The repository condition here is therefore
+ * part of the authoritative observation. A successful result proves that the
+ * same DynamoDB transaction saw both the old cursor and paused/draining
+ * admission, so activation cannot reopen this occurrence as catch-up work.
+ */
 export async function skipScheduleForClosedRepository(
   ctx: PlaneStorageCtx,
   opts: {
@@ -724,6 +732,19 @@ export async function skipScheduleForClosedRepository(
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.repositoryId },
+              // A missing legacy admissionState means active. Do not allow this
+              // closed-only cursor advance after the repository has reopened.
+              ConditionExpression: "admissionState IN (:paused, :draining)",
+              ExpressionAttributeValues: {
+                ":paused": "paused",
+                ":draining": "draining",
               },
             },
           },
