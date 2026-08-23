@@ -787,6 +787,14 @@ export class DynamoPlaneStorageBase {
     return catalog.skipOwnerlessScheduleAndAudit(this.ctx, opts);
   }
 
+  disableLegacyFallbackScheduleAndAudit(opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    audit: import("../audit-types.ts").AuditLogRecord;
+  }): Promise<boolean> {
+    return catalog.disableLegacyFallbackScheduleAndAudit(this.ctx, opts);
+  }
+
   tryClaimScheduleAndCreateSession(opts: {
     scheduleId: string;
     expectedNextRunAt: string;

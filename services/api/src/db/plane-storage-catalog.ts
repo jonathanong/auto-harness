@@ -31,7 +31,7 @@ import {
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
-import type { RepositoryAdmissionState } from "@auto-harness/shared";
+import { MAX_FALLBACKS, type RepositoryAdmissionState } from "@auto-harness/shared";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
   getConcurrencyLock,
@@ -662,7 +662,59 @@ export type ScheduleCreateResult =
   | { kind: "duplicate"; session: SessionRecord }
   | { kind: "admission_closed" }
   | { kind: "draining"; operationId: string }
+  /** A legacy persisted schedule exceeds the current transaction-safe route limit. */
+  | { kind: "legacy_fallbacks"; fallbackCount: number }
   | { kind: "lost" };
+
+/**
+ * Disable a legacy schedule that cannot be admitted without exceeding DynamoDB's
+ * 100-action transaction limit.  This is an explicit, audited migration boundary:
+ * older rows accepted 91/92 fallbacks, while current writes are capped at 90.
+ * Keeping this separate from the session transaction avoids both a hot retry loop
+ * and a partially admitted scheduled session.
+ */
+export async function disableLegacyFallbackScheduleAndAudit(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    audit: AuditLogRecord;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET enabled = :false",
+              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":false": false,
+                ":true": true,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.auditLogs,
+              Item: auditLogItem(opts.audit),
+              ConditionExpression:
+                "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
+              ExpressionAttributeNames: { "#scope": "scope" },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (error) {
+    return conditionalCatalogWriteOrThrow(error);
+  }
+}
 
 export async function tryClaimScheduleAndCreateSession(
   ctx: PlaneStorageCtx,
@@ -674,6 +726,13 @@ export async function tryClaimScheduleAndCreateSession(
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
+  // Schedules persisted before MAX_FALLBACKS was lowered can still contain 91 or
+  // 92 routes. Do not construct an over-limit transaction and let cron retry the
+  // unchanged cursor forever; the caller performs an explicit audited disable.
+  const fallbackCount = opts.session.fallbacks?.length ?? 0;
+  if (fallbackCount > MAX_FALLBACKS) {
+    return { kind: "legacy_fallbacks", fallbackCount };
+  }
   const principalId =
     opts.session.principalId ??
     (typeof opts.session.metadata?.createdBy === "string"

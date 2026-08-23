@@ -117,6 +117,21 @@ export async function triggerScheduleDurable(
       operationId: outcome.operationId,
     };
   }
+  if (outcome.kind === "legacy_fallbacks") {
+    const disabled = await disableLegacyFallbackSchedule(
+      state,
+      schedule,
+      schedule.nextRunAt,
+      outcome.fallbackCount,
+    );
+    if (disabled) {
+      state.schedules.set(id, { ...schedule, enabled: false });
+    }
+    return {
+      ok: false,
+      error: `schedule disabled: it has ${outcome.fallbackCount} persisted fallbacks; update it to at most 90`,
+    };
+  }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
   }
@@ -322,6 +337,18 @@ export async function tryClaimScheduleFireDurable(
     }
     return null;
   }
+  if (outcome.kind === "legacy_fallbacks") {
+    const disabled = await disableLegacyFallbackSchedule(
+      state,
+      schedule,
+      expectedNextRunAt,
+      outcome.fallbackCount,
+    );
+    if (disabled) {
+      state.schedules.set(scheduleId, { ...schedule, enabled: false });
+    }
+    return null;
+  }
   if (outcome.kind !== "created") {
     return null;
   }
@@ -364,6 +391,41 @@ function principalDrainSkipAudit(
     state.now(),
     state.auditIdFactory(),
   );
+}
+
+function disableLegacyFallbackSchedule(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  expectedNextRunAt: string,
+  fallbackCount: number,
+): Promise<boolean> {
+  const audit = newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "schedule:legacy-fallbacks-disabled",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: {
+        reason: "persisted schedule exceeds the durable transaction route limit",
+        fallbackCount,
+        maxFallbacks: 90,
+      },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
+  return state
+    .storage!.disableLegacyFallbackScheduleAndAudit({
+      scheduleId: schedule.id,
+      expectedNextRunAt,
+      audit,
+    })
+    .then((disabled) => {
+      if (disabled) state.auditLogs.set(audit.id, audit);
+      return disabled;
+    });
 }
 
 function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {

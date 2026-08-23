@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   getHostInventory,
   deleteSchedule,
+  disableLegacyFallbackScheduleAndAudit,
   putSchedule,
   skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
@@ -54,6 +55,128 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("durable schedule creation", () => {
+  it("does not build an over-limit transaction for legacy fallback-heavy schedules", async () => {
+    let calls = 0;
+    const storage = scheduleCtx(async () => {
+      calls += 1;
+      return {};
+    });
+
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "now",
+        session: {
+          id: "legacy-fallback-session",
+          repositoryId: "repo-1",
+          principalId: "principal-1",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: Array.from({ length: 91 }, (_, index) => ({
+            commandId: `legacy-${index}`,
+          })),
+          targetLabels: [],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+        },
+      }),
+    ).resolves.toEqual({ kind: "legacy_fallbacks", fallbackCount: 91 });
+    expect(calls).toBe(0);
+  });
+
+  it("audits and disables a legacy fallback-heavy schedule atomically", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await expect(
+      disableLegacyFallbackScheduleAndAudit(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        audit: {
+          id: "audit-legacy-fallbacks",
+          timestamp: "now",
+          actor: "system",
+          action: "schedule:legacy-fallbacks-disabled",
+          resourceType: "schedule",
+          resourceId: "schedule-1",
+          repositoryId: "repo-1",
+          outcome: "failed",
+        },
+      }),
+    ).resolves.toBe(true);
+    expect(input?.TransactItems).toEqual([
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "Schedules",
+          Key: { id: "schedule-1" },
+          UpdateExpression: "SET enabled = :false",
+        }),
+      }),
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          TableName: "AuditLogs",
+          Item: expect.objectContaining({ id: "audit-legacy-fallbacks" }),
+        }),
+      }),
+    ]);
+  });
+
+  it("returns false when the legacy schedule migration loses its cursor", async () => {
+    const storage = scheduleCtx(async () => {
+      throw { name: "ConditionalCheckFailedException" };
+    });
+    await expect(
+      disableLegacyFallbackScheduleAndAudit(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        audit: {
+          id: "audit-legacy-fallbacks-lost",
+          timestamp: "now",
+          actor: "system",
+          action: "schedule:legacy-fallbacks-disabled",
+          resourceType: "schedule",
+          resourceId: "schedule-1",
+          repositoryId: "repo-1",
+          outcome: "failed",
+        },
+      }),
+    ).resolves.toBe(false);
+  });
+
+  it("rethrows unexpected legacy schedule migration failures", async () => {
+    const error = new Error("Dynamo unavailable");
+    const storage = scheduleCtx(async () => {
+      throw error;
+    });
+    await expect(
+      disableLegacyFallbackScheduleAndAudit(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        audit: {
+          id: "audit-legacy-fallbacks-error",
+          timestamp: "now",
+          actor: "system",
+          action: "schedule:legacy-fallbacks-disabled",
+          resourceType: "schedule",
+          resourceId: "schedule-1",
+          repositoryId: "repo-1",
+          outcome: "failed",
+        },
+      }),
+    ).rejects.toBe(error);
+  });
+
   it("keeps owned schedule deletion behind its live principal marker", async () => {
     let input: TransactWriteCommandInput | undefined;
     const storage = scheduleCtx(async (command) => {

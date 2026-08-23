@@ -97,6 +97,7 @@ export {
   isTerminalSessionStatus,
   MAX_PROMPT_BYTES,
   MAX_CONCURRENCY_ID_BYTES,
+  MAX_FALLBACKS,
   promptByteLengthError,
   validateCreateSessionInput,
 } from "./validation.ts";

@@ -222,4 +222,32 @@ describe("schedule fire residual coverage", () => {
     await expect(evaluateCronDurable(current, NOW)).resolves.toMatchObject([{ id: "run" }]);
     expect(current.schedules.get("nightly")).toMatchObject({ nextRunAt: NOW, lastRunAt: null });
   });
+
+  it("explicitly disables and audits legacy fallback-heavy cron schedules", async () => {
+    const current = state(
+      schedule({
+        principalId: "principal",
+        fallbacks: Array.from({ length: 91 }, () => ({ commandId: "cmd" })),
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => ({
+          kind: "legacy_fallbacks",
+          fallbackCount: 91,
+        }),
+        disableLegacyFallbackScheduleAndAudit: async () => true,
+      },
+    );
+
+    await expect(evaluateCronDurable(current, NOW)).resolves.toEqual([]);
+    expect(current.schedules.get("nightly")).toMatchObject({ enabled: false });
+    expect([...current.auditLogs.values()]).toContainEqual(
+      expect.objectContaining({
+        action: "schedule:legacy-fallbacks-disabled",
+        resourceType: "schedule",
+        resourceId: "nightly",
+        outcome: "failed",
+        metadata: expect.objectContaining({ fallbackCount: 91, maxFallbacks: 90 }),
+      }),
+    );
+  });
 });
