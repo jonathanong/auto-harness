@@ -25,7 +25,8 @@ describe("required CI check contract", () => {
       ["vitest-shard", "vitest-${{ matrix.shard }}"],
       ["vitest-platform", "vitest-${{ matrix.name }}"],
       ["vitest", "vitest"],
-      ["playwright-e2e", "playwright-e2e"],
+      ["playwright-build", "playwright-build"],
+      ["playwright-e2e", "playwright-e2e-${{ matrix.shard }}"],
       ["playwright-auth", "playwright-auth"],
       ["playwright", "playwright"],
     ]);
@@ -127,48 +128,65 @@ describe("required CI check contract", () => {
     expect(playwrightFanIn).toContain("needs.playwright-auth.result != 'success'");
   });
 
-  it("cleans, restores the Next.js cache, then builds, then tests, in the default E2E job", () => {
-    const tests = job("playwright-e2e");
-    const steps = [
-      "name: Clean e2e build output\n",
-      "name: Cache Next.js build cache\n",
-      "name: Build (e2e)\n",
-      "name: Playwright E2E\n",
-    ];
-    for (const step of steps) expect(tests).toContain(step);
-    for (let i = 1; i < steps.length; i++) {
-      expect(tests.indexOf(steps[i - 1])).toBeLessThan(tests.indexOf(steps[i]));
-    }
-    expect(tests).toContain("services/web/next.config.ts");
-    expect(tests).toContain("services/host-pane/next.config.ts");
-    expect(tests).toContain(
-      "run: pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/host-pane build:e2e\n",
+  it("builds and packages each Next.js E2E runtime once", () => {
+    const build = job("playwright-build");
+    expect(build).toContain("HARNESS_API_HTTP: http://127.0.0.1:7430");
+    expect(build).toContain("id: control-runtime-cache");
+    expect(build).toContain("id: host-pane-runtime-cache");
+    expect(build).toContain(
+      "nextjs-runtime-control-${{ runner.os }}-${{ runner.arch }}-api7430-v1-",
     );
-    expect(tests).toContain("run: pnpm exec playwright test\n");
-    expect(tests).toContain("name: playwright-report\n");
-    expect(tests).toContain("playwright-report/");
-    expect(tests).toContain("test-results/");
+    expect(build).toContain(
+      "nextjs-runtime-host-pane-${{ runner.os }}-${{ runner.arch }}-api7430-v1-",
+    );
+    expect(build).toContain("path: services/web/.next-e2e/cache");
+    expect(build).toContain("path: services/host-pane/.next-e2e/cache");
+    expect(build).toContain(
+      "run: pnpm --parallel --filter @auto-harness/web --filter @auto-harness/host-pane run build:e2e",
+    );
+    expect(build).toContain("--exclude='services/web/.next-e2e/cache'");
+    expect(build).toContain("--exclude='services/host-pane/.next-e2e/cache'");
+    expect(build).toContain("name: playwright-next-build");
+    expect(build).toContain("compression-level: 0");
+    expect(build.indexOf("name: Cache control E2E runtime archive\n")).toBeLessThan(
+      build.indexOf("name: Build both E2E apps\n"),
+    );
+    expect(build.indexOf("name: Build both E2E apps\n")).toBeLessThan(
+      build.indexOf("name: Upload E2E runtime\n"),
+    );
   });
 
-  it("cleans, restores the Next.js cache, then builds, then tests, in the required-auth E2E job", () => {
+  it("fans the default E2E suite across two artifact-consuming shards", () => {
+    const tests = job("playwright-e2e");
+    expect(tests).toContain("name: playwright-e2e-${{ matrix.shard }}");
+    expect(tests).toContain("needs: playwright-build");
+    expect(tests).toContain("fail-fast: false");
+    expect(tests).toContain("matrix:\n        shard: [1, 2]");
+    expect(tests).toContain("name: playwright-next-build");
+    expect(tests).toContain("control-next-e2e.tgz");
+    expect(tests).toContain("host-pane-next-e2e.tgz");
+    expect(tests).toContain("run: pnpm exec playwright test --shard=${{ matrix.shard }}/2");
+    expect(tests).toContain("name: playwright-report-${{ matrix.shard }}");
+    expect(tests).toContain("playwright-report/");
+    expect(tests).toContain("test-results/");
+    expect(tests).not.toContain("build:e2e");
+    expect(tests).not.toContain(".next-e2e/cache");
+  });
+
+  it("runs required-auth E2E against the canonical control runtime", () => {
     const tests = job("playwright-auth");
-    const steps = [
-      "name: Clean e2e build output\n",
-      "name: Cache Next.js build cache\n",
-      "name: Build (e2e, auth)\n",
-      "name: Playwright E2E (required auth)\n",
-    ];
-    for (const step of steps) expect(tests).toContain(step);
-    for (let i = 1; i < steps.length; i++) {
-      expect(tests.indexOf(steps[i - 1])).toBeLessThan(tests.indexOf(steps[i]));
-    }
-    expect(tests).toContain("services/web/next.config.ts");
-    expect(tests).toContain("run: pnpm --filter @auto-harness/web build:e2e\n");
+    expect(tests).toContain("needs: playwright-build");
+    expect(tests).toContain("HARNESS_AUTH_MODE: required");
+    expect(tests).toContain("name: playwright-next-build");
+    expect(tests).toContain("name: Extract control E2E runtime");
+    expect(tests).toContain("control-next-e2e.tgz");
     expect(tests).toContain(
       "run: pnpm exec playwright test e2e/control/auth.spec.ts e2e/control/service-accounts.spec.ts e2e/control/user-accounts.spec.ts --project=control\n",
     );
     expect(tests).toContain("name: playwright-report-auth\n");
     expect(tests).toContain("playwright-report/");
     expect(tests).toContain("test-results/");
+    expect(tests).not.toContain("build:e2e");
+    expect(tests).not.toContain(".next-e2e/cache");
   });
 });
