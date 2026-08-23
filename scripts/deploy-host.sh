@@ -94,7 +94,7 @@ EOF
   fi
 
   pnpm install --frozen-lockfile --ignore-scripts
-  pnpm run prepare:test:platform
+  pnpm rebuild node-pty
 
   case "$platform" in
     Darwin)

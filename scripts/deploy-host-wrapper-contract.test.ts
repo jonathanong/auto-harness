@@ -96,7 +96,7 @@ fi`,
 
     expect(result.status, result.stderr).toBe(0);
     expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts\n");
-    expect(calls).toContain("pnpm run prepare:test:platform\n");
+    expect(calls).toContain("pnpm rebuild node-pty\n");
     expect(calls.match(/pnpm local:daemon status/g)).toHaveLength(3);
     expect(result.stdout).toContain('{"status":"ok"}');
   });

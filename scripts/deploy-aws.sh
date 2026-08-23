@@ -356,18 +356,11 @@ if [[ -n "$original_rule_state" ]]; then
   rule_restore_pending=1
   trap restore_original_rule_on_exit EXIT
 fi
-aws events enable-rule --region "$AWS_REGION" --name "$cron_rule"
-
-for _ in $(seq 1 120); do
-  record_key="$(read_ledger_key)"
-  if [[ "$record_key" == "ACTIVITY-V1" ]]; then
-    finish_rule_restoration
-    echo "AWS update complete; the session-drain activity ledger is ready."
-    exit 0
-  fi
-  sleep 5
-done
-
+node scripts/migrate-session-drain-ledger.mts
+record_key="$(read_ledger_key)"
+if [[ "$record_key" != "ACTIVITY-V1" ]]; then
+  echo "AWS update completed, but the bounded migration driver did not publish the activity-ledger readiness marker; keep external admission disabled and investigate." >&2
+  exit 1
+fi
 finish_rule_restoration
-echo "AWS update completed, but the activity ledger was not ready within 10 minutes; keep external admission disabled and investigate." >&2
-exit 1
+echo "AWS update complete; the session-drain activity ledger is ready."

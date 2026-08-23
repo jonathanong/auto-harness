@@ -247,17 +247,18 @@ top-level command:
 pnpm deploy:host
 ```
 
-It installs the lockfile with package lifecycle scripts disabled, then runs only the repository's
-explicit native `node-pty` preparation command before the platform installer (which gracefully
+It installs the lockfile with package lifecycle scripts disabled, then explicitly rebuilds only the
+locked `node-pty` package. That package-owned rebuild uses a prebuilt binary when available and its
+trusted `node-gyp` source-build fallback on Linux before the platform installer (which gracefully
 drains during restart). It loads the platform's persisted service environment and polls for up to
 two minutes until the exact host is online, non-draining, and Git-ready; the same end-to-end
 deadline terminates an in-flight status process group instead of waiting indefinitely. It also
-requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the checkout owner from
-`/opt/auto-harness/current` whenever that conventional service checkout exists; the wrapper refuses
-to validate a different checkout from the one systemd will execute. It invokes `sudo` only for the
-systemd installer and verification so Git and dependency files retain the right ownership. The
-manual procedure below remains the recovery path for immutable revisions, rollbacks, and dedicated
-VPS checkouts.
+requires the clean `main` revision already synced by `pnpm deploy:aws`. On Linux, run it as the
+checkout owner from `/opt/auto-harness/current` whenever that conventional service checkout exists;
+the wrapper refuses to validate a different checkout from the one systemd will execute. It invokes
+`sudo` only for the systemd installer and verification so Git and dependency files retain the right
+ownership. The manual procedure below remains the recovery path for immutable revisions, rollbacks,
+and dedicated VPS checkouts.
 
 Current path — an operator must **drain, deploy, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 

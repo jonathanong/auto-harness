@@ -75,6 +75,15 @@ function awsDeploymentFakes(fixture: ReturnType<typeof fakeEnvironment>): void {
   baseFakes(fixture.bin);
   executable(
     fixture.bin,
+    "node",
+    `
+printf "node %s\\n" "$*" >> "$FAKE_LOG"
+if [[ "$*" == *"migrate-session-drain-ledger.mts"* && "\${FAKE_MIGRATION_FAILURE:-0}" == 1 ]]; then
+  exit 1
+fi`,
+  );
+  executable(
+    fixture.bin,
     "pnpm",
     `
 printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
@@ -143,6 +152,8 @@ describe("deployment wrapper contracts", () => {
     expect(position(calls, "aws dynamodb scan")).toBeLessThan(
       position(calls, "pnpm --filter @auto-harness/cdk run update"),
     );
+    expect(calls).toContain("node scripts/migrate-session-drain-ledger.mts");
+    expect(calls).not.toContain("aws events enable-rule");
     expect(
       calls.trimEnd().endsWith("aws events disable-rule --region us-west-2 --name cron-rule"),
     ).toBe(true);
@@ -160,6 +171,21 @@ describe("deployment wrapper contracts", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("Could not inspect the activity ledger");
+    expect(
+      calls.trimEnd().endsWith("aws events disable-rule --region us-west-2 --name cron-rule"),
+    ).toBe(true);
+  });
+
+  it("restores a disabled cron rule when the bounded migration driver fails", () => {
+    const fixture = fakeEnvironment();
+    awsDeploymentFakes(fixture);
+
+    const result = run(awsScript, ["--yes-first-ledger"], fixture, {
+      FAKE_MIGRATION_FAILURE: "1",
+    });
+    const calls = readFileSync(fixture.log, "utf8");
+
+    expect(result.status).toBe(1);
     expect(
       calls.trimEnd().endsWith("aws events disable-rule --region us-west-2 --name cron-rule"),
     ).toBe(true);
@@ -189,6 +215,6 @@ describe("deployment wrapper contracts", () => {
     );
     expect(aws).toContain('if [[ "$original_rule_state" == "DISABLED" ]]');
     expect(aws).toContain("trap restore_original_rule_on_exit EXIT");
-    expect(aws.match(/finish_rule_restoration/g)).toHaveLength(3);
+    expect(aws.match(/finish_rule_restoration/g)).toHaveLength(2);
   });
 });

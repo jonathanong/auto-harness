@@ -261,11 +261,11 @@ or web stacks after a retained teardown.
 `pnpm deploy:aws` detects this rollout from the missing environment-scoped activity-ledger readiness
 marker, disables and fences the old scheduler, asks for one confirmation that external admission is
 disabled, waits out the old REST and WebSocket functions' configured invocation timeouts, and then
-verifies there are no drain-affecting sessions. It performs the update, temporarily enables
-scheduling for the bounded backfill, waits for the marker, and restores the EventBridge rule's
-original enabled or disabled state. In non-interactive automation, pass `--yes-first-ledger` only
-after disabling external admission; the command still performs its own writer wait and post-fence
-active-session verification:
+verifies there are no drain-affecting sessions. It performs the update, runs the new bounded
+migration driver while scheduling remains fenced, verifies the marker, and restores the EventBridge
+rule's original enabled or disabled state. In non-interactive automation, pass
+`--yes-first-ledger` only after disabling external admission; the command still performs its own
+writer wait and post-fence active-session verification:
 
 ```bash
 pnpm deploy:aws -- --yes-first-ledger
@@ -280,14 +280,16 @@ The first revision containing the principal session-drain activity ledger has a
 one-time mixed-version constraint. Before running `update`, stop external session
 admission and disable the environment's EventBridge cron rule. Wait for in-flight
 REST, WebSocket, and cron Lambda invocations to finish, then keep that gate in
-place while `update` replaces every runtime writer. After `update` completes,
-re-enable the EventBridge cron rule while keeping external admission stopped.
-The new scheduler then performs the strongly-consistent backfill in durable,
-fenced pages and publishes the ledger readiness marker only after its final
-checkpoint. REST and WebSocket cold starts never scan session history; drain
-admission fails closed while the marker is absent. Verify the `SessionDrains`
+place while `update` replaces every runtime writer. After `update` completes, the
+deployment process itself performs the strongly-consistent backfill in durable,
+fenced 100-session pages and publishes the ledger readiness marker only after its
+final checkpoint. The driver is bounded at 100,000 page attempts and retains its
+durable checkpoint if it fails, so a rerun resumes instead of rescanning prior
+pages. REST and WebSocket cold starts never scan session history; drain admission
+fails closed while the marker is absent. The wrapper verifies the `SessionDrains`
 table contains `scopeKey=__session-drain-ledger__` and
-`recordKey=ACTIVITY-V1`, then re-enable external admission.
+`recordKey=ACTIVITY-V1`, restores the rule's original state, and only then permits
+external admission to be re-enabled.
 
 Do not allow old and new runtime writers to overlap this bootstrap: an old warm
 Lambda does not write activity members and could otherwise admit a session after
