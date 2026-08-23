@@ -9,6 +9,8 @@ import {
   TransactWriteCommand,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { randomInt } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 
 import {
   isConditionalFailed,
@@ -498,6 +500,9 @@ function scopeOffset(startKey: Record<string, unknown> | undefined): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
+const BATCH_GET_MAX_ATTEMPTS = 5;
+const BATCH_GET_BASE_RETRY_DELAY_MS = 50;
+
 async function listAllowedRepositoriesPage(
   ctx: PlaneStorageCtx,
   query: RepositoryPageQuery,
@@ -507,24 +512,36 @@ async function listAllowedRepositoriesPage(
   const offset = scopeOffset(query.startKey);
   const ids = repositoryIds.slice(offset, offset + query.limit);
   if (ids.length === 0) return { items: [], nextKey: null };
-  const response = await ctx.doc.send(
-    new BatchGetCommand({
-      RequestItems: {
-        [ctx.tables.repositories]: {
-          Keys: ids.map((id) => ({ id })),
-          ConsistentRead: true,
+  const byId = new Map<string, RepositoryRecord>();
+  let pending = ids.map((id) => ({ id }));
+  for (let attempt = 0; pending.length && attempt < BATCH_GET_MAX_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) {
+      const backoff = BATCH_GET_BASE_RETRY_DELAY_MS * 2 ** (attempt - 1);
+      // Cryptographic randomness is used only to desynchronize retries, never as an identifier.
+      await delay(backoff + randomInt(backoff)); // NOSONAR
+    }
+    const response = await ctx.doc.send(
+      new BatchGetCommand({
+        RequestItems: {
+          [ctx.tables.repositories]: {
+            Keys: pending,
+            ConsistentRead: true,
+          },
         },
-      },
-    }),
-  );
-  if ((response.UnprocessedKeys?.[ctx.tables.repositories]?.Keys?.length ?? 0) > 0) {
+      }),
+    );
+    for (const record of catalogPageItems(
+      response.Responses?.[ctx.tables.repositories] as RepositoryRecord[] | undefined,
+    )) {
+      byId.set(record.id, record);
+    }
+    pending =
+      (response.UnprocessedKeys?.[ctx.tables.repositories]?.Keys as typeof pending | undefined) ??
+      [];
+  }
+  if (pending.length > 0) {
     throw new Error("repository page read was throttled");
   }
-  const byId = new Map(
-    catalogPageItems(
-      response.Responses?.[ctx.tables.repositories] as RepositoryRecord[] | undefined,
-    ).map((record) => [record.id, record] as const),
-  );
   const nextOffset = offset + ids.length;
   return {
     items: ids.flatMap((id) => {
