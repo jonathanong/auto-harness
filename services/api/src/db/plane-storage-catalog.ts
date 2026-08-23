@@ -801,7 +801,9 @@ function scheduleClaimMarkers(
     if (!route) continue;
     keys.add("providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`);
   }
-  return [...keys].toSorted().map((key) => ({ key, now }));
+  return [...keys]
+    .toSorted((left, right) => left.localeCompare(right))
+    .map((key) => ({ key, now }));
 }
 
 export async function skipScheduleForPrincipalDrain(

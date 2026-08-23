@@ -178,7 +178,7 @@ export async function createSession(
         if (
           (principalCheck && isConditionalTransactionFailureAt(err, principalIndex)) ||
           (markers.length &&
-            [...Array(markers.length).keys()].some((index) =>
+            Array.from({ length: markers.length }, (_, index) => index).some((index) =>
               isConditionalTransactionFailureAt(err, index),
             ))
         ) {

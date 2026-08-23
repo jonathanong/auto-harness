@@ -315,7 +315,7 @@ export async function createOrGetSessionDrain(
   } catch (error) {
     if (!isConditionalTransactionFailed(error)) throw error;
     if (
-      [...Array(markerCount).keys()].some((index) =>
+      Array.from({ length: markerCount }, (_, index) => index).some((index) =>
         isConditionalTransactionFailureAt(error, index),
       ) ||
       (principalCheck !== null && isConditionalTransactionFailureAt(error, principalCheckIndex)) ||
@@ -507,6 +507,20 @@ export async function listSessionDrains(
  * Candidate scans are only scheduling hints—each drain is subsequently
  * strong-read and fenced before mutation.
  */
+function appendReconcileCandidates(
+  items: SessionDrainRecord[],
+  candidates: SessionDrainRecord[],
+  limit: number,
+): Record<string, unknown> | undefined {
+  for (const item of items) {
+    if (item.recordKey === "CURRENT" && item.status === "draining") candidates.push(item);
+    if (candidates.length === limit) {
+      return { scopeKey: item.scopeKey, recordKey: item.recordKey };
+    }
+  }
+  return undefined;
+}
+
 export async function listSessionDrainReconcileCandidates(
   ctx: PlaneStorageCtx,
   limit = 10,
@@ -528,14 +542,11 @@ export async function listSessionDrainReconcileCandidates(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    let stoppedAtCandidate: Record<string, unknown> | undefined;
-    for (const item of (result.Items ?? []) as SessionDrainRecord[]) {
-      if (item.recordKey === "CURRENT" && item.status === "draining") candidates.push(item);
-      if (candidates.length === limit) {
-        stoppedAtCandidate = { scopeKey: item.scopeKey, recordKey: item.recordKey };
-        break;
-      }
-    }
+    const stoppedAtCandidate = appendReconcileCandidates(
+      (result.Items ?? []) as SessionDrainRecord[],
+      candidates,
+      limit,
+    );
     startKey =
       stoppedAtCandidate ??
       nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
