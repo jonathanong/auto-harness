@@ -3,6 +3,7 @@ import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 export type CloneOptions = {
   prompt?: string;
@@ -60,6 +61,8 @@ export function prepareClonedSession(
 ): { ok: true; session: SessionRecord } | CloneFailure {
   const source = state.sessions.get(sessionId);
   if (!source) return { ok: false, error: "session not found", code: "NOT_FOUND" };
+  const admissionFailure = repositoryAdmissionFailure(state, source.repositoryId);
+  if (admissionFailure) return admissionFailure;
   const overrideError = validateCloneOverrides(opts);
   if (overrideError) return { ok: false, error: overrideError, code: "VALIDATION_ERROR" };
   const targets = resolveTargetLabels(state, source.target, source.fallbacks);

@@ -20,6 +20,37 @@ function options(storage: never) {
 }
 
 describe("authoritative durable reads", () => {
+  it("refreshes a stale closed admission cache before durable session creation", async () => {
+    const storage = createAuthoritativeReadStorage();
+    const writer = new ControlPlane(options(storage));
+    const reader = new ControlPlane(options(storage));
+    expect(
+      (await writer.createRepositoryDurable({ name: "repository", url: "https://example.test/r" }))
+        .ok,
+    ).toBe(true);
+    expect((await writer.createCommandDurable({ name: "command", argv: ["echo"] })).ok).toBe(true);
+    const durable = storage as unknown as {
+      getRepository(id: string): Promise<Record<string, unknown> | null>;
+      putRepository(record: Record<string, unknown>): Promise<void>;
+    };
+    const repository = await durable.getRepository("repository");
+    if (!repository) throw new Error("repository not created");
+    await durable.putRepository({ ...repository, admissionState: "paused" });
+    expect(await reader.getRepositoryDurable("repository")).toMatchObject({
+      admissionState: "paused",
+    });
+    await durable.putRepository({ ...repository, admissionState: "active" });
+
+    await expect(
+      reader.createSessionDurable({
+        repositoryId: "repository",
+        prompt: "work",
+        target: { commandId: "command" },
+        timeout: 1,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
   it("shows another control plane's writes, updates, deletes, sessions, and ordered logs", async () => {
     const storage = createAuthoritativeReadStorage();
     const writer = new ControlPlane(options(storage));
@@ -141,6 +172,10 @@ describe("authoritative durable reads", () => {
     const storage = createAuthoritativeReadStorage();
     const writer = new ControlPlane(options(storage));
     const scheduler = new ControlPlane(options(storage));
+    expect(
+      (await writer.createRepositoryDurable({ name: "repository", url: "https://example.test/r" }))
+        .ok,
+    ).toBe(true);
     expect((await writer.createCommandDurable({ name: "command", argv: ["echo"] })).ok).toBe(true);
     expect(
       (

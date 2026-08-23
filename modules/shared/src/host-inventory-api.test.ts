@@ -27,6 +27,7 @@ describe("getInventory / putInventory", () => {
       new Response(
         JSON.stringify({
           setupScript: "source ~/.zshrc",
+          requiredEnvironment: ["TOKEN"],
           repositories: [{ id: "r1", path: "/r", defaultBranch: "main", worktrees: [] }],
           capabilities: ["scheduled-main-checkout", "not-real"],
         }),
@@ -36,6 +37,7 @@ describe("getInventory / putInventory", () => {
       const inv = await getInventory("host-1");
       expect(inv.repositories).toHaveLength(1);
       expect(inv.setupScript).toBe("source ~/.zshrc");
+      expect(inv.requiredEnvironment).toEqual(["TOKEN"]);
       expect(inv.capabilities).toEqual(["scheduled-main-checkout"]);
     } finally {
       globalThis.fetch = original;
@@ -69,6 +71,7 @@ describe("getInventory / putInventory", () => {
     try {
       const ok = await putInventory("host-1", {
         setupScript: "source ~/.zshrc",
+        requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -76,6 +79,7 @@ describe("getInventory / putInventory", () => {
       expect(ok).toEqual({ ok: true });
       expect(sentBody).toEqual({
         setupScript: "source ~/.zshrc",
+        requiredEnvironment: ["TOKEN"],
         repositories: [],
         providerAccounts: [],
         capabilities: ["scheduled-main-checkout"],
@@ -108,7 +112,7 @@ describe("getInventory / putInventory", () => {
 function stubFetch(handler: (url: string, init?: RequestInit) => Response) {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
-    calls.push({ url, init });
+    calls.push({ url, ...(init ? { init } : {}) });
     return handler(url, init);
   }) as unknown as typeof fetch;
   return calls;

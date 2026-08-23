@@ -4,6 +4,8 @@ import { basename, resolve } from "node:path";
 
 import {
   installCrashLogging,
+  MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH,
+  MAX_RUNTIME_ENVIRONMENT_NAMES,
   onShutdownSignal,
   type LifecycleLogger,
   type SessionAssign,
@@ -12,7 +14,7 @@ import {
 import type { DaemonConfig, HostIdentity } from "./config.ts";
 import { loadDaemonConfig, loadHostIdentity } from "./config.ts";
 import { printUsage } from "./cli-usage.ts";
-import { parseChildEnvAllowlist } from "./child-env.ts";
+import { createChildEnv, parseChildEnvAllowlist } from "./child-env.ts";
 import { loadEnvFileIfPresent } from "./host-service-env.ts";
 import {
   getHostServiceStatus,
@@ -337,7 +339,24 @@ export async function runCli(
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
       const { startDaemon } = await import("./start-daemon.ts");
-      const runtime = await deps.ensureReady(config);
+      const ready = await deps.ensureReady(config);
+      const environmentNames = Object.keys(createChildEnv(resolvedEnv)).toSorted((a, b) =>
+        a.localeCompare(b),
+      );
+      if (
+        environmentNames.length > MAX_RUNTIME_ENVIRONMENT_NAMES ||
+        environmentNames.some((name) => name.length > MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH)
+      ) {
+        throw new Error(
+          `child environment exceeds runtime report limits (${MAX_RUNTIME_ENVIRONMENT_NAMES} names, ${MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH} characters per name)`,
+        );
+      }
+      const runtime = ready
+        ? {
+            ...ready,
+            environmentNames,
+          }
+        : ready;
       const { stop } = await startDaemon({
         config,
         identity: loadHostIdentity(resolvedEnv),

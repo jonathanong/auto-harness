@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("SessionCreateRace");
 
 describe("durable session create races", () => {
   it("atomically admits only one of two concurrent durable creates", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-concurrent");
     await ctx.storage.putCommand({
       id: "cmd-concurrent-create",
       name: "concurrent create",
@@ -57,6 +58,7 @@ describe("durable session create races", () => {
 
   it("returns a bounded conflict for a generated ID reused by a terminal session", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-fixed-id");
     await ctx.storage.putCommand({
       id: "cmd-fixed-id",
       name: "fixed id",
@@ -94,6 +96,7 @@ describe("durable session create races", () => {
 
   it("validates and preserves priority and required labels across a durable restart", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "repo-priority-labels");
     await ctx.storage.putCommand({
       id: "cmd-priority-labels",
       name: "priority labels",

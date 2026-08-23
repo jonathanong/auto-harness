@@ -119,8 +119,8 @@ export class DynamoPlaneStorageBase {
     );
   }
 
-  listWorktreesForRepo(repositoryId: string): Promise<WorktreeRecord[]> {
-    return sessions.listWorktreesForRepo(this.ctx, repositoryId);
+  listWorktreesForRepo(repositoryId: string, consistentRead = false): Promise<WorktreeRecord[]> {
+    return sessions.listWorktreesForRepo(this.ctx, repositoryId, consistentRead);
   }
 
   tryClaimWorktree(opts: { worktreeId: string; sessionId: string; now: string }): Promise<boolean> {
@@ -129,8 +129,10 @@ export class DynamoPlaneStorageBase {
 
   tryAssignSession(opts: {
     sessionId: string;
+    repositoryId: string;
     worktreeId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -161,6 +163,7 @@ export class DynamoPlaneStorageBase {
   tryAssignMainCheckoutSession(opts: {
     sessionId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     repositoryId: string;
     connectionId: string;
     now: string;
@@ -578,6 +581,19 @@ export class DynamoPlaneStorageBase {
     return catalog.putRepository(this.ctx, rec);
   }
 
+  updateRepositorySettings(
+    id: string,
+    patch: Partial<
+      Pick<
+        RepositoryRecord,
+        "name" | "url" | "defaultBranch" | "setupScript" | "terminalHookScript"
+      >
+    >,
+    updatedAt: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.updateRepositorySettings(this.ctx, id, patch, updatedAt);
+  }
+
   createRepository(rec: RepositoryRecord): Promise<boolean> {
     return catalog.createRepository(this.ctx, rec);
   }
@@ -588,6 +604,22 @@ export class DynamoPlaneStorageBase {
 
   listRepositories(): Promise<RepositoryRecord[]> {
     return catalog.listRepositories(this.ctx);
+  }
+
+  setRepositoryAdmissionState(
+    id: string,
+    state: import("@auto-harness/shared").RepositoryAdmissionState,
+    now: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.setRepositoryAdmissionState(this.ctx, id, state, now);
+  }
+
+  completeRepositoryDrain(
+    id: string,
+    drainRequestedAt: string,
+    now: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.completeRepositoryDrain(this.ctx, id, drainRequestedAt, now);
   }
 
   deleteRepository(
@@ -620,6 +652,15 @@ export class DynamoPlaneStorageBase {
     session: import("./types.ts").SessionRecord;
   }): Promise<catalog.ScheduleCreateResult> {
     return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);
+  }
+
+  skipScheduleForClosedRepository(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForClosedRepository(this.ctx, opts);
   }
 
   skipScheduleForActiveConcurrency(opts: {

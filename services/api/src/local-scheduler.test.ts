@@ -22,6 +22,7 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
       enforceAckDeadlinesDurable: step("ack"),
       enforceRunningTimeoutsDurable: step("timeout"),
       reclaimStaleHostsDurable: step("stale"),
+      reconcileRepositoryDrainsDurable: step("repository-drains"),
       assignQueuedDurable: step("queued"),
       assignScheduledQueuedDurable: step("scheduled"),
     },
@@ -41,11 +42,19 @@ describe("LocalScheduler", () => {
 
       scheduler.start();
       await flush();
-      expect(calls).toEqual(["cron", "ack", "timeout", "stale", "queued", "scheduled"]);
+      expect(calls).toEqual([
+        "cron",
+        "ack",
+        "timeout",
+        "stale",
+        "repository-drains",
+        "queued",
+        "scheduled",
+      ]);
 
       scheduler.start();
       await vi.advanceTimersByTimeAsync(10);
-      expect(calls).toHaveLength(12);
+      expect(calls).toHaveLength(14);
       await scheduler.stop();
     } finally {
       vi.useRealTimers();
@@ -73,7 +82,16 @@ describe("LocalScheduler", () => {
 
     scheduler.start();
     await flush();
-    expect(calls).toEqual(["cron", "cron", "ack", "timeout", "stale", "queued", "scheduled"]);
+    expect(calls).toEqual([
+      "cron",
+      "cron",
+      "ack",
+      "timeout",
+      "stale",
+      "repository-drains",
+      "queued",
+      "scheduled",
+    ]);
     await scheduler.stop();
   });
 
@@ -94,7 +112,15 @@ describe("LocalScheduler", () => {
     scheduler.start();
     await flush();
     expect(errors).toHaveLength(1);
-    expect(calls).toEqual(["cron", "ack", "timeout", "stale", "queued", "scheduled"]);
+    expect(calls).toEqual([
+      "cron",
+      "ack",
+      "timeout",
+      "stale",
+      "repository-drains",
+      "queued",
+      "scheduled",
+    ]);
     await scheduler.stop();
   });
 
@@ -112,7 +138,15 @@ describe("LocalScheduler", () => {
       scheduler.start();
       await flush();
       expect(logger).toHaveBeenCalledWith("local scheduler operation failed", error);
-      expect(calls).toEqual(["cron", "ack", "timeout", "stale", "queued", "scheduled"]);
+      expect(calls).toEqual([
+        "cron",
+        "ack",
+        "timeout",
+        "stale",
+        "repository-drains",
+        "queued",
+        "scheduled",
+      ]);
       await scheduler.stop();
     } finally {
       logger.mockRestore();

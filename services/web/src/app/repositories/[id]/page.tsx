@@ -14,8 +14,10 @@ import { RepositoryDetailNotFound } from "../../../components/repository-detail-
 import { RepositoryWorktreesTab } from "../../../components/repository-worktrees-tab.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
+import { RepositoryAdmissionControls } from "../../../components/repository-admission-controls.tsx";
 import { apiGet } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
+import { can, loadPrincipal } from "../../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -49,6 +51,7 @@ export default async function RepositoryDetailPage({
 }) {
   const { id: repositoryId } = await params;
   const { tab } = await searchParams;
+  const canOperate = can(await loadPrincipal(), "repositories:operate");
 
   let repository: RepositorySummary | undefined;
   try {
@@ -167,6 +170,12 @@ export default async function RepositoryDetailPage({
               content: (
                 <div className="space-y-4" data-pw="repository-settings">
                   <RepositoryDetailsCard repository={repository} />
+                  {canOperate ? (
+                    <RepositoryAdmissionControls
+                      repositoryId={repositoryId}
+                      state={repository.admissionState ?? "active"}
+                    />
+                  ) : null}
                   <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Attached hosts</h3>
                     {attachedHosts.length === 0 ? (

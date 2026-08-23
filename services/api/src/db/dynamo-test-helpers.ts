@@ -21,6 +21,21 @@ export type DynamoTestCtx = {
   available: boolean;
 };
 
+export async function putActiveTestRepository(
+  storage: Pick<DynamoPlaneStorage, "putRepository">,
+  id: string,
+): Promise<void> {
+  await storage.putRepository({
+    id,
+    name: id,
+    url: `https://example.test/${id}`,
+    defaultBranch: "main",
+    admissionState: "active",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  });
+}
+
 /** Per-file DynamoDB Local fixture with an isolated table prefix. */
 export function createDynamoTestCtx(label: string): DynamoTestCtx {
   const ctx: DynamoTestCtx = {

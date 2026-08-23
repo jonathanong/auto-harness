@@ -7,11 +7,13 @@ import { hashString, queueWrite, toPublic } from "./control-plane-state.ts";
 import { createSession } from "./control-plane-sessions.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import {
+  getRepositoryDurable,
   getScheduleDurable,
   listSchedulesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -74,6 +76,10 @@ export async function triggerScheduleDurable(
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
   }
+  const repository = await getRepositoryDurable(state, schedule.repositoryId);
+  if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
+    return { ok: false, error: "repository admission is closed" };
+  }
   const newNextRunAt = nextRunAt(schedule, nowIso);
   if (!newNextRunAt) return { ok: false, error: "invalid schedule cron or timestamp" };
   const target = resolveScheduledTarget(state, schedule);
@@ -91,6 +97,9 @@ export async function triggerScheduleDurable(
   if (outcome.kind === "duplicate") {
     state.sessions.set(outcome.session.id, { ...outcome.session });
     return { ok: true, session: toPublic(state, outcome.session), created: false };
+  }
+  if (outcome.kind === "admission_closed") {
+    return { ok: false, error: "repository admission is closed" };
   }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
@@ -153,6 +162,7 @@ export function tryClaimScheduleFire(
   }
   const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
   if (!result.ok) {
+    if (result.code === "REPOSITORY_ADMISSION_CLOSED") schedule.nextRunAt = newNextRunAt;
     return null;
   }
   schedule.nextRunAt = newNextRunAt;
@@ -237,6 +247,20 @@ export async function tryClaimScheduleFireDurable(
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
       state.sessions.set(outcome.session.id, { ...outcome.session });
     }
+    return null;
+  }
+  if (outcome.kind === "admission_closed") {
+    // The failed create is advisory: this transaction is the authoritative
+    // closed observation because it also CASes the cursor. Activation uses the
+    // same primitive before changing admission to active, so either caller
+    // consumes this occurrence while closed or a competing cursor update wins.
+    const skipped = await state.storage.skipScheduleForClosedRepository({
+      scheduleId,
+      repositoryId: schedule.repositoryId,
+      expectedNextRunAt,
+      newNextRunAt,
+    });
+    if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
     return null;
   }
   if (outcome.kind !== "created") {

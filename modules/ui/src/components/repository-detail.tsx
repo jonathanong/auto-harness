@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { RepositoryAdmissionState } from "@auto-harness/shared";
 
 import { Card, CardContent, CardHeader, CardTitle } from "./card.tsx";
 import { DetailHeader, type Crumb } from "./detail-header.tsx";
@@ -13,6 +14,8 @@ export type RepositorySummary = {
   defaultBranch?: string | null;
   setupScript?: string | null;
   terminalHookScript?: string | null;
+  admissionState?: RepositoryAdmissionState;
+  admissionStateChangedAt?: string | null;
 };
 
 export type RepositoryDetailProps = {
@@ -56,6 +59,10 @@ export function RepositoryDetailsCard({ repository: r }: { repository: Repositor
           <div>
             <dt className="text-xs uppercase text-muted-foreground">Id</dt>
             <dd className="font-mono text-xs text-muted-foreground">{r.id}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Admission</dt>
+            <dd className="font-mono text-sm">{r.admissionState ?? "active"}</dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-xs uppercase text-muted-foreground">Path / URL</dt>

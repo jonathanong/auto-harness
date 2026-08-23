@@ -66,6 +66,7 @@ describe("DynamoDB Local session storage failures", () => {
         sessionId: "session",
         worktreeId: "worktree",
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "connection",
         now: "now",
         attemptId: "attempt",

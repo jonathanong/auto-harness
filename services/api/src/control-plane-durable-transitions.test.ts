@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
 import type { SessionRecord } from "./db/types.ts";
 import type { DynamoPlaneStorage } from "./db/plane-storage.ts";
@@ -12,9 +12,34 @@ import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
 import { appendLogDurable } from "./control-plane-messages.ts";
 import { tryClaimScheduleFireDurable } from "./control-plane-schedule-fire.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Durable");
+
+beforeAll(async () => {
+  if (!ctx.storage) return;
+  await Promise.all(
+    [
+      "repo-cancelled-late-terminal",
+      "repo-durable",
+      "repo-failing-log",
+      "repo-failing-write",
+      "repo-fenced-duplicate-ack",
+      "repo-idempotent",
+      "repo-lease-guard",
+      "repo-manual-durable",
+      "repo-omitted-requeue-error",
+      "repo-reconcile-read-failure",
+      "repo-reconnect-rollback",
+      "repo-resume-snapshot",
+      "repo-review-account",
+      "repo-review-durable",
+      "repo-review-target",
+      "repo-schedule",
+      "coverage-repo",
+    ].map((id) => putActiveTestRepository(ctx.storage!, id)),
+  );
+});
 
 describe("durable control-plane transitions", () => {
   it("allows only one hydrated control plane to assign a session", async () => {

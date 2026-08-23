@@ -60,6 +60,33 @@ test.describe("control plane repositories", () => {
     ).toBeVisible();
   });
 
+  test("pauses, drains, and activates repository admission", async ({ page, request }) => {
+    const name = `pw-repo-admission-${test.info().parallelIndex}-${Date.now()}`;
+    const created = await request.post("/api/v1/repositories", {
+      data: { name, url: `/tmp/${name}`, defaultBranch: "main" },
+    });
+    const repositoryId = ((await created.json()) as { id: string }).id;
+    try {
+      await page.goto(`/repositories/${repositoryId}?tab=settings`);
+      await expect(page.getByTestId("repository-admission")).toBeVisible();
+      await page.getByTestId("repository-pause").click();
+      await expect(page.getByTestId("repository-activate")).toBeVisible();
+
+      await page.getByTestId("repository-drain").click();
+      await expect(page.getByTestId("repository-drain-confirm")).toBeVisible();
+      await page.getByTestId("repository-drain-cancel").click();
+      await expect(page.getByTestId("repository-drain-confirm")).toBeHidden();
+
+      await page.getByTestId("repository-drain").click();
+      await page.getByTestId("repository-drain-confirm").click();
+      await expect(page.getByTestId("repository-activate")).toBeVisible();
+      await page.getByTestId("repository-activate").click();
+      await expect(page.getByTestId("repository-pause")).toBeVisible();
+    } finally {
+      await request.delete(`/api/v1/repositories/${repositoryId}`);
+    }
+  });
+
   test("create catalog repository via modal, then land on its detail page", async ({ page }) => {
     // Name must be a lowercase-dash slug — id is now auto-generated, never typed.
     const name = `pw-repo-${test.info().parallelIndex}-${Date.now()}`;

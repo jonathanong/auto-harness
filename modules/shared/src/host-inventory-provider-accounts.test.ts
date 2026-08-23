@@ -32,4 +32,27 @@ describe("host-inventory providerAccounts", () => {
   it("emptyHostInventory seeds providerAccounts as empty", () => {
     expect(emptyHostInventory().providerAccounts).toEqual([]);
   });
+
+  it("clones repository-level required environment arrays", () => {
+    const source = {
+      repositories: [
+        {
+          id: "demo",
+          path: "/repo",
+          defaultBranch: "main",
+          requiredEnvironment: ["TOKEN"],
+          worktrees: [],
+        },
+      ],
+      providerAccounts: [],
+      capabilities: [],
+    };
+    const cloned = upsertHostRepository(source, {
+      id: "other",
+      path: "/other",
+      defaultBranch: "main",
+    });
+    cloned.repositories[0]!.requiredEnvironment!.push("REGION");
+    expect(source.repositories[0]!.requiredEnvironment).toEqual(["TOKEN"]);
+  });
 });

@@ -5,11 +5,15 @@ import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   createRepository,
+  completeRepositoryDrain,
+  skipScheduleForClosedRepository,
   putLogFenced,
   putLogsFenced,
   skipScheduleForActiveConcurrency,
+  setRepositoryAdmissionState,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
+  updateRepositorySettings,
   updateScheduleManagement,
 } from "./plane-storage-catalog.ts";
 let client: DynamoDBClient;
@@ -49,6 +53,15 @@ describe("DynamoDB Local catalog transport failures", () => {
         updatedAt: "t",
       }),
     ).rejects.toThrow();
+    await expect(
+      setRepositoryAdmissionState(unavailableCtx, "repository", "paused", "t"),
+    ).rejects.toThrow();
+    await expect(
+      updateRepositorySettings(unavailableCtx, "repository", { name: "Repository" }, "t"),
+    ).rejects.toThrow();
+    await expect(
+      completeRepositoryDrain(unavailableCtx, "repository", "requested", "t"),
+    ).rejects.toThrow();
     const schedule = {
       id: "schedule",
       repositoryId: "repository",
@@ -84,6 +97,14 @@ describe("DynamoDB Local catalog transport failures", () => {
         newNextRunAt: "two",
         concurrencyId: "concurrency",
         sessionId: "session",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      skipScheduleForClosedRepository(unavailableCtx, {
+        scheduleId: "schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
       }),
     ).rejects.toThrow();
     unavailable.client.destroy();

@@ -3,7 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { mutateInventory, updateHostSetupScript } from "@auto-harness/shared";
+import {
+  mutateInventory,
+  updateHostRequiredEnvironment,
+  updateHostSetupScript,
+} from "@auto-harness/shared";
 import { Button } from "./button.tsx";
 import { Label } from "./label.tsx";
 import { Textarea } from "./textarea.tsx";
@@ -13,16 +17,19 @@ import { WithTooltip } from "./tooltip.tsx";
 export function HostSetupScriptForm({
   hostId,
   setupScript,
+  requiredEnvironment,
   mutate = mutateInventory,
 }: Readonly<{
   hostId: string;
   setupScript?: string | undefined;
+  requiredEnvironment?: string[] | undefined;
   mutate?: typeof mutateInventory;
 }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
   const [script, setScript] = useState(setupScript ?? "");
+  const [environment, setEnvironment] = useState((requiredEnvironment ?? []).join("\n"));
   const savedRefreshScriptRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -32,6 +39,10 @@ export function HostSetupScriptForm({
     setScript(nextScript);
     if (!preserveSavedFeedback) setSaved(false);
   }, [setupScript]);
+
+  useEffect(() => {
+    setEnvironment((requiredEnvironment ?? []).join("\n"));
+  }, [requiredEnvironment]);
 
   return (
     <form
@@ -43,7 +54,10 @@ export function HostSetupScriptForm({
         start(async () => {
           try {
             const result = await mutate(hostId, (current) =>
-              updateHostSetupScript(current, script),
+              updateHostRequiredEnvironment(
+                updateHostSetupScript(current, script),
+                environment.split(/[\s,]+/).filter(Boolean),
+              ),
             );
             if (!result.ok) {
               showToast(result.error, { variant: "destructive", pw: "host-setup-script-error" });
@@ -78,10 +92,27 @@ export function HostSetupScriptForm({
           data-pw="host-setup-script"
         />
       </div>
+      <div className="space-y-1">
+        <Label
+          htmlFor="hostRequiredEnvironment"
+          tip="Variable names every repository child process on this host requires"
+        >
+          Required Environment
+        </Label>
+        <Textarea
+          id="hostRequiredEnvironment"
+          name="requiredEnvironment"
+          rows={4}
+          value={environment}
+          onChange={(event) => setEnvironment(event.target.value)}
+          className="font-mono text-xs"
+          data-pw="host-required-environment"
+        />
+      </div>
       <div className="flex items-center gap-3">
-        <WithTooltip tip="Save only the host-wide setup script">
+        <WithTooltip tip="Save the host-wide setup script and required environment">
           <Button type="submit" disabled={pending} data-pw="host-setup-script-submit">
-            {pending ? "Saving…" : "Save host setup"}
+            {pending ? "Saving…" : "Save host setup and environment"}
           </Button>
         </WithTooltip>
         {saved ? (

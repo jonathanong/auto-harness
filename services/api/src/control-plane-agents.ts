@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import {
+  isHostRuntimeReport,
   normalizeHostCapabilities,
   type HostRuntimeReport,
   type HostCapability,
@@ -19,6 +20,7 @@ import {
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
 
 type ListedHostRuntime = {
   daemonVersion: string | null;
@@ -294,6 +296,14 @@ export function listHosts(state: ControlPlaneState): Array<{
     .map((host) => ({
       ...host,
       repositoryIds: [...new Set([...host.repositoryIds, ...host.repositories.map((r) => r.id)])],
+      environmentReadiness: Object.fromEntries(
+        [...new Set([...host.repositoryIds, ...host.repositories.map((r) => r.id)])].map(
+          (repositoryId) => [
+            repositoryId,
+            repositoryEnvironmentReadiness(state, host.hostId, repositoryId),
+          ],
+        ),
+      ),
     }))
     .toSorted((a, b) => a.hostId.localeCompare(b.hostId));
 }
@@ -326,6 +336,13 @@ export function registerHost(
     consumePendingConnection?: boolean;
   },
 ): { ok: true; connectionId: string } | { ok: false; error: string } {
+  if (
+    opts.runtime !== undefined &&
+    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
+    !isHostRuntimeReport(opts.runtime)
+  ) {
+    return { ok: false, error: "runtime report is invalid" };
+  }
   const nameError = validateRegisterWorktreeNames(state, opts.hostId, opts.worktrees);
   if (nameError) {
     return { ok: false, error: nameError };
@@ -460,6 +477,13 @@ export async function registerHostDurable(
     consumePendingConnection?: boolean;
   },
 ): Promise<{ ok: true; connectionId: string } | { ok: false; error: string }> {
+  if (
+    opts.runtime !== undefined &&
+    opts.runtime.gitReadinessReason !== "git_readiness_unreported" &&
+    !isHostRuntimeReport(opts.runtime)
+  ) {
+    return { ok: false, error: "runtime report is invalid" };
+  }
   if (!state.storage) {
     return registerHost(state, opts);
   }

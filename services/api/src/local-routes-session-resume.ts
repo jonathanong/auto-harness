@@ -118,12 +118,18 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
       )
         return true;
       const missing = result.error === "session not found";
+      const admissionClosed = result.code === "REPOSITORY_ADMISSION_CLOSED";
       const conflict =
+        admissionClosed ||
         existing.type === "scheduled" ||
         /already terminal|must be terminal|no agent|conflicted|changed before/i.test(result.error);
+      let code = "VALIDATION_ERROR";
+      if (conflict) code = "CONFLICT";
+      if (admissionClosed) code = "REPOSITORY_ADMISSION_CLOSED";
+      if (missing) code = "NOT_FOUND";
       send(res, missing ? 404 : conflict ? 409 : 400, {
         error: {
-          code: missing ? "NOT_FOUND" : conflict ? "CONFLICT" : "VALIDATION_ERROR",
+          code,
           message: result.error,
         },
       });

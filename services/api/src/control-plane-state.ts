@@ -64,6 +64,8 @@ export type ControlPlaneState = {
   logs: Map<string, LogRecord[]>;
   schedules: Map<string, ScheduleRecord>;
   repositories: Map<string, RepositoryRecord>;
+  /** Invalidates repository scans that began before a local repository mutation committed. */
+  repositoryRevision: number;
   hostInventories: Map<string, HostInventoryRecord>;
   /** Invalidates host inventory scans that began before a local inventory mutation committed. */
   hostInventoryRevision: number;
@@ -131,6 +133,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     logs: new Map(),
     schedules: new Map(),
     repositories: new Map(),
+    repositoryRevision: 0,
     hostInventories: new Map(),
     hostInventoryRevision: 0,
     providers: new Map(),

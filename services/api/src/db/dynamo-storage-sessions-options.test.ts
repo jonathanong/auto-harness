@@ -39,6 +39,12 @@ beforeAll(async () => {
   client = clients.client;
   tables = await ensureControlPlaneTables({ client, prefix: `AhD35Options${process.pid}` });
   ctx = { doc: clients.doc, tables };
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: tables.repositories,
+      Item: { id: "repo", name: "repo", url: "url", defaultBranch: "main" },
+    }),
+  );
 });
 afterAll(async () => {
   await Promise.all(
@@ -75,6 +81,7 @@ describe("DynamoDB Local optional session transitions", () => {
     expect(
       await tryAcquireHostLock(ctx, {
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "connection",
         replaceExisting: false,
       }),
@@ -82,8 +89,10 @@ describe("DynamoDB Local optional session transitions", () => {
     expect(
       await tryAssignSession(ctx, {
         sessionId: "session",
+        repositoryId: "repo",
         worktreeId: "worktree",
         hostId: "host",
+        hostInventoryVersion: null,
         connectionId: "connection",
         now: "2025-01-01T00:00:00.000Z",
         attemptId: "attempt",

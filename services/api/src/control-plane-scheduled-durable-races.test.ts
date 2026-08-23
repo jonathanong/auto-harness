@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SessionRecord } from "./db/types.ts";
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ScheduledRace");
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -48,6 +48,9 @@ async function register(
   hostId = "host-race",
   repositories: Array<{ id: string; path: string }> = [{ id: "repo-race", path: "/repo" }],
 ) {
+  await Promise.all(
+    repositories.map((repository) => putActiveTestRepository(ctx.storage!, repository.id)),
+  );
   const created = await createControlPlane({
     tablePrefix: ctx.prefix,
     skipEnsureTables: true,

@@ -29,6 +29,9 @@ export function requiredCapability(
   if (pathname === "/api/v1/host/messages") return "agent:protocol";
   if (matchesRoutePrefix(pathname, "/api/v1/scheduler")) return "scheduler:run";
   if (pathname === "/api/v1/hosts/drain") return write ? "fleet:drain" : "authenticated";
+  if (/^\/api\/v1\/repositories\/[^/]+\/(pause|drain|activate)$/.test(pathname)) {
+    return write ? "repositories:operate" : "authenticated";
+  }
   if (
     pathname === "/api/v1/host-inventories" ||
     /^\/api\/v1\/hosts\/[^/]+\/inventory$/.test(pathname)

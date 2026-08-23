@@ -2,7 +2,12 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { mutateInventory, upsertHostRepository, type HostRepository } from "@auto-harness/shared";
+import {
+  mutateInventory,
+  parseRequiredEnvironment,
+  upsertHostRepository,
+  type HostRepository,
+} from "@auto-harness/shared";
 import {
   Button,
   Dialog,
@@ -47,6 +52,25 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
+            const requiredEnvironmentEntry = fd.get("requiredEnvironment");
+            const requiredEnvironmentNames = (
+              typeof requiredEnvironmentEntry === "string" ? requiredEnvironmentEntry : ""
+            )
+              .split(/[\s,]+/)
+              .filter(Boolean);
+            let requiredEnvironment: string[];
+            try {
+              requiredEnvironment = parseRequiredEnvironment(
+                requiredEnvironmentNames,
+                `repository.${repo.id}.requiredEnvironment`,
+              );
+            } catch (error) {
+              showToast(error instanceof Error ? error.message : String(error), {
+                variant: "destructive",
+                pw: `repo-settings-error-${repo.id}`,
+              });
+              return;
+            }
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",
@@ -55,29 +79,53 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               return;
             }
             start(async () => {
-              // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
-              // elsewhere is not silently reverted by this save.
-              const r = await mutateInventory(hostId, (current) =>
-                upsertHostRepository(current, {
-                  id: repo.id,
-                  path,
-                  defaultBranch,
-                  setupScript,
-                  terminalHookScript,
-                }),
-              );
-              if (!r.ok) {
-                showToast(r.error, {
+              try {
+                // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
+                // elsewhere is not silently reverted by this save.
+                const r = await mutateInventory(hostId, (current) =>
+                  upsertHostRepository(current, {
+                    id: repo.id,
+                    path,
+                    defaultBranch,
+                    setupScript,
+                    terminalHookScript,
+                    requiredEnvironment,
+                  }),
+                );
+                if (!r.ok) {
+                  showToast(r.error, {
+                    variant: "destructive",
+                    pw: `repo-settings-error-${repo.id}`,
+                  });
+                  return;
+                }
+                setOpen(false);
+                router.refresh();
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
                   variant: "destructive",
                   pw: `repo-settings-error-${repo.id}`,
                 });
-                return;
               }
-              setOpen(false);
-              router.refresh();
             });
           }}
         >
+          <div className="space-y-1">
+            <Label
+              htmlFor={`required-environment-${repo.id}`}
+              tip="Variable names that must be available to child processes before this host can run the repository"
+            >
+              Required Environment
+            </Label>
+            <Textarea
+              id={`required-environment-${repo.id}`}
+              name="requiredEnvironment"
+              defaultValue={(repo.requiredEnvironment ?? []).join("\n")}
+              rows={3}
+              className="font-mono text-xs"
+              data-pw={`repo-settings-required-environment-${repo.id}`}
+            />
+          </div>
           <div className="space-y-1">
             <Label htmlFor={`path-${repo.id}`} tip="Absolute path on this host">
               Absolute Path

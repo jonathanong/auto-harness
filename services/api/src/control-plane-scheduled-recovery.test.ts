@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const ctx = createDynamoTestCtx("SchedRecover");
@@ -13,6 +13,7 @@ async function setup(suffix: string) {
   const hostId = `host-${suffix}`;
   const repositoryId = `repository-${suffix}`;
   const sessionId = `session-${suffix}`;
+  await putActiveTestRepository(ctx.storage!, repositoryId);
   await ctx.storage!.putCommand({
     id: commandId,
     name: commandId,

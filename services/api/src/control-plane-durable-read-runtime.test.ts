@@ -152,6 +152,7 @@ describe("durable runtime read-through", () => {
         listCommands: async () => [],
         listProviders: async () => [],
         listProviderAccounts: async () => [],
+        listRepositories: async () => [],
         listHostInventories: async () => [],
         listConnections: async () => [
           {

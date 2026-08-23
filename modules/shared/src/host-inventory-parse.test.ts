@@ -45,6 +45,22 @@ describe("parseHostInventory", () => {
     });
   });
 
+  it("rejects requirement sets that cannot fit in one runtime report", () => {
+    expect(() =>
+      parseHostInventory({
+        requiredEnvironment: Array.from({ length: 256 }, (_, index) => `HOST_${index}`),
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            worktrees: [],
+            requiredEnvironment: ["REPOSITORY"],
+          },
+        ],
+      }),
+    ).toThrow("must contain at most 256 distinct names");
+  });
+
   it.each([
     [null, "body must be an object"],
     [[], "body must be an object"],

@@ -19,7 +19,9 @@ import {
   putArchive,
   putHostInventory,
   putRepository,
+  updateRepositorySettings,
 } from "./plane-storage-catalog.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
@@ -121,5 +123,64 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect(catalogItem({ id: "item" })).toEqual({ id: "item" });
     expect(catalogPageItems(undefined)).toEqual([]);
     expect(catalogPageItems(["record"])).toEqual(["record"]);
+  });
+
+  it("transitions repository admission", async () => {
+    const storage = new DynamoPlaneStorageBase(ctx.doc, tables);
+    const repository = {
+      id: "admission-repository",
+      name: "Admission",
+      url: "/admission",
+      defaultBranch: "main",
+      createdAt: "t0",
+      updatedAt: "t0",
+    };
+    await putRepository(ctx, repository);
+    expect(await storage.setRepositoryAdmissionState(repository.id, "paused", "t1")).toMatchObject({
+      admissionState: "paused",
+    });
+    expect(
+      await storage.setRepositoryAdmissionState(repository.id, "draining", "t2"),
+    ).toMatchObject({ admissionState: "draining", drainRequestedAt: "t2" });
+    expect(await storage.setRepositoryAdmissionState(repository.id, "active", "t3")).toBeNull();
+    expect(await storage.completeRepositoryDrain(repository.id, "wrong", "t3")).toBeNull();
+    expect(await storage.completeRepositoryDrain(repository.id, "t2", "t3")).toMatchObject({
+      admissionState: "paused",
+      drainCompletedAt: "t3",
+    });
+    const restartedDrain = await storage.setRepositoryAdmissionState(
+      repository.id,
+      "draining",
+      "t4",
+    );
+    expect(restartedDrain).toMatchObject({ admissionState: "draining" });
+    expect(restartedDrain).not.toHaveProperty("drainCompletedAt");
+    expect(
+      await updateRepositorySettings(ctx, repository.id, { name: "Admission updated" }, "t5"),
+    ).toMatchObject({ name: "Admission updated", admissionState: "draining" });
+    expect(
+      await updateRepositorySettings(
+        ctx,
+        repository.id,
+        {
+          name: "Admission updated again",
+          url: "/updated",
+          defaultBranch: "trunk",
+          setupScript: "echo setup",
+          terminalHookScript: "echo done",
+        },
+        "t6",
+      ),
+    ).toMatchObject({
+      name: "Admission updated again",
+      url: "/updated",
+      defaultBranch: "trunk",
+      setupScript: "echo setup",
+      terminalHookScript: "echo done",
+      admissionState: "draining",
+    });
+    expect(
+      await updateRepositorySettings(ctx, "missing-repository", { name: "Missing" }, "t7"),
+    ).toBeNull();
   });
 });

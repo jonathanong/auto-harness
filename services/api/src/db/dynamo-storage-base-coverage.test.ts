@@ -124,6 +124,14 @@ describe("DynamoPlaneStorageBase", () => {
       }),
     ).toBe(false);
     expect(
+      await storage.skipScheduleForClosedRepository({
+        scheduleId: "missing",
+        repositoryId: "repository",
+        expectedNextRunAt: "t",
+        newNextRunAt: "later",
+      }),
+    ).toBe(false);
+    expect(
       await storage.skipScheduleForActiveConcurrency({
         scheduleId: "missing",
         expectedNextRunAt: "t",

@@ -9,6 +9,7 @@ import {
   getConcurrencyLock,
   getSession,
   isCreateSessionConflict,
+  isRepositoryAdmissionClosed,
   listAllSessions,
   listSessionsByStatus,
   putSession,
@@ -39,6 +40,12 @@ beforeAll(async () => {
   client = clients.client;
   tables = await ensureControlPlaneTables({ client, prefix: `AhD35Create${process.pid}` });
   ctx = { doc: clients.doc, tables };
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: tables.repositories,
+      Item: { id: "repo", name: "repo", url: "url", defaultBranch: "main" },
+    }),
+  );
 });
 afterAll(async () => {
   await Promise.all(
@@ -158,5 +165,23 @@ describe("DynamoDB Local session creation", () => {
         status: "queued",
       }),
     ).rejects.toThrow("could not resolve concurrency lock for raced");
+  });
+
+  it("rejects creation while repository admission is closed", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.repositories,
+        Item: { id: "closed-repo", admissionState: "paused" },
+      }),
+    );
+    const rejected = createSession(ctx, {
+      ...base,
+      id: "closed-session",
+      repositoryId: "closed-repo",
+      status: "queued",
+    });
+    await expect(rejected).rejects.toSatisfy((error: unknown) =>
+      isRepositoryAdmissionClosed(error),
+    );
   });
 });

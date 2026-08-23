@@ -30,6 +30,7 @@ import {
   type OwnedDeletionMarker,
 } from "./plane-storage-deletion-markers.ts";
 import type { SessionRecord } from "./types.ts";
+import type { RepositoryAdmissionState } from "@auto-harness/shared";
 import { sessionToItem } from "./plane-storage-types.ts";
 import {
   getConcurrencyLock,
@@ -362,6 +363,49 @@ export async function putRepository(ctx: PlaneStorageCtx, rec: RepositoryRecord)
   );
 }
 
+/** Update operator-editable settings without overwriting admission/drain fields. */
+export async function updateRepositorySettings(
+  ctx: PlaneStorageCtx,
+  id: string,
+  patch: Partial<
+    Pick<RepositoryRecord, "name" | "url" | "defaultBranch" | "setupScript" | "terminalHookScript">
+  >,
+  updatedAt: string,
+): Promise<RepositoryRecord | null> {
+  const names: Record<string, string> = { "#updatedAt": "updatedAt" };
+  const values: Record<string, unknown> = { ":updatedAt": updatedAt };
+  const sets = ["#updatedAt = :updatedAt"];
+  for (const key of [
+    "name",
+    "url",
+    "defaultBranch",
+    "setupScript",
+    "terminalHookScript",
+  ] as const) {
+    if (patch[key] === undefined) continue;
+    names[`#${key}`] = key;
+    values[`:${key}`] = patch[key];
+    sets.push(`#${key} = :${key}`);
+  }
+  try {
+    const result = await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.repositories,
+        Key: { id },
+        UpdateExpression: `SET ${sets.join(", ")}`,
+        ConditionExpression: "attribute_exists(id)",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: values,
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return catalogItem(result.Attributes as RepositoryRecord | undefined);
+  } catch (error) {
+    if (isConditionalFailed(error)) return null;
+    throw error;
+  }
+}
+
 /** Insert a repository without allowing a stale process to overwrite it. */
 export async function createRepository(
   ctx: PlaneStorageCtx,
@@ -386,7 +430,7 @@ export async function getRepository(
   id: string,
 ): Promise<RepositoryRecord | null> {
   const res = await ctx.doc.send(
-    new GetCommand({ TableName: ctx.tables.repositories, Key: { id } }),
+    new GetCommand({ TableName: ctx.tables.repositories, Key: { id }, ConsistentRead: true }),
   );
   return catalogItem(res.Item as RepositoryRecord | undefined);
 }
@@ -406,6 +450,76 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
+}
+
+export async function setRepositoryAdmissionState(
+  ctx: PlaneStorageCtx,
+  id: string,
+  state: RepositoryAdmissionState,
+  now: string,
+): Promise<RepositoryRecord | null> {
+  const names = { "#state": "admissionState" };
+  const activating = state === "active";
+  const resumingAdmission = state !== "draining";
+  const draining = state === "draining";
+  try {
+    const res = await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.repositories,
+        Key: { id },
+        UpdateExpression: [
+          "SET #state = :state, admissionStateChangedAt = :now, updatedAt = :now",
+          ...(draining ? [", drainRequestedAt = :now REMOVE drainCompletedAt"] : []),
+          ...(activating ? [" REMOVE drainRequestedAt, drainCompletedAt"] : []),
+        ].join(""),
+        ConditionExpression: resumingAdmission
+          ? "attribute_exists(id) AND (attribute_not_exists(#state) OR #state <> :draining)"
+          : "attribute_exists(id)",
+        ExpressionAttributeNames: names,
+        ExpressionAttributeValues: {
+          ":state": state,
+          ":now": now,
+          ...(resumingAdmission ? { ":draining": "draining" } : {}),
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return catalogItem(res.Attributes as RepositoryRecord | undefined);
+  } catch (err) {
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
+    throw err;
+  }
+}
+
+/** Finish a drain only if this repository is still behind the same drain fence. */
+export async function completeRepositoryDrain(
+  ctx: PlaneStorageCtx,
+  id: string,
+  drainRequestedAt: string,
+  now: string,
+): Promise<RepositoryRecord | null> {
+  try {
+    const res = await ctx.doc.send(
+      new UpdateCommand({
+        TableName: ctx.tables.repositories,
+        Key: { id },
+        UpdateExpression:
+          "SET admissionState = :paused, admissionStateChangedAt = :now, drainCompletedAt = :now, updatedAt = :now",
+        ConditionExpression: "admissionState = :draining AND drainRequestedAt = :drainRequestedAt",
+        ExpressionAttributeValues: {
+          ":paused": "paused",
+          ":draining": "draining",
+          ":drainRequestedAt": drainRequestedAt,
+          ":now": now,
+        },
+        ReturnValues: "ALL_NEW",
+      }),
+    );
+    return catalogItem(res.Attributes as RepositoryRecord | undefined);
+  } catch (err) {
+    if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
+    throw err;
+  }
 }
 
 export async function deleteRepository(
@@ -455,6 +569,7 @@ export async function tryClaimSchedule(
 export type ScheduleCreateResult =
   | { kind: "created" }
   | { kind: "duplicate"; session: SessionRecord }
+  | { kind: "admission_closed" }
   | { kind: "lost" };
 
 export async function tryClaimScheduleAndCreateSession(
@@ -486,6 +601,15 @@ export async function tryClaimScheduleAndCreateSession(
             },
           },
           {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.session.repositoryId },
+              ConditionExpression:
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+              ExpressionAttributeValues: { ":active": "active" },
+            },
+          },
+          {
             Put: {
               TableName: ctx.tables.sessions,
               Item: sessionToItem(opts.session),
@@ -509,10 +633,13 @@ export async function tryClaimScheduleAndCreateSession(
     return { kind: "created" };
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
-      // The schedule cursor is item 0, the session insert is item 1, and
-      // the concurrency lock (when present) is item 2. Only a failed lock
+      if (isConditionalTransactionFailureAt(err, 1)) {
+        return { kind: "admission_closed" };
+      }
+      // The schedule cursor is item 0, repository fence item 1, the session
+      // insert item 2, and the concurrency lock (when present) item 3. Only a failed lock
       // condition means an active session can be a legitimate duplicate.
-      if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, 2)) {
+      if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, 3)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
         if (lock) {
           const current = await getSession(ctx, lock.sessionId, true);
@@ -562,6 +689,63 @@ export async function skipScheduleForActiveConcurrency(
               Key: { concurrencyId: opts.concurrencyId },
               ConditionExpression: "sessionId = :sessionId",
               ExpressionAttributeValues: { ":sessionId": opts.sessionId },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
+}
+
+/**
+ * Atomically acknowledge a closed-admission occurrence by advancing its cursor.
+ *
+ * A failed create transaction is only an advisory observation: activation may
+ * run before this follow-up starts. The repository condition here is therefore
+ * part of the authoritative observation. A successful result proves that the
+ * same DynamoDB transaction saw both the old cursor and paused/draining
+ * admission, so activation cannot reopen this occurrence as catch-up work.
+ */
+export async function skipScheduleForClosedRepository(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    repositoryId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt",
+              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.repositoryId },
+              // A missing legacy admissionState means active. Do not allow this
+              // closed-only cursor advance after the repository has reopened.
+              ConditionExpression: "admissionState IN (:paused, :draining)",
+              ExpressionAttributeValues: {
+                ":paused": "paused",
+                ":draining": "draining",
+              },
             },
           },
         ],

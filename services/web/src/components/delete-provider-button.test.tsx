@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { describe, expect, it } from "vitest";
 
-import { createRequestFake, field, mountForm, press, router } from "./form-test-helpers.tsx";
+import { createRequestFake, field, mountForm, press } from "./form-test-helpers.tsx";
 import { DeleteProviderButton } from "./delete-provider-button.tsx";
 
 function open(view: ReturnType<typeof mountForm>) {
@@ -30,12 +30,14 @@ describe("DeleteProviderButton", () => {
     let finish!: (response: Response) => void;
     const pending = new Promise<Response>((resolve) => (finish = resolve));
     const { request, requests } = createRequestFake(pending);
+    const navigated: string[] = [];
     const view = mountForm(
       <DeleteProviderButton
         providerId="provider/1"
         accountCount={0}
         commandCount={0}
         request={request}
+        navigate={(href) => navigated.push(href)}
       />,
     );
     open(view);
@@ -46,8 +48,7 @@ describe("DeleteProviderButton", () => {
     expect(requests).toEqual([
       ["/api/v1/providers/provider%2F1", expect.objectContaining({ method: "DELETE" })],
     ]);
-    expect(router.push).toHaveBeenCalledWith("/providers");
-    expect(router.refresh).toHaveBeenCalledOnce();
+    expect(navigated).toEqual(["/providers"]);
     view.unmount();
 
     const cancelView = mountForm(

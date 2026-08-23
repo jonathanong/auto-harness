@@ -11,10 +11,10 @@ import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers
 function makeDurableSchedulePlane() {
   const plane = new ControlPlane({
     idFactory: () => "scheduled-session",
-    scheduleIdFactory: () => "nightly",
     now: () => "2026-01-01T00:00:00.000Z",
   });
   seedBaseCommand(plane);
+  plane.createRepository({ id: "repo-1", name: "repo-1", url: "r" });
   const schedule = putScheduleOrThrow(plane, {
     repositoryId: "repo-1",
     name: "nightly",

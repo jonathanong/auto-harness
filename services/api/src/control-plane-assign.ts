@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import type { HostWireMessage } from "@auto-harness/shared";
+import { type HostWireMessage } from "@auto-harness/shared";
 
 import type { WorktreeRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
@@ -21,6 +21,8 @@ import {
   listWorktreesForRepositoryDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
+import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 
 function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
@@ -55,6 +57,8 @@ export function assignQueued(
         persistExpired(state, session);
         continue;
       }
+      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
+        continue;
       if (session.hostId && session.worktreeId && session.ackReceivedAt) {
         continue;
       }
@@ -66,6 +70,7 @@ export function assignQueued(
           w.status === "idle" &&
           w.online &&
           hostGitReady(state, w.hostId) &&
+          hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -192,7 +197,6 @@ export async function assignQueuedDurable(
       .filter((s) => s.status === "queued" && s.queueShard === shard && s.type !== "scheduled")
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
-      await listWorktreesForRepositoryDurable(state, session.repositoryId);
       if (Date.parse(session.queueExpiresAt) <= nowMs) {
         const expired = await state.storage.expireQueuedSession({
           sessionId: session.id,
@@ -210,6 +214,9 @@ export async function assignQueuedDurable(
           });
         continue;
       }
+      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState))
+        continue;
+      await listWorktreesForRepositoryDurable(state, session.repositoryId);
       if (session.hostId && session.worktreeId && session.ackReceivedAt) {
         continue;
       }
@@ -219,6 +226,7 @@ export async function assignQueuedDurable(
           w.status === "idle" &&
           w.online &&
           hostGitReady(state, w.hostId) &&
+          hostEnvironmentReady(state, w.hostId, session.repositoryId) &&
           !state.drainingHosts.has(w.hostId) &&
           !state.disconnectedHosts.has(w.hostId) &&
           session.requiredLabels.every((l) => w.labels.includes(l)),
@@ -276,8 +284,12 @@ export async function assignQueuedDurable(
           const attemptId = state.attemptIdFactory();
           const won = await state.storage.tryAssignSession({
             sessionId: session.id,
+            repositoryId: session.repositoryId,
             worktreeId: candidate.id,
             hostId: candidate.hostId,
+            hostInventoryVersion: state.hostInventories.has(candidate.hostId)
+              ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
+              : null,
             connectionId,
             now: nowIso,
             resolvedArgv: route.resolvedArgv,
@@ -451,6 +463,7 @@ function allIdle(
       worktree.status === "idle" &&
       worktree.online &&
       hostGitReady(state, worktree.hostId) &&
+      hostEnvironmentReady(state, worktree.hostId, session.repositoryId) &&
       !state.drainingHosts.has(worktree.hostId) &&
       !state.disconnectedHosts.has(worktree.hostId) &&
       session.requiredLabels.every((label) => worktree.labels.includes(label)),

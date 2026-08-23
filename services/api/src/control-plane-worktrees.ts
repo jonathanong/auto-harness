@@ -4,6 +4,9 @@ import { persistWorktree, queueWrite } from "./control-plane-state.ts";
 import { offlineHostAndRequeueDurableImpl } from "./control-plane-worktrees-disconnect.ts";
 import { releaseScheduledLeaseLocal } from "./control-plane-scheduled-assign.ts";
 import { queueReconnectSession } from "./control-plane-reconnect-session.ts";
+import { releaseWorktree } from "./control-plane-worktree-release.ts";
+
+export { releaseWorktree } from "./control-plane-worktree-release.ts";
 
 export function seedWorktree(state: ControlPlaneState, record: WorktreeRecord): void {
   persistWorktree(state, { ...record });
@@ -42,20 +45,6 @@ export function tryClaimWorktree(
     );
   }
   return true;
-}
-
-export function releaseWorktree(state: ControlPlaneState, worktreeId: string): void {
-  const wt = state.worktrees.get(worktreeId);
-  if (!wt) {
-    return;
-  }
-  wt.status = "idle";
-  wt.currentSessionId = null;
-  // Drain / disconnect are sticky: released worktrees must not become assignable.
-  if (state.drainingHosts.has(wt.hostId) || state.disconnectedHosts.has(wt.hostId)) {
-    wt.online = false;
-  }
-  persistWorktree(state, { ...wt });
 }
 
 /** Offline every worktree for hostId; requeue any running sessions. */

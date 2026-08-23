@@ -52,6 +52,17 @@ class CatalogDeletionInProgressError extends Error {
   }
 }
 
+class RepositoryAdmissionClosedError extends Error {
+  constructor() {
+    super("repository admission is closed");
+    this.name = "RepositoryAdmissionClosedError";
+  }
+}
+
+export function isRepositoryAdmissionClosed(err: unknown): boolean {
+  return err instanceof Error && err.name === "RepositoryAdmissionClosedError";
+}
+
 export function isCreateSessionConflict(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
   return [
@@ -90,34 +101,35 @@ export async function createSession(
 ): Promise<CreateSessionResult> {
   if (!session.concurrencyId) {
     try {
-      if (markers.length === 0) {
-        await ctx.doc.send(
-          new PutCommand({
-            TableName: ctx.tables.sessions,
-            Item: sessionToItem(session),
-            ConditionExpression: "attribute_not_exists(id)",
-          }),
-        );
-      } else {
-        await ctx.doc.send(
-          new TransactWriteCommand({
-            TransactItems: [
-              ...withMarkerTable(ctx, markerConditions([...markers])),
-              {
-                Put: {
-                  TableName: ctx.tables.sessions,
-                  Item: sessionToItem(session),
-                  ConditionExpression: "attribute_not_exists(id)",
-                },
+      await ctx.doc.send(
+        new TransactWriteCommand({
+          TransactItems: [
+            ...withMarkerTable(ctx, markerConditions([...markers])),
+            {
+              ConditionCheck: {
+                TableName: ctx.tables.repositories,
+                Key: { id: session.repositoryId },
+                ConditionExpression:
+                  "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+                ExpressionAttributeValues: { ":active": "active" },
               },
-            ],
-          }),
-        );
-      }
+            },
+            {
+              Put: {
+                TableName: ctx.tables.sessions,
+                Item: sessionToItem(session),
+                ConditionExpression: "attribute_not_exists(id)",
+              },
+            },
+          ],
+        }),
+      );
     } catch (err) {
-      if (isConditionalFailed(err)) throw new SessionIdCollisionError(session.id);
       if (isConditionalTransactionFailed(err)) {
         if (isConditionalTransactionFailureAt(err, markers.length)) {
+          throw new RepositoryAdmissionClosedError();
+        }
+        if (isConditionalTransactionFailureAt(err, markers.length + 1)) {
           throw new SessionIdCollisionError(session.id);
         }
         throw new CatalogDeletionInProgressError();
@@ -133,6 +145,15 @@ export async function createSession(
         new TransactWriteCommand({
           TransactItems: [
             ...withMarkerTable(ctx, markerConditions([...markers])),
+            {
+              ConditionCheck: {
+                TableName: ctx.tables.repositories,
+                Key: { id: session.repositoryId },
+                ConditionExpression:
+                  "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+                ExpressionAttributeValues: { ":active": "active" },
+              },
+            },
             {
               Put: {
                 TableName: ctx.tables.concurrencyLocks,
@@ -164,8 +185,11 @@ export async function createSession(
       ) {
         throw new CatalogDeletionInProgressError();
       }
-      const lockConditionFailed = isConditionalTransactionFailureAt(err, markerCount);
-      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 1);
+      if (isConditionalTransactionFailureAt(err, markerCount)) {
+        throw new RepositoryAdmissionClosedError();
+      }
+      const lockConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 1);
+      const sessionIdConditionFailed = isConditionalTransactionFailureAt(err, markerCount + 2);
       // When both conditions lose, the active lock is authoritative: it may
       // already own this same session ID and should still be returned as the
       // duplicate. A session-only collision can never succeed on retry.
@@ -471,7 +495,15 @@ export async function listAllWorktrees(
 export async function listWorktreesForRepo(
   ctx: PlaneStorageCtx,
   repositoryId: string,
+  consistentRead = false,
 ): Promise<WorktreeRecord[]> {
+  // The repository GSI is eventually consistent. Drain completion must not infer that a
+  // lease is gone from a stale index, so use an authoritative base-table scan when requested.
+  if (consistentRead) {
+    return (await listAllWorktrees(ctx, true)).filter(
+      (worktree) => worktree.repositoryId === repositoryId,
+    );
+  }
   const records: WorktreeRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
@@ -534,8 +566,10 @@ export async function tryAssignSession(
   ctx: PlaneStorageCtx,
   opts: {
     sessionId: string;
+    repositoryId: string;
     worktreeId: string;
     hostId: string;
+    hostInventoryVersion: number | null;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -577,6 +611,33 @@ export async function tryAssignSession(
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.repositoryId },
+              ConditionExpression:
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
+              ExpressionAttributeValues: { ":active": "active" },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.hostInventories,
+              Key: { hostId: opts.hostId },
+              ConditionExpression:
+                opts.hostInventoryVersion === null
+                  ? "attribute_not_exists(hostId)"
+                  : "version = :inventoryVersion OR (attribute_not_exists(version) AND :inventoryVersion = :zero)",
+              ...(opts.hostInventoryVersion === null
+                ? {}
+                : {
+                    ExpressionAttributeValues: {
+                      ":inventoryVersion": opts.hostInventoryVersion,
+                      ":zero": 0,
+                    },
+                  }),
+            },
+          },
           {
             Update: {
               TableName: ctx.tables.worktrees,

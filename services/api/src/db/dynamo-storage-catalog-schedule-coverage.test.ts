@@ -3,7 +3,7 @@ import {
   DeleteTableCommand,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
-import { DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DeleteCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -13,6 +13,8 @@ import {
   isActiveSession,
   putSchedule,
   scheduleAttributes,
+  setRepositoryAdmissionState,
+  skipScheduleForClosedRepository,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
@@ -57,6 +59,12 @@ describe("DynamoDB Local schedule catalog adapters", () => {
   });
 
   it("fences scheduled writes", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.repositories,
+        Item: { id: "repository", name: "repository", url: "url", defaultBranch: "main" },
+      }),
+    );
     const schedule = {
       id: "schedule",
       repositoryId: "repository",
@@ -158,5 +166,25 @@ describe("DynamoDB Local schedule catalog adapters", () => {
         } as never,
       }),
     ).resolves.toEqual({ kind: "lost" });
+    await putSchedule(ctx, { ...schedule, id: "closed-schedule", nextRunAt: "closed-one" });
+    expect(
+      await setRepositoryAdmissionState(ctx, "repository", "paused", "closed-at"),
+    ).not.toBeNull();
+    expect(
+      await skipScheduleForClosedRepository(ctx, {
+        scheduleId: "closed-schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "closed-one",
+        newNextRunAt: "closed-two",
+      }),
+    ).toBe(true);
+    expect(
+      await skipScheduleForClosedRepository(ctx, {
+        scheduleId: "closed-schedule",
+        repositoryId: "repository",
+        expectedNextRunAt: "closed-one",
+        newNextRunAt: "closed-three",
+      }),
+    ).toBe(false);
   });
 });

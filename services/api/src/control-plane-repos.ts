@@ -1,4 +1,4 @@
-import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+import { isValidSlugName, repositoryAdmissionState, SLUG_NAME_HINT } from "@auto-harness/shared";
 
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -34,6 +34,7 @@ export function createRepository(
   const result = prepareCreateRepository(state, input);
   if (!result.ok) return result;
   state.repositories.set(result.repository.id, result.repository);
+  state.repositoryRevision += 1;
   if (state.storage) {
     queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
   }
@@ -70,6 +71,8 @@ function prepareCreateRepository(
     name: input.name,
     url: input.url,
     defaultBranch: input.defaultBranch ?? "main",
+    admissionState: "active",
+    admissionStateChangedAt: at,
     createdAt: at,
     updatedAt: at,
     ...(input.setupScript !== undefined ? { setupScript: input.setupScript } : {}),
@@ -95,27 +98,40 @@ export async function createRepositoryDurable(
   if (!state.storage.createRepository) {
     await state.storage.putRepository({ ...result.repository });
     state.repositories.set(result.repository.id, result.repository);
+    state.repositoryRevision += 1;
     return { ok: true, repository: { ...result.repository } };
   }
   const created = await state.storage.createRepository({ ...result.repository });
   if (!created) {
     const authoritative = await state.storage.getRepository(result.repository.id);
-    if (authoritative) state.repositories.set(authoritative.id, authoritative);
+    if (authoritative) {
+      state.repositories.set(authoritative.id, authoritative);
+      state.repositoryRevision += 1;
+    }
     return { ok: false, error: "repository already exists" };
   }
   state.repositories.set(result.repository.id, result.repository);
+  state.repositoryRevision += 1;
   return { ok: true, repository: { ...result.repository } };
 }
 
 export function getRepository(state: ControlPlaneState, id: string): RepositoryRecord | null {
   const r = state.repositories.get(id);
-  return r ? { ...r } : null;
+  return r ? { ...r, admissionState: repositoryAdmissionState(r.admissionState) } : null;
 }
 
 export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
   return [...state.repositories.values()]
     .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .map((r) => ({ ...r }));
+    .flatMap((r) => {
+      try {
+        return [{ ...r, admissionState: repositoryAdmissionState(r.admissionState) }];
+      } catch {
+        // A malformed persisted row must not hide healthy repositories from the catalog.
+        // Omit the invalid row until an operator repairs it; admission checks still fail closed.
+        return [];
+      }
+    });
 }
 
 export function updateRepository(
@@ -132,8 +148,11 @@ export function updateRepository(
   const result = prepareUpdateRepository(state, id, patch);
   if (!result.ok) return result;
   state.repositories.set(id, result.repository);
+  state.repositoryRevision += 1;
   if (state.storage) {
-    queueWrite(state, (storage) => storage!.putRepository({ ...result.repository }));
+    queueWrite(state, async (storage) => {
+      await storage!.updateRepositorySettings(id, patch, result.repository.updatedAt);
+    });
   }
   return { ok: true, repository: { ...result.repository } };
 }
@@ -185,7 +204,13 @@ export async function updateRepositoryDurable(
   await listRepositoriesDurable(state);
   const result = prepareUpdateRepository(state, id, patch);
   if (!result.ok) return result;
-  await state.storage.putRepository({ ...result.repository });
-  state.repositories.set(id, result.repository);
-  return { ok: true, repository: { ...result.repository } };
+  const updated = await state.storage.updateRepositorySettings(
+    id,
+    patch,
+    result.repository.updatedAt,
+  );
+  if (!updated) return { ok: false, error: "repository not found" };
+  state.repositories.set(id, updated);
+  state.repositoryRevision += 1;
+  return { ok: true, repository: { ...updated } };
 }

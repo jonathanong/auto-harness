@@ -99,6 +99,8 @@ test.describe("control plane hosts", () => {
         await expect(details).toContainText(`/tmp/${worktreeId}`);
         await expect(details).toContainText(`Repository: ${repositoryId}`);
         await expect(details).toContainText("Current session: None");
+        await expect(page.getByTestId("host-environment-readiness")).toHaveCount(0);
+        await expect(page.getByTestId(`host-environment-readiness-${repositoryId}`)).toHaveCount(0);
       } finally {
         await removeHostRepo(request, repositoryId);
       }
@@ -175,6 +177,9 @@ test.describe("control plane hosts", () => {
           `/tmp/${repoId}`,
         );
         await expect(page.getByTestId(`repo-settings-branch-${repo.id}`)).toHaveValue("main");
+        await expect(
+          page.getByTestId(`repo-settings-required-environment-${repo.id}`),
+        ).toBeVisible();
         await expect(page.getByTestId(`repo-settings-setup-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-hook-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-error-${repo.id}`)).toHaveCount(0);

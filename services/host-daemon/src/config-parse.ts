@@ -1,4 +1,9 @@
-import { parseProviderAccountOverrides, parseProviderAccounts } from "@auto-harness/shared";
+import {
+  assertHostRepositoryRequiredEnvironmentLimit,
+  parseProviderAccountOverrides,
+  parseProviderAccounts,
+  parseRequiredEnvironment,
+} from "@auto-harness/shared";
 
 import type { DaemonConfig, RepositoryConfig, WorktreeConfig } from "./config-types.ts";
 
@@ -74,6 +79,11 @@ function parseRepository(raw: unknown, index: number): RepositoryConfig {
     }
     repo.terminalHookScript = raw.terminalHookScript;
   }
+  const requiredEnvironment = parseRequiredEnvironment(
+    raw.requiredEnvironment,
+    `repository.${id}.requiredEnvironment`,
+  );
+  if (requiredEnvironment.length) repo.requiredEnvironment = requiredEnvironment;
   const repoOverrides = parseProviderAccountOverrides(
     raw.providerAccountOverrides,
     `repository.${id}`,
@@ -116,6 +126,15 @@ export function parseDaemonConfig(
     }
     config.setupScript = raw.setupScript;
   }
+  const requiredEnvironment = parseRequiredEnvironment(raw.requiredEnvironment);
+  for (const repository of config.repositories) {
+    assertHostRepositoryRequiredEnvironmentLimit(
+      requiredEnvironment,
+      repository.requiredEnvironment,
+      `repository.${repository.id}.requiredEnvironment`,
+    );
+  }
+  if (requiredEnvironment.length) config.requiredEnvironment = requiredEnvironment;
   if (typeof raw.apiUrl === "string") {
     config.apiUrl = raw.apiUrl;
   }

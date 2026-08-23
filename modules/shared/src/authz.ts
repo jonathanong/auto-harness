@@ -5,6 +5,7 @@ export type Capability =
   | "sessions:cancel-any"
   | "sessions:archive"
   | "schedules:write"
+  | "repositories:operate"
   | "fleet:drain"
   | "fleet:inventory"
   | "providers:accounts"
@@ -20,6 +21,7 @@ export const CAPABILITIES = [
   "sessions:cancel-any",
   "sessions:archive",
   "schedules:write",
+  "repositories:operate",
   "fleet:drain",
   "fleet:inventory",
   "providers:accounts",
@@ -40,6 +42,7 @@ const OPERATOR_CAPABILITIES = [
   ...AUTHOR_CAPABILITIES,
   "sessions:cancel-any",
   "schedules:write",
+  "repositories:operate",
   "fleet:drain",
 ] as const satisfies readonly Capability[];
 

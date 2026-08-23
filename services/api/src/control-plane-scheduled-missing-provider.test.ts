@@ -5,7 +5,7 @@ import {
   buildProviderCatalog,
   resolveScheduledSessionTarget,
 } from "./control-plane-session-target.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ScheduledMissingProvider");
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -13,6 +13,7 @@ const NOW = "2026-01-01T00:00:00.000Z";
 describe("scheduled provider deletion", () => {
   it("evicts a deleted account and immediately assigns its fallback", async () => {
     if (!ctx.available || !ctx.storage) return;
+    await putActiveTestRepository(ctx.storage, "missing-provider-repo");
     const created = await createControlPlane({
       tablePrefix: ctx.prefix,
       skipEnsureTables: true,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
-import { createDynamoTestCtx } from "./db/dynamo-test-helpers.ts";
+import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("ScheduledCancelRace");
 const NOW = "2026-01-01T00:00:00.000Z";
@@ -10,6 +10,7 @@ const REPOSITORY_ID = "cancel-race-repo";
 const COMMAND_ID = "cancel-race-command";
 
 async function registeredPlane(connectionId: string) {
+  await putActiveTestRepository(ctx.storage!, REPOSITORY_ID);
   const created = await createControlPlane({
     tablePrefix: ctx.prefix,
     skipEnsureTables: true,

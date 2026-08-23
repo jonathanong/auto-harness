@@ -30,7 +30,11 @@ function schedule(ref?: string): ScheduleRecord {
 function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorageCtx {
   return {
     doc: { send } as never,
-    tables: { schedules: "Schedules", concurrencyLocks: "Locks" } as never,
+    tables: {
+      schedules: "Schedules",
+      concurrencyLocks: "Locks",
+      repositories: "Repositories",
+    } as never,
   };
 }
 
@@ -102,6 +106,43 @@ describe("durable schedule creation", () => {
       }),
     ).resolves.toEqual({ kind: "lost" });
     expect(calls).toBe(1);
+  });
+
+  it("reports a repository admission fence loss", async () => {
+    const ctx = scheduleCtx(async () => {
+      throw {
+        name: "TransactionCanceledException",
+        CancellationReasons: [
+          { Code: "None" },
+          { Code: "ConditionalCheckFailed" },
+          { Code: "None" },
+        ],
+      };
+    });
+    await expect(
+      tryClaimScheduleAndCreateSession(ctx, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "one",
+        session: {
+          id: "session-1",
+          repositoryId: "repo-1",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetLabels: ["command"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+        },
+      }),
+    ).resolves.toEqual({ kind: "admission_closed" });
   });
 });
 

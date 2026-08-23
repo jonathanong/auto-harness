@@ -52,9 +52,15 @@ describe("HostSetupScriptForm", () => {
     const view = mount(<HostSetupScriptForm hostId="host/one" setupScript="old" mutate={mutate} />);
     expect(field<HTMLTextAreaElement>(view.container, "host-setup-script").value).toBe("old");
     setValue(field(view.container, "host-setup-script"), "source ~/.zshrc");
+    setValue(field(view.container, "host-required-environment"), " REGION\nTOKEN ");
     await submit(field(view.container, "form-host-setup-script"));
     expect(calls).toEqual(["host/one"]);
-    expect(written).toEqual({ ...current, setupScript: "source ~/.zshrc", capabilities: [] });
+    expect(written).toEqual({
+      ...current,
+      setupScript: "source ~/.zshrc",
+      requiredEnvironment: ["REGION", "TOKEN"],
+      capabilities: [],
+    });
     expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();

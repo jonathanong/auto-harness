@@ -2,6 +2,7 @@ import type { HostInventoryRecord, RepositoryRecord } from "./db/plane-storage.t
 import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
+import * as repositoryAdmission from "./control-plane-repository-admission.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import { updateScheduleDurable } from "./control-plane-schedules-durable.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
@@ -113,6 +114,22 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
 
   async deleteRepositoryDurable(id: string): Promise<ReturnType<typeof repos.deleteRepository>> {
     return repos.deleteRepositoryDurable(this.state, id);
+  }
+
+  pauseRepositoryDurable(id: string) {
+    return repositoryAdmission.setRepositoryAdmissionDurable(this.state, id, "paused");
+  }
+
+  activateRepositoryDurable(id: string) {
+    return repositoryAdmission.setRepositoryAdmissionDurable(this.state, id, "active");
+  }
+
+  drainRepositoryDurable(id: string) {
+    return repositoryAdmission.drainRepositoryDurable(this.state, id);
+  }
+
+  reconcileRepositoryDrainsDurable() {
+    return repositoryAdmission.reconcileRepositoryDrainsDurable(this.state);
   }
 
   putHostInventory(

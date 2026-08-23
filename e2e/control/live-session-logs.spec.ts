@@ -1,5 +1,6 @@
 /* eslint-disable max-lines -- one end-to-end flow owns the host, viewer, and terminal lifecycle. */
 import { expect, test } from "@playwright/test";
+import { createCatalogRepository } from "../local-1-host.ts";
 
 const API = `http://127.0.0.1:${7430 + portOffset()}`;
 
@@ -21,7 +22,7 @@ test.describe("live session logs", () => {
     });
     const suffix = `${test.info().parallelIndex}-${Date.now()}`;
     const hostId = `pw-live-host-${suffix}`;
-    const repoId = `pw-live-repo-${suffix}`;
+    const repoId = await createCatalogRepository(request, `pw-live-repo-${suffix}`);
     const worktreeId = `pw-live-worktree-${suffix}`;
     const commandName = `pw-live-command-${suffix}`;
     let host: Awaited<ReturnType<typeof connectHost>> | undefined;

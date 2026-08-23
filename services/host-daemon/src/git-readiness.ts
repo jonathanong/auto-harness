@@ -1,4 +1,4 @@
-import type { HostRuntimeReport } from "@auto-harness/shared";
+import { environmentNamesAreCaseSensitive, type HostRuntimeReport } from "@auto-harness/shared";
 import daemonPackage from "../package.json" with { type: "json" };
 
 import type { ProcessRunner } from "./executor.ts";
@@ -28,7 +28,10 @@ export function gitVersionIsSupported(version: string): boolean {
   return major > MIN_GIT_MAJOR || (major === MIN_GIT_MAJOR && minor >= MIN_GIT_MINOR);
 }
 
-export async function probeGitReadiness(runner: ProcessRunner): Promise<HostRuntimeReport> {
+export async function probeGitReadiness(
+  runner: ProcessRunner,
+  platform = process.platform,
+): Promise<HostRuntimeReport> {
   let stdout = "";
   try {
     const result = await runner.run({
@@ -40,10 +43,10 @@ export async function probeGitReadiness(runner: ProcessRunner): Promise<HostRunt
       },
     });
     if (result.exitCode !== 0) {
-      return unavailable();
+      return unavailable(platform);
     }
   } catch {
-    return unavailable();
+    return unavailable(platform);
   }
   const gitVersion = parseGitVersion(stdout);
   if (!gitVersion) {
@@ -52,6 +55,7 @@ export async function probeGitReadiness(runner: ProcessRunner): Promise<HostRunt
       gitVersion: null,
       gitReady: false,
       gitReadinessReason: "git_version_unparseable",
+      environmentNamesCaseSensitive: environmentNamesAreCaseSensitive(platform),
     };
   }
   if (!gitVersionIsSupported(gitVersion)) {
@@ -60,16 +64,23 @@ export async function probeGitReadiness(runner: ProcessRunner): Promise<HostRunt
       gitVersion,
       gitReady: false,
       gitReadinessReason: "git_version_unsupported",
+      environmentNamesCaseSensitive: environmentNamesAreCaseSensitive(platform),
     };
   }
-  return { daemonVersion: DAEMON_VERSION, gitVersion, gitReady: true };
+  return {
+    daemonVersion: DAEMON_VERSION,
+    gitVersion,
+    gitReady: true,
+    environmentNamesCaseSensitive: environmentNamesAreCaseSensitive(platform),
+  };
 }
 
-function unavailable(): HostRuntimeReport {
+function unavailable(platform: string): HostRuntimeReport {
   return {
     daemonVersion: DAEMON_VERSION,
     gitVersion: null,
     gitReady: false,
     gitReadinessReason: "git_unavailable",
+    environmentNamesCaseSensitive: environmentNamesAreCaseSensitive(platform),
   };
 }

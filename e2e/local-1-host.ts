@@ -5,6 +5,19 @@ import { expect, type APIRequestContext, type Page } from "@playwright/test";
 import { API_BASE, API_PORT } from "./harness-endpoints.ts";
 
 const API = API_BASE;
+
+/** Create the control-plane repository row required before a session can be queued. */
+export async function createCatalogRepository(
+  request: APIRequestContext,
+  name: string,
+  url = `/tmp/${name}`,
+): Promise<string> {
+  const response = await request.post(`${API}/api/v1/repositories`, {
+    data: { name, url, defaultBranch: "main" },
+  });
+  expect(response.status()).toBe(201);
+  return ((await response.json()) as { id: string }).id;
+}
 // Keyed by API_PORT, not a fixed name: os.tmpdir() is a single machine-wide directory, and
 // worktree-e2e-env.mts gives each worktree's isolated e2e run its own HARNESS_E2E_PORT_OFFSET
 // (hence its own API_PORT). A fixed lock name would serialize unrelated control-plane instances

@@ -42,7 +42,7 @@ UI copy uses the **label**. API, JWT, and DynamoDB store the **id**.
 | ------------ | ----------- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `read-only`  | Read-only   | Humans, reporting keys                      | Observe. No writes.                                                                                                                                                   |
 | `author`     | Author      | CI / repo harness keys                      | Mint work: create, clone, resume, archive; cancel **own** sessions. No schedules, no fleet.                                                                           |
-| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + drain. Not inventory, catalog, or IAM.                                                                    |
+| `operator`   | Operator    | Humans running the queue                    | Author + cancel any in-scope session + full schedule CRUD + host drain + repository pause/drain/activate. Not inventory, catalog, or IAM.                             |
 | `maintainer` | Maintainer  | Day-2 fleet                                 | Operator + host inventory + provider accounts. Not catalog argv, not IAM, not Slack/audit.                                                                            |
 | `agent`      | Host daemon | Host daemon API keys                        | Bound host-daemon identity (`POST /host/messages`, WebSocket, own-host drain). The **only** role allowed to set `boundHostId`. Cannot author sessions.                |
 | `admin`      | Admin       | Platform owners, bootstrap `HARNESS_ADMINS` | Everything, including catalog (arbitrary argv / setup scripts), accounts, Slack, audit, scheduler internals. **Must be unscoped** (no repository list, no host bind). |
@@ -64,6 +64,7 @@ UI can hide buttons. REST still checks the same ids on every request.
 | `sessions:cancel-any`  | Cancel any in-scope session, not only `metadata.createdBy`.                                                                                                                                                                   |
 | `sessions:archive`     | `POST /sessions/:id/archive`.                                                                                                                                                                                                 |
 | `schedules:write`      | Create, PATCH, trigger, and delete schedules.                                                                                                                                                                                 |
+| `repositories:operate` | `POST /repositories/:id/pause`, `/drain`, and `/activate`. Repository-scoped principals may operate only repositories in their allowed scope.                                                                                 |
 | `fleet:drain`          | `POST /hosts/drain`. Bound principals: own host only.                                                                                                                                                                         |
 | `fleet:inventory`      | `PUT`/`DELETE` `/hosts/:id/inventory` and `/host-inventories` (attach repos/worktrees and configure host-scoped setup/hook scripts). **This permits arbitrary execution on the selected host.**                               |
 | `providers:accounts`   | Create/update/delete Provider Accounts (capacity pools, not vendor API keys).                                                                                                                                                 |
@@ -104,14 +105,14 @@ still applies to every non-admin row.
 
 Stored grant lists (same file as the runtime table):
 
-| Role         | Capabilities                                                     |
-| ------------ | ---------------------------------------------------------------- |
-| `read-only`  | _(none — reads are “any authenticated”)_                         |
-| `author`     | `sessions:write`, `sessions:archive`                             |
-| `operator`   | author + `sessions:cancel-any`, `schedules:write`, `fleet:drain` |
-| `maintainer` | operator + `fleet:inventory`, `providers:accounts`               |
-| `agent`      | `agent:protocol`, `fleet:drain`                                  |
-| `admin`      | every capability                                                 |
+| Role         | Capabilities                                                                             |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| `read-only`  | _(none — reads are “any authenticated”)_                                                 |
+| `author`     | `sessions:write`, `sessions:archive`                                                     |
+| `operator`   | author + `sessions:cancel-any`, `schedules:write`, `repositories:operate`, `fleet:drain` |
+| `maintainer` | operator + `fleet:inventory`, `providers:accounts`                                       |
+| `agent`      | `agent:protocol`, `fleet:drain`                                                          |
+| `admin`      | every capability                                                                         |
 
 `admin` is not granted `agent:protocol` in practice: that grant also requires a
 bound service-account, which `admin` is forbidden to be.

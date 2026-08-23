@@ -100,6 +100,7 @@ describe("HostRepoSettingsForm", () => {
     setValue(field(document, "repo-settings-branch-repo-1"), " ");
     setValue(field(document, "repo-settings-setup-repo-1"), "setup");
     setValue(field(document, "repo-settings-hook-repo-1"), "hook");
+    setValue(field(document, "repo-settings-required-environment-repo-1"), "Z_TOKEN, A_TOKEN");
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
     expect(putBody(fetch)).toMatchObject({
@@ -110,12 +111,47 @@ describe("HostRepoSettingsForm", () => {
           defaultBranch: "main",
           setupScript: "setup",
           terminalHookScript: "hook",
+          requiredEnvironment: ["A_TOKEN", "Z_TOKEN"],
           worktrees: [{ id: "worktree" }],
         },
       ],
     });
     expect(router.refresh).toHaveBeenCalledOnce();
     expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).toBeNull();
+    view.unmount();
+  });
+
+  it("rejects invalid required environment names before saving", () => {
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-required-environment-repo-1"), "HARNESS_API_KEY");
+    submit(field(document, "form-repo-settings-repo-1"));
+    expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
+      "repository.repo-1.requiredEnvironment contains an invalid environment variable name",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).not.toBeNull();
+    view.unmount();
+  });
+
+  it("shows an aggregate requirement limit error from the fresh inventory", async () => {
+    const fetch = stubInventoryFetch({
+      ...inventory,
+      requiredEnvironment: Array.from({ length: 256 }, (_, index) => `HOST_${index}`),
+    });
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-required-environment-repo-1"), "REPOSITORY");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain(
+      "must contain at most 256 distinct names",
+    );
+    expect(
+      fetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "PUT"),
+    ).toBe(false);
+    expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).not.toBeNull();
     view.unmount();
   });
 

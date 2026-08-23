@@ -1,3 +1,5 @@
+import type { RepositoryAdmissionState } from "@auto-harness/shared";
+
 import type {
   CommandRecord,
   HostInventoryRecord,
@@ -13,6 +15,7 @@ import type {
 } from "./control-plane-types.ts";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import { selectLogs } from "./log-query.ts";
+import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 
 function copy<T extends object>(records: Map<string, T>, id: string): T | null {
   const record = records.get(id);
@@ -40,13 +43,71 @@ export function createAuthoritativeReadStorage() {
     listAuditLogs: async () => ({ items: [] }),
     listAllAuditLogs: async () => [],
     putRepository: async (record: RepositoryRecord) => repositories.set(record.id, { ...record }),
+    updateRepositorySettings: async (
+      id: string,
+      patch: Partial<RepositoryRecord>,
+      updatedAt: string,
+    ) => {
+      const current = repositories.get(id);
+      if (!current) return null;
+      const updated = { ...current, ...patch, updatedAt };
+      repositories.set(id, updated);
+      return { ...updated };
+    },
     getRepository: async (id: string) => copy(repositories, id),
     listRepositories: async () => list(repositories),
+    setRepositoryAdmissionState: async (
+      id: string,
+      admissionState: RepositoryAdmissionState,
+      now: string,
+    ) => {
+      const current = repositories.get(id);
+      if (!current || (admissionState !== "draining" && current.admissionState === "draining"))
+        return null;
+      const updated = {
+        ...current,
+        admissionState,
+        admissionStateChangedAt: now,
+        updatedAt: now,
+        ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
+      };
+      if (admissionState === "draining") delete updated.drainCompletedAt;
+      if (admissionState === "active") {
+        delete updated.drainRequestedAt;
+        delete updated.drainCompletedAt;
+      }
+      repositories.set(id, updated);
+      return { ...updated };
+    },
     deleteRepository: async (id: string) => repositories.delete(id),
     putSchedule: async (record: ScheduleRecord) => schedules.set(record.id, { ...record }),
     getSchedule: async (id: string) => copy(schedules, id),
     listSchedules: async () => list(schedules),
     deleteSchedule: async (id: string) => schedules.delete(id),
+    skipScheduleForClosedRepository: async ({
+      scheduleId,
+      repositoryId,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = schedules.get(scheduleId);
+      const repository = repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !repository ||
+        repositoryAdmissionOpen(repository.admissionState) ||
+        !schedule.enabled ||
+        schedule.nextRunAt !== expectedNextRunAt
+      )
+        return false;
+      schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
     putCommand: async (record: CommandRecord) => commands.set(record.id, { ...record }),
     getCommand: async (id: string) => copy(commands, id),
     listCommands: async () => list(commands),
@@ -102,6 +163,10 @@ export function createAuthoritativeReadStorage() {
       const schedule = schedules.get(scheduleId);
       if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt)
         return { kind: "lost" };
+      const repository = repositories.get(session.repositoryId);
+      if (!repository || !repositoryAdmissionOpen(repository.admissionState)) {
+        return { kind: "admission_closed" };
+      }
       schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
       sessions.set(session.id, { ...session });
       return { kind: "created" };

@@ -20,13 +20,23 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 /** Minimal accepting WS server so `start`'s real startDaemon has somewhere to register. */
-async function acceptingServer(): Promise<{ port: number; close(): Promise<void> }> {
+async function acceptingServer(): Promise<{
+  port: number;
+  registeredEnvironmentNames(): string[] | undefined;
+  close(): Promise<void>;
+}> {
   const server = createServer();
   const wss = new WebSocketServer({ server, path: "/ws" });
+  let environmentNames: string[] | undefined;
   wss.on("connection", (socket) => {
     socket.on("message", (raw) => {
-      const message = JSON.parse(String(raw)) as { type?: string; hostId?: string };
+      const message = JSON.parse(String(raw)) as {
+        type?: string;
+        hostId?: string;
+        runtime?: { environmentNames?: string[] };
+      };
       if (message.type === "host:register") {
+        environmentNames = message.runtime?.environmentNames;
         socket.send(JSON.stringify({ type: "host:registered", hostId: message.hostId }));
       } else if (message.type === "host:status") {
         // Acknowledges the drain announcement `stop()` sends; without this
@@ -43,6 +53,7 @@ async function acceptingServer(): Promise<{ port: number; close(): Promise<void>
   if (!address || typeof address === "string") throw new Error("no port");
   return {
     port: address.port,
+    registeredEnvironmentNames: () => environmentNames,
     async close() {
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve, reject) =>
@@ -111,9 +122,18 @@ describe("runCli start signal handling", () => {
   it("registers real signal handlers and resolves once one fires", async () => {
     const server = await acceptingServer();
     const proc = fakeProcess();
+    const tokenNames = Array.from(
+      { length: 256 },
+      (_, index) => `TOKEN_${String(index).padStart(3, "0")}`,
+    );
     try {
       const deps = minimalDeps({
         process: proc,
+        ensureReady: async () => ({
+          daemonVersion: "test",
+          gitVersion: "2.50.0",
+          gitReady: true,
+        }),
         loadConfig: async () =>
           emptyDaemonConfig({
             hostId: "cli-start-test",
@@ -123,14 +143,66 @@ describe("runCli start signal handling", () => {
       });
       const resultPromise = runCli(
         ["node", "x", "start", "--ws", `http://127.0.0.1:${server.port}`],
-        {},
+        {
+          HARNESS_CHILD_ENV_ALLOWLIST: tokenNames.join(","),
+          PATH: "/bin",
+          ...Object.fromEntries(tokenNames.map((name) => [name, name])),
+        },
         deps,
       );
       await waitFor(() => proc.hasListener("SIGINT") && proc.hasListener("SIGTERM"));
+      expect(server.registeredEnvironmentNames()).toEqual(["PATH", ...tokenNames]);
       proc.fire("SIGINT");
       expect(await resultPromise).toBe(0);
     } finally {
       await server.close();
     }
+  });
+
+  it("rejects an oversized complete environment report, including LC_* names", async () => {
+    const tokenNames = Array.from(
+      { length: 512 },
+      (_, index) => `TOKEN_${String(index).padStart(3, "0")}`,
+    );
+    const errors: string[] = [];
+    const deps = minimalDeps({
+      error: (message) => errors.push(message),
+      ensureReady: async () => ({
+        daemonVersion: "test",
+        gitVersion: "2.50.0",
+        gitReady: true,
+      }),
+    });
+    await expect(
+      runCli(
+        ["node", "x", "start"],
+        {
+          HARNESS_CHILD_ENV_ALLOWLIST: tokenNames.join(","),
+          LC_ALL: "C",
+          ...Object.fromEntries(tokenNames.map((name) => [name, name])),
+        },
+        deps,
+      ),
+    ).resolves.toBe(1);
+    expect(errors).toEqual([
+      "child environment exceeds runtime report limits (512 names, 128 characters per name)",
+    ]);
+  });
+
+  it("rejects an overlong name in the complete environment report", async () => {
+    const overlongName = `LC_${"A".repeat(126)}`;
+    const errors: string[] = [];
+    const deps = minimalDeps({
+      error: (message) => errors.push(message),
+      ensureReady: async () => ({
+        daemonVersion: "test",
+        gitVersion: "2.50.0",
+        gitReady: true,
+      }),
+    });
+    await expect(runCli(["node", "x", "start"], { [overlongName]: "C" }, deps)).resolves.toBe(1);
+    expect(errors).toEqual([
+      "child environment exceeds runtime report limits (512 names, 128 characters per name)",
+    ]);
   });
 });

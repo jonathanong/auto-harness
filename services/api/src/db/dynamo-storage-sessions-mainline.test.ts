@@ -27,7 +27,7 @@ const ctx = (send: (command: unknown) => Promise<unknown>) =>
     doc: { send },
     tables: { sessions: "sessions", concurrencyLocks: "locks", worktrees: "worktrees" },
   }) as unknown as PlaneStorageCtx;
-const cancelled = (failedIndex: number, count = 2) => ({
+const cancelled = (failedIndex: number, count = 3) => ({
   name: "TransactionCanceledException",
   CancellationReasons: Array.from({ length: count }, (_, index) => ({
     Code: index === failedIndex ? "ConditionalCheckFailed" : "None",
@@ -48,7 +48,7 @@ describe("Dynamo session adapter mainline additions", () => {
     await expect(
       createSession(
         ctx(async () => {
-          throw cancelled(1);
+          throw cancelled(2);
         }),
         session(),
         marker,
@@ -69,7 +69,7 @@ describe("Dynamo session adapter mainline additions", () => {
     await expect(
       createSession(
         ctx(async () => {
-          throw cancelled(0, 3);
+          throw cancelled(0, 4);
         }),
         session({ concurrencyId: "key" }),
         marker,

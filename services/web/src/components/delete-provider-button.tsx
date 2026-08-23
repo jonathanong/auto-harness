@@ -1,10 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Button, RetryToast, WithTooltip } from "@auto-harness/ui";
 
 import { apiBase } from "@auto-harness/shared";
+import { navigateBrowser } from "../lib/browser-navigation.ts";
 import { deleteCatalogResource } from "./catalog-delete.ts";
 import type { RequestFunction } from "./request-types.ts";
 
@@ -13,30 +13,33 @@ export function DeleteProviderButton({
   accountCount,
   commandCount,
   request = fetch,
+  navigate = navigateBrowser,
 }: {
   providerId: string;
   accountCount: number;
   commandCount: number;
   request?: RequestFunction;
+  navigate?: (href: string) => void;
 }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const blocked = accountCount > 0 || commandCount > 0;
   const deleteProvider = () => {
-    start(async () => {
+    setPending(true);
+    void (async () => {
       const failure = await deleteCatalogResource(
         request,
         `${apiBase()}/api/v1/providers/${encodeURIComponent(providerId)}`,
       );
       if (failure) {
         setError(failure);
+        setPending(false);
         return;
       }
-      router.push("/providers");
-      router.refresh();
-    });
+      setPending(false);
+      navigate("/providers");
+    })();
   };
 
   if (!confirming) {

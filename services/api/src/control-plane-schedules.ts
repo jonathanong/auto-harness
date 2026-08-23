@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- schedule validation and durable cursor operations share one boundary. */
 import {
   concurrencyIdByteLengthError,
   isActiveSessionStatus,
@@ -7,12 +8,14 @@ import {
   nextCronOccurrence,
   validateTargetRouting,
 } from "@auto-harness/shared";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 import type { ScheduleRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import {
+  getRepositoryDurable,
   getScheduleDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
@@ -35,7 +38,7 @@ export {
 export function putSchedule(
   state: ControlPlaneState,
   input: ScheduleInput,
-): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
+): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string; code?: string } {
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   state.schedules.set(result.schedule.id, result.schedule);
@@ -98,8 +101,19 @@ export async function putScheduleDurable(
   state: ControlPlaneState,
   input: ScheduleInput,
 ): Promise<ReturnType<typeof putSchedule>> {
-  if (!state.storage) return putSchedule(state, input);
+  if (!state.storage) {
+    if (!state.repositories.has(input.repositoryId)) {
+      return { ok: false, error: "repository not found" };
+    }
+    const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
+    if (admissionFailure) return admissionFailure;
+    return putSchedule(state, input);
+  }
   await refreshTargetCatalogDurable(state);
+  const repository = await getRepositoryDurable(state, input.repositoryId);
+  if (!repository) return { ok: false, error: "repository not found" };
+  const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
+  if (admissionFailure) return admissionFailure;
   const result = preparePutSchedule(state, input);
   if (!result.ok) return result;
   await state.storage.putSchedule(

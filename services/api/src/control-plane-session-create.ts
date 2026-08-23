@@ -4,6 +4,7 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString } from "./control-plane-state.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import type { SessionRecord } from "./db/types.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 type ValidatedFields = Extract<
   ReturnType<typeof validateCreateSessionInput>,
@@ -43,6 +44,8 @@ export function validateSessionCreate(
     source: record.source,
   });
   if (!validated.ok) return validated;
+  const admissionFailure = repositoryAdmissionFailure(state, validated.value.repositoryId);
+  if (admissionFailure) return admissionFailure;
   const targets = resolveTargetLabels(state, validated.value.target, validated.value.fallbacks);
   if (!targets.ok) return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };
   return {
