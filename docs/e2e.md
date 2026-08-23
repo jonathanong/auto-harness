@@ -408,7 +408,9 @@ live in one PR description.
 ## CI notes
 
 GitHub Actions (`.github/workflows/ci.yml`) builds each production-mode E2E app once, then fans
-that output out to two full-suite shards and the required-auth suite. A required, no-op
+that output out to the full-suite shards and the required-auth suite. The full-suite shard count
+comes from the repository Actions variable `PLAYWRIGHT_E2E_SHARDS`, defaulting to 2 when the
+variable is missing or invalid. Vitest similarly uses `VITEST_SHARDS`, defaulting to 4. A required, no-op
 `playwright` job fans the test jobs back in (`needs: [playwright-e2e, playwright-auth]`, `if:
 always()`) so branch protection has one stable check name regardless of which shard fails:
 
@@ -419,11 +421,11 @@ always()`) so branch protection has one stable check name regardless of which sh
 3. Build only missed apps, building control and host-pane concurrently when both missed. E2E builds skip Next's duplicate typecheck because `static-code-analysis` is the required typecheck gate.
 4. Package the runnable `.next-e2e` outputs without their compiler caches and upload them as the one-day `playwright-next-build` artifact. Runtime caches accelerate later workflow runs; the artifact is the guaranteed handoff inside the current run.
 
-**`playwright-e2e-1` / `playwright-e2e-2`** — the full-suite shards:
+**`playwright-e2e-N`** — the full-suite shards:
 
 1. Install dependencies and Chromium (browser downloads cached on `pnpm-lock.yaml`).
 2. Download and extract both app runtimes from `playwright-next-build`.
-3. Run `pnpm exec playwright test --shard=<1|2>/2`; `fullyParallel: true` balances individual tests across the two runners.
+3. Run `pnpm exec playwright test --shard=<index>/<count>`; `fullyParallel: true` balances individual tests across the configured runners.
 4. On failure, upload `playwright-report/` and `test-results/` as a shard-specific artifact.
 
 **`playwright-auth`** — the required-auth suite:

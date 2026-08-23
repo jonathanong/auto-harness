@@ -22,6 +22,7 @@ describe("required CI check contract", () => {
     );
     expect(jobs).toEqual([
       ["static-code-analysis", "static-code-analysis"],
+      ["test-shard-config", "test-shard-config"],
       ["vitest-shard", "vitest-${{ matrix.shard }}"],
       ["vitest-platform", "vitest-${{ matrix.name }}"],
       ["vitest", "vitest"],
@@ -97,10 +98,19 @@ describe("required CI check contract", () => {
     expect(contents).not.toContain("run: pnpm local:dynamodb &&");
   });
 
-  it("shards vitest 2-way and uploads a distinctly-named coverage blob per shard", () => {
+  it("shards vitest from the configured matrix and uploads distinct coverage blobs", () => {
+    const config = job("test-shard-config");
+    expect(config).toMatch(/vars\.VITEST_SHARDS[\s\S]*vars\.PLAYWRIGHT_E2E_SHARDS/);
+    expect(config).toMatch(/CONFIGURED_VITEST_SHARDS" 4[\s\S]*CONFIGURED_PLAYWRIGHT_E2E_SHARDS" 2/);
+    expect(config).toContain("must be an integer from 1 to 256");
     const shard = job("vitest-shard");
-    expect(shard).toContain("matrix:\n        shard: [1, 2]");
-    expect(shard).toContain("--shard=${{ matrix.shard }}/2");
+    expect(shard).toContain("needs: test-shard-config");
+    expect(shard).toContain(
+      "shard: ${{ fromJSON(needs.test-shard-config.outputs.vitest_matrix) }}",
+    );
+    expect(shard).toContain(
+      "--shard=${{ matrix.shard }}/${{ needs.test-shard-config.outputs.vitest_count }}",
+    );
     expect(shard).toContain("--outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json");
     expect(shard).toContain("name: vitest-blob-${{ matrix.shard }}");
     expect(shard).toContain("path: coverage/supplemental/lcov.info");
@@ -172,16 +182,20 @@ describe("required CI check contract", () => {
     );
   });
 
-  it("fans the default E2E suite across two artifact-consuming shards", () => {
+  it("fans the default E2E suite across the configured artifact-consuming shards", () => {
     const tests = job("playwright-e2e");
     expect(tests).toContain("name: playwright-e2e-${{ matrix.shard }}");
-    expect(tests).toContain("needs: playwright-build");
+    expect(tests).toContain("needs: [playwright-build, test-shard-config]");
     expect(tests).toContain("fail-fast: false");
-    expect(tests).toContain("matrix:\n        shard: [1, 2]");
+    expect(tests).toContain(
+      "shard: ${{ fromJSON(needs.test-shard-config.outputs.playwright_e2e_matrix) }}",
+    );
     expect(tests).toContain("name: playwright-next-build");
     expect(tests).toContain("control-next-e2e.tgz");
     expect(tests).toContain("host-pane-next-e2e.tgz");
-    expect(tests).toContain("run: pnpm exec playwright test --shard=${{ matrix.shard }}/2");
+    expect(tests).toContain(
+      "run: pnpm exec playwright test --shard=${{ matrix.shard }}/${{ needs.test-shard-config.outputs.playwright_e2e_count }}",
+    );
     expect(tests).toContain("name: playwright-report-${{ matrix.shard }}");
     expect(tests).toContain("playwright-report/");
     expect(tests).toContain("test-results/");
