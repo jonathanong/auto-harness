@@ -141,6 +141,12 @@ export type RepositoryRecord = {
   /** Missing on legacy rows means active. */
   admissionState?: RepositoryAdmissionState;
   admissionStateChangedAt?: string;
+  /**
+   * The exact instant this repository was reopened after being closed. Cron
+   * occurrences before this cutover belong to the closed interval and must
+   * not be replayed when a scheduler observes them after activation.
+   */
+  activationCutoffAt?: string;
   drainRequestedAt?: string;
   drainCompletedAt?: string;
   createdAt: string;

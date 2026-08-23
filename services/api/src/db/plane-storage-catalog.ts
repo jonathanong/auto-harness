@@ -495,11 +495,18 @@ export async function setRepositoryAdmissionState(
   id: string,
   state: RepositoryAdmissionState,
   now: string,
+  activationCutoffAt?: string,
 ): Promise<RepositoryRecord | null> {
   const names = { "#state": "admissionState" };
-  const activating = state === "active";
+  const activating = activationCutoffAt !== undefined;
   const resumingAdmission = state !== "draining";
   const draining = state === "draining";
+  let conditionExpression = "attribute_exists(id)";
+  if (activating) {
+    conditionExpression += " AND #state = :paused";
+  } else if (resumingAdmission) {
+    conditionExpression += " AND (attribute_not_exists(#state) OR #state <> :draining)";
+  }
   try {
     const res = await ctx.doc.send(
       new UpdateCommand({
@@ -508,16 +515,20 @@ export async function setRepositoryAdmissionState(
         UpdateExpression: [
           "SET #state = :state, admissionStateChangedAt = :now, updatedAt = :now",
           ...(draining ? [", drainRequestedAt = :now REMOVE drainCompletedAt"] : []),
-          ...(activating ? [" REMOVE drainRequestedAt, drainCompletedAt"] : []),
+          ...(activating
+            ? [
+                ", activationCutoffAt = :activationCutoffAt REMOVE drainRequestedAt, drainCompletedAt",
+              ]
+            : []),
         ].join(""),
-        ConditionExpression: resumingAdmission
-          ? "attribute_exists(id) AND (attribute_not_exists(#state) OR #state <> :draining)"
-          : "attribute_exists(id)",
+        ConditionExpression: conditionExpression,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: {
           ":state": state,
           ":now": now,
-          ...(resumingAdmission ? { ":draining": "draining" } : {}),
+          ...(activating ? { ":activationCutoffAt": activationCutoffAt } : {}),
+          ...(activating ? { ":paused": "paused" } : {}),
+          ...(resumingAdmission && !activating ? { ":draining": "draining" } : {}),
         },
         ReturnValues: "ALL_NEW",
       }),
@@ -725,6 +736,8 @@ export async function tryClaimScheduleAndCreateSession(
     expectedNextRunAt: string;
     newNextRunAt: string;
     lastRunAt: string;
+    activationCutoffAt?: string;
+    expectedNextRunAtEpochMs?: number;
     session: SessionRecord;
   },
 ): Promise<ScheduleCreateResult> {
@@ -761,12 +774,23 @@ export async function tryClaimScheduleAndCreateSession(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :n, lastRunAt = :l",
-              ConditionExpression: "nextRunAt = :e AND enabled = :true",
+              ConditionExpression: [
+                "nextRunAt = :e AND enabled = :true",
+                ...(opts.expectedNextRunAtEpochMs !== undefined && opts.activationCutoffAt
+                  ? ["AND :expectedNextRunAtEpochMs >= :activationCutoffEpochMs"]
+                  : []),
+              ].join(" "),
               ExpressionAttributeValues: {
                 ":n": opts.newNextRunAt,
                 ":l": opts.lastRunAt,
                 ":e": opts.expectedNextRunAt,
                 ":true": true,
+                ...(opts.expectedNextRunAtEpochMs !== undefined && opts.activationCutoffAt
+                  ? {
+                      ":expectedNextRunAtEpochMs": opts.expectedNextRunAtEpochMs,
+                      ":activationCutoffEpochMs": Date.parse(opts.activationCutoffAt),
+                    }
+                  : {}),
               },
             },
           },
@@ -777,8 +801,16 @@ export async function tryClaimScheduleAndCreateSession(
               TableName: ctx.tables.repositories,
               Key: { id: opts.session.repositoryId },
               ConditionExpression:
-                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)",
-              ExpressionAttributeValues: { ":active": "active" },
+                "attribute_exists(id) AND (attribute_not_exists(admissionState) OR admissionState = :active)" +
+                (opts.activationCutoffAt
+                  ? " AND activationCutoffAt = :activationCutoffAt"
+                  : " AND attribute_not_exists(activationCutoffAt)"),
+              ExpressionAttributeValues: {
+                ":active": "active",
+                ...(opts.activationCutoffAt
+                  ? { ":activationCutoffAt": opts.activationCutoffAt }
+                  : {}),
+              },
             },
           },
           ...markerChecks,
@@ -1060,11 +1092,13 @@ export async function skipScheduleForClosedRepository(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET nextRunAt = :nextRunAt",
-              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND repositoryId = :repositoryId",
               ExpressionAttributeValues: {
                 ":nextRunAt": opts.newNextRunAt,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
                 ":true": true,
+                ":repositoryId": opts.repositoryId,
               },
             },
           },
@@ -1078,6 +1112,64 @@ export async function skipScheduleForClosedRepository(
               ExpressionAttributeValues: {
                 ":paused": "paused",
                 ":draining": "draining",
+              },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (err) {
+    return conditionalCatalogWriteOrThrow(err);
+  }
+}
+
+/**
+ * Advance an occurrence that predates a repository's latest activation
+ * cutover. Both the schedule cursor and the active repository generation are
+ * fenced in one transaction so an old scheduler read cannot consume work from
+ * a subsequent close/reopen cycle.
+ */
+export async function skipScheduleBeforeActivationCutoff(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    repositoryId: string;
+    activationCutoffAt: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND :expectedNextRunAtEpochMs < :activationCutoffEpochMs AND enabled = :true AND repositoryId = :repositoryId",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":expectedNextRunAtEpochMs": Date.parse(opts.expectedNextRunAt),
+                ":activationCutoffEpochMs": Date.parse(opts.activationCutoffAt),
+                ":true": true,
+                ":repositoryId": opts.repositoryId,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.repositoryId },
+              ConditionExpression:
+                "admissionState = :active AND activationCutoffAt = :activationCutoffAt",
+              ExpressionAttributeValues: {
+                ":active": "active",
+                ":activationCutoffAt": opts.activationCutoffAt,
               },
             },
           },

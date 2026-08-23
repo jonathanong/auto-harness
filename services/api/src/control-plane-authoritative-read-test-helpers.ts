@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- the complete authoritative storage fake is intentionally centralized. */
 import type { RepositoryAdmissionState } from "@auto-harness/shared";
 
 import type {
@@ -60,9 +61,14 @@ export function createAuthoritativeReadStorage() {
       id: string,
       admissionState: RepositoryAdmissionState,
       now: string,
+      activationCutoffAt?: string,
     ) => {
       const current = repositories.get(id);
-      if (!current || (admissionState !== "draining" && current.admissionState === "draining"))
+      if (
+        !current ||
+        (admissionState !== "draining" && current.admissionState === "draining") ||
+        (activationCutoffAt !== undefined && current.admissionState !== "paused")
+      )
         return null;
       const updated = {
         ...current,
@@ -70,6 +76,7 @@ export function createAuthoritativeReadStorage() {
         admissionStateChangedAt: now,
         updatedAt: now,
         ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
+        ...(activationCutoffAt ? { activationCutoffAt } : {}),
       };
       if (admissionState === "draining") delete updated.drainCompletedAt;
       if (admissionState === "active") {
@@ -102,9 +109,40 @@ export function createAuthoritativeReadStorage() {
         !repository ||
         repositoryAdmissionOpen(repository.admissionState) ||
         !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
         schedule.nextRunAt !== expectedNextRunAt
       )
         return false;
+      schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
+    skipScheduleBeforeActivationCutoff: async ({
+      scheduleId,
+      repositoryId,
+      activationCutoffAt,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      activationCutoffAt: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = schedules.get(scheduleId);
+      const repository = repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !repository ||
+        !repositoryAdmissionOpen(repository.admissionState) ||
+        repository.activationCutoffAt !== activationCutoffAt ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt ||
+        Date.parse(expectedNextRunAt) >= Date.parse(activationCutoffAt)
+      ) {
+        return false;
+      }
       schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
       return true;
     },
@@ -152,12 +190,14 @@ export function createAuthoritativeReadStorage() {
       expectedNextRunAt,
       newNextRunAt,
       lastRunAt,
+      activationCutoffAt,
       session,
     }: {
       scheduleId: string;
       expectedNextRunAt: string;
       newNextRunAt: string;
       lastRunAt: string;
+      activationCutoffAt?: string;
       session: SessionRecord;
     }) => {
       const schedule = schedules.get(scheduleId);
@@ -165,6 +205,12 @@ export function createAuthoritativeReadStorage() {
         return { kind: "lost" };
       const repository = repositories.get(session.repositoryId);
       if (!repository || !repositoryAdmissionOpen(repository.admissionState)) {
+        return { kind: "admission_closed" };
+      }
+      if (
+        activationCutoffAt !== undefined &&
+        repository.activationCutoffAt !== activationCutoffAt
+      ) {
         return { kind: "admission_closed" };
       }
       schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });

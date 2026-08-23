@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- admission transitions and reconciliation share the same state machine. */
 import {
   isActiveSessionStatus,
   nextCronOccurrence,
@@ -31,13 +32,17 @@ function transitionInMemory(
     return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
   }
   const now = state.now();
+  const reopening =
+    admissionState === "active" && repositoryAdmissionState(current.admissionState) !== "active";
   const repository: RepositoryRecord = {
     ...current,
     admissionState,
     admissionStateChangedAt: now,
     updatedAt: now,
     ...(admissionState === "draining" ? { drainRequestedAt: now } : {}),
+    ...(reopening ? { activationCutoffAt: now } : {}),
   };
+  if (admissionState === "draining") delete repository.drainCompletedAt;
   if (admissionState === "active") {
     delete repository.drainRequestedAt;
     delete repository.drainCompletedAt;
@@ -49,29 +54,32 @@ async function skipDueSchedulesBeforeActivation(
   state: ControlPlaneState,
   repositoryId: string,
 ): Promise<void> {
-  const now = state.now();
-  const schedules = state.storage
-    ? await state.storage.listSchedules()
-    : [...state.schedules.values()];
-  for (const schedule of schedules) {
-    if (
-      schedule.repositoryId !== repositoryId ||
-      !schedule.enabled ||
-      Date.parse(schedule.nextRunAt) > Date.parse(now)
-    )
-      continue;
-    const nextRunAt = nextCronOccurrence(schedule.cron, now);
-    if (!nextRunAt) continue;
-    if (
-      !state.storage ||
-      (await state.storage.skipScheduleForClosedRepository({
-        scheduleId: schedule.id,
-        repositoryId,
-        expectedNextRunAt: schedule.nextRunAt,
-        newNextRunAt: nextRunAt,
-      }))
-    ) {
-      state.schedules.set(schedule.id, { ...schedule, nextRunAt });
+  // A bounded follow-up catches occurrences that become due during the first scan.
+  for (let pass = 0; pass < 2; pass += 1) {
+    const now = state.now();
+    const schedules = state.storage
+      ? await state.storage.listSchedules()
+      : [...state.schedules.values()];
+    for (const schedule of schedules) {
+      if (
+        schedule.repositoryId !== repositoryId ||
+        !schedule.enabled ||
+        Date.parse(schedule.nextRunAt) > Date.parse(now)
+      )
+        continue;
+      const nextRunAt = nextCronOccurrence(schedule.cron, now);
+      if (!nextRunAt) continue;
+      if (
+        !state.storage ||
+        (await state.storage.skipScheduleForClosedRepository({
+          scheduleId: schedule.id,
+          repositoryId,
+          expectedNextRunAt: schedule.nextRunAt,
+          newNextRunAt: nextRunAt,
+        }))
+      ) {
+        state.schedules.set(schedule.id, { ...schedule, nextRunAt });
+      }
     }
   }
 }
@@ -81,27 +89,35 @@ export async function setRepositoryAdmissionDurable(
   id: string,
   admissionState: "active" | "paused",
 ): Promise<{ ok: true; repository: RepositoryRecord } | RepositoryAdmissionFailure> {
-  if (!state.storage) {
-    if (admissionState === "active") await skipDueSchedulesBeforeActivation(state, id);
-    return transitionInMemory(state, id, admissionState);
-  }
+  if (!state.storage && admissionState === "active")
+    await skipDueSchedulesBeforeActivation(state, id);
+  if (!state.storage) return transitionInMemory(state, id, admissionState);
+  let reopening = false;
   if (admissionState === "active") {
     const current = await state.storage.getRepository(id);
     if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
-    cache(state, current);
     if (repositoryAdmissionState(current.admissionState) === "draining") {
       return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
     }
+    reopening = repositoryAdmissionState(current.admissionState) !== "active";
     await skipDueSchedulesBeforeActivation(state, id);
   }
+  const transitionedAt = state.now();
   const repository = await state.storage.setRepositoryAdmissionState(
     id,
     admissionState,
-    state.now(),
+    transitionedAt,
+    reopening ? transitionedAt : undefined,
   );
   if (repository) return { ok: true, repository: cache(state, repository) };
   const current = await state.storage.getRepository(id);
   if (!current) return { ok: false, error: "repository not found", code: "NOT_FOUND" };
+  if (
+    admissionState === "active" &&
+    repositoryAdmissionState(current.admissionState) === "active"
+  ) {
+    return { ok: true, repository: cache(state, current) };
+  }
   cache(state, current);
   return { ok: false, error: "repository drain is not complete", code: "CONFLICT" };
 }

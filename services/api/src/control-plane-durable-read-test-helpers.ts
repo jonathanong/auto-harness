@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable storage defaults stay centralized for consistent test semantics. */
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { AuditLogRecord } from "./audit-types.ts";
 import type { ScheduleRecord } from "./control-plane-types.ts";
@@ -110,6 +111,61 @@ export function setInMemoryScheduleStorage(
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
       state.sessions.set(session.id, { ...session });
       return { kind: "created" };
+    },
+    skipScheduleForClosedRepository: async ({
+      scheduleId,
+      repositoryId,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      const repository = state.repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !repository ||
+        repository.admissionState === "active" ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt
+      ) {
+        return false;
+      }
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
+    skipScheduleBeforeActivationCutoff: async ({
+      scheduleId,
+      repositoryId,
+      activationCutoffAt,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      activationCutoffAt: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      const repository = state.repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt ||
+        Date.parse(expectedNextRunAt) >= Date.parse(activationCutoffAt) ||
+        repository?.admissionState !== "active" ||
+        repository.activationCutoffAt !== activationCutoffAt
+      ) {
+        return false;
+      }
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
     },
     skipOwnerlessScheduleAndAudit: async ({
       scheduleId,
