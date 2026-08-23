@@ -5,16 +5,16 @@ import { coverageDisposition, executableLineNumbers } from "./coverage-scope.mts
 
 export type LineNumbers = Set<number>;
 export type DiffLines = Map<string, LineNumbers>;
-export type LcovFile = { path: string; lines: Map<number, number> };
+export type LcovFile = { path: string; lines: Map<number, number>; emptyReport?: boolean };
 export type PatchLine = { path: string; line: number };
-export type PatchCoverageResult = {
+type FilePatchCoverage = {
   total: number;
   covered: number;
-  percentage: number;
   uncovered: PatchLine[];
   unmapped: PatchLine[];
   missingFiles: string[];
 };
+export type PatchCoverageResult = FilePatchCoverage & { percentage: number };
 export type SourceReader = (path: string) => string;
 const DEFAULT_THRESHOLD = 99;
 function unquoteGitPath(value: string): string {
@@ -48,7 +48,6 @@ function matchingLcovFiles(files: LcovFile[], diffPath: string): LcovFile[] {
     );
   });
 }
-/** Parse added line numbers from zero-context git diff output. */
 export function parseUnifiedDiff(diff: string): DiffLines {
   const result: DiffLines = new Map();
   let path: string | undefined;
@@ -87,7 +86,6 @@ export function parseUnifiedDiff(diff: string): DiffLines {
   }
   return result;
 }
-/** Parse LCOV SF/DA records, retaining hit counts by source path and line. */
 export function parseLcov(lcov: string): LcovFile[] {
   const files: LcovFile[] = [];
   let current: LcovFile | undefined;
@@ -97,6 +95,8 @@ export function parseLcov(lcov: string): LcovFile[] {
       files.push(current);
       continue;
     }
+    if (current && line.startsWith("FN:") && line.endsWith(",(empty-report)"))
+      current.emptyReport = true;
     if (!current || !line.startsWith("DA:")) continue;
     const [lineNumberText, hitCountText] = line.slice(3).split(",", 3);
     const lineNumber = Number(lineNumberText);
@@ -107,9 +107,6 @@ export function parseLcov(lcov: string): LcovFile[] {
   }
   return files;
 }
-
-type FilePatchCoverage = Omit<PatchCoverageResult, "percentage">;
-
 function emptyFilePatchCoverage(): FilePatchCoverage {
   return { total: 0, covered: 0, uncovered: [], unmapped: [], missingFiles: [] };
 }
@@ -131,12 +128,16 @@ function checkFilePatchCoverage(
   readSource: SourceReader,
 ): FilePatchCoverage {
   if (coverageDisposition(path) === "ignored") return emptyFilePatchCoverage();
-  const executableLines = executableLineNumbers(readSource(path), path);
-  const changedLines = [...addedLines].filter((line) => executableLines.has(line));
+  const matchingFiles = matchingLcovFiles(files, path).filter((file) => !file.emptyReport);
+  const lineHits = mergedLineHits(matchingFiles);
+  const eligibleLines =
+    matchingFiles.length > 0
+      ? lineHits.keys()
+      : executableLineNumbers(readSource(path), path).values();
+  const eligibleLineSet = new Set(eligibleLines);
+  const changedLines = [...addedLines].filter((line) => eligibleLineSet.has(line));
   if (changedLines.length === 0) return emptyFilePatchCoverage();
 
-  const matchingFiles = matchingLcovFiles(files, path);
-  const lineHits = mergedLineHits(matchingFiles);
   const uncovered: PatchLine[] = [];
   const unmapped: PatchLine[] = [];
   let covered = 0;

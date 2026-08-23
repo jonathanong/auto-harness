@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatSupplementalLcov } from "./scoped-v8-coverage-provider.mts";
+import { formatSupplementalLcov, isEmptyCoverageReport } from "./scoped-v8-coverage-provider.mts";
 
 describe("formatSupplementalLcov", () => {
   it("sorts records and emits only executable DA lines", () => {
@@ -8,13 +8,11 @@ describe("formatSupplementalLcov", () => {
       formatSupplementalLcov([
         {
           path: "services/api/src/z.ts",
-          executableLines: new Set([3, 1]),
-          hits: { "1": 2, "2": 9 },
+          hits: { "3": 0, "1": 2 },
         },
         {
           path: "services/api/src/a-types.ts",
-          executableLines: new Set(),
-          hits: { "1": 0 },
+          hits: {},
         },
       ]),
     ).toBe(
@@ -34,5 +32,10 @@ describe("formatSupplementalLcov", () => {
 
   it("writes an empty report when there are no supplemental files", () => {
     expect(formatSupplementalLcov([])).toBe("");
+  });
+
+  it("recognizes Vitest's all-files placeholder coverage", () => {
+    expect(isEmptyCoverageReport({ fnMap: { "0": { name: "(empty-report)" } } })).toBe(true);
+    expect(isEmptyCoverageReport({ fnMap: { "0": { name: "createPlane" } } })).toBe(false);
   });
 });

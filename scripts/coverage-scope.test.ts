@@ -68,4 +68,15 @@ describe("executableLineNumbers", () => {
       2, 3, 4,
     ]);
   });
+
+  it("keeps a multiline runtime import boundary but omits its specifier lines", () => {
+    const source = [
+      "import {",
+      "  readFileSync,",
+      "  writeFileSync,",
+      '} from "node:fs";',
+      "export const load = () => readFileSync('input.txt');",
+    ].join("\n");
+    expect([...executableLineNumbers(source, "services/api/src/example.ts")]).toEqual([1, 5]);
+  });
 });

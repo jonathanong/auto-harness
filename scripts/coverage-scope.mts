@@ -1,6 +1,7 @@
 import { transformSync } from "esbuild";
 import { eachMapping, TraceMap } from "@jridgewell/trace-mapping";
 import { minimatch } from "minimatch";
+import ts from "typescript";
 
 export const COVERAGE_INCLUDE = [
   "modules/*/src/**/*.{ts,tsx}",
@@ -85,5 +86,19 @@ export function executableLineNumbers(source: string, path: string): Set<number>
   eachMapping(new TraceMap(result.map), (mapping) => {
     if (mapping.originalLine !== null) lines.add(mapping.originalLine);
   });
+  const sourceFile = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    loader === "tsx" ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  );
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) continue;
+    const startLine =
+      sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
+    const endLine = sourceFile.getLineAndCharacterOfPosition(statement.end).line + 1;
+    for (let line = startLine + 1; line <= endLine; line += 1) lines.delete(line);
+  }
   return lines;
 }
