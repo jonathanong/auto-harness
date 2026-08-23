@@ -79,27 +79,34 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
               return;
             }
             start(async () => {
-              // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
-              // elsewhere is not silently reverted by this save.
-              const r = await mutateInventory(hostId, (current) =>
-                upsertHostRepository(current, {
-                  id: repo.id,
-                  path,
-                  defaultBranch,
-                  setupScript,
-                  terminalHookScript,
-                  requiredEnvironment,
-                }),
-              );
-              if (!r.ok) {
-                showToast(r.error, {
+              try {
+                // Fresh read rather than the page-load `inventory` prop, so a concurrent edit
+                // elsewhere is not silently reverted by this save.
+                const r = await mutateInventory(hostId, (current) =>
+                  upsertHostRepository(current, {
+                    id: repo.id,
+                    path,
+                    defaultBranch,
+                    setupScript,
+                    terminalHookScript,
+                    requiredEnvironment,
+                  }),
+                );
+                if (!r.ok) {
+                  showToast(r.error, {
+                    variant: "destructive",
+                    pw: `repo-settings-error-${repo.id}`,
+                  });
+                  return;
+                }
+                setOpen(false);
+                router.refresh();
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
                   variant: "destructive",
                   pw: `repo-settings-error-${repo.id}`,
                 });
-                return;
               }
-              setOpen(false);
-              router.refresh();
             });
           }}
         >

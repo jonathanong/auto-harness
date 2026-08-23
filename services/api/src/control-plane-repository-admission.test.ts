@@ -176,4 +176,37 @@ describe("repository admission", () => {
     await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([completed]);
     expect(repositories.get("repo-1")).toEqual(completed);
   });
+
+  it("skips malformed durable admission rows without aborting healthy drains", async () => {
+    const draining = {
+      id: "repo-draining",
+      admissionState: "draining" as const,
+      drainRequestedAt: "requested",
+    };
+    const malformed = {
+      ...draining,
+      id: "repo-malformed",
+      admissionState: "unknown" as never,
+    };
+    const completed = { ...draining, admissionState: "paused" as const };
+    const completedIds: string[] = [];
+    const repositories = new Map();
+    const state = {
+      now: () => "completed",
+      repositories,
+      storage: {
+        listRepositories: async () => [malformed, draining],
+        listAllSessions: async () => [],
+        listWorktreesForRepo: async () => [],
+        completeRepositoryDrain: async (id: string) => {
+          completedIds.push(id);
+          return id === draining.id ? completed : null;
+        },
+      },
+    } as never;
+
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([completed]);
+    expect(completedIds).toEqual([draining.id]);
+    expect(repositories.get(malformed.id)).toBeUndefined();
+  });
 });

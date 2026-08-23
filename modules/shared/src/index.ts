@@ -118,7 +118,10 @@ export {
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
-export { parseRequiredEnvironment } from "./environment-requirements.ts";
+export {
+  assertHostRepositoryRequiredEnvironmentLimit,
+  parseRequiredEnvironment,
+} from "./environment-requirements.ts";
 
 export {
   isHostRepositoryRegistration,

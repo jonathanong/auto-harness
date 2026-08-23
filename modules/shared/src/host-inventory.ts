@@ -1,7 +1,10 @@
 /* eslint-disable max-lines -- inventory transformations share one immutable update surface. */
 /** Pure helpers for agent host inventory (used by both control + agent UIs). */
 import type { HostCapability } from "./host-capabilities.ts";
-import { parseRequiredEnvironment } from "./environment-requirements.ts";
+import {
+  assertHostRepositoryRequiredEnvironmentLimit,
+  parseRequiredEnvironment,
+} from "./environment-requirements.ts";
 
 /**
  * Per-scope override of a provider account's enablement/command, on a
@@ -100,7 +103,15 @@ export function updateHostRequiredEnvironment(
   requiredEnvironment: string[],
 ): HostInventory {
   const next = cloneInventory(existing);
-  if (requiredEnvironment.length) next.requiredEnvironment = [...requiredEnvironment];
+  const parsed = parseRequiredEnvironment(requiredEnvironment);
+  for (const repository of next.repositories) {
+    assertHostRepositoryRequiredEnvironmentLimit(
+      parsed,
+      repository.requiredEnvironment,
+      `repository.${repository.id}.requiredEnvironment`,
+    );
+  }
+  if (parsed.length) next.requiredEnvironment = parsed;
   else delete next.requiredEnvironment;
   return next;
 }
@@ -129,6 +140,11 @@ export function upsertHostRepository(
           entry.requiredEnvironment,
           `repository.${entry.id}.requiredEnvironment`,
         );
+  assertHostRepositoryRequiredEnvironmentLimit(
+    base.requiredEnvironment,
+    requiredEnvironment ?? prev?.requiredEnvironment,
+    `repository.${entry.id}.requiredEnvironment`,
+  );
   base.repositories = base.repositories.filter((r) => r.id !== entry.id);
   const repository: HostRepository = {
     ...prev,

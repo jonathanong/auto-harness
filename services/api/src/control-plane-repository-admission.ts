@@ -186,7 +186,15 @@ export async function reconcileRepositoryDrainsDurable(
 ): Promise<RepositoryRecord[]> {
   const repositories = (
     state.storage ? await state.storage.listRepositories() : [...state.repositories.values()]
-  ).filter((repository) => repositoryAdmissionState(repository.admissionState) === "draining");
+  ).filter((repository) => {
+    try {
+      return repositoryAdmissionState(repository.admissionState) === "draining";
+    } catch {
+      // A malformed persisted row is closed and must not prevent healthy
+      // repositories from being reconciled in the same scheduler sweep.
+      return false;
+    }
+  });
   const reconciled: RepositoryRecord[] = [];
   for (const repository of repositories) {
     reconciled.push(

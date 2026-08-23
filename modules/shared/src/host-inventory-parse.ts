@@ -7,7 +7,10 @@ import {
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
 import { parseProviderAccountOverrides, parseProviderAccounts } from "./provider-account-parse.ts";
 import { isValidSlugName, SLUG_NAME_HINT } from "./slug.ts";
-import { parseRequiredEnvironment } from "./environment-requirements.ts";
+import {
+  assertHostRepositoryRequiredEnvironmentLimit,
+  parseRequiredEnvironment,
+} from "./environment-requirements.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -130,11 +133,21 @@ export function parseHostInventory(value: unknown): HostInventory {
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
   }
+  const repositories = value.repositories.map((repository, index) =>
+    parseRepository(repository, index),
+  );
+  for (const repository of repositories) {
+    assertHostRepositoryRequiredEnvironmentLimit(
+      requiredEnvironment,
+      repository.requiredEnvironment,
+      `repository.${repository.id}.requiredEnvironment`,
+    );
+  }
 
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
-    repositories: value.repositories.map((repository, index) => parseRepository(repository, index)),
+    repositories,
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),
   };

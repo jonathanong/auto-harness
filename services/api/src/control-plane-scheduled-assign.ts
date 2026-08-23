@@ -99,10 +99,12 @@ export async function assignScheduledQueuedDurable(
       .filter((session) => !session.retryAfter || Date.parse(session.retryAfter) <= Date.parse(now))
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
-      if (!repositoryAdmissionOpen(state.repositories.get(session.repositoryId)?.admissionState)) {
+      const admissionState = state.repositories.get(session.repositoryId)?.admissionState;
+      if (admissionState === "draining") {
         await cancelSessionDurable(state, session.id);
         continue;
       }
+      if (!repositoryAdmissionOpen(admissionState)) continue;
       for (const { hostId, connectionId } of await eligibleHosts(state, session.repositoryId)) {
         const connection = state.connections.get(connectionId);
         if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)

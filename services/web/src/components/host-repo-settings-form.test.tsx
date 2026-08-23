@@ -135,6 +135,26 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
+  it("shows an aggregate requirement limit error from the fresh inventory", async () => {
+    const fetch = stubInventoryFetch({
+      ...inventory,
+      requiredEnvironment: Array.from({ length: 256 }, (_, index) => `HOST_${index}`),
+    });
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-required-environment-repo-1"), "REPOSITORY");
+    submit(field(document, "form-repo-settings-repo-1"));
+    await act(async () => Promise.resolve());
+    expect(field(document, "repo-settings-error-repo-1").textContent).toContain(
+      "must contain at most 256 distinct names",
+    );
+    expect(
+      fetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "PUT"),
+    ).toBe(false);
+    expect(document.querySelector('[data-pw="form-repo-settings-repo-1"]')).not.toBeNull();
+    view.unmount();
+  });
+
   it("uses absent field fallbacks and displays a pending save failure", async () => {
     const { finish } = stubDeferredPut(inventory);
     const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} />);

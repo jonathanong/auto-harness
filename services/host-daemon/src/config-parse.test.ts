@@ -32,6 +32,23 @@ describe("parseDaemonConfig", () => {
     expect(config.repositories[0]?.defaultBranch).toBe("main");
   });
 
+  it("rejects requirements that cannot fit in one runtime report", () => {
+    expect(() =>
+      parseDaemonConfig({
+        hostId: "x",
+        requiredEnvironment: Array.from({ length: 256 }, (_, index) => `HOST_${index}`),
+        repositories: [
+          {
+            id: "r",
+            path: "/r",
+            requiredEnvironment: ["REPOSITORY"],
+            worktrees: [],
+          },
+        ],
+      }),
+    ).toThrow("must contain at most 256 distinct names");
+  });
+
   it("parses repository and worktree provider-account overrides", () => {
     const config = parseDaemonConfig({
       ...valid,

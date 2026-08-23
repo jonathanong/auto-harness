@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { parseRequiredEnvironment } from "./environment-requirements.ts";
+import {
+  assertHostRepositoryRequiredEnvironmentLimit,
+  parseRequiredEnvironment,
+} from "./environment-requirements.ts";
 import {
   repositoryAdmissionClosedMessage,
   repositoryAdmissionState,
@@ -24,6 +27,23 @@ describe("environment requirements", () => {
     expect(() => parseRequiredEnvironment(["hArNeSs_api_key"])).toThrow(
       "invalid environment variable name",
     );
+  });
+
+  it("enforces the runtime report name limits", () => {
+    expect(() => parseRequiredEnvironment(["A".repeat(129)])).toThrow(
+      "environment variable names must be at most 128 characters",
+    );
+    expect(() =>
+      parseRequiredEnvironment(Array.from({ length: 257 }, (_, index) => `NAME_${index}`)),
+    ).toThrow("must contain at most 256 names");
+  });
+
+  it("enforces the runtime report limit for each host/repository requirement set", () => {
+    const host = Array.from({ length: 256 }, (_, index) => `HOST_${index}`);
+    expect(() => assertHostRepositoryRequiredEnvironmentLimit(host, ["REPOSITORY"])).toThrow(
+      "must contain at most 256 distinct names",
+    );
+    expect(() => assertHostRepositoryRequiredEnvironmentLimit(host, ["HOST_0"])).not.toThrow();
   });
 });
 

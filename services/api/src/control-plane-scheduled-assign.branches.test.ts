@@ -73,7 +73,7 @@ function state() {
 }
 
 describe("scheduled assignment branch coverage", () => {
-  it("cancels a queued occurrence when repository admission is closed", async () => {
+  it("leaves a queued occurrence paused until activation", async () => {
     const current = state();
     current.repositories.set("repo", {
       id: "repo",
@@ -81,6 +81,21 @@ describe("scheduled assignment branch coverage", () => {
       url: "url",
       defaultBranch: "main",
       admissionState: "paused",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    current.sessions.set("s", session());
+    await expect(assignScheduledQueuedDurable(current)).resolves.toEqual([]);
+    expect(current.sessions.get("s")).toMatchObject({ status: "queued" });
+  });
+
+  it("cancels a queued occurrence while repository admission drains", async () => {
+    const current = state();
+    current.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      admissionState: "draining",
       createdAt: NOW,
       updatedAt: NOW,
     });
