@@ -501,6 +501,12 @@ export async function setRepositoryAdmissionState(
   const activating = activationCutoffAt !== undefined;
   const resumingAdmission = state !== "draining";
   const draining = state === "draining";
+  let conditionExpression = "attribute_exists(id)";
+  if (activating) {
+    conditionExpression += " AND #state = :paused";
+  } else if (resumingAdmission) {
+    conditionExpression += " AND (attribute_not_exists(#state) OR #state <> :draining)";
+  }
   try {
     const res = await ctx.doc.send(
       new UpdateCommand({
@@ -515,11 +521,7 @@ export async function setRepositoryAdmissionState(
               ]
             : []),
         ].join(""),
-        ConditionExpression: activating
-          ? "attribute_exists(id) AND #state = :paused"
-          : resumingAdmission
-            ? "attribute_exists(id) AND (attribute_not_exists(#state) OR #state <> :draining)"
-            : "attribute_exists(id)",
+        ConditionExpression: conditionExpression,
         ExpressionAttributeNames: names,
         ExpressionAttributeValues: {
           ":state": state,
