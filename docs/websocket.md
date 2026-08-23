@@ -127,9 +127,13 @@ can safely execute scheduled sessions in the repository main checkout sends
 normalize to `[]`; the scheduler must not send that daemon a null-worktree
 assignment.
 
-Modern daemons include `runtime: { daemonVersion, gitVersion, gitReady, gitReadinessReason? }`.
-The control plane treats a missing runtime report as legacy and fails closed for scheduling. Reasons
-are bounded codes only; command output and local paths are never sent over the wire.
+Modern daemons include `runtime: { daemonVersion, gitVersion, gitReady, gitReadinessReason?,
+environmentNames?, environmentNamesCaseSensitive? }`. `environmentNames` includes names only, and
+Windows daemons set `environmentNamesCaseSensitive: false` because their child-process environment
+lookup is case-insensitive; other platforms set it to `true`. The control plane treats a missing
+runtime report or comparison-mode field as legacy and uses exact (POSIX-compatible) matching. The
+control plane fails closed for scheduling when Git readiness is absent. Reasons are bounded codes
+only; command output and local paths are never sent over the wire.
 
 ---
 

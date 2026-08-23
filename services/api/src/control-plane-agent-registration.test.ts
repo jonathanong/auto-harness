@@ -110,6 +110,23 @@ describe("host registration repository inventory", () => {
     expect(plane.getHostInventory("invalid-runtime-host")).toBeNull();
   });
 
+  it("rejects an invalid environment-name comparison mode before persisting it", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.registerHost({
+        hostId: "invalid-runtime-host",
+        worktrees: [],
+        runtime: {
+          daemonVersion: "test",
+          gitVersion: "2.36.0",
+          gitReady: true,
+          environmentNamesCaseSensitive: "no",
+        } as never,
+      }),
+    ).toEqual({ ok: false, error: "runtime report is invalid" });
+    expect(plane.getHostInventory("invalid-runtime-host")).toBeNull();
+  });
+
   it("exposes drain state in the host fleet view", () => {
     const plane = new ControlPlane({ connectionIdFactory: () => "draining-connection" });
     expect(plane.registerHost({ hostId: "draining-host", worktrees: [], draining: true })).toEqual({

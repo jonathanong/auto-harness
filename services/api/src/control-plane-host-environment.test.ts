@@ -39,4 +39,61 @@ describe("host environment readiness", () => {
     plane.state.hostInventories.get("host-1")!.runtime!.environmentNames!.push("REPO_TOKEN");
     expect(hostEnvironmentReady(plane.state, "host-1", "repo-1")).toBe(true);
   });
+
+  it("uses Windows lookup semantics only when a modern runtime reports them", () => {
+    const plane = new ControlPlane();
+    const inventory = {
+      hostId: "host-1",
+      requiredEnvironment: ["REPO_TOKEN"],
+      repositories: [{ id: "repo-1", path: "/repo", defaultBranch: "main", worktrees: [] }],
+      providerAccounts: [],
+      updatedAt: "now",
+    };
+    plane.state.hostInventories.set("host-1", {
+      ...inventory,
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: "2.36.0",
+        gitReady: true,
+        environmentNames: ["Repo_Token"],
+        environmentNamesCaseSensitive: false,
+      },
+    });
+    expect(hostEnvironmentReady(plane.state, "host-1", "repo-1")).toBe(true);
+    expect(plane.listHosts()).toMatchObject([
+      {
+        hostId: "host-1",
+        environmentReadiness: {
+          "repo-1": { required: ["REPO_TOKEN"], missing: [], ready: true },
+        },
+      },
+    ]);
+
+    plane.state.hostInventories.set("host-1", {
+      ...inventory,
+      runtime: {
+        daemonVersion: "test",
+        gitVersion: "2.36.0",
+        gitReady: true,
+        environmentNames: ["Repo_Token"],
+        environmentNamesCaseSensitive: true,
+      },
+    });
+    expect(hostEnvironmentReady(plane.state, "host-1", "repo-1")).toBe(false);
+
+    plane.state.hostInventories.set("host-1", {
+      ...inventory,
+      runtime: {
+        daemonVersion: "legacy",
+        gitVersion: "2.36.0",
+        gitReady: true,
+        environmentNames: ["Repo_Token"],
+      },
+    });
+    expect(repositoryEnvironmentReadiness(plane.state, "host-1", "repo-1")).toEqual({
+      required: ["REPO_TOKEN"],
+      missing: ["REPO_TOKEN"],
+      ready: false,
+    });
+  });
 });

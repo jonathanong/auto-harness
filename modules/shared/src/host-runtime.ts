@@ -9,6 +9,11 @@ export const GIT_READINESS_REASONS = [
 export const MAX_RUNTIME_ENVIRONMENT_NAMES = 256;
 export const MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH = 128;
 
+/** Windows child-process environment keys are case-insensitive; POSIX keys are not. */
+export function environmentNamesAreCaseSensitive(platform: string): boolean {
+  return platform !== "win32";
+}
+
 function boundedRuntimeText(candidate: unknown): candidate is string {
   return typeof candidate === "string" && candidate.length > 0 && candidate.length <= 128;
 }
@@ -23,6 +28,11 @@ export type HostRuntimeReport = {
   gitReadinessReason?: GitReadinessReason;
   /** Names available to repository child processes. Values never cross the daemon boundary. */
   environmentNames?: string[];
+  /**
+   * Whether names in `environmentNames` match child-process lookup case-sensitively.
+   * Missing is a legacy report and preserves the POSIX-compatible exact-match behavior.
+   */
+  environmentNamesCaseSensitive?: boolean;
 };
 
 /** Validate untrusted runtime facts before they enter the durable host inventory. */
@@ -33,6 +43,8 @@ export function isHostRuntimeReport(value: unknown): value is HostRuntimeReport 
     !boundedRuntimeText(runtime.daemonVersion) ||
     (runtime.gitVersion !== null && !boundedRuntimeText(runtime.gitVersion)) ||
     typeof runtime.gitReady !== "boolean" ||
+    (runtime.environmentNamesCaseSensitive !== undefined &&
+      typeof runtime.environmentNamesCaseSensitive !== "boolean") ||
     (runtime.environmentNames !== undefined &&
       (!Array.isArray(runtime.environmentNames) ||
         runtime.environmentNames.length > MAX_RUNTIME_ENVIRONMENT_NAMES ||

@@ -19,8 +19,16 @@ export function repositoryEnvironmentReadiness(
   ].filter((name, index, names) => names.indexOf(name) === index);
   const connectionId = state.hostConnection.get(hostId);
   const runtime = connectionId ? state.connections.get(connectionId)?.runtime : inventory?.runtime;
-  const available = new Set(runtime?.environmentNames ?? []);
-  const missing = required.filter((name) => !available.has(name));
+  // Older daemons did not report their platform semantics. Preserve the former
+  // exact-match behavior for those reports; only a current Windows daemon can
+  // opt into its case-insensitive child-environment lookup semantics.
+  const caseSensitive = runtime?.environmentNamesCaseSensitive !== false;
+  const available = new Set(
+    (runtime?.environmentNames ?? []).map((name) => (caseSensitive ? name : name.toUpperCase())),
+  );
+  const missing = required.filter(
+    (name) => !available.has(caseSensitive ? name : name.toUpperCase()),
+  );
   return { required, missing, ready: missing.length === 0 };
 }
 

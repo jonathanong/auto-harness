@@ -53,4 +53,13 @@ describe("Git checkout-recovery readiness", () => {
       }),
     );
   });
+
+  it("reports child-environment name semantics from the daemon platform", async () => {
+    await expect(
+      probeGitReadiness(runner({ stdout: "git version 2.36.0\n" }), "win32"),
+    ).resolves.toMatchObject({ environmentNamesCaseSensitive: false });
+    await expect(
+      probeGitReadiness(runner({ stdout: "git version 2.36.0\n" }), "linux"),
+    ).resolves.toMatchObject({ environmentNamesCaseSensitive: true });
+  });
 });

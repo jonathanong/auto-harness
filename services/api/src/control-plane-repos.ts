@@ -123,7 +123,15 @@ export function getRepository(state: ControlPlaneState, id: string): RepositoryR
 export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
   return [...state.repositories.values()]
     .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .map((r) => ({ ...r, admissionState: repositoryAdmissionState(r.admissionState) }));
+    .flatMap((r) => {
+      try {
+        return [{ ...r, admissionState: repositoryAdmissionState(r.admissionState) }];
+      } catch {
+        // A malformed persisted row must not hide healthy repositories from the catalog.
+        // Omit the invalid row until an operator repairs it; admission checks still fail closed.
+        return [];
+      }
+    });
 }
 
 export function updateRepository(

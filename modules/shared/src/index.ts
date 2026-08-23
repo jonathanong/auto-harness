@@ -46,6 +46,7 @@ export {
 } from "./host-capabilities.ts";
 
 export {
+  environmentNamesAreCaseSensitive,
   GIT_READINESS_REASONS,
   isHostRuntimeReport,
   MAX_RUNTIME_ENVIRONMENT_NAMES,
