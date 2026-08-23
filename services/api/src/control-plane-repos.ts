@@ -4,6 +4,7 @@ import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { queueWrite } from "./control-plane-state.ts";
 import { listRepositoriesDurable } from "./control-plane-durable-read-catalog.ts";
+import { normalizeRepositoryRecords } from "./control-plane-repository-normalization.ts";
 
 function findRepositoryByName(
   state: ControlPlaneState,
@@ -121,15 +122,7 @@ export function getRepository(state: ControlPlaneState, id: string): RepositoryR
 }
 
 export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
-  return [...state.repositories.values()].toSorted(compareRepositories).flatMap((r) => {
-    try {
-      return [{ ...r, admissionState: repositoryAdmissionState(r.admissionState) }];
-    } catch {
-      // A malformed persisted row must not hide healthy repositories from the catalog.
-      // Omit the invalid row until an operator repairs it; admission checks still fail closed.
-      return [];
-    }
-  });
+  return normalizeRepositoryRecords(state.repositories.values()).toSorted(compareRepositories);
 }
 
 export function compareRepositories(a: RepositoryRecord, b: RepositoryRecord): number {
