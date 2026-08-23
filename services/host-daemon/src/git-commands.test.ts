@@ -1,8 +1,10 @@
+/* eslint-disable max-lines, unicorn/consistent-function-scoping -- Git command cases use local scenario helpers. */
 import { describe, expect, it } from "vitest";
 
 import {
   gitFailure,
   MAX_GIT_DIAGNOSTIC_BYTES,
+  refetchConfiguredRemotes,
   runGit,
   sanitizeGitDiagnostic,
 } from "./git-commands.ts";
@@ -227,5 +229,56 @@ describe("sanitizeGitDiagnostic", () => {
 
   it("returns an empty diagnostic when Git emitted no stderr", () => {
     expect(sanitizeGitDiagnostic("\n\t")).toBe("");
+    expect(gitFailure("git failed").message).toBe("git failed");
+    expect(sanitizeGitDiagnostic("\u001b\u0001visible")).toBe("visible");
+  });
+
+  it("bounds repeated stderr chunks and drops marker continuations without line breaks", async () => {
+    const result = await runGit(
+      {
+        async run(options) {
+          options.onChunk({ stream: "stderr", data: "safe\n" + "x".repeat(65_531) });
+          options.onChunk({ stream: "stderr", data: "ignored" });
+          options.onChunk({ stream: "stderr", data: "\n[output chunk truncated]\n" });
+          options.onChunk({ stream: "stderr", data: "secret-continuation" });
+          return { exitCode: undefined, timedOut: false, signal: null };
+        },
+      },
+      "/repo",
+      ["fetch"],
+    );
+    expect(result).toMatchObject({ exitCode: 1, stderr: "safe [output chunk truncated]" });
+  });
+});
+
+describe("refetchConfiguredRemotes", () => {
+  function runner(results: Array<{ exitCode: number; stdout?: string }>) {
+    return {
+      async run(options: Parameters<Parameters<typeof runGit>[0]["run"]>[0]) {
+        const result = results.shift()!;
+        if (result.stdout) options.onChunk({ stream: "stdout", data: result.stdout });
+        return { exitCode: result.exitCode, timedOut: false, signal: null };
+      },
+    };
+  }
+
+  it("fails for a remote-list error or an empty remote list", async () => {
+    await expect(refetchConfiguredRemotes(runner([{ exitCode: 1 }]), "/repo")).resolves.toBe(false);
+    await expect(refetchConfiguredRemotes(runner([{ exitCode: 0 }]), "/repo")).resolves.toBe(false);
+  });
+
+  it("fetches every configured remote and stops on the first failure", async () => {
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\nupstream\n" }, { exitCode: 0 }, { exitCode: 0 }]),
+        "/repo",
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      refetchConfiguredRemotes(
+        runner([{ exitCode: 0, stdout: "origin\n" }, { exitCode: 1 }]),
+        "/repo",
+      ),
+    ).resolves.toBe(false);
   });
 });

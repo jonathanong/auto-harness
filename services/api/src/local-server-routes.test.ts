@@ -33,6 +33,8 @@ describe("createLocalApp agent and scheduler routes", () => {
 
     expect((await invoke("GET", "/api/v1/hosts")).status).toBe(200);
     expect((await invoke("GET", "/api/v1/worktrees")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions?sort=priority_desc")).status).toBe(200);
+    expect((await invoke("GET", "/api/v1/sessions?sort=priority_asc")).status).toBe(200);
 
     const created = await invoke("POST", "/api/v1/sessions", {
       repositoryId: "r1",

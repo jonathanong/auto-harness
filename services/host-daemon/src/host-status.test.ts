@@ -114,4 +114,49 @@ describe("fetchControlPlaneHostStatus", () => {
     expect(result.reason).toBe("control plane request failed");
     expect(JSON.stringify(result)).not.toContain("secret-token");
   });
+
+  it("handles invalid JSON, malformed item collections, and untyped optional fields", async () => {
+    const invalid = await fetchControlPlaneHostStatus(
+      { ...identity, apiKey: "" },
+      async () => new Response("not-json", { status: 200 }),
+    );
+    expect(invalid.reason).toBe("control plane returned invalid host status");
+
+    for (const body of [null, {}, { items: [null, "host-1", { hostId: "other" }] }]) {
+      const result = await fetchControlPlaneHostStatus(
+        identity,
+        async () => new Response(JSON.stringify(body), { status: 200 }),
+      );
+      expect(result.reason).toBe("exact host is absent from the control plane");
+    }
+
+    const malformed = await fetchControlPlaneHostStatus(
+      identity,
+      async () =>
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                hostId: "host-1",
+                online: "yes",
+                connectedAt: 1,
+                draining: "no",
+                gitReady: "yes",
+                daemonVersion: "",
+                gitVersion: 2,
+                gitReadinessReason: null,
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    expect(malformed).toMatchObject({
+      online: null,
+      connectedAt: null,
+      draining: null,
+      gitReady: null,
+    });
+    expect(malformed).not.toHaveProperty("daemonVersion");
+  });
 });

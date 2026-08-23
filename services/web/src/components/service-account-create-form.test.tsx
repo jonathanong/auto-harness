@@ -104,4 +104,14 @@ describe("ServiceAccountCreateForm", () => {
     await settle();
     expect(onCreate).toHaveBeenCalledWith({ name: "admins", role: "admin" });
   });
+
+  it("defaults a missing role control to operator", async () => {
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const view = mountForm(<ServiceAccountCreateForm repositories={[]} onCreate={onCreate} />);
+    setValue(field(view.container, "service-account-name"), "fallback");
+    field(view.container, "service-account-role").remove();
+    submit(field(view.container, "form-service-account-create"));
+    await settle();
+    expect(onCreate).toHaveBeenCalledWith({ name: "fallback", role: "operator" });
+  });
 });

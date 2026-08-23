@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Windows service outcomes share one filesystem fixture. */
 import { describe, expect, it } from "vitest";
 
 import { installHostService, uninstallHostService } from "./host-service.ts";
@@ -197,5 +198,22 @@ describe("status win32", () => {
         ),
       ).state,
     ).toBe("unknown");
+    const options: Array<Record<string, unknown> | undefined> = [];
+    expect(
+      statusWin32(
+        resolveHostService(
+          baseOpts({
+            platform: "win32",
+            fs: seededFs(),
+            timeoutMs: 200,
+            run: (_command, _args, runOptions) => {
+              options.push(runOptions);
+              return { status: 1, stdout: "", stderr: "access denied" };
+            },
+          }),
+        ),
+      ).state,
+    ).toBe("unknown");
+    expect(options).toEqual([{ timeoutMs: 200 }]);
   });
 });

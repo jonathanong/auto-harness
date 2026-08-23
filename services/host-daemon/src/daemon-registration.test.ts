@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { applyDaemonInventory, registerDaemon } from "./daemon-registration.ts";
 
 describe("daemon registration", () => {
+  it("omits optional identity and runtime while preserving drain intent", async () => {
+    const messages: unknown[] = [];
+    await registerDaemon(
+      { hostId: "host", repositories: [], providerAccounts: [] },
+      { send: async (message: unknown) => void messages.push(message) } as never,
+      [],
+      true,
+    );
+    expect(messages).toEqual([expect.objectContaining({ draining: true, runningSessions: [] })]);
+    expect(messages[0]).not.toHaveProperty("daemonInstanceId");
+    expect(messages[0]).not.toHaveProperty("runtime");
+  });
+
   it("publishes sorted running sessions and all configured inventory", async () => {
     const messages: unknown[] = [];
     await registerDaemon(

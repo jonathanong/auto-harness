@@ -38,6 +38,10 @@ describe("DynamoDB Local clients", () => {
     expect((await client.config.endpoint()).port).toBe(7429);
     expect(await client.config.region()).toBe("us-west-2");
     expect(doc).toBeTruthy();
+
+    const aws = createDynamoClients({ endpoint: null, region: "us-west-1" });
+    expect(await aws.client.config.region()).toBe("us-west-1");
+    expect(aws.doc).toBeTruthy();
   });
 
   it("uses environment values and local defaults when options are omitted", async () => {

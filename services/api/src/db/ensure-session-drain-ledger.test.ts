@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- migration coverage cases share one fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import { ensureSessionDrainActivityLedger } from "./ensure-session-drain-ledger.ts";
@@ -185,5 +186,47 @@ describe("session drain activity-ledger bootstrap", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("paginates sparse scans and accepts a concurrent readiness publisher", async () => {
+    let scans = 0;
+    const conditional = Object.assign(new Error("published"), {
+      name: "ConditionalCheckFailedException",
+    });
+    const calls: Array<Record<string, unknown>> = [];
+    await expect(
+      ensureSessionDrainActivityLedger(
+        {
+          send: async (command: { input: Record<string, unknown> }) => {
+            calls.push(command.input);
+            if (command.input.Key?.recordKey === "ACTIVITY-V1") return {};
+            if (command.input.TableName === "Sessions") {
+              scans += 1;
+              return scans === 1
+                ? {
+                    Items: [
+                      {
+                        id: "cancelled-main",
+                        repositoryId: "repo",
+                        principalId: "principal",
+                        status: "cancelled",
+                        mainCheckoutLease: true,
+                      },
+                    ],
+                    LastEvaluatedKey: { id: "cancelled-main" },
+                  }
+                : {};
+            }
+            if (command.input.RequestItems) return {};
+            throw conditional;
+          },
+        } as never,
+        { sessions: "Sessions", sessionDrains: "SessionDrains" },
+      ),
+    ).resolves.toBeUndefined();
+    expect(scans).toBe(2);
+    expect(calls.find((call) => call.ExclusiveStartKey)).toMatchObject({
+      ExclusiveStartKey: { id: "cancelled-main" },
+    });
   });
 });

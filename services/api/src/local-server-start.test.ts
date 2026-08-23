@@ -99,4 +99,27 @@ describe("startLocalServer", () => {
     await server.close();
     expect(await server.scheduler.tick()).toBe(false);
   });
+
+  it("accepts explicit and environment websocket rate-limit settings", async () => {
+    const explicit = await startLocalServer({
+      port: 17620 + Math.floor(Math.random() * 100),
+      useDynamo: false,
+      wsRateLimitPerSecond: 3,
+      onRateLimitEvent: vi.fn(),
+    });
+    await explicit.close();
+
+    const previous = process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND;
+    process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND = "4";
+    try {
+      const configured = await startLocalServer({
+        port: 17720 + Math.floor(Math.random() * 100),
+        useDynamo: false,
+      });
+      await configured.close();
+    } finally {
+      if (previous === undefined) delete process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND;
+      else process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND = previous;
+    }
+  });
 });

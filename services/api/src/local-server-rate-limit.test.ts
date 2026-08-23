@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- rate-limit route cases share one server fixture. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -174,6 +175,52 @@ describe("local API rate limits", () => {
     });
     expect(response.status).toBe(500);
     expect(events).toContain("error");
+  });
+
+  it("enforces login, disabled-mode logout, and denied-authorization budgets", async () => {
+    const login = createLocalApp({
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { login: 1 } },
+    }).handler;
+    expect((await invokeHandler(login, "POST", "/api/v1/auth/login", {})).status).toBe(401);
+    expect((await invokeHandler(login, "POST", "/api/v1/auth/login", {})).status).toBe(429);
+
+    const logout = createLocalApp({
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { mutation: 1 } },
+    }).handler;
+    expect((await invokeHandler(logout, "POST", "/api/v1/auth/logout")).status).toBe(204);
+    expect((await invokeHandler(logout, "POST", "/api/v1/auth/logout")).status).toBe(429);
+
+    const auth = new AuthService({
+      mode: "required",
+      secret: "a".repeat(32),
+      admins: Buffer.from(JSON.stringify([{ username: "admin", password: "password" }])).toString(
+        "base64",
+      ),
+    });
+    const { apiKey } = await auth.createServiceAccount({ name: "reader", role: "read-only" });
+    const denied = createLocalApp({
+      authService: auth,
+      rateLimitNow: () => 50_000,
+      rateLimitConfig: { limits: { mutation: 1 } },
+    }).handler;
+    const headers = { authorization: `Bearer ${apiKey}` };
+    expect((await invokeHandler(denied, "POST", "/api/v1/repositories", {}, headers)).status).toBe(
+      403,
+    );
+    expect((await invokeHandler(denied, "POST", "/api/v1/repositories", {}, headers)).status).toBe(
+      429,
+    );
+
+    const cookies = createLocalApp({ rateLimitConfig: { enabled: false } }).handler;
+    expect(
+      (
+        await invokeHandler(cookies, "GET", "/api/v1/missing", undefined, {
+          cookie: ["other=value", "auto_harness_session=value"],
+        } as never)
+      ).status,
+    ).toBe(404);
   });
 });
 

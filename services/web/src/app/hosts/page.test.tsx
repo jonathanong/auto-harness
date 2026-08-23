@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- host list route states share one API fixture. */
 import { afterEach, describe, expect, it } from "vitest";
 
 import { renderPage, stubApi } from "../route-test-helpers.tsx";
@@ -18,6 +19,7 @@ describe("hosts fleet route", () => {
           {
             hostId: "host/a",
             online: true,
+            gitReady: true,
             connectedAt: "2026-08-12T00:00:00.000Z",
             daemonStartedAt: "2026-08-11T23:00:00.000Z",
             restartCount: 2,
@@ -77,6 +79,7 @@ describe("hosts fleet route", () => {
     expect(html).toContain("gpu");
     expect(html).toContain("Current session: None");
     expect(html).toContain("No worktrees configured.");
+    expect(html).toContain("Ready");
     expect(html).toContain('data-pw="host-connected-at-host/a"');
     expect(html).toContain('dateTime="2026-08-12T00:00:00.000Z"');
     // Restart count and daemon start time moved to the host detail page's Overview tab (#17) —
@@ -100,6 +103,33 @@ describe("hosts fleet route", () => {
     expect(html).toContain("No hosts match filters");
     expect(html).toContain('colSpan="8"');
     expect(html).toContain('data-pw="hosts-retained-data-notice"');
+  });
+
+  it("filters offline hosts and tolerates legacy list responses without items", async () => {
+    stubApi({
+      "/api/v1/hosts": {
+        items: [
+          { hostId: "online", online: true },
+          { hostId: "offline", online: false },
+        ],
+      },
+      "/api/v1/host-inventories": {},
+      "/api/v1/worktrees": {},
+    });
+    const html = await renderPage(
+      HostsPage({ searchParams: Promise.resolve({ online: "offline", ignored: ["array"] }) }),
+    );
+    expect(html).toContain('data-pw="host-row-offline"');
+    expect(html).not.toContain('data-pw="host-row-online"');
+
+    stubApi({
+      "/api/v1/hosts": {},
+      "/api/v1/host-inventories": {},
+      "/api/v1/worktrees": {},
+    });
+    expect(await renderPage(HostsPage({ searchParams: Promise.resolve({}) }))).toContain(
+      "Add a host above or start a daemon.",
+    );
   });
 
   it("surfaces a host fleet read failure", async () => {

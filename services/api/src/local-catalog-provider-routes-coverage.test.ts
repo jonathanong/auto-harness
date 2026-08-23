@@ -88,4 +88,19 @@ describe("local provider catalog route coverage", () => {
     const response = await invoke(plane, "DELETE", "/api/v1/provider-accounts/account/usage-limit");
     expect(response).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });
+
+  it("maps provider-account delete conflicts, dependencies, and missing rows", async () => {
+    for (const result of [
+      { ok: false, conflict: true, error: "in use", dependencies: { hosts: ["host"] } },
+      { ok: false, conflict: false, error: "missing" },
+    ] as const) {
+      const plane = seededPlane();
+      plane.deleteProviderAccountDurable = async () => result as never;
+      const response = await invoke(plane, "DELETE", "/api/v1/provider-accounts/account");
+      expect(response.status).toBe(result.conflict ? 409 : 404);
+      expect(response.json).toMatchObject({
+        error: { code: result.conflict ? "CONFLICT" : "NOT_FOUND" },
+      });
+    }
+  });
 });

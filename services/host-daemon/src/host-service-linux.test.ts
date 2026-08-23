@@ -105,6 +105,30 @@ describe("install-service linux", () => {
     expect(errors.join("\n")).toMatch(/enable failed/);
   });
 
+  it("reports split enable and restart failures for an existing root environment update", () => {
+    const existing = {
+      [LINUX_ENV_DEST]:
+        "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://old.example\nHARNESS_API_KEY=secret\n",
+    };
+    for (const failed of ["enable", "restart"]) {
+      expect(
+        installHostService(
+          baseOpts({
+            platform: "linux",
+            uid: 0,
+            apiUrl: "https://new.example",
+            fs: seededFs(existing),
+            run: (_command, args) => ({
+              status: args[0] === failed ? 1 : 0,
+              stdout: "",
+              stderr: `${failed} failed`,
+            }),
+          }),
+        ),
+      ).toBe(1);
+    }
+  });
+
   it("prints sudo uninstall when not root and disables when root", () => {
     const logs: string[] = [];
     expect(
@@ -235,5 +259,25 @@ describe("status linux", () => {
       "auto-harness-host-daemon.service",
     ]);
     expect(timeoutMs).toBe(17);
+  });
+
+  it("maps command, Result-only, and unrecognized status outcomes", () => {
+    for (const [status, stdout, expected] of [
+      [1, "LoadState=loaded\n", "unknown"],
+      [0, "LoadState=loaded\nActiveState=activating\nResult=failed\n", "failed"],
+      [0, "LoadState=loaded\nActiveState=activating\nResult=success\n", "unknown"],
+    ] as const) {
+      expect(
+        statusLinux(
+          resolveHostService(
+            baseOpts({
+              platform: "linux",
+              fs: seededFs(),
+              run: () => ({ status, stdout, stderr: "" }),
+            }),
+          ),
+        ).state,
+      ).toBe(expected);
+    }
   });
 });

@@ -246,4 +246,22 @@ describe("usage report authorization", () => {
       500,
     );
   });
+
+  it("fails closed when successful usage reads cannot be audited", async () => {
+    const plane = new ControlPlane();
+    plane.state.sessions.set("session-1", {
+      id: "session-1",
+      repositoryId: "repo-1",
+    } as never);
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const { handler } = createLocalApp({ plane });
+    expect((await invokeHandler(handler, "GET", "/api/v1/sessions/session-1/usage")).status).toBe(
+      500,
+    );
+    expect((await invokeHandler(handler, "GET", "/api/v1/usage?repositoryId=repo-1")).status).toBe(
+      500,
+    );
+  });
 });

@@ -48,6 +48,7 @@ describe("host detail route", () => {
             online: true,
             environmentReadiness: {
               "repo-a": { required: ["TOKEN"], missing: ["TOKEN"], ready: false },
+              "repo-unknown": { required: ["TOKEN"], missing: [], ready: true },
             },
           },
         ],
@@ -62,6 +63,8 @@ describe("host detail route", () => {
     expect(html).toContain('data-pw="host-environment-readiness-repo-a"');
     expect(html).toContain("Repo A:");
     expect(html).toContain("Missing TOKEN");
+    expect(html).toContain("repo-unknown:");
+    expect(html).toContain("Ready");
   });
 
   it("shows a genuine not-found for a host with no inventory and no agent record", async () => {
@@ -240,5 +243,25 @@ describe("host detail route", () => {
     );
     expect(html).toContain('data-pw="host-detail-status-error"');
     expect(html).toContain('data-pw="page-host-detail"');
+  });
+
+  it("tolerates legacy collection responses and inventories without provider accounts", async () => {
+    stubApi({
+      "/api/v1/hosts/legacy/inventory": { repositories: [] },
+      "/api/v1/hosts": {},
+      "/api/v1/repositories": {},
+      "/api/v1/worktrees?hostId=legacy": {},
+      "/api/v1/providers": {},
+      "/api/v1/provider-accounts": {},
+      "/api/v1/commands": {},
+    });
+    const html = await renderPage(
+      HostDetailPage({
+        params: Promise.resolve({ hostId: "legacy" }),
+        searchParams: Promise.resolve({ tab: ["advanced"] }),
+      }),
+    );
+    expect(html).toContain('data-pw="page-host-detail"');
+    expect(html).toContain('data-pw="host-detail-overview"');
   });
 });

@@ -1,4 +1,7 @@
+/* eslint-disable max-lines, unicorn/consistent-function-scoping -- Slack route cases use local scenario helpers. */
 import { describe, expect, it } from "vitest";
+
+import { DEFAULT_SLACK_NOTIFICATIONS } from "@auto-harness/shared";
 
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
@@ -87,7 +90,11 @@ describe("Slack integration routes", () => {
       404,
     );
     for (const malformed of [
+      null,
+      [],
+      "slack",
       {},
+      { botToken: token },
       { ...body(), enabled: "yes" },
       { ...body(), signingSecret: 1 },
       { ...body(), notifications: [] },
@@ -126,5 +133,147 @@ describe("Slack integration routes", () => {
       (await invokeHandler(handler, "POST", "/api/v1/integrations/slack", body())).status,
     ).toBe(500);
     expect(plane.getSlackIntegration()).not.toBeNull();
+  });
+
+  it("maps durable Slack read, write, update, and delete failure variants", async () => {
+    const read = new ControlPlane({ secretEncryptor: encryptor() });
+    read.getSlackIntegrationDurable = async () => {
+      throw new Error("read failed");
+    };
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: read, authMode: "disabled" }).handler,
+          "GET",
+          "/api/v1/integrations/slack",
+        )
+      ).status,
+    ).toBe(500);
+
+    const unavailable = new ControlPlane({ secretEncryptor: encryptor() });
+    unavailable.createSlackIntegrationDurable = async () => ({
+      ok: false,
+      unavailable: true,
+      error: "storage unavailable",
+    });
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: unavailable, authMode: "disabled" }).handler,
+          "POST",
+          "/api/v1/integrations/slack",
+          body(),
+        )
+      ).status,
+    ).toBe(500);
+
+    for (const [result, status] of [
+      [{ ok: false, error: "Slack integration not found" }, 404],
+      [{ ok: false, error: "invalid update" }, 400],
+      [{ ok: false, error: "changed", conflict: true }, 409],
+    ] as const) {
+      const plane = new ControlPlane({ secretEncryptor: encryptor() });
+      plane.updateSlackIntegrationDurable = async () => result;
+      expect(
+        (
+          await invokeHandler(
+            createLocalApp({ plane, authMode: "disabled" }).handler,
+            "PUT",
+            "/api/v1/integrations/slack",
+            body(),
+          )
+        ).status,
+      ).toBe(status);
+    }
+
+    for (const [result, status] of [
+      [{ ok: false, error: "missing" }, 404],
+      [{ ok: false, error: "changed", conflict: true }, 409],
+    ] as const) {
+      const plane = new ControlPlane({ secretEncryptor: encryptor() });
+      plane.deleteSlackIntegrationDurable = async () => result;
+      expect(
+        (
+          await invokeHandler(
+            createLocalApp({ plane, authMode: "disabled" }).handler,
+            "DELETE",
+            "/api/v1/integrations/slack",
+          )
+        ).status,
+      ).toBe(status);
+    }
+
+    const thrown = new ControlPlane({ secretEncryptor: encryptor() });
+    thrown.deleteSlackIntegrationDurable = async () => {
+      throw new Error("delete failed");
+    };
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: thrown, authMode: "disabled" }).handler,
+          "DELETE",
+          "/api/v1/integrations/slack",
+        )
+      ).status,
+    ).toBe(500);
+  });
+
+  it("accepts notification and signing-secret options", async () => {
+    const plane = new ControlPlane({ secretEncryptor: encryptor() });
+    const response = await invokeHandler(
+      createLocalApp({ plane, authMode: "disabled" }).handler,
+      "POST",
+      "/api/v1/integrations/slack",
+      {
+        ...body(),
+        enabled: true,
+        signingSecret: "a".repeat(32),
+        notifications: DEFAULT_SLACK_NOTIFICATIONS,
+      },
+    );
+    expect(response.status).toBe(201);
+  });
+
+  it("fails closed when audits fail on each Slack error and delete outcome", async () => {
+    const invoke = (plane: ControlPlane, method: string, requestBody?: unknown) =>
+      invokeHandler(
+        createLocalApp({ plane, authMode: "disabled" }).handler,
+        method,
+        "/api/v1/integrations/slack",
+        requestBody,
+      );
+    const auditFailure = () => {
+      const plane = new ControlPlane({ secretEncryptor: encryptor() });
+      plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      return plane;
+    };
+
+    expect((await invoke(auditFailure(), "POST", {})).status).toBe(500);
+
+    const rejected = auditFailure();
+    rejected.createSlackIntegrationDurable = async () => ({ ok: false, error: "rejected" });
+    expect((await invoke(rejected, "POST", body())).status).toBe(500);
+
+    const createThrown = auditFailure();
+    createThrown.createSlackIntegrationDurable = async () => {
+      throw new Error("write failed");
+    };
+    expect((await invoke(createThrown, "POST", body())).status).toBe(500);
+
+    const deleteRejected = auditFailure();
+    deleteRejected.deleteSlackIntegrationDurable = async () => ({ ok: false, error: "missing" });
+    expect((await invoke(deleteRejected, "DELETE")).status).toBe(500);
+
+    const deleteSuccess = auditFailure();
+    deleteSuccess.deleteSlackIntegrationDurable = async () => ({ ok: true });
+    expect((await invoke(deleteSuccess, "DELETE")).status).toBe(500);
+
+    const deleteThrown = auditFailure();
+    deleteThrown.deleteSlackIntegrationDurable = async () => {
+      throw new Error("delete failed");
+    };
+    expect((await invoke(deleteThrown, "DELETE")).status).toBe(500);
   });
 });

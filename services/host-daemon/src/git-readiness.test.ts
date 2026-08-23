@@ -44,6 +44,13 @@ describe("Git checkout-recovery readiness", () => {
     );
   });
 
+  it("rejects unsafe numeric versions and incomplete support checks", () => {
+    expect(parseGitVersion(`git version ${"9".repeat(400)}.36.0`)).toBeNull();
+    expect(gitVersionIsSupported("2")).toBe(false);
+    expect(gitVersionIsSupported(".36")).toBe(false);
+    expect(gitVersionIsSupported("3.0")).toBe(true);
+  });
+
   it.each([{ exitCode: 1 }, { throws: true }])("reports unavailable Git", async (result) => {
     await expect(probeGitReadiness(runner(result))).resolves.toEqual(
       expect.objectContaining({

@@ -94,4 +94,43 @@ describe("SlackSettingsForm", () => {
     await settle();
     expect(field(document.body, "slack-error").textContent).toContain("Unable to delete");
   });
+
+  it("handles missing form controls and a rejected delete response", async () => {
+    createApiFake(json({ error: { message: "delete rejected" } }, 409));
+    const missing = mountForm(<SlackSettingsForm />);
+    field(missing.container, "slack-bot-token").remove();
+    field(missing.container, "slack-signing-secret").remove();
+    field(missing.container, "slack-default-channel").remove();
+    submit(field(missing.container, "form-slack-create"));
+    expect(field(missing.container, "slack-error").textContent).toContain("required");
+    missing.unmount();
+
+    const configuredView = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(configuredView.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    await settle();
+    expect(field(document.body, "slack-error").textContent).toContain("delete rejected");
+  });
+
+  it("does not update state after save or delete completes on an unmounted form", async () => {
+    let resolveSave!: (response: Response) => void;
+    let resolveDelete!: (response: Response) => void;
+    createApiFake(
+      () => new Promise<Response>((resolve) => (resolveSave = resolve)),
+      () => new Promise<Response>((resolve) => (resolveDelete = resolve)),
+    );
+    const saveView = mountForm(<SlackSettingsForm />);
+    fillCreate(saveView);
+    submit(field(saveView.container, "form-slack-create"));
+    saveView.unmount();
+    resolveSave(json(configured));
+    await settle();
+
+    const deleteView = mountForm(<SlackSettingsForm initial={configured} />);
+    press(field(deleteView.container, "slack-delete"));
+    press(field(document, "slack-delete-confirm-submit"));
+    deleteView.unmount();
+    resolveDelete(json({}, 204));
+    await settle();
+  });
 });

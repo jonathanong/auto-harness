@@ -44,6 +44,7 @@ describe("browser session log websocket", () => {
       ws.on("message", (raw) => {
         const message = JSON.parse(String(raw)) as { type: string; timestampSeq?: string };
         if (message.type === "session:subscribed") {
+          plane.appendLog({ ...log(3), sessionId: "session-b" });
           plane.appendLog(log(1));
           plane.appendLog(log(2));
         }
@@ -60,6 +61,13 @@ describe("browser session log websocket", () => {
     expect(received).toEqual([log(2).timestampSeq]);
     hub.close();
     await close(server);
+  });
+
+  it("ignores upgrade requests without a URL", () => {
+    const server = createServer();
+    const hub = attachViewerWsHub(server, planeWithSessions(), authService());
+    expect(server.emit("upgrade", {} as never, {} as never, Buffer.alloc(0))).toBe(true);
+    hub.close();
   });
 
   it("hides sessions outside the authenticated principal repository scope", async () => {

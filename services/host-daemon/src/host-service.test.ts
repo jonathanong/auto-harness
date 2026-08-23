@@ -22,6 +22,35 @@ describe("unsupported platform / thrown failures", () => {
     expect(getHostServiceStatus(baseOpts({ platform: "aix", fs: seededFs() }))).toMatchObject({
       state: "unknown",
     });
+    expect(
+      getHostServiceStatus(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          run: () => ({ status: 0, stdout: "state = running\n", stderr: "" }),
+        }),
+      ),
+    ).toMatchObject({ state: "running" });
+    expect(
+      getHostServiceStatus(
+        baseOpts({
+          platform: "win32",
+          fs: seededFs(),
+          run: () => ({ status: 0, stdout: "Status: Running\n", stderr: "" }),
+        }),
+      ),
+    ).toMatchObject({ state: "running" });
+    expect(
+      getHostServiceStatus(
+        baseOpts({
+          platform: "linux",
+          fs: seededFs(),
+          run: () => {
+            throw new Error("status failed");
+          },
+        }),
+      ),
+    ).toMatchObject({ state: "unknown" });
   });
 
   it("rejects unknown platforms and maps thrown values", () => {

@@ -55,6 +55,15 @@ describe("ControlPlane provider account CRUD", () => {
     expect(plane.clearProviderAccountUsageLimit("missing").ok).toBe(false);
     expect(plane.clearProviderAccountUsageLimit("acct-1").ok).toBe(true);
     expect(plane.deleteProviderAccount("missing").ok).toBe(false);
+    plane.state.hostInventories.set("host", {
+      hostId: "host",
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "acct-1" }],
+      commandProfiles: {},
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(plane.deleteProviderAccount("acct-1").ok).toBe(false);
+    plane.state.hostInventories.clear();
     expect(plane.deleteProviderAccount("acct-1").ok).toBe(true);
     expect(plane.getProviderAccount("acct-1")).toBeNull();
   });

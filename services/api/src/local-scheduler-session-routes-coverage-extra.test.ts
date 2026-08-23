@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- route coverage cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -26,6 +27,51 @@ function app() {
 }
 
 describe("scheduler and session route residual coverage", () => {
+  it("fails closed for host-message and drain outcome audits", async () => {
+    for (const outcome of ["message-failure", "message-success", "drain-failure"] as const) {
+      const { plane } = app();
+      plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      if (outcome === "message-failure") {
+        plane.handleHostMessageDurable = async () => ({ ok: false, error: "invalid" });
+      } else if (outcome === "message-success") {
+        plane.handleHostMessageDurable = async () => ({ ok: true });
+      } else {
+        plane.drainHostDurable = async () => ({ ok: false, runningSessionIds: [] });
+      }
+      const path = outcome === "drain-failure" ? "/api/v1/hosts/drain" : "/api/v1/host/messages";
+      const body =
+        outcome === "drain-failure"
+          ? { hostId: "host" }
+          : { type: "host:keepalive", hostId: "host", at: "2026-01-01T00:00:00.000Z" };
+      const response = await invokeHostRoute(plane, path, body);
+      expect(response.status).toBe(500);
+    }
+  });
+
+  it("hides a session message whose current host differs from the bound principal", async () => {
+    const { plane } = app();
+    plane.state.sessions.set("session", {
+      id: "session",
+      repositoryId: "repo",
+      status: "running",
+      hostId: "other-host",
+    } as never);
+    const response = await invokeHostRoute(
+      plane,
+      "/api/v1/host/messages",
+      { type: "session:ack", sessionId: "session", worktreeId: null, attemptId: "attempt" },
+      {
+        id: "agent",
+        kind: "service-account",
+        role: "agent",
+        boundHostId: "host",
+      },
+    );
+    expect(response.status).toBe(404);
+  });
+
   it("maps an authoritative clone read failure", async () => {
     const { plane, invoke } = app();
     plane.getSessionDurable = async () => {
@@ -162,5 +208,54 @@ describe("scheduler and session route residual coverage", () => {
     expect((await invoke("POST", "/api/v1/sessions/source/resume", {})).status).toBe(400);
     plane.resumeSessionDurable = async () => ({ ok: false, error: "session not found" });
     expect((await invoke("POST", "/api/v1/sessions/source/resume", {})).status).toBe(404);
+
+    for (const [result, status, code] of [
+      [
+        {
+          ok: false,
+          error: "repository is draining",
+          code: "DRAINING",
+          operationId: "operation/id",
+        },
+        409,
+        "DRAINING",
+      ],
+      [
+        { ok: false, error: "repository admission is closed", code: "REPOSITORY_ADMISSION_CLOSED" },
+        409,
+        "REPOSITORY_ADMISSION_CLOSED",
+      ],
+      [{ ok: false, error: "forbidden", code: "FORBIDDEN" }, 403, "FORBIDDEN"],
+      [{ ok: false, error: "session changed before resume" }, 409, "CONFLICT"],
+    ] as const) {
+      plane.resumeSessionDurable = async () => result as never;
+      const response = await invoke("POST", "/api/v1/sessions/source/resume", {});
+      expect(response).toMatchObject({ status, json: { error: { code } } });
+      if ("operationId" in result) {
+        expect(response.json).toMatchObject({
+          error: {
+            operationId: "operation/id",
+            statusUrl: "/api/v1/repositories/repo/session-drains/operation%2Fid",
+          },
+        });
+      }
+    }
   });
 });
+
+function invokeHostRoute(plane: ControlPlane, path: string, body: unknown, principal?: Principal) {
+  return invokeHandler(
+    (req, res) =>
+      handleHostSchedulerRoutes({
+        plane,
+        req,
+        res,
+        url: new URL(path, "http://localhost"),
+        method: "POST",
+        ...(principal ? { principal } : {}),
+      }),
+    "POST",
+    path,
+    body,
+  );
+}

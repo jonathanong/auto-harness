@@ -121,4 +121,23 @@ describe("Slack integration configuration", () => {
       conflict: true,
     });
   });
+
+  it("rejects duplicate local creation and invalid or unencrypted updates", async () => {
+    const local = new ControlPlane({ secretEncryptor: encryptor() });
+    await expect(local.createSlackIntegrationDurable(input())).resolves.toMatchObject({ ok: true });
+    await expect(local.createSlackIntegrationDurable(input())).resolves.toMatchObject({
+      ok: false,
+      conflict: true,
+    });
+    await expect(
+      local.updateSlackIntegrationDurable({ ...input(), botToken: "invalid" }),
+    ).resolves.toMatchObject({ ok: false });
+
+    const unencrypted = new ControlPlane();
+    unencrypted.state.slackIntegration = local.state.slackIntegration;
+    await expect(unencrypted.updateSlackIntegrationDurable(input())).resolves.toMatchObject({
+      ok: false,
+      unavailable: true,
+    });
+  });
 });

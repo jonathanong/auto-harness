@@ -71,12 +71,11 @@ export default defineConfig({
       thresholds: process.env.VITEST_SKIP_COVERAGE_THRESHOLDS
         ? undefined
         : {
-            // Preserve the established aggregate floors while lowering the former exact
-            // function requirement to the shared 99% project target.
-            lines: 98,
-            branches: 97,
+            // All aggregate metrics share the same project-wide coverage floor.
+            lines: 99,
+            branches: 99,
             functions: 99,
-            statements: 98,
+            statements: 99,
             // Real argv-parsing/dispatch logic. The residual gap is the top-level
             // `isDirectInvocation` guard, which a unit test importing the module cannot
             // trigger without re-executing this file as a subprocess.

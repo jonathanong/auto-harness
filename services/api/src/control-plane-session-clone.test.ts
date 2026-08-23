@@ -83,6 +83,20 @@ describe("session clone", () => {
       error: "timeout must be a positive number of seconds",
       code: "VALIDATION_ERROR",
     });
+    plane.state.repositories.set("repo-1", {
+      id: "repo-1",
+      name: "repo",
+      url: "/repo",
+      defaultBranch: "main",
+      admissionState: "paused",
+      admissionStateChangedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(plane.cloneSession("session-1")).toMatchObject({
+      ok: false,
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
   });
 
   it("rejects missing inputs and invalid sources without mutating the source", () => {

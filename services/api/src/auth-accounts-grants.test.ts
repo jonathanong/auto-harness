@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { assertAccountGrant, parseRepositoryScope } from "./auth-accounts.ts";
+import {
+  assertAccountGrant,
+  createServiceAccount,
+  createUser,
+  parseRepositoryScope,
+} from "./auth-accounts.ts";
 
 describe("account grant helpers", () => {
   it("parses repository scope from either field name", () => {
@@ -22,5 +27,18 @@ describe("account grant helpers", () => {
     expect(() => assertAccountGrant("operator", { boundHostId: "h" })).not.toThrow();
     expect(() => assertAccountGrant("agent")).toThrow(/boundHostId/);
     expect(() => assertAccountGrant("read-only", { boundHostId: "h" })).toThrow(/agent/);
+  });
+
+  it("rejects invalid grants at both account creation boundaries", async () => {
+    await expect(
+      createUser(
+        { username: "agent", password: "password", role: "agent" as never },
+        new Map(),
+        [],
+      ),
+    ).rejects.toThrow(/boundHostId/);
+    await expect(createServiceAccount({ name: "agent", role: "agent" }, new Map())).rejects.toThrow(
+      /boundHostId/,
+    );
   });
 });

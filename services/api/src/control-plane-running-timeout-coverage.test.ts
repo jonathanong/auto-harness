@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- timeout coverage cases share one session fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -200,5 +201,57 @@ describe("running timeout residual coverage", () => {
     ).toEqual(["only-storage"]);
     expect(local.getSession("only-storage")?.status).toBe("timed_out");
     expect(local.getSession("stale")?.status).toBe("completed");
+  });
+
+  it("releases matching durable worktrees, notifies hosts, and handles optional timeout fences", async () => {
+    const cancels: string[] = [];
+    const plane = new ControlPlane({
+      now: () => NOW,
+      onHostMessage: (hostId, message) => cancels.push(`${hostId}:${message.type}`),
+    });
+    const leased = scheduledRunning({
+      id: "leased",
+      worktreeId: "worktree",
+      attemptId: undefined,
+      concurrencyId: "lock",
+    });
+    const ordinary = scheduledRunning({
+      id: "ordinary",
+      mainCheckoutLease: undefined,
+      assignmentConnectionId: undefined,
+      worktreeId: null,
+    });
+    const future = scheduledRunning({
+      id: "future",
+      ackReceivedAt: new Date(Date.parse(NOW) + TIMEOUT_SECONDS * 1000).toISOString(),
+    });
+    plane.state.sessions.set(leased.id, leased);
+    plane.state.sessions.set(ordinary.id, ordinary);
+    plane.state.worktrees.set("worktree", {
+      id: "worktree",
+      name: "worktree",
+      repositoryId: "repo-1",
+      hostId: "host",
+      path: "/worktree",
+      labels: [],
+      status: "busy",
+      online: true,
+      currentSessionId: leased.id,
+    });
+    plane.state.storage = {
+      listAllSessions: async () => [leased, ordinary, future],
+      releaseMainCheckoutSession: async () => true,
+      finishSession: async () => true,
+      listLogs: async () => [],
+      putArchive: async () => undefined,
+    } as never;
+    await expect(
+      plane.enforceRunningTimeoutsDurable(Date.parse(NOW) + TIMEOUT_SECONDS * 1000),
+    ).resolves.toEqual(["leased", "ordinary"]);
+    expect(plane.state.worktrees.get("worktree")).toMatchObject({
+      status: "idle",
+      currentSessionId: null,
+    });
+    expect(cancels).toEqual(["host:session:cancel", "host:session:cancel"]);
   });
 });

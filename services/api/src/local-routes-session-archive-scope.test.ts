@@ -112,4 +112,15 @@ describe("POST /api/v1/sessions/:id/archive", () => {
 
     expect((await invoke("POST", "/api/v1/sessions/missing/archive")).status).toBe(404);
   });
+
+  it("fails closed when cancel and archive outcome audits cannot be stored", async () => {
+    const { plane, invoke, own, other } = await harness();
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+
+    expect((await invoke("POST", `/api/v1/sessions/${other.id}/cancel`)).status).toBe(500);
+    expect((await invoke("POST", "/api/v1/sessions/missing/cancel")).status).toBe(500);
+    expect((await invoke("POST", `/api/v1/sessions/${own.id}/archive`)).status).toBe(500);
+  });
 });

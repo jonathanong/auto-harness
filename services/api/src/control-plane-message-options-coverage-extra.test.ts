@@ -1,7 +1,14 @@
+/* eslint-disable max-lines -- message option cases share one state fixture. */
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
-import { handleHostMessage, handleHostMessageDurable } from "./control-plane-messages.ts";
+import {
+  appendLog,
+  appendLogDurable,
+  handleHostLogBatchDurable,
+  handleHostMessage,
+  handleHostMessageDurable,
+} from "./control-plane-messages.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { LogRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
@@ -78,6 +85,8 @@ describe("host message optional-field coverage", () => {
       seq,
     }));
     current.logs.set("s", old);
+    const committed: LogRecord[] = [];
+    current.onLogCommitted = (record) => committed.push(record);
     const deleted: string[] = [];
     setDurableReadStorage(current, {
       getHostLock: async () => "connection",
@@ -100,6 +109,51 @@ describe("host message optional-field coverage", () => {
     // The window still slid: the oldest chunk left the cache, the newest arrived.
     expect(current.logs.get("s")).toHaveLength(10_000);
     expect(current.logs.get("s")?.at(-1)?.seq).toBe(10_001);
+    expect(committed).toHaveLength(1);
+  });
+
+  it("publishes queued and directly durable log commits", async () => {
+    const current = state(session());
+    const committed: LogRecord[] = [];
+    current.onLogCommitted = (record) => committed.push(record);
+    setDurableReadStorage(current, { putLog: async () => undefined });
+    appendLog(current, {
+      sessionId: "s",
+      stream: "stdout",
+      content: "queued",
+      timestamp: NOW,
+      seq: 1,
+    });
+    await current.writeTail;
+    current.storage = undefined;
+    await appendLogDurable(current, {
+      sessionId: "s",
+      stream: "stdout",
+      content: "direct",
+      timestamp: NOW,
+      seq: 2,
+    });
+    expect(committed.map((record) => record.content)).toEqual(["queued", "direct"]);
+  });
+
+  it("stops an in-memory log batch at the first rejected chunk", async () => {
+    const current = state(session());
+    await expect(
+      handleHostLogBatchDurable(
+        current,
+        [
+          {
+            type: "session:log",
+            sessionId: "s",
+            stream: "stdout",
+            content: "x".repeat(32 * 1024 + 1),
+            timestamp: NOW,
+            seq: 1,
+          },
+        ],
+        "connection",
+      ),
+    ).resolves.toMatchObject({ ok: false });
   });
 
   it("adds default providerless suppression fields without a worktree", async () => {
@@ -145,5 +199,70 @@ describe("host message optional-field coverage", () => {
       errorCode: "usage_limit",
     });
     expect(current.sessions.get("s")?.suppressedTargetIndexes).toEqual([0]);
+  });
+
+  it("routes standalone and terminal usage reports through both message facades", async () => {
+    const usage = {
+      kind: "delta" as const,
+      sequence: 1,
+      inputTokens: "2",
+      source: "cli" as const,
+      observedAt: NOW,
+    };
+    const current = state(session());
+    expect(
+      handleHostMessage(current, {
+        type: "session:usage",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        usage,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      handleHostMessage(current, {
+        ...status({ usage: { unsupported: true } }),
+      } as never),
+    ).toMatchObject({ ok: false });
+
+    const durable = state(session());
+    setDurableReadStorage(durable, { getSession: async () => session() });
+    await expect(
+      handleHostMessageDurable(durable, {
+        type: "session:usage",
+        sessionId: "s",
+        worktreeId: "w",
+        attemptId: "attempt",
+        usage: {} as never,
+      }),
+    ).resolves.toMatchObject({ ok: false });
+    await expect(
+      handleHostMessageDurable(durable, status({ usage: { unsupported: true } }) as never),
+    ).resolves.toMatchObject({ ok: false });
+  });
+
+  it("passes draining registration snapshots and rejects unsupported in-memory messages", async () => {
+    const current = createControlPlaneState({ connectionIdFactory: () => "connection" });
+    expect(
+      handleHostMessage(current, {
+        type: "host:register",
+        hostId: "host",
+        worktrees: [],
+        commandProfiles: [],
+        draining: true,
+      }),
+    ).toEqual({ ok: true });
+    expect(handleHostMessage(current, { type: "unsupported" } as never)).toMatchObject({
+      ok: false,
+    });
+    await expect(
+      handleHostMessageDurable(current, {
+        type: "host:register",
+        hostId: "durable-host",
+        worktrees: [],
+        commandProfiles: [],
+        draining: true,
+      }),
+    ).resolves.toMatchObject({ ok: true });
   });
 });

@@ -139,4 +139,30 @@ describe("ServiceAccountSettings", () => {
     await settle();
     expect(unauthorized.container.querySelector('[aria-busy="true"]')).toBeTruthy();
   });
+
+  it("rotates an unscoped account and revokes a key unrelated to the visible secret", async () => {
+    const plain = {
+      ...oldAccount,
+      id: "service:plain",
+      allowedRepositoryIds: undefined,
+      boundHostId: undefined,
+    };
+    api.loadServiceAccountData.mockResolvedValue({
+      kind: "ready",
+      accounts: [plain, oldAccount],
+      repositories: [],
+      hostIds: [],
+    });
+    api.createServiceAccount.mockResolvedValue(newSecret);
+    api.deleteServiceAccount.mockResolvedValue(undefined);
+    const view = mountForm(<ServiceAccountSettings canManage />);
+    await settle();
+    press(field(view.container, "service-account-rotate-service:plain"));
+    await settle();
+    expect(api.createServiceAccount).toHaveBeenCalledWith({ name: "ci", role: "operator" });
+    press(field(view.container, "service-account-delete-service:old"));
+    press(field(document.body, "service-account-delete-service:old-confirm-submit"));
+    await settle();
+    expect(api.deleteServiceAccount).toHaveBeenCalledWith("service:old");
+  });
 });

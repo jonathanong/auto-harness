@@ -52,6 +52,9 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
         })
       ).json,
     ).toMatchObject({ usageRates: { currency: "USD", outputTokenMicros: "3" } });
+    expect((await invoke("PATCH", "/api/v1/providers/prov-1", { usageRates: {} })).status).toBe(
+      400,
+    );
     expect(
       (await invoke("PATCH", "/api/v1/providers/prov-1", { usageRates: null })).json,
     ).not.toHaveProperty("usageRates");
@@ -173,5 +176,21 @@ describe("createLocalApp providers/provider-accounts/commands REST", () => {
     expect(await invokeBadJson(handler, "PUT", `/api/v1/provider-accounts/${acctId}`)).toBe(400);
     expect(await invokeBadJson(handler, "POST", "/api/v1/commands")).toBe(400);
     expect(await invokeBadJson(handler, "PATCH", `/api/v1/commands/${cmdId}`)).toBe(400);
+  });
+
+  it("fails closed when an invalid provider-rate audit cannot be stored", async () => {
+    const plane = new ControlPlane();
+    plane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const { handler } = createLocalApp({ plane });
+    expect(
+      (
+        await invokeHandler(handler, "POST", "/api/v1/providers", {
+          name: "invalid",
+          usageRates: {},
+        })
+      ).status,
+    ).toBe(500);
   });
 });
