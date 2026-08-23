@@ -51,7 +51,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
             transactions += 1;
             throw {
               name: "TransactionCanceledException",
-              CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+              CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }],
             };
           }
           expect(command).toBeInstanceOf(GetCommand);
@@ -91,6 +91,7 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
             throw {
               name: "TransactionCanceledException",
               CancellationReasons: [
+                { Code: "None" },
                 { Code: "ConditionalCheckFailed" },
                 { Code: "ConditionalCheckFailed" },
               ],

@@ -164,9 +164,13 @@ export async function handleSessionCloneRoute(ctx: RouteCtx): Promise<boolean> {
           outcome: "failed",
         },
         () =>
-          send(res, result.code === "CONFLICT" ? 409 : 400, {
-            error: { code: result.code ?? "CLONE_ERROR", message: result.error },
-          }),
+          send(
+            res,
+            result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
+            {
+              error: { code: result.code ?? "CLONE_ERROR", message: result.error },
+            },
+          ),
       );
     }
     return respondAfterCloneAudit(

@@ -47,6 +47,9 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             const defaultBranch = String(fd.get("defaultBranch") ?? "main").trim() || "main";
             const setupScript = String(fd.get("setupScript") ?? "");
             const terminalHookScript = String(fd.get("terminalHookScript") ?? "");
+            const requiredEnvironment = String(fd.get("requiredEnvironment") ?? "")
+              .split(/[\s,]+/)
+              .filter(Boolean);
             if (!path) {
               showToast("absolute path is required", {
                 variant: "destructive",
@@ -64,6 +67,7 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
                   defaultBranch,
                   setupScript,
                   terminalHookScript,
+                  requiredEnvironment,
                 }),
               );
               if (!r.ok) {
@@ -78,6 +82,22 @@ export function HostRepoSettingsForm({ hostId, repo }: { hostId: string; repo: H
             });
           }}
         >
+          <div className="space-y-1">
+            <Label
+              htmlFor={`required-environment-${repo.id}`}
+              tip="Variable names that must be available to child processes before this host can run the repository"
+            >
+              Required Environment
+            </Label>
+            <Textarea
+              id={`required-environment-${repo.id}`}
+              name="requiredEnvironment"
+              defaultValue={(repo.requiredEnvironment ?? []).join("\n")}
+              rows={3}
+              className="font-mono text-xs"
+              data-pw={`repo-settings-required-environment-${repo.id}`}
+            />
+          </div>
           <div className="space-y-1">
             <Label htmlFor={`path-${repo.id}`} tip="Absolute path on this host">
               Absolute Path

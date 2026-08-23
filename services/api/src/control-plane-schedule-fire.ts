@@ -92,6 +92,9 @@ export async function triggerScheduleDurable(
     state.sessions.set(outcome.session.id, { ...outcome.session });
     return { ok: true, session: toPublic(state, outcome.session), created: false };
   }
+  if (outcome.kind === "admission_closed") {
+    return { ok: false, error: "repository admission is closed" };
+  }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
   }
@@ -153,6 +156,7 @@ export function tryClaimScheduleFire(
   }
   const result = createSession(state, scheduledSessionInput(schedule), { allowScheduleId: true });
   if (!result.ok) {
+    if (result.code === "REPOSITORY_ADMISSION_CLOSED") schedule.nextRunAt = newNextRunAt;
     return null;
   }
   schedule.nextRunAt = newNextRunAt;
@@ -237,6 +241,16 @@ export async function tryClaimScheduleFireDurable(
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
       state.sessions.set(outcome.session.id, { ...outcome.session });
     }
+    return null;
+  }
+  if (outcome.kind === "admission_closed") {
+    const skipped = await state.storage.skipScheduleForClosedRepository({
+      scheduleId,
+      repositoryId: schedule.repositoryId,
+      expectedNextRunAt,
+      newNextRunAt,
+    });
+    if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
     return null;
   }
   if (outcome.kind !== "created") {

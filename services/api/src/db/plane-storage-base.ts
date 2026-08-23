@@ -129,6 +129,7 @@ export class DynamoPlaneStorageBase {
 
   tryAssignSession(opts: {
     sessionId: string;
+    repositoryId: string;
     worktreeId: string;
     hostId: string;
     connectionId: string;
@@ -590,6 +591,22 @@ export class DynamoPlaneStorageBase {
     return catalog.listRepositories(this.ctx);
   }
 
+  setRepositoryAdmissionState(
+    id: string,
+    state: import("@auto-harness/shared").RepositoryAdmissionState,
+    now: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.setRepositoryAdmissionState(this.ctx, id, state, now);
+  }
+
+  completeRepositoryDrain(
+    id: string,
+    drainRequestedAt: string,
+    now: string,
+  ): Promise<RepositoryRecord | null> {
+    return catalog.completeRepositoryDrain(this.ctx, id, drainRequestedAt, now);
+  }
+
   deleteRepository(
     id: string,
     markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
@@ -620,6 +637,15 @@ export class DynamoPlaneStorageBase {
     session: import("./types.ts").SessionRecord;
   }): Promise<catalog.ScheduleCreateResult> {
     return catalog.tryClaimScheduleAndCreateSession(this.ctx, opts);
+  }
+
+  skipScheduleForClosedRepository(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForClosedRepository(this.ctx, opts);
   }
 
   skipScheduleForActiveConcurrency(opts: {

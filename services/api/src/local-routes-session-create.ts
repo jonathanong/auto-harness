@@ -86,9 +86,13 @@ export async function handleSessionCreateRoute(ctx: RouteCtx): Promise<boolean> 
         }))
       )
         return true;
-      send(res, result.code === "CONFLICT" ? 409 : 400, {
-        error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
-      });
+      send(
+        res,
+        result.code === "CONFLICT" || result.code === "REPOSITORY_ADMISSION_CLOSED" ? 409 : 400,
+        {
+          error: { code: result.code ?? "VALIDATION_ERROR", message: result.error },
+        },
+      );
       return true;
     }
     if (!canAccessSession(ctx, result.session.repositoryId)) {

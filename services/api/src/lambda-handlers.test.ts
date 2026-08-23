@@ -494,6 +494,10 @@ describe("Lambda runtime adapters", () => {
       order.push("stale");
       return ["host-1", "host-2"];
     });
+    vi.spyOn(fixture.plane, "reconcileRepositoryDrainsDurable").mockImplementation(async () => {
+      order.push("repository-drains");
+      return [{ id: "repo-1" }] as never;
+    });
     vi.spyOn(fixture.plane, "assignQueuedDurable").mockImplementation(async () => {
       order.push("queued");
       return [{ session: {}, worktree: {} }] as never;
@@ -507,11 +511,21 @@ describe("Lambda runtime adapters", () => {
       ackDeadlinesEnforced: 1,
       runningTimeoutsEnforced: 1,
       queuedAssigned: 1,
+      repositoriesReconciled: 1,
       scheduledAssigned: 1,
       schedulesFired: 1,
       staleHostsReclaimed: 2,
     });
-    expect(order).toEqual(["cron", "ack", "timeout", "refresh", "stale", "queued", "scheduled"]);
+    expect(order).toEqual([
+      "cron",
+      "ack",
+      "timeout",
+      "refresh",
+      "stale",
+      "repository-drains",
+      "queued",
+      "scheduled",
+    ]);
   });
 
   it("posts through the management API and prunes gone connections", async () => {

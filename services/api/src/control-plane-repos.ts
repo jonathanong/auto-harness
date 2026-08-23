@@ -1,4 +1,4 @@
-import { isValidSlugName, SLUG_NAME_HINT } from "@auto-harness/shared";
+import { isValidSlugName, repositoryAdmissionState, SLUG_NAME_HINT } from "@auto-harness/shared";
 
 import type { RepositoryRecord } from "./db/plane-storage.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -70,6 +70,8 @@ function prepareCreateRepository(
     name: input.name,
     url: input.url,
     defaultBranch: input.defaultBranch ?? "main",
+    admissionState: "active",
+    admissionStateChangedAt: at,
     createdAt: at,
     updatedAt: at,
     ...(input.setupScript !== undefined ? { setupScript: input.setupScript } : {}),
@@ -109,13 +111,13 @@ export async function createRepositoryDurable(
 
 export function getRepository(state: ControlPlaneState, id: string): RepositoryRecord | null {
   const r = state.repositories.get(id);
-  return r ? { ...r } : null;
+  return r ? { ...r, admissionState: repositoryAdmissionState(r.admissionState) } : null;
 }
 
 export function listRepositories(state: ControlPlaneState): RepositoryRecord[] {
   return [...state.repositories.values()]
     .toSorted((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
-    .map((r) => ({ ...r }));
+    .map((r) => ({ ...r, admissionState: repositoryAdmissionState(r.admissionState) }));
 }
 
 export function updateRepository(

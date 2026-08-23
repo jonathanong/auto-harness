@@ -175,6 +175,9 @@ test.describe("control plane hosts", () => {
           `/tmp/${repoId}`,
         );
         await expect(page.getByTestId(`repo-settings-branch-${repo.id}`)).toHaveValue("main");
+        await expect(
+          page.getByTestId(`repo-settings-required-environment-${repo.id}`),
+        ).toBeVisible();
         await expect(page.getByTestId(`repo-settings-setup-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-hook-${repo.id}`)).toBeVisible();
         await expect(page.getByTestId(`repo-settings-error-${repo.id}`)).toHaveCount(0);

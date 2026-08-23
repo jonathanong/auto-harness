@@ -235,12 +235,14 @@ export async function createLambdaRuntime(
         const runningTimeoutsEnforced = await created.plane.enforceRunningTimeoutsDurable();
         await created.plane.refreshSchedulerReadModelDurable();
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
+        const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: queuedAssigned.length,
+          repositoriesReconciled: repositoriesReconciled.length,
           scheduledAssigned: scheduledAssigned.length,
           schedulesFired: schedulesFired.length,
           staleHostsReclaimed: staleHostsReclaimed.length,

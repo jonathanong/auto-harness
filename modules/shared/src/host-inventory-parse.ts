@@ -7,6 +7,7 @@ import {
 import type { HostInventory, HostRepository, HostWorktree } from "./host-inventory.ts";
 import { parseProviderAccountOverrides, parseProviderAccounts } from "./provider-account-parse.ts";
 import { isValidSlugName, SLUG_NAME_HINT } from "./slug.ts";
+import { parseRequiredEnvironment } from "./environment-requirements.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -84,6 +85,10 @@ function parseRepository(rawRepository: unknown, index: number): HostRepository 
     "terminalHookScript",
     `repository.${id}`,
   );
+  const requiredEnvironment = parseRequiredEnvironment(
+    rawRepository.requiredEnvironment,
+    `repository.${id}.requiredEnvironment`,
+  );
   const overrides = parseProviderAccountOverrides(
     rawRepository.providerAccountOverrides,
     `repository.${id}`,
@@ -97,6 +102,7 @@ function parseRepository(rawRepository: unknown, index: number): HostRepository 
     ),
     ...(setupScript !== undefined ? { setupScript } : {}),
     ...(terminalHookScript !== undefined ? { terminalHookScript } : {}),
+    ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     ...(overrides !== undefined ? { providerAccountOverrides: overrides } : {}),
   };
 }
@@ -120,12 +126,14 @@ export function parseHostInventory(value: unknown): HostInventory {
     throw new TypeError("body must be an object");
   }
   const setupScript = optionalString(value, "setupScript");
+  const requiredEnvironment = parseRequiredEnvironment(value.requiredEnvironment);
   if (!Array.isArray(value.repositories)) {
     throw new TypeError("repositories must be an array");
   }
 
   return {
     ...(setupScript !== undefined ? { setupScript } : {}),
+    ...(requiredEnvironment.length ? { requiredEnvironment } : {}),
     repositories: value.repositories.map((repository, index) => parseRepository(repository, index)),
     providerAccounts: parseProviderAccounts(value.providerAccounts),
     capabilities: parseCapabilities(value.capabilities),

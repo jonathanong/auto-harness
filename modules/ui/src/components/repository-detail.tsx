@@ -13,6 +13,8 @@ export type RepositorySummary = {
   defaultBranch?: string | null;
   setupScript?: string | null;
   terminalHookScript?: string | null;
+  admissionState?: "active" | "paused" | "draining";
+  admissionStateChangedAt?: string | null;
 };
 
 export type RepositoryDetailProps = {
@@ -56,6 +58,10 @@ export function RepositoryDetailsCard({ repository: r }: { repository: Repositor
           <div>
             <dt className="text-xs uppercase text-muted-foreground">Id</dt>
             <dd className="font-mono text-xs text-muted-foreground">{r.id}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase text-muted-foreground">Admission</dt>
+            <dd className="font-mono text-sm">{r.admissionState ?? "active"}</dd>
           </div>
           <div className="sm:col-span-2">
             <dt className="text-xs uppercase text-muted-foreground">Path / URL</dt>

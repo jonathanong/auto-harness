@@ -5,9 +5,11 @@ import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
 import { ensureControlPlaneTables } from "./ensure-tables.ts";
 import {
   createRepository,
+  completeRepositoryDrain,
   putLogFenced,
   putLogsFenced,
   skipScheduleForActiveConcurrency,
+  setRepositoryAdmissionState,
   tryClaimSchedule,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
@@ -48,6 +50,12 @@ describe("DynamoDB Local catalog transport failures", () => {
         createdAt: "t",
         updatedAt: "t",
       }),
+    ).rejects.toThrow();
+    await expect(
+      setRepositoryAdmissionState(unavailableCtx, "repository", "paused", "t"),
+    ).rejects.toThrow();
+    await expect(
+      completeRepositoryDrain(unavailableCtx, "repository", "requested", "t"),
     ).rejects.toThrow();
     const schedule = {
       id: "schedule",

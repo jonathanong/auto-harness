@@ -19,6 +19,7 @@ import {
   type RegisteredDaemonIdentity,
 } from "./control-plane-agent-registration.ts";
 import type { HostInventoryRecord } from "./db/plane-storage-types.ts";
+import { repositoryEnvironmentReadiness } from "./control-plane-host-environment.ts";
 
 type ListedHostRuntime = {
   daemonVersion: string | null;
@@ -294,6 +295,14 @@ export function listHosts(state: ControlPlaneState): Array<{
     .map((host) => ({
       ...host,
       repositoryIds: [...new Set([...host.repositoryIds, ...host.repositories.map((r) => r.id)])],
+      environmentReadiness: Object.fromEntries(
+        [...new Set([...host.repositoryIds, ...host.repositories.map((r) => r.id)])].map(
+          (repositoryId) => [
+            repositoryId,
+            repositoryEnvironmentReadiness(state, host.hostId, repositoryId),
+          ],
+        ),
+      ),
     }))
     .toSorted((a, b) => a.hostId.localeCompare(b.hostId));
 }

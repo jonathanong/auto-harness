@@ -12,7 +12,11 @@ describe("marker-guarded session creation", () => {
           expect(command).toBeInstanceOf(TransactWriteCommand);
           throw {
             name: "TransactionCanceledException",
-            CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }],
+            CancellationReasons: [
+              { Code: "None" },
+              { Code: "None" },
+              { Code: "ConditionalCheckFailed" },
+            ],
           };
         },
       } as never,

@@ -14,6 +14,7 @@ import { RepositoryDetailNotFound } from "../../../components/repository-detail-
 import { RepositoryWorktreesTab } from "../../../components/repository-worktrees-tab.tsx";
 import { EditRepoForm } from "../../../components/edit-repo-form.tsx";
 import { RepositoryProviderAccountsTab } from "../../../components/repository-provider-accounts-tab.tsx";
+import { RepositoryAdmissionControls } from "../../../components/repository-admission-controls.tsx";
 import { apiGet } from "../../../lib/api.ts";
 import { fetchProviderCatalogLookups } from "../../../lib/provider-catalog-fetch.ts";
 
@@ -167,6 +168,10 @@ export default async function RepositoryDetailPage({
               content: (
                 <div className="space-y-4" data-pw="repository-settings">
                   <RepositoryDetailsCard repository={repository} />
+                  <RepositoryAdmissionControls
+                    repositoryId={repositoryId}
+                    state={repository.admissionState ?? "active"}
+                  />
                   <div>
                     <h3 className="text-sm font-medium text-muted-foreground">Attached hosts</h3>
                     {attachedHosts.length === 0 ? (

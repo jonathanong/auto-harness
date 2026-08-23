@@ -137,6 +137,7 @@ describe("DynamoDB Local session assignment", () => {
     expect(
       await tryAssignSession(ctx, {
         sessionId: "assignment",
+        repositoryId: "repo",
         worktreeId: "assignment-worktree",
         hostId: "host",
         connectionId: "one",
@@ -157,6 +158,7 @@ describe("DynamoDB Local session assignment", () => {
     expect(
       await tryAssignSession(ctx, {
         sessionId: "assignment",
+        repositoryId: "repo",
         worktreeId: "assignment-worktree",
         hostId: "host",
         connectionId: "one",
@@ -179,6 +181,7 @@ describe("DynamoDB Local session assignment", () => {
     expect(
       await tryAssignSession(ctx, {
         sessionId: "no-lease",
+        repositoryId: "repo",
         worktreeId: "no-lease-worktree",
         hostId: "host",
         connectionId: "stale",

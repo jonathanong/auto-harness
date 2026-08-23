@@ -82,6 +82,7 @@ describe("DynamoDB Local optional session transitions", () => {
     expect(
       await tryAssignSession(ctx, {
         sessionId: "session",
+        repositoryId: "repo",
         worktreeId: "worktree",
         hostId: "host",
         connectionId: "connection",

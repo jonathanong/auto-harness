@@ -5,6 +5,7 @@ import type {
   HostRuntimeReport,
   Provider,
   ProviderAccount,
+  RepositoryAdmissionState,
   TargetRef,
   UserRole,
 } from "@auto-harness/shared";
@@ -135,6 +136,11 @@ export type RepositoryRecord = {
   defaultBranch: string;
   setupScript?: string;
   terminalHookScript?: string;
+  /** Missing on legacy rows means active. */
+  admissionState?: RepositoryAdmissionState;
+  admissionStateChangedAt?: string;
+  drainRequestedAt?: string;
+  drainCompletedAt?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -146,6 +152,7 @@ export type ProviderAccountOverride = { enabled?: boolean; commandId?: string };
 export type HostInventoryRecord = {
   hostId: string;
   setupScript?: string | undefined;
+  requiredEnvironment?: string[] | undefined;
   /** Opaque identity last reported by a modern daemon process. */
   daemonInstanceId?: string;
   /** Start time reported by that daemon process. */
@@ -164,6 +171,7 @@ export type HostInventoryRecord = {
     // (e.g. modules/shared's HostRepository/HostWorktree, which use the same idiom).
     setupScript?: string | undefined;
     terminalHookScript?: string | undefined;
+    requiredEnvironment?: string[] | undefined;
     providerAccountOverrides?: Record<string, ProviderAccountOverride>;
     worktrees: Array<{
       id: string;

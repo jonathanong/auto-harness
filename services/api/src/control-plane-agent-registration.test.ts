@@ -31,7 +31,16 @@ describe("host registration repository inventory", () => {
     expect(
       plane.putHostInventory("host", {
         setupScript: "source ~/.zshrc",
-        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main", worktrees: [] }],
+        requiredEnvironment: ["GLOBAL_TOKEN"],
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            defaultBranch: "main",
+            requiredEnvironment: ["REPO_TOKEN"],
+            worktrees: [],
+          },
+        ],
       }).ok,
     ).toBe(true);
     expect(
@@ -42,6 +51,10 @@ describe("host registration repository inventory", () => {
       }),
     ).toEqual({ ok: true, connectionId: "connection" });
     expect(plane.getHostInventory("host")?.setupScript).toBe("source ~/.zshrc");
+    expect(plane.getHostInventory("host")?.requiredEnvironment).toEqual(["GLOBAL_TOKEN"]);
+    expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([
+      "REPO_TOKEN",
+    ]);
   });
 
   it("derives older registrations from worktrees and rejects malformed input", () => {

@@ -19,6 +19,7 @@ export type RepositoryConfig = {
   defaultBranch: string;
   setupScript?: string;
   terminalHookScript?: string;
+  requiredEnvironment?: string[];
   worktrees: WorktreeConfig[];
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
@@ -35,6 +36,7 @@ export type DaemonConfig = {
   apiUrl?: string;
   apiKey?: string;
   setupScript?: string;
+  requiredEnvironment?: string[];
   repositories: RepositoryConfig[];
   providerAccounts: HostProviderAccountConfig[];
 };

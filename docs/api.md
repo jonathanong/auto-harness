@@ -91,15 +91,16 @@ All errors return a consistent JSON body:
 }
 ```
 
-| Status | Code               | Description                             |
-| ------ | ------------------ | --------------------------------------- |
-| 400    | `VALIDATION_ERROR` | Invalid or missing request body fields  |
-| 401    | `UNAUTHORIZED`     | Missing or invalid token                |
-| 403    | `FORBIDDEN`        | Insufficient role permissions           |
-| 404    | `NOT_FOUND`        | Resource not found                      |
-| 409    | `CONFLICT`         | Resource conflict (e.g. duplicate name) |
-| 429    | `RATE_LIMITED`     | Too many requests; see `Retry-After`    |
-| 500    | `INTERNAL_ERROR`   | Unexpected server error                 |
+| Status | Code                          | Description                             |
+| ------ | ----------------------------- | --------------------------------------- |
+| 400    | `VALIDATION_ERROR`            | Invalid or missing request body fields  |
+| 401    | `UNAUTHORIZED`                | Missing or invalid token                |
+| 403    | `FORBIDDEN`                   | Insufficient role permissions           |
+| 404    | `NOT_FOUND`                   | Resource not found                      |
+| 409    | `CONFLICT`                    | Resource conflict (e.g. duplicate name) |
+| 409    | `REPOSITORY_ADMISSION_CLOSED` | Repository is paused or draining        |
+| 429    | `RATE_LIMITED`                | Too many requests; see `Retry-After`    |
+| 500    | `INTERNAL_ERROR`              | Unexpected server error                 |
 
 Rate limit headers on all responses:
 
@@ -112,6 +113,25 @@ When a bucket is exhausted, the response is `429` with
 `Retry-After` header containing the number of seconds until the fixed window
 resets. A temporary failure reaching durable rate-limit storage is `503`
 `RATE_LIMIT_UNAVAILABLE` under the default fail-closed policy.
+
+---
+
+## Repository admission
+
+Repository records expose `admissionState`: `active`, `paused`, or `draining`. A missing state on
+a legacy row means `active`.
+
+- `POST /repositories/:id/pause` closes admission immediately. New create, clone, resume, manual
+  schedule trigger, cron fire, and assignment attempts return or observe
+  `409 REPOSITORY_ADMISSION_CLOSED`; already-running sessions continue.
+- `POST /repositories/:id/drain` closes admission and cancels every queued or running session.
+  The state remains `draining` while an agent still owns a worktree or main-checkout lease, then
+  the scheduler settles it to `paused`.
+- `POST /repositories/:id/activate` reopens admission. It returns `409 CONFLICT` until a drain has
+  completely released its leases.
+
+Paused or draining cron schedules advance to their next future occurrence without catch-up when
+the repository is activated. These operations require `repositories:operate` and are audited.
 
 ---
 

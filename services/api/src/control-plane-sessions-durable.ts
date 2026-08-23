@@ -9,7 +9,10 @@ import {
   type CloneOptions,
 } from "./control-plane-session-clone.ts";
 import { createSession, getSession, resumeSession } from "./control-plane-sessions.ts";
-import { isCreateSessionConflict } from "./db/plane-storage-sessions.ts";
+import {
+  isCreateSessionConflict,
+  isRepositoryAdmissionClosed,
+} from "./db/plane-storage-sessions.ts";
 import { getSessionDurable as getSessionRecordDurable } from "./control-plane-durable-read-runtime.ts";
 import { refreshTargetCatalogDurable } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
@@ -31,6 +34,13 @@ export async function createSessionDurable(
     const session = buildSessionRecord(state, prepared);
     result = await state.storage.createSession(session, referenceMarkers(state.now(), session));
   } catch (err) {
+    if (isRepositoryAdmissionClosed(err)) {
+      return {
+        ok: false,
+        error: "repository admission is closed",
+        code: "REPOSITORY_ADMISSION_CLOSED",
+      };
+    }
     if (isCreateSessionConflict(err)) {
       return {
         ok: false,
@@ -49,7 +59,10 @@ export async function resumeSessionDurable(
   state: ControlPlaneState,
   sessionId: string,
   opts: ResumeOptions = {},
-): Promise<{ ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: string }
+> {
   if (!state.storage) {
     return resumeSession(state, sessionId, opts);
   }
@@ -65,6 +78,13 @@ export async function resumeSessionDurable(
       referenceMarkers(state.now(), prepared.session),
     );
   } catch (err) {
+    if (isRepositoryAdmissionClosed(err)) {
+      return {
+        ok: false,
+        error: "repository admission is closed",
+        code: "REPOSITORY_ADMISSION_CLOSED",
+      };
+    }
     if (isCreateSessionConflict(err)) {
       return { ok: false, error: "session creation conflicted; retry the request" };
     }
@@ -134,6 +154,13 @@ export async function cloneSessionDurable(
       };
     return { ok: true, session: toPublic(state, result.session), created: true };
   } catch (err) {
+    if (isRepositoryAdmissionClosed(err)) {
+      return {
+        ok: false,
+        error: "repository admission is closed",
+        code: "REPOSITORY_ADMISSION_CLOSED",
+      };
+    }
     if (isCreateSessionConflict(err)) {
       return {
         ok: false,

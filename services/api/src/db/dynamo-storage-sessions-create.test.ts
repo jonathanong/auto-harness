@@ -9,6 +9,7 @@ import {
   getConcurrencyLock,
   getSession,
   isCreateSessionConflict,
+  isRepositoryAdmissionClosed,
   listAllSessions,
   listSessionsByStatus,
   putSession,
@@ -158,5 +159,20 @@ describe("DynamoDB Local session creation", () => {
         status: "queued",
       }),
     ).rejects.toThrow("could not resolve concurrency lock for raced");
+  });
+
+  it("rejects creation while repository admission is closed", async () => {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.repositories,
+        Item: { id: "closed-repo", admissionState: "paused" },
+      }),
+    );
+    await createSession(ctx, {
+      ...base,
+      id: "closed-session",
+      repositoryId: "closed-repo",
+      status: "queued",
+    }).catch((error: unknown) => expect(isRepositoryAdmissionClosed(error)).toBe(true));
   });
 });

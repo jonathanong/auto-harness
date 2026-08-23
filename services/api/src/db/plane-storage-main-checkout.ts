@@ -62,6 +62,15 @@ export async function tryAssignMainCheckoutSession(
         TransactItems: [
           {
             ConditionCheck: {
+              TableName: ctx.tables.repositories,
+              Key: { id: opts.repositoryId },
+              ConditionExpression:
+                "attribute_not_exists(admissionState) OR admissionState = :active",
+              ExpressionAttributeValues: { ":active": "active" },
+            },
+          },
+          {
+            ConditionCheck: {
               TableName: ctx.tables.connections,
               Key: { connectionId: opts.connectionId },
               ConditionExpression:

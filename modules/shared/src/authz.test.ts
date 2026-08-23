@@ -42,6 +42,7 @@ describe("role capability table", () => {
         "sessions:archive",
         "sessions:cancel-any",
         "schedules:write",
+        "repositories:operate",
         "fleet:drain",
       ],
       maintainer: [
@@ -49,6 +50,7 @@ describe("role capability table", () => {
         "sessions:archive",
         "sessions:cancel-any",
         "schedules:write",
+        "repositories:operate",
         "fleet:drain",
         "fleet:inventory",
         "providers:accounts",

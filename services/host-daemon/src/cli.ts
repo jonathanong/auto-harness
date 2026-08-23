@@ -12,7 +12,7 @@ import {
 import type { DaemonConfig, HostIdentity } from "./config.ts";
 import { loadDaemonConfig, loadHostIdentity } from "./config.ts";
 import { printUsage } from "./cli-usage.ts";
-import { parseChildEnvAllowlist } from "./child-env.ts";
+import { createChildEnv, parseChildEnvAllowlist } from "./child-env.ts";
 import { loadEnvFileIfPresent } from "./host-service-env.ts";
 import {
   getHostServiceStatus,
@@ -337,7 +337,10 @@ export async function runCli(
     const wsUrl = wsIdx >= 0 ? args[wsIdx + 1] : undefined;
     try {
       const { startDaemon } = await import("./start-daemon.ts");
-      const runtime = await deps.ensureReady(config);
+      const ready = await deps.ensureReady(config);
+      const runtime = ready
+        ? { ...ready, environmentNames: Object.keys(createChildEnv(resolvedEnv)).toSorted() }
+        : ready;
       const { stop } = await startDaemon({
         config,
         identity: loadHostIdentity(resolvedEnv),

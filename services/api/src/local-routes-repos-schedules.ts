@@ -14,6 +14,9 @@ function hidden(res: RouteCtx["res"]): void {
 
 function scheduleTriggerError(error: string): { status: number; code: string } {
   if (/not found/i.test(error)) return { status: 404, code: "NOT_FOUND" };
+  if (/repository admission is (?:closed|paused|draining)/i.test(error)) {
+    return { status: 409, code: "REPOSITORY_ADMISSION_CLOSED" };
+  }
   if (/disabled|concurrent|updated|claimed|already active|conflict/i.test(error)) {
     return { status: 409, code: "CONFLICT" };
   }
@@ -98,6 +101,64 @@ export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
       sendInternalError(res);
       return true;
     }
+  }
+  const admissionMatch = /^\/api\/v1\/repositories\/([^/]+)\/(pause|drain|activate)$/.exec(
+    url.pathname,
+  );
+  if (method === "POST" && admissionMatch) {
+    const id = admissionMatch[1]!;
+    const operation = admissionMatch[2] as "pause" | "drain" | "activate";
+    if (!scoped(ctx, id)) {
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: `repository:${operation}`,
+          resourceType: "repository",
+          resourceId: id,
+          repositoryId: id,
+          outcome: "denied",
+        }))
+      )
+        return true;
+      hidden(res);
+      return true;
+    }
+    try {
+      const result =
+        operation === "pause"
+          ? await plane.pauseRepositoryDurable(id)
+          : operation === "drain"
+            ? await plane.drainRepositoryDurable(id)
+            : await plane.activateRepositoryDurable(id);
+      if (!result.ok) {
+        if (
+          !(await writeRouteAudit(ctx, {
+            action: `repository:${operation}`,
+            resourceType: "repository",
+            resourceId: id,
+            repositoryId: id,
+            outcome: "failed",
+          }))
+        )
+          return true;
+        send(res, result.code === "NOT_FOUND" ? 404 : 409, {
+          error: { code: result.code, message: result.error },
+        });
+        return true;
+      }
+      if (
+        !(await writeRouteAudit(ctx, {
+          action: `repository:${operation}`,
+          resourceType: "repository",
+          resourceId: id,
+          repositoryId: id,
+        }))
+      )
+        return true;
+      send(res, 200, result.repository);
+    } catch {
+      sendInternalError(res);
+    }
+    return true;
   }
   const repoMatch = /^\/api\/v1\/repositories\/([^/]+)$/.exec(url.pathname);
   if (repoMatch) {

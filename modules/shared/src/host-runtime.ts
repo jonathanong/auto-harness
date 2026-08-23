@@ -14,4 +14,6 @@ export type HostRuntimeReport = {
   gitVersion: string | null;
   gitReady: boolean;
   gitReadinessReason?: GitReadinessReason;
+  /** Names available to repository child processes. Values never cross the daemon boundary. */
+  environmentNames?: string[];
 };

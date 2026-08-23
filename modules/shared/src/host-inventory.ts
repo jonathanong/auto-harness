@@ -32,6 +32,7 @@ export type HostRepository = {
   worktrees: HostWorktree[];
   setupScript?: string | undefined;
   terminalHookScript?: string | undefined;
+  requiredEnvironment?: string[] | undefined;
   providerAccountOverrides?: Record<string, ProviderAccountOverride>;
 };
 
@@ -44,12 +45,15 @@ export type HostProviderAccount = {
 export type HostInventory = {
   /** Optional host-wide setup run before the repository/worktree setup. */
   setupScript?: string | undefined;
+  requiredEnvironment?: string[] | undefined;
   repositories: HostRepository[];
   /** Provider accounts available on this host. See modules/shared/src/providers.ts for the catalog. */
   providerAccounts: HostProviderAccount[];
   /** Optional features this host daemon explicitly supports. */
   capabilities?: HostCapability[] | undefined;
 };
+
+export { emptyHostInventory } from "./host-inventory-empty.ts";
 
 /** Suggested path only — never auto-persist without explicit worktree create. */
 export function defaultWorktreePath(repoPath: string, worktreeName: string): string {
@@ -59,6 +63,9 @@ export function defaultWorktreePath(repoPath: string, worktreeName: string): str
 function cloneInventory(existing: HostInventory | null | undefined): HostInventory {
   return {
     ...(existing?.setupScript !== undefined ? { setupScript: existing.setupScript } : {}),
+    ...(existing?.requiredEnvironment !== undefined
+      ? { requiredEnvironment: [...existing.requiredEnvironment] }
+      : {}),
     repositories: existing?.repositories
       ? existing.repositories.map((r) => ({
           ...r,
@@ -80,6 +87,16 @@ export function updateHostSetupScript(
   return { ...cloneInventory(existing), setupScript };
 }
 
+export function updateHostRequiredEnvironment(
+  existing: HostInventory | null | undefined,
+  requiredEnvironment: string[],
+): HostInventory {
+  const next = cloneInventory(existing);
+  if (requiredEnvironment.length) next.requiredEnvironment = [...requiredEnvironment];
+  else delete next.requiredEnvironment;
+  return next;
+}
+
 /**
  * Upsert repository metadata only. Does not invent worktrees.
  * New repos get `worktrees: []`; existing worktrees are preserved on same id.
@@ -92,6 +109,7 @@ export function upsertHostRepository(
     defaultBranch: string;
     setupScript?: string;
     terminalHookScript?: string;
+    requiredEnvironment?: string[];
   },
 ): HostInventory {
   const base = cloneInventory(existing);
@@ -105,6 +123,9 @@ export function upsertHostRepository(
     ...(entry.setupScript !== undefined ? { setupScript: entry.setupScript } : {}),
     ...(entry.terminalHookScript !== undefined
       ? { terminalHookScript: entry.terminalHookScript }
+      : {}),
+    ...(entry.requiredEnvironment !== undefined
+      ? { requiredEnvironment: [...entry.requiredEnvironment] }
       : {}),
     worktrees: prev ? prev.worktrees.map((w) => ({ ...w, labels: [...w.labels] })) : [],
   });
@@ -217,13 +238,4 @@ export function mergeHostRepository(
     },
   ];
   return next;
-}
-
-/** Empty host inventory for “add agent” before any repos are attached. */
-export function emptyHostInventory(): HostInventory {
-  return {
-    repositories: [],
-    providerAccounts: [],
-    capabilities: [],
-  };
 }

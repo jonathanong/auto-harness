@@ -12,6 +12,7 @@ import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
 import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plane-concurrency-persistence.ts";
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 export { resumeSession } from "./control-plane-session-resume.ts";
 
 export {
@@ -52,6 +53,8 @@ export function createSession(
   }
 
   const v = validated.value;
+  const admissionFailure = repositoryAdmissionFailure(state, v.repositoryId);
+  if (admissionFailure) return admissionFailure;
   const targets = resolveTargetLabels(state, v.target, v.fallbacks);
   if (!targets.ok) {
     return { ok: false, error: targets.error, code: "VALIDATION_ERROR" };

@@ -105,6 +105,7 @@ export {
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
+  updateHostRequiredEnvironment,
   updateHostWorktree,
   upsertHostRepository,
   type HostInventory,
@@ -114,6 +115,7 @@ export {
   type ProviderAccountOverride,
 } from "./host-inventory.ts";
 export { parseHostInventory } from "./host-inventory-parse.ts";
+export { parseRequiredEnvironment } from "./environment-requirements.ts";
 
 export {
   isHostRepositoryRegistration,
@@ -144,6 +146,12 @@ export {
 
 export { newId } from "./id.ts";
 export { isValidSlugName, SLUG_NAME_HINT, SLUG_PATTERN } from "./slug.ts";
+export {
+  REPOSITORY_ADMISSION_STATES,
+  repositoryAdmissionClosedMessage,
+  repositoryAdmissionState,
+  type RepositoryAdmissionState,
+} from "./repository-admission.ts";
 export {
   isValidScheduledBranchRef,
   MAX_SCHEDULED_BRANCH_REF_BYTES,

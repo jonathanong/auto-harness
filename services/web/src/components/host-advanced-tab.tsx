@@ -5,12 +5,14 @@ export function HostAdvancedTab({
   initialJson,
   initialVersion,
   setupScript,
+  requiredEnvironment,
   canWrite = true,
 }: {
   hostId: string;
   initialJson: string;
   initialVersion: number;
   setupScript: string | undefined;
+  requiredEnvironment?: string[] | undefined;
   canWrite?: boolean;
 }) {
   return (
@@ -21,7 +23,11 @@ export function HostAdvancedTab({
       </p>
       {canWrite ? (
         <>
-          <HostSetupScriptForm hostId={hostId} setupScript={setupScript} />
+          <HostSetupScriptForm
+            hostId={hostId}
+            setupScript={setupScript}
+            requiredEnvironment={requiredEnvironment}
+          />
           <section className="space-y-2 border-t border-border pt-6">
             <h3 className="text-lg font-medium">Raw host inventory JSON</h3>
             <p className="text-sm text-muted-foreground">

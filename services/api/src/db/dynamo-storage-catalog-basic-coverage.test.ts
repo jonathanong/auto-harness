@@ -19,7 +19,9 @@ import {
   putArchive,
   putHostInventory,
   putRepository,
+  putSchedule,
 } from "./plane-storage-catalog.ts";
+import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
@@ -121,5 +123,55 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect(catalogItem({ id: "item" })).toEqual({ id: "item" });
     expect(catalogPageItems(undefined)).toEqual([]);
     expect(catalogPageItems(["record"])).toEqual(["record"]);
+  });
+
+  it("transitions repository admission and skips closed cron cursors", async () => {
+    const storage = new DynamoPlaneStorageBase(ctx.doc, tables);
+    const repository = {
+      id: "admission-repository",
+      name: "Admission",
+      url: "/admission",
+      defaultBranch: "main",
+      createdAt: "t0",
+      updatedAt: "t0",
+    };
+    await putRepository(ctx, repository);
+    expect(await storage.setRepositoryAdmissionState(repository.id, "paused", "t1")).toMatchObject({
+      admissionState: "paused",
+    });
+    expect(
+      await storage.setRepositoryAdmissionState(repository.id, "draining", "t2"),
+    ).toMatchObject({ admissionState: "draining", drainRequestedAt: "t2" });
+    expect(await storage.setRepositoryAdmissionState(repository.id, "active", "t3")).toBeNull();
+    expect(await storage.completeRepositoryDrain(repository.id, "wrong", "t3")).toBeNull();
+    expect(await storage.completeRepositoryDrain(repository.id, "t2", "t3")).toMatchObject({
+      admissionState: "paused",
+      drainCompletedAt: "t3",
+    });
+
+    await putSchedule(ctx, {
+      id: "closed-schedule",
+      repositoryId: repository.id,
+      name: "Closed",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetLabels: ["command"],
+      cron: "* * * * *",
+      enabled: true,
+      timeout: 60,
+      queueTtlSeconds: 60,
+      nextRunAt: "t1",
+      lastRunAt: null,
+      createdAt: "t0",
+      concurrencyId: "closed-schedule",
+    });
+    const skip = {
+      scheduleId: "closed-schedule",
+      repositoryId: repository.id,
+      expectedNextRunAt: "t1",
+      newNextRunAt: "t2",
+    };
+    expect(await storage.skipScheduleForClosedRepository(skip)).toBe(true);
+    expect(await storage.skipScheduleForClosedRepository(skip)).toBe(false);
   });
 });

@@ -95,12 +95,7 @@ export default async function HostDetailPage({
     // despite the type saying it's required — never crash on stale storage data.
     providerAccounts: inventory?.providerAccounts ?? [],
   };
-  const { repositories, providerAccounts: attachedAccounts } = inv;
-  const inventoryJson = JSON.stringify(
-    { setupScript: inv.setupScript, repositories, providerAccounts: attachedAccounts },
-    null,
-    2,
-  );
+  const inventoryJson = JSON.stringify(inv, null, 2);
 
   let catalog: RepoCatalogEntry[] = [];
   let catalogError: string | null = null;
@@ -211,6 +206,7 @@ export default async function HostDetailPage({
                 initialJson={inventoryJson}
                 initialVersion={inventory?.version ?? 0}
                 setupScript={inv.setupScript}
+                requiredEnvironment={inv.requiredEnvironment}
                 canWrite={canWriteInventory}
               />
             ),

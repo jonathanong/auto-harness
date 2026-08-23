@@ -1,4 +1,8 @@
-import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
+import {
+  hasHostCapability,
+  repositoryAdmissionState,
+  type HostWireMessage,
+} from "@auto-harness/shared";
 
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -12,6 +16,9 @@ import {
   listQueuedSessionsDurable,
   refreshSchedulerReadModel,
 } from "./control-plane-durable-read-runtime.ts";
+import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+
+export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
 const leaseKey = (hostId: string, repositoryId: string) => `${hostId}\0${repositoryId}`;
 
@@ -24,6 +31,7 @@ async function eligibleHosts(state: ControlPlaneState, repositoryId: string) {
       state.hostConnection.get(connection.hostId) === connection.connectionId &&
       hasHostCapability(connection.capabilities, "scheduled-main-checkout") &&
       connection.runtime?.gitReady === true &&
+      hostEnvironmentReady(state, connection.hostId, repositoryId) &&
       connection.repositoryIds?.includes(repositoryId)
     )
       unique.set(connection.hostId, connection.connectionId);
@@ -93,6 +101,11 @@ export async function assignScheduledQueuedDurable(
       .filter((session) => !session.retryAfter || Date.parse(session.retryAfter) <= Date.parse(now))
       .toSorted(compareSessionsForQueue);
     for (const session of queued) {
+      if (
+        repositoryAdmissionState(state.repositories.get(session.repositoryId)?.admissionState) !==
+        "active"
+      )
+        continue;
       for (const { hostId, connectionId } of await eligibleHosts(state, session.repositoryId)) {
         const connection = state.connections.get(connectionId);
         if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
@@ -182,22 +195,4 @@ export async function assignScheduledQueuedDurable(
     }
   }
   return assigned;
-}
-
-export function releaseScheduledLeaseLocal(
-  state: ControlPlaneState,
-  session: import("./db/types.ts").SessionRecord,
-): boolean {
-  if (!session.hostId || !session.assignmentConnectionId || !session.mainCheckoutLease)
-    return false;
-  const key = leaseKey(session.hostId, session.repositoryId);
-  const lease = state.mainCheckoutLeases.get(key);
-  if (
-    !lease ||
-    lease.sessionId !== session.id ||
-    lease.connectionId !== session.assignmentConnectionId
-  )
-    return false;
-  state.mainCheckoutLeases.delete(key);
-  return true;
 }

@@ -8,6 +8,7 @@ import type { SessionRecord } from "./db/types.ts";
 import type { PublicSession } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { hashString, persistSession, toPublic } from "./control-plane-state.ts";
+import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
 
 const DEFAULT_CONTINUATION_PROMPT = "Continue from the previous session.";
 
@@ -65,6 +66,8 @@ export function prepareResumedSession(
 ): { ok: true; session: SessionRecord; created: boolean } | { ok: false; error: string } {
   const source = state.sessions.get(sessionId);
   if (!source) return { ok: false, error: "session not found" };
+  const admissionFailure = repositoryAdmissionFailure(state, source.repositoryId);
+  if (admissionFailure) return admissionFailure;
   if (!isTerminalSessionStatus(source.status)) {
     return { ok: false, error: "source session must be terminal before resume" };
   }
