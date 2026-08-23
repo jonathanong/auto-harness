@@ -33,7 +33,12 @@ describe("install-service darwin", () => {
     expect(fs.modes.get("/Users/op/Library/Application Support/auto-harness/host-daemon.env")).toBe(
       0o600,
     );
-    expect(spawn.calls.map((c) => c.args[0])).toEqual(["bootout", "bootstrap", "kickstart"]);
+    expect(spawn.calls.map((c) => c.args[0])).toEqual([
+      "bootout",
+      "bootstrap",
+      "kickstart",
+      "print",
+    ]);
   });
 
   it("falls back to launchctl load and keeps an existing env file", () => {
@@ -54,7 +59,13 @@ describe("install-service darwin", () => {
     ).toBe(0);
     expect(fs.files.get(envPath)).toContain("HARNESS_API_KEY=secret");
     expect(logs.join("\n")).toMatch(/Keeping existing env file/);
-    expect(spawn.calls.at(-1)?.args[0]).toBe("load");
+    expect(spawn.calls.map((call) => call.args[0])).toEqual([
+      "bootout",
+      "bootstrap",
+      "load",
+      "kickstart",
+      "print",
+    ]);
   });
 
   it("reports bootstrap/load and kickstart failures", () => {

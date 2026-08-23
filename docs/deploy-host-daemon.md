@@ -240,6 +240,21 @@ Host inventory template: [examples/local/host-inventory.config.json](../examples
 
 ### Agent binary / package
 
+After `pnpm deploy:aws`, update and verify the persisted service on this host with the second
+top-level command:
+
+```bash
+pnpm deploy:host
+```
+
+It installs the lockfile, runs the platform installer (which gracefully drains during restart),
+loads the platform's persisted service environment for verification, and fails unless the exact
+host is online, non-draining, and Git-ready. It also requires the clean `main` revision already
+synced by `pnpm deploy:aws`. On Linux, run it as the checkout owner; it invokes `sudo` only for the
+systemd installer and verification so Git and dependency files retain the right ownership. The
+manual procedure below remains the recovery path for immutable revisions, rollbacks, and dedicated
+VPS checkouts.
+
 Current path — an operator must **drain, deploy, then restart** ([host-daemon.md](host-daemon.md#auto-update-graceful-restart)):
 
 1. Signal drain:

@@ -47,6 +47,29 @@ describe("install-service darwin validation and updates", () => {
     expect(fs.files.get(envPath)).toBe(
       "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://new.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n",
     );
-    expect(spawn.calls.map((call) => call.args[0])).toEqual(["bootout", "bootstrap", "kickstart"]);
+    expect(spawn.calls.map((call) => call.args[0])).toEqual([
+      "bootout",
+      "bootstrap",
+      "kickstart",
+      "print",
+    ]);
+  });
+
+  it("fails when launchctl does not register the service", () => {
+    const errors: string[] = [];
+    expect(
+      installHostService(
+        baseOpts({
+          platform: "darwin",
+          fs: seededFs(),
+          error: (message) => errors.push(message),
+          run: (_command, args) =>
+            args[0] === "print"
+              ? { status: 1, stdout: "", stderr: "missing" }
+              : { status: 0, stdout: "", stderr: "" },
+        }),
+      ),
+    ).toBe(1);
+    expect(errors.join("\n")).toMatch(/verification/);
   });
 });

@@ -239,18 +239,39 @@ deployed cleanly on the first attempt.)
 
 ## Update an environment
 
-Use the same environment, region, removal policy, and any SSM overrides
-used for deployment:
+From the repository root, the normal update is one command. It defaults to the `production`
+environment in `us-west-2`, fast-forwards a clean `main` checkout, installs locked dependencies,
+updates all stacks, and runs the existing REST/web health checks:
 
 ```bash
-pnpm --filter @auto-harness/cdk run update
+pnpm deploy:aws
 ```
+
+Set `HARNESS_DEPLOY_ENVIRONMENT`, `AWS_REGION` (or `AWS_DEFAULT_REGION`), removal policy, and SSM
+overrides before invoking it when the target differs. The lower-level
+`pnpm --filter @auto-harness/cdk run update` remains available for recovery and development flows
+that must deploy the current checkout without synchronizing `main`.
 
 `update` requires the foundation stack, applies the current CDK app to all three
 stacks, and runs the REST and web health checks. It also recreates missing runtime
 or web stacks after a retained teardown.
 
 ### First rollout of the principal session-drain ledger
+
+`pnpm deploy:aws` detects this rollout from the missing environment-scoped activity-ledger readiness
+marker, disables and fences the old scheduler, and then asks for one confirmation that external
+admission is disabled and active sessions are now idle. It performs the update, restores scheduling,
+and waits for the marker. In non-interactive automation, pass `--yes-first-ledger` after making the
+same admission guarantee:
+
+```bash
+pnpm deploy:aws -- --yes-first-ledger
+```
+
+The command also sets the scheduler Lambda's reserved concurrency to zero, verifies that fence,
+and waits for the function's configured invocation timeout before updating. It restores the prior
+concurrency setting only after the update succeeds; failures leave both scheduler gates closed for
+fail-closed recovery.
 
 The first revision containing the principal session-drain activity ledger has a
 one-time mixed-version constraint. Before running `update`, stop external session
