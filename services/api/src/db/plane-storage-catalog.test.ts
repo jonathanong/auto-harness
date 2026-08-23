@@ -58,7 +58,7 @@ describe("durable schedule creation", () => {
         session: {
           id: "session-activity",
           repositoryId: "repo-1",
-          principalId: "principal",
+          metadata: { createdBy: "principal" },
           prompt: "scheduled",
           target: { commandId: "command-1" },
           fallbacks: [],
@@ -198,11 +198,18 @@ describe("durable schedule creation", () => {
 
 describe("durable schedule management updates", () => {
   it("advances a schedule only while its principal drain remains active", async () => {
+    let active = true;
     const storage = new DynamoPlaneStorageBase(
       {
         send: async (command: unknown) => {
           expect(command).toBeInstanceOf(TransactWriteCommand);
           expect((command as TransactWriteCommand).input.TransactItems).toHaveLength(2);
+          if (!active) {
+            throw {
+              name: "TransactionCanceledException",
+              CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
+            };
+          }
           return {};
         },
       } as never,
@@ -219,6 +226,17 @@ describe("durable schedule management updates", () => {
         newNextRunAt: "two",
       }),
     ).resolves.toBe(true);
+    active = false;
+    await expect(
+      storage.skipScheduleForPrincipalDrain({
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        principalId: "principal-1",
+        operationId: "drain-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+      }),
+    ).resolves.toBe(false);
   });
 
   it("updates operator fields without replacing a cron-advanced cursor", async () => {
