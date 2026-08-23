@@ -60,6 +60,7 @@ async function setup(suffix: string) {
     retryCount: 0,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
   };
   await ctx.storage!.putSession(session);
   await created.plane.hydrateFromStorage();

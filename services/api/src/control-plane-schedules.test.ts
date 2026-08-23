@@ -15,6 +15,7 @@ describe("schedule routing policy", () => {
       cron: "* * * * *",
       timeout: 1,
     });
+    delete plane.state.schedules.get(schedule.id)!.principalId;
     expect(plane.updateSchedule(schedule.id, { principalId: "principal-a" })).toMatchObject({
       ok: true,
       schedule: { principalId: "principal-a" },

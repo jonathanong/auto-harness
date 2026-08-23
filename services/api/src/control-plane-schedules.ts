@@ -75,10 +75,15 @@ function preparePutSchedule(
   const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
   if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   const prompt = storedSchedulePrompt(input.prompt);
+  // Authenticated routes always supply their principal. Direct/in-memory use
+  // is the authentication-disabled control plane and therefore owns newly
+  // created schedules as the same durable system principal used by that route.
+  // Only rows persisted before schedule ownership existed remain ownerless.
+  const principalId = input.principalId ?? "system";
   const rec: ScheduleRecord = {
     id,
     repositoryId: input.repositoryId,
-    ...(input.principalId ? { principalId: input.principalId } : {}),
+    principalId,
     name: input.name,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
@@ -90,10 +95,8 @@ function preparePutSchedule(
     nextRunAt,
     lastRunAt: null,
     createdAt: now,
-    ...(input.principalId !== undefined ? { principalId: input.principalId } : {}),
     ...(input.ref !== undefined ? { ref: input.ref } : {}),
     concurrencyId,
-    ...(input.principalId !== undefined ? { principalId: input.principalId } : {}),
     ...(prompt !== undefined ? { prompt } : {}),
   };
   return { ok: true, schedule: rec };

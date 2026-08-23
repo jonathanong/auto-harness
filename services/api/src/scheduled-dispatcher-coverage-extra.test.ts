@@ -36,6 +36,7 @@ function scheduled(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
     ...over,
   };
 }
@@ -149,6 +150,7 @@ describe("scheduled dispatcher coverage edges", () => {
       target: { commandId: "cmd" },
       cron: "* * * * *",
       timeout: 10,
+      principalId: "system",
       nextRunAt: NOW,
     });
     plane.evaluateCron("2026-01-01T00:01:00.000Z");

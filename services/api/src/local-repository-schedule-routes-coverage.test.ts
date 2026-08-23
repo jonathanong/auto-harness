@@ -44,6 +44,7 @@ function seededPlane(storage?: object): ControlPlane {
     nextRunAt: "2026-01-01T00:01:00.000Z",
     lastRunAt: null,
     createdAt: NOW,
+    principalId: "system",
     concurrencyId: "schedule-schedule",
   });
   if (storage) addDurableReadDefaults(plane.state);

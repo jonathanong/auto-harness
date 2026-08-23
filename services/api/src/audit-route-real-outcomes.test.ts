@@ -164,6 +164,7 @@ describe("audited real route outcomes", () => {
     const scheduled = terminalResumeFixture();
     const source = scheduled.state.sessions.get("session-a")!;
     source.type = "scheduled";
+    source.principalId = "system";
     expect(
       (
         await invokeHandler(

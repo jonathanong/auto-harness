@@ -146,6 +146,7 @@ describe("scheduled main-checkout dispatcher", () => {
       createdAt: "2025-01-01T00:00:00.000Z",
       type: "scheduled",
       source: "schedule",
+      principalId: "system",
       hostId: "host-a",
       startedAt: "2025-12-31T00:00:00.000Z",
     });
@@ -384,6 +385,7 @@ describe("scheduled reconnect fencing", () => {
       reconnectDeadlineAt: new Date(Date.parse(NOW) + 100).toISOString(),
       type: "scheduled",
       source: "schedule",
+      principalId: "system",
     });
     return state;
   }

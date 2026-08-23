@@ -29,8 +29,6 @@ async function plane(connectionId: string, hostId: string, repositoryId: string)
     argv: ["echo"],
     appendPrompt: true,
     providerId: null,
-    createdAt: NOW,
-    updatedAt: NOW,
   });
   await created.plane.settleStorage();
   const registered = await created.plane.registerHostDurable({
@@ -46,21 +44,33 @@ async function plane(connectionId: string, hostId: string, repositoryId: string)
   return { ...created, connectionId: registered.connectionId };
 }
 
+function createScheduled(
+  controlPlane: Awaited<ReturnType<typeof plane>>["plane"],
+  repositoryId: string,
+  concurrencyId: string,
+  target: import("@auto-harness/shared").TargetRef,
+) {
+  return controlPlane.createSessionDurable(
+    {
+      repositoryId,
+      prompt: "scheduled run",
+      target,
+      timeout: 30,
+      type: "scheduled",
+      source: "schedule",
+      concurrencyId,
+    },
+    { principalId: "system" },
+  );
+}
+
 async function scheduled(
   controlPlane: Awaited<ReturnType<typeof plane>>["plane"],
   repositoryId: string,
   concurrencyId: string,
   target: import("@auto-harness/shared").TargetRef,
 ) {
-  const created = await controlPlane.createSessionDurable({
-    repositoryId,
-    prompt: "scheduled run",
-    target,
-    timeout: 30,
-    type: "scheduled",
-    source: "schedule",
-    concurrencyId,
-  });
+  const created = await createScheduled(controlPlane, repositoryId, concurrencyId, target);
   if (!created.ok) throw new Error(created.error);
   await controlPlane.assignScheduledQueuedDurable();
   return controlPlane.getSession(created.session.id)!;
@@ -90,14 +100,8 @@ describe("durable scheduled terminal and provider fallback", () => {
         first.connectionId,
       );
       await expect(
-        first.plane.createSessionDurable({
-          repositoryId: "terminal-repo",
-          prompt: "next trigger",
-          target: { commandId: "terminal-host-command" },
-          timeout: 30,
-          type: "scheduled",
-          source: "schedule",
-          concurrencyId,
+        createScheduled(first.plane, "terminal-repo", concurrencyId, {
+          commandId: "terminal-host-command",
         }),
       ).resolves.toMatchObject({ ok: true, created: true });
     }

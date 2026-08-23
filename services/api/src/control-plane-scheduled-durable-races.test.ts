@@ -28,6 +28,7 @@ function session(id: string, repositoryId = "repo-race"): SessionRecord {
     retryCount: 0,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
   };
 }
 

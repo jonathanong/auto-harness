@@ -26,6 +26,7 @@ function row(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
     hostId: "host",
     worktreeId: null,
     attemptId: "attempt",
