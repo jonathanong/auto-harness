@@ -12,6 +12,7 @@ import {
   getHostInventory,
   deleteSchedule,
   disableLegacyFallbackScheduleAndAudit,
+  listSchedules,
   putSchedule,
   skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
@@ -55,6 +56,17 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("durable schedule creation", () => {
+  it("allows eventually consistent schedule scans when requested", async () => {
+    let input: unknown;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as { input: unknown }).input;
+      return { Items: [] };
+    });
+
+    await expect(listSchedules(storage, false)).resolves.toEqual([]);
+    expect(input).toEqual({ TableName: "Schedules" });
+  });
+
   it("does not build an over-limit transaction for legacy fallback-heavy schedules", async () => {
     let calls = 0;
     const storage = scheduleCtx(async () => {
