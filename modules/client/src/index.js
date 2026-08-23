@@ -10,35 +10,78 @@ export class AutoHarnessError extends Error {
   }
 }
 
+export class AutoHarnessRequestTimeoutError extends Error {
+  constructor(timeoutMs) {
+    super(`Auto Harness request timed out after ${timeoutMs}ms`);
+    this.name = "AutoHarnessRequestTimeoutError";
+    this.code = "REQUEST_TIMEOUT";
+    this.timeoutMs = timeoutMs;
+  }
+}
+
 export class AutoHarnessClient {
   constructor(options) {
     if (!options?.baseUrl) throw new TypeError("baseUrl is required");
+    const requestTimeoutMs =
+      options.requestTimeoutMs === undefined ? 30_000 : options.requestTimeoutMs;
+    if (!Number.isFinite(requestTimeoutMs) || requestTimeoutMs <= 0 || requestTimeoutMs > 300_000) {
+      throw new TypeError(
+        "requestTimeoutMs must be a finite positive number no greater than 300000",
+      );
+    }
     this.baseUrl = options.baseUrl.replace(/\/$/, "").replace(/\/api\/v1$/, "");
     this.apiKey = options.apiKey;
     this.fetch = options.fetch ?? globalThis.fetch;
     if (!this.fetch) throw new TypeError("fetch is required");
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
   async request(path, init = {}) {
     const headers = { accept: "application/json", ...init.headers };
     if (init.body !== undefined) headers["content-type"] = "application/json";
     if (this.apiKey) headers.authorization = `Bearer ${this.apiKey}`;
-    const response = await this.fetch(`${this.baseUrl}/api/v1${path}`, { ...init, headers });
-    const body = response.status === 204 ? undefined : await response.json().catch(() => undefined);
-    if (!response.ok) {
-      const error = body?.error;
-      throw new AutoHarnessError(
-        error?.message ?? `Auto Harness request failed (${response.status})`,
-        {
-          status: response.status,
-          code: error?.code ?? "HTTP_ERROR",
-          retryAfter: response.headers.get("retry-after") ?? undefined,
-          operationId: error?.operationId,
-          statusUrl: error?.statusUrl,
-        },
-      );
+    const controller = new AbortController();
+    const timeoutError = new AutoHarnessRequestTimeoutError(this.requestTimeoutMs);
+    let timeoutId;
+    const timeout = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(timeoutError);
+      }, this.requestTimeoutMs);
+    });
+    const request = (async () => {
+      const response = await this.fetch(`${this.baseUrl}/api/v1${path}`, {
+        ...init,
+        headers,
+        signal: controller.signal,
+      });
+      const body =
+        response.status === 204
+          ? undefined
+          : await response.json().catch((error) => {
+              if (controller.signal.aborted) throw error;
+              return undefined;
+            });
+      if (!response.ok) {
+        const error = body?.error;
+        throw new AutoHarnessError(
+          error?.message ?? `Auto Harness request failed (${response.status})`,
+          {
+            status: response.status,
+            code: error?.code ?? "HTTP_ERROR",
+            retryAfter: response.headers.get("retry-after") ?? undefined,
+            operationId: error?.operationId,
+            statusUrl: error?.statusUrl,
+          },
+        );
+      }
+      return body;
+    })();
+    try {
+      return await Promise.race([request, timeout]);
+    } finally {
+      clearTimeout(timeoutId);
     }
-    return body;
   }
 
   createSession(input) {

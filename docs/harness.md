@@ -22,7 +22,10 @@ cover session create/read/cancel, principal session-drain start/read/release, re
 pause/drain/activate. HTTP failures are `AutoHarnessError` instances with `status`, stable API
 `code`, and optional `retryAfter`. A `409 DRAINING` error also carries `operationId` and `statusUrl`
 for durable progress polling. Repository listing returns one bounded page plus `nextCursor`; callers
-follow that cursor until it is `null` when they need the complete visible catalog.
+follow that cursor until it is `null` when they need the complete visible catalog. Every request,
+including response-body consumption, is bounded by `requestTimeoutMs` (default `30_000`, maximum
+`300_000`); expiry throws `AutoHarnessRequestTimeoutError` with `code === "REQUEST_TIMEOUT"` and
+`timeoutMs`. The client makes no automatic retries.
 
 The source contract for this supported subset is [`docs/openapi.yaml`](openapi.yaml). Direct HTTP
 remains supported; all dispatch forms return after acceptance and never wait for completion.

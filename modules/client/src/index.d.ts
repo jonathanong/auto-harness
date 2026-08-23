@@ -106,8 +106,22 @@ export class AutoHarnessError extends Error {
   );
 }
 
+export class AutoHarnessRequestTimeoutError extends Error {
+  code: "REQUEST_TIMEOUT";
+  timeoutMs: number;
+  constructor(timeoutMs: number);
+}
+
+export type AutoHarnessClientOptions = {
+  baseUrl: string;
+  apiKey?: string;
+  fetch?: typeof fetch;
+  /** Per-request deadline in milliseconds (default 30,000; maximum 300,000). */
+  requestTimeoutMs?: number;
+};
+
 export class AutoHarnessClient {
-  constructor(options: { baseUrl: string; apiKey?: string; fetch?: typeof fetch });
+  constructor(options: AutoHarnessClientOptions);
   createSession(input: CreateSessionInput): Promise<Session & { created: boolean }>;
   getSession(id: string): Promise<Session>;
   cancelSession(id: string): Promise<Session>;
