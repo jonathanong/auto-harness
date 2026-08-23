@@ -10,10 +10,13 @@ export function repositoryPagePath(
   cursor?: string | null,
   basePath = "/api/v1/repositories",
 ): string {
-  const path = new URL(basePath, "http://auto-harness.local");
-  if (cursor) path.searchParams.set("cursor", cursor);
-  else path.searchParams.delete("cursor");
-  return `${path.pathname}${path.search}`;
+  const queryStart = basePath.indexOf("?");
+  const pathname = queryStart === -1 ? basePath : basePath.slice(0, queryStart);
+  const searchParams = new URLSearchParams(queryStart === -1 ? "" : basePath.slice(queryStart + 1));
+  if (cursor) searchParams.set("cursor", cursor);
+  else searchParams.delete("cursor");
+  const search = searchParams.toString();
+  return search ? `${pathname}?${search}` : pathname;
 }
 
 /**

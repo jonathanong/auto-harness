@@ -32,5 +32,11 @@ describe("repository catalog pagination", () => {
     expect(repositoryPagePath("next", "/api/v1/repositories?limit=1")).toBe(
       "/api/v1/repositories?limit=1&cursor=next",
     );
+    expect(repositoryPagePath(null, "/api/v1/repositories?limit=1&cursor=old")).toBe(
+      "/api/v1/repositories?limit=1",
+    );
+    expect(repositoryPagePath("opaque + cursor", "/api/v1/repositories?limit=1")).toBe(
+      "/api/v1/repositories?limit=1&cursor=opaque+%2B+cursor",
+    );
   });
 });
