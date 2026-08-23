@@ -179,5 +179,8 @@ describe("DynamoDB Local basic catalog adapters", () => {
       terminalHookScript: "echo done",
       admissionState: "draining",
     });
+    expect(
+      await updateRepositorySettings(ctx, "missing-repository", { name: "Missing" }, "t7"),
+    ).toBeNull();
   });
 });
