@@ -165,9 +165,8 @@ export function createLocalApp(options: LocalServerOptions = {}): {
     try {
       await route(req, res);
     } catch (error) {
-      // Path only: query strings carry credentials such as the viewer WebSocket ticket.
-      const path = (req.url ?? "/").split("?")[0];
-      console.error(`unhandled error in ${req.method ?? "GET"} ${path}`, error);
+      // Do not log request-derived method or URL text: either can contain control characters.
+      console.error("unhandled request error", error);
       if (!res.headersSent) {
         send(res, 500, {
           error: { code: "INTERNAL_ERROR", message: "internal server error" },

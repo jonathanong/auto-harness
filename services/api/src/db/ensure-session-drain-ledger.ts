@@ -6,6 +6,7 @@ import {
   ScanCommand,
   type BatchWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
+import { randomInt } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import type { DynamoTableNames } from "./dynamo.ts";
@@ -60,7 +61,7 @@ async function writeActivities(
     for (let attempt = 0; pending.length && attempt < MAX_UNPROCESSED_RETRIES; attempt += 1) {
       if (attempt > 0) {
         const backoff = BASE_RETRY_DELAY_MS * 2 ** (attempt - 1);
-        await delay(backoff + Math.floor(Math.random() * backoff));
+        await delay(backoff + randomInt(backoff));
       }
       const result = await doc.send(
         new BatchWriteCommand({ RequestItems: { [tableName]: pending } }),
