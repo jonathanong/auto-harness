@@ -169,11 +169,12 @@ Drain completion is proved from a strongly consistent activity ledger: each prin
 session writes an `ACT#sessionId` member in its `(repository, principal)` partition in the same
 transaction as admission and the drain fence, then reconciliation strongly reads that bounded
 partition and each exact session row. It never infers quiescence from an eventually consistent
-secondary index. On the first deployment that enables this ledger, startup performs one
-strongly-consistent backfill of active owned sessions before writing its readiness marker; drain
-requests fail closed until that marker exists. Roll upgrades must retire all older control-plane
-writers before that first bootstrap, since an old binary could otherwise admit an untracked
-session during the one-time scan.
+secondary index. On the first deployment that enables this ledger, the scheduler performs a
+fenced, resumable, strongly consistent backfill of active owned sessions in bounded pages before
+writing its readiness marker; REST and WebSocket cold starts never perform this scan, and drain
+requests fail closed until the marker exists. Roll upgrades must retire all older control-plane
+writers before enabling the scheduler bootstrap, since an old binary could otherwise admit an
+untracked session during the migration.
 
 Durable schedules have an authenticated owner. Legacy schedules created before ownership was
 persisted are deliberately inert: durable manual trigger and cron do not mint sessions, and cron
