@@ -15,7 +15,8 @@ Usage: pnpm deploy:aws [--yes-first-ledger]
 Fast-forwards a clean main checkout, installs the lockfile, and updates the AWS
 control plane. The first SessionDrains ledger rollout is detected and gated
 automatically; --yes-first-ledger is the non-interactive confirmation that
-external session admission is already disabled and active sessions are idle.
+external session admission is disabled. The command verifies zero active
+sessions itself after fencing the old scheduler.
 EOF
 }
 
@@ -65,6 +66,7 @@ fi
 pnpm install --frozen-lockfile --ignore-scripts
 
 ledger_table="AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-SessionDrains"
+sessions_table="AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-Sessions"
 read_ledger_key() {
   local output status
   set +e
@@ -151,6 +153,47 @@ restore_scheduler_concurrency() {
   fi
 }
 
+read_rule_state() {
+  local state
+  state="$(aws events describe-rule \
+    --region "$AWS_REGION" \
+    --name "$cron_rule" \
+    --query 'State' \
+    --output text)"
+  if [[ "$state" != "ENABLED" && "$state" != "DISABLED" ]]; then
+    echo "Could not resolve the original EventBridge rule state." >&2
+    return 1
+  fi
+  printf '%s' "$state"
+}
+
+restore_rule_state() {
+  if [[ "$original_rule_state" == "DISABLED" ]]; then
+    aws events disable-rule --region "$AWS_REGION" --name "$cron_rule"
+  else
+    aws events enable-rule --region "$AWS_REGION" --name "$cron_rule"
+  fi
+}
+
+verify_no_active_sessions() {
+  local active_session_ids
+  active_session_ids="$(aws dynamodb scan \
+    --region "$AWS_REGION" \
+    --table-name "$sessions_table" \
+    --consistent-read \
+    --projection-expression 'id,#status' \
+    --filter-expression '#status IN (:queued,:running) OR (#status = :cancelled AND (attribute_type(worktreeId,:stringType) OR mainCheckoutLease = :true))' \
+    --expression-attribute-names '{"#status":"status"}' \
+    --expression-attribute-values '{":queued":{"S":"queued"},":running":{"S":"running"},":cancelled":{"S":"cancelled"},":stringType":{"S":"S"},":true":{"BOOL":true}}' \
+    --query 'Items[].id.S' \
+    --output text)"
+  if [[ -n "$active_session_ids" && "$active_session_ids" != "None" ]]; then
+    echo "Active sessions remain after the scheduler fence; keep external admission disabled, wait for them to settle, and rerun." >&2
+    return 1
+  fi
+  echo "Verified zero drain-affecting sessions after fencing the scheduler."
+}
+
 ledger_record_key="$(read_ledger_key)"
 if [[ "$ledger_record_key" == "ACTIVITY-V1" ]]; then
   pnpm --filter @auto-harness/cdk run update
@@ -165,7 +208,9 @@ fi
 cron_rule="$(resolve_cron_rule_optional)"
 scheduler_fenced=0
 original_concurrency=""
+original_rule_state=""
 if [[ -n "$cron_rule" ]]; then
+  original_rule_state="$(read_rule_state)"
   aws events disable-rule --region "$AWS_REGION" --name "$cron_rule"
   echo "Disabled $cron_rule for the first ledger rollout."
   scheduler_function="$(resolve_scheduler_function)"
@@ -204,16 +249,18 @@ else
 fi
 
 if [[ "$confirm_first_ledger" -ne 1 ]]; then
-  read -r -p "Scheduler stopped. External admission is disabled and active sessions are now idle? [y/N] " answer
+  read -r -p "Scheduler stopped. External admission is disabled? [y/N] " answer
   if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
     if [[ "$scheduler_fenced" -eq 1 ]]; then
       restore_scheduler_concurrency
-      aws events enable-rule --region "$AWS_REGION" --name "$cron_rule"
+      restore_rule_state
     fi
     echo "Deployment cancelled; the previous scheduler settings were restored." >&2
     exit 1
   fi
 fi
+
+verify_no_active_sessions
 
 if ! pnpm --filter @auto-harness/cdk run update; then
   set +e
@@ -237,16 +284,45 @@ if [[ "$scheduler_fenced" -eq 1 ]]; then
   scheduler_function="$(resolve_scheduler_function)"
   restore_scheduler_concurrency
 fi
+rule_restore_pending=0
+# Invoked indirectly by the EXIT trap below.
+# shellcheck disable=SC2329
+restore_original_rule_on_exit() {
+  local status=$?
+  if [[ "$rule_restore_pending" -eq 1 ]]; then
+    local restore_status
+    set +e
+    restore_rule_state
+    restore_status=$?
+    if [[ "$restore_status" -ne 0 ]]; then
+      echo "Could not restore the original EventBridge rule state; external admission must remain disabled while an operator restores it." >&2
+    fi
+  fi
+  exit "$status"
+}
+finish_rule_restoration() {
+  if [[ "$rule_restore_pending" -eq 1 ]]; then
+    restore_rule_state
+    rule_restore_pending=0
+    trap - EXIT
+  fi
+}
+if [[ -n "$original_rule_state" ]]; then
+  rule_restore_pending=1
+  trap restore_original_rule_on_exit EXIT
+fi
 aws events enable-rule --region "$AWS_REGION" --name "$cron_rule"
 
 for _ in $(seq 1 120); do
   record_key="$(read_ledger_key)"
   if [[ "$record_key" == "ACTIVITY-V1" ]]; then
+    finish_rule_restoration
     echo "AWS update complete; the session-drain activity ledger is ready."
     exit 0
   fi
   sleep 5
 done
 
+finish_rule_restoration
 echo "AWS update completed, but the activity ledger was not ready within 10 minutes; keep external admission disabled and investigate." >&2
 exit 1

@@ -259,10 +259,12 @@ or web stacks after a retained teardown.
 ### First rollout of the principal session-drain ledger
 
 `pnpm deploy:aws` detects this rollout from the missing environment-scoped activity-ledger readiness
-marker, disables and fences the old scheduler, and then asks for one confirmation that external
-admission is disabled and active sessions are now idle. It performs the update, restores scheduling,
-and waits for the marker. In non-interactive automation, pass `--yes-first-ledger` after making the
-same admission guarantee:
+marker, disables and fences the old scheduler, asks for one confirmation that external admission is
+disabled, and then verifies there are no drain-affecting sessions. It performs the update,
+temporarily enables scheduling for the bounded backfill, waits for the marker, and restores the
+EventBridge rule's original enabled or disabled state. In non-interactive automation, pass
+`--yes-first-ledger` only after disabling external admission; the command still performs its own
+post-fence active-session verification:
 
 ```bash
 pnpm deploy:aws -- --yes-first-ledger

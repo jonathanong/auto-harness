@@ -29,6 +29,15 @@ if [[ "$platform" == "Linux" && "$(id -u)" -eq 0 ]]; then
   exit 1
 fi
 
+if [[ "$platform" == "Linux" && -e /opt/auto-harness/current ]]; then
+  checkout_root="$(pwd -P)"
+  service_root="$(cd /opt/auto-harness/current && pwd -P)"
+  if [[ "$checkout_root" != "$service_root" ]]; then
+    echo "deploy:host must run from /opt/auto-harness/current because the installed Linux service executes that checkout." >&2
+    exit 1
+  fi
+fi
+
 if [[ "$(git branch --show-current)" != "main" ]]; then
   echo "deploy:host requires the main branch" >&2
   exit 1
@@ -43,13 +52,36 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
-pnpm install --frozen-lockfile --ignore-scripts
+pnpm install --frozen-lockfile
+
+wait_for_host_readiness() {
+  local deadline output status
+  deadline=$((SECONDS + 110))
+  while true; do
+    set +e
+    output="$("$@" 2>&1)"
+    status=$?
+    set -e
+    if [[ "$status" -eq 0 ]]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+    if [[ "$SECONDS" -ge "$deadline" ]]; then
+      break
+    fi
+    sleep 2
+  done
+  printf '%s\n' "$output" >&2
+  echo "Host service did not become ready within 120 seconds." >&2
+  return 1
+}
 
 case "$platform" in
   Darwin)
     pnpm local:daemon install-service
     env_file="$HOME/Library/Application Support/auto-harness/host-daemon.env"
-    env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+    wait_for_host_readiness env \
+      -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
       HARNESS_ENV_FILE="$env_file" \
       pnpm local:daemon status
     ;;
@@ -57,7 +89,8 @@ case "$platform" in
     pnpm_path="$(command -v pnpm)"
     sudo env "PATH=$PATH" "$pnpm_path" local:daemon install-service
     env_file="/etc/auto-harness/host-daemon.env"
-    sudo env -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
+    wait_for_host_readiness sudo env \
+      -u HARNESS_HOST_ID -u HARNESS_API_URL -u HARNESS_API_HTTP -u HARNESS_API_KEY \
       "PATH=$PATH" HARNESS_ENV_FILE="$env_file" \
       "$pnpm_path" local:daemon status
     ;;
