@@ -123,6 +123,7 @@ describe("SlackSettingsForm", () => {
     fillCreate(saveView);
     submit(field(saveView.container, "form-slack-create"));
     saveView.unmount();
+    expect(saveView.container.childElementCount).toBe(0);
     resolveSave(json(configured));
     await settle();
 
@@ -130,6 +131,7 @@ describe("SlackSettingsForm", () => {
     press(field(deleteView.container, "slack-delete"));
     press(field(document, "slack-delete-confirm-submit"));
     deleteView.unmount();
+    expect(deleteView.container.childElementCount).toBe(0);
     resolveDelete(json({}, 204));
     await settle();
   });

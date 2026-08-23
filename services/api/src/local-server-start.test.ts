@@ -107,6 +107,7 @@ describe("startLocalServer", () => {
       wsRateLimitPerSecond: 3,
       onRateLimitEvent: vi.fn(),
     });
+    expect(explicit.port).toBeGreaterThanOrEqual(17620);
     await explicit.close();
 
     const previous = process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND;
@@ -116,6 +117,7 @@ describe("startLocalServer", () => {
         port: 17720 + Math.floor(Math.random() * 100),
         useDynamo: false,
       });
+      expect(configured.port).toBeGreaterThanOrEqual(17720);
       await configured.close();
     } finally {
       if (previous === undefined) delete process.env.HARNESS_WS_RATE_LIMIT_PER_SECOND;

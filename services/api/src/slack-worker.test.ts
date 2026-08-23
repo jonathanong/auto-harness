@@ -194,14 +194,16 @@ describe("Slack lifecycle worker", () => {
   });
 
   it("handles disabled configuration, bounded work, and a superseded tick marker", async () => {
+    const getDisabledConfig = vi.fn(async () => ({ ...config, enabled: false }));
     const disabled = new SlackLifecycleWorker({
       store: new MemoryOutbox(),
       transport: { deliver: vi.fn() },
-      getConfig: async () => ({ ...config, enabled: false }),
+      getConfig: getDisabledConfig,
       listSessions: vi.fn(),
     });
     disabled.start();
     await disabled.stop();
+    expect(getDisabledConfig).toHaveBeenCalledOnce();
 
     const store = new MemoryOutbox();
     const bounded = new SlackLifecycleWorker(
@@ -220,5 +222,6 @@ describe("Slack lifecycle worker", () => {
     (bounded as unknown as { inFlight: Promise<void> }).inFlight = Promise.resolve();
     await pending;
     await bounded.stop();
+    expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
   });
 });
