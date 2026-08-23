@@ -19,7 +19,12 @@ import {
   getScheduleDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
-import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
+import {
+  principalDeletionMarker,
+  referenceMarkers,
+} from "./control-plane-delete-reference-markers.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
+import { isConditionalTransactionFailed } from "./db/plane-storage-types.ts";
 import {
   applyStoredPrompt,
   storedSchedulePrompt,
@@ -234,8 +239,30 @@ export async function deleteScheduleDurable(
   id: string,
 ): Promise<ReturnType<typeof deleteSchedule>> {
   if (!state.storage) return deleteSchedule(state, id);
-  if (!(await getScheduleDurable(state, id))) return { ok: false, error: "schedule not found" };
-  await state.storage.deleteSchedule(id);
-  state.schedules.delete(id);
-  return { ok: true };
+  const cached = await getScheduleDurable(state, id);
+  if (!cached) return { ok: false, error: "schedule not found" };
+  const marker = principalDeletionMarker(cached.principalId);
+  return withDeletionMarkers(state, marker ? [marker] : [], async (owner) => {
+    // Re-read after acquiring the owner fence so an account deletion and a
+    // schedule deletion linearize around the same principal marker.
+    const schedule = await getScheduleDurable(state, id);
+    if (!schedule) return { ok: false, error: "schedule not found" };
+    try {
+      await state.storage!.deleteSchedule(
+        id,
+        owner ? [{ key: marker!, owner, now: state.now() }] : undefined,
+      );
+    } catch (error) {
+      if (isConditionalTransactionFailed(error)) {
+        return {
+          ok: false,
+          conflict: true,
+          error: "catalog deletion lease was lost; retry the request",
+        };
+      }
+      throw error;
+    }
+    state.schedules.delete(id);
+    return { ok: true };
+  });
 }

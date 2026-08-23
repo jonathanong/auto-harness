@@ -267,18 +267,21 @@ export async function createOrGetSessionDrain(
 ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
   const principalCheck = principalExistsCheck(ctx, record.principalId);
-  const repositoryCheckIndex = 1 + (principalCheck ? 1 : 0);
+  const markers = [
+    { key: `repository:${record.repositoryId}`, now: record.requestedAt },
+    ...(record.principalId && record.principalId !== "system"
+      ? [{ key: `principal:${record.principalId}`, now: record.requestedAt }]
+      : []),
+  ];
+  const markerCount = markers.length;
+  const principalCheckIndex = markerCount;
+  const repositoryCheckIndex = principalCheckIndex + (principalCheck ? 1 : 0);
   const ledgerCheckIndex = repositoryCheckIndex + 1;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          ...withMarkerTable(
-            ctx,
-            markerConditions([
-              { key: `repository:${record.repositoryId}`, now: record.requestedAt },
-            ]),
-          ),
+          ...withMarkerTable(ctx, markerConditions(markers)),
           ...(principalCheck ? [principalCheck] : []),
           {
             ConditionCheck: {
@@ -312,8 +315,10 @@ export async function createOrGetSessionDrain(
   } catch (error) {
     if (!isConditionalTransactionFailed(error)) throw error;
     if (
-      isConditionalTransactionFailureAt(error, 0) ||
-      (principalCheck !== null && isConditionalTransactionFailureAt(error, 1)) ||
+      [...Array(markerCount).keys()].some((index) =>
+        isConditionalTransactionFailureAt(error, index),
+      ) ||
+      (principalCheck !== null && isConditionalTransactionFailureAt(error, principalCheckIndex)) ||
       isConditionalTransactionFailureAt(error, repositoryCheckIndex)
     ) {
       throw new SessionDrainScopeUnavailableError();

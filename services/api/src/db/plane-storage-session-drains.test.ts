@@ -144,6 +144,25 @@ describe("session drain Dynamo adapter residuals", () => {
       expect.arrayContaining([
         expect.objectContaining({
           ConditionCheck: expect.objectContaining({
+            TableName: "concurrency-locks",
+            Key: { concurrencyId: "catalog-delete:repository:repo/one" },
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "concurrency-locks",
+            Key: { concurrencyId: "catalog-delete:principal:principal two" },
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "users",
+            Key: { id: "principal two" },
+            ConditionExpression: "attribute_exists(id)",
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
             TableName: "repositories",
             Key: { id: "repo/one" },
           }),
@@ -224,6 +243,7 @@ describe("session drain Dynamo adapter residuals", () => {
           throw {
             name: "TransactionCanceledException",
             CancellationReasons: [
+              { Code: "None" },
               { Code: "None" },
               { Code: "None" },
               { Code: "None" },

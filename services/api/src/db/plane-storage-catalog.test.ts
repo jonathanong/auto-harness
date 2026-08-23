@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getHostInventory,
+  deleteSchedule,
   putSchedule,
   skipOwnerlessScheduleAndAudit,
   skipScheduleForPrincipalDrainAndAudit,
@@ -53,6 +54,28 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
 }
 
 describe("durable schedule creation", () => {
+  it("keeps owned schedule deletion behind its live principal marker", async () => {
+    let input: TransactWriteCommandInput | undefined;
+    const storage = scheduleCtx(async (command) => {
+      input = (command as TransactWriteCommand).input;
+      return {};
+    });
+
+    await deleteSchedule(storage, "schedule-1", [
+      { key: "principal:principal-1", owner: "delete-owner", now: "now" },
+    ]);
+
+    expect(input?.TransactItems).toEqual([
+      expect.objectContaining({
+        ConditionCheck: expect.objectContaining({
+          Key: { concurrencyId: "catalog-delete:principal:principal-1" },
+          ExpressionAttributeValues: { ":owner": "delete-owner", ":now": "now" },
+        }),
+      }),
+      expect.objectContaining({ Delete: { TableName: "Schedules", Key: { id: "schedule-1" } } }),
+    ]);
+  });
+
   it("requires a durable user for principal-owned schedules only", async () => {
     const commands: unknown[] = [];
     const storage = scheduleCtx(async (command) => {
@@ -123,6 +146,71 @@ describe("durable schedule creation", () => {
         }),
       }),
     );
+    expect(input?.TransactItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "Locks",
+            Key: { concurrencyId: "catalog-delete:repository:repo-1" },
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "Locks",
+            Key: { concurrencyId: "catalog-delete:principal:principal" },
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "Locks",
+            Key: { concurrencyId: "catalog-delete:command:command-1" },
+          }),
+        }),
+      ]),
+    );
+  });
+
+  it("does not advance the schedule cursor when an admission marker is lost", async () => {
+    let calls = 0;
+    const storage = scheduleCtx(async (command) => {
+      calls += 1;
+      expect(command).toBeInstanceOf(TransactWriteCommand);
+      throw {
+        name: "TransactionCanceledException",
+        CancellationReasons: [
+          { Code: "None" },
+          { Code: "None" },
+          { Code: "None" },
+          { Code: "ConditionalCheckFailed" },
+        ],
+      };
+    });
+    await expect(
+      tryClaimScheduleAndCreateSession(storage, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "now",
+        session: {
+          id: "session-marker-race",
+          repositoryId: "repo-1",
+          principalId: "principal",
+          prompt: "scheduled",
+          target: { commandId: "command-1" },
+          fallbacks: [],
+          targetLabels: ["command"],
+          queueTtlSeconds: 60,
+          queueExpiresAt: "later",
+          timeout: 30,
+          priority: 0,
+          requiredLabels: [],
+          status: "queued",
+          queueShard: 0,
+          createdAt: "now",
+        },
+      }),
+    ).resolves.toEqual({ kind: "lost" });
+    expect(calls).toBe(1);
   });
 
   it("reads host inventory strongly consistently after UI mutations", async () => {

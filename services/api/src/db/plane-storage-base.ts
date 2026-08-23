@@ -699,12 +699,15 @@ export class DynamoPlaneStorageBase {
     return catalog.getSchedule(this.ctx, id);
   }
 
-  listSchedules(): Promise<ScheduleRecord[]> {
-    return catalog.listSchedules(this.ctx);
+  listSchedules(consistentRead = true): Promise<ScheduleRecord[]> {
+    return catalog.listSchedules(this.ctx, consistentRead);
   }
 
-  deleteSchedule(id: string): Promise<void> {
-    return catalog.deleteSchedule(this.ctx, id);
+  deleteSchedule(
+    id: string,
+    markers?: readonly import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker[],
+  ): Promise<void> {
+    return catalog.deleteSchedule(this.ctx, id, markers);
   }
 
   putRepository(rec: RepositoryRecord): Promise<void> {

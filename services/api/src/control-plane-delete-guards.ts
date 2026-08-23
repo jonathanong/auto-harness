@@ -94,7 +94,10 @@ export async function refreshDeleteReferences(state: ControlPlaneState): Promise
     accounts,
     commands,
   ] = await Promise.all([
-    state.storage.listSchedules(),
+    // Account deletion must see every just-committed owned schedule after the
+    // principal marker is acquired; eventual reads could miss one and leave
+    // an orphaned schedule behind the deleted account.
+    state.storage.listSchedules(true),
     state.storage.listAllSessions(true),
     state.storage.listSessionDrains(true),
     state.storage.listAllWorktrees(true),

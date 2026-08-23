@@ -362,14 +362,17 @@ export async function getSchedule(
   return catalogItem(res.Item as ScheduleRecord | undefined);
 }
 
-export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecord[]> {
+export async function listSchedules(
+  ctx: PlaneStorageCtx,
+  consistentRead = true,
+): Promise<ScheduleRecord[]> {
   const records: ScheduleRecord[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const res = await ctx.doc.send(
       new ScanCommand({
-        ConsistentRead: true,
         TableName: ctx.tables.schedules,
+        ...(consistentRead ? { ConsistentRead: true } : {}),
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
@@ -379,8 +382,14 @@ export async function listSchedules(ctx: PlaneStorageCtx): Promise<ScheduleRecor
   return records;
 }
 
-export async function deleteSchedule(ctx: PlaneStorageCtx, id: string): Promise<void> {
-  await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.schedules, Key: { id } }));
+export async function deleteSchedule(
+  ctx: PlaneStorageCtx,
+  id: string,
+  markers?: readonly OwnedDeletionMarker[],
+): Promise<void> {
+  const write = { Delete: { TableName: ctx.tables.schedules, Key: { id } } };
+  if (markers?.length) return ownedDelete(ctx, markers, write);
+  await ctx.doc.send(new DeleteCommand(write.Delete));
 }
 
 export async function putRepository(ctx: PlaneStorageCtx, rec: RepositoryRecord): Promise<void> {
@@ -672,6 +681,14 @@ export async function tryClaimScheduleAndCreateSession(
       : undefined);
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.session.repositoryId, principalId);
   const activityPut = sessionDrainActivityPut(ctx, opts.session);
+  const markerChecks = withMarkerTable(
+    ctx,
+    markerConditions(scheduleClaimMarkers(opts.lastRunAt, opts.session)),
+  );
+  const drainIndex = 1;
+  const repositoryIndex = drainIndex + Number(!!drainCheck);
+  const markerStartIndex = repositoryIndex + 1;
+  const sessionIndex = markerStartIndex + markerChecks.length;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -700,6 +717,7 @@ export async function tryClaimScheduleAndCreateSession(
               ExpressionAttributeValues: { ":active": "active" },
             },
           },
+          ...markerChecks,
           {
             Put: {
               TableName: ctx.tables.sessions,
@@ -725,18 +743,25 @@ export async function tryClaimScheduleAndCreateSession(
     return { kind: "created" };
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
-      if (drainCheck && isConditionalTransactionFailureAt(err, 1)) {
+      if (
+        markerChecks.some((_, index) =>
+          isConditionalTransactionFailureAt(err, markerStartIndex + index),
+        )
+      ) {
+        // Deletion markers are part of this transaction, so a lost marker
+        // cannot have advanced the schedule cursor or created a session.
+        return { kind: "lost" };
+      }
+      if (drainCheck && isConditionalTransactionFailureAt(err, drainIndex)) {
         const drain = await getSessionDrain(ctx, opts.session.repositoryId, principalId!);
         return { kind: "draining", operationId: drain?.operationId ?? "unknown" };
       }
-      const repositoryIndex = 1 + Number(!!drainCheck);
       if (isConditionalTransactionFailureAt(err, repositoryIndex)) {
         return { kind: "admission_closed" };
       }
-      // The schedule cursor is item 0, followed by the optional principal
-      // drain fence, repository fence, session insert, optional activity
-      // member, and optional lock.
-      const sessionIndex = 2 + Number(!!drainCheck);
+      // The schedule cursor is followed by the optional principal drain
+      // fence, repository fence, deletion markers, session insert, optional
+      // activity member, and optional lock.
       const lockIndex = sessionIndex + 1 + Number(!!activityPut);
       if (opts.session.concurrencyId && isConditionalTransactionFailureAt(err, lockIndex)) {
         const lock = await getConcurrencyLock(ctx, opts.session.concurrencyId);
@@ -752,6 +777,25 @@ export async function tryClaimScheduleAndCreateSession(
     }
     throw err;
   }
+}
+
+function scheduleClaimMarkers(
+  now: string,
+  session: Pick<
+    SessionRecord,
+    "repositoryId" | "principalId" | "metadata" | "target" | "fallbacks"
+  >,
+): DeletionMarker[] {
+  const keys = new Set<string>([`repository:${session.repositoryId}`]);
+  const principalId =
+    session.principalId ??
+    (typeof session.metadata?.createdBy === "string" ? session.metadata.createdBy : undefined);
+  if (principalId && principalId !== "system") keys.add(`principal:${principalId}`);
+  for (const route of [session.target, ...(session.fallbacks ?? [])]) {
+    if (!route) continue;
+    keys.add("providerId" in route ? `provider:${route.providerId}` : `command:${route.commandId}`);
+  }
+  return [...keys].toSorted().map((key) => ({ key, now }));
 }
 
 export async function skipScheduleForPrincipalDrain(
