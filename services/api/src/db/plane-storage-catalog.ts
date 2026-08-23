@@ -690,11 +690,13 @@ export async function disableLegacyFallbackScheduleAndAudit(
               TableName: ctx.tables.schedules,
               Key: { id: opts.scheduleId },
               UpdateExpression: "SET enabled = :false",
-              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND size(fallbacks) > :maxFallbacks",
               ExpressionAttributeValues: {
                 ":false": false,
                 ":true": true,
                 ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":maxFallbacks": MAX_FALLBACKS,
               },
             },
           },

@@ -121,6 +121,9 @@ describe("durable schedule creation", () => {
           TableName: "Schedules",
           Key: { id: "schedule-1" },
           UpdateExpression: "SET enabled = :false",
+          ConditionExpression:
+            "nextRunAt = :expectedNextRunAt AND enabled = :true AND size(fallbacks) > :maxFallbacks",
+          ExpressionAttributeValues: expect.objectContaining({ ":maxFallbacks": 90 }),
         }),
       }),
       expect.objectContaining({
