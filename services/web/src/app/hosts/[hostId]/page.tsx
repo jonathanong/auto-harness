@@ -7,7 +7,7 @@ import { HostNotFound } from "../../../components/host-not-found.tsx";
 import { HostOverviewSection } from "../../../components/host-overview-section.tsx";
 import { HostProviderAccountsSection } from "../../../components/host-provider-accounts-section.tsx";
 import { HostRepositoriesSection } from "../../../components/host-repositories-section.tsx";
-import { ApiError, apiGet } from "../../../lib/api.ts";
+import { ApiError, apiGet, apiGetAllPages } from "../../../lib/api.ts";
 import { decodeRouteParam } from "../../../lib/decode-route-param.ts";
 import { can, loadPrincipal } from "../../../lib/principal.ts";
 
@@ -101,8 +101,9 @@ export default async function HostDetailPage({
   let catalog: RepoCatalogEntry[] = [];
   let catalogError: string | null = null;
   try {
-    const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
-    catalog = (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+    catalog = (await apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories")).toSorted((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   } catch (error) {
     catalogError = errorMessage(error);
   }

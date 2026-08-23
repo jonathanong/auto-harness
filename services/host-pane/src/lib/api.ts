@@ -1,7 +1,5 @@
-import { LOCAL_HOST_ID } from "@auto-harness/shared";
-
 import { headers } from "next/headers";
-import { apiBase } from "@auto-harness/shared";
+import { apiBase, collectCursorPages, LOCAL_HOST_ID } from "@auto-harness/shared";
 
 type ApiTransport = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -35,6 +33,11 @@ export async function apiGet<T>(path: string): Promise<T> {
   });
   if (!res.ok) throw new ApiError(path, res.status);
   return (await res.json()) as T;
+}
+
+/** Follow an opaque API cursor until the complete catalog has been loaded. */
+export async function apiGetAllPages<T>(path: string): Promise<T[]> {
+  return collectCursorPages<T>(path, (requestPath) => apiGet(requestPath));
 }
 
 async function incomingAuthHeaders(): Promise<Record<string, string> | undefined> {

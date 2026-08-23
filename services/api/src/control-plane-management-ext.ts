@@ -2,6 +2,7 @@ import type { HostInventoryRecord, RepositoryRecord } from "./db/plane-storage.t
 import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
+import * as repositoryPages from "./control-plane-repositories-page.ts";
 import * as repositoryAdmission from "./control-plane-repository-admission.ts";
 import * as sessionDrains from "./control-plane-session-drains.ts";
 import * as schedules from "./control-plane-schedules.ts";
@@ -93,6 +94,18 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
   async listRepositoriesDurable(): Promise<RepositoryRecord[]> {
     await durableCatalog.listRepositoriesDurable(this.state);
     return repos.listRepositories(this.state);
+  }
+
+  listRepositoriesPage(
+    query?: repositoryPages.ListRepositoriesPageQuery,
+  ): repositoryPages.ListRepositoriesPageResult {
+    return repositoryPages.listRepositoriesPage(this.state, query ?? {});
+  }
+
+  async listRepositoriesPageDurable(
+    query?: repositoryPages.ListRepositoriesPageQuery,
+  ): Promise<repositoryPages.ListRepositoriesPageResult> {
+    return repositoryPages.listRepositoriesPageDurable(this.state, query ?? {});
   }
 
   updateRepository(

@@ -29,7 +29,13 @@ describe("service-account API client", () => {
   it("loads accounts and repository choices without inventing missing items", async () => {
     replies(
       json({ items: [{ id: "service:1", name: "ci", role: "operator", createdAt: "now" }] }),
-      json({ items: [{ id: "repo-1", name: "Repo one" }] }),
+      json({
+        items: [
+          { id: "repo-3", name: "Zulu" },
+          { id: "repo-2", name: "Repo one" },
+          { id: "repo-1", name: "Repo one" },
+        ],
+      }),
       json({ items: [{ hostId: "host-a" }, { hostId: "" }, {}, { hostId: "  " }] }),
       json({}),
       json({}),
@@ -38,7 +44,11 @@ describe("service-account API client", () => {
     await expect(loadServiceAccountData()).resolves.toEqual({
       kind: "ready",
       accounts: [{ id: "service:1", name: "ci", role: "operator", createdAt: "now" }],
-      repositories: [{ id: "repo-1", name: "Repo one" }],
+      repositories: [
+        { id: "repo-1", name: "Repo one" },
+        { id: "repo-2", name: "Repo one" },
+        { id: "repo-3", name: "Zulu" },
+      ],
       hostIds: ["host-a"],
     });
     await expect(loadServiceAccountData()).resolves.toEqual({

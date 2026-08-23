@@ -1,7 +1,7 @@
 import { emptyHostInventory, type HostInventory } from "@auto-harness/shared";
 import type { RepoCatalogEntry } from "@auto-harness/ui";
 
-import { apiGet } from "./api.ts";
+import { apiGet, apiGetAllPages } from "./api.ts";
 
 type LiveWorktree = { status?: string; online?: boolean };
 
@@ -24,8 +24,9 @@ export async function loadLiveWorktreesById(hostId: string): Promise<Record<stri
 /** Full catalog repository list, sorted by name — used for repo pickers. */
 export async function loadRepoCatalog(): Promise<RepoCatalogEntry[]> {
   try {
-    const data = await apiGet<{ items: RepoCatalogEntry[] }>("/api/v1/repositories");
-    return (data.items ?? []).toSorted((a, b) => a.name.localeCompare(b.name));
+    return (await apiGetAllPages<RepoCatalogEntry>("/api/v1/repositories")).toSorted((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   } catch {
     return [];
   }

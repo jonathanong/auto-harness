@@ -27,6 +27,7 @@ import * as mainCheckout from "./plane-storage-main-checkout.ts";
 import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
 import * as sessionDrains from "./plane-storage-session-drains.ts";
+import * as repositoryCounts from "./plane-storage-repository-counts.ts";
 import { migrateSessionDrainActivityLedgerPage } from "./ensure-session-drain-ledger.ts";
 
 /**
@@ -132,6 +133,14 @@ export class DynamoPlaneStorageBase {
 
   countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
     return sessions.countSessionsByRepository(this.ctx, repositoryId, hostId);
+  }
+
+  countWorktreesByRepository(repositoryId: string, hostId?: string): Promise<number> {
+    return repositoryCounts.countWorktreesByRepository(this.ctx, repositoryId, hostId);
+  }
+
+  countSchedulesByRepository(repositoryId: string): Promise<number> {
+    return repositoryCounts.countSchedulesByRepository(this.ctx, repositoryId);
   }
 
   async listSessionsByHost(hostId: string): Promise<SessionRecord[]> {
@@ -727,6 +736,12 @@ export class DynamoPlaneStorageBase {
 
   listRepositories(): Promise<RepositoryRecord[]> {
     return catalog.listRepositories(this.ctx);
+  }
+
+  listRepositoriesPage(
+    query: catalog.RepositoryStoragePageQuery,
+  ): Promise<catalog.RepositoryStoragePage> {
+    return catalog.listRepositoriesPage(this.ctx, query);
   }
 
   setRepositoryAdmissionState(

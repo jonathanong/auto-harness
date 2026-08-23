@@ -26,14 +26,24 @@ describe("user-account API client", () => {
     const account = { id: "user:alice", username: "alice", role: "operator", kind: "user" };
     replies(
       json({ items: [account] }),
-      json({ items: [{ id: "r-1", name: "Repo" }] }),
+      json({
+        items: [
+          { id: "r-3", name: "Zulu" },
+          { id: "r-2", name: "Repo" },
+          { id: "r-1", name: "Repo" },
+        ],
+      }),
       json({}),
       json({}),
     );
     await expect(loadUserAccounts()).resolves.toEqual({
       kind: "ready",
       accounts: [account],
-      repositories: [{ id: "r-1", name: "Repo" }],
+      repositories: [
+        { id: "r-1", name: "Repo" },
+        { id: "r-2", name: "Repo" },
+        { id: "r-3", name: "Zulu" },
+      ],
     });
     await expect(loadUserAccounts()).resolves.toEqual({
       kind: "ready",

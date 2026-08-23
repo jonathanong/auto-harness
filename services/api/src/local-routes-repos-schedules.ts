@@ -4,6 +4,10 @@ import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
 import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import {
+  InvalidRepositoryCursorError,
+  InvalidRepositoryListQueryError,
+} from "./control-plane-repositories-page.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -24,24 +28,59 @@ function scheduleTriggerError(error: string): { status: number; code: string } {
   return { status: 400, code: "TRIGGER_ERROR" };
 }
 
+function readRepositoryQueryParam(url: URL, name: "limit" | "cursor"): string | undefined {
+  const values = url.searchParams.getAll(name);
+  if (values.length > 1) {
+    throw new InvalidRepositoryListQueryError(`${name} must appear only once`);
+  }
+  const value = values[0];
+  if (value === "") throw new InvalidRepositoryListQueryError(`${name} must not be empty`);
+  return value;
+}
+
+function parseRepositoryLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!/^\d+$/.test(value)) {
+    throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
+  }
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+    throw new InvalidRepositoryListQueryError("limit must be a base-10 integer between 1 and 100");
+  }
+  return limit;
+}
+
 /** Repository CRUD routes. Returns true if handled. */
 export async function handleRepositoryRoutes(ctx: RouteCtx): Promise<boolean> {
   const { plane, req, res, url, method } = ctx;
 
   if (method === "GET" && url.pathname === "/api/v1/repositories") {
     try {
-      const repositories = (await plane.listRepositoriesDurable()).filter((repo) =>
-        scoped(ctx, repo.id),
-      );
+      const limit = parseRepositoryLimit(readRepositoryQueryParam(url, "limit"));
+      const cursor = readRepositoryQueryParam(url, "cursor");
+      const page = await plane.listRepositoriesPageDurable({
+        ...(limit !== undefined ? { limit } : {}),
+        ...(cursor !== undefined ? { cursor } : {}),
+        ...(ctx.principal ? { scope: ctx.principal.allowedRepositoryIds } : {}),
+      });
+      const repositories = page.items.filter((repo) => scoped(ctx, repo.id));
       const counts = await plane.listRepositoryCountsDurable(
         repositories.map((repo) => repo.id),
         ctx.principal?.boundHostId,
       );
       send(res, 200, {
         items: repositories.map((repo) => ({ ...repo, ...counts.get(repo.id) })),
+        nextCursor: page.nextCursor,
       });
-    } catch {
-      sendInternalError(res);
+    } catch (error) {
+      if (
+        error instanceof InvalidRepositoryCursorError ||
+        error instanceof InvalidRepositoryListQueryError
+      ) {
+        send(res, 400, { error: { code: "VALIDATION_ERROR", message: error.message } });
+      } else {
+        sendInternalError(res);
+      }
     }
     return true;
   }

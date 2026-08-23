@@ -77,6 +77,13 @@ export const DYNAMO_TABLES: TableDef[] = [
   {
     name: "Schedules",
     partitionKey: { name: "id", type: "S" },
+    gsis: [
+      {
+        name: "repositoryId-id",
+        partitionKey: { name: "repositoryId", type: "S" },
+        sortKey: { name: "id", type: "S" },
+      },
+    ],
   },
   {
     name: "Connections",

@@ -1,6 +1,6 @@
 import { apiErrorMessage } from "@auto-harness/shared";
 
-import { apiFetch } from "../lib/client-api.ts";
+import { apiFetch, apiFetchAllPages } from "../lib/client-api.ts";
 
 import type { UserRole } from "@auto-harness/shared";
 
@@ -44,19 +44,22 @@ export async function loadServiceAccountData(): Promise<ServiceAccountData> {
   if (accounts.status === 401) return { kind: "unauthorized" };
   if (accounts.status === 403) return { kind: "forbidden" };
   if (!accounts.ok) throw new Error(await apiErrorMessage(accounts));
-  const repositories = await apiFetch("/api/v1/repositories", { cache: "no-store" });
-  if (repositories.status === 401) return { kind: "unauthorized" };
-  if (!repositories.ok) throw new Error(await apiErrorMessage(repositories));
+  const repositories = await apiFetchAllPages<RepositoryOption>("/api/v1/repositories", {
+    cache: "no-store",
+  });
+  if (repositories.response.status === 401) return { kind: "unauthorized" };
+  if (!repositories.response.ok) throw new Error(await apiErrorMessage(repositories.response));
   const hosts = await apiFetch("/api/v1/hosts", { cache: "no-store" });
   if (hosts.status === 401) return { kind: "unauthorized" };
   if (!hosts.ok) throw new Error(await apiErrorMessage(hosts));
   const accountBody = (await accounts.json()) as { items?: ServiceAccount[] };
-  const repositoryBody = (await repositories.json()) as { items?: RepositoryOption[] };
   const hostBody = (await hosts.json()) as { items?: Array<{ hostId?: string }> };
   return {
     kind: "ready",
     accounts: accountBody.items ?? [],
-    repositories: repositoryBody.items ?? [],
+    repositories: repositories.items.toSorted(
+      (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id),
+    ),
     hostIds: (hostBody.items ?? []).flatMap((item) => {
       const hostId = item.hostId?.trim();
       return hostId ? [hostId] : [];

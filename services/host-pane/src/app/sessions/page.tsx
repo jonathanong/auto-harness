@@ -3,7 +3,7 @@ import { buildSessionsApiPath, parseSessionListQuery, sessionListHref } from "@a
 import { SessionFilters } from "@auto-harness/ui";
 
 import { SessionsLive } from "../../components/sessions-live.tsx";
-import { hostId, apiGet } from "../../lib/api.ts";
+import { hostId, apiGet, apiGetAllPages } from "../../lib/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -46,12 +46,12 @@ export default async function SessionsPage({
       apiGet<{ items: Session[]; nextCursor: string | null }>(
         buildSessionsApiPath(filters, { hostId: id }),
       ),
-      apiGet<{ items: Repository[] }>("/api/v1/repositories").catch(() => ({ items: [] })),
+      apiGetAllPages<Repository>("/api/v1/repositories").catch(() => []),
     ]);
     items = sessions.items ?? [];
     nextCursor = sessions.nextCursor ?? null;
     repositoryNames = Object.fromEntries(
-      (repositories.items ?? []).map((repository) => [repository.id, repository.name]),
+      repositories.map((repository) => [repository.id, repository.name]),
     );
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
