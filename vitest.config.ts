@@ -82,11 +82,11 @@ export default defineConfig({
       thresholds: process.env.VITEST_SKIP_COVERAGE_THRESHOLDS
         ? undefined
         : {
-            // Unit tests use process cache; DynamoDB Local write-through is covered by dynamo.test.ts
-            lines: 98,
-            branches: 97,
-            functions: 100,
-            statements: 98,
+            // Keep every aggregate metric at the same project-wide policy target.
+            lines: 99,
+            branches: 99,
+            functions: 99,
+            statements: 99,
             // Real argv-parsing/dispatch logic. The residual gap is the top-level
             // `isDirectInvocation` guard, which a unit test importing the module cannot
             // trigger without re-executing this file as a subprocess.

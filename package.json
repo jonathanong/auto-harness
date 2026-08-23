@@ -17,6 +17,7 @@
     "test:shard": "VITEST_SKIP_COVERAGE_THRESHOLDS=1 vitest run --coverage --reporter=blob --reporter=dot",
     "test:merge": "node scripts/prepare-dynamo-adapters-coverage.mts && vitest run --mergeReports --coverage",
     "check:coverage:dynamo-adapters": "node scripts/check-dynamo-adapters-coverage.mts",
+    "check:coverage:patch": "node scripts/check-patch-coverage.mts",
     "test:watch": "vitest",
     "build:web": "rm -rf services/web/.next services/host-pane/.next && pnpm --filter @auto-harness/web build && pnpm --filter @auto-harness/host-pane build",
     "build:web:e2e": "rm -rf services/web/.next-e2e services/host-pane/.next-e2e && pnpm --filter @auto-harness/web build:e2e && pnpm --filter @auto-harness/host-pane build:e2e",
