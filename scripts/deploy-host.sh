@@ -43,7 +43,7 @@ if [[ "$platform" == "Linux" && "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
 pnpm local:daemon install-service
 
 case "$platform" in

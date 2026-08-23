@@ -267,6 +267,11 @@ non-interactive automation, pass `--yes-first-ledger` after making the same admi
 pnpm deploy:aws -- --yes-first-ledger
 ```
 
+The command also sets the scheduler Lambda's reserved concurrency to zero, verifies that fence,
+and waits for the function's configured invocation timeout before updating. It restores the prior
+concurrency setting only after the update succeeds; failures leave both scheduler gates closed for
+fail-closed recovery.
+
 The first revision containing the principal session-drain activity ledger has a
 one-time mixed-version constraint. Before running `update`, stop external session
 admission and disable the environment's EventBridge cron rule. Wait for in-flight

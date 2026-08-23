@@ -47,7 +47,7 @@ fi
 
 git fetch origin main
 git merge --ff-only origin/main
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
 
 ledger_table="AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-SessionDrains"
 read_ledger_key() {
@@ -87,6 +87,21 @@ resolve_cron_rule() {
   printf '%s' "$rule"
 }
 
+resolve_scheduler_function() {
+  local function_arn function_resource
+  function_arn="$(aws events list-targets-by-rule \
+    --region "$AWS_REGION" \
+    --rule "$cron_rule" \
+    --query 'Targets[0].Arn' \
+    --output text)"
+  if [[ "$function_arn" != *":function:"* ]]; then
+    echo "Could not resolve the scheduler Lambda target." >&2
+    return 1
+  fi
+  function_resource="${function_arn#*:function:}"
+  printf '%s' "${function_resource%%:*}"
+}
+
 ledger_record_key="$(read_ledger_key)"
 if [[ "$ledger_record_key" == "ACTIVITY-V1" ]]; then
   pnpm --filter @auto-harness/cdk run update
@@ -109,15 +124,54 @@ cron_rule="$(resolve_cron_rule)"
 
 aws events disable-rule --region "$AWS_REGION" --name "$cron_rule"
 echo "Disabled $cron_rule for the first ledger rollout."
-echo "Waiting one cron timeout so no old scheduler invocation overlaps the rollout."
-sleep 65
+scheduler_function="$(resolve_scheduler_function)"
+original_concurrency="$(aws lambda get-function-concurrency \
+  --region "$AWS_REGION" \
+  --function-name "$scheduler_function" \
+  --query 'ReservedConcurrentExecutions' \
+  --output text)"
+aws lambda put-function-concurrency \
+  --region "$AWS_REGION" \
+  --function-name "$scheduler_function" \
+  --reserved-concurrent-executions 0 >/dev/null
+fenced_concurrency="$(aws lambda get-function-concurrency \
+  --region "$AWS_REGION" \
+  --function-name "$scheduler_function" \
+  --query 'ReservedConcurrentExecutions' \
+  --output text)"
+if [[ "$fenced_concurrency" != "0" ]]; then
+  echo "Could not verify the scheduler Lambda concurrency fence; the cron rule remains disabled." >&2
+  exit 1
+fi
+scheduler_timeout="$(aws lambda get-function-configuration \
+  --region "$AWS_REGION" \
+  --function-name "$scheduler_function" \
+  --query 'Timeout' \
+  --output text)"
+if [[ ! "$scheduler_timeout" =~ ^[0-9]+$ ]]; then
+  echo "Could not resolve the scheduler Lambda timeout; the cron rule and function remain fenced." >&2
+  exit 1
+fi
+echo "Verified a zero-concurrency scheduler fence; waiting for its ${scheduler_timeout}s invocation timeout."
+sleep "$((scheduler_timeout + 5))"
 
 if ! pnpm --filter @auto-harness/cdk run update; then
-  echo "AWS update failed; $cron_rule remains disabled for fail-closed recovery." >&2
+  echo "AWS update failed; the scheduler remains disabled and concurrency-fenced for fail-closed recovery." >&2
   exit 1
 fi
 
 cron_rule="$(resolve_cron_rule)"
+scheduler_function="$(resolve_scheduler_function)"
+if [[ -z "$original_concurrency" || "$original_concurrency" == "None" ]]; then
+  aws lambda delete-function-concurrency \
+    --region "$AWS_REGION" \
+    --function-name "$scheduler_function"
+else
+  aws lambda put-function-concurrency \
+    --region "$AWS_REGION" \
+    --function-name "$scheduler_function" \
+    --reserved-concurrent-executions "$original_concurrency" >/dev/null
+fi
 aws events enable-rule --region "$AWS_REGION" --name "$cron_rule"
 
 for _ in $(seq 1 120); do
