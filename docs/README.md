@@ -18,7 +18,7 @@ Short entry points. Prefer the focused pages over mega-guides.
 | [cli.md](cli.md)                                         | `auto-harness-agent` commands                               |
 | [harness.md](harness.md)                                 | Repo harness hookup examples, requirements                  |
 | [GitHub dispatch action](../actions/dispatch/README.md)  | Fire-and-forget session dispatch from GitHub Actions        |
-| [Node client](../modules/client/README.md)               | Public dependency-free `@auto-harness/client`               |
+| [Node client](../modules/client/README.md)               | Public dependency-free `auto-harness-client`                |
 | [e2e.md](e2e.md)                                         | Playwright E2E: ports, `data-pw` conventions, stack startup |
 
 ## Protocols

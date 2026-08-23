@@ -1,10 +1,10 @@
-# `@auto-harness/client`
+# `auto-harness-client`
 
 Dependency-free Node client for Auto Harness automation. Calls return after the control plane
 accepts work; they do not wait for the agent session to finish.
 
 ```js
-import { AutoHarnessClient } from "@auto-harness/client";
+import { AutoHarnessClient } from "auto-harness-client";
 
 const harness = new AutoHarnessClient({
   baseUrl: process.env.AUTO_HARNESS_URL,

@@ -13,7 +13,7 @@ session create call and returns `session-id`, `session-url`, and `created` outpu
 control-plane URL and service-account key as secrets plus repository, prompt, target JSON, and
 optional ref/concurrency/metadata inputs; see [`actions/dispatch`](../actions/dispatch/README.md).
 
-Node automation can use the dependency-free public `@auto-harness/client` package. Its methods
+Node automation can use the dependency-free public `auto-harness-client` package. Its methods
 cover session create/read/cancel, repository list, and pause/drain/activate. HTTP failures are
 `AutoHarnessError` instances with `status`, stable API `code`, and optional `retryAfter`.
 

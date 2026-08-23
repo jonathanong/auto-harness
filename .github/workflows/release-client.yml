@@ -21,6 +21,6 @@ jobs:
           node-version: 24
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - run: pnpm exec tsc --noEmit --project modules/client/tsconfig.json
-      - run: pnpm --filter @auto-harness/client test
+      - run: pnpm --filter auto-harness-client test
       - run: npm publish --access public
         working-directory: modules/client
