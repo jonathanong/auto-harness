@@ -157,6 +157,14 @@ While fenced, direct create, clone, resume, schedule fire, and assignment fail a
 normal fenced `session:cancel` message and remains part of progress until its exact lease is
 released. Prompts, logs, metadata, and credentials never enter drain progress or audit metadata.
 
+The `session-drain:create` audit event is committed in the same DynamoDB transaction as the
+`CURRENT` fence and retained `OP#operationId` record, using an operation-derived audit ID. Terminal
+`session-drain:succeeded` and `session-drain:failed` events are likewise committed with the terminal
+state transition. Retries and concurrent reconcilers therefore retain exactly one creation and one
+terminal audit record; creation preserves the authenticated caller as actor, while terminal events
+use the system actor. Release is coupled to its audit record too, so a later audit failure cannot
+hide an already-committed drain operation behind an erroneous HTTP failure.
+
 Drain completion is proved from a strongly consistent activity ledger: each principal-owned
 session writes an `ACT#sessionId` member in its `(repository, principal)` partition in the same
 transaction as admission and the drain fence, then reconciliation strongly reads that bounded

@@ -146,8 +146,9 @@ export class DynamoPlaneStorageBase {
 
   createOrGetSessionDrain(
     record: SessionDrainRecord,
+    audit: import("../audit-types.ts").AuditLogRecord,
   ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
-    return sessionDrains.createOrGetSessionDrain(this.ctx, record);
+    return sessionDrains.createOrGetSessionDrain(this.ctx, record, audit);
   }
 
   getSessionDrain(repositoryId: string, principalId: string): Promise<SessionDrainRecord | null> {
@@ -170,8 +171,11 @@ export class DynamoPlaneStorageBase {
     return sessionDrains.listSessionDrainReconcileCandidates(this.ctx, limit);
   }
 
-  updateSessionDrain(record: SessionDrainRecord): Promise<boolean> {
-    return sessionDrains.updateSessionDrain(this.ctx, record);
+  updateSessionDrain(
+    record: SessionDrainRecord,
+    audit?: import("../audit-types.ts").AuditLogRecord,
+  ): Promise<boolean> {
+    return sessionDrains.updateSessionDrain(this.ctx, record, audit);
   }
 
   claimSessionDrainReconcile(
@@ -187,8 +191,16 @@ export class DynamoPlaneStorageBase {
     principalId: string,
     operationId: string,
     now: string,
+    audit: import("../audit-types.ts").AuditLogRecord,
   ): Promise<SessionDrainRecord | null> {
-    return sessionDrains.releaseSessionDrain(this.ctx, repositoryId, principalId, operationId, now);
+    return sessionDrains.releaseSessionDrain(
+      this.ctx,
+      repositoryId,
+      principalId,
+      operationId,
+      now,
+      audit,
+    );
   }
 
   putUsageRecord(

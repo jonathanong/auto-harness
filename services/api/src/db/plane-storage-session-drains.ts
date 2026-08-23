@@ -10,6 +10,8 @@ import {
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 
+import type { AuditLogRecord } from "../audit-types.ts";
+import { auditLogTransactPut } from "./plane-storage-audit.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailureAt,
@@ -261,6 +263,7 @@ export async function getSessionDrainOperation(
 export async function createOrGetSessionDrain(
   ctx: PlaneStorageCtx,
   record: SessionDrainRecord,
+  audit: AuditLogRecord,
 ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
   const principalCheck = principalExistsCheck(ctx, record.principalId);
@@ -301,6 +304,7 @@ export async function createOrGetSessionDrain(
               ConditionExpression: "attribute_not_exists(scopeKey)",
             },
           },
+          auditLogTransactPut(ctx, audit),
         ],
       }),
     );
@@ -334,29 +338,38 @@ export async function createOrGetSessionDrain(
 export async function updateSessionDrain(
   ctx: PlaneStorageCtx,
   record: SessionDrainRecord,
+  audit?: AuditLogRecord,
 ): Promise<boolean> {
+  if (record.status !== "draining" && !audit) {
+    throw new Error("terminal session drain updates require an audit record");
+  }
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
-        TransactItems: ["CURRENT", `OP#${record.operationId}`].map((recordKey) => ({
-          Put: {
-            TableName: ctx.tables.sessionDrains,
-            Item: { ...record, scopeKey, recordKey },
-            ConditionExpression:
-              "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount" +
-              (recordKey.startsWith("OP#") && record.reconcileLeaseOwner
-                ? " AND reconcileLeaseOwner = :leaseOwner"
-                : ""),
-            ExpressionAttributeNames: { "#status": "status" },
-            ExpressionAttributeValues: {
-              ":operationId": record.operationId,
-              ":draining": "draining",
-              ":cancelledCount": record.cancelledCount,
-              ...(record.reconcileLeaseOwner ? { ":leaseOwner": record.reconcileLeaseOwner } : {}),
+        TransactItems: [
+          ...["CURRENT", `OP#${record.operationId}`].map((recordKey) => ({
+            Put: {
+              TableName: ctx.tables.sessionDrains,
+              Item: { ...record, scopeKey, recordKey },
+              ConditionExpression:
+                "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount" +
+                (recordKey.startsWith("OP#") && record.reconcileLeaseOwner
+                  ? " AND reconcileLeaseOwner = :leaseOwner"
+                  : ""),
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": record.operationId,
+                ":draining": "draining",
+                ":cancelledCount": record.cancelledCount,
+                ...(record.reconcileLeaseOwner
+                  ? { ":leaseOwner": record.reconcileLeaseOwner }
+                  : {}),
+              },
             },
-          },
-        })),
+          })),
+          ...(audit ? [auditLogTransactPut(ctx, audit)] : []),
+        ],
       }),
     );
     return true;
@@ -411,31 +424,39 @@ export async function releaseSessionDrain(
   principalId: string,
   operationId: string,
   now: string,
+  audit: AuditLogRecord,
 ): Promise<SessionDrainRecord | null> {
   try {
-    const result = await ctx.doc.send(
-      new UpdateCommand({
-        TableName: ctx.tables.sessionDrains,
-        Key: {
-          scopeKey: sessionDrainScopeKey(repositoryId, principalId),
-          recordKey: "CURRENT",
-        },
-        UpdateExpression: "SET #status = :released, releasedAt = :now, updatedAt = :now",
-        ConditionExpression: "operationId = :operationId AND #status IN (:succeeded, :failed)",
-        ExpressionAttributeNames: { "#status": "status" },
-        ExpressionAttributeValues: {
-          ":operationId": operationId,
-          ":succeeded": "succeeded",
-          ":failed": "failed",
-          ":released": "released",
-          ":now": now,
-        },
-        ReturnValues: "ALL_NEW",
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessionDrains,
+              Key: {
+                scopeKey: sessionDrainScopeKey(repositoryId, principalId),
+                recordKey: "CURRENT",
+              },
+              UpdateExpression: "SET #status = :released, releasedAt = :now, updatedAt = :now",
+              ConditionExpression:
+                "operationId = :operationId AND #status IN (:succeeded, :failed)",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": operationId,
+                ":succeeded": "succeeded",
+                ":failed": "failed",
+                ":released": "released",
+                ":now": now,
+              },
+            },
+          },
+          auditLogTransactPut(ctx, audit),
+        ],
       }),
     );
-    return (result.Attributes as SessionDrainRecord | undefined) ?? null;
+    return getSessionDrain(ctx, repositoryId, principalId);
   } catch (error) {
-    if (!isConditionalFailed(error)) throw error;
+    if (!isConditionalTransactionFailed(error)) throw error;
     const current = await getSessionDrain(ctx, repositoryId, principalId);
     return current?.operationId === operationId && current.status === "released" ? current : null;
   }

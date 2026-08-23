@@ -11,9 +11,24 @@ import {
 } from "./db/dynamo-test-helpers.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 
 const ctx = createDynamoTestCtx("PrincipalDrain");
+
+function drainAudit(operationId: string, repositoryId: string): AuditLogRecord {
+  return {
+    id: `audit-session-drain-${operationId}-create`,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    actor: { id: "system", kind: "system", role: "system" },
+    action: "session-drain:create",
+    resourceType: "repository",
+    resourceId: repositoryId,
+    repositoryId,
+    outcome: "success",
+    metadata: { operationId },
+  };
+}
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
@@ -183,6 +198,24 @@ describe("principal-scoped durable session drains", () => {
       operationId: "principal-drain-operation",
       status: "succeeded",
     });
+    expect(
+      (await plane.listAuditLogs({ action: "session-drain:create", repositoryId: "repo-drain" }))
+        .items,
+    ).toEqual([
+      expect.objectContaining({
+        id: "audit-session-drain-principal-drain-operation-create",
+        actor: expect.objectContaining({ id: principalA.account.id }),
+      }),
+    ]);
+    expect(
+      (await plane.listAuditLogs({ action: "session-drain:succeeded", repositoryId: "repo-drain" }))
+        .items,
+    ).toEqual([
+      expect.objectContaining({
+        id: "audit-session-drain-principal-drain-operation-succeeded",
+        actor: { id: "system", kind: "system", role: "system" },
+      }),
+    ]);
 
     const fenced = await invoke("POST", "/api/v1/sessions", createBody, principalA.apiKey);
     expect(fenced.status).toBe(409);
@@ -397,20 +430,23 @@ describe("principal-scoped durable session drains", () => {
       shardCount: 1,
     });
     const operationId = "concurrent-count-operation";
-    await ctx.storage.createOrGetSessionDrain({
-      scopeKey: "",
-      recordKey: "",
-      operationId,
-      repositoryId,
-      principalId: "principal-concurrent",
-      status: "draining",
-      requestedAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      deadlineAt: "2026-01-01T00:15:00.000Z",
-      queuedCount: 2,
-      runningCount: 0,
-      cancelledCount: 0,
-    });
+    await ctx.storage.createOrGetSessionDrain(
+      {
+        scopeKey: "",
+        recordKey: "",
+        operationId,
+        repositoryId,
+        principalId: "principal-concurrent",
+        status: "draining",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        deadlineAt: "2026-01-01T00:15:00.000Z",
+        queuedCount: 2,
+        runningCount: 0,
+        cancelledCount: 0,
+      },
+      drainAudit(operationId, repositoryId),
+    );
     const current = await ctx.storage.getSessionDrain(repositoryId, "principal-concurrent");
     if (!current) throw new Error("expected concurrent drain");
     await Promise.all([
@@ -454,20 +490,23 @@ describe("principal-scoped durable session drains", () => {
     await putDrainTrackedSession(
       session("session-drain-assignment", "repo-drain-assignment", "principal-assignment"),
     );
-    await ctx.storage.createOrGetSessionDrain({
-      scopeKey: "",
-      recordKey: "",
-      operationId: "assignment-drain-operation",
-      repositoryId: "repo-drain-assignment",
-      principalId: "principal-assignment",
-      status: "draining",
-      requestedAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      deadlineAt: "2026-01-01T00:15:00.000Z",
-      queuedCount: 1,
-      runningCount: 0,
-      cancelledCount: 0,
-    });
+    await ctx.storage.createOrGetSessionDrain(
+      {
+        scopeKey: "",
+        recordKey: "",
+        operationId: "assignment-drain-operation",
+        repositoryId: "repo-drain-assignment",
+        principalId: "principal-assignment",
+        status: "draining",
+        requestedAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+        deadlineAt: "2026-01-01T00:15:00.000Z",
+        queuedCount: 1,
+        runningCount: 0,
+        cancelledCount: 0,
+      },
+      drainAudit("assignment-drain-operation", "repo-drain-assignment"),
+    );
     await plane.hydrateFromStorage();
 
     await expect(plane.assignQueuedDurable()).resolves.toEqual([]);

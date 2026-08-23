@@ -86,12 +86,15 @@ describe("session drain route outcomes", () => {
     const { plane, invoke, author } = await harness();
     const path = "/api/v1/repositories/repo/session-drains";
     let receivedKey: string | undefined;
-    plane.createSessionDrainDurable = async (_repo, _principal, key) => {
+    let receivedActor: unknown;
+    plane.createSessionDrainDurable = async (_repo, _principal, key, actor) => {
       receivedKey = key;
+      receivedActor = actor;
       return { error: "repository not found", code: "NOT_FOUND" };
     };
     expect((await invoke("POST", path, author.apiKey, "deploy-1")).status).toBe(404);
     expect(receivedKey).toBe("deploy-1");
+    expect(receivedActor).toMatchObject({ id: author.account.id, kind: "service-account" });
     plane.createSessionDrainDurable = async () => ({
       error: "invalid Idempotency-Key",
       code: "VALIDATION_ERROR",
@@ -190,10 +193,13 @@ describe("session drain route outcomes", () => {
       throw new Error("get failed");
     };
     expect((await invoke("GET", operation, author.apiKey)).status).toBe(500);
+    plane.releaseSessionDrainDurable = async () => {
+      throw new Error("release failed");
+    };
     expect((await invoke("POST", `${operation}/release`, author.apiKey)).status).toBe(500);
   });
 
-  it("fails closed on drain audit writes and ignores unsupported operation methods", async () => {
+  it("does not hide an atomic drain operation behind a second route audit write", async () => {
     const { plane, invoke, author } = await harness();
     const collection = "/api/v1/repositories/repo/session-drains";
     const operation = `${collection}/operation`;
@@ -201,12 +207,12 @@ describe("session drain route outcomes", () => {
     plane.appendAuditLog = async () => {
       throw new Error("audit unavailable");
     };
-    expect((await invoke("POST", collection, author.apiKey)).status).toBe(500);
+    expect((await invoke("POST", collection, author.apiKey)).status).toBe(202);
 
     plane.getSessionDrainDurable = async () => drain({ status: "succeeded" });
     plane.releaseSessionDrainDurable = async () =>
       drain({ status: "released", releasedAt: "2026-01-01T00:01:00.000Z" });
-    expect((await invoke("POST", `${operation}/release`, author.apiKey)).status).toBe(500);
+    expect((await invoke("POST", `${operation}/release`, author.apiKey)).status).toBe(200);
     expect((await invoke("POST", operation, author.apiKey)).status).toBe(404);
   });
 });

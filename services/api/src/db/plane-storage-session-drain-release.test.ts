@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { releaseSessionDrain, updateSessionDrain } from "./plane-storage-session-drains.ts";
+import type { AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
 const conditionalTransaction = {
@@ -24,6 +25,20 @@ function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
     runningCount: 2,
     cancelledCount: 3,
     ...over,
+  };
+}
+
+function audit(): AuditLogRecord {
+  return {
+    id: "audit-session-drain-operation-release",
+    createdAt: "now",
+    actor: { id: "principal", kind: "service-account", role: "author" },
+    action: "session-drain:release",
+    resourceType: "repository",
+    resourceId: "repo",
+    repositoryId: "repo",
+    outcome: "success",
+    metadata: { operationId: "operation" },
   };
 }
 
@@ -63,11 +78,14 @@ describe("session drain update and release races", () => {
   it("classifies release outcomes without hiding transport failures", async () => {
     await expect(
       releaseSessionDrain(
-        ctx(async () => ({ Attributes: record({ status: "released" }) })),
+        ctx(async (command) =>
+          "TransactItems" in (command.input ?? {}) ? {} : { Item: record({ status: "released" }) },
+        ),
         "repo",
         "principal",
         "operation",
         "now",
+        audit(),
       ),
     ).resolves.toMatchObject({ status: "released" });
     await expect(
@@ -77,6 +95,7 @@ describe("session drain update and release races", () => {
         "principal",
         "operation",
         "now",
+        audit(),
       ),
     ).resolves.toBeNull();
     await expect(
@@ -89,6 +108,7 @@ describe("session drain update and release races", () => {
         "principal",
         "operation",
         "now",
+        audit(),
       ),
     ).resolves.toBeNull();
     await expect(
@@ -100,6 +120,7 @@ describe("session drain update and release races", () => {
         "principal",
         "operation",
         "now",
+        audit(),
       ),
     ).rejects.toThrow("offline");
   });
@@ -123,6 +144,7 @@ describe("session drain update and release races", () => {
         "principal",
         "operation",
         "retry",
+        audit(),
       ),
     ).resolves.toMatchObject({ status: "released", releasedAt: "released" });
 
@@ -138,6 +160,7 @@ describe("session drain update and release races", () => {
         "principal",
         "operation",
         "retry",
+        audit(),
       ),
     ).resolves.toBeNull();
   });

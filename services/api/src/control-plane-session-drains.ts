@@ -6,13 +6,62 @@ import {
   isSessionDrainScopeUnavailable,
   type SessionDrainRecord,
 } from "./db/plane-storage.ts";
+import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import type { AuditActor, AuditLogRecord } from "./audit-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { appendAuditLog } from "./control-plane-audit.ts";
-import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 
 const MAX_CANCELLATIONS_PER_RECONCILE = 100;
 const IDEMPOTENCY_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+
+function drainAuditRecord(
+  drain: SessionDrainRecord,
+  event: "create" | "succeeded" | "failed" | "release",
+  actor: AuditActor,
+): AuditLogRecord {
+  const terminal = event === "succeeded" || event === "failed";
+  return newAuditRecord(
+    {
+      actor,
+      action: `session-drain:${event}`,
+      resourceType: "repository",
+      resourceId: drain.repositoryId,
+      repositoryId: drain.repositoryId,
+      outcome: event === "failed" ? "failed" : "success",
+      metadata: {
+        operationId: drain.operationId,
+        status: terminal ? drain.status : undefined,
+        ...(terminal
+          ? {
+              principalId: drain.principalId,
+              queuedCount: drain.queuedCount,
+              runningCount: drain.runningCount,
+              cancelledCount: drain.cancelledCount,
+              ...(drain.failureCode ? { failureCode: drain.failureCode } : {}),
+            }
+          : {}),
+      },
+    },
+    drain.updatedAt,
+    `audit-session-drain-${drain.operationId}-${event}`,
+  );
+}
+
+/** Cancellation events are diagnostic only. Never let their independent
+ * append turn a durably committed drain transition into a failed operation. */
+async function appendCancellationAudit(
+  state: ControlPlaneState,
+  input: Parameters<typeof appendAuditLog>[1],
+): Promise<void> {
+  try {
+    await appendAuditLog(state, input);
+  } catch {
+    // Creation and terminal records are committed transactionally below. A
+    // per-session diagnostic append is intentionally unable to stall drain
+    // reconciliation after the cancellation itself has committed.
+  }
+}
 
 function drainOperationId(
   state: ControlPlaneState,
@@ -71,7 +120,7 @@ export async function reconcileSessionDrainDurable(
     });
     if (result.ok) {
       cancelledThisPage += 1;
-      await appendAuditLog(state, {
+      await appendCancellationAudit(state, {
         actor: SYSTEM_AUDIT_ACTOR,
         action: "session-drain:cancel",
         resourceType: "session",
@@ -81,7 +130,7 @@ export async function reconcileSessionDrainDurable(
         metadata: { operationId: drain.operationId, principalId: drain.principalId },
       });
     } else {
-      await appendAuditLog(state, {
+      await appendCancellationAudit(state, {
         actor: SYSTEM_AUDIT_ACTOR,
         action: "session-drain:cancel",
         resourceType: "session",
@@ -133,7 +182,11 @@ export async function reconcileSessionDrainDurable(
   if (!page.nextKey && !quiescent && drain.activityCursor !== undefined) {
     delete updated.activityCursor;
   }
-  if (!(await state.storage.updateSessionDrain(updated))) {
+  const terminalAudit =
+    updated.status === "draining"
+      ? undefined
+      : drainAuditRecord(updated, updated.status, SYSTEM_AUDIT_ACTOR);
+  if (!(await state.storage.updateSessionDrain(updated, terminalAudit))) {
     return (
       (await state.storage.getSessionDrainOperation(
         drain.repositoryId,
@@ -142,24 +195,7 @@ export async function reconcileSessionDrainDurable(
       )) ?? updated
     );
   }
-  if (updated.status !== "draining") {
-    await appendAuditLog(state, {
-      actor: SYSTEM_AUDIT_ACTOR,
-      action: updated.status === "succeeded" ? "session-drain:succeeded" : "session-drain:failed",
-      resourceType: "repository",
-      resourceId: drain.repositoryId,
-      repositoryId: drain.repositoryId,
-      outcome: updated.status === "succeeded" ? "success" : "failed",
-      metadata: {
-        operationId: drain.operationId,
-        principalId: drain.principalId,
-        queuedCount,
-        runningCount,
-        cancelledCount,
-        ...(updated.failureCode ? { failureCode: updated.failureCode } : {}),
-      },
-    });
-  }
+  if (terminalAudit) state.auditLogs.set(terminalAudit.id, terminalAudit);
   return updated;
 }
 
@@ -184,6 +220,7 @@ export async function createSessionDrainDurable(
   repositoryId: string,
   principalId: string,
   idempotencyKey?: string,
+  actor: AuditActor = SYSTEM_AUDIT_ACTOR,
 ): Promise<{ created: boolean; drain: SessionDrainRecord } | { error: string; code: string }> {
   if (!state.storage) return { error: "durable storage is required", code: "DURABLE_REQUIRED" };
   if (idempotencyKey !== undefined && !IDEMPOTENCY_KEY.test(idempotencyKey)) {
@@ -208,9 +245,10 @@ export async function createSessionDrainDurable(
     runningCount: 0,
     cancelledCount: 0,
   };
+  const audit = drainAuditRecord(record, "create", actor);
   let result: { created: boolean; drain: SessionDrainRecord };
   try {
-    result = await state.storage.createOrGetSessionDrain(record);
+    result = await state.storage.createOrGetSessionDrain(record, audit);
   } catch (error) {
     if (isSessionDrainLedgerUnavailable(error)) {
       return {
@@ -224,6 +262,7 @@ export async function createSessionDrainDurable(
     }
     return { error: "repository deletion is in progress", code: "CONFLICT" };
   }
+  if (result.created) state.auditLogs.set(audit.id, audit);
   return {
     created: result.created,
     drain: await reconcileSessionDrainDurable(state, result.drain),
@@ -250,7 +289,33 @@ export async function releaseSessionDrainDurable(
   repositoryId: string,
   principalId: string,
   operationId: string,
+  actor: AuditActor = SYSTEM_AUDIT_ACTOR,
 ): Promise<SessionDrainRecord | null> {
   if (!state.storage) return null;
-  return state.storage.releaseSessionDrain(repositoryId, principalId, operationId, state.now());
+  const current = await state.storage.getSessionDrainOperation(
+    repositoryId,
+    principalId,
+    operationId,
+  );
+  if (!current || (current.status !== "succeeded" && current.status !== "failed")) {
+    return null;
+  }
+  const active = await state.storage.getSessionDrain(repositoryId, principalId);
+  if (active?.operationId === operationId && active.status === "released") return active;
+  const releaseRecord: SessionDrainRecord = {
+    ...current,
+    status: "released",
+    releasedAt: state.now(),
+    updatedAt: state.now(),
+  };
+  const audit = drainAuditRecord(releaseRecord, "release", actor);
+  const released = await state.storage.releaseSessionDrain(
+    repositoryId,
+    principalId,
+    operationId,
+    releaseRecord.updatedAt,
+    audit,
+  );
+  if (released) state.auditLogs.set(audit.id, audit);
+  return released;
 }
