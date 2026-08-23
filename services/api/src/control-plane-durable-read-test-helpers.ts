@@ -111,6 +111,35 @@ export function setInMemoryScheduleStorage(
       state.sessions.set(session.id, { ...session });
       return { kind: "created" };
     },
+    skipScheduleBeforeActivationCutoff: async ({
+      scheduleId,
+      repositoryId,
+      activationCutoffAt,
+      expectedNextRunAt,
+      newNextRunAt,
+    }: {
+      scheduleId: string;
+      repositoryId: string;
+      activationCutoffAt: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      const repository = state.repositories.get(repositoryId);
+      if (
+        !schedule ||
+        !schedule.enabled ||
+        schedule.repositoryId !== repositoryId ||
+        schedule.nextRunAt !== expectedNextRunAt ||
+        Date.parse(expectedNextRunAt) >= Date.parse(activationCutoffAt) ||
+        repository?.admissionState !== "active" ||
+        repository.activationCutoffAt !== activationCutoffAt
+      ) {
+        return false;
+      }
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      return true;
+    },
     skipOwnerlessScheduleAndAudit: async ({
       scheduleId,
       expectedNextRunAt,
