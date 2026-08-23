@@ -32,6 +32,23 @@ describe("fenced account deletion", () => {
     expect(auth.listUsers()).toHaveLength(0);
   });
 
+  it("uses the ordinary durable deletion when no fence was acquired", async () => {
+    const auth = new AuthService({ mode: "disabled" });
+    await auth.createUser({ username: "alice", password: "password", role: "operator" });
+    let removedId: string | undefined;
+    const unfenced: AuthStorage = {
+      listAuthAccounts: async () => [],
+      putAuthAccount: async () => undefined,
+      deleteAuthAccount: async (id) => {
+        removedId = id;
+      },
+    };
+
+    await expect(auth.deleteUserFenced("alice", unfenced, undefined)).resolves.toBe("deleted");
+    expect(removedId).toBe("user:alice");
+    expect(auth.listUsers()).toEqual([]);
+  });
+
   it("evicts a stale cache miss, keeps fence loss cached, and never bypasses a requested fence", async () => {
     const auth = new AuthService({ mode: "disabled" });
     const first = await auth.createServiceAccount({ name: "first", role: "operator" });

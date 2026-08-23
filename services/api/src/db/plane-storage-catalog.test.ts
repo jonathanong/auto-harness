@@ -268,6 +268,20 @@ describe("durable schedule creation", () => {
 });
 
 describe("durable schedule management updates", () => {
+  it("rejects a schedule update that exceeds DynamoDB's transaction action limit", async () => {
+    const ctx = scheduleCtx(async () => {
+      throw new Error("must not write");
+    });
+    const markers = Array.from({ length: 100 }, (_, index) => ({
+      key: `marker:${index}`,
+      now: "now",
+    }));
+
+    await expect(updateScheduleManagement(ctx, schedule(), "stale-next", markers)).rejects.toThrow(
+      "catalog reference write exceeds DynamoDB's 100 transaction action limit",
+    );
+  });
+
   it("couples ownerless and drain skips with their audit records", async () => {
     const writes: TransactWriteCommandInput[] = [];
     const ctx = scheduleCtx(async (command) => {

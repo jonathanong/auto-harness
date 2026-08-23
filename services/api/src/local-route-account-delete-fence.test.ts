@@ -75,4 +75,34 @@ describe("durable account deletion fencing", () => {
     expect(response.json).toMatchObject({ error: { code: "CONFLICT" } });
     expect(auth.listUsers()).toHaveLength(1);
   });
+
+  it("reports a durable fence loss without evicting a service account", async () => {
+    const storage = {
+      ...durableReferences(),
+      acquireDeletionMarker: async () => true,
+      releaseDeletionMarker: async () => undefined,
+      deleteAuthAccountFenced: async () => "fence-lost" as const,
+    };
+    const plane = new ControlPlane({ storage: storage as never, now: () => now });
+    const auth = new AuthService({ mode: "disabled" });
+    const { account } = await auth.createServiceAccount({ name: "service", role: "operator" });
+    const { handler } = createLocalApp({ plane, authService: auth });
+
+    const response = await invokeHandler(
+      handler,
+      "DELETE",
+      `/api/v1/auth/service-accounts/${account.id}`,
+    );
+
+    expect(response).toMatchObject({
+      status: 409,
+      json: {
+        error: {
+          code: "CONFLICT",
+          message: "catalog deletion lease was lost; retry the request",
+        },
+      },
+    });
+    expect(auth.listServiceAccounts()).toHaveLength(1);
+  });
 });

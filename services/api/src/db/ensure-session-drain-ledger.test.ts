@@ -30,6 +30,13 @@ describe("session drain activity-ledger bootstrap", () => {
                 principalId: "principal",
                 status: "running",
               },
+              {
+                id: "cancelled-with-worktree",
+                repositoryId: "repo",
+                principalId: "principal",
+                status: "cancelled",
+                worktreeId: "worktree",
+              },
             ],
           };
         }
@@ -67,6 +74,15 @@ describe("session drain activity-ledger bootstrap", () => {
                 scopeKey: "repo#principal",
                 recordKey: "ACT#running",
                 sessionId: "running",
+              },
+            },
+          },
+          {
+            PutRequest: {
+              Item: {
+                scopeKey: "repo#principal",
+                recordKey: "ACT#cancelled-with-worktree",
+                sessionId: "cancelled-with-worktree",
               },
             },
           },

@@ -167,7 +167,7 @@ function main(): void {
   let lcov: string;
   try {
     const git = spawnSync(
-      "git",
+      "git", // NOSONAR -- shell is disabled and CI supplies a trusted, immutable PATH.
       ["-c", "core.quotepath=false", "diff", "--unified=0", "--no-ext-diff", baseSha, "--"],
       { encoding: "utf8" },
     );

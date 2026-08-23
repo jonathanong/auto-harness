@@ -84,6 +84,19 @@ describe("ensureSessionsRepositoryIndex", () => {
     });
   });
 
+  it("propagates an unexpected index update failure", async () => {
+    const mockedClient = {
+      send: async (command: unknown) => {
+        if (command instanceof DescribeTableCommand) return { Table: {} };
+        throw new Error("unexpected update failure");
+      },
+    } as never;
+
+    await expect(ensureSessionsRepositoryIndex(mockedClient, "Sessions")).rejects.toThrow(
+      "unexpected update failure",
+    );
+  });
+
   it("migrates an existing Sessions table once", async () => {
     if (!client) {
       expect(true).toBe(true);

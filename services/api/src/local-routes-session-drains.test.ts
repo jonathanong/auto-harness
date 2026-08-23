@@ -69,7 +69,7 @@ async function harness() {
         ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
       },
     );
-  return { plane, invoke, author, other, host };
+  return { plane, handler, invoke, author, other, host };
 }
 
 describe("session drain route outcomes", () => {
@@ -102,6 +102,22 @@ describe("session drain route outcomes", () => {
       code: "DURABLE_REQUIRED",
     });
     expect((await invoke("POST", path, author.apiKey)).status).toBe(409);
+  });
+
+  it("uses the first idempotency value when a proxy repeats the header", async () => {
+    const { plane, handler, author } = await harness();
+    let receivedKey: string | undefined;
+    plane.createSessionDrainDurable = async (_repo, _principal, key) => {
+      receivedKey = key;
+      return { error: "durable storage is required", code: "DURABLE_REQUIRED" };
+    };
+    await expect(
+      invokeHandler(handler, "POST", "/api/v1/repositories/repo/session-drains", {}, {
+        authorization: `Bearer ${author.apiKey}`,
+        "idempotency-key": ["first", "second"],
+      } as never),
+    ).resolves.toMatchObject({ status: 409 });
+    expect(receivedKey).toBe("first");
   });
 
   it("maps missing, failed, and nonterminal operation outcomes", async () => {

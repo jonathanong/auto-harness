@@ -133,6 +133,21 @@ describe("session drain residual outcomes", () => {
     });
   });
 
+  it("reports a missing repository after the drain scope disappears", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    setDurableReadStorage(state, {
+      createOrGetSessionDrain: async () => {
+        throw new SessionDrainScopeUnavailableError();
+      },
+      getRepository: async () => null,
+    });
+
+    await expect(createSessionDrainDurable(state, "missing", "principal")).resolves.toEqual({
+      error: "repository not found",
+      code: "NOT_FOUND",
+    });
+  });
+
   it("fails closed while the strongly-consistent activity ledger is preparing", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     setDurableReadStorage(state, {

@@ -132,4 +132,32 @@ describe("local route optional field residual coverage", () => {
     expect(options).toMatchObject({ createdBy: "service:operator" });
     expect(response).toMatchObject({ status: 400, json: { error: { code: "CLONE_ERROR" } } });
   });
+
+  it("returns a drain operation link when cloning is blocked by an active drain", async () => {
+    const { plane } = setup();
+    plane.getSessionDurable = async () => source;
+    plane.cloneSessionDurable = async () => ({
+      ok: false,
+      code: "DRAINING",
+      error: "repository is draining",
+      operationId: "drain-operation",
+    });
+
+    const response = await invokeHandler(
+      createLocalApp({ plane }).handler,
+      "POST",
+      "/api/v1/sessions/source/clone",
+      {},
+    );
+    expect(response).toMatchObject({
+      status: 409,
+      json: {
+        error: {
+          code: "DRAINING",
+          operationId: "drain-operation",
+          statusUrl: "/api/v1/repositories/repo/session-drains/drain-operation",
+        },
+      },
+    });
+  });
 });

@@ -141,6 +141,32 @@ describe("control-plane native resume", () => {
     });
   });
 
+  it("recovers the principal from legacy creator metadata", () => {
+    const plane = new ControlPlane({
+      idFactory: (() => {
+        let id = 0;
+        return () => `s${++id}`;
+      })(),
+    });
+    plane.createCommand({ id: "cmd", name: "tool", argv: ["tool"] });
+    const created = plane.createSession({
+      repositoryId: "repo",
+      prompt: "first",
+      target: { commandId: "cmd" },
+      timeout: 30,
+    });
+    expect(created.ok).toBe(true);
+    const sourceId = created.ok ? created.session.id : "";
+    const source = plane.state.sessions.get(sourceId)!;
+    source.status = "completed";
+    source.metadata = { createdBy: "legacy-creator" };
+    source.pinnedHostId = "host";
+    delete source.principalId;
+
+    expect(plane.resumeSession(sourceId)).toMatchObject({ ok: true });
+    expect(plane.state.sessions.get("s2")).toMatchObject({ principalId: "legacy-creator" });
+  });
+
   it("inserts -- before a leading-dash resume prompt in the argv template only when appendPromptSeparator opts in", () => {
     const messages: unknown[] = [];
     const plane = new ControlPlane({ shardCount: 1 });
