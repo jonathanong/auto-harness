@@ -140,6 +140,48 @@ resolve_scheduler_function() {
   printf '%s' "${function_resource%%:*}"
 }
 
+resolve_runtime_function() {
+  local logical_prefix="$1" function_name
+  function_name="$(aws cloudformation list-stack-resources \
+    --region "$AWS_REGION" \
+    --stack-name "AutoHarness-${HARNESS_DEPLOY_ENVIRONMENT}-Runtime" \
+    --query "StackResourceSummaries[?ResourceType=='AWS::Lambda::Function' && starts_with(LogicalResourceId, '${logical_prefix}')].PhysicalResourceId | [0]" \
+    --output text)"
+  if [[ -z "$function_name" || "$function_name" == "None" ]]; then
+    echo "Could not resolve the ${logical_prefix} Lambda." >&2
+    return 1
+  fi
+  printf '%s' "$function_name"
+}
+
+read_lambda_timeout() {
+  local function_name="$1" timeout
+  timeout="$(aws lambda get-function-configuration \
+    --region "$AWS_REGION" \
+    --function-name "$function_name" \
+    --query 'Timeout' \
+    --output text)"
+  if [[ ! "$timeout" =~ ^[0-9]+$ ]]; then
+    echo "Could not resolve the $function_name Lambda timeout." >&2
+    return 1
+  fi
+  printf '%s' "$timeout"
+}
+
+wait_for_external_admission_writers() {
+  local rest_function websocket_function rest_timeout websocket_timeout writer_timeout
+  rest_function="$(resolve_runtime_function RestFunction)"
+  websocket_function="$(resolve_runtime_function WebSocketFunction)"
+  rest_timeout="$(read_lambda_timeout "$rest_function")"
+  websocket_timeout="$(read_lambda_timeout "$websocket_function")"
+  writer_timeout="$rest_timeout"
+  if [[ "$websocket_timeout" -gt "$writer_timeout" ]]; then
+    writer_timeout="$websocket_timeout"
+  fi
+  echo "External admission is disabled; waiting for the old REST and WebSocket writers' ${writer_timeout}s invocation timeout."
+  sleep "$((writer_timeout + 5))"
+}
+
 restore_scheduler_concurrency() {
   if [[ -z "$original_concurrency" || "$original_concurrency" == "None" ]]; then
     aws lambda delete-function-concurrency \
@@ -260,6 +302,9 @@ if [[ "$confirm_first_ledger" -ne 1 ]]; then
   fi
 fi
 
+if [[ -n "$cron_rule" ]]; then
+  wait_for_external_admission_writers
+fi
 verify_no_active_sessions
 
 if ! pnpm --filter @auto-harness/cdk run update; then

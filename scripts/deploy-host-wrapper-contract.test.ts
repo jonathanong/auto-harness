@@ -89,8 +89,8 @@ fi`,
     const calls = readFileSync(fixture.log, "utf8");
 
     expect(result.status, result.stderr).toBe(0);
-    expect(calls).toContain("pnpm install --frozen-lockfile\n");
-    expect(calls).not.toContain("--ignore-scripts");
+    expect(calls).toContain("pnpm install --frozen-lockfile --ignore-scripts\n");
+    expect(calls).toContain("pnpm run prepare:test:platform\n");
     expect(calls.match(/pnpm local:daemon status/g)).toHaveLength(3);
     expect(result.stdout).toContain('{"status":"ok"}');
   });

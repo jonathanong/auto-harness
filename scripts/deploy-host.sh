@@ -52,7 +52,8 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
-pnpm install --frozen-lockfile
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run prepare:test:platform
 
 wait_for_host_readiness() {
   local deadline output status

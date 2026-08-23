@@ -97,12 +97,22 @@ case "$1 $2" in
     fi ;;
   "dynamodb scan") echo "\${FAKE_ACTIVE_SESSION_ID:-None}" ;;
   "cloudformation describe-stacks") echo AutoHarness-production-Runtime ;;
-  "cloudformation list-stack-resources") echo cron-rule ;;
+  "cloudformation list-stack-resources")
+    case "$*" in
+      *RestFunction*) echo rest-function ;;
+      *WebSocketFunction*) echo websocket-function ;;
+      *) echo cron-rule ;;
+    esac ;;
   "events describe-rule") echo DISABLED ;;
   "events list-targets-by-rule") echo arn:aws:lambda:us-west-2:123:function:scheduler ;;
   "lambda get-function-concurrency")
     [[ -f "$FAKE_DIRECTORY/concurrency-fenced" ]] && echo 0 || echo None ;;
-  "lambda get-function-configuration") echo 1 ;;
+  "lambda get-function-configuration")
+    case "$*" in
+      *rest-function*) echo 15 ;;
+      *websocket-function*) echo 30 ;;
+      *) echo 1 ;;
+    esac ;;
   "lambda put-function-concurrency") touch "$FAKE_DIRECTORY/concurrency-fenced" ;;
   "lambda delete-function-concurrency") rm -f "$FAKE_DIRECTORY/concurrency-fenced" ;;
   "events disable-rule"|"events enable-rule") ;;
@@ -127,6 +137,9 @@ describe("deployment wrapper contracts", () => {
     expect(position(calls, "aws events disable-rule")).toBeLessThan(
       position(calls, "aws dynamodb scan"),
     );
+    expect(position(calls, "sleep 35")).toBeLessThan(position(calls, "aws dynamodb scan"));
+    expect(calls).toContain("starts_with(LogicalResourceId, 'RestFunction')");
+    expect(calls).toContain("starts_with(LogicalResourceId, 'WebSocketFunction')");
     expect(position(calls, "aws dynamodb scan")).toBeLessThan(
       position(calls, "pnpm --filter @auto-harness/cdk run update"),
     );
