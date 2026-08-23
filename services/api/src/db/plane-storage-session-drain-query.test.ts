@@ -79,16 +79,33 @@ describe("DynamoDB session drain activity ledger", () => {
                   repositoryId: "repo",
                   principalId: "principal",
                 },
+                {
+                  scopeKey: "repo#principal",
+                  recordKey: "ACT#legacy",
+                  recordType: "activity",
+                  sessionId: "legacy",
+                  repositoryId: "repo",
+                  principalId: "principal",
+                },
               ],
             };
           }
           if (command.input.TableName === "Sessions") {
-            return command.input.Key?.id === "queued"
+            if (command.input.Key?.id === "queued")
+              return {
+                Item: {
+                  id: "queued",
+                  repositoryId: "repo",
+                  principalId: "principal",
+                  status: "queued",
+                },
+              };
+            return command.input.Key?.id === "legacy"
               ? {
                   Item: {
-                    id: "queued",
+                    id: "legacy",
                     repositoryId: "repo",
-                    principalId: "principal",
+                    metadata: { createdBy: "principal" },
                     status: "queued",
                   },
                 }
@@ -109,7 +126,7 @@ describe("DynamoDB session drain activity ledger", () => {
 
     await expect(
       storage.listSessionsForDrain("repo", "principal", "operation", 1),
-    ).resolves.toMatchObject([{ id: "queued" }, { id: "done" }]);
+    ).resolves.toMatchObject([{ id: "queued" }, { id: "done" }, { id: "legacy" }]);
     expect(
       commands
         .filter((command) => command.input.TableName === "Sessions")

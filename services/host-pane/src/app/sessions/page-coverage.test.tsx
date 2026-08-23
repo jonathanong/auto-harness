@@ -40,4 +40,25 @@ describe("host-pane sessions route", () => {
     const markup = renderToStaticMarkup(await SessionsPage({ searchParams: Promise.resolve({}) }));
     expect(markup).toContain("offline");
   });
+
+  it("defaults legacy collections and toggles both sort directions", async () => {
+    setApiTransportForTests(async (input) =>
+      String(input).includes("/sessions")
+        ? Response.json({ nextCursor: "next" })
+        : Response.json({}),
+    );
+    const descending = renderToStaticMarkup(
+      await SessionsPage({
+        searchParams: Promise.resolve({
+          sort: "priority_desc",
+          ignored: ["array"],
+        }),
+      }),
+    );
+    expect(descending).toContain("priority_asc");
+    const oldest = renderToStaticMarkup(
+      await SessionsPage({ searchParams: Promise.resolve({ sort: "latest" }) }),
+    );
+    expect(oldest).toContain("oldest");
+  });
 });

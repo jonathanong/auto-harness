@@ -133,4 +133,33 @@ describe("WebhookWorker", () => {
     );
     expect([...rows.values()][0]).toMatchObject({ state: "delivered" });
   });
+
+  it("handles empty batches, sparse fingerprints, and a superseded in-flight marker", async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => (release = resolve));
+    const worker = new WebhookWorker(
+      {
+        store: webhookMemoryStore(new Map()),
+        transport: { deliver: async () => ({ ok: true }) },
+        selectDestinations: async () => [],
+        listSessions: vi
+          .fn()
+          .mockImplementationOnce(async () => (await blocked, []))
+          .mockResolvedValueOnce([
+            { ...terminalSession("sparse"), status: "queued", completedAt: undefined },
+          ])
+          .mockResolvedValue([]),
+      },
+      { now: () => webhookTestNow },
+    );
+    worker.start();
+    const original = (worker as unknown as { inFlight: Promise<void> }).inFlight;
+    (worker as unknown as { inFlight: Promise<void> }).inFlight = Promise.resolve();
+    release();
+    await original;
+    (worker as unknown as { inFlight?: Promise<void> }).inFlight = undefined;
+    await expect(worker.tick()).resolves.toBe(true);
+    await expect(worker.tick()).resolves.toBe(true);
+    await worker.stop();
+  });
 });

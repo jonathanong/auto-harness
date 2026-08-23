@@ -132,6 +132,24 @@ describe("session state-machine residual coverage", () => {
     await expect(cloneSessionDurable(state, "s")).rejects.toThrow("storage unavailable");
   });
 
+  it("maps a closed repository during durable clone admission", async () => {
+    const state = commandState();
+    const source = row({ status: "completed", completedAt: NOW });
+    const closed = Object.assign(new Error("closed"), {
+      name: "RepositoryAdmissionClosedError",
+    });
+    setDurableReadStorage(state, {
+      getSession: async () => source,
+      createSession: async () => {
+        throw closed;
+      },
+    });
+    await expect(cloneSessionDurable(state, "s")).resolves.toMatchObject({
+      ok: false,
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
+  });
+
   it("rejects a missing durable clone source before preparing it", async () => {
     const state = commandState();
     setDurableReadStorage(state, { getSession: async () => null });

@@ -23,6 +23,9 @@ const base = {
 
 describe("session usage", () => {
   it("deduplicates deltas and is order independent", () => {
+    expect(validateUsage([])).toBe(false);
+    expect(validateUsage(null)).toBe(false);
+    expect(validateUsage("usage")).toBe(false);
     const records = [
       { ...base, kind: "delta" as const, sequence: 2, outputTokens: "3" },
       { ...base, kind: "delta" as const, sequence: 1, inputTokens: "5" },

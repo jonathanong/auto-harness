@@ -51,10 +51,18 @@ describe("ControlPlane command CRUD", () => {
 
     expect(plane.updateCommand("missing", { name: "x" }).ok).toBe(false);
     expect(plane.updateCommand("cmd-1", { argv: [] }).ok).toBe(false);
-    const updated = plane.updateCommand("cmd-1", { argv: ["echo", "hi"], providerId: "prov-1" });
+    const updated = plane.updateCommand("cmd-1", {
+      argv: ["echo", "hi"],
+      appendPromptSeparator: true,
+      providerId: "prov-1",
+    });
     expect(updated.ok).toBe(true);
     if (updated.ok) {
-      expect(updated.command).toMatchObject({ argv: ["echo", "hi"], providerId: "prov-1" });
+      expect(updated.command).toMatchObject({
+        argv: ["echo", "hi"],
+        appendPromptSeparator: true,
+        providerId: "prov-1",
+      });
     }
 
     expect(plane.deleteCommand("missing").ok).toBe(false);

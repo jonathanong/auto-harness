@@ -336,6 +336,41 @@ describe("Lambda runtime adapters", () => {
     expect(fixture.connections.has("viewer-1")).toBe(false);
   });
 
+  it("preserves an existing log callback and rejects malformed client connection rows", async () => {
+    const fixture = runtimeFixture();
+    const previous = vi.fn();
+    fixture.plane.state.onLogCommitted = previous;
+    const runtime = await createLambdaRuntime({
+      auth: fixture.auth as never,
+      created: { plane: fixture.plane, storage: fixture.storage } as never,
+      management: fixture.management,
+    });
+    const record = {
+      sessionId: "session-1",
+      timestampSeq: "2026-08-12T00:00:01.000Z#0000000001",
+      seq: 1,
+      stream: "stdout" as const,
+      content: "log",
+      timestamp: "2026-08-12T00:00:01.000Z",
+    };
+    fixture.plane.state.onLogCommitted?.(record);
+    expect(previous).toHaveBeenCalledWith(record);
+
+    fixture.connections.set("client-without-principal", {
+      connectionId: "client-without-principal",
+      type: "client",
+      hostId: "viewer",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+    });
+    await expect(
+      runtime.websocket({
+        body: "{}",
+        requestContext: { connectionId: "client-without-principal", routeKey: "$default" },
+      }),
+    ).resolves.toEqual({ statusCode: 403 });
+  });
+
   it("awaits direct durable confirmations before completing an invocation", async () => {
     const fixture = runtimeFixture();
     const runtime = await registerGatewayHost(fixture);

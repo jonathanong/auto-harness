@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+/* eslint-disable max-lines -- detail route states share one API fixture. */
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { jsonResponse, renderPage, stubApi } from "./route-test-helpers.tsx";
 import ScheduleDetailPage from "./schedules/[id]/page.tsx";
@@ -6,6 +7,10 @@ import SessionDetailPage from "./sessions/[id]/page.tsx";
 import WorktreeDetailPage from "./worktrees/[worktreeId]/page.tsx";
 
 const noSearch = Promise.resolve({});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("control detail routes previously omitted from coverage include", () => {
   it("renders session detail, usage, and not-found", async () => {
@@ -42,6 +47,51 @@ describe("control detail routes previously omitted from coverage include", () =>
       SessionDetailPage({ params: Promise.resolve({ id: "missing" }) }),
     );
     expect(missing).toContain('data-pw="page-session-detail-not-found"');
+  });
+
+  it("keeps optional session dependencies and owner cancellation fail-safe", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "required");
+    stubApi({
+      "/api/v1/sessions/s-optional": {
+        id: "s-optional",
+        status: "running",
+        hostId: "host-1",
+        repositoryId: "r-1",
+        metadata: { createdBy: "author-1" },
+      },
+      "/api/v1/sessions/s-optional/logs?limit=10000": jsonResponse({}, 503),
+      "/api/v1/sessions/s-optional/usage": jsonResponse({}, 404),
+      "/api/v1/hosts": jsonResponse({}, 503),
+      "/api/v1/auth/me": {
+        id: "author-1",
+        username: "author",
+        role: "author",
+        kind: "user",
+      },
+    });
+    let html = await renderPage(
+      SessionDetailPage({ params: Promise.resolve({ id: "s-optional" }) }),
+    );
+    expect(html).toContain("No CLI usage reported.");
+    expect(html).toContain('data-pw="session-cancel"');
+
+    stubApi({
+      "/api/v1/sessions/s-terminal": {
+        id: "s-terminal",
+        status: "completed",
+        repositoryId: "r-1",
+      },
+      "/api/v1/sessions/s-terminal/logs?limit=10000": {},
+      "/api/v1/sessions/s-terminal/usage": { aggregate: null },
+      "/api/v1/auth/me": {
+        id: "reader-1",
+        username: "reader",
+        role: "read-only",
+        kind: "user",
+      },
+    });
+    html = await renderPage(SessionDetailPage({ params: Promise.resolve({ id: "s-terminal" }) }));
+    expect(html).toContain("No CLI usage reported.");
   });
 
   it("renders schedule detail, empty history, and not-found", async () => {
@@ -125,5 +175,89 @@ describe("control detail routes previously omitted from coverage include", () =>
       }),
     );
     expect(missing).toContain('data-pw="page-worktree-detail-not-found"');
+  });
+
+  it("renders a hostless worktree with optional lookups unavailable", async () => {
+    stubApi({
+      "/api/v1/worktrees": {
+        items: [
+          {
+            id: "wt-hostless",
+            name: "hostless",
+            repositoryId: "r-missing",
+            path: "/tmp/hostless",
+          },
+        ],
+      },
+      "/api/v1/repositories": jsonResponse({}, 503),
+      "/api/v1/sessions?limit=100": jsonResponse({}, 503),
+      "/api/v1/providers": jsonResponse({}, 503),
+      "/api/v1/provider-accounts": jsonResponse({}, 503),
+      "/api/v1/commands": jsonResponse({}, 503),
+    });
+    let html = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-hostless" }),
+        searchParams: Promise.resolve({ tab: ["settings"] }),
+      }),
+    );
+    expect(html).toContain("No recent sessions in this worktree.");
+    html = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-hostless" }),
+        searchParams: Promise.resolve({ tab: "provider-accounts" }),
+      }),
+    );
+    expect(html).toContain("Not associated with a host inventory.");
+    expect(html).not.toContain('data-pw="remove-worktree-wt-hostless"');
+
+    stubApi({ "/api/v1/worktrees": "__throw_string__" });
+    const missing = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-hostless" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(missing).toContain('data-pw="page-worktree-detail-not-found"');
+  });
+
+  it("defaults sparse worktree collections and hides actions after an inventory failure", async () => {
+    stubApi({ "/api/v1/worktrees": {} });
+    expect(
+      await renderPage(
+        WorktreeDetailPage({
+          params: Promise.resolve({ worktreeId: "missing" }),
+          searchParams: noSearch,
+        }),
+      ),
+    ).toContain('data-pw="page-worktree-detail-not-found"');
+
+    stubApi({
+      "/api/v1/worktrees": {
+        items: [
+          {
+            id: "wt-sparse",
+            name: "sparse",
+            repositoryId: "repo",
+            path: "/tmp/sparse",
+            hostId: "host",
+          },
+        ],
+      },
+      "/api/v1/repositories": {},
+      "/api/v1/sessions?limit=100": {},
+      "/api/v1/hosts/host/inventory": jsonResponse({}, 503),
+      "/api/v1/providers": {},
+      "/api/v1/provider-accounts": {},
+      "/api/v1/commands": {},
+    });
+    const html = await renderPage(
+      WorktreeDetailPage({
+        params: Promise.resolve({ worktreeId: "wt-sparse" }),
+        searchParams: noSearch,
+      }),
+    );
+    expect(html).toContain("No recent sessions in this worktree.");
+    expect(html).not.toContain('data-pw="remove-worktree-wt-sparse"');
   });
 });

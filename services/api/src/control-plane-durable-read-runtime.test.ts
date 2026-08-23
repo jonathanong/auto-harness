@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- durable read paths share one state fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +6,7 @@ import {
   getSessionDurable,
   listQueuedSessionsDurable,
   listSessionsDurable,
+  listSessionsForRepositoriesDurable,
   listWorktreesDurable,
   listWorktreesForRepositoryDurable,
   refreshSchedulerReadModel,
@@ -127,8 +129,12 @@ describe("durable runtime read-through", () => {
     await expect(getSessionDurable(state, session.id)).resolves.toEqual(session);
     await expect(getSessionDurable(state, "missing")).resolves.toBeNull();
     await expect(listSessionsDurable(state)).resolves.toEqual([session]);
+    await expect(listSessionsForRepositoriesDurable(state, ["repository"])).resolves.toEqual([
+      session,
+    ]);
     await expect(listQueuedSessionsDurable(state, "prompt")).resolves.toEqual([session]);
     await expect(getLogsDurable(state, session.id)).resolves.toHaveLength(1);
+    await expect(getLogsDurable(state, "missing")).resolves.toEqual([]);
     await expect(listWorktreesDurable(state)).resolves.toEqual([worktree]);
     await expect(listWorktreesForRepositoryDurable(state, "repository")).resolves.toEqual([
       worktree,
@@ -211,5 +217,59 @@ describe("durable runtime read-through", () => {
 
     await refreshSchedulerReadModel(state);
     expect(state.drainingHosts).toEqual(new Set(["host"]));
+  });
+
+  it("reads repository pages and skips pending durable connections", async () => {
+    const state = createControlPlaneState({
+      storage: {
+        listSessionsByRepository: async () => [session],
+        listConnections: async () => [
+          {
+            connectionId: "pending",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+            registered: false,
+          },
+        ],
+        listHostInventories: async () => [],
+        listWorktrees: async () => [],
+        listAllWorktrees: async () => [],
+        listRepositories: async () => [],
+        listSchedules: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+      } as never,
+    });
+    await expect(listSessionsForRepositoriesDurable(state, ["repository"])).resolves.toEqual([
+      session,
+    ]);
+    await refreshSchedulerReadModel(state);
+    expect(state.connections.size).toBe(0);
+  });
+
+  it("handles repository-only page scopes and absent durable counts", async () => {
+    const plane = new ControlPlane({
+      storage: {
+        countSessionsByRepository: async () => undefined,
+        listAllWorktrees: async () => [],
+        listSchedules: async () => [],
+        listSessionsByRepository: async () => [session],
+      } as never,
+    });
+    await expect(plane.listRepositoryCountsDurable(["repository"])).resolves.toEqual(
+      new Map([["repository", { sessionCount: 0, worktreeCount: 0, scheduleCount: 0 }]]),
+    );
+    await expect(
+      plane.listSessionsPageDurable({ repositoryId: "repository" }),
+    ).resolves.toMatchObject({ items: [{ id: "session" }] });
+    await expect(
+      plane.listSessionsPageDurable({
+        repositoryId: "repository",
+        scope: { repositoryIds: ["elsewhere"] },
+      }),
+    ).resolves.toMatchObject({ items: [] });
   });
 });

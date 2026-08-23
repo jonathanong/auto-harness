@@ -95,5 +95,18 @@ describe("durable resume concurrency", () => {
     setDurableReadStorage(plane.state, { createSession: async () => Promise.reject(unexpected) });
     await expect(plane.createSessionDurable(baseSessionBody())).rejects.toBe(unexpected);
     await expect(plane.resumeSessionDurable(source.id)).rejects.toBe(unexpected);
+
+    const closed = Object.assign(new Error("closed"), {
+      name: "RepositoryAdmissionClosedError",
+    });
+    setDurableReadStorage(plane.state, { createSession: async () => Promise.reject(closed) });
+    await expect(plane.createSessionDurable(baseSessionBody())).resolves.toMatchObject({
+      ok: false,
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
+    await expect(plane.resumeSessionDurable(source.id)).resolves.toMatchObject({
+      ok: false,
+      code: "REPOSITORY_ADMISSION_CLOSED",
+    });
   });
 });

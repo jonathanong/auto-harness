@@ -279,6 +279,14 @@ describe("validateCreateSessionInput", () => {
       }).ok,
     ).toBe(false);
     expect(validateCreateSessionInput({ ...base, metadata: { nested: { a: 1 } } }).ok).toBe(false);
+    expect(validateCreateSessionInput({ ...base, metadata: { "": "value" } }).ok).toBe(false);
+    expect(
+      validateCreateSessionInput({ ...base, metadata: { ["k".repeat(129)]: "value" } }).ok,
+    ).toBe(false);
+    expect(
+      validateCreateSessionInput({ ...base, metadata: { message: "x".repeat(4097) } }).ok,
+    ).toBe(false);
+    expect(validateCreateSessionInput({ ...base, metadata: { absent: undefined } }).ok).toBe(false);
     expect(validateCreateSessionInput({ ...base, metadata: { ok: "yes", n: 1, b: true } }).ok).toBe(
       true,
     );

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- session-drain outcomes share one durable fixture. */
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -168,6 +169,23 @@ describe("session drain residual outcomes", () => {
       error: "session drain activity ledger is still preparing",
       code: "DRAIN_LEDGER_NOT_READY",
     });
+  });
+
+  it("preserves unexpected session-drain creation failures", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const unexpected = new Error("storage unavailable");
+    setDurableReadStorage(state, {
+      getRepository: async () => ({
+        id: "repo",
+        name: "repo",
+        url: "/repo",
+        defaultBranch: "main",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+      createOrGetSessionDrain: async () => Promise.reject(unexpected),
+    });
+    await expect(createSessionDrainDurable(state, "repo", "principal")).rejects.toBe(unexpected);
   });
 
   it("recomputes cancellation counts from durable attribution after a lost update", async () => {

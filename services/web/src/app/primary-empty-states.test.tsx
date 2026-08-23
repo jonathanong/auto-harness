@@ -14,7 +14,7 @@ describe("primary control-plane empty states", () => {
       "/api/v1/sessions": {},
       "/api/v1/hosts": {},
       "/api/v1/worktrees": {},
-      "/api/v1/sessions?status=running&limit=100": {},
+      "/api/v1/sessions?status=running&limit=100": { items: [], nextCursor: "more" },
       "/api/v1/sessions?status=queued&limit=100": {},
     });
     let html = await renderPage(DashboardPage());

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { WebhookTransportRequest } from "./webhook-delivery-types.ts";
+import { processWebhookOutboxBatch } from "./webhook-processor.ts";
 import { processWebhookOutboxOnce, retryDelay } from "./webhook-worker.ts";
 import {
   webhookProcessStore,
@@ -126,5 +127,24 @@ describe("webhook outbox processor", () => {
         RangeError,
       );
     }
+  });
+
+  it("continues after lost exhausted rows, orders fallback due keys, and honors batch shutdown", async () => {
+    const first = webhookTestDelivery({ id: "b", dueAt: undefined, attemptCount: 2 });
+    const second = webhookTestDelivery({ id: "a", dueAt: undefined, attemptCount: 2 });
+    const store = webhookProcessStore({
+      listDueWebhookDeliveries: vi.fn(async ({ state }) =>
+        state === "pending" ? [first, second] : [],
+      ),
+      deadLetterExhaustedWebhookDelivery: vi.fn(async () => false),
+    });
+    await expect(processWebhookOutboxOnce(store, { deliver: vi.fn() })).resolves.toBe("idle");
+    expect(store.deadLetterExhaustedWebhookDelivery).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ id: "a" }),
+    );
+
+    await processWebhookOutboxBatch(store, { deliver: vi.fn() }, {}, () => false);
+    expect(store.deadLetterExhaustedWebhookDelivery).toHaveBeenCalledTimes(2);
   });
 });

@@ -84,4 +84,21 @@ describe("DrainButton", () => {
     expect(router.refresh).toHaveBeenCalledOnce();
     view.unmount();
   });
+
+  it("normalizes primitive and empty thrown failures without a custom selector", async () => {
+    for (const [cause, expected] of [
+      ["  disconnected  ", "Could not drain host: disconnected"],
+      [new Error(""), "Could not drain host. Please try again."],
+    ] as const) {
+      const view = mount(
+        <DrainButton hostId="host-1" request={vi.fn().mockRejectedValue(cause)} />,
+      );
+      await act(async () => {
+        (view.container.querySelector("button") as HTMLButtonElement).click();
+        await Promise.resolve();
+      });
+      expect(view.container.querySelector('[data-pw="drain-error"]')?.textContent).toBe(expected);
+      view.unmount();
+    }
+  });
 });

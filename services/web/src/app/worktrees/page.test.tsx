@@ -59,4 +59,32 @@ describe("worktrees page", () => {
     html = await renderPage(WorktreesPage());
     expect(html).toContain("offline");
   });
+
+  it("uses empty API defaults, repository ids, and primitive inventory errors", async () => {
+    stubApi({
+      "/api/v1/worktrees": {
+        items: [
+          {
+            id: "wt-orphan",
+            name: "orphan",
+            repositoryId: "missing-repo",
+            path: "/tmp/orphan",
+          },
+        ],
+      },
+      "/api/v1/repositories": {},
+      "/api/v1/host-inventories": "__throw_string__",
+    });
+    let html = await renderPage(WorktreesPage());
+    expect(html).toContain("missing-repo");
+    expect(html).toContain("Unable to load host inventories.");
+
+    stubApi({
+      "/api/v1/worktrees": {},
+      "/api/v1/repositories": {},
+      "/api/v1/host-inventories": {},
+    });
+    html = await renderPage(WorktreesPage());
+    expect(html).toContain("No worktrees registered yet.");
+  });
 });

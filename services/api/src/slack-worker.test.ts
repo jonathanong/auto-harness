@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Slack lifecycle cases share one in-memory outbox. */
 import { describe, expect, it, vi } from "vitest";
 
 import type {
@@ -190,5 +191,37 @@ describe("Slack lifecycle worker", () => {
     await expect(worker.tick()).resolves.toBe(false);
     await worker.stop();
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it("handles disabled configuration, bounded work, and a superseded tick marker", async () => {
+    const getDisabledConfig = vi.fn(async () => ({ ...config, enabled: false }));
+    const disabled = new SlackLifecycleWorker({
+      store: new MemoryOutbox(),
+      transport: { deliver: vi.fn() },
+      getConfig: getDisabledConfig,
+      listSessions: vi.fn(),
+    });
+    disabled.start();
+    await disabled.stop();
+    expect(getDisabledConfig).toHaveBeenCalledOnce();
+
+    const store = new MemoryOutbox();
+    const bounded = new SlackLifecycleWorker(
+      {
+        store,
+        transport: {
+          deliver: async (request) => ({ channel: request.channel, messageTs: "message" }),
+        },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+      },
+      { maxOperationsPerTick: 1, now: () => initial },
+    );
+    bounded.start();
+    const pending = (bounded as unknown as { inFlight: Promise<void> }).inFlight;
+    (bounded as unknown as { inFlight: Promise<void> }).inFlight = Promise.resolve();
+    await pending;
+    await bounded.stop();
+    expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
   });
 });

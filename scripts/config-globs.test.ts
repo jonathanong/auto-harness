@@ -28,6 +28,14 @@ describe("config file globs", () => {
       if (THRESHOLD_PATH_EXCEPTIONS.has(key)) continue;
       expect(key, `coverage.thresholds path must recurse with **: ${key}`).toContain("**");
     }
+
+    const aggregateThresholds = coverage.match(
+      /thresholds:[\s\S]*?\? undefined\s*:\s*\{([\s\S]*?)"services\/host-daemon/,
+    )?.[1];
+    expect(aggregateThresholds).toBeDefined();
+    for (const metric of ["lines", "branches", "functions", "statements"]) {
+      expect(aggregateThresholds).toMatch(new RegExp(`\\b${metric}: 99,`));
+    }
   });
 
   it("uses a scripts/*.mts glob for knip root entries", () => {

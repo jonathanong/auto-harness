@@ -34,6 +34,16 @@ function signedCookie(
 }
 
 describe("control-plane authentication security", () => {
+  it("fences concurrent in-memory password changes against the original hash", async () => {
+    const auth = new AuthService({ mode: "disabled", secret: "a".repeat(32), admins: admins([]) });
+    const user = await auth.createUser({ username: "race", password: "before", role: "operator" });
+    const outcomes = await Promise.all([
+      auth.changePassword(user, "before", "after-one"),
+      auth.changePassword(user, "before", "after-two"),
+    ]);
+    expect(outcomes.toSorted()).toEqual(["changed", "missing-account"]);
+  });
+
   it("requires a secret and bootstrap admin in required mode", () => {
     expect(() => new AuthService({ mode: "required", secret: "" })).toThrow();
     expect(() => new AuthService({ mode: "disabled", admins: "not-json" })).toThrow();
@@ -413,10 +423,16 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("GET", "/api/v1/auth/users")).toBe("accounts:write");
     expect(requiredCapability("GET", "/api/v1/audit-logs")).toBe("audit:read");
     expect(requiredCapability("POST", "/api/v1/scheduler/assign")).toBe("scheduler:run");
+    expect(requiredCapability("GET", "/api/v1/hosts/drain")).toBe("authenticated");
+    expect(requiredCapability("GET", "/api/v1/repositories/repo/pause")).toBe("authenticated");
+    expect(requiredCapability("POST", "/api/v1/repositories/repo/pause")).toBe(
+      "repositories:operate",
+    );
     expect(requiredCapability("GET", "/api/v1/hosts/h/inventory")).toBe("authenticated");
     expect(requiredCapability("PUT", "/api/v1/hosts/h/inventory")).toBe("fleet:inventory");
     expect(requiredCapability("POST", "/api/v1/sessions/s/archive")).toBe("sessions:archive");
     expect(requiredCapability("POST", "/api/v1/sessions/s/cancel")).toBe("sessions:write");
+    expect(requiredCapability("GET", "/api/v1/provider-accounts")).toBe("authenticated");
     expect(requiredCapability("GET", "/api/v1/sessions")).toBe("authenticated");
     expect(requiredCapability("POST", "/api/v1/unknown")).toBeNull();
     expect(requiredCapability("POST", "/api/v1/scheduler-extra")).toBeNull();
@@ -424,6 +440,7 @@ describe("control-plane authentication security", () => {
     expect(requiredCapability("POST", "/api/v1/sessions-old")).toBeNull();
     expect(requiredCapability("POST", "/api/v1/auth/users-backup")).toBeNull();
     expect(requiredCapability("GET", "/health")).toBe("authenticated");
+    expect(requiredCapability("POST", "/outside-api")).toBe("authenticated");
   });
 
   it("rejects tampered or stale cookie claims", async () => {

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- viewer socket outcomes share one adapter fixture. */
 import { describe, expect, it, vi } from "vitest";
 
 import type { Principal } from "./auth.ts";
@@ -178,5 +179,51 @@ describe("Lambda viewer WebSocket adapter", () => {
       JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
     );
     expect(ctx.sent.at(-1)?.message).toMatchObject({ code: "SUBSCRIPTION_LIMIT" });
+  });
+
+  it("handles sparse subscriptions and prunes a gone viewer during replay", async () => {
+    const ctx = fixture();
+    await ctx.sockets.connect("viewer-1", "ticket");
+    const connection = ctx.connections.get("viewer-1")!;
+    delete connection.viewerSubscriptions;
+    ctx.connections.set("viewer-1", connection);
+    await expect(
+      ctx.sockets.message(
+        "viewer-1",
+        JSON.stringify({ type: "session:unsubscribe", sessionId: "session-1" }),
+      ),
+    ).resolves.toBe(200);
+
+    ctx.sessions.set("session-1", { repositoryId: "repo-1", status: "running" });
+    await expect(
+      ctx.sockets.message(
+        "viewer-1",
+        JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+      ),
+    ).resolves.toBe(200);
+    expect(ctx.connections.get("viewer-1")?.viewerSubscriptions?.[0]).not.toHaveProperty("after");
+
+    ctx.connections.get("viewer-1")!.viewerSubscriptions!.push({
+      sessionId: "other-session",
+      repositoryId: "repo-1",
+      status: "running",
+    });
+    await expect(
+      ctx.sockets.message(
+        "viewer-1",
+        JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+      ),
+    ).resolves.toBe(200);
+    expect(ctx.connections.get("viewer-1")?.viewerSubscriptions).toHaveLength(2);
+
+    ctx.logs.set("session-1", [log("2026-08-17T00:00:01.000Z#0000000001", 1)]);
+    ctx.management.send.mockRejectedValueOnce({ name: "GoneException" });
+    await expect(
+      ctx.sockets.message(
+        "viewer-1",
+        JSON.stringify({ type: "session:subscribe", sessionId: "session-1" }),
+      ),
+    ).resolves.toBe(200);
+    expect(ctx.connections.has("viewer-1")).toBe(false);
   });
 });

@@ -1,10 +1,11 @@
+/* eslint-disable max-lines -- authoring route outcomes share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
 import { createLocalApp } from "./local-server.ts";
-import { invokeHandler } from "./local-server-test-helpers.ts";
+import { invokeBadJson, invokeHandler } from "./local-server-test-helpers.ts";
 
 function admins(): string {
   return Buffer.from(JSON.stringify([{ username: "root", password: "root" }])).toString(
@@ -65,10 +66,57 @@ async function harness() {
   const invoke = (method: string, path: string, body: unknown, key: string) =>
     invokeHandler(handler, method, path, body, { authorization: `Bearer ${key}` });
 
-  return { invoke, hostKey, operatorKey, session };
+  return { auth, invoke, hostKey, operatorKey, plane, session };
 }
 
 describe("session authoring is closed to host-bound credentials", () => {
+  it("fails closed when create denial and outcome audits cannot be stored", async () => {
+    const invalid = new ControlPlane();
+    invalid.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    expect(
+      await invokeBadJson(createLocalApp({ plane: invalid }).handler, "POST", "/api/v1/sessions"),
+    ).toBe(500);
+
+    const denied = await harness();
+    denied.plane.appendAuditLog = invalid.appendAuditLog;
+    expect(
+      (await denied.invoke("POST", "/api/v1/sessions", { repositoryId: "repo-a" }, denied.hostKey))
+        .status,
+    ).toBe(500);
+
+    const failed = new ControlPlane();
+    failed.appendAuditLog = invalid.appendAuditLog;
+    failed.createSessionDurable = async () => ({ ok: false, error: "invalid" });
+    expect(
+      (
+        await invokeHandler(createLocalApp({ plane: failed }).handler, "POST", "/api/v1/sessions", {
+          repositoryId: "repo-a",
+        })
+      ).status,
+    ).toBe(500);
+
+    const hidden = await harness();
+    hidden.plane.appendAuditLog = invalid.appendAuditLog;
+    hidden.plane.createSessionDurable = async () =>
+      ({
+        ok: true,
+        created: true,
+        session: { id: "hidden", repositoryId: "repo-b" },
+      }) as never;
+    expect(
+      (
+        await hidden.invoke(
+          "POST",
+          "/api/v1/sessions",
+          { repositoryId: "repo-a" },
+          hidden.operatorKey,
+        )
+      ).status,
+    ).toBe(500);
+  });
+
   it("refuses every route that brings a session into existence", async () => {
     const { invoke, hostKey, session } = await harness();
     const sessionBody = {

@@ -1,8 +1,13 @@
+/* eslint-disable max-lines -- admission state cases share one control-plane fixture. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import { seedBaseCommand } from "./control-plane-test-helpers.ts";
-import { reconcileRepositoryDrainsDurable } from "./control-plane-repository-admission.ts";
+import {
+  drainRepositoryDurable,
+  reconcileRepositoryDrainsDurable,
+  setRepositoryAdmissionDurable,
+} from "./control-plane-repository-admission.ts";
 
 describe("repository admission", () => {
   it("pauses creation, activates again, and drains active sessions to paused", async () => {
@@ -208,5 +213,180 @@ describe("repository admission", () => {
     await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([completed]);
     expect(completedIds).toEqual([draining.id]);
     expect(repositories.get(malformed.id)).toBeUndefined();
+  });
+
+  it("covers durable admission transition and reconciliation edge outcomes", async () => {
+    const repository = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "t",
+      updatedAt: "t",
+      admissionState: "paused" as const,
+    };
+    const storage = {
+      getRepository: async () => null as typeof repository | null,
+      setRepositoryAdmissionState: async () => null as typeof repository | null,
+      listSchedules: async () => [],
+    };
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map(),
+      schedules: new Map(),
+      repositoryRevision: 0,
+      storage,
+    } as never;
+    await expect(setRepositoryAdmissionDurable(state, "missing", "active")).resolves.toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+
+    storage.getRepository = async () => ({ ...repository, admissionState: "draining" });
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+
+    storage.setRepositoryAdmissionState = async () => repository;
+    await expect(setRepositoryAdmissionDurable(state, "repo", "paused")).resolves.toMatchObject({
+      ok: true,
+    });
+    storage.setRepositoryAdmissionState = async () => null;
+    storage.getRepository = async () => repository;
+    await expect(setRepositoryAdmissionDurable(state, "repo", "paused")).resolves.toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+    });
+
+    storage.setRepositoryAdmissionState = async () => null;
+    await expect(drainRepositoryDurable(state, "missing")).resolves.toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    storage.getRepository = async () => null;
+    await expect(setRepositoryAdmissionDurable(state, "missing", "paused")).resolves.toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+
+    const memory = {
+      now: () => "now",
+      repositories: new Map(),
+      repositoryRevision: 0,
+    } as never;
+    await expect(drainRepositoryDurable(memory, "missing")).resolves.toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("skips ineligible schedules and retains durable drains with leases or failed completion", async () => {
+    const draining = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "t",
+      updatedAt: "t",
+      admissionState: "draining" as const,
+      drainRequestedAt: "requested",
+    };
+    let sessions: Array<Record<string, unknown>> = [
+      { id: "terminal", repositoryId: "repo", status: "completed" },
+      { id: "lease", repositoryId: "repo", status: "completed", mainCheckoutLease: true },
+    ];
+    const storage = {
+      listRepositories: async () => [draining],
+      listAllSessions: async () => sessions,
+      listWorktreesForRepo: async () => [],
+      completeRepositoryDrain: async () => null,
+    };
+    const state = {
+      now: () => "completed",
+      repositories: new Map(),
+      storage,
+    } as never;
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([draining]);
+    sessions = [];
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([draining]);
+
+    const noRequest = { ...draining, drainRequestedAt: undefined };
+    storage.listRepositories = async () => [noRequest as never];
+    await expect(reconcileRepositoryDrainsDurable(state)).resolves.toEqual([noRequest]);
+  });
+
+  it("advances only eligible durable closed schedules and completes a durable drain", async () => {
+    const paused = {
+      id: "repo",
+      name: "repo",
+      url: "url",
+      defaultBranch: "main",
+      createdAt: "t",
+      updatedAt: "t",
+      admissionState: "paused" as const,
+    };
+    const active = { ...paused, admissionState: "active" as const };
+    const draining = {
+      ...paused,
+      admissionState: "draining" as const,
+      drainRequestedAt: "requested",
+    };
+    const skipped: string[] = [];
+    const storage = {
+      getRepository: async () => paused,
+      listSchedules: async () => [
+        {
+          id: "wrong",
+          repositoryId: "other",
+          enabled: true,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+          cron: "* * * * *",
+        },
+        {
+          id: "disabled",
+          repositoryId: "repo",
+          enabled: false,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+          cron: "* * * * *",
+        },
+        {
+          id: "future",
+          repositoryId: "repo",
+          enabled: true,
+          nextRunAt: "2026-01-01T00:10:00.000Z",
+          cron: "* * * * *",
+        },
+        {
+          id: "invalid",
+          repositoryId: "repo",
+          enabled: true,
+          nextRunAt: "2026-01-01T00:00:00.000Z",
+          cron: "invalid",
+        },
+      ],
+      skipScheduleForClosedRepository: async ({ scheduleId }: { scheduleId: string }) => (
+        skipped.push(scheduleId), true
+      ),
+      setRepositoryAdmissionState: async (_id: string, state: string) =>
+        state === "draining" ? draining : active,
+      listAllSessions: async () => [],
+      listWorktreesForRepo: async () => [],
+      completeRepositoryDrain: async () => paused,
+    };
+    const state = {
+      now: () => "2026-01-01T00:05:00.000Z",
+      repositories: new Map([["repo", paused]]),
+      schedules: new Map(),
+      sessions: new Map(),
+      worktrees: new Map(),
+      repositoryRevision: 0,
+      storage,
+    } as never;
+    await expect(setRepositoryAdmissionDurable(state, "repo", "active")).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(skipped).toEqual([]);
+    await expect(drainRepositoryDurable(state, "repo")).resolves.toMatchObject({ ok: true });
   });
 });

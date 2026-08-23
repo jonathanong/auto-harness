@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- schedule-fire coverage cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -8,6 +9,7 @@ import {
 } from "./control-plane-schedule-fire.ts";
 import { createControlPlaneState } from "./control-plane-state.ts";
 import type { ScheduleRecord } from "./control-plane-types.ts";
+import { putScheduleDurable } from "./control-plane-schedules.ts";
 
 const NOW = "2026-01-01T00:00:00.000Z";
 
@@ -55,6 +57,72 @@ function state(row: ScheduleRecord, storage: object = {}) {
 }
 
 describe("schedule fire residual coverage", () => {
+  it("rejects missing, closed, and invalid durable schedule repositories", async () => {
+    const missing = createControlPlaneState();
+    await expect(
+      putScheduleDurable(missing, {
+        repositoryId: "missing",
+        name: "schedule",
+        target: { commandId: "cmd" },
+        cron: "* * * * *",
+        timeout: 30,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: "repository not found" });
+
+    const closed = state(schedule({ principalId: "principal" }));
+    closed.repositories.get("repo")!.admissionState = "paused";
+    await expect(
+      putScheduleDurable(closed, {
+        repositoryId: "repo",
+        name: "schedule",
+        target: { commandId: "cmd" },
+        cron: "* * * * *",
+        timeout: 30,
+      }),
+    ).resolves.toMatchObject({ ok: false });
+
+    const invalid = state(schedule({ principalId: "principal" }));
+    await expect(
+      putScheduleDurable(invalid, {
+        repositoryId: "repo",
+        name: "schedule",
+        target: { commandId: "missing" },
+        cron: "* * * * *",
+        timeout: 30,
+      }),
+    ).resolves.toMatchObject({ ok: false, error: "commandId missing not found" });
+  });
+
+  it("distinguishes a missing durable repository from closed admission", async () => {
+    const missing = state(schedule({ principalId: "principal" }));
+    missing.repositories.clear();
+    await expect(triggerScheduleDurable(missing, "nightly")).resolves.toEqual({
+      ok: false,
+      error: "repository admission is closed",
+    });
+
+    const closed = state(schedule({ principalId: "principal" }), {
+      tryClaimScheduleAndCreateSession: async () => ({ kind: "admission_closed" }),
+    });
+    await expect(triggerScheduleDurable(closed, "nightly")).resolves.toEqual({
+      ok: false,
+      error: "repository admission is closed",
+    });
+  });
+
+  it("consumes durable cron occurrences rejected by the admission transaction", async () => {
+    for (const skipped of [false, true]) {
+      const current = state(schedule({ principalId: "principal" }), {
+        tryClaimScheduleAndCreateSession: async () => ({ kind: "admission_closed" }),
+        skipScheduleForClosedRepository: async () => skipped,
+      });
+      await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
+      expect(current.schedules.get("nightly")?.nextRunAt).toBe(
+        skipped ? "2026-01-01T00:01:00.000Z" : NOW,
+      );
+    }
+  });
+
   it("rejects a disabled durable manual trigger", async () => {
     await expect(
       triggerScheduleDurable(state(schedule({ enabled: false })), "nightly"),

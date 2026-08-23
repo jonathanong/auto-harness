@@ -8,6 +8,7 @@ import {
   removeHostRepository,
   removeHostWorktree,
   updateHostSetupScript,
+  updateHostRequiredEnvironment,
   updateHostWorktree,
   upsertHostRepository,
 } from "./host-inventory.ts";
@@ -31,6 +32,13 @@ describe("host-inventory", () => {
       defaultBranch: "main",
     });
     expect(inv.setupScript).toBe("source ~/.zshrc");
+  });
+
+  it("adds and removes host-wide required environment names", () => {
+    let inventory = updateHostRequiredEnvironment(null, ["TOKEN"]);
+    expect(inventory.requiredEnvironment).toEqual(["TOKEN"]);
+    inventory = updateHostRequiredEnvironment(inventory, []);
+    expect(inventory).not.toHaveProperty("requiredEnvironment");
   });
 
   it("upsertHostRepository creates repo with empty worktrees", () => {

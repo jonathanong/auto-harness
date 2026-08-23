@@ -2,12 +2,26 @@ import { describe, expect, it } from "vitest";
 
 import {
   persistedEnvError,
+  serviceEnv,
   updatePersistedApiUrl,
   validatePersistedEnvFile,
 } from "./host-service-env.ts";
 import { preparePersistedEnv } from "./host-service-env-persisted.ts";
 
 describe("persisted service environment validation", () => {
+  it("defaults missing persisted keys and preserves or overrides process environment", () => {
+    expect(validatePersistedEnvFile("")).toEqual([
+      "HARNESS_HOST_ID",
+      "HARNESS_API_URL",
+      "HARNESS_API_KEY",
+    ]);
+    const env = { HARNESS_API_URL: "https://old.example.com" };
+    expect(serviceEnv(env, undefined)).toBe(env);
+    expect(serviceEnv(env, "https://new.example.com")).toMatchObject({
+      HARNESS_API_URL: "https://new.example.com",
+    });
+  });
+
   it("accepts production identity and rejects local or placeholder values", () => {
     expect(
       validatePersistedEnvFile(
@@ -117,6 +131,9 @@ describe("persisted service environment validation", () => {
     });
     expect(prepared.errors).toEqual(["HARNESS_API_URL"]);
     expect(prepared.contents).toBe(original);
+    expect(
+      preparePersistedEnv({ existing: undefined, example: "", env: {}, apiUrl: "http://public" }),
+    ).toEqual({ contents: "", errors: ["HARNESS_API_URL"] });
   });
 
   it("rejects URL credentials, queries, and fragments", () => {

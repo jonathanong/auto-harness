@@ -158,4 +158,29 @@ describe("status darwin", () => {
       ).state,
     ).toBe("stopped");
   });
+
+  it("maps explicit timeouts, failed commands, stopped, and unknown states", () => {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    for (const [status, stdout, expected] of [
+      [1, "", "failed"],
+      [0, "state = stopped\n", "stopped"],
+      [0, "state = mystery\n", "unknown"],
+    ] as const) {
+      const result = statusDarwin(
+        resolveHostService(
+          baseOpts({
+            platform: "darwin",
+            fs: seededFs(),
+            timeoutMs: 123,
+            run: (_command, _args, options) => {
+              seen.push(options);
+              return { status, stdout, stderr: status ? "permission denied" : "" };
+            },
+          }),
+        ),
+      );
+      expect(result.state).toBe(expected);
+    }
+    expect(seen).toEqual([{ timeoutMs: 123 }, { timeoutMs: 123 }, { timeoutMs: 123 }]);
+  });
 });

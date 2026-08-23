@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- assignment coverage cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -47,6 +48,53 @@ const worktree: WorktreeRecord = {
 };
 
 describe("assignment residual coverage", () => {
+  it("skips locally and durably queued work while repository admission is unavailable", async () => {
+    const local = createControlPlaneState({ now: () => NOW, shardCount: 1 });
+    local.sessions.set("s", session());
+    expect(assignQueued(local)).toEqual([]);
+
+    const durable = createControlPlaneState({ now: () => NOW, shardCount: 1 });
+    durable.sessions.set("s", session());
+    setDurableReadStorage(durable, { expireQueuedSession: async () => false });
+    await expect(assignQueuedDurable(durable)).resolves.toEqual([]);
+  });
+
+  it("skips an otherwise eligible durable worktree without a live host connection", async () => {
+    const state = createControlPlaneState({ now: () => NOW, shardCount: 1 });
+    state.repositories.set("repo", {
+      id: "repo",
+      name: "repo",
+      url: "/repo",
+      defaultBranch: "main",
+      admissionState: "active",
+      admissionStateChangedAt: NOW,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.commands.set("command", {
+      id: "command",
+      name: "command",
+      argv: ["tool"],
+      appendPrompt: true,
+      providerId: null,
+    });
+    state.sessions.set("s", session({ target: { commandId: "command" } }));
+    state.worktrees.set("w", worktree);
+    state.connections.set("connection", {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      repositoryIds: ["repo"],
+      capabilities: [],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    });
+    setDurableReadStorage(state, { expireQueuedSession: async () => false });
+    state.hostConnection.get = () => undefined;
+    await expect(assignQueuedDurable(state)).resolves.toEqual([]);
+  });
+
   it("fails closed for a connected host whose Git preflight is not ready", () => {
     const state = createControlPlaneState({ now: () => NOW, shardCount: 1 });
     state.sessions.set("s", session({ target: { commandId: "command" } }));

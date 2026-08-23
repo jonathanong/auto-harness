@@ -219,4 +219,51 @@ describe("agent registration branch boundaries", () => {
     );
     expect(plane.getWorktree("busy")).toBeNull();
   });
+
+  it("persists a draining durable registration with an explicit runtime report", async () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "runtime-connection" });
+    plane.state.storage = {
+      tryRegisterHost: async () => true,
+      getHostInventory: async () => null,
+      listWorktreesByHost: async () => [],
+      putHostInventoryFenced: async () => ({ ok: true }),
+    } as never;
+    await expect(
+      plane.registerHostDurable({
+        hostId: "runtime-host",
+        worktrees: [],
+        commandProfiles: [],
+        draining: true,
+        runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      }),
+    ).resolves.toEqual({ ok: true, connectionId: "runtime-connection" });
+    expect(plane.isDraining("runtime-host")).toBe(true);
+    expect(plane.listHosts()).toEqual([
+      expect.objectContaining({ daemonVersion: "test", gitReady: true }),
+    ]);
+  });
+
+  it("accepts the legacy unreported runtime sentinel and rejects a host without a durable owner", async () => {
+    const plane = new ControlPlane();
+    expect(
+      await plane.registerHostDurable({
+        hostId: "legacy-runtime",
+        worktrees: [],
+        commandProfiles: [],
+        runtime: {
+          daemonVersion: "legacy",
+          gitVersion: null,
+          gitReady: false,
+          gitReadinessReason: "git_readiness_unreported",
+        },
+      }),
+    ).toMatchObject({ ok: true });
+    plane.state.storage = {
+      getHostLock: async () => null,
+    } as never;
+    await expect(drainHostDurable(plane.state, "missing")).resolves.toEqual({
+      ok: false,
+      runningSessionIds: [],
+    });
+  });
 });

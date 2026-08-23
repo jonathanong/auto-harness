@@ -242,4 +242,190 @@ describe("createLocalApp authentication routes", () => {
       ).status,
     ).toBe(403);
   });
+
+  it("covers fenced missing/lost deletes and fail-closed account audits", async () => {
+    const missingUserAuth = new AuthService({
+      mode: "disabled",
+      secret: "secret",
+      admins: admins(),
+    });
+    await missingUserAuth.createUser({
+      username: "missing",
+      password: "password",
+      role: "operator",
+    });
+    (
+      missingUserAuth as unknown as {
+        deleteUserFenced: () => Promise<"missing">;
+      }
+    ).deleteUserFenced = async () => "missing";
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: new ControlPlane(), authService: missingUserAuth }).handler,
+          "DELETE",
+          "/api/v1/auth/users/missing",
+        )
+      ).status,
+    ).toBe(404);
+
+    const fencedUserAuth = new AuthService({
+      mode: "disabled",
+      secret: "secret",
+      admins: admins(),
+    });
+    await fencedUserAuth.createUser({ username: "fenced", password: "password", role: "operator" });
+    (
+      fencedUserAuth as unknown as {
+        deleteUserFenced: () => Promise<"fence-lost">;
+      }
+    ).deleteUserFenced = async () => "fence-lost";
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: new ControlPlane(), authService: fencedUserAuth }).handler,
+          "DELETE",
+          "/api/v1/auth/users/fenced",
+        )
+      ).status,
+    ).toBe(409);
+
+    const accountAuth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+    const { account } = await accountAuth.createServiceAccount({
+      name: "missing",
+      role: "operator",
+    });
+    (
+      accountAuth as unknown as {
+        deleteServiceAccountFenced: () => Promise<"missing">;
+      }
+    ).deleteServiceAccountFenced = async () => "missing";
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: new ControlPlane(), authService: accountAuth }).handler,
+          "DELETE",
+          `/api/v1/auth/service-accounts/${account.id}`,
+        )
+      ).status,
+    ).toBe(404);
+
+    const fallbackAuth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+    (
+      fallbackAuth as unknown as {
+        deleteServiceAccount: () => Promise<boolean>;
+      }
+    ).deleteServiceAccount = async () => true;
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: new ControlPlane(), authService: fallbackAuth }).handler,
+          "DELETE",
+          "/api/v1/auth/service-accounts/legacy",
+        )
+      ).status,
+    ).toBe(204);
+
+    for (const removed of [true, false]) {
+      const legacyUserAuth = new AuthService({
+        mode: "disabled",
+        secret: "secret",
+        admins: admins(),
+      });
+      (
+        legacyUserAuth as unknown as {
+          deleteUser: () => Promise<boolean>;
+        }
+      ).deleteUser = async () => removed;
+      expect(
+        (
+          await invokeHandler(
+            createLocalApp({ plane: new ControlPlane(), authService: legacyUserAuth }).handler,
+            "DELETE",
+            `/api/v1/auth/users/legacy-${removed}`,
+          )
+        ).status,
+      ).toBe(removed ? 204 : 404);
+    }
+
+    const auditPlane = new ControlPlane();
+    auditPlane.appendAuditLog = async () => {
+      throw new Error("audit unavailable");
+    };
+    const auditAuth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+    expect(
+      (
+        await invokeHandler(
+          createLocalApp({ plane: auditPlane, authService: auditAuth }).handler,
+          "POST",
+          "/api/v1/auth/users",
+          { username: "audit", password: "password", role: "operator" },
+        )
+      ).status,
+    ).toBe(500);
+  });
+
+  it("fails closed for account conflict, deletion, and service-account audit writes", async () => {
+    function setup() {
+      const plane = new ControlPlane();
+      plane.appendAuditLog = async () => {
+        throw new Error("audit unavailable");
+      };
+      const auth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+      const invoke = (method: string, path: string, body?: unknown) =>
+        invokeHandler(createLocalApp({ plane, authService: auth }).handler, method, path, body);
+      return { plane, auth, invoke };
+    }
+
+    const conflict = setup();
+    conflict.plane.createRepository({ id: "repo", name: "repo", url: "url" });
+    conflict.plane.createCommand({ id: "cmd", name: "cmd", argv: ["echo"], providerId: null });
+    const owner = await conflict.auth.createUser({
+      username: "owner",
+      password: "password",
+      role: "operator",
+    });
+    conflict.plane.putSchedule({
+      id: "schedule",
+      repositoryId: "repo",
+      principalId: owner.id,
+      name: "schedule",
+      target: { commandId: "cmd" },
+      cron: "* * * * *",
+      timeout: 30,
+    });
+    expect((await conflict.invoke("DELETE", "/api/v1/auth/users/owner")).status).toBe(500);
+
+    const user = setup();
+    await user.auth.createUser({ username: "user", password: "password", role: "operator" });
+    expect((await user.invoke("DELETE", "/api/v1/auth/users/user")).status).toBe(500);
+    expect((await setup().invoke("DELETE", "/api/v1/auth/users/missing")).status).toBe(500);
+
+    expect(
+      (
+        await setup().invoke("POST", "/api/v1/auth/service-accounts", {
+          name: "account",
+          role: "operator",
+        })
+      ).status,
+    ).toBe(500);
+
+    const rejected = setup();
+    (
+      rejected.auth as unknown as { createServiceAccount: () => Promise<never> }
+    ).createServiceAccount = async () => {
+      throw new Error("create failed");
+    };
+    expect(
+      (
+        await rejected.invoke("POST", "/api/v1/auth/service-accounts", {
+          name: "account",
+          role: "operator",
+        })
+      ).status,
+    ).toBe(500);
+    expect((await setup().invoke("DELETE", "/api/v1/auth/service-accounts/missing")).status).toBe(
+      500,
+    );
+  });
 });

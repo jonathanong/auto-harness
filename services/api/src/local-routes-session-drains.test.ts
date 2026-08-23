@@ -159,6 +159,25 @@ describe("session drain route outcomes", () => {
     expect(releases).toBe(2);
   });
 
+  it("records unknown and failed terminal states when releasing a drain", async () => {
+    const { plane, invoke, author } = await harness();
+    const operationPath = "/api/v1/repositories/repo/session-drains/operation/release";
+    const metadata: unknown[] = [];
+    plane.appendAuditLog = async (record) => {
+      metadata.push(record.metadata);
+    };
+    plane.getSessionDrainDurable = async () => null;
+    plane.releaseSessionDrainDurable = async () => drain({ status: "released" });
+    expect((await invoke("POST", operationPath, author.apiKey)).status).toBe(200);
+
+    plane.getSessionDrainDurable = async () => drain({ status: "failed" });
+    expect((await invoke("POST", operationPath, author.apiKey)).status).toBe(200);
+    expect(metadata).toEqual([
+      expect.objectContaining({ terminalStatus: "unknown", incomplete: false }),
+      expect.objectContaining({ terminalStatus: "failed", incomplete: true }),
+    ]);
+  });
+
   it("fails closed when any durable operation throws", async () => {
     const { plane, invoke, author } = await harness();
     const collection = "/api/v1/repositories/repo/session-drains";

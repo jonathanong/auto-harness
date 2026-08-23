@@ -45,6 +45,19 @@ describe("auth forms", () => {
     expect(field(document.body, "login-error").textContent).toContain("Invalid username");
   });
 
+  it("normalizes missing login controls to empty credentials", async () => {
+    const fetch = createApiFake(json({ error: "nope" }, 401));
+    const view = mountForm(<LoginForm />);
+    field<HTMLInputElement>(view.container, "login-username").removeAttribute("name");
+    field<HTMLInputElement>(view.container, "login-password").removeAttribute("name");
+    submit(field(view.container, "form-login"));
+    await settle();
+    expect(JSON.parse(String(fetch.requests[0]?.[1]?.body))).toEqual({
+      username: "",
+      password: "",
+    });
+  });
+
   it("changes a password and reports API errors", async () => {
     createApiFake(json({ error: { message: "wrong password" } }, 400), json({ ok: true }));
     const view = mountForm(<ChangePasswordForm />);
