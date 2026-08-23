@@ -60,8 +60,9 @@ const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
 // Session creation can combine reference-marker checks for every route with
 // repository, drain, session, and activity actions in one DynamoDB transaction.
-// 93 fallbacks keeps the authenticated worst case within DynamoDB's 100-action limit.
-export const MAX_FALLBACKS = 93;
+// 92 fallbacks keeps the authenticated worst case, including a concurrency lock,
+// within DynamoDB's 100-action limit.
+export const MAX_FALLBACKS = 92;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
