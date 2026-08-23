@@ -87,6 +87,7 @@ describe("session drain activity-ledger migration resume", () => {
     let calls = 0;
     const transactionError = Object.assign(new Error("lost fence"), {
       name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ConditionalCheckFailed" }],
     });
     await expect(
       migrateSessionDrainActivityLedgerPage(
@@ -107,5 +108,27 @@ describe("session drain activity-ledger migration resume", () => {
         tables,
       ),
     ).resolves.toBe(false);
+  });
+
+  it("propagates a non-conditional finalizer transaction cancellation", async () => {
+    let calls = 0;
+    const transactionError = Object.assign(new Error("throttled"), {
+      name: "TransactionCanceledException",
+      CancellationReasons: [{ Code: "ThrottlingError" }],
+    });
+    await expect(
+      migrateSessionDrainActivityLedgerPage(
+        {
+          send: async () => {
+            calls += 1;
+            if (calls === 1) return {};
+            if (calls === 2) return { Attributes: { fence: 1 } };
+            if (calls === 3) return { Items: [] };
+            throw transactionError;
+          },
+        } as never,
+        tables,
+      ),
+    ).rejects.toBe(transactionError);
   });
 });

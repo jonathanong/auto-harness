@@ -29,12 +29,16 @@ type PendingWrite = NonNullable<
 >[number];
 
 function isConditionalFailure(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("name" in error)) return false;
+  const dynamoError = error as {
+    name?: unknown;
+    CancellationReasons?: Array<{ Code?: unknown }>;
+  };
+  if (dynamoError.name === "ConditionalCheckFailedException") return true;
+  if (dynamoError.name !== "TransactionCanceledException") return false;
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    ((error as { name?: unknown }).name === "ConditionalCheckFailedException" ||
-      (error as { name?: unknown }).name === "TransactionCanceledException")
+    dynamoError.CancellationReasons?.some((reason) => reason.Code === "ConditionalCheckFailed") ??
+    false
   );
 }
 

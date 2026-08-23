@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
+import { MAX_FALLBACKS, isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
 import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -129,7 +129,9 @@ export async function triggerScheduleDurable(
     }
     return {
       ok: false,
-      error: `schedule disabled: it has ${outcome.fallbackCount} persisted fallbacks; update it to at most 90`,
+      error: disabled
+        ? `schedule disabled: it has ${outcome.fallbackCount} persisted fallbacks; update it to at most ${MAX_FALLBACKS}`
+        : "schedule changed concurrently; legacy fallback disable was not applied",
     };
   }
   if (outcome.kind !== "created") {
@@ -410,7 +412,7 @@ function disableLegacyFallbackSchedule(
       metadata: {
         reason: "persisted schedule exceeds the durable transaction route limit",
         fallbackCount,
-        maxFallbacks: 90,
+        maxFallbacks: MAX_FALLBACKS,
       },
     },
     state.now(),
