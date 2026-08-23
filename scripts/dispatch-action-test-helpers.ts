@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const actionPath = fileURLToPath(new URL("../actions/dispatch/dist/index.js", import.meta.url));
 const servers: ReturnType<typeof createServer>[] = [];
 
-type Response = { body: unknown; status?: number };
+type Response = { body: unknown; delayMs?: number; status?: number };
 type Request = {
   headers: Record<string, string | string[] | undefined>;
   method?: string;
@@ -40,9 +40,10 @@ export const closeDispatchActionServers = async () => {
 
 export const serve = async (respond: (request: Request) => Response) => {
   const requests: Request[] = [];
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     requests.push({ headers: request.headers, method: request.method, url: request.url });
     const result = respond(requests.at(-1)!);
+    if (result.delayMs) await new Promise((resolve) => setTimeout(resolve, result.delayMs));
     response.writeHead(result.status ?? 200, { "content-type": "application/json" });
     response.end(JSON.stringify(result.body));
   });

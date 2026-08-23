@@ -77,15 +77,28 @@ const drainErrorDetails = (baseUrl, error) => {
   }
 };
 
-const request = async (baseUrl, apiKey, path, method = "GET", headers = {}) => {
-  const response = await fetch(`${baseUrl}/api/v1${path}`, {
-    method,
-    headers: {
-      accept: "application/json",
-      authorization: `Bearer ${apiKey}`,
-      ...headers,
-    },
-  });
+const request = async (baseUrl, apiKey, path, method = "GET", headers = {}, deadline) => {
+  let signal;
+  if (deadline !== undefined) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
+    signal = AbortSignal.timeout(Math.max(1, Math.ceil(remainingMs)));
+  }
+  let response;
+  try {
+    response = await fetch(`${baseUrl}/api/v1${path}`, {
+      method,
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${apiKey}`,
+        ...headers,
+      },
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error) {
+    if (signal?.aborted) throw new Error("Timed out waiting for principal session drain");
+    throw error;
+  }
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     const drain = drainErrorDetails(baseUrl, result.error);
@@ -108,12 +121,22 @@ const setDrainOutputs = (result) => {
 const waitForSucceededDrain = async (baseUrl, apiKey, path, repositoryId, operationId) => {
   const intervalMs = positiveNumberInput("poll-interval-seconds") * 1_000;
   const deadline = Date.now() + positiveNumberInput("poll-timeout-seconds") * 1_000;
-  let result = validateDrain(await request(baseUrl, apiKey, path), baseUrl, repositoryId, operationId);
+  let result = validateDrain(
+    await request(baseUrl, apiKey, path, "GET", {}, deadline),
+    baseUrl,
+    repositoryId,
+    operationId,
+  );
   while (result.status === "draining") {
     const remainingMs = deadline - Date.now();
     if (remainingMs <= 0) throw new Error("Timed out waiting for principal session drain");
     await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, remainingMs)));
-    result = validateDrain(await request(baseUrl, apiKey, path), baseUrl, repositoryId, operationId);
+    result = validateDrain(
+      await request(baseUrl, apiKey, path, "GET", {}, deadline),
+      baseUrl,
+      repositoryId,
+      operationId,
+    );
   }
   if (result.status !== "succeeded") {
     setDrainOutputs(result);

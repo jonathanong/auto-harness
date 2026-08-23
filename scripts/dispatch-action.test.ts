@@ -134,6 +134,21 @@ describe("dispatch action principal session drain operations", () => {
     expect(server.requests).toHaveLength(1);
   });
 
+  it("aborts a stalled status request at the polling deadline", async () => {
+    const server = await serve(() => ({ body: drain("draining"), delayMs: 100 }));
+
+    const result = await runAction({
+      ...drainInputs(server.origin, "wait-for-drain"),
+      "poll-interval-seconds": "0.001",
+      "poll-timeout-seconds": "0.02",
+      "session-drain-id": "drain-1",
+    });
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toMatch(/Timed out waiting for principal session drain/);
+    expect(server.requests).toHaveLength(1);
+  });
+
   it("makes DRAINING dispatch failures directly actionable", async () => {
     const server = await serve(() => ({
       status: 409,
@@ -151,6 +166,7 @@ describe("dispatch action principal session drain operations", () => {
       ...drainInputs(server.origin, "dispatch"),
       prompt: "review",
       target: '{"providerId":"codex"}',
+      timeout: "300",
     });
 
     expect(result.code).toBe(1);
