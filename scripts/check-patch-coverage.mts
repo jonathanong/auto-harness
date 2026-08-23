@@ -107,6 +107,53 @@ export function parseLcov(lcov: string): LcovFile[] {
   }
   return files;
 }
+
+type FilePatchCoverage = Omit<PatchCoverageResult, "percentage">;
+
+function emptyFilePatchCoverage(): FilePatchCoverage {
+  return { total: 0, covered: 0, uncovered: [], unmapped: [], missingFiles: [] };
+}
+
+function mergedLineHits(files: LcovFile[]): Map<number, number> {
+  const lineHits = new Map<number, number>();
+  for (const file of files) {
+    for (const [line, hits] of file.lines) {
+      lineHits.set(line, Math.max(lineHits.get(line) ?? 0, hits));
+    }
+  }
+  return lineHits;
+}
+
+function checkFilePatchCoverage(
+  path: string,
+  addedLines: LineNumbers,
+  files: LcovFile[],
+  readSource: SourceReader,
+): FilePatchCoverage {
+  if (coverageDisposition(path) === "ignored") return emptyFilePatchCoverage();
+  const executableLines = executableLineNumbers(readSource(path), path);
+  const changedLines = [...addedLines].filter((line) => executableLines.has(line));
+  if (changedLines.length === 0) return emptyFilePatchCoverage();
+
+  const matchingFiles = matchingLcovFiles(files, path);
+  const lineHits = mergedLineHits(matchingFiles);
+  const uncovered: PatchLine[] = [];
+  const unmapped: PatchLine[] = [];
+  let covered = 0;
+  for (const line of changedLines) {
+    if (!lineHits.has(line)) unmapped.push({ path, line });
+    if ((lineHits.get(line) ?? 0) > 0) covered += 1;
+    else uncovered.push({ path, line });
+  }
+  return {
+    total: changedLines.length,
+    covered,
+    uncovered,
+    unmapped,
+    missingFiles: matchingFiles.length === 0 ? [path] : [],
+  };
+}
+
 export function checkPatchCoverage(
   diff: string | DiffLines,
   lcov: string | LcovFile[],
@@ -122,26 +169,12 @@ export function checkPatchCoverage(
   let covered = 0;
 
   for (const [path, lines] of addedLines) {
-    if (coverageDisposition(path) === "ignored") continue;
-    const executableLines = executableLineNumbers(readSource(path), path);
-    const changedExecutableLines = [...lines].filter((line) => executableLines.has(line));
-    if (changedExecutableLines.length === 0) continue;
-
-    const matchingFiles = matchingLcovFiles(files, path);
-    if (matchingFiles.length === 0) missingFiles.push(path);
-    const lineHits = new Map<number, number>();
-    for (const file of matchingFiles) {
-      for (const [line, hits] of file.lines) {
-        lineHits.set(line, Math.max(lineHits.get(line) ?? 0, hits));
-      }
-    }
-
-    for (const line of changedExecutableLines) {
-      total += 1;
-      if (!lineHits.has(line)) unmapped.push({ path, line });
-      if ((lineHits.get(line) ?? 0) > 0) covered += 1;
-      else uncovered.push({ path, line });
-    }
+    const result = checkFilePatchCoverage(path, lines, files, readSource);
+    total += result.total;
+    covered += result.covered;
+    uncovered.push(...result.uncovered);
+    unmapped.push(...result.unmapped);
+    missingFiles.push(...result.missingFiles);
   }
 
   const percentage = total === 0 ? 100 : (covered / total) * 100;
