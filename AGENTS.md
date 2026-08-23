@@ -25,7 +25,7 @@ Product sequencing and locked decisions: [docs/plan.md](docs/plan.md).
 | `pnpm install`                | Install workspace                                                                                                                             |
 | `pnpm lint`                   | oxlint                                                                                                                                        |
 | `pnpm fmt` / `pnpm fmt:check` | oxfmt                                                                                                                                         |
-| `pnpm test`                   | vitest — unit + integration projects, with coverage thresholds (98/97/100/98 global)                                                          |
+| `pnpm test`                   | vitest — unit + integration projects, with 98/97/99/98 aggregate coverage thresholds                                                          |
 | `pnpm test:unit`              | vitest, unit project only                                                                                                                     |
 | `pnpm test:integration`       | vitest, integration project only (real HTTP+WS+daemon+git)                                                                                    |
 | `pnpm test:platform`          | Focused native host-daemon tests used by macOS/Windows CI                                                                                     |
@@ -61,9 +61,9 @@ worktree gets stable, reusable ports across runs.
 ## Testing
 
 - Framework: **vitest**, one config (`vitest.config.ts`) with two `test.projects`: **unit** (`modules/`, `services/`, `scripts/`) and **integration** (`integration/`, real HTTP+WS+daemon+git — see [docs/host-daemon-e2e-testing.md](docs/host-daemon-e2e-testing.md)).
-- Coverage: enforced globally at **lines 98 / branches 97 / functions 100 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`. `vitest.config.ts` is the authoritative exclude/deny-list (tests, `*.d.ts`, type-only files, thin CLIs, re-export barrels, unfinished Dynamo adapter splits). New source is included by those globs — do not add per-file include/threshold allow-lists. `services/host-daemon/src/cli.ts` is measured (thin `services/{api,cdk}/src/cli.ts` are not). The integration project carries no coverage gate of its own.
+- Coverage: Vitest enforces aggregate thresholds of **lines 98 / branches 97 / functions 99 / statements 98** on `modules/*/src/**/*.{ts,tsx}` and `services/*/src/**/*.{ts,tsx}`; the former 100% project function requirement is now **99%**, and CI enforces **99% patch line coverage** from the merged LCOV report and exact event base SHA. `vitest.config.ts` is the authoritative exclude/deny-list (tests, `*.d.ts`, type-only files, thin CLIs, re-export barrels, unfinished Dynamo adapter splits). New source is included by those globs — do not add per-file include/threshold allow-lists. `services/host-daemon/src/cli.ts` is measured (thin `services/{api,cdk}/src/cli.ts` are not). The integration project carries no coverage gate of its own. Four critical Dynamo adapter files retain a separate exact-coverage verifier.
 - **Mock only host CLI boundaries** (`child_process`, `node-pty`, and similar “run a CLI tool” adapters). Prefer real modules, in-memory fakes, and pure functions for everything else.
-- Do not lower coverage thresholds to land incomplete code.
+- Do not lower the 99% project-function or patch coverage targets to land incomplete code.
 
 ## TypeScript / runtime
 

@@ -44,6 +44,7 @@ function seededPlane(storage?: object): ControlPlane {
     nextRunAt: "2026-01-01T00:01:00.000Z",
     lastRunAt: null,
     createdAt: NOW,
+    principalId: "system",
     concurrencyId: "schedule-schedule",
   });
   if (storage) addDurableReadDefaults(plane.state);
@@ -186,6 +187,7 @@ describe("repository and schedule route coverage", () => {
         throw new Error("claim failed");
       },
     });
+    plane.state.schedules.get("schedule")!.principalId = "principal";
     const response = await invoke(plane, "POST", "/api/v1/schedules/schedule/trigger", {});
     expect(response).toMatchObject({ status: 500, json: { error: { code: "INTERNAL_ERROR" } } });
   });

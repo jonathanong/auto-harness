@@ -250,6 +250,24 @@ pnpm --filter @auto-harness/cdk run update
 stacks, and runs the REST and web health checks. It also recreates missing runtime
 or web stacks after a retained teardown.
 
+### First rollout of the principal session-drain ledger
+
+The first revision containing the principal session-drain activity ledger has a
+one-time mixed-version constraint. Before running `update`, stop external session
+admission and disable the environment's EventBridge cron rule. Wait for in-flight
+REST, WebSocket, and cron Lambda invocations to finish, then keep that gate in
+place while `update` replaces every runtime writer. A new runtime cold start
+strongly backfills active owned sessions and publishes the ledger readiness
+marker only after the scan completes. Verify the `SessionDrains` table contains
+`scopeKey=__session-drain-ledger__` and `recordKey=ACTIVITY-V1`, then re-enable
+cron and external admission.
+
+Do not allow old and new runtime writers to overlap this bootstrap: an old warm
+Lambda does not write activity members and could otherwise admit a session after
+the readiness marker was published. This gate is required only for the first
+ledger rollout; later revisions all participate in the same transactional member
+protocol.
+
 ## Teardown
 
 Drain connected hosts first. Then supply the exact environment confirmation:

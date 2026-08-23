@@ -14,6 +14,7 @@ import {
   type LogRecord,
   type PlaneStorageCtx,
   type RepositoryRecord,
+  type SessionDrainRecord,
   type ScheduleRecord,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
@@ -25,6 +26,7 @@ import * as auth from "./plane-storage-auth.ts";
 import * as mainCheckout from "./plane-storage-main-checkout.ts";
 import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
+import * as sessionDrains from "./plane-storage-session-drains.ts";
 
 /**
  * Sessions/worktrees/locks/schedules/repositories/archives/agent-hosts delegators.
@@ -53,6 +55,12 @@ export class DynamoPlaneStorageBase {
     return sessions.releaseConcurrencyLock(this.ctx, concurrencyId, sessionId);
   }
 
+  cancelRunningSession(
+    opts: Parameters<typeof sessions.cancelRunningSession>[1],
+  ): Promise<boolean> {
+    return sessions.cancelRunningSession(this.ctx, opts);
+  }
+
   getSession(id: string, consistentRead = false): Promise<SessionRecord | null> {
     return sessions.getSession(this.ctx, id, consistentRead);
   }
@@ -63,6 +71,55 @@ export class DynamoPlaneStorageBase {
 
   listSessionsByRepository(repositoryId: string): Promise<SessionRecord[]> {
     return sessions.listSessionsByRepository(this.ctx, repositoryId);
+  }
+
+  async listSessionsForDrain(
+    repositoryId: string,
+    principalId: string,
+    _operationId: string,
+    _shardCount: number,
+  ): Promise<SessionRecord[]> {
+    const activities = await sessionDrains.listSessionDrainActivities(
+      this.ctx,
+      repositoryId,
+      principalId,
+    );
+    const records: SessionRecord[] = [];
+    // A principal may have a long activity history after an outage. Bound the
+    // exact strong reads instead of creating an unbounded Promise.all burst.
+    const exactReadConcurrency = 20;
+    for (let offset = 0; offset < activities.length; offset += exactReadConcurrency) {
+      const resolved = await Promise.all(
+        activities.slice(offset, offset + exactReadConcurrency).map(async (activity) => ({
+          activity,
+          session: await sessions.getSession(this.ctx, activity.sessionId, true),
+        })),
+      );
+      for (const { activity, session } of resolved) {
+        const owner = session?.principalId ?? session?.metadata?.createdBy;
+        const stillOccupiesScope =
+          session?.status === "queued" ||
+          session?.status === "running" ||
+          (session?.status === "cancelled" &&
+            (session.worktreeId != null || session.mainCheckoutLease === true));
+        if (
+          session &&
+          session.repositoryId === repositoryId &&
+          owner === principalId &&
+          stillOccupiesScope
+        ) {
+          records.push(session);
+          continue;
+        }
+        // Session IDs and principal ownership are immutable after admission.
+        // A missing or terminal exact row can therefore only make this member
+        // stale. Deleting with both immutable attributes avoids racing a
+        // hand-repaired/recreated activity row.
+        await sessionDrains.deleteSessionDrainActivity(this.ctx, activity);
+        if (session?.repositoryId === repositoryId && owner === principalId) records.push(session);
+      }
+    }
+    return records;
   }
 
   countSessionsByRepository(repositoryId: string, hostId?: string): Promise<number> {
@@ -77,6 +134,41 @@ export class DynamoPlaneStorageBase {
 
   listSessionsByStatus(status: SessionStatus, shard: number): Promise<SessionRecord[]> {
     return sessions.listSessionsByStatus(this.ctx, status, shard);
+  }
+
+  createOrGetSessionDrain(
+    record: SessionDrainRecord,
+  ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
+    return sessionDrains.createOrGetSessionDrain(this.ctx, record);
+  }
+
+  getSessionDrain(repositoryId: string, principalId: string): Promise<SessionDrainRecord | null> {
+    return sessionDrains.getSessionDrain(this.ctx, repositoryId, principalId);
+  }
+
+  getSessionDrainOperation(
+    repositoryId: string,
+    principalId: string,
+    operationId: string,
+  ): Promise<SessionDrainRecord | null> {
+    return sessionDrains.getSessionDrainOperation(this.ctx, repositoryId, principalId, operationId);
+  }
+
+  listSessionDrains(consistentRead = false): Promise<SessionDrainRecord[]> {
+    return sessionDrains.listSessionDrains(this.ctx, consistentRead);
+  }
+
+  updateSessionDrain(record: SessionDrainRecord): Promise<boolean> {
+    return sessionDrains.updateSessionDrain(this.ctx, record);
+  }
+
+  releaseSessionDrain(
+    repositoryId: string,
+    principalId: string,
+    operationId: string,
+    now: string,
+  ): Promise<SessionDrainRecord | null> {
+    return sessionDrains.releaseSessionDrain(this.ctx, repositoryId, principalId, operationId, now);
   }
 
   putUsageRecord(
@@ -133,6 +225,7 @@ export class DynamoPlaneStorageBase {
     worktreeId: string;
     hostId: string;
     hostInventoryVersion: number | null;
+    principalId?: string;
     connectionId: string;
     now: string;
     attemptId: string;
@@ -164,6 +257,7 @@ export class DynamoPlaneStorageBase {
     sessionId: string;
     hostId: string;
     hostInventoryVersion: number | null;
+    principalId?: string;
     repositoryId: string;
     connectionId: string;
     now: string;
@@ -186,6 +280,7 @@ export class DynamoPlaneStorageBase {
     completedAt: string;
     deadlineAt: string;
     errorMessage: string;
+    drainOperationId?: string;
   }): Promise<boolean> {
     return mainCheckout.cancelRunningMainCheckoutSession(this.ctx, opts);
   }
@@ -291,6 +386,7 @@ export class DynamoPlaneStorageBase {
     completedAt: string;
     errorMessage: string;
     concurrencyId?: string;
+    drainOperationId?: string;
   }): Promise<boolean> {
     return sessions.cancelQueuedSession(this.ctx, opts);
   }
@@ -644,6 +740,16 @@ export class DynamoPlaneStorageBase {
     );
   }
 
+  skipOwnerlessScheduleAndAudit(opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    lastRunAt: string;
+    audit: import("../audit-types.ts").AuditLogRecord;
+  }): Promise<boolean> {
+    return catalog.skipOwnerlessScheduleAndAudit(this.ctx, opts);
+  }
+
   tryClaimScheduleAndCreateSession(opts: {
     scheduleId: string;
     expectedNextRunAt: string;
@@ -661,6 +767,29 @@ export class DynamoPlaneStorageBase {
     newNextRunAt: string;
   }): Promise<boolean> {
     return catalog.skipScheduleForClosedRepository(this.ctx, opts);
+  }
+
+  skipScheduleForPrincipalDrain(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    principalId: string;
+    operationId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForPrincipalDrain(this.ctx, opts);
+  }
+
+  skipScheduleForPrincipalDrainAndAudit(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    principalId: string;
+    operationId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    audit: import("../audit-types.ts").AuditLogRecord;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForPrincipalDrainAndAudit(this.ctx, opts);
   }
 
   skipScheduleForActiveConcurrency(opts: {
@@ -744,6 +873,13 @@ export class DynamoPlaneStorageBase {
 
   listAuthAccounts(): Promise<AuthAccountRecord[]> {
     return auth.listAuthAccounts(this.ctx);
+  }
+
+  deleteAuthAccountFenced(
+    id: string,
+    marker: import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker,
+  ): Promise<import("../auth-accounts.ts").FencedAuthAccountDelete> {
+    return auth.deleteAuthAccountFenced(this.ctx, id, marker);
   }
 
   deleteAuthAccount(id: string): Promise<void> {

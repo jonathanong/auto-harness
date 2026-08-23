@@ -102,10 +102,12 @@ export type ControlPlaneState = {
   providerAccountIdFactory: () => string;
   commandIdFactory: () => string;
   auditIdFactory: () => string;
+  sessionDrainIdFactory: () => string;
   shardCount: number;
   ackDeadlineMs: number;
   heartbeatStaleMs: number;
   reconnectGraceMs: number;
+  sessionDrainTimeoutMs: number;
   usageLimitRetryCeiling: number;
   archivePrefix: string;
   sessionCursorSecret: string;
@@ -168,12 +170,15 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     auditIdFactory: options.auditIdFactory
       ? options.auditIdFactory
       : () => `audit-${randomBytes(12).toString("hex")}`,
+    sessionDrainIdFactory:
+      options.sessionDrainIdFactory ?? (() => `drain-${randomBytes(12).toString("hex")}`),
     shardCount: options.shardCount ? options.shardCount : DEFAULT_QUEUE_SHARD_COUNT,
     ackDeadlineMs: options.ackDeadlineMs ? options.ackDeadlineMs : DEFAULT_ACK_DEADLINE_MS,
     heartbeatStaleMs: options.heartbeatStaleMs
       ? options.heartbeatStaleMs
       : DEFAULT_HEARTBEAT_STALE_MS,
     reconnectGraceMs: options.reconnectGraceMs ?? 75_000,
+    sessionDrainTimeoutMs: options.sessionDrainTimeoutMs ?? 15 * 60_000,
     usageLimitRetryCeiling: options.usageLimitRetryCeiling ?? 3,
     archivePrefix: options.archivePrefix ? options.archivePrefix : DEFAULT_ARCHIVE_PREFIX,
     sessionCursorSecret:
@@ -250,8 +255,13 @@ export function persistWorktree(state: ControlPlaneState, wt: WorktreeRecord): v
 }
 
 export function toPublic(state: ControlPlaneState, session: SessionRecord): PublicSession {
+  const {
+    principalId: _principalId,
+    cancelledByDrainOperationId: _cancelledByDrainOperationId,
+    ...publicSession
+  } = session;
   return {
-    ...session,
+    ...publicSession,
     url: `${state.publicBaseUrl}/sessions/${session.id}`,
   };
 }

@@ -12,6 +12,7 @@ import { createSession, getSession, resumeSession } from "./control-plane-sessio
 import {
   isCreateSessionConflict,
   isRepositoryAdmissionClosed,
+  sessionDrainOperationId,
 } from "./db/plane-storage-sessions.ts";
 import { getSessionDurable as getSessionRecordDurable } from "./control-plane-durable-read-runtime.ts";
 import {
@@ -20,13 +21,27 @@ import {
 } from "./control-plane-durable-read-catalog.ts";
 import { referenceMarkers } from "./control-plane-delete-reference-markers.ts";
 
-/** Durable REST create path: DynamoDB owns the concurrency-id compare-and-create. */
+function sessionDrainFailure(
+  error: unknown,
+): { ok: false; error: string; code: "DRAINING"; operationId: string } | undefined {
+  const operationId = sessionDrainOperationId(error);
+  return operationId
+    ? {
+        ok: false,
+        error: "principal session admission is draining",
+        code: "DRAINING",
+        operationId,
+      }
+    : undefined;
+}
+
 export async function createSessionDurable(
   state: ControlPlaneState,
   body: unknown,
+  options: { principalId?: string } = {},
 ): Promise<
   | { ok: true; session: PublicSession; created: boolean }
-  | { ok: false; error: string; code?: string }
+  | { ok: false; error: string; code?: string; operationId?: string }
 > {
   if (!state.storage) return createSession(state, body);
   await refreshTargetCatalogDurable(state);
@@ -41,9 +56,11 @@ export async function createSessionDurable(
   if (!prepared.ok) return prepared;
   let result;
   try {
-    const session = buildSessionRecord(state, prepared);
+    const session = buildSessionRecord(state, prepared, options.principalId);
     result = await state.storage.createSession(session, referenceMarkers(state.now(), session));
   } catch (err) {
+    const draining = sessionDrainFailure(err);
+    if (draining) return draining;
     if (isRepositoryAdmissionClosed(err)) {
       return {
         ok: false,
@@ -71,7 +88,7 @@ export async function resumeSessionDurable(
   opts: ResumeOptions = {},
 ): Promise<
   | { ok: true; session: PublicSession; created: boolean }
-  | { ok: false; error: string; code?: string }
+  | { ok: false; error: string; code?: string; operationId?: string }
 > {
   if (!state.storage) {
     return resumeSession(state, sessionId, opts);
@@ -81,8 +98,7 @@ export async function resumeSessionDurable(
   if (source) await getRepositoryDurable(state, source.repositoryId);
   const prepared = prepareResumedSession(state, sessionId, opts);
   if (!prepared.ok) return prepared;
-  // Durable preparation deliberately skips process-local deduplication; the
-  // storage transaction below is the only concurrency authority.
+  // The storage transaction below is the only concurrency authority.
   let result;
   try {
     result = await state.storage.createSession(
@@ -90,6 +106,8 @@ export async function resumeSessionDurable(
       referenceMarkers(state.now(), prepared.session),
     );
   } catch (err) {
+    const draining = sessionDrainFailure(err);
+    if (draining) return draining;
     if (isRepositoryAdmissionClosed(err)) {
       return {
         ok: false,
@@ -157,9 +175,6 @@ export async function cloneSessionDurable(
       referenceMarkers(state.now(), prepared.session),
     );
     state.sessions.set(result.session.id, { ...result.session });
-    // A clone never supplies a concurrency id, so a successful durable create
-    // must always be a new session. Keep this guard in case a custom storage
-    // implementation violates that contract.
     if (!result.created)
       return {
         ok: false,
@@ -168,6 +183,8 @@ export async function cloneSessionDurable(
       };
     return { ok: true, session: toPublic(state, result.session), created: true };
   } catch (err) {
+    const draining = sessionDrainFailure(err);
+    if (draining) return draining;
     if (isRepositoryAdmissionClosed(err)) {
       return {
         ok: false,

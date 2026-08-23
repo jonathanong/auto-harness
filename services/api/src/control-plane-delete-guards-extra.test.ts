@@ -42,6 +42,26 @@ const refs: DeleteReferences = {
       pinnedCommandId: "command",
     },
   ],
+  sessionDrains: [
+    {
+      recordKey: "CURRENT",
+      operationId: "drain",
+      repositoryId: "repository",
+      status: "succeeded",
+    },
+    {
+      recordKey: "OP#drain",
+      operationId: "drain",
+      repositoryId: "repository",
+      status: "succeeded",
+    },
+    {
+      recordKey: "CURRENT",
+      operationId: "released-drain",
+      repositoryId: "repository",
+      status: "released",
+    },
+  ],
   worktrees: [{ id: "worktree", repositoryId: "repository" }],
   inventories: [
     {
@@ -128,6 +148,7 @@ describe("catalog delete references in every route shape", () => {
       expect.arrayContaining([
         { kind: "schedule", id: "schedule" },
         { kind: "session", id: "running", status: "running" },
+        { kind: "session-drain", id: "drain", status: "succeeded" },
         { kind: "worktree", id: "worktree" },
         { kind: "host-inventory", id: "host" },
       ]),

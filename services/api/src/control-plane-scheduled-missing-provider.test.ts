@@ -72,15 +72,18 @@ describe("scheduled provider deletion", () => {
         ],
       }),
     ).resolves.toMatchObject({ ok: true });
-    const session = await created.plane.createSessionDurable({
-      repositoryId: "missing-provider-repo",
-      prompt: "scheduled run",
-      target: { providerId: "missing-provider" },
-      timeout: 30,
-      type: "scheduled",
-      source: "schedule",
-      concurrencyId: "missing-provider-lock",
-    });
+    const session = await created.plane.createSessionDurable(
+      {
+        repositoryId: "missing-provider-repo",
+        prompt: "scheduled run",
+        target: { providerId: "missing-provider" },
+        timeout: 30,
+        type: "scheduled",
+        source: "schedule",
+        concurrencyId: "missing-provider-lock",
+      },
+      { principalId: "system" },
+    );
     if (!session.ok) throw new Error(session.error);
     expect(
       resolveScheduledSessionTarget(

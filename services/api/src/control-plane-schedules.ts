@@ -75,9 +75,15 @@ function preparePutSchedule(
   const concurrencyIdBytes = concurrencyIdByteLengthError(concurrencyId);
   if (concurrencyIdBytes) return { ok: false, error: concurrencyIdBytes };
   const prompt = storedSchedulePrompt(input.prompt);
+  // Authenticated routes always supply their principal. Direct/in-memory use
+  // is the authentication-disabled control plane and therefore owns newly
+  // created schedules as the same durable system principal used by that route.
+  // Only rows persisted before schedule ownership existed remain ownerless.
+  const principalId = input.principalId ?? "system";
   const rec: ScheduleRecord = {
     id,
     repositoryId: input.repositoryId,
+    principalId,
     name: input.name,
     target: routing.value.target,
     fallbacks: routing.value.fallbacks,
@@ -160,6 +166,13 @@ export function prepareUpdateSchedule(
 ): { ok: true; schedule: ScheduleRecord } | { ok: false; error: string } {
   const existing = state.schedules.get(id);
   if (!existing) return { ok: false, error: "schedule not found" };
+  if (
+    existing.principalId &&
+    Object.hasOwn(patch, "principalId") &&
+    patch.principalId !== existing.principalId
+  ) {
+    return { ok: false, error: "schedule ownership cannot be transferred" };
+  }
   const now = state.now();
   if (!isValidUtcTimestamp(now)) {
     return { ok: false, error: "server clock must be an ISO-8601 UTC timestamp" };

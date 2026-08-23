@@ -66,6 +66,9 @@ describe("required CI check contract", () => {
     // the load-bearing coverage gate. No DynamoDB is needed to merge blobs.
     const fanIn = job("vitest");
     expect(fanIn).toContain("run: pnpm test:merge");
+    expect(fanIn).toContain("run: pnpm check:coverage:patch");
+    expect(fanIn).toContain("COVERAGE_BASE_SHA:");
+    expect(fanIn).toContain("fetch-depth: 0");
     expect(fanIn).toContain("run: pnpm check:coverage:dynamo-adapters");
     expect(fanIn).not.toContain("run: pnpm local:dynamodb:ready");
     expect(fanIn).not.toContain("services:\n      dynamodb:");

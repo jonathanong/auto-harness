@@ -31,6 +31,7 @@ function session(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
     ...over,
   };
 }

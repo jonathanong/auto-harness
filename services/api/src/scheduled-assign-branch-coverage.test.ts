@@ -12,6 +12,7 @@ function queued(id: string, over: Partial<SessionRecord> = {}): SessionRecord {
   return {
     id,
     repositoryId: "repo",
+    principalId: "principal",
     prompt: id,
     target: { commandId: "cmd" },
     fallbacks: [],
@@ -119,5 +120,49 @@ describe("scheduled assignment branch coverage", () => {
     state.storage.tryAssignMainCheckoutSession = async () => (calls.push("claim-lost"), false);
     await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
     expect(calls).toEqual(["map", "map-ok", "claim-lost"]);
+  });
+
+  it("uses legacy metadata ownership for the durable main-checkout drain fence", async () => {
+    const state = baseState();
+    addHost(state, "host", "connection");
+    state.sessions.set(
+      "run",
+      queued("run", {
+        principalId: undefined,
+        metadata: { createdBy: "principal-legacy" },
+      }),
+    );
+    let assignedPrincipalId: string | undefined;
+    setDurableReadStorage(state, {
+      getMainCheckoutCursor: async () => null,
+      ensureMainCheckoutLeaseMap: async () => true,
+      tryAssignMainCheckoutSession: async (opts: { principalId?: string }) => {
+        assignedPrincipalId = opts.principalId;
+        return true;
+      },
+    });
+
+    await expect(assignScheduledQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(assignedPrincipalId).toBe("principal-legacy");
+  });
+
+  it("cancels an ownerless legacy scheduled session before assignment", async () => {
+    const state = baseState();
+    addHost(state, "host", "connection");
+    state.sessions.set("run", queued("run", { principalId: undefined }));
+    let attempted = false;
+    setDurableReadStorage(state, {
+      getMainCheckoutCursor: async () => null,
+      ensureMainCheckoutLeaseMap: async () => true,
+      cancelQueuedSession: async () => true,
+      tryAssignMainCheckoutSession: async () => {
+        attempted = true;
+        return true;
+      },
+    });
+
+    await expect(assignScheduledQueuedDurable(state)).resolves.toEqual([]);
+    expect(attempted).toBe(false);
+    expect(state.sessions.get("run")?.status).toBe("cancelled");
   });
 });

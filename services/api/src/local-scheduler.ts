@@ -14,6 +14,7 @@ type SchedulerPlane = Pick<
   | "enforceRunningTimeoutsDurable"
   | "reclaimStaleHostsDurable"
   | "reconcileRepositoryDrainsDurable"
+  | "reconcileSessionDrainsDurable"
   | "assignQueuedDurable"
   | "assignScheduledQueuedDurable"
 >;
@@ -86,6 +87,7 @@ export class LocalScheduler {
       () => this.plane.enforceRunningTimeoutsDurable(),
       () => this.plane.reclaimStaleHostsDurable(),
       () => this.plane.reconcileRepositoryDrainsDurable(),
+      () => this.plane.reconcileSessionDrainsDurable(),
       () => this.plane.assignQueuedDurable(),
       () => this.plane.assignScheduledQueuedDurable(),
     ];

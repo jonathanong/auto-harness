@@ -13,6 +13,7 @@ import { repositoryAdmissionFailure } from "./control-plane-repository-admission
 const DEFAULT_CONTINUATION_PROMPT = "Continue from the previous session.";
 
 export type ResumeOptions = {
+  principalId?: string;
   pinExpiresAt?: string;
   prompt?: string;
   timeout?: number;
@@ -20,6 +21,9 @@ export type ResumeOptions = {
 };
 
 function validateResumeOverrides(opts: ResumeOptions): string | null {
+  if (opts.principalId !== undefined && typeof opts.principalId !== "string") {
+    return "principalId must be a string";
+  }
   if (opts.prompt !== undefined) {
     if (typeof opts.prompt !== "string" || opts.prompt.length === 0) {
       return "prompt must be a non-empty string";
@@ -138,7 +142,19 @@ export function prepareResumedSession(
     ...(source.cliResumeRef !== undefined ? { cliResumeRef: source.cliResumeRef } : {}),
     ...(source.resumeSpec !== undefined ? { resumeSpec: copyResumeSpec(source.resumeSpec) } : {}),
     ...(source.concurrencyId !== undefined ? { concurrencyId: source.concurrencyId } : {}),
-    ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
+    ...(opts.principalId !== undefined
+      ? {
+          metadata: { ...source.metadata, createdBy: opts.principalId },
+          principalId: opts.principalId,
+        }
+      : {
+          ...(source.metadata !== undefined ? { metadata: source.metadata } : {}),
+          ...(source.principalId !== undefined
+            ? { principalId: source.principalId }
+            : typeof source.metadata?.createdBy === "string"
+              ? { principalId: source.metadata.createdBy }
+              : {}),
+        }),
     type: "prompt",
     source: "api",
   };

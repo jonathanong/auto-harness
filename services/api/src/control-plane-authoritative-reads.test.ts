@@ -181,6 +181,7 @@ describe("authoritative durable reads", () => {
       (
         await writer.putScheduleDurable({
           repositoryId: "repository",
+          principalId: "principal",
           name: "schedule",
           target: { commandId: "command" },
           cron: "* * * * *",

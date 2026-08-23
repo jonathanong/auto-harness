@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { hasHostCapability, type HostWireMessage } from "@auto-harness/shared";
 
 import type { PublicSession } from "./control-plane-types.ts";
@@ -15,6 +16,7 @@ import {
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
 import { cancelSessionDurable } from "./control-plane-cancel-durable.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
+import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 export { releaseScheduledLeaseLocal } from "./control-plane-scheduled-lease.ts";
 
@@ -105,6 +107,11 @@ export async function assignScheduledQueuedDurable(
         continue;
       }
       if (!repositoryAdmissionOpen(admissionState)) continue;
+      const principalId = sessionPrincipalId(session);
+      if (!principalId) {
+        await cancelSessionDurable(state, session.id);
+        continue;
+      }
       for (const { hostId, connectionId } of await eligibleHosts(state, session.repositoryId)) {
         const connection = state.connections.get(connectionId);
         if (state.hostConnection.get(hostId) !== connectionId || !connection?.runtime?.gitReady)
@@ -117,6 +124,7 @@ export async function assignScheduledQueuedDurable(
             (await state.storage.tryAssignMainCheckoutSession({
               sessionId: session.id,
               hostId,
+              principalId,
               hostInventoryVersion: state.hostInventories.has(hostId)
                 ? (state.hostInventories.get(hostId)!.version ?? 0)
                 : null,

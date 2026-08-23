@@ -45,15 +45,18 @@ async function assignedScheduledSession(
   run: Awaited<ReturnType<typeof registeredPlane>>,
   concurrencyId: string,
 ) {
-  const created = await run.plane.createSessionDurable({
-    repositoryId: REPOSITORY_ID,
-    prompt: "scheduled run",
-    target: { commandId: COMMAND_ID },
-    timeout: 30,
-    type: "scheduled",
-    source: "schedule",
-    concurrencyId,
-  });
+  const created = await run.plane.createSessionDurable(
+    {
+      repositoryId: REPOSITORY_ID,
+      prompt: "scheduled run",
+      target: { commandId: COMMAND_ID },
+      timeout: 30,
+      type: "scheduled",
+      source: "schedule",
+      concurrencyId,
+    },
+    { principalId: "system" },
+  );
   if (!created.ok) throw new Error(created.error);
   expect(await run.plane.assignScheduledQueuedDurable()).toHaveLength(1);
   const assigned = run.plane.state.sessions.get(created.session.id)!;
@@ -125,15 +128,18 @@ describe("durable scheduled cancellation races", () => {
         replaceExisting: true,
       }),
     ).toMatchObject({ ok: true });
-    const next = await restarted.plane.createSessionDurable({
-      repositoryId: REPOSITORY_ID,
-      prompt: "next scheduled run",
-      target: { commandId: COMMAND_ID },
-      timeout: 30,
-      type: "scheduled",
-      source: "schedule",
-      concurrencyId: "cancel-exact-lock",
-    });
+    const next = await restarted.plane.createSessionDurable(
+      {
+        repositoryId: REPOSITORY_ID,
+        prompt: "next scheduled run",
+        target: { commandId: COMMAND_ID },
+        timeout: 30,
+        type: "scheduled",
+        source: "schedule",
+        concurrencyId: "cancel-exact-lock",
+      },
+      { principalId: "system" },
+    );
     expect(next).toMatchObject({ ok: true, created: true });
     expect(await restarted.plane.assignScheduledQueuedDurable()).toHaveLength(1);
     if (!next.ok) throw new Error(next.error);

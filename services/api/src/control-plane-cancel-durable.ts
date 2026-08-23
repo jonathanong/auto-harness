@@ -11,6 +11,7 @@ import { releaseWorktree } from "./control-plane-worktree-release.ts";
 export async function cancelSessionDurable(
   state: ControlPlaneState,
   id: string,
+  options: { drainOperationId?: string } = {},
 ): Promise<{ ok: true; session: PublicSession } | { ok: false; error: string }> {
   if (!state.storage) return cancelSession(state, id);
   // A cached running scheduled session identifies the exact assignment that
@@ -26,8 +27,45 @@ export async function cancelSessionDurable(
     return { ok: false, error: `session already terminal: ${session.status}` };
   }
   if (session.status === "running") {
-    if (!session.mainCheckoutLease) return cancelSession(state, id);
     const assignment = expectedAssignment ?? session;
+    if (!session.mainCheckoutLease) {
+      if (
+        assignment.status !== "running" ||
+        !assignment.worktreeId ||
+        !assignment.hostId ||
+        !assignment.assignmentConnectionId ||
+        !assignment.attemptId
+      ) {
+        return { ok: false, error: "session changed before cancellation" };
+      }
+      const completedAt = state.now();
+      const errorMessage = "cancelled by operator";
+      const cancelled = await state.storage.cancelRunningSession({
+        sessionId: id,
+        worktreeId: assignment.worktreeId,
+        hostId: assignment.hostId,
+        connectionId: assignment.assignmentConnectionId,
+        attemptId: assignment.attemptId,
+        queueShard: assignment.queueShard,
+        completedAt,
+        errorMessage,
+        ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
+      });
+      if (!cancelled) return { ok: false, error: "session changed before cancellation" };
+      state.pendingAcks.delete(id);
+      session.status = "cancelled";
+      session.errorMessage = errorMessage;
+      session.completedAt = completedAt;
+      const updatedSession = {
+        ...session,
+        ...(options.drainOperationId
+          ? { cancelledByDrainOperationId: options.drainOperationId }
+          : {}),
+      };
+      state.sessions.set(id, updatedSession);
+      state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
+      return { ok: true, session: toPublic(state, updatedSession) };
+    }
     if (
       assignment.status !== "running" ||
       !assignment.mainCheckoutLease ||
@@ -49,6 +87,7 @@ export async function cancelSessionDurable(
       completedAt,
       deadlineAt,
       errorMessage,
+      ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
     });
     if (!cancelled) return { ok: false, error: "session changed before cancellation" };
     state.pendingAcks.delete(id);
@@ -56,12 +95,18 @@ export async function cancelSessionDurable(
     session.errorMessage = errorMessage;
     session.completedAt = completedAt;
     session.reconnectDeadlineAt = deadlineAt;
-    state.sessions.set(id, { ...session });
+    const updatedSession = {
+      ...session,
+      ...(options.drainOperationId
+        ? { cancelledByDrainOperationId: options.drainOperationId }
+        : {}),
+    };
+    state.sessions.set(id, updatedSession);
     // assignment.hostId (not session.hostId) — the guard above validated this exact
     // value as the host that actually holds the lease being cancelled; session is the
     // separately-fetched fresh record and isn't guaranteed to agree in a race.
     state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
-    return { ok: true, session: toPublic(state, session) };
+    return { ok: true, session: toPublic(state, updatedSession) };
   }
 
   const completedAt = state.now();
@@ -72,6 +117,7 @@ export async function cancelSessionDurable(
     completedAt,
     errorMessage,
     ...(session.concurrencyId ? { concurrencyId: session.concurrencyId } : {}),
+    ...(options.drainOperationId ? { drainOperationId: options.drainOperationId } : {}),
   });
   if (!cancelled) return { ok: false, error: "session changed before cancellation" };
 
@@ -82,6 +128,10 @@ export async function cancelSessionDurable(
   session.completedAt = completedAt;
   session.worktreeId = null;
   session.hostId = null;
-  state.sessions.set(id, { ...session });
-  return { ok: true, session: toPublic(state, session) };
+  const updatedSession = {
+    ...session,
+    ...(options.drainOperationId ? { cancelledByDrainOperationId: options.drainOperationId } : {}),
+  };
+  state.sessions.set(id, updatedSession);
+  return { ok: true, session: toPublic(state, updatedSession) };
 }

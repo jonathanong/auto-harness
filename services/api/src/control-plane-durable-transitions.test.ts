@@ -12,14 +12,18 @@ import { reclaimStaleHostsDurable } from "./control-plane-lifecycle.ts";
 import { appendLogDurable } from "./control-plane-messages.ts";
 import { tryClaimScheduleFireDurable } from "./control-plane-schedule-fire.ts";
 import { offlineHostAndRequeueDurable } from "./control-plane-worktrees.ts";
-import { createDynamoTestCtx, putActiveTestRepository } from "./db/dynamo-test-helpers.ts";
+import {
+  createDynamoTestCtx,
+  putActiveTestRepository,
+  putTestPrincipal,
+} from "./db/dynamo-test-helpers.ts";
 
 const ctx = createDynamoTestCtx("Durable");
 
 beforeAll(async () => {
   if (!ctx.storage) return;
-  await Promise.all(
-    [
+  await Promise.all([
+    ...[
       "repo-cancelled-late-terminal",
       "repo-durable",
       "repo-failing-log",
@@ -38,7 +42,13 @@ beforeAll(async () => {
       "repo-schedule",
       "coverage-repo",
     ].map((id) => putActiveTestRepository(ctx.storage!, id)),
-  );
+    ...[
+      "principal-manual",
+      "principal-review",
+      "principal-review-account",
+      "principal-schedule",
+    ].map((id) => putTestPrincipal(ctx.storage!, id)),
+  ]);
 });
 
 describe("durable control-plane transitions", () => {
@@ -225,6 +235,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-durable",
       repositoryId: "repo-schedule",
+      principalId: "principal-schedule",
       name: "nightly",
       target: { commandId: "cmd-schedule" },
       fallbacks: [],
@@ -270,6 +281,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-evaluate",
       repositoryId: "repo-schedule",
+      principalId: "principal-schedule",
       name: "evaluate",
       target: { commandId: "cmd-schedule" },
       fallbacks: [],
@@ -334,6 +346,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-manual-durable",
       repositoryId: "repo-manual-durable",
+      principalId: "principal-manual",
       name: "manual",
       target: { commandId: "cmd-manual-durable" },
       fallbacks: [],
@@ -687,6 +700,7 @@ describe("durable control-plane transitions", () => {
       name: "idempotent",
       argv: ["echo"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -1032,6 +1046,7 @@ describe("durable control-plane transitions", () => {
       name: "review durable",
       argv: ["echo"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: null,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
@@ -1161,6 +1176,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-review-missing-target",
       repositoryId: "repo-review-target",
+      principalId: "principal-review",
       name: "missing target",
       target: { commandId: "cmd-review-durable" },
       fallbacks: [],
@@ -1207,6 +1223,7 @@ describe("durable control-plane transitions", () => {
     await ctx.storage.putSchedule({
       id: "schedule-review-missing-account",
       repositoryId: "repo-review-account",
+      principalId: "principal-review-account",
       name: "missing account",
       target: { providerId: "provider-review-missing" },
       fallbacks: [],
@@ -1393,6 +1410,7 @@ describe("durable control-plane transitions", () => {
       name: "coverage",
       argv: ["echo"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: null,
       createdAt: "t",
       updatedAt: "t",
@@ -1402,6 +1420,7 @@ describe("durable control-plane transitions", () => {
       name: "coverage",
       argv: ["echo"],
       appendPrompt: true,
+      appendPromptSeparator: false,
       providerId: null,
       createdAt: "t",
       updatedAt: "t",

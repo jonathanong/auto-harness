@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -17,6 +18,7 @@ function makeDurableSchedulePlane() {
   plane.createRepository({ id: "repo-1", name: "repo-1", url: "r" });
   const schedule = putScheduleOrThrow(plane, {
     repositoryId: "repo-1",
+    principalId: "principal-1",
     name: "nightly",
     target: { commandId: "cmd-base" },
     cron: "* * * * *",
@@ -169,6 +171,31 @@ describe("schedule concurrency", () => {
       expect(cron.plane.getSchedule(cron.schedule.id)?.nextRunAt).toBe(
         skipped ? "2026-01-01T00:02:00.000Z" : "2026-01-01T00:01:00.000Z",
       );
+    }
+
+    for (const skipped of [true, false]) {
+      const draining = makeDurableSchedulePlane();
+      draining.plane.state.schedules.get(draining.schedule.id)!.principalId = "principal-1";
+      setDurableReadStorage(draining.plane.state, {
+        tryClaimScheduleAndCreateSession: async () => ({
+          kind: "draining",
+          operationId: "drain-1",
+        }),
+        skipScheduleForPrincipalDrainAndAudit: async () => skipped,
+      });
+      await expect(
+        tryClaimScheduleFireDurable(
+          draining.plane.state,
+          draining.schedule.id,
+          draining.schedule.nextRunAt,
+          "2026-01-01T00:01:00.000Z",
+        ),
+      ).resolves.toBeNull();
+      expect(
+        [...draining.plane.state.auditLogs.values()].filter(
+          (record) => record.action === "session-drain:admission-rejected",
+        ),
+      ).toHaveLength(skipped ? 1 : 0);
     }
 
     const lost = makeDurableSchedulePlane();

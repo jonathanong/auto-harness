@@ -105,32 +105,46 @@ export async function handleSessionResumeRoute(ctx: RouteCtx): Promise<boolean> 
       ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
       ...(typeof body.timeout === "number" ? { timeout: body.timeout } : {}),
       ...(typeof body.priority === "number" ? { priority: body.priority } : {}),
+      ...(ctx.principal ? { principalId: ctx.principal.id } : {}),
     });
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "session:resume",
+          action:
+            result.code === "DRAINING" ? "session-drain:admission-rejected" : "session:resume",
           resourceType: "session",
           resourceId: id,
           repositoryId: existing.repositoryId,
-          outcome: "failed",
+          outcome: result.code === "FORBIDDEN" ? "denied" : "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         }))
       )
         return true;
       const missing = result.error === "session not found";
       const admissionClosed = result.code === "REPOSITORY_ADMISSION_CLOSED";
+      const draining = result.code === "DRAINING";
+      const forbidden = result.code === "FORBIDDEN";
       const conflict =
         admissionClosed ||
+        draining ||
         existing.type === "scheduled" ||
         /already terminal|must be terminal|no agent|conflicted|changed before/i.test(result.error);
       let code = "VALIDATION_ERROR";
       if (conflict) code = "CONFLICT";
       if (admissionClosed) code = "REPOSITORY_ADMISSION_CLOSED";
+      if (draining) code = "DRAINING";
       if (missing) code = "NOT_FOUND";
-      send(res, missing ? 404 : conflict ? 409 : 400, {
+      if (forbidden) code = "FORBIDDEN";
+      send(res, missing ? 404 : forbidden ? 403 : conflict ? 409 : 400, {
         error: {
           code,
           message: result.error,
+          ...(result.operationId
+            ? {
+                operationId: result.operationId,
+                statusUrl: `/api/v1/repositories/${encodeURIComponent(existing.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+              }
+            : {}),
         },
       });
       return true;

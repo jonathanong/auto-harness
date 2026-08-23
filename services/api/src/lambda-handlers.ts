@@ -44,6 +44,7 @@ export type CronResult = {
   ackDeadlinesEnforced: number;
   runningTimeoutsEnforced: number;
   repositoriesReconciled: number;
+  sessionDrainsReconciled: number;
   queuedAssigned: number;
   scheduledAssigned: number;
   schedulesFired: number;
@@ -237,6 +238,7 @@ export async function createLambdaRuntime(
         await created.plane.refreshSchedulerReadModelDurable();
         const staleHostsReclaimed = await created.plane.reclaimStaleHostsDurable();
         const repositoriesReconciled = await created.plane.reconcileRepositoryDrainsDurable();
+        const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
         return {
@@ -244,6 +246,7 @@ export async function createLambdaRuntime(
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,
           queuedAssigned: queuedAssigned.length,
           repositoriesReconciled: repositoriesReconciled.length,
+          sessionDrainsReconciled: sessionDrainsReconciled.length,
           scheduledAssigned: scheduledAssigned.length,
           schedulesFired: schedulesFired.length,
           staleHostsReclaimed: staleHostsReclaimed.length,

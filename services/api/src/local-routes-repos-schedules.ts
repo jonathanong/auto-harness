@@ -3,6 +3,7 @@ import { readJson, send, sendInternalError, type RouteCtx } from "./local-http.t
 import { mayAccessRepository } from "./auth-policy.ts";
 import { writeRouteAudit } from "./local-audit.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
+import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
 
 function scoped(ctx: RouteCtx, repositoryId: string | undefined): boolean {
   return !ctx.principal || mayAccessRepository(ctx.principal, repositoryId);
@@ -405,6 +406,7 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     try {
       const result = await plane.putScheduleDurable({
         repositoryId: body.repositoryId,
+        principalId: ctx.principal?.id ?? SYSTEM_AUDIT_ACTOR.id,
         name: body.name,
         target: body.target,
         ...(body.fallbacks !== undefined ? { fallbacks: body.fallbacks } : {}),
@@ -522,16 +524,32 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
     if (!result.ok) {
       if (
         !(await writeRouteAudit(ctx, {
-          action: "schedule:trigger",
+          action:
+            result.code === "DRAINING" ? "session-drain:admission-rejected" : "schedule:trigger",
           resourceType: "schedule",
           resourceId: schedTrigger[1]!,
           ...(triggerExisting?.repositoryId ? { repositoryId: triggerExisting.repositoryId } : {}),
           outcome: "failed",
+          ...(result.operationId ? { metadata: { operationId: result.operationId } } : {}),
         }))
       )
         return true;
-      const mapped = scheduleTriggerError(result.error);
-      send(res, mapped.status, { error: { code: mapped.code, message: result.error } });
+      const mapped =
+        result.code === "DRAINING"
+          ? { status: 409, code: "DRAINING" }
+          : scheduleTriggerError(result.error);
+      send(res, mapped.status, {
+        error: {
+          code: mapped.code,
+          message: result.error,
+          ...(result.operationId
+            ? {
+                operationId: result.operationId,
+                statusUrl: `/api/v1/repositories/${encodeURIComponent(triggerExisting!.repositoryId)}/session-drains/${encodeURIComponent(result.operationId)}`,
+              }
+            : {}),
+        },
+      });
       return true;
     }
     if (!scoped(ctx, result.session.repositoryId)) {
@@ -659,6 +677,9 @@ export async function handleScheduleRoutes(ctx: RouteCtx): Promise<boolean> {
           ...(typeof body.repositoryId === "string" ? { repositoryId: body.repositoryId } : {}),
           ...(typeof body.concurrencyId === "string" ? { concurrencyId: body.concurrencyId } : {}),
           ...(typeof body.prompt === "string" ? { prompt: body.prompt } : {}),
+          ...(!existing?.principalId
+            ? { principalId: ctx.principal?.id ?? SYSTEM_AUDIT_ACTOR.id }
+            : {}),
         });
         if (!result.ok) {
           if (

@@ -24,6 +24,7 @@ function setup(ids = ["s1", "s2"]) {
   }
   const schedule = putScheduleOrThrow(plane, {
     repositoryId: "repo-1",
+    principalId: "system",
     name: "maintenance",
     target: { commandId: "cmd-base" },
     cron: "* * * * *",
@@ -39,6 +40,7 @@ describe("scheduled main-checkout scheduling", () => {
     const secondSchedule = putScheduleOrThrow(plane, {
       id: "schedule-second",
       repositoryId: "repo-1",
+      principalId: "system",
       name: "second maintenance",
       target: { commandId: "cmd-base" },
       cron: "* * * * *",
@@ -60,6 +62,7 @@ describe("scheduled main-checkout scheduling", () => {
       const schedule = putScheduleOrThrow(plane, {
         id: `schedule-${status}`,
         repositoryId: "repo-1",
+        principalId: "system",
         name: `${status} maintenance`,
         target: { commandId: "cmd-base" },
         cron: "* * * * *",

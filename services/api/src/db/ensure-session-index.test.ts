@@ -4,6 +4,7 @@ import {
   DeleteTableCommand,
   DescribeTableCommand,
   KeyType,
+  UpdateTableCommand,
   ScalarAttributeType,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
@@ -48,6 +49,54 @@ afterAll(async () => {
 });
 
 describe("ensureSessionsRepositoryIndex", () => {
+  it("leaves a table alone when it cannot be described", async () => {
+    const unavailable = {
+      send: async () => {
+        throw new Error("offline");
+      },
+    } as never;
+
+    await expect(ensureSessionsRepositoryIndex(unavailable, "Sessions")).resolves.toBeUndefined();
+  });
+
+  it("accepts a concurrent index migration without replacing existing definitions", async () => {
+    const commands: unknown[] = [];
+    const mockedClient = {
+      send: async (command: unknown) => {
+        commands.push(command);
+        if (command instanceof DescribeTableCommand) {
+          return {
+            Table: {
+              AttributeDefinitions: [
+                { AttributeName: "repositoryId", AttributeType: ScalarAttributeType.S },
+              ],
+            },
+          };
+        }
+        throw { name: "LimitExceededException" };
+      },
+    } as never;
+
+    await expect(ensureSessionsRepositoryIndex(mockedClient, "Sessions")).resolves.toBeUndefined();
+    expect(commands).toEqual([expect.any(DescribeTableCommand), expect.any(UpdateTableCommand)]);
+    expect((commands[1] as UpdateTableCommand).input).toMatchObject({
+      AttributeDefinitions: [{ AttributeName: "repositoryId", AttributeType: "S" }],
+    });
+  });
+
+  it("propagates an unexpected index update failure", async () => {
+    const mockedClient = {
+      send: async (command: unknown) => {
+        if (command instanceof DescribeTableCommand) return { Table: {} };
+        throw new Error("unexpected update failure");
+      },
+    } as never;
+
+    await expect(ensureSessionsRepositoryIndex(mockedClient, "Sessions")).rejects.toThrow(
+      "unexpected update failure",
+    );
+  });
+
   it("migrates an existing Sessions table once", async () => {
     if (!client) {
       expect(true).toBe(true);

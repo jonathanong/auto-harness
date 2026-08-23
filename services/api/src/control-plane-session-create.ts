@@ -62,6 +62,7 @@ export function validateSessionCreate(
 export function buildSessionRecord(
   state: ControlPlaneState,
   prepared: Extract<ReturnType<typeof validateSessionCreate>, { ok: true }>,
+  principalId?: string,
 ): SessionRecord {
   const { fields: v } = prepared;
   const id = state.idFactory();
@@ -85,6 +86,7 @@ export function buildSessionRecord(
     ...(v.concurrencyId !== undefined ? { concurrencyId: v.concurrencyId } : {}),
     ...(prepared.scheduleId !== undefined ? { scheduleId: prepared.scheduleId } : {}),
     ...(v.metadata !== undefined ? { metadata: v.metadata } : {}),
+    ...(principalId ? { principalId } : {}),
     type: v.type,
     source: v.source,
   };

@@ -80,7 +80,8 @@ export class ControlPlane extends ControlPlaneManagement {
     id: string,
     nowIso: string = this.state.now(),
   ): Promise<
-    { ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }
+    | { ok: true; session: PublicSession; created: boolean }
+    | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
   > {
     const result = await schedules.triggerScheduleDurable(this.state, id, nowIso);
     if (result.ok) await this.assignScheduledQueuedDurable();

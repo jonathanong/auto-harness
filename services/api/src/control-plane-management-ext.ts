@@ -3,6 +3,7 @@ import { ControlPlaneCatalog } from "./control-plane-catalog-ext.ts";
 import * as agentHosts from "./control-plane-agent-hosts.ts";
 import * as repos from "./control-plane-repos.ts";
 import * as repositoryAdmission from "./control-plane-repository-admission.ts";
+import * as sessionDrains from "./control-plane-session-drains.ts";
 import * as schedules from "./control-plane-schedules.ts";
 import { updateScheduleDurable } from "./control-plane-schedules-durable.ts";
 import * as durableCatalog from "./control-plane-durable-read-catalog.ts";
@@ -130,6 +131,32 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
 
   reconcileRepositoryDrainsDurable() {
     return repositoryAdmission.reconcileRepositoryDrainsDurable(this.state);
+  }
+
+  createSessionDrainDurable(repositoryId: string, principalId: string, idempotencyKey?: string) {
+    return sessionDrains.createSessionDrainDurable(
+      this.state,
+      repositoryId,
+      principalId,
+      idempotencyKey,
+    );
+  }
+
+  getSessionDrainDurable(repositoryId: string, principalId: string, operationId: string) {
+    return sessionDrains.getSessionDrainDurable(this.state, repositoryId, principalId, operationId);
+  }
+
+  reconcileSessionDrainsDurable() {
+    return sessionDrains.reconcileSessionDrainsDurable(this.state);
+  }
+
+  releaseSessionDrainDurable(repositoryId: string, principalId: string, operationId: string) {
+    return sessionDrains.releaseSessionDrainDurable(
+      this.state,
+      repositoryId,
+      principalId,
+      operationId,
+    );
   }
 
   putHostInventory(

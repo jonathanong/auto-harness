@@ -15,15 +15,18 @@ export async function cancelRunningMainCheckoutSession(
     completedAt: string;
     deadlineAt: string;
     errorMessage: string;
+    drainOperationId?: string;
   },
 ): Promise<boolean> {
+  const drainUpdate = opts.drainOperationId
+    ? ", cancelledByDrainOperationId = :drainOperationId"
+    : "";
   try {
     await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.sessions,
         Key: { id: opts.sessionId },
-        UpdateExpression:
-          "SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage",
+        UpdateExpression: `SET #s = :cancelled, statusShard = :statusShard, completedAt = :completedAt, reconnectDeadlineAt = :deadlineAt, errorMessage = :errorMessage${drainUpdate}`,
         ConditionExpression:
           "#s = :running AND hostId = :hostId AND assignmentConnectionId = :connectionId AND attemptId = :attemptId AND worktreeId = :null AND mainCheckoutLease = :true",
         ExpressionAttributeNames: { "#s": "status" },
@@ -39,6 +42,7 @@ export async function cancelRunningMainCheckoutSession(
           ":attemptId": opts.attemptId,
           ":null": null,
           ":true": true,
+          ...(opts.drainOperationId ? { ":drainOperationId": opts.drainOperationId } : {}),
         },
       }),
     );

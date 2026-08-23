@@ -102,6 +102,7 @@ function catalogStorage() {
       worktrees.set(record.id, { ...record }),
     deleteWorktree: async (id: string) => worktrees.delete(id),
     listAllSessions: async () => [],
+    listSessionDrains: async () => [],
     listAllWorktrees: async () => [...worktrees.values()].map((record) => ({ ...record })),
     listConnections: async () => [],
     listArchives: async () => [],

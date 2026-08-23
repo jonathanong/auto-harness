@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
@@ -12,6 +13,41 @@ function admins(): string {
 }
 
 describe("createLocalApp authentication routes", () => {
+  it("refuses to orphan schedules when deleting their authenticated owner", async () => {
+    const plane = new ControlPlane();
+    plane.createRepository({ id: "repo", name: "repo", url: "https://example.test/repo" });
+    plane.createCommand({ id: "command", name: "command", argv: ["echo"], providerId: null });
+    const auth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });
+    const principal = await auth.createUser({
+      username: "alice",
+      password: "password",
+      role: "operator",
+    });
+    expect(
+      plane.putSchedule({
+        id: "owned-schedule",
+        repositoryId: "repo",
+        principalId: principal.id,
+        name: "owned",
+        target: { commandId: "command" },
+        cron: "* * * * *",
+        timeout: 30,
+      }),
+    ).toMatchObject({ ok: true });
+    const { handler } = createLocalApp({ plane, authService: auth });
+
+    const response = await invokeHandler(handler, "DELETE", "/api/v1/auth/users/alice");
+
+    expect(response.status).toBe(409);
+    expect(response.json).toMatchObject({
+      error: {
+        code: "CONFLICT",
+        dependencies: [{ kind: "schedule", id: "owned-schedule" }],
+      },
+    });
+    expect(auth.listUsers()).toContainEqual(expect.objectContaining({ id: principal.id }));
+  });
+
   it("supports login/logout and principal administration", async () => {
     const plane = new ControlPlane();
     const auth = new AuthService({ mode: "disabled", secret: "secret", admins: admins() });

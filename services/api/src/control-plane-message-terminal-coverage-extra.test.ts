@@ -26,6 +26,7 @@ function row(over: Partial<SessionRecord> = {}): SessionRecord {
     createdAt: NOW,
     type: "scheduled",
     source: "schedule",
+    principalId: "system",
     hostId: "host",
     worktreeId: null,
     attemptId: "attempt",
@@ -54,6 +55,29 @@ const message = (extra: Record<string, unknown> = {}) => ({
 });
 
 describe("durable terminal message residual coverage", () => {
+  it("strongly reads a late drain cancellation before choosing its release path", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    const running = row();
+    const cancelled = row({ status: "cancelled", completedAt: NOW });
+    state.sessions.set("s", running);
+    const reads: unknown[][] = [];
+    const releases: Record<string, unknown>[] = [];
+    setDurableReadStorage(state, {
+      getSession: async (...args: unknown[]) => {
+        reads.push(args);
+        return cancelled;
+      },
+      releaseMainCheckoutSession: async (input: Record<string, unknown>) => {
+        releases.push(input);
+        return true;
+      },
+    });
+    await handleHostMessageDurable(state, message({ status: "completed" }));
+    expect(reads).toEqual([["s", true]]);
+    expect(releases).toHaveLength(1);
+    expect(releases[0]).toMatchObject({ expectedStatus: "cancelled", status: "cancelled" });
+  });
+
   it("releases a cancelled scheduled attempt with default completion metadata", async () => {
     const state = createControlPlaneState({ now: () => NOW });
     const session = row({

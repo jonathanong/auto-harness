@@ -23,6 +23,7 @@ import {
 } from "./control-plane-durable-read-runtime.ts";
 import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
+import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 
 function hostGitReady(state: ControlPlaneState, hostId: string): boolean {
   const connectionId = state.hostConnection.get(hostId);
@@ -282,11 +283,13 @@ export async function assignQueuedDurable(
             continue;
           }
           const attemptId = state.attemptIdFactory();
+          const principalId = sessionPrincipalId(session);
           const won = await state.storage.tryAssignSession({
             sessionId: session.id,
             repositoryId: session.repositoryId,
             worktreeId: candidate.id,
             hostId: candidate.hostId,
+            ...(principalId ? { principalId } : {}),
             hostInventoryVersion: state.hostInventories.has(candidate.hostId)
               ? (state.hostInventories.get(candidate.hostId)!.version ?? 0)
               : null,

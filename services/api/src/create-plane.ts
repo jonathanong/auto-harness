@@ -1,4 +1,5 @@
 import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from "./db/dynamo.ts";
+import { ensureSessionDrainActivityLedger } from "./db/ensure-session-drain-ledger.ts";
 import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
@@ -31,10 +32,17 @@ export async function createControlPlane(
     ...(options.region !== undefined ? { region: options.region } : {}),
   });
   const prefix = options.tablePrefix ?? process.env.HARNESS_DDB_PREFIX ?? "AutoHarness";
+  const tables = tableNames(prefix);
   if (!options.skipEnsureTables) {
     await ensureControlPlaneTables({ client, prefix });
+  } else {
+    // AWS tables are provisioned by CDK, so Lambda skips CreateTable. It still
+    // must establish the one-time strongly-consistent drain-ledger boundary.
+    await ensureSessionDrainActivityLedger(doc, {
+      sessions: tables.sessions,
+      sessionDrains: tables.sessionDrains,
+    });
   }
-  const tables = tableNames(prefix);
   const storage = new DynamoPlaneStorage(doc, tables);
   const plane = new ControlPlane({
     storage,
@@ -57,6 +65,12 @@ export async function createControlPlane(
       : {}),
     ...(options.reconnectGraceMs !== undefined
       ? { reconnectGraceMs: options.reconnectGraceMs }
+      : {}),
+    ...(options.sessionDrainIdFactory !== undefined
+      ? { sessionDrainIdFactory: options.sessionDrainIdFactory }
+      : {}),
+    ...(options.sessionDrainTimeoutMs !== undefined
+      ? { sessionDrainTimeoutMs: options.sessionDrainTimeoutMs }
       : {}),
     ...(options.usageLimitRetryCeiling !== undefined
       ? { usageLimitRetryCeiling: options.usageLimitRetryCeiling }

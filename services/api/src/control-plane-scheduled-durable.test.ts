@@ -57,6 +57,7 @@ describe("durable scheduled main-checkout leases", () => {
       retryCount: 0,
       type: "scheduled",
       source: "schedule",
+      principalId: "system",
     };
     await ctx.storage.putSession(base);
     await ctx.storage.putSession({

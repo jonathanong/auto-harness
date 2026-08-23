@@ -46,6 +46,10 @@ export type SessionRecord = {
   /** Schedule provenance; distinct from the possibly shared concurrency identity. */
   scheduleId?: string;
   metadata?: Record<string, unknown>;
+  /** Authenticated principal that admitted this work; never accepted as a public selector. */
+  principalId?: string;
+  /** Durable proof that this drain operation performed the cancellation. */
+  cancelledByDrainOperationId?: string;
   errorCode?: string | undefined;
   errorMessage?: string | undefined;
   url?: string;

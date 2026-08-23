@@ -10,12 +10,14 @@ import {
   ResourceInUseException,
   ScalarAttributeType,
 } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
 import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
 import { ensureSessionsRepositoryIndex } from "./ensure-session-index.ts";
+import { ensureSessionDrainActivityLedger } from "./ensure-session-drain-ledger.ts";
 import { webhookDeliveriesTableDefinition } from "./ensure-webhook-deliveries-table.ts";
 
 async function tableExists(client: DynamoDBClient, name: string): Promise<boolean> {
@@ -30,13 +32,14 @@ async function tableExists(client: DynamoDBClient, name: string): Promise<boolea
 async function createIfMissing(
   client: DynamoDBClient,
   input: CreateTableCommandInput & { TableName: string },
-): Promise<void> {
-  if (await tableExists(client, input.TableName)) return;
+): Promise<boolean> {
+  if (await tableExists(client, input.TableName)) return false;
   try {
     await client.send(new CreateTableCommand(input));
+    return true;
   } catch (err) {
     if (err instanceof ResourceInUseException) {
-      return;
+      return false;
     }
     throw err;
   }
@@ -68,8 +71,6 @@ export async function ensureControlPlaneTables(opts: {
       },
     ],
   });
-  await ensureSessionsRepositoryIndex(ddb, names.sessions);
-
   await createIfMissing(ddb, {
     TableName: names.sessions,
     BillingMode: BillingMode.PAY_PER_REQUEST,
@@ -98,6 +99,25 @@ export async function ensureControlPlaneTables(opts: {
         Projection: { ProjectionType: ProjectionType.ALL },
       },
     ],
+  });
+
+  await ensureSessionsRepositoryIndex(ddb, names.sessions);
+
+  await createIfMissing(ddb, {
+    TableName: names.sessionDrains,
+    BillingMode: BillingMode.PAY_PER_REQUEST,
+    AttributeDefinitions: [
+      { AttributeName: "scopeKey", AttributeType: ScalarAttributeType.S },
+      { AttributeName: "recordKey", AttributeType: ScalarAttributeType.S },
+    ],
+    KeySchema: [
+      { AttributeName: "scopeKey", KeyType: KeyType.HASH },
+      { AttributeName: "recordKey", KeyType: KeyType.RANGE },
+    ],
+  });
+  await ensureSessionDrainActivityLedger(DynamoDBDocumentClient.from(ddb), {
+    sessions: names.sessions,
+    sessionDrains: names.sessionDrains,
   });
 
   await createIfMissing(ddb, {

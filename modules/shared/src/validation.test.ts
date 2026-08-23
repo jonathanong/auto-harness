@@ -11,6 +11,7 @@ import {
   isUserRole,
   isWorktreeStatus,
   MAX_CONCURRENCY_ID_BYTES,
+  MAX_FALLBACKS,
   MAX_PROMPT_BYTES,
   promptByteLengthError,
   validateCreateSessionInput,
@@ -228,6 +229,22 @@ describe("validateCreateSessionInput", () => {
         fallbacks: [{ commandId: "" }],
       }),
     ).toEqual({ ok: false, error: "fallbacks[0].commandId must be a non-empty string" });
+  });
+
+  it("caps fallbacks so durable session creation stays within DynamoDB's transaction limit", () => {
+    // 92 routes + target/repository/principal markers + repository/drain checks +
+    // concurrency/session/activity writes = DynamoDB's 100-action maximum.
+    expect(MAX_FALLBACKS).toBe(92);
+    const fallbacks = Array.from({ length: MAX_FALLBACKS }, (_, index) => ({
+      commandId: `fallback-${index}`,
+    }));
+    expect(validateCreateSessionInput({ ...base, fallbacks }).ok).toBe(true);
+    expect(
+      validateCreateSessionInput({ ...base, fallbacks: [...fallbacks, { commandId: "one-more" }] }),
+    ).toEqual({
+      ok: false,
+      error: `fallbacks must have at most ${MAX_FALLBACKS} entries`,
+    });
   });
 
   it("validates queue TTL overrides", () => {

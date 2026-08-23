@@ -23,6 +23,7 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
       enforceRunningTimeoutsDurable: step("timeout"),
       reclaimStaleHostsDurable: step("stale"),
       reconcileRepositoryDrainsDurable: step("repository-drains"),
+      reconcileSessionDrainsDurable: step("session-drains"),
       assignQueuedDurable: step("queued"),
       assignScheduledQueuedDurable: step("scheduled"),
     },
@@ -30,7 +31,7 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
 }
 
 async function flush(): Promise<void> {
-  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  for (let i = 0; i < 30; i += 1) await Promise.resolve();
 }
 
 describe("LocalScheduler", () => {
@@ -48,13 +49,14 @@ describe("LocalScheduler", () => {
         "timeout",
         "stale",
         "repository-drains",
+        "session-drains",
         "queued",
         "scheduled",
       ]);
 
       scheduler.start();
       await vi.advanceTimersByTimeAsync(10);
-      expect(calls).toHaveLength(14);
+      expect(calls).toHaveLength(16);
       await scheduler.stop();
     } finally {
       vi.useRealTimers();
@@ -89,6 +91,7 @@ describe("LocalScheduler", () => {
       "timeout",
       "stale",
       "repository-drains",
+      "session-drains",
       "queued",
       "scheduled",
     ]);
@@ -118,6 +121,7 @@ describe("LocalScheduler", () => {
       "timeout",
       "stale",
       "repository-drains",
+      "session-drains",
       "queued",
       "scheduled",
     ]);
@@ -144,6 +148,7 @@ describe("LocalScheduler", () => {
         "timeout",
         "stale",
         "repository-drains",
+        "session-drains",
         "queued",
         "scheduled",
       ]);

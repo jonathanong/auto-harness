@@ -132,19 +132,40 @@ export function withMarkerTable<T extends { ConditionCheck: { TableName: string 
 
 type TransactionItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
+/**
+ * Principal-owned records must not outlive the authenticated principal that
+ * owns them. The local authentication-disabled system actor intentionally has
+ * no corresponding Users row.
+ */
+export function principalExistsCheck(
+  ctx: PlaneStorageCtx,
+  principalId: string | undefined,
+): TransactionItem | null {
+  if (!principalId || principalId === "system" || principalId.startsWith("admin:")) return null;
+  return {
+    ConditionCheck: {
+      TableName: ctx.tables.users,
+      Key: { id: principalId },
+      ConditionExpression: "attribute_exists(id)",
+    },
+  };
+}
+
 export async function guardedWrite(
   ctx: PlaneStorageCtx,
   markers: readonly DeletionMarker[] | undefined,
   write: TransactionItem,
   fallback: () => Promise<void>,
+  additionalConditions: readonly TransactionItem[] = [],
 ): Promise<void> {
-  if (!markers?.length) return fallback();
-  if (markers.length > 99) {
+  const markerChecks = markers ? withMarkerTable(ctx, markerConditions([...markers])) : [];
+  if (markerChecks.length + additionalConditions.length > 99) {
     throw new Error("catalog reference write exceeds DynamoDB's 100 transaction action limit");
   }
+  if (markerChecks.length + additionalConditions.length === 0) return fallback();
   await ctx.doc.send(
     new TransactWriteCommand({
-      TransactItems: [...withMarkerTable(ctx, markerConditions([...markers])), write],
+      TransactItems: [...markerChecks, ...additionalConditions, write],
     }),
   );
 }

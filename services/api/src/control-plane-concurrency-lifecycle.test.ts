@@ -86,6 +86,7 @@ describe("concurrency lock lifecycle", () => {
       putSession: async () => {},
       putWorktree: async () => {},
       cancelQueuedSession: async () => cancelWins,
+      cancelRunningSession: async () => true,
     });
 
     await expect(plane.cancelSessionDurable("missing")).resolves.toEqual({
@@ -126,6 +127,9 @@ describe("concurrency lock lifecycle", () => {
     Object.assign(plane.state.sessions.get("durable-3")!, {
       status: "running",
       hostId: "host-1",
+      worktreeId: "durable-running-wt",
+      assignmentConnectionId: "durable-running-connection",
+      attemptId: "durable-running-attempt",
     });
     await expect(plane.cancelSessionDurable("durable-3")).resolves.toMatchObject({
       ok: true,

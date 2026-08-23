@@ -1,4 +1,5 @@
 import { DeleteTableCommand, type DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClients, type DynamoTableNames } from "./dynamo.ts";
@@ -10,6 +11,7 @@ import {
   putSession,
   putWorktree,
 } from "./plane-storage-sessions.ts";
+import { sessionDrainActivityKey, sessionDrainScopeKey } from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 let client: DynamoDBClient;
@@ -47,6 +49,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
     await putSession(ctx, {
       ...base,
       id: "finish",
+      principalId: "principal",
       status: "running",
       worktreeId: "worktree",
       attemptId: "attempt",
@@ -62,6 +65,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
       online: true,
       currentSessionId: "finish",
     });
+    await putActivity("finish");
     expect(
       await finishSession(ctx, {
         sessionId: "finish",
@@ -77,6 +81,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
       }),
     ).toBe(true);
     expect((await getWorktree(ctx, "worktree"))?.status).toBe("idle");
+    await expect(getActivity("finish")).resolves.toBeUndefined();
     expect(
       await finishSession(ctx, {
         sessionId: "finish",
@@ -86,7 +91,8 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         queueShard: 0,
       }),
     ).toBe(true);
-    await putSession(ctx, { ...base, id: "expire", status: "queued" });
+    await putSession(ctx, { ...base, id: "expire", principalId: "principal", status: "queued" });
+    await putActivity("expire");
     expect(
       await expireQueuedSession(ctx, {
         sessionId: "expire",
@@ -95,6 +101,7 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         completedAt: "done",
       }),
     ).toBe(false);
+    await expect(getActivity("expire")).resolves.toBeDefined();
     expect(
       await expireQueuedSession(ctx, {
         sessionId: "expire",
@@ -103,5 +110,36 @@ describe("DynamoDB Local terminal session lifecycle", () => {
         completedAt: "done",
       }),
     ).toBe(true);
+    await expect(getActivity("expire")).resolves.toBeUndefined();
   });
 });
+
+async function putActivity(sessionId: string): Promise<void> {
+  await ctx.doc.send(
+    new PutCommand({
+      TableName: tables.sessionDrains,
+      Item: {
+        scopeKey: sessionDrainScopeKey("repo", "principal"),
+        recordKey: sessionDrainActivityKey(sessionId),
+        recordType: "activity",
+        sessionId,
+        repositoryId: "repo",
+        principalId: "principal",
+      },
+    }),
+  );
+}
+
+async function getActivity(sessionId: string): Promise<Record<string, unknown> | undefined> {
+  const result = await ctx.doc.send(
+    new GetCommand({
+      TableName: tables.sessionDrains,
+      Key: {
+        scopeKey: sessionDrainScopeKey("repo", "principal"),
+        recordKey: sessionDrainActivityKey(sessionId),
+      },
+      ConsistentRead: true,
+    }),
+  );
+  return result.Item;
+}

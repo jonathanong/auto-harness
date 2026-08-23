@@ -14,6 +14,8 @@ import {
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
+import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -64,7 +66,10 @@ export async function triggerScheduleDurable(
   state: ControlPlaneState,
   id: string,
   nowIso: string = state.now(),
-): Promise<{ ok: true; session: PublicSession; created: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; session: PublicSession; created: boolean }
+  | { ok: false; error: string; code?: "DRAINING" | undefined; operationId?: string | undefined }
+> {
   if (!state.storage) {
     return triggerSchedule(state, id, nowIso);
   }
@@ -75,6 +80,9 @@ export async function triggerScheduleDurable(
   }
   if (!schedule.enabled) {
     return { ok: false, error: "schedule is disabled" };
+  }
+  if (!schedule.principalId) {
+    return { ok: false, error: "schedule must be claimed by an authenticated principal" };
   }
   const repository = await getRepositoryDurable(state, schedule.repositoryId);
   if (!repository || repositoryAdmissionFailure(state, schedule.repositoryId)) {
@@ -100,6 +108,14 @@ export async function triggerScheduleDurable(
   }
   if (outcome.kind === "admission_closed") {
     return { ok: false, error: "repository admission is closed" };
+  }
+  if (outcome.kind === "draining") {
+    return {
+      ok: false,
+      error: "principal session admission is draining",
+      code: "DRAINING",
+      operationId: outcome.operationId,
+    };
   }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
@@ -190,14 +206,18 @@ export async function evaluateCronDurable(
     if (!schedule.enabled || Date.parse(schedule.nextRunAt) > nowMs) {
       continue;
     }
-    const session = await tryClaimScheduleFireDurable(
-      state,
-      schedule.id,
-      schedule.nextRunAt,
-      nowIso,
-    );
-    if (session) {
-      created.push(session);
+    // An audit/storage outage for one schedule must not stall every other due
+    // schedule. Its cursor was not advanced, so this schedule remains retryable.
+    try {
+      const session = await tryClaimScheduleFireDurable(
+        state,
+        schedule.id,
+        schedule.nextRunAt,
+        nowIso,
+      );
+      if (session) created.push(session);
+    } catch {
+      continue;
     }
   }
   return created;
@@ -221,6 +241,28 @@ export async function tryClaimScheduleFireDurable(
   const newNextRunAt = nextRunAt(schedule, nowIso);
   if (!newNextRunAt) return null;
   if (Date.parse(expectedNextRunAt) > Date.parse(nowIso)) {
+    return null;
+  }
+  if (!schedule.principalId) {
+    // Legacy rows without an authenticated owner cannot safely author a
+    // session. Consume this occurrence with the same cursor CAS used by a
+    // normal claim so cron does not hot-loop until an operator claims it.
+    const audit = ownerlessSkipAudit(state, schedule);
+    const skipped = await state.storage.skipOwnerlessScheduleAndAudit({
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      lastRunAt: nowIso,
+      audit,
+    });
+    if (skipped) {
+      state.schedules.set(scheduleId, {
+        ...schedule,
+        nextRunAt: newNextRunAt,
+        lastRunAt: nowIso,
+      });
+      state.auditLogs.set(audit.id, audit);
+    }
     return null;
   }
   const target = resolveScheduledTarget(state, schedule);
@@ -263,12 +305,65 @@ export async function tryClaimScheduleFireDurable(
     if (skipped) state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
     return null;
   }
+  if (outcome.kind === "draining") {
+    const audit = principalDrainSkipAudit(state, schedule, outcome.operationId);
+    const skipped = await state.storage.skipScheduleForPrincipalDrainAndAudit({
+      scheduleId,
+      repositoryId: schedule.repositoryId,
+      principalId: schedule.principalId!,
+      operationId: outcome.operationId,
+      expectedNextRunAt,
+      newNextRunAt,
+      audit,
+    });
+    if (skipped) {
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
+      state.auditLogs.set(audit.id, audit);
+    }
+    return null;
+  }
   if (outcome.kind !== "created") {
     return null;
   }
   state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
   return toPublic(state, session);
+}
+
+function ownerlessSkipAudit(state: ControlPlaneState, schedule: ScheduleRecord): AuditLogRecord {
+  return newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "schedule:ownerless-occurrence-skipped",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: { reason: "schedule must be claimed by an authenticated principal" },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
+}
+
+function principalDrainSkipAudit(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  operationId: string,
+): AuditLogRecord {
+  return newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "session-drain:admission-rejected",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: { operationId, principalId: schedule.principalId! },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
 }
 
 function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {
@@ -308,6 +403,7 @@ function createScheduledSession(state: ControlPlaneState, schedule: ScheduleReco
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.principalId ? { principalId: schedule.principalId } : {}),
   };
 }
 
@@ -330,6 +426,7 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
   ref?: string;
   concurrencyId?: string;
   scheduleId?: string;
+  metadata?: Record<string, unknown>;
 } {
   return {
     repositoryId: schedule.repositoryId,
@@ -343,5 +440,6 @@ function scheduledSessionInput(schedule: ScheduleRecord): {
     ...(schedule.ref !== undefined ? { ref: schedule.ref } : {}),
     concurrencyId: schedule.concurrencyId ?? `schedule-${schedule.id}`,
     scheduleId: schedule.id,
+    ...(schedule.principalId ? { metadata: { createdBy: schedule.principalId } } : {}),
   };
 }

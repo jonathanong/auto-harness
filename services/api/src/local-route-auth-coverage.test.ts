@@ -189,11 +189,12 @@ describe("local route authorization and outcomes", () => {
       scheduledSession({ id: "foreign", repositoryId: "repo-b", type: "prompt" }),
     );
     const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
-    const { apiKey } = await auth.createServiceAccount({
+    const { account, apiKey } = await auth.createServiceAccount({
       name: "scoped",
       role: "operator",
       allowedRepositoryIds: ["repo-a"],
     });
+    plane.state.sessions.get("scheduled")!.principalId = account.id;
     const { handler } = createLocalApp({ plane, authService: auth });
     const invoke = (path: string) =>
       invokeHandler(handler, "POST", path, {}, { authorization: `Bearer ${apiKey}` });

@@ -31,7 +31,7 @@ describe("local app error boundary", () => {
     errors.mockRestore();
   });
 
-  it("logs the path without the query string, which can carry a viewer ticket", async () => {
+  it("does not log request-derived text, which can carry credentials or control characters", async () => {
     const messages: string[] = [];
     const errors = vi.spyOn(console, "error").mockImplementation((message: unknown) => {
       messages.push(String(message));
@@ -40,7 +40,8 @@ describe("local app error boundary", () => {
 
     await invokeHandler(handler, "GET", `${MALFORMED_URL}?ticket=super-secret`);
 
-    expect(messages.join("\n")).toContain(MALFORMED_URL);
+    expect(messages).toEqual(["unhandled request error"]);
+    expect(messages.join("\n")).not.toContain(MALFORMED_URL);
     expect(messages.join("\n")).not.toContain("super-secret");
     errors.mockRestore();
   });

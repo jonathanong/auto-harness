@@ -13,7 +13,7 @@ import { persistTerminalSessionThenReleaseConcurrencyLock } from "./control-plan
 import { resolveTargetLabels } from "./control-plane-session-target-label.ts";
 import { releaseWorktree } from "./control-plane-worktrees.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
-export { resumeSession } from "./control-plane-session-resume.ts";
+export { resumeSession, type ResumeOptions } from "./control-plane-session-resume.ts";
 
 export {
   listSessions,

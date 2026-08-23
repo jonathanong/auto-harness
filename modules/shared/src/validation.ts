@@ -58,6 +58,11 @@ const MAX_REQUIRED_LABEL_LENGTH = 64;
 const MAX_METADATA_KEYS = 32;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_STRING_LENGTH = 1_024;
+// Session creation can combine reference-marker checks for every route with
+// repository, drain, session, and activity actions in one DynamoDB transaction.
+// 92 fallbacks keeps the authenticated worst case, including a concurrency lock,
+// within DynamoDB's 100-action limit.
+export const MAX_FALLBACKS = 92;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
@@ -267,6 +272,9 @@ export function validateTargetRouting(input: {
   const fallbacks: TargetRef[] = [];
   if (input.fallbacks !== undefined) {
     if (!Array.isArray(input.fallbacks)) return { ok: false, error: "fallbacks must be an array" };
+    if (input.fallbacks.length > MAX_FALLBACKS) {
+      return { ok: false, error: `fallbacks must have at most ${MAX_FALLBACKS} entries` };
+    }
     const seen = new Set([targetKey(target.value)]);
     for (let i = 0; i < input.fallbacks.length; i++) {
       const fallback = parseTarget(input.fallbacks[i], `fallbacks[${i}]`);
