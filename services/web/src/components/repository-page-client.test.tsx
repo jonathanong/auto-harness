@@ -54,18 +54,20 @@ describe("RepositoryPageClient", () => {
         initialItems={[repo("first")]}
         initialNextCursor="next"
         initialPath="/api/v1/repositories?limit=1"
-        attachRepositories={[repo("first"), repo("recovered")]}
-        hostIds={[]}
+        attachRepositories={[repo("first")]}
+        hostIds={["host"]}
         worktrees={[]}
-        canWriteInventory={false}
+        canWriteInventory
         canWriteCatalog={false}
       />,
     );
     await act(async () => press(field(view.container, "repositories-load-more")));
     expect(field(view.container, "repositories-load-more-error").textContent).toContain("503");
     expect(field(view.container, "repo-link-first")).toBeTruthy();
+    expect(field(view.container, "attach-repo-catalog-id").textContent).not.toContain("recovered");
     await act(async () => press(field(view.container, "repositories-load-more-retry")));
     expect(field(view.container, "repo-link-recovered")).toBeTruthy();
+    expect(field(view.container, "attach-repo-catalog-id").textContent).toContain("recovered");
     view.unmount();
   });
 });

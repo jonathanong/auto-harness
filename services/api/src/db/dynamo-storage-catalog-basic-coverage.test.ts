@@ -63,7 +63,7 @@ describe("DynamoDB Local basic catalog adapters", () => {
     expect((await listRepositories(ctx)).map(({ id }) => id)).toContain(repository.id);
     await expect(listRepositoriesPage(ctx, { limit: 1 })).resolves.toEqual({
       items: [{ ...repository, name: "Changed" }],
-      hasMore: false,
+      nextKey: null,
     });
     const deletionAt = "2026-01-01T00:00:00.000Z";
     await acquireDeletionMarker(ctx, "repository:repository", "owner", deletionAt);

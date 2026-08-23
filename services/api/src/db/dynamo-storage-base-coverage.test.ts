@@ -74,7 +74,7 @@ describe("DynamoPlaneStorageBase", () => {
     });
     await expect(storage.listRepositoriesPage({ limit: 1 })).resolves.toMatchObject({
       items: [{ id: "base-repository" }],
-      hasMore: false,
+      nextKey: null,
     });
     expect(await storage.listSessionsByRepository("missing-repository")).toEqual([]);
     expect(await storage.countSessionsByRepository("missing-repository", "base-host")).toBe(0);

@@ -1,17 +1,13 @@
-import { QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { BatchGetCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  listRepositoriesPage,
-  REPOSITORY_CATALOG_INDEX,
-  repositoryCatalogSort,
-} from "./plane-storage-catalog.ts";
+import { listRepositoriesPage } from "./plane-storage-catalog.ts";
 import type { PlaneStorageCtx, RepositoryRecord } from "./plane-storage-types.ts";
 
-function repository(id: string, name: string): RepositoryRecord {
+function repository(id: string): RepositoryRecord {
   return {
     id,
-    name,
+    name: id,
     url: `https://example.test/${id}`,
     defaultBranch: "main",
     createdAt: "2026-01-01T00:00:00.000Z",
@@ -26,77 +22,108 @@ function context(send: ReturnType<typeof vi.fn>): PlaneStorageCtx {
   };
 }
 
-describe("Dynamo repository keyset pages", () => {
-  it("uses the ordered catalog index and the decoded name/id keyset", async () => {
+describe("Dynamo repository pages", () => {
+  it("uses a bounded strongly consistent table scan and its opaque continuation", async () => {
     const send = vi.fn().mockResolvedValue({
-      Items: [repository("bravo", "bravo"), repository("charlie", "charlie")],
-      LastEvaluatedKey: { id: "charlie" },
+      Items: [repository("alpha"), repository("bravo")],
+      LastEvaluatedKey: { id: "bravo" },
     });
 
     await expect(
       listRepositoriesPage(context(send), {
         limit: 1,
-        after: { name: "alpha", id: "alpha" },
+        startKey: { id: "before-alpha" },
       }),
-    ).resolves.toEqual({ items: [repository("bravo", "bravo")], hasMore: true });
+    ).resolves.toEqual({ items: [repository("alpha")], nextKey: { id: "alpha" } });
 
     const command = send.mock.calls[0]?.[0];
-    expect(command).toBeInstanceOf(QueryCommand);
+    expect(command).toBeInstanceOf(ScanCommand);
     expect(command.input).toMatchObject({
       TableName: "Repositories",
-      IndexName: REPOSITORY_CATALOG_INDEX,
-      KeyConditionExpression: "catalogScope = :scope AND catalogSort > :after",
-      ExpressionAttributeValues: {
-        ":scope": "repositories",
-        ":after": repositoryCatalogSort("alpha", "alpha"),
-      },
+      ConsistentRead: true,
       Limit: 2,
-      ScanIndexForward: true,
+      ExclusiveStartKey: { id: "before-alpha" },
     });
   });
 
-  it("walks bounded index chunks until a restricted principal has a full visible page", async () => {
-    const send = vi
-      .fn()
-      .mockResolvedValueOnce({
-        Items: [repository("alpha", "alpha"), repository("bravo", "bravo")],
-        LastEvaluatedKey: { id: "bravo" },
-      })
-      .mockResolvedValueOnce({
-        Items: [repository("charlie", "charlie"), repository("delta", "delta")],
-      });
+  it("reads only one bounded slice of a restricted scope with strong keyed reads", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Responses: { Repositories: [repository("bravo")] },
+    });
 
     await expect(
       listRepositoriesPage(context(send), {
-        limit: 1,
-        repositoryIds: ["charlie", "delta", "charlie"],
+        limit: 2,
+        startKey: { scopeOffset: "invalid" },
+        allowedRepositoryIds: ["alpha", "bravo", "charlie"],
       }),
-    ).resolves.toEqual({ items: [repository("charlie", "charlie")], hasMore: true });
-    expect(send).toHaveBeenCalledTimes(2);
-    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(QueryCommand);
-    expect(send.mock.calls[1]?.[0].input.ExclusiveStartKey).toEqual({ id: "bravo" });
+    ).resolves.toEqual({
+      items: [repository("bravo")],
+      nextKey: { scopeOffset: 2 },
+    });
+
+    const command = send.mock.calls[0]?.[0];
+    expect(command).toBeInstanceOf(BatchGetCommand);
+    expect(command.input).toEqual({
+      RequestItems: {
+        Repositories: {
+          Keys: [{ id: "alpha" }, { id: "bravo" }],
+          ConsistentRead: true,
+        },
+      },
+    });
   });
 
-  it("short-circuits an empty scope and exhausts sparse visible chunks", async () => {
+  it("replays a restricted offset, restores id order, and exhausts the scope", async () => {
+    const send = vi.fn().mockResolvedValue({
+      Responses: { Repositories: [repository("charlie"), repository("bravo")] },
+    });
+
+    await expect(
+      listRepositoriesPage(context(send), {
+        limit: 2,
+        startKey: { scopeOffset: 1 },
+        allowedRepositoryIds: ["alpha", "bravo", "charlie"],
+      }),
+    ).resolves.toEqual({
+      items: [repository("bravo"), repository("charlie")],
+      nextKey: null,
+    });
+  });
+
+  it("short-circuits exhausted scopes and fails retryably on unprocessed keys", async () => {
     const emptySend = vi.fn();
     await expect(
-      listRepositoriesPage(context(emptySend), { limit: 1, repositoryIds: [] }),
-    ).resolves.toEqual({ items: [], hasMore: false });
+      listRepositoriesPage(context(emptySend), { limit: 1, allowedRepositoryIds: [] }),
+    ).resolves.toEqual({ items: [], nextKey: null });
+    await expect(
+      listRepositoriesPage(context(emptySend), {
+        limit: 1,
+        startKey: { scopeOffset: 1 },
+        allowedRepositoryIds: ["alpha"],
+      }),
+    ).resolves.toEqual({ items: [], nextKey: null });
     expect(emptySend).not.toHaveBeenCalled();
 
-    const sparseSend = vi
-      .fn()
-      .mockResolvedValueOnce({
-        Items: [repository("alpha", "alpha"), repository("bravo", "bravo")],
-        LastEvaluatedKey: { id: "bravo" },
-      })
-      .mockResolvedValueOnce({ Items: [undefined, repository("charlie", "charlie")] });
+    const throttledSend = vi.fn().mockResolvedValue({
+      UnprocessedKeys: { Repositories: { Keys: [{ id: "alpha" }] } },
+    });
     await expect(
-      listRepositoriesPage(context(sparseSend), {
+      listRepositoriesPage(context(throttledSend), {
         limit: 1,
-        repositoryIds: ["not-present"],
+        allowedRepositoryIds: ["alpha"],
       }),
-    ).resolves.toEqual({ items: [], hasMore: false });
-    expect(sparseSend).toHaveBeenCalledTimes(2);
+    ).rejects.toThrow("repository page read was throttled");
+  });
+
+  it("treats absent response collections and scan cursors as empty", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      listRepositoriesPage(context(send), { limit: 1, allowedRepositoryIds: ["missing"] }),
+    ).resolves.toEqual({ items: [], nextKey: null });
+    await expect(listRepositoriesPage(context(send), { limit: 1 })).resolves.toEqual({
+      items: [],
+      nextKey: null,
+    });
   });
 });

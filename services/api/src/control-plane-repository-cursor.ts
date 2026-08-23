@@ -25,7 +25,8 @@ export type RepositoryCursor = {
   version: 1;
   domain: "repositories";
   scope: RepositoryCursorScope;
-  position: RepositoryCursorPosition;
+  position?: RepositoryCursorPosition;
+  storageKey?: Record<string, unknown>;
 };
 
 export class InvalidRepositoryCursorError extends Error {
@@ -90,7 +91,7 @@ export function decodeRepositoryCursor(
   state: ControlPlaneState,
   encoded: string,
   expected: Omit<RepositoryCursor, "position">,
-): RepositoryCursorPosition {
+): Pick<RepositoryCursor, "position" | "storageKey"> {
   const parts = encoded.split(".");
   if (parts.length !== 2 || !parts[0] || !parts[1]) throw new InvalidRepositoryCursorError();
   const actualSignature = Buffer.from(parts[1]!, "base64url");
@@ -119,14 +120,21 @@ export function decodeRepositoryCursor(
     throw new InvalidRepositoryCursorError();
   }
   const position = cursor.position;
+  const storageKey = cursor.storageKey;
   if (
-    !position ||
-    typeof position !== "object" ||
-    Array.isArray(position) ||
-    typeof position.name !== "string" ||
-    typeof position.id !== "string"
+    (position === undefined) === (storageKey === undefined) ||
+    (position !== undefined &&
+      (typeof position !== "object" ||
+        Array.isArray(position) ||
+        typeof position.name !== "string" ||
+        typeof position.id !== "string")) ||
+    (storageKey !== undefined &&
+      (typeof storageKey !== "object" || storageKey === null || Array.isArray(storageKey)))
   ) {
     throw new InvalidRepositoryCursorError();
   }
-  return position;
+  return {
+    ...(position === undefined ? {} : { position }),
+    ...(storageKey === undefined ? {} : { storageKey }),
+  };
 }

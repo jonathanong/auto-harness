@@ -1,5 +1,6 @@
 /* eslint-disable max-lines */
 import {
+  BatchGetCommand,
   DeleteCommand,
   GetCommand,
   PutCommand,
@@ -62,40 +63,6 @@ export function catalogItem<T>(item: T | undefined): T | null {
 
 export function catalogPageItems<T>(items: T[] | undefined): T[] {
   return items ?? [];
-}
-
-const REPOSITORY_CATALOG_SCOPE = "repositories";
-export const REPOSITORY_CATALOG_INDEX = "catalogScope-catalogSort";
-
-/** Repository names are slugs, so NUL separates name and arbitrary repository id safely. */
-export function repositoryCatalogSort(name: string, id: string): string {
-  return `${name}\0${id}`;
-}
-
-function repositoryCatalogItem(record: RepositoryRecord): RepositoryRecord & {
-  catalogScope: string;
-  catalogSort: string;
-} {
-  return {
-    ...record,
-    catalogScope: REPOSITORY_CATALOG_SCOPE,
-    catalogSort: repositoryCatalogSort(record.name, record.id),
-  };
-}
-
-function repositoryRecord(
-  item: (RepositoryRecord & { catalogScope?: string; catalogSort?: string }) | undefined,
-): RepositoryRecord | null {
-  if (!item) return null;
-  const { catalogScope: _catalogScope, catalogSort: _catalogSort, ...record } = item;
-  return record;
-}
-
-function repositoryPageItems(items: RepositoryRecord[] | undefined): RepositoryRecord[] {
-  return (items ?? []).flatMap((item) => {
-    const record = repositoryRecord(item);
-    return record ? [record] : [];
-  });
 }
 
 export function scheduleAttributes(
@@ -432,7 +399,7 @@ export async function putRepository(ctx: PlaneStorageCtx, rec: RepositoryRecord)
   await ctx.doc.send(
     new PutCommand({
       TableName: ctx.tables.repositories,
-      Item: repositoryCatalogItem(rec),
+      Item: { ...rec },
     }),
   );
 }
@@ -461,13 +428,6 @@ export async function updateRepositorySettings(
     values[`:${key}`] = patch[key];
     sets.push(`#${key} = :${key}`);
   }
-  if (patch.name !== undefined) {
-    names["#catalogScope"] = "catalogScope";
-    names["#catalogSort"] = "catalogSort";
-    values[":catalogScope"] = REPOSITORY_CATALOG_SCOPE;
-    values[":catalogSort"] = repositoryCatalogSort(patch.name, id);
-    sets.push("#catalogScope = :catalogScope", "#catalogSort = :catalogSort");
-  }
   try {
     const result = await ctx.doc.send(
       new UpdateCommand({
@@ -480,7 +440,7 @@ export async function updateRepositorySettings(
         ReturnValues: "ALL_NEW",
       }),
     );
-    return repositoryRecord(result.Attributes as RepositoryRecord | undefined);
+    return catalogItem(result.Attributes as RepositoryRecord | undefined);
   } catch (error) {
     if (isConditionalFailed(error)) return null;
     throw error;
@@ -496,7 +456,7 @@ export async function createRepository(
     await ctx.doc.send(
       new PutCommand({
         TableName: ctx.tables.repositories,
-        Item: repositoryCatalogItem(rec),
+        Item: { ...rec },
         ConditionExpression: "attribute_not_exists(id)",
       }),
     );
@@ -513,7 +473,7 @@ export async function getRepository(
   const res = await ctx.doc.send(
     new GetCommand({ TableName: ctx.tables.repositories, Key: { id }, ConsistentRead: true }),
   );
-  return repositoryRecord(res.Item as RepositoryRecord | undefined);
+  return catalogItem(res.Item as RepositoryRecord | undefined);
 }
 
 export async function listRepositories(ctx: PlaneStorageCtx): Promise<RepositoryRecord[]> {
@@ -527,52 +487,79 @@ export async function listRepositories(ctx: PlaneStorageCtx): Promise<Repository
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    records.push(...repositoryPageItems(res.Items as RepositoryRecord[] | undefined));
+    records.push(...catalogPageItems(res.Items as RepositoryRecord[] | undefined));
     startKey = nextPageKey(res.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey !== undefined);
   return records;
 }
 
-/**
- * Read one bounded page without re-scanning the catalog. Restricted callers
- * walk the same ordered index in small forward chunks, filtering before the
- * limit is applied; they never materialize their whole allow-list per page.
- */
+function scopeOffset(startKey: Record<string, unknown> | undefined): number {
+  const value = startKey?.scopeOffset;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+async function listAllowedRepositoriesPage(
+  ctx: PlaneStorageCtx,
+  query: RepositoryPageQuery,
+  repositoryIds: readonly string[],
+): Promise<RepositoryPage> {
+  if (repositoryIds.length === 0) return { items: [], nextKey: null };
+  const offset = scopeOffset(query.startKey);
+  const ids = repositoryIds.slice(offset, offset + query.limit);
+  if (ids.length === 0) return { items: [], nextKey: null };
+  const response = await ctx.doc.send(
+    new BatchGetCommand({
+      RequestItems: {
+        [ctx.tables.repositories]: {
+          Keys: ids.map((id) => ({ id })),
+          ConsistentRead: true,
+        },
+      },
+    }),
+  );
+  if ((response.UnprocessedKeys?.[ctx.tables.repositories]?.Keys?.length ?? 0) > 0) {
+    throw new Error("repository page read was throttled");
+  }
+  const byId = new Map(
+    catalogPageItems(
+      response.Responses?.[ctx.tables.repositories] as RepositoryRecord[] | undefined,
+    ).map((record) => [record.id, record] as const),
+  );
+  const nextOffset = offset + ids.length;
+  return {
+    items: ids.flatMap((id) => {
+      const record = byId.get(id);
+      return record ? [record] : [];
+    }),
+    nextKey: nextOffset < repositoryIds.length ? { scopeOffset: nextOffset } : null,
+  };
+}
+
+/** Read one strongly consistent, bounded page from the repository table. */
 export async function listRepositoriesPage(
   ctx: PlaneStorageCtx,
   query: RepositoryPageQuery,
 ): Promise<RepositoryPage> {
-  const { limit, after, repositoryIds } = query;
-  const allowed = repositoryIds === undefined ? undefined : new Set(repositoryIds);
-  if (allowed?.size === 0) return { items: [], hasMore: false };
-  const rows: RepositoryRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const result = await ctx.doc.send(
-      new QueryCommand({
-        TableName: ctx.tables.repositories,
-        IndexName: REPOSITORY_CATALOG_INDEX,
-        KeyConditionExpression:
-          "catalogScope = :scope" + (after ? " AND catalogSort > :after" : ""),
-        ExpressionAttributeValues: {
-          ":scope": REPOSITORY_CATALOG_SCOPE,
-          ...(after ? { ":after": repositoryCatalogSort(after.name, after.id) } : {}),
-        },
-        Limit: limit + 1,
-        ScanIndexForward: true,
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    rows.push(
-      ...repositoryPageItems(result.Items as RepositoryRecord[] | undefined).filter(
-        (record) => allowed === undefined || allowed.has(record.id),
-      ),
-    );
-    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (rows.length <= limit && startKey !== undefined);
+  if (query.allowedRepositoryIds !== undefined) {
+    return listAllowedRepositoriesPage(ctx, query, query.allowedRepositoryIds);
+  }
+  const result = await ctx.doc.send(
+    new ScanCommand({
+      TableName: ctx.tables.repositories,
+      ConsistentRead: true,
+      Limit: query.limit + 1,
+      ...(query.startKey ? { ExclusiveStartKey: query.startKey } : {}),
+    }),
+  );
+  const items = catalogPageItems(result.Items as RepositoryRecord[] | undefined);
+  const pageItems = items.slice(0, query.limit);
+  const lookahead = pageItems.at(-1);
   return {
-    items: rows.slice(0, limit),
-    hasMore: rows.length > limit,
+    items: pageItems,
+    nextKey:
+      items.length > query.limit && lookahead
+        ? { id: lookahead.id }
+        : (nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined) ?? null),
   };
 }
 
@@ -619,7 +606,7 @@ export async function setRepositoryAdmissionState(
         ReturnValues: "ALL_NEW",
       }),
     );
-    return repositoryRecord(res.Attributes as RepositoryRecord | undefined);
+    return catalogItem(res.Attributes as RepositoryRecord | undefined);
   } catch (err) {
     if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
     throw err;
@@ -650,7 +637,7 @@ export async function completeRepositoryDrain(
         ReturnValues: "ALL_NEW",
       }),
     );
-    return repositoryRecord(res.Attributes as RepositoryRecord | undefined);
+    return catalogItem(res.Attributes as RepositoryRecord | undefined);
   } catch (err) {
     if (isConditionalFailed(err) || isConditionalTransactionFailed(err)) return null;
     throw err;

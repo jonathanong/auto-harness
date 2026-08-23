@@ -153,21 +153,17 @@ export type RepositoryRecord = {
   updatedAt: string;
 };
 
-/**
- * The durable form of a repository-list keyset query. The control plane owns
- * cursor signing; Dynamo only receives the decoded position and visibility
- * scope needed to make the read bounded.
- */
+/** The durable form of a repository-list query. Storage continuation keys stay opaque. */
 export type RepositoryPageQuery = {
   limit: number;
-  after?: { name: string; id: string } | undefined;
+  startKey?: Record<string, unknown> | undefined;
   /** Undefined means unrestricted; an empty array is an empty principal scope. */
-  repositoryIds?: readonly string[] | undefined;
+  allowedRepositoryIds?: readonly string[] | undefined;
 };
 
 export type RepositoryPage = {
   items: RepositoryRecord[];
-  hasMore: boolean;
+  nextKey: Record<string, unknown> | null;
 };
 
 export type SessionDrainStatus = "draining" | "succeeded" | "failed" | "released";

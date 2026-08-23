@@ -60,6 +60,8 @@ export function RepositoryPageClient({
   canWriteCatalog: boolean;
 }>) {
   const [items, setItems] = useState(initialItems);
+  const [availableAttachRepositories, setAvailableAttachRepositories] =
+    useState(attachRepositories);
   const [nextCursor, setNextCursor] = useState(initialNextCursor);
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -72,7 +74,9 @@ export function RepositoryPageClient({
       const response = await apiFetch(repositoryPagePath(nextCursor, initialPath));
       if (!response.ok) throw new Error(await apiErrorMessage(response));
       const page = (await response.json()) as RepositoryPage<Repo>;
-      setItems((current) => dedupeRepositories([...current, ...(page.items ?? [])]));
+      const pageItems = page.items ?? [];
+      setItems((current) => dedupeRepositories([...current, ...pageItems]));
+      setAvailableAttachRepositories((current) => dedupeRepositories([...current, ...pageItems]));
       setNextCursor(page.nextCursor ?? null);
     } catch (reason) {
       setLoadError(errorMessage(reason));
@@ -158,7 +162,7 @@ export function RepositoryPageClient({
       {canWriteInventory ? (
         <div className="border-t border-border pt-6">
           <h3 className="mb-2 text-lg font-medium">Attach a repository to a host</h3>
-          <AttachLocalRepoForm hostIds={hostIds} repos={attachRepositories} />
+          <AttachLocalRepoForm hostIds={hostIds} repos={availableAttachRepositories} />
         </div>
       ) : null}
     </>

@@ -3,12 +3,14 @@ import type { ControlPlaneState } from "./control-plane-state.ts";
 import {
   decodeRepositoryCursor,
   encodeRepositoryCursor,
+  InvalidRepositoryCursorError,
   normalizeRepositoryIds,
   normalizeRepositoryLimit,
   normalizeRepositoryScope,
 } from "./control-plane-repository-cursor.ts";
 import { compareRepositories, listRepositories } from "./control-plane-repos.ts";
 import { listRepositoriesDurable } from "./control-plane-durable-read-catalog.ts";
+import { normalizeRepositoryRecords } from "./control-plane-repository-normalization.ts";
 
 export {
   InvalidRepositoryCursorError,
@@ -30,6 +32,7 @@ type ParsedRepositoryPageQuery = {
   };
   limit: number;
   position: { name: string; id: string } | undefined;
+  storageKey: Record<string, unknown> | undefined;
   repositoryIds: string[] | null;
 };
 
@@ -41,10 +44,14 @@ function parseRepositoryPageQuery(
   const repositoryIds = normalizeRepositoryIds(query.scope);
   const scope = normalizeRepositoryScope(query.scope);
   const cursorBase = { version: 1 as const, domain: "repositories" as const, scope };
+  const boundary = query.cursor
+    ? decodeRepositoryCursor(state, query.cursor, cursorBase)
+    : undefined;
   return {
     cursorBase,
     limit,
-    position: query.cursor ? decodeRepositoryCursor(state, query.cursor, cursorBase) : undefined,
+    position: boundary?.position,
+    storageKey: boundary?.storageKey,
     repositoryIds,
   };
 }
@@ -76,6 +83,7 @@ export function listRepositoriesPage(
   records: readonly RepositoryRecord[] = listRepositories(state),
 ): ListRepositoriesPageResult {
   const parsed = parseRepositoryPageQuery(state, query);
+  if (parsed.storageKey) throw new InvalidRepositoryCursorError();
   let rows = records
     .filter(
       (repository) => parsed.repositoryIds === null || parsed.repositoryIds.includes(repository.id),
@@ -89,11 +97,7 @@ export function listRepositoriesPage(
   return pageResult(state, parsed, rows.slice(0, parsed.limit), rows.length > parsed.limit);
 }
 
-/**
- * Dynamo's catalog index is already sorted by the same name/id keyset, so a
- * durable continuation asks storage for only the next bounded window instead
- * of hydrating and re-slicing the whole repository catalog.
- */
+/** Ask storage for only the next bounded window instead of hydrating the whole catalog. */
 export async function listRepositoriesPageDurable(
   state: ControlPlaneState,
   query: ListRepositoriesPageQuery = {},
@@ -106,10 +110,19 @@ export async function listRepositoriesPageDurable(
     return listRepositoriesPage(state, query);
   }
   const parsed = parseRepositoryPageQuery(state, query);
+  if (parsed.position) throw new InvalidRepositoryCursorError();
   const page = await state.storage.listRepositoriesPage({
     limit: parsed.limit,
-    ...(parsed.position ? { after: parsed.position } : {}),
-    ...(parsed.repositoryIds === null ? {} : { repositoryIds: parsed.repositoryIds }),
+    ...(parsed.storageKey ? { startKey: parsed.storageKey } : {}),
+    ...(parsed.repositoryIds === null ? {} : { allowedRepositoryIds: parsed.repositoryIds }),
   });
-  return pageResult(state, parsed, page.items, page.hasMore);
+  return {
+    items: normalizeRepositoryRecords(page.items).toSorted(compareRepositories),
+    nextCursor: page.nextKey
+      ? encodeRepositoryCursor(state, {
+          ...parsed.cursorBase,
+          storageKey: page.nextKey,
+        })
+      : null,
+  };
 }

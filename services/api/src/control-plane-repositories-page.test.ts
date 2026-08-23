@@ -106,7 +106,7 @@ describe("listRepositoriesPage", () => {
     const listRepositories = vi.fn(async () => records.map((record) => ({ ...record })));
     const storageListRepositoriesPage = vi.fn(async () => ({
       items: [repository("repository-a", "alpha")],
-      hasMore: true,
+      nextKey: { id: "repository-a" },
     }));
     const plane = new ControlPlane({
       sessionCursorSecret: "repository-page-test-secret",
@@ -119,6 +119,45 @@ describe("listRepositoriesPage", () => {
     });
     expect(listRepositories).not.toHaveBeenCalled();
     expect(storageListRepositoriesPage).toHaveBeenCalledWith({ limit: 1 });
+  });
+
+  it("binds scoped storage continuations and omits malformed durable rows", async () => {
+    const storageListRepositoriesPage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [
+          { ...repository("repository-b", "bravo"), admissionState: "corrupt" },
+          repository("repository-a", "alpha"),
+        ],
+        nextKey: { scopeOffset: 2 },
+      })
+      .mockResolvedValueOnce({
+        items: [repository("repository-c", "charlie")],
+        nextKey: null,
+      });
+    const plane = new ControlPlane({
+      sessionCursorSecret: "repository-page-test-secret",
+      storage: { listRepositoriesPage: storageListRepositoriesPage } as never,
+    });
+    const scope = { repositoryIds: ["repository-c", "repository-a", "repository-b"] };
+
+    const first = await plane.listRepositoriesPageDurable({ limit: 2, scope });
+    expect(first.items).toEqual([
+      expect.objectContaining({ id: "repository-a", admissionState: "active" }),
+    ]);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    await expect(
+      plane.listRepositoriesPageDurable({ limit: 2, scope, cursor: first.nextCursor! }),
+    ).resolves.toMatchObject({ items: [{ id: "repository-c" }], nextCursor: null });
+    expect(storageListRepositoriesPage).toHaveBeenNthCalledWith(1, {
+      limit: 2,
+      allowedRepositoryIds: ["repository-a", "repository-b", "repository-c"],
+    });
+    expect(storageListRepositoriesPage).toHaveBeenNthCalledWith(2, {
+      limit: 2,
+      startKey: { scopeOffset: 2 },
+      allowedRepositoryIds: ["repository-a", "repository-b", "repository-c"],
+    });
   });
 
   it("retains full-list paging compatibility for legacy storage adapters", async () => {

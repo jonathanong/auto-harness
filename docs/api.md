@@ -437,9 +437,9 @@ their own display sorting.
 | `cursor` | string | Opaque cursor returned by the preceding response |
 
 Repository visibility is applied before the page limit, so hidden repositories never consume a
-page slot. Results remain ordered by repository name, then repository ID. `nextCursor` is signed
-and bound to the caller's repository scope; malformed, tampered, or scope-mismatched cursors and
-invalid or duplicate parameters return structured `400 VALIDATION_ERROR` responses.
+page slot. `nextCursor` is signed and bound to the caller's repository scope; malformed, tampered,
+or scope-mismatched cursors and invalid or duplicate parameters return structured
+`400 VALIDATION_ERROR` responses.
 
 **Response:** `200 OK`
 

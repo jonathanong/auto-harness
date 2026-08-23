@@ -16,7 +16,6 @@ import { tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
 import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
-import { ensureRepositoryCatalogIndex } from "./ensure-repository-catalog-index.ts";
 import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsRepositoryIndex,
@@ -200,29 +199,12 @@ export async function ensureControlPlaneTables(opts: {
   });
   await ensureSchedulesRepositoryIndex(ddb, names.schedules);
 
-  const repositoriesCreated = await createIfMissing(ddb, {
+  await createIfMissing(ddb, {
     TableName: names.repositories,
     BillingMode: BillingMode.PAY_PER_REQUEST,
-    AttributeDefinitions: [
-      { AttributeName: "id", AttributeType: ScalarAttributeType.S },
-      { AttributeName: "catalogScope", AttributeType: ScalarAttributeType.S },
-      { AttributeName: "catalogSort", AttributeType: ScalarAttributeType.S },
-    ],
+    AttributeDefinitions: [{ AttributeName: "id", AttributeType: ScalarAttributeType.S }],
     KeySchema: [{ AttributeName: "id", KeyType: KeyType.HASH }],
-    GlobalSecondaryIndexes: [
-      {
-        IndexName: "catalogScope-catalogSort",
-        KeySchema: [
-          { AttributeName: "catalogScope", KeyType: KeyType.HASH },
-          { AttributeName: "catalogSort", KeyType: KeyType.RANGE },
-        ],
-        Projection: { ProjectionType: ProjectionType.ALL },
-      },
-    ],
   });
-  if (!repositoriesCreated) {
-    await ensureRepositoryCatalogIndex(ddb, DynamoDBDocumentClient.from(ddb), names.repositories);
-  }
 
   await createIfMissing(ddb, {
     TableName: names.archives,

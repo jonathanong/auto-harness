@@ -39,7 +39,7 @@ describe("repository cursor primitives", () => {
       position: { name: "alpha", id: "repository-a" },
     };
     const encoded = encodeRepositoryCursor(state, cursor);
-    expect(decodeRepositoryCursor(state, encoded, base)).toEqual(cursor.position);
+    expect(decodeRepositoryCursor(state, encoded, base)).toEqual({ position: cursor.position });
     expect(() => decodeRepositoryCursor(state, "bad", base)).toThrow(InvalidRepositoryCursorError);
     expect(() => decodeRepositoryCursor(state, `${encoded}x`, base)).toThrow(
       InvalidRepositoryCursorError,
@@ -84,6 +84,24 @@ describe("repository cursor primitives", () => {
     expect(() => decodeRepositoryCursor(state, malformed, base)).toThrow(
       InvalidRepositoryCursorError,
     );
+
+    const storageCursor = encodeRepositoryCursor(state, {
+      ...base,
+      storageKey: { scopeOffset: 2 },
+    });
+    expect(decodeRepositoryCursor(state, storageCursor, base)).toEqual({
+      storageKey: { scopeOffset: 2 },
+    });
+    for (const invalidBoundary of [
+      { ...base },
+      { ...cursor, storageKey: { scopeOffset: 2 } },
+      { ...base, storageKey: [] },
+    ]) {
+      const invalid = encodeRepositoryCursor(state, invalidBoundary as RepositoryCursor);
+      expect(() => decodeRepositoryCursor(state, invalid, base)).toThrow(
+        InvalidRepositoryCursorError,
+      );
+    }
   });
 
   it("keeps scoped cursors bounded for large repository allow-lists", () => {
@@ -97,6 +115,8 @@ describe("repository cursor primitives", () => {
     const encoded = encodeRepositoryCursor(state, cursor);
 
     expect(encoded.length).toBeLessThan(500);
-    expect(decodeRepositoryCursor(state, encoded, { ...base, scope })).toEqual(cursor.position);
+    expect(decodeRepositoryCursor(state, encoded, { ...base, scope })).toEqual({
+      position: cursor.position,
+    });
   });
 });
