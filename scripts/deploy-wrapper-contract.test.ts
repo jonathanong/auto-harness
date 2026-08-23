@@ -130,7 +130,9 @@ printf "pnpm %s\\n" "$*" >> "$FAKE_LOG"
 if [[ "$*" == "local:daemon status" ]]; then
   count_file="$FAKE_DIRECTORY/status-count"
   count=0
-  [[ -f "$count_file" ]] && count="$(cat "$count_file")"
+  if [[ -f "$count_file" ]]; then
+    count="$(cat "$count_file")"
+  fi
   count=$((count + 1))
   printf "%s" "$count" > "$count_file"
   if [[ "$count" -lt 3 ]]; then
