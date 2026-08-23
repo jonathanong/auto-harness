@@ -101,7 +101,14 @@ export async function putScheduleDurable(
   state: ControlPlaneState,
   input: ScheduleInput,
 ): Promise<ReturnType<typeof putSchedule>> {
-  if (!state.storage) return putSchedule(state, input);
+  if (!state.storage) {
+    if (!state.repositories.has(input.repositoryId)) {
+      return { ok: false, error: "repository not found" };
+    }
+    const admissionFailure = repositoryAdmissionFailure(state, input.repositoryId);
+    if (admissionFailure) return { ok: false, error: admissionFailure.error };
+    return putSchedule(state, input);
+  }
   await refreshTargetCatalogDurable(state);
   const repository = await getRepositoryDurable(state, input.repositoryId);
   if (!repository) return { ok: false, error: "repository not found" };
