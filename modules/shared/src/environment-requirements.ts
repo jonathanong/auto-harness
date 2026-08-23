@@ -1,9 +1,7 @@
-import {
-  MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH,
-  MAX_RUNTIME_ENVIRONMENT_NAMES,
-} from "./host-runtime.ts";
+import { MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH } from "./host-runtime.ts";
 
 const ENVIRONMENT_NAME = /^[A-Za-z_]\w*$/;
+export const MAX_REQUIRED_ENVIRONMENT_NAMES = 256;
 
 export function parseRequiredEnvironment(
   value: unknown,
@@ -16,8 +14,8 @@ export function parseRequiredEnvironment(
   if (new Set(value).size !== value.length) {
     throw new TypeError(`${context} must not contain duplicate names`);
   }
-  if (value.length > MAX_RUNTIME_ENVIRONMENT_NAMES) {
-    throw new TypeError(`${context} must contain at most ${MAX_RUNTIME_ENVIRONMENT_NAMES} names`);
+  if (value.length > MAX_REQUIRED_ENVIRONMENT_NAMES) {
+    throw new TypeError(`${context} must contain at most ${MAX_REQUIRED_ENVIRONMENT_NAMES} names`);
   }
   if (value.some((name) => name.length > MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH)) {
     throw new TypeError(
@@ -43,9 +41,9 @@ export function assertHostRepositoryRequiredEnvironmentLimit(
     ...(hostRequiredEnvironment ?? []),
     ...(repositoryRequiredEnvironment ?? []),
   ]);
-  if (required.size > MAX_RUNTIME_ENVIRONMENT_NAMES) {
+  if (required.size > MAX_REQUIRED_ENVIRONMENT_NAMES) {
     throw new TypeError(
-      `${context} and host requiredEnvironment must contain at most ${MAX_RUNTIME_ENVIRONMENT_NAMES} distinct names`,
+      `${context} and host requiredEnvironment must contain at most ${MAX_REQUIRED_ENVIRONMENT_NAMES} distinct names`,
     );
   }
 }

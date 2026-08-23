@@ -132,8 +132,10 @@ environmentNames?, environmentNamesCaseSensitive? }`. `environmentNames` include
 Windows daemons set `environmentNamesCaseSensitive: false` because their child-process environment
 lookup is case-insensitive; other platforms set it to `true`. The control plane treats a missing
 runtime report or comparison-mode field as legacy and uses exact (POSIX-compatible) matching. The
-control plane fails closed for scheduling when Git readiness is absent. Reasons are bounded codes
-only; command output and local paths are never sent over the wire.
+runtime report allows up to 512 names, leaving baseline child-environment capacity beyond the 256
+distinct names a host/repository pair may require. The control plane fails closed for scheduling
+when Git readiness is absent. Reasons are bounded codes only; command output and local paths are
+never sent over the wire.
 
 ---
 

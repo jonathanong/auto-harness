@@ -122,6 +122,10 @@ describe("runCli start signal handling", () => {
   it("registers real signal handlers and resolves once one fires", async () => {
     const server = await acceptingServer();
     const proc = fakeProcess();
+    const tokenNames = Array.from(
+      { length: 256 },
+      (_, index) => `TOKEN_${String(index).padStart(3, "0")}`,
+    );
     try {
       const deps = minimalDeps({
         process: proc,
@@ -140,14 +144,14 @@ describe("runCli start signal handling", () => {
       const resultPromise = runCli(
         ["node", "x", "start", "--ws", `http://127.0.0.1:${server.port}`],
         {
-          HARNESS_CHILD_ENV_ALLOWLIST: "SECOND_TOKEN,FIRST_TOKEN",
-          FIRST_TOKEN: "first",
-          SECOND_TOKEN: "second",
+          HARNESS_CHILD_ENV_ALLOWLIST: tokenNames.join(","),
+          PATH: "/bin",
+          ...Object.fromEntries(tokenNames.map((name) => [name, name])),
         },
         deps,
       );
       await waitFor(() => proc.hasListener("SIGINT") && proc.hasListener("SIGTERM"));
-      expect(server.registeredEnvironmentNames()).toEqual(["FIRST_TOKEN", "SECOND_TOKEN"]);
+      expect(server.registeredEnvironmentNames()).toEqual(["PATH", ...tokenNames]);
       proc.fire("SIGINT");
       expect(await resultPromise).toBe(0);
     } finally {
@@ -157,7 +161,7 @@ describe("runCli start signal handling", () => {
 
   it("rejects an oversized complete environment report, including LC_* names", async () => {
     const tokenNames = Array.from(
-      { length: 260 },
+      { length: 512 },
       (_, index) => `TOKEN_${String(index).padStart(3, "0")}`,
     );
     const errors: string[] = [];
@@ -181,7 +185,7 @@ describe("runCli start signal handling", () => {
       ),
     ).resolves.toBe(1);
     expect(errors).toEqual([
-      "child environment exceeds runtime report limits (256 names, 128 characters per name)",
+      "child environment exceeds runtime report limits (512 names, 128 characters per name)",
     ]);
   });
 
@@ -198,7 +202,7 @@ describe("runCli start signal handling", () => {
     });
     await expect(runCli(["node", "x", "start"], { [overlongName]: "C" }, deps)).resolves.toBe(1);
     expect(errors).toEqual([
-      "child environment exceeds runtime report limits (256 names, 128 characters per name)",
+      "child environment exceeds runtime report limits (512 names, 128 characters per name)",
     ]);
   });
 });

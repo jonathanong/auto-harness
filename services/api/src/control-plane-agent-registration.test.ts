@@ -103,7 +103,7 @@ describe("host registration repository inventory", () => {
           daemonVersion: "test",
           gitVersion: "2.36.0",
           gitReady: true,
-          environmentNames: Array.from({ length: 257 }, (_, index) => `TOKEN_${index}`),
+          environmentNames: Array.from({ length: 513 }, (_, index) => `TOKEN_${index}`),
         },
       }),
     ).toEqual({ ok: false, error: "runtime report is invalid" });

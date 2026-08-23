@@ -388,7 +388,9 @@ Host inventory can declare `requiredEnvironment` at the host root and on each re
 attachment. Names must use environment-variable syntax and be unique within each list. The daemon
 reports only the names visible to repository child processes—never their values. The control plane
 combines the host and repository requirements, exposes `ready` and `missing` names per attached
-repository in host status, and will not assign work to a host until all names are present.
+repository in host status, and will not assign work to a host until all names are present. A
+host/repository pair may require up to 256 distinct names; the bounded runtime report allows up to
+512 names so baseline child variables do not consume that requirement capacity.
 
 Configure these lists with the structured Host Advanced and repository-attachment settings forms.
 Adding a name to the service environment is insufficient unless it is also permitted by

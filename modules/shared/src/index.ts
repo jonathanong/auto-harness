@@ -121,6 +121,7 @@ export {
 export { parseHostInventory } from "./host-inventory-parse.ts";
 export {
   assertHostRepositoryRequiredEnvironmentLimit,
+  MAX_REQUIRED_ENVIRONMENT_NAMES,
   parseRequiredEnvironment,
 } from "./environment-requirements.ts";
 

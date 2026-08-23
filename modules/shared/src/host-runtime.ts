@@ -6,7 +6,10 @@ export const GIT_READINESS_REASONS = [
   "git_readiness_unreported",
 ] as const;
 
-export const MAX_RUNTIME_ENVIRONMENT_NAMES = 256;
+// Runtime reports include operator-allowlisted names plus baseline child-process
+// names such as PATH, HOME, and LC_*. Keep this larger than the persisted
+// requirement limit while still bounding registration payloads.
+export const MAX_RUNTIME_ENVIRONMENT_NAMES = 512;
 export const MAX_RUNTIME_ENVIRONMENT_NAME_LENGTH = 128;
 
 /** Windows child-process environment keys are case-insensitive; POSIX keys are not. */
