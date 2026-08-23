@@ -7,7 +7,7 @@ import type { SessionRecord } from "./types.ts";
 
 type TransactionItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
-export type SessionDrainActivityKey = { scopeKey: string; recordKey: string; sessionId: string };
+type SessionDrainActivityKey = { scopeKey: string; recordKey: string; sessionId: string };
 
 export function sessionDrainActivityForScope(
   repositoryId: string,
