@@ -1,5 +1,5 @@
 /* eslint-disable max-lines */
-import { isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
+import { MAX_FALLBACKS, isValidUtcTimestamp, nextCronOccurrence } from "@auto-harness/shared";
 import type { PublicSession, ScheduleRecord } from "./control-plane-types.ts";
 import type { SessionRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
@@ -55,6 +55,26 @@ export function triggerSchedule(
     }
   }
   return { ok: true, session: result.session, created: result.created };
+}
+
+async function disableLegacyFallbackTrigger(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  fallbackCount: number,
+): Promise<{ ok: false; error: string }> {
+  const disabled = await disableLegacyFallbackSchedule(
+    state,
+    schedule,
+    schedule.nextRunAt,
+    fallbackCount,
+  );
+  if (disabled) state.schedules.set(schedule.id, { ...schedule, enabled: false });
+  return {
+    ok: false,
+    error: disabled
+      ? `schedule disabled: it has ${fallbackCount} persisted fallbacks; update it to at most ${MAX_FALLBACKS}`
+      : "schedule changed concurrently; legacy fallback disable was not applied",
+  };
 }
 
 /**
@@ -116,6 +136,9 @@ export async function triggerScheduleDurable(
       code: "DRAINING",
       operationId: outcome.operationId,
     };
+  }
+  if (outcome.kind === "legacy_fallbacks") {
+    return disableLegacyFallbackTrigger(state, schedule, outcome.fallbackCount);
   }
   if (outcome.kind !== "created") {
     return { ok: false, error: "schedule was updated or claimed concurrently" };
@@ -322,6 +345,18 @@ export async function tryClaimScheduleFireDurable(
     }
     return null;
   }
+  if (outcome.kind === "legacy_fallbacks") {
+    const disabled = await disableLegacyFallbackSchedule(
+      state,
+      schedule,
+      expectedNextRunAt,
+      outcome.fallbackCount,
+    );
+    if (disabled) {
+      state.schedules.set(scheduleId, { ...schedule, enabled: false });
+    }
+    return null;
+  }
   if (outcome.kind !== "created") {
     return null;
   }
@@ -364,6 +399,41 @@ function principalDrainSkipAudit(
     state.now(),
     state.auditIdFactory(),
   );
+}
+
+function disableLegacyFallbackSchedule(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  expectedNextRunAt: string,
+  fallbackCount: number,
+): Promise<boolean> {
+  const audit = newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "schedule:legacy-fallbacks-disabled",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: {
+        reason: "persisted schedule exceeds the durable transaction route limit",
+        fallbackCount,
+        maxFallbacks: MAX_FALLBACKS,
+      },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
+  return state
+    .storage!.disableLegacyFallbackScheduleAndAudit({
+      scheduleId: schedule.id,
+      expectedNextRunAt,
+      audit,
+    })
+    .then((disabled) => {
+      if (disabled) state.auditLogs.set(audit.id, audit);
+      return disabled;
+    });
 }
 
 function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {

@@ -10,6 +10,7 @@ function reportSchedulerError(error: unknown): void {
 type SchedulerPlane = Pick<
   ControlPlane,
   | "evaluateCronDurable"
+  | "migrateSessionDrainActivityLedgerPage"
   | "enforceAckDeadlinesDurable"
   | "enforceRunningTimeoutsDurable"
   | "reclaimStaleHostsDurable"
@@ -82,6 +83,7 @@ export class LocalScheduler {
 
   private async runTick(): Promise<void> {
     const steps = [
+      () => this.plane.migrateSessionDrainActivityLedgerPage(),
       () => this.plane.evaluateCronDurable(),
       () => this.plane.enforceAckDeadlinesDurable(),
       () => this.plane.enforceRunningTimeoutsDurable(),

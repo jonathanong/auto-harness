@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { DynamoPlaneStorageBase } from "./plane-storage-base.ts";
-import { listSessionDrainActivities } from "./plane-storage-session-drains.ts";
+import {
+  listSessionDrainActivityPage,
+  listSessionDrainReconcileCandidates,
+} from "./plane-storage-session-drains.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
 
 function context(send: (command: { input: Record<string, unknown> }) => Promise<unknown>) {
@@ -19,9 +22,9 @@ describe("DynamoDB session drain activity ledger", () => {
       return { Items: [{ recordKey: "ACT#owned", sessionId: "owned" }] };
     });
 
-    await expect(listSessionDrainActivities(ctx, "repo", "principal")).resolves.toMatchObject([
-      { recordKey: "ACT#owned", sessionId: "owned" },
-    ]);
+    await expect(listSessionDrainActivityPage(ctx, "repo", "principal")).resolves.toMatchObject({
+      records: [{ recordKey: "ACT#owned", sessionId: "owned" }],
+    });
     expect(commands).toHaveLength(1);
     expect(commands[0]?.input).toMatchObject({
       TableName: "SessionDrains",
@@ -47,11 +50,11 @@ describe("DynamoDB session drain activity ledger", () => {
         : { Items: [{ recordKey: "ACT#second", sessionId: "second" }] };
     });
 
-    await expect(listSessionDrainActivities(ctx, "repo", "principal")).resolves.toMatchObject([
-      { sessionId: "first" },
-      { sessionId: "second" },
-    ]);
-    expect(page).toBe(2);
+    await expect(listSessionDrainActivityPage(ctx, "repo", "principal")).resolves.toMatchObject({
+      records: [{ sessionId: "first" }],
+      nextKey: { id: "first" },
+    });
+    expect(page).toBe(1);
   });
 
   it("hydrates exact sessions strongly and deletes only terminal activity members", async () => {
@@ -126,7 +129,9 @@ describe("DynamoDB session drain activity ledger", () => {
 
     await expect(
       storage.listSessionsForDrain("repo", "principal", "operation", 1),
-    ).resolves.toMatchObject([{ id: "queued" }, { id: "done" }, { id: "legacy" }]);
+    ).resolves.toMatchObject({
+      sessions: [{ id: "queued" }, { id: "done" }, { id: "legacy" }],
+    });
     expect(
       commands
         .filter((command) => command.input.TableName === "Sessions")
@@ -142,6 +147,51 @@ describe("DynamoDB session drain activity ledger", () => {
         input: expect.objectContaining({
           TableName: "SessionDrains",
           Key: { scopeKey: "repo#principal", recordKey: "ACT#done" },
+        }),
+      }),
+    );
+  });
+
+  it("uses a bounded durable cursor to give later drains a turn", async () => {
+    const commands: Array<{ input: Record<string, unknown> }> = [];
+    let scan = 0;
+    const ctx = context(async (command) => {
+      commands.push(command);
+      if (
+        command.input.TableName === "SessionDrains" &&
+        command.input.Key?.recordKey === "CURSOR-V1"
+      ) {
+        return { Item: { nextKey: { scopeKey: "old", recordKey: "ACT#old" } } };
+      }
+      if (command.input.Limit === 50) {
+        scan += 1;
+        return {
+          Items: [
+            { scopeKey: "repo#principal", recordKey: "CURRENT", status: "draining" },
+            { scopeKey: "repo#principal", recordKey: "ACT#member", recordType: "activity" },
+          ],
+          LastEvaluatedKey: { scopeKey: "next", recordKey: "ACT#next" },
+        };
+      }
+      return {};
+    });
+    await expect(listSessionDrainReconcileCandidates(ctx, 1)).resolves.toMatchObject([
+      { recordKey: "CURRENT", status: "draining" },
+    ]);
+    expect(scan).toBe(1);
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          ExclusiveStartKey: { scopeKey: "old", recordKey: "ACT#old" },
+        }),
+      }),
+    );
+    expect(commands).toContainEqual(
+      expect.objectContaining({
+        input: expect.objectContaining({
+          Item: expect.objectContaining({
+            nextKey: { scopeKey: "repo#principal", recordKey: "CURRENT" },
+          }),
         }),
       }),
     );

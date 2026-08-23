@@ -144,7 +144,7 @@ from the UI, another service account, or another repository:
   `operationId`, `status`, and `statusUrl`. Send a stable `Idempotency-Key` (1–128 characters from
   `A-Z a-z 0-9 . _ : -`) so an ambiguous retry returns the same retained operation even after
   release or an API restart.
-- `GET /repositories/:id/session-drains/:operationId` reconciles and returns bounded counts plus
+- `GET /repositories/:id/session-drains/:operationId` reconciles one bounded activity page and returns counts plus
   `draining`, `succeeded`, or `failed`. The scheduler continues reconciliation when nobody polls.
   `succeeded` is durable proof that the exact scope has no queued/running session and no cancelled
   session still holding a worktree or main-checkout lease.
@@ -157,15 +157,24 @@ While fenced, direct create, clone, resume, schedule fire, and assignment fail a
 normal fenced `session:cancel` message and remains part of progress until its exact lease is
 released. Prompts, logs, metadata, and credentials never enter drain progress or audit metadata.
 
+The `session-drain:create` audit event is committed in the same DynamoDB transaction as the
+`CURRENT` fence and retained `OP#operationId` record, using an operation-derived audit ID. Terminal
+`session-drain:succeeded` and `session-drain:failed` events are likewise committed with the terminal
+state transition. Retries and concurrent reconcilers therefore retain exactly one creation and one
+terminal audit record; creation preserves the authenticated caller as actor, while terminal events
+use the system actor. Release is coupled to its audit record too, so a later audit failure cannot
+hide an already-committed drain operation behind an erroneous HTTP failure.
+
 Drain completion is proved from a strongly consistent activity ledger: each principal-owned
 session writes an `ACT#sessionId` member in its `(repository, principal)` partition in the same
 transaction as admission and the drain fence, then reconciliation strongly reads that bounded
 partition and each exact session row. It never infers quiescence from an eventually consistent
-secondary index. On the first deployment that enables this ledger, startup performs one
-strongly-consistent backfill of active owned sessions before writing its readiness marker; drain
-requests fail closed until that marker exists. Roll upgrades must retire all older control-plane
-writers before that first bootstrap, since an old binary could otherwise admit an untracked
-session during the one-time scan.
+secondary index. On the first deployment that enables this ledger, the scheduler performs a
+fenced, resumable, strongly consistent backfill of active owned sessions in bounded pages before
+writing its readiness marker; REST and WebSocket cold starts never perform this scan, and drain
+requests fail closed until the marker exists. Roll upgrades must retire all older control-plane
+writers before enabling the scheduler bootstrap, since an old binary could otherwise admit an
+untracked session during the migration.
 
 Durable schedules have an authenticated owner. Legacy schedules created before ownership was
 persisted are deliberately inert: durable manual trigger and cron do not mint sessions, and cron

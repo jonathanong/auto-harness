@@ -1,6 +1,6 @@
 import type { SessionDrainRecord } from "./db/plane-storage.ts";
+import { auditActor } from "./audit.ts";
 import { mayAccessRepository } from "./auth-policy.ts";
-import { writeRouteAudit } from "./local-audit.ts";
 import { send, sendInternalError, type RouteCtx } from "./local-http.ts";
 import { canAuthorSessions } from "./local-routes-session-access.ts";
 
@@ -59,6 +59,7 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
         repositoryId,
         ctx.principal.id,
         idempotencyKey,
+        auditActor(ctx.principal),
       );
       if ("error" in result) {
         send(
@@ -70,16 +71,6 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
         );
         return true;
       }
-      if (
-        !(await writeRouteAudit(ctx, {
-          action: result.created ? "session-drain:create" : "session-drain:replay",
-          resourceType: "repository",
-          resourceId: repositoryId,
-          repositoryId,
-          metadata: { operationId: result.drain.operationId, status: result.drain.status },
-        }))
-      )
-        return true;
       send(ctx.res, 202, publicDrain(result.drain));
       return true;
     }
@@ -100,15 +91,11 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
       return true;
     }
     if (operationMatch[3] && ctx.method === "POST") {
-      const beforeRelease = await ctx.plane.getSessionDrainDurable(
-        repositoryId,
-        ctx.principal.id,
-        operationId,
-      );
       const drain = await ctx.plane.releaseSessionDrainDurable(
         repositoryId,
         ctx.principal.id,
         operationId,
+        auditActor(ctx.principal),
       );
       if (!drain) {
         send(ctx.res, 409, {
@@ -119,20 +106,6 @@ export async function handleSessionDrainRoutes(ctx: RouteCtx): Promise<boolean> 
         });
         return true;
       }
-      if (
-        !(await writeRouteAudit(ctx, {
-          action: "session-drain:release",
-          resourceType: "repository",
-          resourceId: repositoryId,
-          repositoryId,
-          metadata: {
-            operationId,
-            terminalStatus: beforeRelease?.status ?? "unknown",
-            incomplete: beforeRelease?.status === "failed",
-          },
-        }))
-      )
-        return true;
       send(ctx.res, 200, publicDrain(drain));
       return true;
     }

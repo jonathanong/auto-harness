@@ -171,7 +171,7 @@ describe("Dynamo session adapter mainline additions", () => {
     const rejected = createSession(
       ctx(async () => {
         calls += 1;
-        if (calls === 1) throw cancelled(2, 4);
+        if (calls === 1) throw cancelled(3, 6);
         return { Item: { operationId: "drain" } };
       }),
       session({ metadata: { createdBy: "principal" } }),

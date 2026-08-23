@@ -133,12 +133,18 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return repositoryAdmission.reconcileRepositoryDrainsDurable(this.state);
   }
 
-  createSessionDrainDurable(repositoryId: string, principalId: string, idempotencyKey?: string) {
+  createSessionDrainDurable(
+    repositoryId: string,
+    principalId: string,
+    idempotencyKey?: string,
+    actor?: import("./audit-types.ts").AuditActor,
+  ) {
     return sessionDrains.createSessionDrainDurable(
       this.state,
       repositoryId,
       principalId,
       idempotencyKey,
+      actor,
     );
   }
 
@@ -150,12 +156,23 @@ export class ControlPlaneManagement extends ControlPlaneCatalog {
     return sessionDrains.reconcileSessionDrainsDurable(this.state);
   }
 
-  releaseSessionDrainDurable(repositoryId: string, principalId: string, operationId: string) {
+  /** Scheduler-owned, bounded bootstrap. REST/WS cold starts never scan Sessions. */
+  migrateSessionDrainActivityLedgerPage(): Promise<boolean> {
+    return this.state.storage?.migrateSessionDrainActivityLedgerPage() ?? Promise.resolve(false);
+  }
+
+  releaseSessionDrainDurable(
+    repositoryId: string,
+    principalId: string,
+    operationId: string,
+    actor?: import("./audit-types.ts").AuditActor,
+  ) {
     return sessionDrains.releaseSessionDrainDurable(
       this.state,
       repositoryId,
       principalId,
       operationId,
+      actor,
     );
   }
 

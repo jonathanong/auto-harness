@@ -18,6 +18,7 @@ function makePlane(steps: Partial<Record<string, Step>> = {}): {
   return {
     calls,
     plane: {
+      migrateSessionDrainActivityLedgerPage: step("migration"),
       evaluateCronDurable: step("cron"),
       enforceAckDeadlinesDurable: step("ack"),
       enforceRunningTimeoutsDurable: step("timeout"),
@@ -44,6 +45,7 @@ describe("LocalScheduler", () => {
       scheduler.start();
       await flush();
       expect(calls).toEqual([
+        "migration",
         "cron",
         "ack",
         "timeout",
@@ -56,7 +58,7 @@ describe("LocalScheduler", () => {
 
       scheduler.start();
       await vi.advanceTimersByTimeAsync(10);
-      expect(calls).toHaveLength(16);
+      expect(calls).toHaveLength(18);
       await scheduler.stop();
     } finally {
       vi.useRealTimers();
@@ -74,18 +76,20 @@ describe("LocalScheduler", () => {
     expect(await scheduler.tick()).toBe(false);
     scheduler.start();
     await flush();
-    expect(calls).toEqual(["cron"]);
+    expect(calls).toEqual(["migration", "cron"]);
     expect(await scheduler.tick()).toBe(false);
 
     const stopped = scheduler.stop();
     releaseCron?.();
     await stopped;
-    expect(calls).toEqual(["cron"]);
+    expect(calls).toEqual(["migration", "cron"]);
 
     scheduler.start();
     await flush();
     expect(calls).toEqual([
+      "migration",
       "cron",
+      "migration",
       "cron",
       "ack",
       "timeout",
@@ -116,6 +120,7 @@ describe("LocalScheduler", () => {
     await flush();
     expect(errors).toHaveLength(1);
     expect(calls).toEqual([
+      "migration",
       "cron",
       "ack",
       "timeout",
@@ -143,6 +148,7 @@ describe("LocalScheduler", () => {
       await flush();
       expect(logger).toHaveBeenCalledWith("local scheduler operation failed", error);
       expect(calls).toEqual([
+        "migration",
         "cron",
         "ack",
         "timeout",

@@ -1,5 +1,4 @@
 import { createDynamoClients, tableNames, type CreateDynamoClientOptions } from "./db/dynamo.ts";
-import { ensureSessionDrainActivityLedger } from "./db/ensure-session-drain-ledger.ts";
 import { ensureControlPlaneTables } from "./db/ensure-tables.ts";
 import { DynamoPlaneStorage } from "./db/plane-storage.ts";
 import { ControlPlane, type ControlPlaneOptions } from "./control-plane.ts";
@@ -35,13 +34,6 @@ export async function createControlPlane(
   const tables = tableNames(prefix);
   if (!options.skipEnsureTables) {
     await ensureControlPlaneTables({ client, prefix });
-  } else {
-    // AWS tables are provisioned by CDK, so Lambda skips CreateTable. It still
-    // must establish the one-time strongly-consistent drain-ledger boundary.
-    await ensureSessionDrainActivityLedger(doc, {
-      sessions: tables.sessions,
-      sessionDrains: tables.sessionDrains,
-    });
   }
   const storage = new DynamoPlaneStorage(doc, tables);
   const plane = new ControlPlane({

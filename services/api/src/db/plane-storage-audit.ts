@@ -1,4 +1,4 @@
-import { PutCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
+import { PutCommand, QueryCommand, type TransactWriteCommandInput } from "@aws-sdk/lib-dynamodb";
 
 import type { AuditLogListQuery, AuditLogPage, AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx } from "./plane-storage-types.ts";
@@ -47,6 +47,22 @@ function matches(record: AuditLogRecord, query: AuditLogListQuery): boolean {
 
 export function auditLogItem(record: AuditLogRecord): AuditItem {
   return { ...record, scope: AUDIT_SCOPE, timestampId: timestampId(record) };
+}
+
+/** Immutable audit insertion for transactions whose acknowledgement depends on
+ * both the domain transition and its audit record being durable. */
+export function auditLogTransactPut(
+  ctx: PlaneStorageCtx,
+  record: AuditLogRecord,
+): NonNullable<TransactWriteCommandInput["TransactItems"]>[number] {
+  return {
+    Put: {
+      TableName: ctx.tables.auditLogs,
+      Item: auditLogItem(record),
+      ConditionExpression: "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
+      ExpressionAttributeNames: { "#scope": "scope" },
+    },
+  };
 }
 
 function fromItem(item: AuditItem): AuditLogRecord {

@@ -162,6 +162,10 @@ export type SessionDrainRecord = {
   queuedCount: number;
   runningCount: number;
   cancelledCount: number;
+  /** Opaque DynamoDB resume key for a bounded strongly-consistent ACT sweep. */
+  activityCursor?: Record<string, unknown>;
+  reconcileLeaseOwner?: string;
+  reconcileLeaseUntil?: string;
   completedAt?: string;
   releasedAt?: string;
   failureCode?: "DEADLINE_EXCEEDED";

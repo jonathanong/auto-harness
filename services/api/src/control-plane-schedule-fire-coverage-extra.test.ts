@@ -1,4 +1,5 @@
 /* eslint-disable max-lines -- schedule-fire coverage cases share one fixture. */
+import { MAX_FALLBACKS } from "@auto-harness/shared";
 import { describe, expect, it } from "vitest";
 
 import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -221,5 +222,55 @@ describe("schedule fire residual coverage", () => {
 
     await expect(evaluateCronDurable(current, NOW)).resolves.toMatchObject([{ id: "run" }]);
     expect(current.schedules.get("nightly")).toMatchObject({ nextRunAt: NOW, lastRunAt: null });
+  });
+
+  it("explicitly disables and audits legacy fallback-heavy cron schedules", async () => {
+    const current = state(
+      schedule({
+        principalId: "principal",
+        fallbacks: Array.from({ length: 91 }, () => ({ commandId: "cmd" })),
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => ({
+          kind: "legacy_fallbacks",
+          fallbackCount: 91,
+        }),
+        disableLegacyFallbackScheduleAndAudit: async () => true,
+      },
+    );
+
+    await expect(evaluateCronDurable(current, NOW)).resolves.toEqual([]);
+    expect(current.schedules.get("nightly")).toMatchObject({ enabled: false });
+    expect([...current.auditLogs.values()]).toContainEqual(
+      expect.objectContaining({
+        action: "schedule:legacy-fallbacks-disabled",
+        resourceType: "schedule",
+        resourceId: "nightly",
+        outcome: "failed",
+        metadata: expect.objectContaining({ fallbackCount: 91, maxFallbacks: MAX_FALLBACKS }),
+      }),
+    );
+  });
+
+  it("explicitly disables a legacy fallback-heavy manual trigger", async () => {
+    const current = state(
+      schedule({
+        principalId: "principal",
+        fallbacks: Array.from({ length: 91 }, () => ({ commandId: "cmd" })),
+      }),
+      {
+        tryClaimScheduleAndCreateSession: async () => ({
+          kind: "legacy_fallbacks",
+          fallbackCount: 91,
+        }),
+        disableLegacyFallbackScheduleAndAudit: async () => true,
+      },
+    );
+
+    await expect(triggerScheduleDurable(current, "nightly", NOW)).resolves.toEqual({
+      ok: false,
+      error: `schedule disabled: it has 91 persisted fallbacks; update it to at most ${MAX_FALLBACKS}`,
+    });
+    expect(current.schedules.get("nightly")).toMatchObject({ enabled: false });
   });
 });

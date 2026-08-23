@@ -9,7 +9,8 @@ import {
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
 import { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
-import { releaseCancelledSessionWorktree } from "./plane-storage-sessions.ts";
+import { cancelQueuedSession, releaseCancelledSessionWorktree } from "./plane-storage-sessions.ts";
+import type { AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
 const conditionalTransaction = {
@@ -41,6 +42,20 @@ function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   };
 }
 
+function audit(drain: SessionDrainRecord): AuditLogRecord {
+  return {
+    id: `audit-${drain.operationId}-create`,
+    createdAt: drain.updatedAt,
+    actor: { id: drain.principalId, kind: "service-account", role: "author" },
+    action: "session-drain:create",
+    resourceType: "repository",
+    resourceId: drain.repositoryId,
+    repositoryId: drain.repositoryId,
+    outcome: "success",
+    metadata: { operationId: drain.operationId },
+  };
+}
+
 function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unknown>) {
   return {
     doc: { send },
@@ -52,11 +67,62 @@ function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unk
       worktrees: "worktrees",
       hostLocks: "host-locks",
       users: "users",
+      auditLogs: "audit-logs",
     },
   } as unknown as PlaneStorageCtx;
 }
 
 describe("session drain Dynamo adapter residuals", () => {
+  it("deletes a drain-cancelled queued session's ACT member with its counters", async () => {
+    let input: Record<string, unknown> | undefined;
+    const storage = ctx(async (command) => {
+      input = command.input;
+      return {};
+    });
+
+    await expect(
+      cancelQueuedSession(storage, {
+        sessionId: "session",
+        queueShard: 0,
+        completedAt: "done",
+        errorMessage: "cancelled",
+        drainOperationId: "operation",
+        drainRepositoryId: "repo/one",
+        drainPrincipalId: "principal two",
+      }),
+    ).resolves.toBe(true);
+
+    expect(input?.TransactItems).toEqual([
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "sessions",
+          Key: { id: "session" },
+          ConditionExpression: "#s = :queued",
+        }),
+      }),
+      {
+        Delete: {
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "ACT#session" },
+        },
+      },
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "CURRENT" },
+          UpdateExpression: "ADD cancelledCount :one",
+        }),
+      }),
+      expect.objectContaining({
+        Update: expect.objectContaining({
+          TableName: "session-drains",
+          Key: { scopeKey: "repo%2Fone#principal%20two", recordKey: "OP#operation" },
+          UpdateExpression: "ADD cancelledCount :one",
+        }),
+      }),
+    ]);
+  });
+
   it("builds encoded scope and optional admission checks", () => {
     const storage = ctx(async () => ({}));
     expect(sessionDrainScopeKey("repo/one", "principal two")).toBe("repo%2Fone#principal%20two");
@@ -118,43 +184,65 @@ describe("session drain Dynamo adapter residuals", () => {
           return {};
         }),
         record(),
+        audit(record()),
       ),
     ).resolves.toMatchObject({
       created: true,
       drain: { scopeKey: "repo%2Fone#principal%20two" },
     });
-    expect(createInput).toMatchObject({
-      TransactItems: [
-        {
-          ConditionCheck: {
+    expect(createInput?.TransactItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
             TableName: "concurrency-locks",
             Key: { concurrencyId: "catalog-delete:repository:repo/one" },
-          },
-        },
-        {
-          ConditionCheck: {
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
+            TableName: "concurrency-locks",
+            Key: { concurrencyId: "catalog-delete:principal:principal two" },
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
             TableName: "users",
             Key: { id: "principal two" },
             ConditionExpression: "attribute_exists(id)",
-          },
-        },
-        {
-          ConditionCheck: {
+          }),
+        }),
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({
             TableName: "repositories",
             Key: { id: "repo/one" },
-            ConditionExpression: "attribute_exists(id)",
-          },
-        },
-        {
-          ConditionCheck: {
+          }),
+        }),
+        expect.objectContaining({
+          Put: expect.objectContaining({
             TableName: "session-drains",
-            Key: { scopeKey: "__session-drain-ledger__" },
-          },
-        },
-        { Put: { TableName: "session-drains", Item: { recordKey: "CURRENT" } } },
-        { Put: { TableName: "session-drains", Item: { recordKey: "OP#operation" } } },
-      ],
-    });
+            Item: expect.objectContaining({ recordKey: "CURRENT" }),
+          }),
+        }),
+        expect.objectContaining({
+          Put: expect.objectContaining({
+            TableName: "session-drains",
+            Item: expect.objectContaining({ recordKey: "OP#operation" }),
+          }),
+        }),
+      ]),
+    );
+    expect(createInput?.TransactItems).toContainEqual(
+      expect.objectContaining({
+        Put: expect.objectContaining({
+          TableName: "audit-logs",
+          Item: expect.objectContaining({
+            id: "audit-operation-create",
+            actor: expect.objectContaining({ id: "principal two" }),
+            timestampId: "now#audit-operation-create",
+          }),
+        }),
+      }),
+    );
 
     let call = 0;
     const replayStorage = ctx(async () => {
@@ -162,7 +250,9 @@ describe("session drain Dynamo adapter residuals", () => {
       if (call === 1) throw conditionalTransaction;
       return call === 2 ? { Item: record({ recordKey: "OP#operation" }) } : {};
     });
-    await expect(createOrGetSessionDrain(replayStorage, record())).resolves.toMatchObject({
+    await expect(
+      createOrGetSessionDrain(replayStorage, record(), audit(record())),
+    ).resolves.toMatchObject({
       created: false,
       drain: { operationId: "operation" },
     });
@@ -176,6 +266,7 @@ describe("session drain Dynamo adapter residuals", () => {
           };
         }),
         record(),
+        audit(record()),
       ),
     ).rejects.toThrow("session drain scope is unavailable");
 
@@ -192,6 +283,7 @@ describe("session drain Dynamo adapter residuals", () => {
           };
         }),
         record(),
+        audit(record()),
       ),
     ).rejects.toThrow("session drain scope is unavailable");
 
@@ -204,11 +296,13 @@ describe("session drain Dynamo adapter residuals", () => {
               { Code: "None" },
               { Code: "None" },
               { Code: "None" },
+              { Code: "None" },
               { Code: "ConditionalCheckFailed" },
             ],
           };
         }),
         record(),
+        audit(record()),
       ),
     ).rejects.toThrow("session drain activity ledger is not ready");
 
@@ -219,6 +313,7 @@ describe("session drain Dynamo adapter residuals", () => {
         return {};
       }),
       record({ principalId: "system" }),
+      audit(record({ principalId: "system" })),
     );
     expect(systemInput?.TransactItems).not.toContainEqual(
       expect.objectContaining({
@@ -234,6 +329,7 @@ describe("session drain Dynamo adapter residuals", () => {
           };
         }),
         record({ principalId: "system" }),
+        audit(record({ principalId: "system" })),
       ),
     ).rejects.toThrow("session drain scope is unavailable");
 
@@ -243,9 +339,9 @@ describe("session drain Dynamo adapter residuals", () => {
       if (call === 1) throw conditionalTransaction;
       return {};
     });
-    await expect(createOrGetSessionDrain(missingStorage, record())).rejects.toThrow(
-      "session drain scope is unavailable",
-    );
+    await expect(
+      createOrGetSessionDrain(missingStorage, record(), audit(record())),
+    ).rejects.toThrow("session drain scope is unavailable");
 
     await expect(
       createOrGetSessionDrain(
@@ -256,6 +352,7 @@ describe("session drain Dynamo adapter residuals", () => {
           };
         }),
         record(),
+        audit(record()),
       ),
     ).rejects.toThrow("session drain scope is unavailable");
 
@@ -265,9 +362,9 @@ describe("session drain Dynamo adapter residuals", () => {
       if (call === 1) throw conditionalTransaction;
       return {};
     });
-    await expect(createOrGetSessionDrain(occupiedScopeStorage, record())).rejects.toThrow(
-      "session drain scope is unavailable",
-    );
+    await expect(
+      createOrGetSessionDrain(occupiedScopeStorage, record(), audit(record())),
+    ).rejects.toThrow("session drain scope is unavailable");
     expect(call).toBe(2);
     await expect(
       createOrGetSessionDrain(
@@ -275,6 +372,7 @@ describe("session drain Dynamo adapter residuals", () => {
           throw new Error("offline");
         }),
         record(),
+        audit(record()),
       ),
     ).rejects.toThrow("offline");
   });

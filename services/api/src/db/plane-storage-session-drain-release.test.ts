@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { releaseSessionDrain, updateSessionDrain } from "./plane-storage-session-drains.ts";
+import {
+  claimSessionDrainReconcile,
+  releaseSessionDrain,
+  updateSessionDrain,
+} from "./plane-storage-session-drains.ts";
+import type { AuditLogRecord } from "../audit-types.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
 const conditionalTransaction = {
@@ -27,6 +32,20 @@ function record(over: Partial<SessionDrainRecord> = {}): SessionDrainRecord {
   };
 }
 
+function audit(): AuditLogRecord {
+  return {
+    id: "audit-session-drain-operation-release",
+    createdAt: "now",
+    actor: { id: "principal", kind: "service-account", role: "author" },
+    action: "session-drain:release",
+    resourceType: "repository",
+    resourceId: "repo",
+    repositoryId: "repo",
+    outcome: "success",
+    metadata: { operationId: "operation" },
+  };
+}
+
 function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unknown>) {
   return {
     doc: { send },
@@ -35,6 +54,25 @@ function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unk
 }
 
 describe("session drain update and release races", () => {
+  it("only suppresses conditional failures while claiming reconciliation", async () => {
+    await expect(
+      claimSessionDrainReconcile(
+        ctx(async () => Promise.reject(conditional)),
+        record(),
+        "owner",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      claimSessionDrainReconcile(
+        ctx(async () => Promise.reject(new Error("offline"))),
+        record(),
+        "owner",
+        "2026-01-01T00:00:00.000Z",
+      ),
+    ).rejects.toThrow("offline");
+  });
+
   it("classifies update failures without hiding transport failures", async () => {
     await expect(
       updateSessionDrain(
@@ -63,32 +101,26 @@ describe("session drain update and release races", () => {
   it("classifies release outcomes without hiding transport failures", async () => {
     await expect(
       releaseSessionDrain(
-        ctx(async () => ({ Attributes: record({ status: "released" }) })),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        ctx(async () => ({})),
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
+        audit(),
       ),
     ).resolves.toMatchObject({ status: "released" });
     await expect(
       releaseSessionDrain(
         ctx(async () => ({})),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
+        audit(),
       ),
-    ).resolves.toBeNull();
+    ).resolves.toMatchObject({ status: "released", operationId: "operation" });
     await expect(
       releaseSessionDrain(
         ctx(async (command) => {
           if (command.input?.ConsistentRead) return {};
           throw conditional;
         }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
+        audit(),
       ),
     ).resolves.toBeNull();
     await expect(
@@ -96,12 +128,26 @@ describe("session drain update and release races", () => {
         ctx(async () => {
           throw new Error("offline");
         }),
-        "repo",
-        "principal",
-        "operation",
-        "now",
+        record({ status: "released", releasedAt: "now", updatedAt: "now" }),
+        audit(),
       ),
     ).rejects.toThrow("offline");
+  });
+
+  it("returns the released operation snapshot without rereading a replacement current drain", async () => {
+    let calls = 0;
+    const released = record({ status: "released", releasedAt: "now", updatedAt: "now" });
+    await expect(
+      releaseSessionDrain(
+        ctx(async () => {
+          calls += 1;
+          return calls === 1 ? {} : { Item: record({ operationId: "replacement" }) };
+        }),
+        released,
+        audit(),
+      ),
+    ).resolves.toEqual(released);
+    expect(calls).toBe(1);
   });
 
   it("replays an already-released operation without accepting a different owner", async () => {
@@ -119,10 +165,8 @@ describe("session drain update and release races", () => {
             Item: record({ status: "released", operationId: "operation", releasedAt: "released" }),
           };
         }),
-        "repo",
-        "principal",
-        "operation",
-        "retry",
+        record({ status: "released", releasedAt: "retry", updatedAt: "retry" }),
+        audit(),
       ),
     ).resolves.toMatchObject({ status: "released", releasedAt: "released" });
 
@@ -134,10 +178,8 @@ describe("session drain update and release races", () => {
           if (call === 1) throw conditional;
           return { Item: record({ status: "released", operationId: "different" }) };
         }),
-        "repo",
-        "principal",
-        "operation",
-        "retry",
+        record({ status: "released", releasedAt: "retry", updatedAt: "retry" }),
+        audit(),
       ),
     ).resolves.toBeNull();
   });

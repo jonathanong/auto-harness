@@ -172,6 +172,13 @@ describe("DynamoPlaneStorageBase", () => {
       }),
     ).toBe(false);
     expect(
+      await storage.disableLegacyFallbackScheduleAndAudit({
+        scheduleId: "missing-legacy",
+        expectedNextRunAt: "t",
+        audit: { ...audit, id: "base-legacy-audit" },
+      }),
+    ).toBe(false);
+    expect(
       await storage.skipScheduleForPrincipalDrainAndAudit({
         scheduleId: "missing-principal",
         repositoryId: "repository",

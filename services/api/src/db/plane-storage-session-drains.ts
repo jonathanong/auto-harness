@@ -6,9 +6,12 @@ import {
   ScanCommand,
   TransactWriteCommand,
   UpdateCommand,
+  PutCommand,
   type TransactWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
 
+import type { AuditLogRecord } from "../audit-types.ts";
+import { auditLogTransactPut } from "./plane-storage-audit.ts";
 import {
   isConditionalFailed,
   isConditionalTransactionFailureAt,
@@ -26,6 +29,10 @@ import {
 const ACTIVITY_RECORD_PREFIX = "ACT#";
 const LEDGER_SCOPE_KEY = "__session-drain-ledger__";
 const LEDGER_RECORD_KEY = "ACTIVITY-V1";
+const RECONCILER_SCOPE_KEY = "__session-drain-reconciler__";
+const RECONCILER_RECORD_KEY = "CURSOR-V1";
+const RECONCILER_SCAN_LIMIT = 50;
+const RECONCILER_MAX_PAGES = 4;
 
 export class SessionDrainScopeUnavailableError extends Error {
   constructor() {
@@ -70,6 +77,29 @@ type SessionDrainActivityRecord = {
 
 export function sessionDrainActivityKey(sessionId: string): string {
   return `${ACTIVITY_RECORD_PREFIX}${sessionId}`;
+}
+
+/** Coupled to the session transition so a successful cancellation increments
+ * exactly once, including after process death or competing reconcilers. */
+export function sessionDrainCancellationUpdates(
+  ctx: PlaneStorageCtx,
+  drain: { repositoryId: string; principalId: string; operationId: string },
+): NonNullable<TransactWriteCommandInput["TransactItems"]>[number][] {
+  const scopeKey = sessionDrainScopeKey(drain.repositoryId, drain.principalId);
+  return ["CURRENT", `OP#${drain.operationId}`].map((recordKey) => ({
+    Update: {
+      TableName: ctx.tables.sessionDrains,
+      Key: { scopeKey, recordKey },
+      UpdateExpression: "ADD cancelledCount :one",
+      ConditionExpression: "operationId = :operationId AND #status = :draining",
+      ExpressionAttributeNames: { "#status": "status" },
+      ExpressionAttributeValues: {
+        ":one": 1,
+        ":operationId": drain.operationId,
+        ":draining": "draining",
+      },
+    },
+  }));
 }
 
 export function sessionDrainActivityPut(
@@ -126,30 +156,31 @@ export function sessionDrainLedgerReadyRecord(): Record<string, string> {
   };
 }
 
-export async function listSessionDrainActivities(
+export async function listSessionDrainActivityPage(
   ctx: PlaneStorageCtx,
   repositoryId: string,
   principalId: string,
-): Promise<SessionDrainActivityRecord[]> {
-  const records: SessionDrainActivityRecord[] = [];
-  let startKey: Record<string, unknown> | undefined;
-  do {
-    const result = await ctx.doc.send(
-      new QueryCommand({
-        TableName: ctx.tables.sessionDrains,
-        KeyConditionExpression: "scopeKey = :scopeKey AND begins_with(recordKey, :activityPrefix)",
-        ExpressionAttributeValues: {
-          ":scopeKey": sessionDrainScopeKey(repositoryId, principalId),
-          ":activityPrefix": ACTIVITY_RECORD_PREFIX,
-        },
-        ConsistentRead: true,
-        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
-      }),
-    );
-    records.push(...((result.Items ?? []) as SessionDrainActivityRecord[]));
-    startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
-  } while (startKey);
-  return records;
+  startKey?: Record<string, unknown>,
+  limit = 25,
+): Promise<{ records: SessionDrainActivityRecord[]; nextKey?: Record<string, unknown> }> {
+  const result = await ctx.doc.send(
+    new QueryCommand({
+      TableName: ctx.tables.sessionDrains,
+      KeyConditionExpression: "scopeKey = :scopeKey AND begins_with(recordKey, :activityPrefix)",
+      ExpressionAttributeValues: {
+        ":scopeKey": sessionDrainScopeKey(repositoryId, principalId),
+        ":activityPrefix": ACTIVITY_RECORD_PREFIX,
+      },
+      ConsistentRead: true,
+      Limit: limit,
+      ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+    }),
+  );
+  const nextKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+  return {
+    records: (result.Items ?? []) as SessionDrainActivityRecord[],
+    ...(nextKey ? { nextKey } : {}),
+  };
 }
 
 /** Delete only the exact activity member that a strong session read proved terminal or stale. */
@@ -232,21 +263,25 @@ export async function getSessionDrainOperation(
 export async function createOrGetSessionDrain(
   ctx: PlaneStorageCtx,
   record: SessionDrainRecord,
+  audit: AuditLogRecord,
 ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
   const principalCheck = principalExistsCheck(ctx, record.principalId);
-  const repositoryCheckIndex = 1 + (principalCheck ? 1 : 0);
+  const markers = [
+    { key: `repository:${record.repositoryId}`, now: record.requestedAt },
+    ...(record.principalId && record.principalId !== "system"
+      ? [{ key: `principal:${record.principalId}`, now: record.requestedAt }]
+      : []),
+  ];
+  const markerCount = markers.length;
+  const principalCheckIndex = markerCount;
+  const repositoryCheckIndex = principalCheckIndex + (principalCheck ? 1 : 0);
   const ledgerCheckIndex = repositoryCheckIndex + 1;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
         TransactItems: [
-          ...withMarkerTable(
-            ctx,
-            markerConditions([
-              { key: `repository:${record.repositoryId}`, now: record.requestedAt },
-            ]),
-          ),
+          ...withMarkerTable(ctx, markerConditions(markers)),
           ...(principalCheck ? [principalCheck] : []),
           {
             ConditionCheck: {
@@ -272,6 +307,7 @@ export async function createOrGetSessionDrain(
               ConditionExpression: "attribute_not_exists(scopeKey)",
             },
           },
+          auditLogTransactPut(ctx, audit),
         ],
       }),
     );
@@ -279,8 +315,10 @@ export async function createOrGetSessionDrain(
   } catch (error) {
     if (!isConditionalTransactionFailed(error)) throw error;
     if (
-      isConditionalTransactionFailureAt(error, 0) ||
-      (principalCheck !== null && isConditionalTransactionFailureAt(error, 1)) ||
+      Array.from({ length: markerCount }, (_, index) => index).some((index) =>
+        isConditionalTransactionFailureAt(error, index),
+      ) ||
+      (principalCheck !== null && isConditionalTransactionFailureAt(error, principalCheckIndex)) ||
       isConditionalTransactionFailureAt(error, repositoryCheckIndex)
     ) {
       throw new SessionDrainScopeUnavailableError();
@@ -305,25 +343,42 @@ export async function createOrGetSessionDrain(
 export async function updateSessionDrain(
   ctx: PlaneStorageCtx,
   record: SessionDrainRecord,
+  audit?: AuditLogRecord,
 ): Promise<boolean> {
+  if (record.status !== "draining" && !audit) {
+    throw new Error("terminal session drain updates require an audit record");
+  }
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
+  const { reconcileLeaseOwner, reconcileLeaseUntil: _reconcileLeaseUntil, ...checkpoint } = record;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
-        TransactItems: ["CURRENT", `OP#${record.operationId}`].map((recordKey) => ({
-          Put: {
-            TableName: ctx.tables.sessionDrains,
-            Item: { ...record, scopeKey, recordKey },
-            ConditionExpression:
-              "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount",
-            ExpressionAttributeNames: { "#status": "status" },
-            ExpressionAttributeValues: {
-              ":operationId": record.operationId,
-              ":draining": "draining",
-              ":cancelledCount": record.cancelledCount,
+        TransactItems: [
+          ...["CURRENT", `OP#${record.operationId}`].map((recordKey) => ({
+            Put: {
+              TableName: ctx.tables.sessionDrains,
+              // Checkpointing releases the short reconcile lease atomically. A
+              // crashed worker leaves its old lease to expire; a successful
+              // worker never delays the next bounded page or status poll.
+              Item: { ...checkpoint, scopeKey, recordKey },
+              ConditionExpression:
+                "operationId = :operationId AND #status = :draining AND cancelledCount <= :cancelledCount" +
+                (recordKey.startsWith("OP#") && reconcileLeaseOwner
+                  ? " AND reconcileLeaseOwner = :leaseOwner"
+                  : ""),
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": record.operationId,
+                ":draining": "draining",
+                ":cancelledCount": record.cancelledCount,
+                ...(recordKey.startsWith("OP#") && reconcileLeaseOwner
+                  ? { ":leaseOwner": reconcileLeaseOwner }
+                  : {}),
+              },
             },
-          },
-        })),
+          })),
+          ...(audit ? [auditLogTransactPut(ctx, audit)] : []),
+        ],
       }),
     );
     return true;
@@ -333,39 +388,85 @@ export async function updateSessionDrain(
   }
 }
 
-export async function releaseSessionDrain(
+/** Only the lease owner may checkpoint a paged drain sweep. A stale Lambda can
+ * still finish its reads, but its OP-row conditional write cannot regress the
+ * cursor or terminal result. */
+export async function claimSessionDrainReconcile(
   ctx: PlaneStorageCtx,
-  repositoryId: string,
-  principalId: string,
-  operationId: string,
+  record: SessionDrainRecord,
+  owner: string,
   now: string,
 ): Promise<SessionDrainRecord | null> {
+  const until = new Date(Date.parse(now) + 55_000).toISOString();
   try {
     const result = await ctx.doc.send(
       new UpdateCommand({
         TableName: ctx.tables.sessionDrains,
         Key: {
-          scopeKey: sessionDrainScopeKey(repositoryId, principalId),
-          recordKey: "CURRENT",
+          scopeKey: sessionDrainScopeKey(record.repositoryId, record.principalId),
+          recordKey: `OP#${record.operationId}`,
         },
-        UpdateExpression: "SET #status = :released, releasedAt = :now, updatedAt = :now",
-        ConditionExpression: "operationId = :operationId AND #status IN (:succeeded, :failed)",
+        UpdateExpression: "SET reconcileLeaseOwner = :owner, reconcileLeaseUntil = :until",
+        ConditionExpression:
+          "operationId = :operationId AND #status = :draining AND (attribute_not_exists(reconcileLeaseUntil) OR reconcileLeaseUntil < :now)",
         ExpressionAttributeNames: { "#status": "status" },
         ExpressionAttributeValues: {
-          ":operationId": operationId,
-          ":succeeded": "succeeded",
-          ":failed": "failed",
-          ":released": "released",
+          ":owner": owner,
+          ":until": until,
           ":now": now,
+          ":operationId": record.operationId,
+          ":draining": "draining",
         },
         ReturnValues: "ALL_NEW",
       }),
     );
-    return (result.Attributes as SessionDrainRecord | undefined) ?? null;
+    return result.Attributes as SessionDrainRecord;
   } catch (error) {
-    if (!isConditionalFailed(error)) throw error;
-    const current = await getSessionDrain(ctx, repositoryId, principalId);
-    return current?.operationId === operationId && current.status === "released" ? current : null;
+    if (isConditionalFailed(error)) return null;
+    throw error;
+  }
+}
+
+export async function releaseSessionDrain(
+  ctx: PlaneStorageCtx,
+  released: SessionDrainRecord,
+  audit: AuditLogRecord,
+): Promise<SessionDrainRecord | null> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.sessionDrains,
+              Key: {
+                scopeKey: sessionDrainScopeKey(released.repositoryId, released.principalId),
+                recordKey: "CURRENT",
+              },
+              UpdateExpression: "SET #status = :released, releasedAt = :now, updatedAt = :now",
+              ConditionExpression:
+                "operationId = :operationId AND #status IN (:succeeded, :failed)",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": released.operationId,
+                ":succeeded": "succeeded",
+                ":failed": "failed",
+                ":released": "released",
+                ":now": released.updatedAt,
+              },
+            },
+          },
+          auditLogTransactPut(ctx, audit),
+        ],
+      }),
+    );
+    return released;
+  } catch (error) {
+    if (!isConditionalTransactionFailed(error)) throw error;
+    const current = await getSessionDrain(ctx, released.repositoryId, released.principalId);
+    return current?.operationId === released.operationId && current.status === "released"
+      ? current
+      : null;
   }
 }
 
@@ -396,4 +497,79 @@ export async function listSessionDrains(
     startKey = nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey);
   return records;
+}
+
+/**
+ * Returns a fixed, round-robin candidate budget. The selector cursor is
+ * durable because Lambda processes are short lived; limiting both scan pages
+ * and candidates prevents a large ACT partition from starving later drains.
+ * Candidate scans are only scheduling hints—each drain is subsequently
+ * strong-read and fenced before mutation.
+ */
+function appendReconcileCandidates(
+  items: SessionDrainRecord[],
+  candidates: SessionDrainRecord[],
+  limit: number,
+): Record<string, unknown> | undefined {
+  for (const item of items) {
+    if (item.recordKey === "CURRENT" && item.status === "draining") candidates.push(item);
+    if (candidates.length === limit) {
+      return { scopeKey: item.scopeKey, recordKey: item.recordKey };
+    }
+  }
+  return undefined;
+}
+
+export async function listSessionDrainReconcileCandidates(
+  ctx: PlaneStorageCtx,
+  limit = 10,
+): Promise<SessionDrainRecord[]> {
+  const cursor = await ctx.doc.send(
+    new GetCommand({
+      TableName: ctx.tables.sessionDrains,
+      Key: { scopeKey: RECONCILER_SCOPE_KEY, recordKey: RECONCILER_RECORD_KEY },
+      ConsistentRead: true,
+    }),
+  );
+  let startKey = nextPageKey(cursor.Item?.nextKey as Record<string, unknown> | undefined);
+  const candidates: SessionDrainRecord[] = [];
+  for (let page = 0; page < RECONCILER_MAX_PAGES && candidates.length < limit; page += 1) {
+    const result = await ctx.doc.send(
+      new ScanCommand({
+        TableName: ctx.tables.sessionDrains,
+        Limit: RECONCILER_SCAN_LIMIT,
+        ...(startKey ? { ExclusiveStartKey: startKey } : {}),
+      }),
+    );
+    const stoppedAtCandidate = appendReconcileCandidates(
+      (result.Items ?? []) as SessionDrainRecord[],
+      candidates,
+      limit,
+    );
+    startKey =
+      stoppedAtCandidate ??
+      nextPageKey(result.LastEvaluatedKey as Record<string, unknown> | undefined);
+    if (!startKey) break;
+  }
+  if (startKey) {
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: ctx.tables.sessionDrains,
+        Item: {
+          scopeKey: RECONCILER_SCOPE_KEY,
+          recordKey: RECONCILER_RECORD_KEY,
+          recordType: "session-drain-reconcile-cursor-v1",
+          nextKey: startKey,
+        },
+      }),
+    );
+  } else {
+    await ctx.doc.send(
+      new DeleteCommand({
+        TableName: ctx.tables.sessionDrains,
+        Key: { scopeKey: RECONCILER_SCOPE_KEY, recordKey: RECONCILER_RECORD_KEY },
+      }),
+    );
+  }
+  return candidates;
 }

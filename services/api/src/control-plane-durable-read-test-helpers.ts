@@ -50,6 +50,19 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
   storage.putAuditLog ??= async () => undefined;
   storage.listAuditLogs ??= async () => ({ items: [] });
   storage.listAllAuditLogs ??= async () => [];
+  storage.disableLegacyFallbackScheduleAndAudit ??= async ({
+    scheduleId,
+    expectedNextRunAt,
+  }: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    audit: AuditLogRecord;
+  }) => {
+    const schedule = state.schedules.get(scheduleId);
+    if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) return false;
+    state.schedules.set(scheduleId, { ...schedule, enabled: false });
+    return true;
+  };
 }
 
 /** Install a partial storage double together with all typed durable reads. */
@@ -120,6 +133,21 @@ export function setInMemoryScheduleStorage(
         return false;
       }
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
+      return true;
+    },
+    disableLegacyFallbackScheduleAndAudit: async ({
+      scheduleId,
+      expectedNextRunAt,
+    }: {
+      scheduleId: string;
+      expectedNextRunAt: string;
+      audit: AuditLogRecord;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
+        return false;
+      }
+      state.schedules.set(scheduleId, { ...schedule, enabled: false });
       return true;
     },
     skipScheduleForPrincipalDrainAndAudit: async () => false,

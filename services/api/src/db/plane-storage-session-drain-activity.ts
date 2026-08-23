@@ -9,14 +9,22 @@ type TransactionItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[n
 
 type SessionDrainActivityKey = { scopeKey: string; recordKey: string; sessionId: string };
 
+export function sessionDrainActivityForScope(
+  repositoryId: string,
+  principalId: string,
+  sessionId: string,
+): SessionDrainActivityKey {
+  return {
+    scopeKey: sessionDrainScopeKey(repositoryId, principalId),
+    recordKey: sessionDrainActivityKey(sessionId),
+    sessionId,
+  };
+}
+
 function sessionDrainActivityForSession(session: SessionRecord): SessionDrainActivityKey | null {
   const principalId = sessionPrincipalId(session);
   if (!principalId) return null;
-  return {
-    scopeKey: sessionDrainScopeKey(session.repositoryId, principalId),
-    recordKey: sessionDrainActivityKey(session.id),
-    sessionId: session.id,
-  };
+  return sessionDrainActivityForScope(session.repositoryId, principalId, session.id);
 }
 
 export async function readSessionDrainActivity(
