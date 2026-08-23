@@ -740,6 +740,16 @@ export class DynamoPlaneStorageBase {
     );
   }
 
+  skipOwnerlessScheduleAndAudit(opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    lastRunAt: string;
+    audit: import("../audit-types.ts").AuditLogRecord;
+  }): Promise<boolean> {
+    return catalog.skipOwnerlessScheduleAndAudit(this.ctx, opts);
+  }
+
   tryClaimScheduleAndCreateSession(opts: {
     scheduleId: string;
     expectedNextRunAt: string;
@@ -768,6 +778,18 @@ export class DynamoPlaneStorageBase {
     newNextRunAt: string;
   }): Promise<boolean> {
     return catalog.skipScheduleForPrincipalDrain(this.ctx, opts);
+  }
+
+  skipScheduleForPrincipalDrainAndAudit(opts: {
+    scheduleId: string;
+    repositoryId: string;
+    principalId: string;
+    operationId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    audit: import("../audit-types.ts").AuditLogRecord;
+  }): Promise<boolean> {
+    return catalog.skipScheduleForPrincipalDrainAndAudit(this.ctx, opts);
   }
 
   skipScheduleForActiveConcurrency(opts: {
@@ -851,6 +873,13 @@ export class DynamoPlaneStorageBase {
 
   listAuthAccounts(): Promise<AuthAccountRecord[]> {
     return auth.listAuthAccounts(this.ctx);
+  }
+
+  deleteAuthAccountFenced(
+    id: string,
+    marker: import("./plane-storage-deletion-markers.ts").OwnedDeletionMarker,
+  ): Promise<import("../auth-accounts.ts").FencedAuthAccountDelete> {
+    return auth.deleteAuthAccountFenced(this.ctx, id, marker);
   }
 
   deleteAuthAccount(id: string): Promise<void> {

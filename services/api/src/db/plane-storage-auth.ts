@@ -8,7 +8,12 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 import type { AuthAccountRecord, PlaneStorageCtx } from "./plane-storage-types.ts";
-import { nextPageKey } from "./plane-storage-types.ts";
+import {
+  isConditionalTransactionFailed,
+  isConditionalTransactionFailureAt,
+  nextPageKey,
+} from "./plane-storage-types.ts";
+import { ownedDelete, type OwnedDeletionMarker } from "./plane-storage-deletion-markers.ts";
 
 export async function putAuthAccount(ctx: PlaneStorageCtx, rec: AuthAccountRecord): Promise<void> {
   await ctx.doc.send(
@@ -106,4 +111,30 @@ export async function listAuthAccounts(ctx: PlaneStorageCtx): Promise<AuthAccoun
 
 export async function deleteAuthAccount(ctx: PlaneStorageCtx, id: string): Promise<void> {
   await ctx.doc.send(new DeleteCommand({ TableName: ctx.tables.users, Key: { id } }));
+}
+
+/**
+ * Remove an account only while the caller still owns its deletion marker.
+ * The row-existence condition keeps a stale auth cache from reporting a
+ * successful second deletion.
+ */
+export async function deleteAuthAccountFenced(
+  ctx: PlaneStorageCtx,
+  id: string,
+  marker: OwnedDeletionMarker,
+): Promise<"deleted" | "missing" | "fence-lost"> {
+  try {
+    await ownedDelete(ctx, [marker], {
+      Delete: {
+        TableName: ctx.tables.users,
+        Key: { id },
+        ConditionExpression: "attribute_exists(id)",
+      },
+    });
+    return "deleted";
+  } catch (error) {
+    if (!isConditionalTransactionFailed(error)) throw error;
+    if (isConditionalTransactionFailureAt(error, 1)) return "missing";
+    return "fence-lost";
+  }
 }

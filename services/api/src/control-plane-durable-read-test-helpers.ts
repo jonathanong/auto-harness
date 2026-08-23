@@ -1,4 +1,7 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
+import type { ScheduleRecord } from "./control-plane-types.ts";
+import type { SessionRecord } from "./db/types.ts";
 
 /** Complete partial storage doubles with reads reflecting their owning state. */
 export function addDurableReadDefaults(state: ControlPlaneState): void {
@@ -53,6 +56,79 @@ export function addDurableReadDefaults(state: ControlPlaneState): void {
 export function setDurableReadStorage(state: ControlPlaneState, storage: object): void {
   state.storage = storage as never;
   addDurableReadDefaults(state);
+}
+
+/**
+ * Focused in-memory schedule store for durable schedule route/fire tests.
+ * It keeps the storage and control-plane cache coherent without pretending to
+ * model unrelated DynamoDB tables.
+ */
+export function setInMemoryScheduleStorage(
+  state: ControlPlaneState,
+  overrides: Record<string, unknown> = {},
+): void {
+  const storage = {
+    putSchedule: async (record: ScheduleRecord) => {
+      state.schedules.set(record.id, { ...record });
+    },
+    updateScheduleManagement: async (record: ScheduleRecord, expectedNextRunAt: string) => {
+      const current = state.schedules.get(record.id);
+      if (!current || current.nextRunAt !== expectedNextRunAt) return null;
+      state.schedules.set(record.id, { ...record });
+      return { ...record };
+    },
+    tryClaimScheduleAndCreateSession: async ({
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      lastRunAt,
+      session,
+    }: {
+      scheduleId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+      lastRunAt: string;
+      session: SessionRecord;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      if (!schedule || !schedule.enabled || schedule.nextRunAt !== expectedNextRunAt) {
+        return { kind: "lost" };
+      }
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
+      state.sessions.set(session.id, { ...session });
+      return { kind: "created" };
+    },
+    skipOwnerlessScheduleAndAudit: async ({
+      scheduleId,
+      expectedNextRunAt,
+      newNextRunAt,
+      lastRunAt,
+    }: {
+      scheduleId: string;
+      expectedNextRunAt: string;
+      newNextRunAt: string;
+      lastRunAt: string;
+      audit: AuditLogRecord;
+    }) => {
+      const schedule = state.schedules.get(scheduleId);
+      if (
+        !schedule ||
+        !schedule.enabled ||
+        schedule.principalId !== undefined ||
+        schedule.nextRunAt !== expectedNextRunAt
+      ) {
+        return false;
+      }
+      state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt });
+      return true;
+    },
+    skipScheduleForPrincipalDrainAndAudit: async () => false,
+    putAuditLog: async (record: AuditLogRecord) => {
+      state.auditLogs.set(record.id, { ...record });
+    },
+    ...overrides,
+  };
+  setDurableReadStorage(state, storage);
 }
 
 function copy<T extends object>(record: T | undefined): T | null {

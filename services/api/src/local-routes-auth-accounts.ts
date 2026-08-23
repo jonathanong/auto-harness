@@ -6,12 +6,14 @@ import { isUserRole } from "@auto-harness/shared";
 import { auditActor } from "./audit.ts";
 import { assertAccountGrant, parseRepositoryScope, validateCredential } from "./auth-accounts.ts";
 import type { AuthService, Principal } from "./auth.ts";
+import { principalDeletionMarker } from "./control-plane-delete-reference-markers.ts";
 import {
   deleteConflict,
   dependenciesForPrincipal,
   referencesFromState,
   refreshDeleteReferences,
 } from "./control-plane-delete-guards.ts";
+import { withDeletionMarkers } from "./control-plane-deletion-markers.ts";
 import type { ControlPlane } from "./control-plane.ts";
 import { readJson, send } from "./local-http.ts";
 
@@ -57,6 +59,50 @@ async function accountDeleteConflict(
     ? await refreshDeleteReferences(plane.state)
     : referencesFromState(plane.state);
   return deleteConflict("account", dependenciesForPrincipal(refs, principalId));
+}
+
+type AccountDeleteResult =
+  | { ok: true; status: "deleted" | "missing" }
+  | { ok: false; error: string; conflict?: boolean; dependencies?: unknown[] };
+
+async function deletePrincipalAccount(
+  plane: ControlPlane,
+  principalId: string,
+  remove: (
+    owner: string | undefined,
+    marker: string,
+  ) => Promise<"deleted" | "missing" | "fence-lost">,
+): Promise<AccountDeleteResult> {
+  const marker = principalDeletionMarker(principalId)!;
+  return withDeletionMarkers(plane.state, [marker], async (owner) => {
+    const conflict = await accountDeleteConflict(plane, principalId);
+    if (!conflict.ok) return conflict;
+    const status = await remove(owner || undefined, marker);
+    return status === "fence-lost"
+      ? {
+          ok: false,
+          conflict: true,
+          error: "catalog deletion lease was lost; retry the request",
+        }
+      : { ok: true, status };
+  });
+}
+
+async function sendDeleteConflict(
+  ctx: AccountRouteCtx,
+  action: string,
+  resourceType: string,
+  resourceId: string,
+  result: Extract<AccountDeleteResult, { ok: false }>,
+): Promise<void> {
+  if (!(await audit(ctx, action, resourceType, resourceId, "failed"))) return;
+  send(ctx.res, 409, {
+    error: {
+      code: "CONFLICT",
+      message: result.error,
+      ...(result.dependencies ? { dependencies: result.dependencies } : {}),
+    },
+  });
 }
 
 export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean> {
@@ -120,18 +166,26 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
     const id = decodeURIComponent(userMatch[1]!);
     const user = auth.listUsers().find((candidate) => candidate.username === id);
     if (user) {
-      const conflict = await accountDeleteConflict(plane, user.id);
-      if (!conflict.ok) {
-        if (!(await audit(ctx, "user:delete", "user", id, "failed"))) return true;
-        send(res, 409, {
-          error: {
-            code: "CONFLICT",
-            message: conflict.error,
-            dependencies: conflict.dependencies,
-          },
-        });
+      const result = await deletePrincipalAccount(plane, user.id, (owner, marker) =>
+        auth.deleteUserFenced(
+          id,
+          plane.state.storage,
+          owner ? { key: marker, owner, now: plane.state.now() } : undefined,
+        ),
+      );
+      if (!result.ok) {
+        await sendDeleteConflict(ctx, "user:delete", "user", id, result);
         return true;
       }
+      const removed = result.status === "deleted";
+      if (!(await audit(ctx, "user:delete", "user", id, removed ? "success" : "failed")))
+        return true;
+      send(
+        res,
+        removed ? 204 : 404,
+        removed ? null : { error: { code: "NOT_FOUND", message: "user not found" } },
+      );
+      return true;
     }
     const removed = await auth.deleteUser(id, plane.state.storage);
     if (!(await audit(ctx, "user:delete", "user", id, removed ? "success" : "failed"))) return true;
@@ -211,19 +265,34 @@ export async function handleAccountRoutes(ctx: AccountRouteCtx): Promise<boolean
   const id = decodeURIComponent(serviceMatch[1]!);
   const account = auth.listServiceAccounts().find((candidate) => candidate.id === id);
   if (account) {
-    const conflict = await accountDeleteConflict(plane, account.id);
-    if (!conflict.ok) {
-      if (!(await audit(ctx, "service-account:delete", "service-account", id, "failed")))
-        return true;
-      send(res, 409, {
-        error: {
-          code: "CONFLICT",
-          message: conflict.error,
-          dependencies: conflict.dependencies,
-        },
-      });
+    const result = await deletePrincipalAccount(plane, account.id, (owner, marker) =>
+      auth.deleteServiceAccountFenced(
+        id,
+        plane.state.storage,
+        owner ? { key: marker, owner, now: plane.state.now() } : undefined,
+      ),
+    );
+    if (!result.ok) {
+      await sendDeleteConflict(ctx, "service-account:delete", "service-account", id, result);
       return true;
     }
+    const removed = result.status === "deleted";
+    if (
+      !(await audit(
+        ctx,
+        "service-account:delete",
+        "service-account",
+        id,
+        removed ? "success" : "failed",
+      ))
+    )
+      return true;
+    send(
+      res,
+      removed ? 204 : 404,
+      removed ? null : { error: { code: "NOT_FOUND", message: "service account not found" } },
+    );
+    return true;
   }
   const removed = await auth.deleteServiceAccount(id, plane.state.storage);
   if (

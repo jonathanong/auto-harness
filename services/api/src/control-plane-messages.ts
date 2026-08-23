@@ -466,7 +466,7 @@ async function applySessionStatusDurable(
   // this node may not be the scheduler that emitted the assignment.
   const session =
     typeof storage.getSession === "function"
-      ? await storage.getSession(msg.sessionId)
+      ? await storage.getSession(msg.sessionId, true)
       : state.sessions.get(msg.sessionId);
   if (!session) {
     return { ok: false, error: "session not found" };

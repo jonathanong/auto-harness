@@ -181,7 +181,7 @@ describe("schedule concurrency", () => {
           kind: "draining",
           operationId: "drain-1",
         }),
-        skipScheduleForPrincipalDrain: async () => skipped,
+        skipScheduleForPrincipalDrainAndAudit: async () => skipped,
       });
       await expect(
         tryClaimScheduleFireDurable(

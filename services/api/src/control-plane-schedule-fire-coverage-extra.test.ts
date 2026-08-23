@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
+import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-helpers.ts";
 import {
   evaluateCronDurable,
   triggerScheduleDurable,
@@ -50,7 +50,7 @@ function state(row: ScheduleRecord, storage: object = {}) {
     providerId: null,
   });
   current.schedules.set(row.id, row);
-  setDurableReadStorage(current, storage);
+  setInMemoryScheduleStorage(current, storage as Record<string, unknown>);
   return current;
 }
 
@@ -103,7 +103,7 @@ describe("schedule fire residual coverage", () => {
         claims += 1;
         return { kind: "created" };
       },
-      tryClaimSchedule: async () => {
+      skipOwnerlessScheduleAndAudit: async () => {
         skipped += 1;
         return true;
       },
@@ -124,5 +124,34 @@ describe("schedule fire residual coverage", () => {
         outcome: "failed",
       }),
     );
+  });
+
+  it("leaves a due ownerless occurrence for a concurrent ownership claim", async () => {
+    const current = state(schedule(), {
+      skipOwnerlessScheduleAndAudit: async () => {
+        current.schedules.get("nightly")!.principalId = "new-owner";
+        return false;
+      },
+    });
+
+    await expect(tryClaimScheduleFireDurable(current, "nightly", NOW, NOW)).resolves.toBeNull();
+    expect(current.schedules.get("nightly")).toMatchObject({
+      principalId: "new-owner",
+      nextRunAt: NOW,
+      lastRunAt: null,
+    });
+    expect(current.auditLogs).toHaveLength(0);
+  });
+
+  it("continues evaluating later schedules when an atomic skip cannot be persisted", async () => {
+    const current = state(schedule(), {
+      skipOwnerlessScheduleAndAudit: async () => {
+        throw new Error("audit unavailable");
+      },
+    });
+    current.schedules.set("owned", schedule({ id: "owned", principalId: "principal" }));
+
+    await expect(evaluateCronDurable(current, NOW)).resolves.toMatchObject([{ id: "run" }]);
+    expect(current.schedules.get("nightly")).toMatchObject({ nextRunAt: NOW, lastRunAt: null });
   });
 });

@@ -17,7 +17,11 @@ import {
   type PlaneStorageCtx,
   type SessionDrainRecord,
 } from "./plane-storage-types.ts";
-import { markerConditions, withMarkerTable } from "./plane-storage-deletion-markers.ts";
+import {
+  markerConditions,
+  principalExistsCheck,
+  withMarkerTable,
+} from "./plane-storage-deletion-markers.ts";
 
 const ACTIVITY_RECORD_PREFIX = "ACT#";
 const LEDGER_SCOPE_KEY = "__session-drain-ledger__";
@@ -230,6 +234,9 @@ export async function createOrGetSessionDrain(
   record: SessionDrainRecord,
 ): Promise<{ created: boolean; drain: SessionDrainRecord }> {
   const scopeKey = sessionDrainScopeKey(record.repositoryId, record.principalId);
+  const principalCheck = principalExistsCheck(ctx, record.principalId);
+  const repositoryCheckIndex = 1 + (principalCheck ? 1 : 0);
+  const ledgerCheckIndex = repositoryCheckIndex + 1;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -240,6 +247,7 @@ export async function createOrGetSessionDrain(
               { key: `repository:${record.repositoryId}`, now: record.requestedAt },
             ]),
           ),
+          ...(principalCheck ? [principalCheck] : []),
           {
             ConditionCheck: {
               TableName: ctx.tables.repositories,
@@ -272,11 +280,14 @@ export async function createOrGetSessionDrain(
     if (!isConditionalTransactionFailed(error)) throw error;
     if (
       isConditionalTransactionFailureAt(error, 0) ||
-      isConditionalTransactionFailureAt(error, 1)
+      (principalCheck !== null && isConditionalTransactionFailureAt(error, 1)) ||
+      isConditionalTransactionFailureAt(error, repositoryCheckIndex)
     ) {
       throw new SessionDrainScopeUnavailableError();
     }
-    if (isConditionalTransactionFailureAt(error, 2)) throw new SessionDrainLedgerUnavailableError();
+    if (isConditionalTransactionFailureAt(error, ledgerCheckIndex)) {
+      throw new SessionDrainLedgerUnavailableError();
+    }
     const replay = await getSessionDrainOperation(
       ctx,
       record.repositoryId,
@@ -284,9 +295,10 @@ export async function createOrGetSessionDrain(
       record.operationId,
     );
     if (replay) return { created: false, drain: replay };
-    const current = await getSessionDrain(ctx, record.repositoryId, record.principalId);
-    if (!current || current.status === "released") throw new SessionDrainScopeUnavailableError();
-    return { created: false, drain: current };
+    // A different active operation proves this scope is occupied, but it is
+    // not a replay of this request. A missing OP row means the requested key
+    // is not durably bound, irrespective of the CURRENT row's state.
+    throw new SessionDrainScopeUnavailableError();
   }
 }
 

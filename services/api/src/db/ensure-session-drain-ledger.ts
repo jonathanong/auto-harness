@@ -6,6 +6,7 @@ import {
   ScanCommand,
   type BatchWriteCommandInput,
 } from "@aws-sdk/lib-dynamodb";
+import { setTimeout as delay } from "node:timers/promises";
 
 import type { DynamoTableNames } from "./dynamo.ts";
 import { sessionPrincipalId } from "../control-plane-session-owner.ts";
@@ -19,7 +20,8 @@ import {
 const LEDGER_SCOPE_KEY = "__session-drain-ledger__";
 const LEDGER_RECORD_KEY = "ACTIVITY-V1";
 const BATCH_SIZE = 25;
-const MAX_UNPROCESSED_RETRIES = 3;
+const MAX_UNPROCESSED_RETRIES = 5;
+const BASE_RETRY_DELAY_MS = 50;
 type PendingWrite = NonNullable<
   NonNullable<BatchWriteCommandInput["RequestItems"]>[string]
 >[number];
@@ -56,6 +58,10 @@ async function writeActivities(
       .slice(index, index + BATCH_SIZE)
       .map((Item) => ({ PutRequest: { Item } }));
     for (let attempt = 0; pending.length && attempt < MAX_UNPROCESSED_RETRIES; attempt += 1) {
+      if (attempt > 0) {
+        const backoff = BASE_RETRY_DELAY_MS * 2 ** (attempt - 1);
+        await delay(backoff + Math.floor(Math.random() * backoff));
+      }
       const result = await doc.send(
         new BatchWriteCommand({ RequestItems: { [tableName]: pending } }),
       );
@@ -65,6 +71,31 @@ async function writeActivities(
       throw new Error("could not backfill the session drain activity ledger");
     }
   }
+}
+
+function activityForItem(item: Record<string, unknown>): Record<string, unknown> | null {
+  const session = itemToSession(item);
+  const principalId = sessionPrincipalId(session);
+  if (!principalId || !canStillAffectDrain(session)) return null;
+  return {
+    scopeKey: sessionDrainScopeKey(session.repositoryId, principalId),
+    recordKey: sessionDrainActivityKey(session.id),
+    recordType: "activity",
+    sessionId: session.id,
+    repositoryId: session.repositoryId,
+    principalId,
+  };
+}
+
+async function backfillPage(
+  doc: DynamoDBDocumentClient,
+  tableName: string,
+  items: Record<string, unknown>[],
+): Promise<void> {
+  const activities = items
+    .map(activityForItem)
+    .filter((activity): activity is Record<string, unknown> => activity !== null);
+  await writeActivities(doc, tableName, activities);
 }
 
 /**
@@ -91,7 +122,6 @@ export async function ensureSessionDrainActivityLedger(
   );
   if (ready.Item?.recordType === "activity-ledger-v1") return;
 
-  let activities: Record<string, unknown>[] = [];
   let startKey: Record<string, unknown> | undefined;
   do {
     const page = await doc.send(
@@ -101,27 +131,10 @@ export async function ensureSessionDrainActivityLedger(
         ...(startKey ? { ExclusiveStartKey: startKey } : {}),
       }),
     );
-    for (const item of page.Items ?? []) {
-      const session = itemToSession(item as Record<string, unknown>);
-      const principalId = sessionPrincipalId(session);
-      if (!principalId || !canStillAffectDrain(session)) continue;
-      activities.push({
-        scopeKey: sessionDrainScopeKey(session.repositoryId, principalId),
-        recordKey: sessionDrainActivityKey(session.id),
-        recordType: "activity",
-        sessionId: session.id,
-        repositoryId: session.repositoryId,
-        principalId,
-      });
-      if (activities.length === BATCH_SIZE) {
-        await writeActivities(doc, tables.sessionDrains, activities);
-        activities = [];
-      }
-    }
+    await backfillPage(doc, tables.sessionDrains, (page.Items ?? []) as Record<string, unknown>[]);
     startKey = nextPageKey(page.LastEvaluatedKey as Record<string, unknown> | undefined);
   } while (startKey);
 
-  if (activities.length) await writeActivities(doc, tables.sessionDrains, activities);
   try {
     await doc.send(
       new PutCommand({

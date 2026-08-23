@@ -25,6 +25,7 @@ import {
   guardedWrite,
   markerConditions,
   ownedDelete,
+  principalExistsCheck,
   withMarkerTable,
   type DeletionMarker,
   type OwnedDeletionMarker,
@@ -44,6 +45,8 @@ import {
   sessionDrainAdmissionCheck,
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
+import { auditLogItem } from "./plane-storage-audit.ts";
+import type { AuditLogRecord } from "../audit-types.ts";
 
 /** Interpret conditional DynamoDB write failures without a client double. */
 export function conditionalCatalogWriteOrThrow(err: unknown): false {
@@ -243,9 +246,16 @@ export async function putSchedule(
   markers?: readonly DeletionMarker[],
 ): Promise<void> {
   const write = { Put: { TableName: ctx.tables.schedules, Item: { ...rec } } };
-  await guardedWrite(ctx, markers, write, async () => {
-    await ctx.doc.send(new PutCommand(write.Put));
-  });
+  const principalCheck = principalExistsCheck(ctx, rec.principalId);
+  await guardedWrite(
+    ctx,
+    markers,
+    write,
+    async () => {
+      await ctx.doc.send(new PutCommand(write.Put));
+    },
+    principalCheck ? [principalCheck] : [],
+  );
 }
 
 /**
@@ -312,11 +322,17 @@ export async function updateScheduleManagement(
         ...(rec.prompt === undefined ? {} : { ":prompt": rec.prompt }),
       },
     };
-    if (markers?.length) {
+    const principalCheck = principalExistsCheck(ctx, rec.principalId);
+    const markerChecks = markers ? withMarkerTable(ctx, markerConditions([...markers])) : [];
+    if (markerChecks.length + (principalCheck ? 1 : 0) > 99) {
+      throw new Error("catalog reference write exceeds DynamoDB's 100 transaction action limit");
+    }
+    if (markerChecks.length || principalCheck) {
       await ctx.doc.send(
         new TransactWriteCommand({
           TransactItems: [
-            ...withMarkerTable(ctx, markerConditions([...markers])),
+            ...markerChecks,
+            ...(principalCheck ? [principalCheck] : []),
             { Update: update },
           ],
         }),
@@ -575,6 +591,59 @@ export async function tryClaimSchedule(
 }
 
 /**
+ * Consume an ownerless legacy occurrence only while it remains ownerless, and
+ * durably record why it was skipped in the same transaction.  The ownership
+ * condition is essential: a concurrent authenticated claim must leave the
+ * due occurrence available to run under that new owner.
+ */
+export async function skipOwnerlessScheduleAndAudit(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    lastRunAt: string;
+    audit: AuditLogRecord;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt, lastRunAt = :lastRunAt",
+              ConditionExpression:
+                "nextRunAt = :expectedNextRunAt AND enabled = :true AND attribute_not_exists(principalId)",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":lastRunAt": opts.lastRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.auditLogs,
+              Item: auditLogItem(opts.audit),
+              ConditionExpression:
+                "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
+              ExpressionAttributeNames: { "#scope": "scope" },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (error) {
+    return conditionalCatalogWriteOrThrow(error);
+  }
+}
+
+/**
  * Claim a due schedule and insert its session in one DynamoDB transaction.
  * This is deliberately separate from `tryClaimSchedule`: advancing the cron
  * cursor without the corresponding session creates a silent missed run.
@@ -726,6 +795,69 @@ export async function skipScheduleForPrincipalDrain(
                 ":operationId": opts.operationId,
                 ":released": "released",
               },
+            },
+          },
+        ],
+      }),
+    );
+    return true;
+  } catch (error) {
+    return conditionalCatalogWriteOrThrow(error);
+  }
+}
+
+/** Advance a draining principal's cursor and append the rejection audit atomically. */
+export async function skipScheduleForPrincipalDrainAndAudit(
+  ctx: PlaneStorageCtx,
+  opts: {
+    scheduleId: string;
+    repositoryId: string;
+    principalId: string;
+    operationId: string;
+    expectedNextRunAt: string;
+    newNextRunAt: string;
+    audit: AuditLogRecord;
+  },
+): Promise<boolean> {
+  try {
+    await ctx.doc.send(
+      new TransactWriteCommand({
+        TransactItems: [
+          {
+            Update: {
+              TableName: ctx.tables.schedules,
+              Key: { id: opts.scheduleId },
+              UpdateExpression: "SET nextRunAt = :nextRunAt",
+              ConditionExpression: "nextRunAt = :expectedNextRunAt AND enabled = :true",
+              ExpressionAttributeValues: {
+                ":nextRunAt": opts.newNextRunAt,
+                ":expectedNextRunAt": opts.expectedNextRunAt,
+                ":true": true,
+              },
+            },
+          },
+          {
+            ConditionCheck: {
+              TableName: ctx.tables.sessionDrains,
+              Key: {
+                scopeKey: sessionDrainScopeKey(opts.repositoryId, opts.principalId),
+                recordKey: "CURRENT",
+              },
+              ConditionExpression: "operationId = :operationId AND #status <> :released",
+              ExpressionAttributeNames: { "#status": "status" },
+              ExpressionAttributeValues: {
+                ":operationId": opts.operationId,
+                ":released": "released",
+              },
+            },
+          },
+          {
+            Put: {
+              TableName: ctx.tables.auditLogs,
+              Item: auditLogItem(opts.audit),
+              ConditionExpression:
+                "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
+              ExpressionAttributeNames: { "#scope": "scope" },
             },
           },
         ],

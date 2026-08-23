@@ -45,17 +45,20 @@ function matches(record: AuditLogRecord, query: AuditLogListQuery): boolean {
   );
 }
 
+export function auditLogItem(record: AuditLogRecord): AuditItem {
+  return { ...record, scope: AUDIT_SCOPE, timestampId: timestampId(record) };
+}
+
 function fromItem(item: AuditItem): AuditLogRecord {
   const { scope: _scope, timestampId: _timestampId, ...record } = item;
   return record;
 }
 
 export async function putAuditLog(ctx: PlaneStorageCtx, record: AuditLogRecord): Promise<void> {
-  const item: AuditItem = { ...record, scope: AUDIT_SCOPE, timestampId: timestampId(record) };
   await ctx.doc.send(
     new PutCommand({
       TableName: ctx.tables.auditLogs,
-      Item: item,
+      Item: auditLogItem(record),
       ConditionExpression: "attribute_not_exists(#scope) AND attribute_not_exists(timestampId)",
       ExpressionAttributeNames: { "#scope": "scope" },
     }),

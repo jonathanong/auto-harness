@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { AuthService } from "./auth.ts";
-import { addDurableReadDefaults } from "./control-plane-durable-read-test-helpers.ts";
+import { setInMemoryScheduleStorage } from "./control-plane-durable-read-test-helpers.ts";
 import { ControlPlane } from "./control-plane.ts";
 import { createLocalApp } from "./local-server.ts";
 import { invokeHandler } from "./local-server-test-helpers.ts";
@@ -10,20 +10,7 @@ const NOW = "2026-01-01T00:00:00.000Z";
 
 describe("legacy schedule ownership", () => {
   it("claims a legacy schedule from the authenticated editor and persists the owner", async () => {
-    let persistedPrincipalId: string | undefined;
-    let createdPrincipalId: string | undefined;
-    const plane = new ControlPlane({
-      storage: {
-        putSchedule: async (record: { principalId?: string }) => {
-          createdPrincipalId = record.principalId;
-        },
-        updateScheduleManagement: async (record: { principalId?: string }) => {
-          persistedPrincipalId = record.principalId;
-          return record;
-        },
-      } as never,
-      now: () => NOW,
-    });
+    const plane = new ControlPlane({ now: () => NOW });
     plane.state.repositories.set("repository", {
       id: "repository",
       name: "repository",
@@ -56,7 +43,7 @@ describe("legacy schedule ownership", () => {
       lastRunAt: null,
       createdAt: NOW,
     });
-    addDurableReadDefaults(plane.state);
+    setInMemoryScheduleStorage(plane.state);
 
     const auth = new AuthService({
       mode: "required",
@@ -86,7 +73,7 @@ describe("legacy schedule ownership", () => {
 
     expect(response).toMatchObject({ status: 200, json: { principalId: account.id } });
     expect(plane.getSchedule("schedule")).toMatchObject({ principalId: account.id });
-    expect(persistedPrincipalId).toBe(account.id);
+    expect(plane.getSchedule("schedule")).toMatchObject({ principalId: account.id });
 
     const created = await invokeHandler(
       handler,
@@ -103,19 +90,11 @@ describe("legacy schedule ownership", () => {
       { authorization: `Bearer ${apiKey}` },
     );
     expect(created).toMatchObject({ status: 201, json: { principalId: account.id } });
-    expect(createdPrincipalId).toBe(account.id);
+    expect(plane.getSchedule("new-schedule")).toMatchObject({ principalId: account.id });
   });
 
   it("uses the system principal when authentication is disabled", async () => {
-    let createdPrincipalId: string | undefined;
-    const plane = new ControlPlane({
-      storage: {
-        putSchedule: async (record: { principalId?: string }) => {
-          createdPrincipalId = record.principalId;
-        },
-      } as never,
-      now: () => NOW,
-    });
+    const plane = new ControlPlane({ now: () => NOW });
     plane.state.repositories.set("repository", {
       id: "repository",
       name: "repository",
@@ -133,7 +112,7 @@ describe("legacy schedule ownership", () => {
       createdAt: NOW,
       updatedAt: NOW,
     });
-    addDurableReadDefaults(plane.state);
+    setInMemoryScheduleStorage(plane.state);
 
     const { handler } = createLocalApp({
       plane,
@@ -150,6 +129,6 @@ describe("legacy schedule ownership", () => {
     });
 
     expect(created).toMatchObject({ status: 201, json: { principalId: "system" } });
-    expect(createdPrincipalId).toBe("system");
+    expect(plane.getSchedule("new-schedule")).toMatchObject({ principalId: "system" });
   });
 });

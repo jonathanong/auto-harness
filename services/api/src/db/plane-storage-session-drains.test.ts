@@ -8,11 +8,14 @@ import {
   sessionDrainAdmissionCheck,
   sessionDrainScopeKey,
 } from "./plane-storage-session-drains.ts";
+import { releaseMainCheckoutSession } from "./plane-storage-main-checkout-release.ts";
+import { releaseCancelledSessionWorktree } from "./plane-storage-sessions.ts";
 import type { PlaneStorageCtx, SessionDrainRecord } from "./plane-storage-types.ts";
 
 const conditionalTransaction = {
   name: "TransactionCanceledException",
   CancellationReasons: [
+    { Code: "None" },
     { Code: "None" },
     { Code: "None" },
     { Code: "None" },
@@ -45,6 +48,10 @@ function ctx(send: (command: { input?: Record<string, unknown> }) => Promise<unk
       sessionDrains: "session-drains",
       repositories: "repositories",
       concurrencyLocks: "concurrency-locks",
+      sessions: "sessions",
+      worktrees: "worktrees",
+      hostLocks: "host-locks",
+      users: "users",
     },
   } as unknown as PlaneStorageCtx;
 }
@@ -126,6 +133,13 @@ describe("session drain Dynamo adapter residuals", () => {
         },
         {
           ConditionCheck: {
+            TableName: "users",
+            Key: { id: "principal two" },
+            ConditionExpression: "attribute_exists(id)",
+          },
+        },
+        {
+          ConditionCheck: {
             TableName: "repositories",
             Key: { id: "repo/one" },
             ConditionExpression: "attribute_exists(id)",
@@ -153,6 +167,76 @@ describe("session drain Dynamo adapter residuals", () => {
       drain: { operationId: "operation" },
     });
 
+    await expect(
+      createOrGetSessionDrain(
+        ctx(async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }],
+          };
+        }),
+        record(),
+      ),
+    ).rejects.toThrow("session drain scope is unavailable");
+
+    await expect(
+      createOrGetSessionDrain(
+        ctx(async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [
+              { Code: "None" },
+              { Code: "None" },
+              { Code: "ConditionalCheckFailed" },
+            ],
+          };
+        }),
+        record(),
+      ),
+    ).rejects.toThrow("session drain scope is unavailable");
+
+    await expect(
+      createOrGetSessionDrain(
+        ctx(async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [
+              { Code: "None" },
+              { Code: "None" },
+              { Code: "None" },
+              { Code: "ConditionalCheckFailed" },
+            ],
+          };
+        }),
+        record(),
+      ),
+    ).rejects.toThrow("session drain activity ledger is not ready");
+
+    let systemInput: Record<string, unknown> | undefined;
+    await createOrGetSessionDrain(
+      ctx(async (command) => {
+        systemInput = command.input;
+        return {};
+      }),
+      record({ principalId: "system" }),
+    );
+    expect(systemInput?.TransactItems).not.toContainEqual(
+      expect.objectContaining({
+        ConditionCheck: expect.objectContaining({ TableName: "users" }),
+      }),
+    );
+    await expect(
+      createOrGetSessionDrain(
+        ctx(async () => {
+          throw {
+            name: "TransactionCanceledException",
+            CancellationReasons: [{ Code: "None" }, { Code: "ConditionalCheckFailed" }],
+          };
+        }),
+        record({ principalId: "system" }),
+      ),
+    ).rejects.toThrow("session drain scope is unavailable");
+
     call = 0;
     const missingStorage = ctx(async () => {
       call += 1;
@@ -176,15 +260,15 @@ describe("session drain Dynamo adapter residuals", () => {
     ).rejects.toThrow("session drain scope is unavailable");
 
     call = 0;
-    const currentStorage = ctx(async () => {
+    const occupiedScopeStorage = ctx(async () => {
       call += 1;
       if (call === 1) throw conditionalTransaction;
-      return call === 3 ? { Item: record({ recordKey: "CURRENT" }) } : {};
+      return {};
     });
-    await expect(createOrGetSessionDrain(currentStorage, record())).resolves.toMatchObject({
-      created: false,
-      drain: { recordKey: "CURRENT" },
-    });
+    await expect(createOrGetSessionDrain(occupiedScopeStorage, record())).rejects.toThrow(
+      "session drain scope is unavailable",
+    );
+    expect(call).toBe(2);
     await expect(
       createOrGetSessionDrain(
         ctx(async () => {
@@ -193,5 +277,126 @@ describe("session drain Dynamo adapter residuals", () => {
         record(),
       ),
     ).rejects.toThrow("offline");
+  });
+
+  it("fences terminal ACT cleanup when a drain cancellation wins after its read", async () => {
+    const session = {
+      id: "session",
+      repositoryId: "repo",
+      principalId: "principal",
+      status: "cancelled",
+      worktreeId: "worktree",
+      attemptId: "attempt",
+      hostId: "host",
+      assignmentConnectionId: "connection",
+      mainCheckoutLease: true,
+    };
+    const transactionFor = async (
+      release: (storage: PlaneStorageCtx) => Promise<boolean>,
+    ): Promise<Record<string, unknown>> => {
+      let transaction: Record<string, unknown> | undefined;
+      await expect(
+        release(
+          ctx(async (command) => {
+            if ("ConsistentRead" in (command.input ?? {})) return { Item: session };
+            transaction = command.input;
+            return {};
+          }),
+        ),
+      ).resolves.toBe(true);
+      return transaction!;
+    };
+    const worktree = await transactionFor((storage) =>
+      releaseCancelledSessionWorktree(storage, {
+        sessionId: session.id,
+        worktreeId: "worktree",
+        attemptId: "attempt",
+        online: true,
+      }),
+    );
+    const mainCheckout = await transactionFor((storage) =>
+      releaseMainCheckoutSession(storage, {
+        sessionId: session.id,
+        hostId: "host",
+        repositoryId: "repo",
+        connectionId: "connection",
+        attemptId: "attempt",
+        status: "cancelled",
+        expectedStatus: "cancelled",
+        queueShard: 0,
+      }),
+    );
+    for (const transaction of [worktree, mainCheckout]) {
+      const sessionUpdate = (transaction.TransactItems as Array<Record<string, unknown>>).find(
+        (item) => (item.Update as Record<string, unknown> | undefined)?.TableName === "sessions",
+      )?.Update as Record<string, unknown>;
+      expect(sessionUpdate.ConditionExpression).toContain(
+        "attribute_not_exists(cancelledByDrainOperationId)",
+      );
+    }
+  });
+
+  it("retries a late drain cancellation release without deleting its ACT member", async () => {
+    const session = {
+      id: "session",
+      repositoryId: "repo",
+      principalId: "principal",
+      status: "cancelled",
+      worktreeId: "worktree",
+      attemptId: "attempt",
+      hostId: "host",
+      assignmentConnectionId: "connection",
+      mainCheckoutLease: true,
+    };
+    const transactionsFor = async (
+      release: (storage: PlaneStorageCtx) => Promise<boolean>,
+    ): Promise<Array<Record<string, unknown>>> => {
+      const transactions: Array<Record<string, unknown>> = [];
+      let reads = 0;
+      await expect(
+        release(
+          ctx(async (command) => {
+            if ("ConsistentRead" in (command.input ?? {})) {
+              reads += 1;
+              return {
+                Item: reads === 1 ? session : { ...session, cancelledByDrainOperationId: "drain" },
+              };
+            }
+            transactions.push(command.input!);
+            if (transactions.length === 1) throw conditionalTransaction;
+            return {};
+          }),
+        ),
+      ).resolves.toBe(true);
+      return transactions;
+    };
+    const worktree = await transactionsFor((storage) =>
+      releaseCancelledSessionWorktree(storage, {
+        sessionId: session.id,
+        worktreeId: "worktree",
+        attemptId: "attempt",
+        online: true,
+      }),
+    );
+    const mainCheckout = await transactionsFor((storage) =>
+      releaseMainCheckoutSession(storage, {
+        sessionId: session.id,
+        hostId: "host",
+        repositoryId: "repo",
+        connectionId: "connection",
+        attemptId: "attempt",
+        status: "cancelled",
+        expectedStatus: "cancelled",
+        queueShard: 0,
+      }),
+    );
+    for (const transactions of [worktree, mainCheckout]) {
+      expect(transactions).toHaveLength(2);
+      expect(transactions[1].TransactItems).not.toContainEqual(
+        expect.objectContaining({
+          Delete: expect.objectContaining({ TableName: "session-drains" }),
+        }),
+      );
+    }
   });
 });

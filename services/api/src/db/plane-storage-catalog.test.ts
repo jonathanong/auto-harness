@@ -1,9 +1,18 @@
 /* eslint-disable max-lines */
-import { GetCommand, TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  PutCommand,
+  TransactWriteCommand,
+  type TransactWriteCommandInput,
+  UpdateCommand,
+} from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it } from "vitest";
 
 import {
   getHostInventory,
+  putSchedule,
+  skipOwnerlessScheduleAndAudit,
+  skipScheduleForPrincipalDrainAndAudit,
   tryClaimScheduleAndCreateSession,
   updateScheduleManagement,
 } from "./plane-storage-catalog.ts";
@@ -34,16 +43,43 @@ function scheduleCtx(send: (command: unknown) => Promise<unknown>): PlaneStorage
     doc: { send } as never,
     tables: {
       schedules: "Schedules",
+      auditLogs: "AuditLogs",
       concurrencyLocks: "Locks",
       repositories: "Repositories",
       sessionDrains: "SessionDrains",
+      users: "Users",
     } as never,
   };
 }
 
 describe("durable schedule creation", () => {
+  it("requires a durable user for principal-owned schedules only", async () => {
+    const commands: unknown[] = [];
+    const storage = scheduleCtx(async (command) => {
+      commands.push(command);
+      return {};
+    });
+
+    await putSchedule(storage, { ...schedule(), principalId: "principal-1" });
+    await putSchedule(storage, { ...schedule(), id: "system", principalId: "system" });
+    await putSchedule(storage, { ...schedule(), id: "ownerless" });
+
+    expect((commands[0] as TransactWriteCommand).input.TransactItems).toEqual(
+      expect.arrayContaining([
+        {
+          ConditionCheck: {
+            TableName: "Users",
+            Key: { id: "principal-1" },
+            ConditionExpression: "attribute_exists(id)",
+          },
+        },
+      ]),
+    );
+    expect(commands.slice(1)).toEqual([expect.any(PutCommand), expect.any(PutCommand)]);
+  });
+
   it("registers the scheduled session ACT member in the cursor/admission transaction", async () => {
-    let input: { TransactItems?: Array<Record<string, unknown>> } | undefined;
+    let input: TransactWriteCommandInput | undefined;
     const storage = scheduleCtx(async (command) => {
       input = (command as TransactWriteCommand).input;
       return {};
@@ -232,6 +268,75 @@ describe("durable schedule creation", () => {
 });
 
 describe("durable schedule management updates", () => {
+  it("couples ownerless and drain skips with their audit records", async () => {
+    const writes: TransactWriteCommandInput[] = [];
+    const ctx = scheduleCtx(async (command) => {
+      writes.push((command as TransactWriteCommand).input);
+      return {};
+    });
+    const audit = {
+      id: "audit-1",
+      createdAt: "now",
+      actor: { id: "system", kind: "system" as const, role: "system" as const },
+      action: "schedule:ownerless-occurrence-skipped",
+      resourceType: "schedule",
+      resourceId: "schedule-1",
+      repositoryId: "repo-1",
+      outcome: "failed" as const,
+      metadata: { reason: "ownerless" },
+    };
+
+    await expect(
+      skipOwnerlessScheduleAndAudit(ctx, {
+        scheduleId: "schedule-1",
+        expectedNextRunAt: "one",
+        newNextRunAt: "two",
+        lastRunAt: "now",
+        audit,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      skipScheduleForPrincipalDrainAndAudit(ctx, {
+        scheduleId: "schedule-1",
+        repositoryId: "repo-1",
+        principalId: "principal-1",
+        operationId: "drain-1",
+        expectedNextRunAt: "two",
+        newNextRunAt: "three",
+        audit: { ...audit, id: "audit-2", action: "session-drain:admission-rejected" },
+      }),
+    ).resolves.toBe(true);
+
+    expect(writes[0]?.TransactItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          Update: expect.objectContaining({
+            ConditionExpression: expect.stringContaining("attribute_not_exists(principalId)"),
+          }),
+        }),
+        expect.objectContaining({
+          Put: expect.objectContaining({
+            TableName: "AuditLogs",
+            Item: expect.objectContaining({ scope: "audit", id: "audit-1" }),
+          }),
+        }),
+      ]),
+    );
+    expect(writes[1]?.TransactItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ConditionCheck: expect.objectContaining({ TableName: "SessionDrains" }),
+        }),
+        expect.objectContaining({
+          Put: expect.objectContaining({
+            TableName: "AuditLogs",
+            Item: expect.objectContaining({ scope: "audit", id: "audit-2" }),
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("advances a schedule only while its principal drain remains active", async () => {
     let active = true;
     const storage = new DynamoPlaneStorageBase(
@@ -276,20 +381,32 @@ describe("durable schedule management updates", () => {
 
   it("updates operator fields without replacing a cron-advanced cursor", async () => {
     const storage = scheduleCtx(async (command) => {
-      expect(command).toBeInstanceOf(UpdateCommand);
-      const input = (command as UpdateCommand).input;
-      expect(input.UpdateExpression).toContain("nextRunAt = :nextRunAt");
-      expect(input.UpdateExpression).not.toContain("lastRunAt");
-      expect(input.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
-      expect(input.ConditionExpression).toContain(
+      if (command instanceof GetCommand) {
+        expect(command.input.ConsistentRead).toBe(true);
+        return {
+          Item: { ...schedule("main"), nextRunAt: "fresh-next", lastRunAt: "fresh-last" },
+        };
+      }
+      expect(command).toBeInstanceOf(TransactWriteCommand);
+      const input = (command as TransactWriteCommand).input;
+      const update = input.TransactItems?.find((item) => item.Update)?.Update;
+      expect(update?.UpdateExpression).toContain("nextRunAt = :nextRunAt");
+      expect(update?.UpdateExpression).not.toContain("lastRunAt");
+      expect(update?.ConditionExpression).toContain("nextRunAt = :expectedNextRunAt");
+      expect(update?.ConditionExpression).toContain(
         "attribute_not_exists(principalId) OR principalId = :principalId",
       );
-      expect(input.UpdateExpression).toContain("#ref = :ref");
-      expect(input.UpdateExpression).toContain("concurrencyId = :concurrencyId");
-      expect(input.UpdateExpression).toContain("prompt = :prompt");
-      return {
-        Attributes: { ...schedule("main"), nextRunAt: "fresh-next", lastRunAt: "fresh-last" },
-      };
+      expect(update?.UpdateExpression).toContain("#ref = :ref");
+      expect(update?.UpdateExpression).toContain("concurrencyId = :concurrencyId");
+      expect(update?.UpdateExpression).toContain("prompt = :prompt");
+      expect(input.TransactItems).toContainEqual({
+        ConditionCheck: {
+          TableName: "Users",
+          Key: { id: "principal" },
+          ConditionExpression: "attribute_exists(id)",
+        },
+      });
+      return {};
     });
 
     await expect(

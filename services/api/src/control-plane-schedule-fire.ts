@@ -14,8 +14,8 @@ import {
 } from "./control-plane-durable-read-catalog.ts";
 import { scheduledSessionPrompt } from "./control-plane-schedule-prompt.ts";
 import { repositoryAdmissionFailure } from "./control-plane-repository-admission-state.ts";
-import { appendAuditLog } from "./control-plane-audit.ts";
-import { SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import { newAuditRecord, SYSTEM_AUDIT_ACTOR } from "./audit.ts";
+import type { AuditLogRecord } from "./audit-types.ts";
 
 const PERSISTED_ISO_TIMESTAMP =
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})$/;
@@ -206,14 +206,18 @@ export async function evaluateCronDurable(
     if (!schedule.enabled || Date.parse(schedule.nextRunAt) > nowMs) {
       continue;
     }
-    const session = await tryClaimScheduleFireDurable(
-      state,
-      schedule.id,
-      schedule.nextRunAt,
-      nowIso,
-    );
-    if (session) {
-      created.push(session);
+    // An audit/storage outage for one schedule must not stall every other due
+    // schedule. Its cursor was not advanced, so this schedule remains retryable.
+    try {
+      const session = await tryClaimScheduleFireDurable(
+        state,
+        schedule.id,
+        schedule.nextRunAt,
+        nowIso,
+      );
+      if (session) created.push(session);
+    } catch {
+      continue;
     }
   }
   return created;
@@ -243,27 +247,21 @@ export async function tryClaimScheduleFireDurable(
     // Legacy rows without an authenticated owner cannot safely author a
     // session. Consume this occurrence with the same cursor CAS used by a
     // normal claim so cron does not hot-loop until an operator claims it.
-    const skipped = await state.storage.tryClaimSchedule(
+    const audit = ownerlessSkipAudit(state, schedule);
+    const skipped = await state.storage.skipOwnerlessScheduleAndAudit({
       scheduleId,
       expectedNextRunAt,
       newNextRunAt,
-      nowIso,
-    );
+      lastRunAt: nowIso,
+      audit,
+    });
     if (skipped) {
       state.schedules.set(scheduleId, {
         ...schedule,
         nextRunAt: newNextRunAt,
         lastRunAt: nowIso,
       });
-      await appendAuditLog(state, {
-        actor: SYSTEM_AUDIT_ACTOR,
-        action: "schedule:ownerless-occurrence-skipped",
-        resourceType: "schedule",
-        resourceId: scheduleId,
-        repositoryId: schedule.repositoryId,
-        outcome: "failed",
-        metadata: { reason: "schedule must be claimed by an authenticated principal" },
-      });
+      state.auditLogs.set(audit.id, audit);
     }
     return null;
   }
@@ -308,28 +306,19 @@ export async function tryClaimScheduleFireDurable(
     return null;
   }
   if (outcome.kind === "draining") {
-    const skipped = await state.storage.skipScheduleForPrincipalDrain({
+    const audit = principalDrainSkipAudit(state, schedule, outcome.operationId);
+    const skipped = await state.storage.skipScheduleForPrincipalDrainAndAudit({
       scheduleId,
       repositoryId: schedule.repositoryId,
       principalId: schedule.principalId!,
       operationId: outcome.operationId,
       expectedNextRunAt,
       newNextRunAt,
+      audit,
     });
     if (skipped) {
       state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt });
-      await appendAuditLog(state, {
-        actor: SYSTEM_AUDIT_ACTOR,
-        action: "session-drain:admission-rejected",
-        resourceType: "schedule",
-        resourceId: scheduleId,
-        repositoryId: schedule.repositoryId,
-        outcome: "failed",
-        metadata: {
-          operationId: outcome.operationId,
-          principalId: schedule.principalId!,
-        },
-      });
+      state.auditLogs.set(audit.id, audit);
     }
     return null;
   }
@@ -339,6 +328,42 @@ export async function tryClaimScheduleFireDurable(
   state.schedules.set(scheduleId, { ...schedule, nextRunAt: newNextRunAt, lastRunAt: nowIso });
   state.sessions.set(session.id, session);
   return toPublic(state, session);
+}
+
+function ownerlessSkipAudit(state: ControlPlaneState, schedule: ScheduleRecord): AuditLogRecord {
+  return newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "schedule:ownerless-occurrence-skipped",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: { reason: "schedule must be claimed by an authenticated principal" },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
+}
+
+function principalDrainSkipAudit(
+  state: ControlPlaneState,
+  schedule: ScheduleRecord,
+  operationId: string,
+): AuditLogRecord {
+  return newAuditRecord(
+    {
+      actor: SYSTEM_AUDIT_ACTOR,
+      action: "session-drain:admission-rejected",
+      resourceType: "schedule",
+      resourceId: schedule.id,
+      repositoryId: schedule.repositoryId,
+      outcome: "failed",
+      metadata: { operationId, principalId: schedule.principalId! },
+    },
+    state.now(),
+    state.auditIdFactory(),
+  );
 }
 
 function nextRunAt(schedule: ScheduleRecord, nowIso: string): string | null {

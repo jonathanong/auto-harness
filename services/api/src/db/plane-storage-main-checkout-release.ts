@@ -39,6 +39,10 @@ export async function releaseMainCheckoutSession(
     isQueued || before?.session.cancelledByDrainOperationId
       ? []
       : sessionDrainActivityDelete(ctx, before?.activity ?? null);
+  // A concurrent drain cancellation can become durable after the strong
+  // pre-read above. Fence the release transaction itself so it cannot then
+  // delete that drain's ACT member.
+  const requireNoDrainCancellation = cleanup.length > 0;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -65,7 +69,10 @@ export async function releaseMainCheckoutSession(
               ConditionExpression:
                 "#s = :expectedStatus AND hostId = :hostId AND assignmentConnectionId = :connectionId AND mainCheckoutLease = :true" +
                 (opts.attemptId ? " AND attemptId = :attemptId" : "") +
-                (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : ""),
+                (opts.requireUnacknowledged ? " AND attribute_not_exists(ackReceivedAt)" : "") +
+                (requireNoDrainCancellation
+                  ? " AND attribute_not_exists(cancelledByDrainOperationId)"
+                  : ""),
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: expressionValues(opts),
             },
@@ -89,7 +96,18 @@ export async function releaseMainCheckoutSession(
     );
     return true;
   } catch (error) {
-    if (isConditionalTransactionFailed(error)) return false;
+    if (isConditionalTransactionFailed(error)) {
+      // Retry a cancellation release from the current durable state. The
+      // retry observes the drain marker and omits ACT cleanup, while a stale
+      // lease/status failure remains a normal false result.
+      if (requireNoDrainCancellation && opts.expectedStatus === "cancelled") {
+        const current = await readSessionDrainActivity(ctx, opts.sessionId);
+        if (current?.session.cancelledByDrainOperationId) {
+          return releaseMainCheckoutSession(ctx, opts);
+        }
+      }
+      return false;
+    }
     throw error;
   }
 }

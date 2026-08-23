@@ -987,6 +987,10 @@ export async function releaseCancelledSessionWorktree(
   const cleanup = before?.session.cancelledByDrainOperationId
     ? []
     : sessionDrainActivityDelete(ctx, before?.activity ?? null);
+  // If a drain cancellation won after the strong pre-read, do not let this
+  // terminal release delete the member its drain still needs to reconcile.
+  // The caller will retry from the newly durable cancellation state.
+  const requireNoDrainCancellation = cleanup.length > 0;
   try {
     await ctx.doc.send(
       new TransactWriteCommand({
@@ -1011,7 +1015,10 @@ export async function releaseCancelledSessionWorktree(
                 `SET worktreeId = :null${opts.cliResumeRef ? ", cliResumeRef = :cliResumeRef" : ""} ` +
                 "REMOVE assignmentConnectionId, reconnectDeadlineAt",
               ConditionExpression:
-                "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId",
+                "#s = :cancelled AND worktreeId = :worktreeId AND attemptId = :attemptId" +
+                (requireNoDrainCancellation
+                  ? " AND attribute_not_exists(cancelledByDrainOperationId)"
+                  : ""),
               ExpressionAttributeNames: { "#s": "status" },
               ExpressionAttributeValues: {
                 ":cancelled": "cancelled",
@@ -1062,6 +1069,15 @@ export async function releaseCancelledSessionWorktree(
     return true;
   } catch (err) {
     if (isConditionalTransactionFailed(err)) {
+      // The only new value that can make the cleanup fence fail is a drain
+      // cancellation written after `before`. Re-read it and retry without the
+      // ACT delete, so the late terminal still frees the worktree.
+      if (requireNoDrainCancellation) {
+        const current = await readSessionDrainActivity(ctx, opts.sessionId);
+        if (current?.session.cancelledByDrainOperationId) {
+          return releaseCancelledSessionWorktree(ctx, opts);
+        }
+      }
       const current = await getSession(ctx, opts.sessionId);
       return current?.status === "cancelled" && current.worktreeId == null;
     }

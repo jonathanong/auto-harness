@@ -15,6 +15,8 @@ import {
   publicPrincipal,
   toUser,
   validateCredential,
+  type AuthAccountDeleteFence,
+  type FencedAuthAccountDelete,
   type AuthStorage,
   type ServiceAccount,
   type User,
@@ -181,6 +183,26 @@ export class AuthService {
     return this.users.delete(username);
   }
 
+  async deleteUserFenced(
+    username: string,
+    storage: AuthStorage | undefined,
+    fence: AuthAccountDeleteFence | undefined,
+  ): Promise<FencedAuthAccountDelete> {
+    const user = this.users.get(username);
+    if (!user) return "missing";
+    if (storage && fence) {
+      if (!storage.deleteAuthAccountFenced) return "fence-lost";
+      const result = await storage.deleteAuthAccountFenced(user.id, fence);
+      if (result === "fence-lost") return result;
+      this.users.delete(username);
+      return result;
+    } else if (storage) {
+      await storage.deleteAuthAccount(user.id);
+    }
+    this.users.delete(username);
+    return "deleted";
+  }
+
   /**
    * Change a durable user account's password after verifying the current
    * password. Bootstrap admins are intentionally environment-only and service
@@ -251,6 +273,25 @@ export class AuthService {
     if (!this.serviceAccounts.has(id)) return false;
     if (storage) await storage.deleteAuthAccount(id);
     return this.serviceAccounts.delete(id);
+  }
+
+  async deleteServiceAccountFenced(
+    id: string,
+    storage: AuthStorage | undefined,
+    fence: AuthAccountDeleteFence | undefined,
+  ): Promise<FencedAuthAccountDelete> {
+    if (!this.serviceAccounts.has(id)) return "missing";
+    if (storage && fence) {
+      if (!storage.deleteAuthAccountFenced) return "fence-lost";
+      const result = await storage.deleteAuthAccountFenced(id, fence);
+      if (result === "fence-lost") return result;
+      this.serviceAccounts.delete(id);
+      return result;
+    } else if (storage) {
+      await storage.deleteAuthAccount(id);
+    }
+    this.serviceAccounts.delete(id);
+    return "deleted";
   }
 
   async authenticate(req: IncomingMessage): Promise<Principal | null> {
