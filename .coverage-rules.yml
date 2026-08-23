@@ -1,0 +1,40 @@
+scope:
+  version: 1
+  analyzer: javascript
+  include:
+    - "modules/*/src/**/*.{ts,tsx}"
+    - "services/*/src/**/*.{ts,tsx}"
+  ignored:
+    - "**/*.test.{ts,tsx}"
+    - "**/*-test-helpers.{ts,tsx}"
+    - "**/*.d.ts"
+    - "**/dist/**"
+    - "**/.next/**"
+    - "**/next.config.ts"
+    - "**/tailwind.config.ts"
+    - "services/{api,cdk}/src/cli.ts"
+    - "**/modules/ui/src/index.ts"
+    - "**/services/host-pane/src/index.ts"
+  supplemental:
+    - "**/types.ts"
+    - "**/*-types.ts"
+    - "modules/shared/src/session.ts"
+    - "modules/shared/src/providers.ts"
+    - "**/db/plane-storage-auth.ts"
+    - "**/db/plane-storage-clear.ts"
+    - "**/db/plane-storage-deletion-markers.ts"
+    - "**/db/plane-storage-main-checkout-read.ts"
+    - "**/db/plane-storage-main-checkout-reconnect.ts"
+    - "**/db/plane-storage-main-checkout.ts"
+    - "**/db/plane-storage-provider-account-updates.ts"
+    - "**/db/plane-storage-provider-accounts.ts"
+    - "**/db/plane-storage-reconnect-rollback.ts"
+    - "**/db/plane-storage-reconnect.ts"
+    - "**/create-plane.ts"
+    - "**/services/web/src/lib/api.ts"
+
+rules:
+  - paths: "modules/**"
+    patch_coverage_min: 99
+  - paths: "services/**"
+    patch_coverage_min: 99

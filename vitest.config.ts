@@ -1,21 +1,19 @@
 import { defineConfig } from "vitest/config";
+import { loadCoverageConfig } from "coverage-check";
 
-import {
-  AGGREGATE_COVERAGE_EXCLUDE,
-  COVERAGE_INCLUDE,
-  PATCH_COVERAGE_EXCLUDE,
-} from "./scripts/coverage-scope.mts";
+const scope = loadCoverageConfig(".coverage-rules.yml").scope;
+if (!scope) throw new Error(".coverage-rules.yml must define coverage scope");
 
-const patchCoverageOutput = process.env.VITEST_PATCH_COVERAGE_PATH;
-const coverageCollection = patchCoverageOutput
+const supplementalCoverageOutput = process.env.COVERAGE_CHECK_SUPPLEMENTAL_LCOV;
+const coverageCollection = supplementalCoverageOutput
   ? // The custom module wraps the V8 provider and supports its full option set. Vitest's
     // CustomProviderOptions type omits those underlying-provider fields, so expose the
     // runtime object as V8-compatible after preserving provider: "custom" in its value.
     ({
       provider: "custom",
-      customProviderModule: "./scripts/scoped-v8-coverage-provider.mts",
-      include: [...COVERAGE_INCLUDE],
-      exclude: [...PATCH_COVERAGE_EXCLUDE],
+      customProviderModule: "coverage-check/vitest",
+      include: [...scope.include],
+      exclude: [...scope.ignored],
     } as unknown as {
       provider: "v8";
       include: string[];
@@ -23,8 +21,8 @@ const coverageCollection = patchCoverageOutput
     })
   : {
       provider: "v8" as const,
-      include: [...COVERAGE_INCLUDE],
-      exclude: [...AGGREGATE_COVERAGE_EXCLUDE],
+      include: [...scope.include],
+      exclude: [...scope.ignored, ...scope.supplemental],
     };
 
 export default defineConfig({

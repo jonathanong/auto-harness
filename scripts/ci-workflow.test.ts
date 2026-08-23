@@ -57,7 +57,7 @@ describe("required CI check contract", () => {
     const shard = job("vitest-shard");
     expect(shard).toContain("run: pnpm local:dynamodb:ready");
     expect(shard).toContain("run: pnpm test:shard");
-    expect(shard).toContain("VITEST_PATCH_COVERAGE_PATH:");
+    expect(shard).toContain("COVERAGE_CHECK_SUPPLEMENTAL_LCOV:");
     expect(shard).toContain("name: vitest-patch-${{ matrix.shard }}");
     expect(shard).not.toContain("run: pnpm check:coverage:dynamo-adapters");
   });
@@ -70,7 +70,8 @@ describe("required CI check contract", () => {
     expect(fanIn).toContain("run: pnpm test:merge");
     expect(fanIn).toContain("name: Download supplemental patch coverage");
     expect(fanIn).toContain("pattern: vitest-patch-*");
-    expect(fanIn).toContain("run: pnpm check:coverage:patch");
+    expect(fanIn.match(/merge-multiple: true/g)).toHaveLength(1);
+    expect(fanIn).toContain('run: pnpm check:coverage:patch --base "$COVERAGE_BASE_SHA"');
     expect(fanIn).toContain("COVERAGE_BASE_SHA:");
     expect(fanIn).toContain("fetch-depth: 0");
     expect(fanIn).toContain("run: pnpm check:coverage:dynamo-adapters");
@@ -102,7 +103,7 @@ describe("required CI check contract", () => {
     expect(shard).toContain("--shard=${{ matrix.shard }}/2");
     expect(shard).toContain("--outputFile.blob=.vitest-reports/blob-${{ matrix.shard }}.json");
     expect(shard).toContain("name: vitest-blob-${{ matrix.shard }}");
-    expect(shard).toContain("path: coverage/patch-${{ matrix.shard }}.lcov");
+    expect(shard).toContain("path: coverage/supplemental/lcov.info");
   });
 
   it("runs only the focused native test command on macOS and Windows", () => {
