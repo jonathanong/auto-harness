@@ -144,9 +144,7 @@ paths:
           description: Provider accounts
           content:
             application/json:
-              schema:
-                type: array
-                items: { $ref: "#/components/schemas/ProviderAccount" }
+              schema: { $ref: "#/components/schemas/ProviderAccountList" }
         default: { $ref: "#/components/responses/Error" }
     post:
       operationId: createProviderAccount
@@ -402,6 +400,13 @@ components:
         completedAt: { type: string, format: date-time }
         releasedAt: { type: string, format: date-time }
         failureCode: { type: string }
+    ProviderAccountList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/ProviderAccount" }
     ProviderAccount:
       type: object
       required: [id, providerId, label, maxConcurrentSessions, createdAt, updatedAt]
