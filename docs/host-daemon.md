@@ -283,44 +283,47 @@ If a site needs a full shell pipeline for maintenance, use a **scheduled** sessi
 
 #### Signals and exit
 
-| Event                    | Action                                                                |
-| ------------------------ | --------------------------------------------------------------------- |
-| Process exit 0           | `status: completed`, `exitCode: 0`                                    |
-| Process exit ≠ 0         | `status: failed`, `exitCode`                                          |
-| **Usage limit detected** | stop session → `status: failed`, `errorCode: usage_limit` (see below) |
-| Timeout                  | kill → `status: timed_out`                                            |
-| Cancel                   | kill → `status: cancelled`                                            |
-| Setup non-zero           | no primary spawn → `status: failed`                                   |
+| Event                    | Action                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| Process exit 0           | `status: completed`, `exitCode: 0`                                                        |
+| Process exit ≠ 0         | `status: failed`, `exitCode`                                                              |
+| **Usage limit detected** | failed provider CLI + classifier → `status: failed`, `errorCode: usage_limit` (see below) |
+| Timeout                  | kill → `status: timed_out`                                                                |
+| Cancel                   | kill → `status: cancelled`                                                                |
+| Setup non-zero           | no primary spawn → `status: failed`                                                       |
 
 #### Usage limits (AI vendor / CLI quotas)
 
 AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit your limit”, etc.). Auto Harness reports the limit and lets the control plane pause the assigned account, try another eligible account/fallback, or queue-wait for cooldown recovery.
 
-**Policy: parse → report → let the control plane route.**
+**Policy: trusted identity + failure → classify → report → let the control plane route.**
 
-1. While the session runs, the executor scans **stdout and stderr** (and final process output) for known usage-limit patterns.
-2. On a match (even if the process has not exited yet):
-   - Emit a `system` log line, e.g. `[system] Usage limit detected — releasing session for fallback routing`
-   - Stop the session process with the normal signal chain (SIGTERM → wait → SIGKILL) so the worktree can be released
-   - Report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage` (short excerpt), and `exitCode` if already known; do not retry or resolve a fallback on the host
-3. Report `session:status` with `status: failed`, `errorCode: "usage_limit"`; the control plane pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or explicit fallback.
-4. Providerless commands (`providerId: null`) still report `usage_limit`, but no account is paused; the control plane may try the next fallback or leave the session queued. A queued session remains eligible until its absolute `queueTtlSeconds` expires (default 8 days), then fails with `queue_expired`.
+1. The assigned command runs to completion. Timeout and cancel are never `usage_limit`.
+2. Exit `0` is always `completed`. Successful output — including adversarial or prompt-controlled phrases such as “rate limit” — never cools down a Provider Account.
+3. On a failed command (`exitCode !== 0`), the daemon classifies using **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side) plus provider-specific matchers, or a provider-aware CLI adapter's `usageLimit` flag. Untrusted stdout/stderr is never enough on its own.
+4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage`, and `exitCode`. Do not retry or resolve a fallback on the host.
+5. The control plane then pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or explicit fallback. A queued session remains eligible until its absolute `queueTtlSeconds` expires (default 8 days), then fails with `queue_expired`.
 
-**What counts as a usage-limit error (parse targets):**
+Providerless commands (`providerId: null`) and unknown executables **fail closed**: generic quota-like text is an ordinary `failed`, not `usage_limit`. No account is paused.
 
-Matchers are case-insensitive substrings / light regexes maintained in the agent (extensible per CLI). Examples:
+**What counts as a usage-limit error:**
 
-| Family                   | Example signals in output                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------- |
-| Generic                  | `usage limit`, `rate limit`, `rate_limit`, `quota exceeded`, `quota_exceeded`             |
-| OpenAI / Codex-style     | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`             |
-| Anthropic / Claude-style | `rate_limit_error`, `usage limit`, `monthly limit`                                        |
-| HTTP-ish in logs         | `429`, `Too Many Requests` when clearly tied to the provider API (not the app under test) |
+Classification keys off the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
 
-Prefer **provider-specific phrases** over bare `429` when possible, to avoid false positives from the **customer application's** own rate limits in tests. If both could match, require a provider/CLI context line nearby or an allowlist of patterns only from known tools.
+| Trusted executable | Example signals in failed CLI output                                                   |
+| ------------------ | -------------------------------------------------------------------------------------- |
+| `codex`            | `insufficient_quota`, `You exceeded your current quota`, `Rate limit reached`          |
+| `claude`           | `rate_limit_error`, `Claude usage limit`, `You've hit your limit`                      |
+| `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota` |
+| `grok`             | `Rate limit error`, `You've reached your usage limit`                                  |
+
+Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are not enough without that trusted executable **and** a failure. A provider-aware CLI adapter may set `usageLimit` as a trusted failure channel; that flag is still ignored on success and on unknown/providerless argv.
 
 **What is not a usage limit:**
 
+- Successful commands (`exitCode === 0`), even when output contains vendor phrases
+- Prompt-controlled / adversarial stdout that prints rate-limit wording
+- Providerless commands and unknown executables (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)
 - Agent host OOM / missing CLI → ordinary `failed` without `usage_limit`

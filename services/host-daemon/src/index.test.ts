@@ -6,6 +6,12 @@ describe("@auto-harness/host-daemon", () => {
   it("exports package identity and core helpers", () => {
     expect(serviceName).toBe("@auto-harness/host-daemon");
     expect(getServiceName()).toBe(serviceName);
-    expect(detectUsageLimit("quota exceeded")).toBe(true);
+    expect(
+      detectUsageLimit({
+        argv: ["codex"],
+        failed: true,
+        output: "insufficient_quota",
+      }),
+    ).toBe(true);
   });
 });

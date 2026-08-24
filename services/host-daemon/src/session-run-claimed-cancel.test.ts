@@ -115,13 +115,19 @@ describe("claimed session cancellation", () => {
       runClaimedSession(
         {
           async run(options) {
-            options.onChunk({ stream: "stdout", data: "resume: native-1\nusage limit reached" });
+            options.onChunk({
+              stream: "stdout",
+              data: "resume: native-1\nError: insufficient_quota for request",
+            });
             return { exitCode: 1, timedOut: false, signal: null };
           },
         },
         new LogStreamer("s", (chunk) => logs.push(chunk)),
         logs,
-        baseAssign({ resumeRefCapture: { stream: "stdout", linePrefix: "resume: " } }),
+        baseAssign({
+          resolvedArgv: ["codex", "exec"],
+          resumeRefCapture: { stream: "stdout", linePrefix: "resume: " },
+        }),
         claimed,
         undefined,
         () => false,
