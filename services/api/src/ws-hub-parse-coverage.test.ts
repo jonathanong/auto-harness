@@ -68,6 +68,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
     });
     expect(parseHostMessage({ ...status, exitCode: 0 })).toMatchObject({ exitCode: 0 });
     expect(parseHostMessage(log)).toEqual(log);
+    expect(parseHostMessage({ ...log, dropped: 4 })).toEqual({ ...log, dropped: 4 });
     const legacyLog = { ...log, attemptId: undefined };
     delete (legacyLog as { attemptId?: string }).attemptId;
     expect(parseHostMessage(legacyLog)).toBe(null);
@@ -213,6 +214,10 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...log, timestamp: "not-a-time" },
       { ...log, seq: 1.5 },
       { ...log, seq: -1 },
+      { ...log, dropped: -1 },
+      { ...log, dropped: 1.5 },
+      { ...log, dropped: "1" },
+      { ...log, dropped: 1_000_001 },
       { type: "host:keepalive", hostId: "", at: "2026-08-11T00:00:00.000Z" },
       { type: "host:keepalive", hostId: "h", at: "" },
       { type: "host:keepalive", hostId: "h", at: "not-a-time" },

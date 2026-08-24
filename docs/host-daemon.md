@@ -341,10 +341,17 @@ Account cooldown is not a general retry policy: ordinary command failures, timeo
 - Tag `stream`: `stdout` | `stderr` | `system`
 - Add ISO timestamps
 - **Rate limit:** default max ~10 WebSocket messages/sec/session
-- **Batch:** coalesce lines up to `logBatchMaxLines` or `logBatchMaxWaitMs`
+- **Batch:** coalesce consecutive stdout/stderr lines up to `logBatchMaxLines` (100) or
+  `logBatchMaxWaitMs` (100ms), and up to the per-frame byte budget. A stream change or
+  system/lifecycle line flushes the current batch first. Coalesced `session:log` frames
+  still carry `{sessionId, attemptId}` and keep insertion order (`timestampSeq`)
 - Emit `session:log` via Connection Manager. Per-session output is capped (32 KiB per chunk, 256 KiB retained for output classification, and at most 10,000 streamed chunks / 10 MiB retained logs), and sequence numbers continue after a reassignment/retry.
 - Serialize outbound messages FIFO. The daemon flushes queued logs before it sends a terminal `session:status`; a failed send is reported but does not permanently block later messages.
-- On backpressure: drop or coalesce with a system warning line (prefer coalesce)
+- On backpressure: prefer coalescing. When the current frame is already at its byte/line
+  bound and the ~10 msg/s budget is exhausted, drop further stdout/stderr and emit a
+  system warning `N log chunk(s) dropped` with machine-readable `dropped: N` telemetry
+  the control plane can later alarm on. Session-wide chunk/byte caps remain silent (no
+  `dropped` counter); they bound retained logs, not the live rate.
 
 Control plane persists logs and fans out to UI subscribers ([aws.md](aws.md)).
 

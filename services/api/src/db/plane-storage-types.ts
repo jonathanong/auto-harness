@@ -135,6 +135,8 @@ export type LogRecord = {
   content: string;
   timestamp: string;
   seq: number;
+  /** Source-side chunks dropped immediately before this record. */
+  dropped?: number;
   ttl?: number;
 };
 

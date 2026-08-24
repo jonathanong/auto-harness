@@ -22,6 +22,20 @@ describe("sendDaemonLog", () => {
     );
     expect(lines).toEqual(["[stdout#2] hello"]);
     expect(sent).toEqual([expect.objectContaining({ type: "session:log", sessionId: "s" })]);
+    expect(sent[0]).not.toHaveProperty("dropped");
+  });
+
+  it("forwards source-side drop telemetry", async () => {
+    const sent: unknown[] = [];
+    await sendDaemonLog(
+      { send: async (message: unknown) => void sent.push(message) } as never,
+      undefined,
+      {
+        ...chunk,
+        dropped: 4,
+      },
+    );
+    expect(sent).toEqual([expect.objectContaining({ type: "session:log", dropped: 4 })]);
   });
 
   it("does not require a local logger", async () => {

@@ -208,6 +208,7 @@ export class SessionRunner {
         );
       }
     } finally {
+      streamer.flush();
       clearTimeout(timeoutTimer);
       if (mainClaimed) {
         this.deps.worktrees.releaseMain(assign.repositoryId);

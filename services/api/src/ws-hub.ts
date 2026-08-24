@@ -447,6 +447,13 @@ export function parseHostMessage(
       const attemptIdOk =
         boundedText(message.attemptId) ||
         (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
+      const dropped = message.dropped;
+      const droppedOk =
+        dropped === undefined ||
+        (typeof dropped === "number" &&
+          Number.isSafeInteger(dropped) &&
+          dropped >= 0 &&
+          dropped <= 1_000_000);
       return boundedText(message.sessionId) &&
         attemptIdOk &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
@@ -455,7 +462,8 @@ export function parseHostMessage(
         boundedText(timestamp, 128) &&
         Number.isSafeInteger(message.seq) &&
         (message.seq as number) >= 0 &&
-        Number.isFinite(Date.parse(timestamp))
+        Number.isFinite(Date.parse(timestamp)) &&
+        droppedOk
         ? (message as HostToServerMessage)
         : null;
     }

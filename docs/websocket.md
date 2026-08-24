@@ -86,7 +86,7 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
 | `host:register`   | `hostId`, `worktrees[]`, optional `repositories[]`, optional `capabilities[]`, optional `runtime`, optional `runningSessions[]`, optional `runningAttempts[]`, optional `protocolVersion`, optional `draining` | Inventory, repository metadata, rollout capabilities, Git checkout-recovery readiness, reclaim after reconnect (attempt-fenced), protocol negotiation, and a reconnecting drain intent                                                                                                                        |
 | `session:ack`     | `sessionId`, `worktreeId`, `attemptId`                                                                                                                                                                         | Accepted assign; echoes the immutable assignment fence                                                                                                                                                                                                                                                        |
 | `session:status`  | `sessionId`, `worktreeId`, `attemptId`, `status`, `exitCode?`, `errorCode?`, `errorMessage?`                                                                                                                   | Lifecycle (`running`, `completed`, `failed`, `cancelled`, `timed_out`); echoes the assignment fence. Terminal status persists a captured native resume ref when available. On AI quota hits: `failed` + `errorCode: "usage_limit"` (see [host-daemon.md](host-daemon.md#usage-limits-ai-vendor--cli-quotas)). |
-| `session:log`     | `sessionId`, `attemptId`, `stream`, `content`, `timestamp`                                                                                                                                                     | stdout / stderr / system chunk; delayed chunks from an old attempt are ignored                                                                                                                                                                                                                                |
+| `session:log`     | `sessionId`, `attemptId`, `stream`, `content`, `timestamp`, `seq`, optional `dropped`                                                                                                                          | stdout / stderr / system chunk; delayed chunks from an old attempt are ignored. `dropped` is source-side drop telemetry (chunks discarded to honor ~10 msg/s and byte/line bounds) so the control plane can alarm without parsing log text                                                                    |
 | `worktree:status` | `worktreeId`, `status`, `currentSessionId?`                                                                                                                                                                    | idle / busy / error                                                                                                                                                                                                                                                                                           |
 | `host:status`     | `hostId`, `draining: true`                                                                                                                                                                                     | Authenticated, connection-fenced request to durably drain this host; server replies `host:draining` only after commit                                                                                                                                                                                         |
 | `pong`            | `{}`                                                                                                                                                                                                           | Keepalive reply                                                                                                                                                                                                                                                                                               |
@@ -106,9 +106,35 @@ When `resume: true`, the agent must **not** treat this as a fresh clean setup (a
   "attemptId": "attempt-4e6b9a",
   "stream": "stdout",
   "content": "Analyzing codebase...\n",
-  "timestamp": "2026-08-01T12:00:06.123Z"
+  "timestamp": "2026-08-01T12:00:06.123Z",
+  "seq": 4
 }
 ```
+
+Daemons coalesce consecutive stdout/stderr writes to about **10 WebSocket messages/sec/session**
+(`logBatchMaxWaitMs` 100, `logBatchMaxLines` 100, plus the existing per-frame byte budget).
+Coalesced frames still carry `{sessionId, attemptId}` and keep insertion order via
+`timestampSeq` (`timestamp#seq`); the daemon never renumbers after emit. When a session
+exceeds that rate and the current coalesced frame is already at its byte/line bound, the
+daemon drops further stdout/stderr and later emits a system frame:
+
+```json
+{
+  "type": "session:log",
+  "sessionId": "sess-x1y2z3",
+  "attemptId": "attempt-4e6b9a",
+  "stream": "system",
+  "content": "12 log chunk(s) dropped",
+  "timestamp": "2026-08-01T12:00:07.000Z",
+  "seq": 5,
+  "dropped": 12
+}
+```
+
+`dropped` is bounded machine-readable telemetry (`0…1_000_000`). Control-plane alarming on
+it is follow-up work; ingest already persists the field. System/lifecycle lines are not
+dropped and flush any coalesced stdout/stderr ahead of themselves so a terminal
+`session:status` cannot overtake logs.
 
 Modern daemons advertise `protocolVersion` (currently `1`) and `runningAttempts: [{ sessionId, attemptId }]`.
 A missing `protocolVersion` is a legacy daemon (version 0): it may finish the attempts it reports
@@ -184,7 +210,8 @@ Notes:
 - Many clients may subscribe to one session
 - Full history remains bounded REST [`GET /sessions/:id/logs`](api.md); this protocol only fills the live tail
 - Streams may interleave; order is preserved per stream
-- The local WebSocket server coalesces up to 25 adjacent log frames over a short bounded window,
+- The daemon already coalesces source-side to ~10 messages/sec/session (see above). Independently,
+  the local WebSocket server coalesces up to 25 adjacent log frames over a short bounded window,
   flushes them before any later control/status frame, and persists the batch in one
   connection-fenced DynamoDB transaction before fan-out. The agent's `timestampSeq` order is
   unchanged; the server never renumbers or reorders chunks.

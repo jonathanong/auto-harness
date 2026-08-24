@@ -17,6 +17,7 @@ export async function sendDaemonLog(
       content: chunk.content,
       timestamp: chunk.timestamp,
       seq: chunk.seq,
+      ...(chunk.dropped !== undefined ? { dropped: chunk.dropped } : {}),
     })
     .catch((err: unknown) => {
       onLog?.(`log delivery failed: ${err instanceof Error ? err.message : String(err)}`);

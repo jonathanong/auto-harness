@@ -1,78 +1,45 @@
+/* eslint-disable max-lines -- coalescing, rate, and drop telemetry share one pending batch. */
 import { formatLogSortKey } from "@auto-harness/shared";
 import type { LogStream, SessionLogChunk } from "@auto-harness/shared";
+
+import {
+  appendToBatch,
+  canAppendToBatch,
+  DEFAULT_LOG_BATCH_MAX_LINES,
+  DEFAULT_LOG_BATCH_MAX_WAIT_MS,
+  DEFAULT_LOG_MESSAGES_PER_SEC,
+  DEFAULT_MAX_WIRE_BYTES,
+  formatDroppedLogNotice,
+  LogRateWindow,
+  splitUtf8,
+  startBatch,
+  truncateUtf8,
+  type CoalesceBatch,
+} from "./log-coalesce.ts";
 
 type LogEmit = (chunk: SessionLogChunk) => void;
 
 const DEFAULT_MAX_LOG_CHUNKS = 10_000;
 const DEFAULT_MAX_LOG_BYTES = 10 * 1024 * 1024;
 
-// API Gateway's WebSocket limit is 128 KB per *message*, but only 32 KB per *frame* — a
-// message over 32 KB must be split into multiple frames, and the `ws` client this daemon
-// uses (ws-transport.ts) sends every outbound payload as a single frame with no built-in
-// fragmentation (send()'s `fin` option defaults to true). So the real hard limit for one
-// `ws.send()` call is 32 KB, not 128 KB — deployed against AWS, exceeding it closes the
-// socket with code 1009. The local `ws` server has no such limit, so this was previously
-// invisible outside a real deploy.
-const API_GATEWAY_MAX_FRAME_BYTES = 32 * 1024;
-// Headroom for the session:log envelope around `content` — type, sessionId, stream,
-// timestamp, seq — none of which can contain adversarial bytes (see splitUtf8's caller).
-const ENVELOPE_OVERHEAD_BYTES = 512;
-// JSON.stringify's worst case for one raw byte with no short escape (an unprintable
-// control byte) is a six-ASCII-byte unicode escape sequence. Log content is arbitrary
-// CLI/terminal output, so this bounds the *raw* content budget against that worst case,
-// not just typical ANSI-escape-heavy output (about 2x expansion in practice).
-const JSON_ESCAPE_WORST_CASE_FACTOR = 6;
-const DEFAULT_MAX_WIRE_BYTES = Math.floor(
-  (API_GATEWAY_MAX_FRAME_BYTES - ENVELOPE_OVERHEAD_BYTES) / JSON_ESCAPE_WORST_CASE_FACTOR,
-);
-
-type LogLimits = {
+export type LogLimits = {
   maxChunks?: number;
   maxBytes?: number;
   maxWireBytes?: number;
+  logBatchMaxLines?: number;
+  logBatchMaxWaitMs?: number;
+  maxMessagesPerSec?: number;
 };
 
-function truncateUtf8(content: string, maxBytes: number): string {
-  if (Buffer.byteLength(content, "utf8") <= maxBytes) return content;
-  let used = 0;
-  let result = "";
-  for (const char of content) {
-    const size = Buffer.byteLength(char, "utf8");
-    if (used + size > maxBytes) break;
-    result += char;
-    used += size;
-  }
-  return result;
-}
-
-/**
- * Split content into UTF-8-safe pieces no larger than maxBytesPerPiece each. Unlike
- * truncateUtf8, this covers the whole string — nothing is dropped, only split at char
- * boundaries. A single character wider than maxBytesPerPiece still forms its own (slightly
- * over-budget) piece rather than being dropped or looping forever.
- */
-function splitUtf8(content: string, maxBytesPerPiece: number): string[] {
-  // No explicit empty-string guard: the only caller (writeAt) already returns before this
-  // point when its bounded content is empty, and an empty for-of loop naturally yields [].
-  const pieces: string[] = [];
-  let current = "";
-  let used = 0;
-  for (const char of content) {
-    const size = Buffer.byteLength(char, "utf8");
-    if (used > 0 && used + size > maxBytesPerPiece) {
-      pieces.push(current);
-      current = "";
-      used = 0;
-    }
-    current += char;
-    used += size;
-  }
-  if (current.length > 0) pieces.push(current);
-  return pieces;
-}
+export type LogStreamerTimers = {
+  setTimeout?: typeof setTimeout;
+  clearTimeout?: typeof clearTimeout;
+  nowMs?: () => number;
+};
 
 /**
  * Buffers session log lines with a monotonic per-session sequence (Invariant 5).
+ * Consecutive stdout/stderr writes coalesce up to byte/line bounds and ~10 msg/s.
  */
 export class LogStreamer {
   private seq = 0;
@@ -80,11 +47,22 @@ export class LogStreamer {
   private readonly attemptId: string;
   private readonly emit: LogEmit;
   private readonly now: () => string;
+  private readonly nowMs: () => number;
+  private readonly setTimeoutFn: typeof setTimeout;
+  private readonly clearTimeoutFn: typeof clearTimeout;
   private readonly maxChunks: number;
   private readonly maxBytes: number;
   private readonly maxWireBytes: number;
+  private readonly logBatchMaxLines: number;
+  private readonly logBatchMaxWaitMs: number;
+  private readonly rate: LogRateWindow;
   private emittedChunks = 0;
   private emittedBytes = 0;
+  private pending: CoalesceBatch | null = null;
+  private pendingSinceMs = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private droppedChunks = 0;
+  private unsentDropped = 0;
 
   constructor(
     sessionId: string,
@@ -93,19 +71,33 @@ export class LogStreamer {
     now: () => string = () => new Date().toISOString(),
     initialSeq = 0,
     limits: LogLimits = {},
+    timers: LogStreamerTimers = {},
   ) {
     this.sessionId = sessionId;
     this.attemptId = attemptId;
     this.emit = emit;
     this.now = now;
+    this.nowMs = timers.nowMs ?? Date.now;
+    this.setTimeoutFn = timers.setTimeout ?? setTimeout;
+    this.clearTimeoutFn = timers.clearTimeout ?? clearTimeout;
     this.seq = initialSeq;
     this.maxChunks = limits.maxChunks ?? DEFAULT_MAX_LOG_CHUNKS;
     this.maxBytes = limits.maxBytes ?? DEFAULT_MAX_LOG_BYTES;
     this.maxWireBytes = limits.maxWireBytes ?? DEFAULT_MAX_WIRE_BYTES;
+    this.logBatchMaxLines = limits.logBatchMaxLines ?? DEFAULT_LOG_BATCH_MAX_LINES;
+    this.logBatchMaxWaitMs = limits.logBatchMaxWaitMs ?? DEFAULT_LOG_BATCH_MAX_WAIT_MS;
+    this.rate = new LogRateWindow(
+      limits.maxMessagesPerSec ?? DEFAULT_LOG_MESSAGES_PER_SEC,
+      this.nowMs,
+    );
   }
 
   nextSeq(): number {
     return this.seq;
+  }
+
+  droppedCount(): number {
+    return this.droppedChunks;
   }
 
   write(stream: LogStream, content: string): SessionLogChunk | null {
@@ -117,38 +109,151 @@ export class LogStreamer {
     return this.writeAt("system", `${label} at ${timestamp}`, timestamp);
   }
 
+  /** Emit coalesced output and drop notices so a later status frame is not first. */
+  flush(): void {
+    this.flushPending(true);
+  }
+
+  sortKey(chunk: SessionLogChunk): string {
+    return formatLogSortKey(chunk.timestamp, chunk.seq);
+  }
+
   private writeAt(stream: LogStream, content: string, timestamp: string): SessionLogChunk | null {
-    if (this.emittedChunks >= this.maxChunks || this.emittedBytes >= this.maxBytes) {
-      return null;
-    }
-    const bounded = truncateUtf8(content, this.maxBytes - this.emittedBytes);
-    if (bounded.length === 0) return null;
-    // A single write() call can still exceed the wire limit, so it may emit more than one
-    // chunk here — each takes its own seq, preserving the monotonic sequence invariant.
-    // Callers don't use the return value; it's the last chunk emitted, or null if the
-    // per-session budget was already exhausted before this call could emit anything.
-    let last: SessionLogChunk | null = null;
+    const force = stream === "system";
+    let last: SessionLogChunk | null = force ? this.flushPending(true) : null;
+    if (this.emittedChunks >= this.maxChunks && !this.pending) return last;
+    const bounded = truncateUtf8(content, this.remainingBytes());
+    if (bounded.length === 0) return last;
     for (const piece of splitUtf8(bounded, this.maxWireBytes)) {
-      if (this.emittedChunks >= this.maxChunks) break;
-      const seq = this.seq++;
-      const chunk: SessionLogChunk = {
-        sessionId: this.sessionId,
-        attemptId: this.attemptId,
-        stream,
-        content: piece,
-        timestamp,
-        seq,
-      };
-      this.emittedChunks += 1;
-      this.emittedBytes += Buffer.byteLength(piece, "utf8");
-      this.emit(chunk);
-      last = chunk;
+      const emitted = this.enqueuePiece(stream, piece, timestamp, force);
+      if (emitted) last = emitted;
+    }
+    if (!force) {
+      const flushed = this.afterStdoutEnqueue();
+      if (flushed) last = flushed;
     }
     return last;
   }
 
-  /** Sort key for DynamoDB SessionLogs SK. */
-  sortKey(chunk: SessionLogChunk): string {
-    return formatLogSortKey(chunk.timestamp, chunk.seq);
+  private enqueuePiece(
+    stream: LogStream,
+    piece: string,
+    timestamp: string,
+    force: boolean,
+  ): SessionLogChunk | null {
+    if (
+      this.pending &&
+      canAppendToBatch(
+        this.pending,
+        stream,
+        piece,
+        Buffer.byteLength(piece, "utf8"),
+        this.maxWireBytes,
+        this.logBatchMaxLines,
+      )
+    ) {
+      appendToBatch(this.pending, piece);
+      return null;
+    }
+    let last: SessionLogChunk | null = null;
+    if (this.pending) {
+      last = this.flushPending(force);
+      if (this.pending) {
+        this.droppedChunks += 1;
+        this.unsentDropped += 1;
+        return last;
+      }
+    }
+    if (this.emittedChunks >= this.maxChunks) return last;
+    this.pending = startBatch(stream, piece, timestamp);
+    this.pendingSinceMs = this.nowMs();
+    return force ? this.flushPending(true) : last;
+  }
+
+  private afterStdoutEnqueue(): SessionLogChunk | null {
+    if (!this.pending) return this.flushDropNotice(false);
+    if (this.logBatchMaxWaitMs === 0) return this.flushPending(false);
+    this.scheduleFlush();
+    return null;
+  }
+
+  private remainingBytes(): number {
+    return this.maxBytes - this.emittedBytes - (this.pending?.bytes ?? 0);
+  }
+
+  private flushPending(force: boolean): SessionLogChunk | null {
+    if (this.pending && !force && !this.rate.canEmit()) {
+      this.scheduleFlush();
+      return null;
+    }
+    this.clearTimer();
+    let last: SessionLogChunk | null = null;
+    if (this.pending) {
+      const batch = this.pending;
+      this.pending = null;
+      last = this.emitChunk(batch.stream, batch.content, batch.timestamp);
+    }
+    return this.flushDropNotice(force) ?? last;
+  }
+
+  private flushDropNotice(force: boolean): SessionLogChunk | null {
+    if (this.unsentDropped === 0) return null;
+    if (!force && !this.rate.canEmit()) {
+      this.scheduleFlush();
+      return null;
+    }
+    if (this.emittedChunks >= this.maxChunks && !force) return null;
+    const count = this.unsentDropped;
+    this.unsentDropped = 0;
+    return this.emitRaw("system", formatDroppedLogNotice(count), this.now(), count);
+  }
+
+  private emitChunk(stream: LogStream, content: string, timestamp: string): SessionLogChunk {
+    return this.emitRaw(stream, content, timestamp);
+  }
+
+  private emitRaw(
+    stream: LogStream,
+    content: string,
+    timestamp: string,
+    dropped?: number,
+  ): SessionLogChunk {
+    const seq = this.seq++;
+    const chunk: SessionLogChunk = {
+      sessionId: this.sessionId,
+      attemptId: this.attemptId,
+      stream,
+      content,
+      timestamp,
+      seq,
+      ...(dropped !== undefined ? { dropped } : {}),
+    };
+    this.emittedChunks += 1;
+    this.emittedBytes += Buffer.byteLength(content, "utf8");
+    this.rate.record();
+    this.emit(chunk);
+    return chunk;
+  }
+
+  private scheduleFlush(): void {
+    if (this.timer !== undefined || (!this.pending && this.unsentDropped === 0)) return;
+    const now = this.nowMs();
+    const due = Math.max(
+      this.pending ? this.pendingSinceMs + this.logBatchMaxWaitMs : now,
+      this.rate.nextEmitAt(now),
+    );
+    this.timer = this.setTimeoutFn(
+      () => {
+        this.timer = undefined;
+        this.flushPending(false);
+      },
+      Math.max(0, due - now),
+    );
+  }
+
+  private clearTimer(): void {
+    if (this.timer === undefined) return;
+    this.clearTimeoutFn(this.timer);
+    this.timer = undefined;
   }
 }
