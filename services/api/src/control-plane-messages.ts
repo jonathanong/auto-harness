@@ -726,7 +726,6 @@ async function applySessionStatusDurable(
   const cooldown = transitionEffect(plan, "cooldown");
   const requeue = transitionEffect(plan, "requeue");
   const suppress = transitionEffect(plan, "suppress_target");
-  const finish = transitionEffect(plan, "finish");
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
     const providerAccountId = session.resolvedRoute?.providerAccountId;
     if (requeue?.reason === "missing_account" && providerAccountId) {
@@ -823,14 +822,14 @@ async function applySessionStatusDurable(
       await assignScheduledQueuedDurable(state);
       return { ok: true };
     }
-    const completedAt = finish?.completedAt ?? state.now();
+    const completedAt = state.now();
     const committed = await storage.releaseMainCheckoutSession({
       sessionId: session.id,
       hostId: session.hostId,
       repositoryId: session.repositoryId,
       connectionId: session.assignmentConnectionId,
       attemptId: msg.attemptId,
-      status: finish?.status ?? msg.status,
+      status: msg.status,
       queueShard: session.queueShard,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
@@ -843,7 +842,7 @@ async function applySessionStatusDurable(
     releaseScheduledLeaseLocal(state, session);
     const { mainCheckoutLease: _, ...next } = {
       ...session,
-      status: finish?.status ?? msg.status,
+      status: msg.status,
       worktreeId: null,
       completedAt,
       ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
@@ -928,11 +927,11 @@ async function applySessionStatusDurable(
       });
     }
   }
-  const nextStatus = shouldSuppressTarget ? "queued" : (finish?.status ?? msg.status);
+  const nextStatus = shouldSuppressTarget ? "queued" : msg.status;
   const nextSession = {
     ...session,
     status: nextStatus,
-    ...(shouldSuppressTarget ? {} : { completedAt: finish?.completedAt ?? state.now() }),
+    ...(shouldSuppressTarget ? {} : { completedAt: state.now() }),
     worktreeId: null,
     hostId: null,
     ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),

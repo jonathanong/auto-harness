@@ -167,6 +167,29 @@ describe("DynamoDB Local main-checkout release", () => {
     });
   });
 
+  it("derives queueOrder when the queued session row is missing", async () => {
+    const opts = {
+      sessionId: "missing-row",
+      hostId: "missing-host",
+      repositoryId: "repo",
+      connectionId: "connection",
+      status: "queued" as const,
+      queueShard: 0,
+    };
+    await ctx.doc.send(
+      new PutCommand({
+        TableName: tables.hostLocks,
+        Item: {
+          hostId: opts.hostId,
+          mainCheckoutLeases: {
+            [opts.repositoryId]: { sessionId: opts.sessionId, connectionId: opts.connectionId },
+          },
+        },
+      }),
+    );
+    expect(await releaseMainCheckoutSession(ctx, opts)).toBe(false);
+  });
+
   it("finishes a cancelled session, releases its concurrency lock, and rethrows outages", async () => {
     const opts = {
       sessionId: "finished",

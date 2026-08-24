@@ -268,4 +268,59 @@ describe("assignment residual coverage", () => {
 
     expect(assignQueued(state)).toHaveLength(1);
   });
+
+  it("assigns durably after the claimed provider account disappears", async () => {
+    const state = createControlPlaneState({
+      now: () => NOW,
+      attemptIdFactory: () => "attempt",
+      shardCount: 1,
+    });
+    state.providers.set("provider", {
+      id: "provider",
+      name: "provider",
+      defaultCommandId: "provider-command",
+    });
+    state.providerAccounts.set("account", {
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    });
+    state.commands.set("provider-command", {
+      id: "provider-command",
+      name: "provider command",
+      argv: ["tool"],
+      appendPrompt: true,
+      providerId: "provider",
+    });
+    state.worktrees.set("w", worktree);
+    state.connections.set("connection", {
+      hostId: "host",
+      connectionId: "connection",
+      type: "host",
+      connectedAt: NOW,
+      lastHeartbeatAt: NOW,
+      capabilities: [],
+      repositoryIds: ["repo"],
+      runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 1,
+    });
+    state.hostConnection.set("host", "connection");
+    state.hostInventories.set("host", {
+      hostId: "host",
+      repositories: [{ id: "repo", path: "/repo", worktrees: [] }],
+      providerAccounts: [{ providerAccountId: "account" }],
+      commandProfiles: {},
+      updatedAt: NOW,
+    });
+    state.sessions.set("s", session({ target: { commandId: "provider-command" } }));
+    setDurableReadStorage(state, {
+      expireQueuedSession: async () => false,
+      tryAssignSession: async () => {
+        state.providerAccounts.delete("account");
+        return true;
+      },
+    });
+    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    expect(state.providerAccounts.has("account")).toBe(false);
+  });
 });

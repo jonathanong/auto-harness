@@ -135,10 +135,9 @@ export async function assignQueuedDurable(
     await listWorktreesForRepositoryDurable(state, session.repositoryId);
     let plan = planPromptPlacement(state, catalog, session, nowMs);
     if (plan.action === "clear_pin") {
-      if (!session.pinnedHostId) continue;
       const cleared = await state.storage.clearResumePin({
         sessionId: session.id,
-        pinnedHostId: session.pinnedHostId,
+        pinnedHostId: session.pinnedHostId!,
         pinExpiresAt: session.pinExpiresAt,
       });
       if (!cleared) continue;
