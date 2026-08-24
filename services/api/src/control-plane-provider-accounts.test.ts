@@ -1,3 +1,5 @@
+/* eslint-disable max-lines -- provider account lifecycle and durable conflict cases share fixtures. */
+
 import { describe, expect, it, vi } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -117,6 +119,50 @@ describe("ControlPlane provider account CRUD", () => {
     expect(storage.updateProviderAccount).toHaveBeenCalledTimes(3);
     expect(storage.clearProviderAccountUsageLimit).toHaveBeenCalledTimes(2);
     expect(storage.deleteProviderAccount).toHaveBeenCalledWith("acct-1");
+  });
+
+  it("lets durable storage decide whether a stale cached lease blocks a cap reduction", async () => {
+    const storage = {
+      putProviderAccount: vi.fn(async () => true),
+      updateProviderAccount: vi.fn(async () => true),
+    };
+    const plane = new ControlPlane({
+      storage: storage as never,
+      now: () => "2026-01-01T00:00:00.000Z",
+    });
+    plane.state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(
+      plane.createProviderAccount({
+        id: "acct-1",
+        providerId: "prov-1",
+        label: "account",
+        maxConcurrentSessions: 2,
+      }).ok,
+    ).toBe(true);
+    plane.state.providerAccountLeases.set("provider-account:acct-1:1", {
+      sessionId: "stale",
+      attemptId: "attempt",
+      slot: 1,
+      hostId: "host",
+      providerAccountId: "acct-1",
+    });
+
+    expect(plane.updateProviderAccount("acct-1", { maxConcurrentSessions: 1 })).toMatchObject({
+      ok: true,
+    });
+    await plane.settleStorage();
+    expect(storage.updateProviderAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedMaxConcurrentSessions: 2,
+        patch: { maxConcurrentSessions: 1 },
+      }),
+    );
   });
 
   it("surfaces a durable cooldown-clear conflict and refreshes the cache", async () => {

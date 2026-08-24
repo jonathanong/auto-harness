@@ -113,6 +113,7 @@ export function prepareUpdateProviderAccount(
     };
   }
   if (
+    !state.storage &&
     patch.maxConcurrentSessions !== undefined &&
     patch.maxConcurrentSessions <
       (existing.maxConcurrentSessions ?? DEFAULT_MAX_CONCURRENT_SESSIONS)
