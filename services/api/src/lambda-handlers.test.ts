@@ -681,6 +681,20 @@ describe("Lambda runtime adapters", () => {
         queryStringParameters: { ticket: "viewer-ticket" },
         requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
       }),
+    ).resolves.toEqual({ statusCode: 403 });
+    await expect(
+      runtime.websocket({
+        headers: { Origin: "https://evil.example.test" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-2", routeKey: "$connect" },
+      }),
+    ).resolves.toEqual({ statusCode: 403 });
+    await expect(
+      runtime.websocket({
+        headers: { origin: "http://localhost:7421" },
+        queryStringParameters: { ticket: "viewer-ticket" },
+        requestContext: { connectionId: "viewer-1", routeKey: "$connect" },
+      }),
     ).resolves.toEqual({ statusCode: 200 });
     expect(fixture.connections.get("viewer-1")).toMatchObject({ type: "client" });
     await expect(
@@ -736,6 +750,26 @@ describe("Lambda runtime adapters", () => {
     };
     fixture.plane.state.onLogCommitted?.(record);
     expect(previous).toHaveBeenCalledWith(record);
+    fixture.connections.set("viewer-1", {
+      connectionId: "viewer-1",
+      type: "client",
+      hostId: "user:viewer",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+      viewerSubscriptions: [
+        { sessionId: "session-1", repositoryId: "repository-1", status: "running" },
+      ],
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    fixture.management.send.mockRejectedValueOnce(new Error("gone"));
+    fixture.plane.state.onLogCommitted?.(record);
+    await vi.waitFor(() =>
+      expect(error).toHaveBeenCalledWith(
+        "failed to deliver API Gateway viewer message",
+        expect.any(Error),
+      ),
+    );
+    error.mockRestore();
 
     fixture.connections.set("client-without-principal", {
       connectionId: "client-without-principal",
@@ -1112,10 +1146,10 @@ describe("loadBootstrapSecrets", () => {
 
 /**
  * Unlike loadBootstrapSecrets, a missing name, a missing value, and a failed SSM call
- * all fall back to undefined here — this value only ever displays in a session's `url`
- * field and feeds the Slack integration's deep link, never a security boundary, so
- * failing open (ControlPlane's own http://localhost:7421 default then applies) is
- * correct where the bootstrap secrets deliberately fail closed instead.
+ * all fall back to undefined here so the Lambda cold start still succeeds. Session
+ * `url` fields and Slack deep links then use ControlPlane's localhost default.
+ * Viewer WebSocket Origin checks stay fail-closed until a later connect can read
+ * the published URL.
  */
 function withPublicBaseUrlParamEnv<T>(value: string | undefined, run: () => T): T {
   const previous = process.env.PUBLIC_BASE_URL_SSM_PARAM;

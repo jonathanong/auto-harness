@@ -16,6 +16,7 @@ import {
   type RepositoryRecord,
   type SessionDrainRecord,
   type ScheduleRecord,
+  type ViewerTicketRecord,
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
 import * as reconnect from "./plane-storage-reconnect.ts";
@@ -23,6 +24,7 @@ import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
 import * as catalog from "./plane-storage-catalog.ts";
 import * as auth from "./plane-storage-auth.ts";
+import * as viewerTickets from "./plane-storage-viewer-tickets.ts";
 import * as mainCheckout from "./plane-storage-main-checkout.ts";
 import * as deletionMarkers from "./plane-storage-deletion-markers.ts";
 import * as usage from "./plane-storage-usage.ts";
@@ -936,6 +938,14 @@ export class DynamoPlaneStorageBase {
 
   listAuthAccounts(): Promise<AuthAccountRecord[]> {
     return auth.listAuthAccounts(this.ctx);
+  }
+
+  putViewerTicket(record: ViewerTicketRecord): Promise<void> {
+    return viewerTickets.putViewerTicket(this.ctx, record);
+  }
+
+  consumeViewerTicket(ticketHash: string, nowMs: number): Promise<ViewerTicketRecord | null> {
+    return viewerTickets.consumeViewerTicket(this.ctx, ticketHash, nowMs);
   }
 
   deleteAuthAccountFenced(

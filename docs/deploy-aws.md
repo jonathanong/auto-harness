@@ -158,16 +158,18 @@ depends on Runtime, not the reverse). Each Lambda's IAM role gets a separate
 `ssm:GetParameter` grant scoped to just this parameter — no `kms:Decrypt`, since
 a plain `String` parameter is never SSE-encrypted. A REST Lambda cold start that
 finds this parameter missing or unreadable falls back to ControlPlane's own
-`http://localhost:7421` default rather than failing — it only affects a
-session's informational `url` field and the Slack integration's deep link, never
-a security boundary. After writing the parameter, `deploy`/`update` recycle the
-runtime Lambdas (a no-op `update-function-configuration`) so already-warm
-containers re-read WebUrl instead of keeping the localhost fallback.
+`http://localhost:7421` default for session `url` fields and Slack deep links
+rather than failing the cold start. Viewer WebSocket Origin checks use the
+fetched URL only and deny the connection until a later connect can read it; they
+never fall back to localhost. After writing the parameter, `deploy`/`update`
+recycle the runtime Lambdas (a no-op `update-function-configuration`) so
+already-warm containers re-read WebUrl instead of keeping the localhost session
+URL fallback.
 
 | Variable               | Purpose                                                                                                                                      |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | SSM: bootstrap secrets | See above — `HARNESS_ADMINS` / `HARNESS_SESSION_SECRET` / `HARNESS_CURSOR_SECRET`, fetched from SSM at cold start, never a Lambda env var    |
-| SSM: public base URL   | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written by the deploy script after Web deploys, fetched at cold start, falls back gracefully        |
+| SSM: public base URL   | See above — `PUBLIC_BASE_URL_SSM_PARAM`, written after Web deploys; session URLs fall back, viewer Origin checks fail closed until readable  |
 | Table names / prefix   | From stack (see [aws.md](aws.md) env table)                                                                                                  |
 | `ARCHIVE_BUCKET`       | S3 archive bucket                                                                                                                            |
 | `WS_API_ENDPOINT`      | API Gateway Management API for `postToConnection`                                                                                            |

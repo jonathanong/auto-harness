@@ -67,7 +67,7 @@ export async function handleAuthRoutes(ctx: AuthRouteContext): Promise<boolean> 
       send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });
       return true;
     }
-    if (!principal) {
+    if (!principal || principal.kind === "service-account") {
       if (!(await audit(ctx, undefined, "auth:login", "credential", "login", "denied")))
         return true;
       send(res, 401, { error: { code: "UNAUTHENTICATED", message: "invalid credentials" } });

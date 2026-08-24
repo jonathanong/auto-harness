@@ -50,7 +50,7 @@ describe("web auth session helpers", () => {
     expect(await hasValidSession(token({ role: "admin", kind: "admin" }), secret)).toBe(true);
     expect(
       await hasValidSession(token({ role: "read-only", kind: "service-account" }), secret),
-    ).toBe(true);
+    ).toBe(false);
     expect(await hasValidSession(token({}, { alg: "none", typ: "JWT" }), secret)).toBe(false);
     expect(await hasValidSession(`${valid}x`, secret)).toBe(false);
     expect(await hasValidSession(malformedHeaderToken(), secret)).toBe(false);

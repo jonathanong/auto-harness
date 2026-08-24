@@ -56,10 +56,13 @@ function fixture(authenticated: Principal | null = principal) {
       auth: auth as never,
       management: management as never,
       storage,
+      publicBaseUrl: "https://app.example.test",
     }),
     storage,
   };
 }
+
+const origin = "https://app.example.test";
 
 function log(timestampSeq: string, seq: number): LogRecord {
   return {
@@ -73,12 +76,67 @@ function log(timestampSeq: string, seq: number): LogRecord {
 }
 
 describe("Lambda viewer WebSocket adapter", () => {
+  it("fails closed when no browser origin is configured", async () => {
+    const ctx = fixture();
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+    });
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+  });
+
+  it("retries a missing origin lookup on later connects and then caches it", async () => {
+    const ctx = fixture();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1_000);
+    const resolvePublicBaseUrl = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(origin);
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      resolvePublicBaseUrl,
+    });
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(403);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(1);
+    now.mockReturnValue(6_000);
+    await expect(sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(200);
+    await expect(sockets.connect("viewer-2", "ticket", origin)).resolves.toBe(200);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it("coalesces concurrent origin lookups", async () => {
+    const ctx = fixture();
+    let release!: (value: string | undefined) => void;
+    const resolvePublicBaseUrl = vi.fn(
+      () => new Promise<string | undefined>((resolve) => (release = resolve)),
+    );
+    const sockets = createLambdaViewerSockets({
+      auth: ctx.auth as never,
+      management: ctx.management as never,
+      storage: ctx.storage,
+      resolvePublicBaseUrl,
+    });
+    const first = sockets.connect("viewer-1", "ticket", origin);
+    const second = sockets.connect("viewer-2", "ticket", origin);
+    await vi.waitFor(() => expect(resolvePublicBaseUrl).toHaveBeenCalledOnce());
+    release(origin);
+    await expect(first).resolves.toBe(200);
+    await expect(second).resolves.toBe(200);
+    expect(resolvePublicBaseUrl).toHaveBeenCalledTimes(1);
+  });
+
   it("authenticates viewer tickets and owns viewer disconnects", async () => {
     const denied = fixture(null);
     await expect(denied.sockets.connect("denied", "bad")).resolves.toBe(403);
+    await expect(denied.sockets.connect("denied", "bad", origin)).resolves.toBe(403);
 
     const serviceAccount = fixture({ ...principal, kind: "service-account" });
-    await expect(serviceAccount.sockets.connect("service", "ticket")).resolves.toBe(403);
+    await expect(serviceAccount.sockets.connect("service", "ticket", origin)).resolves.toBe(403);
 
     const admin = fixture({
       id: "admin:root",
@@ -86,10 +144,13 @@ describe("Lambda viewer WebSocket adapter", () => {
       role: "admin",
       kind: "admin",
     });
-    await expect(admin.sockets.connect("admin", "ticket")).resolves.toBe(200);
+    await expect(admin.sockets.connect("admin", "ticket", origin)).resolves.toBe(200);
 
     const ctx = fixture();
-    await expect(ctx.sockets.connect("viewer-1", "ticket")).resolves.toBe(200);
+    await expect(
+      ctx.sockets.connect("viewer-1", "ticket", "https://evil.example.test"),
+    ).resolves.toBe(403);
+    await expect(ctx.sockets.connect("viewer-1", "ticket", origin)).resolves.toBe(200);
     expect(ctx.connections.get("viewer-1")).toMatchObject({
       type: "client",
       hostId: principal.id,
@@ -112,7 +173,7 @@ describe("Lambda viewer WebSocket adapter", () => {
   it("rejects invalid viewer messages and manages subscriptions", async () => {
     const ctx = fixture();
     await expect(ctx.sockets.message("missing", "{}")).resolves.toBeUndefined();
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", origin);
     await expect(ctx.sockets.message("viewer-1", "bad")).resolves.toBe(403);
     await expect(
       ctx.sockets.message(
@@ -158,7 +219,7 @@ describe("Lambda viewer WebSocket adapter", () => {
 
   it("enforces viewer repository scope and subscription limits", async () => {
     const ctx = fixture();
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", origin);
     ctx.sessions.set("forbidden", { repositoryId: "repo-2", status: "queued" });
     await ctx.sockets.message(
       "viewer-1",
@@ -183,7 +244,7 @@ describe("Lambda viewer WebSocket adapter", () => {
 
   it("handles sparse subscriptions and prunes a gone viewer during replay", async () => {
     const ctx = fixture();
-    await ctx.sockets.connect("viewer-1", "ticket");
+    await ctx.sockets.connect("viewer-1", "ticket", origin);
     const connection = ctx.connections.get("viewer-1")!;
     delete connection.viewerSubscriptions;
     ctx.connections.set("viewer-1", connection);

@@ -43,7 +43,7 @@
     "local:dynamodb:e2e": "docker compose up -d --force-recreate --renew-anon-volumes dynamodb-e2e",
     "local:dynamodb:e2e:ready": "HARNESS_DDB_ENDPOINT=http://127.0.0.1:7433 node scripts/ensure-dynamodb.mts",
     "local:api": "node services/api/src/cli.ts serve",
-    "local:api:e2e": "HARNESS_DDB_ENDPOINT=http://127.0.0.1:7433 HARNESS_RATE_LIMIT_MODE=disabled node services/api/src/cli.ts serve --port 7430",
+    "local:api:e2e": "HARNESS_DDB_ENDPOINT=http://127.0.0.1:7433 HARNESS_RATE_LIMIT_MODE=disabled HARNESS_PUBLIC_BASE_URL=http://127.0.0.1:7431 node services/api/src/cli.ts serve --port 7430",
     "local:web": "pnpm --filter @auto-harness/web dev",
     "local:web:start": "pnpm --filter @auto-harness/web start",
     "local:web:start:e2e": "pnpm --filter @auto-harness/web start:e2e",

@@ -98,10 +98,11 @@ async function fetchSecureParameter(client: SsmClient, name: string): Promise<st
  * services/cdk/src/deployment-support.ts smokeDeployment and
  * services/cdk/src/public-base-url-param.ts). Unlike the three bootstrap secrets above,
  * a missing parameter name, a missing value, or a failed SSM call all fall back to
- * `undefined` here — ControlPlane's own http://localhost:7421 default then applies —
- * rather than failing the Lambda cold start. This value only ever displays in a
- * session's `url` field and feeds the Slack integration's deep link; it is never a
- * security boundary the way the bootstrap secrets are, so failing open is correct.
+ * `undefined` here — ControlPlane's own http://localhost:7421 default then applies
+ * for session `url` fields and Slack deep links — rather than failing the Lambda
+ * cold start. Viewer WebSocket Origin checks use the fetched value only and deny
+ * the connection until a later connect can read it; they never fall back to
+ * localhost.
  */
 export async function fetchPublicBaseUrl(client?: SsmClient): Promise<string | undefined> {
   const name = process.env.PUBLIC_BASE_URL_SSM_PARAM;
@@ -164,8 +165,8 @@ export async function createLambdaRuntime(
     dependencies.created && dependencies.auth
       ? undefined
       : await loadBootstrapSecrets(dependencies.ssmClient);
-  /* v8 ignore next 2 -- production SSM fetch is exercised through the public-base-url suite */
-  const publicBaseUrl = dependencies.created
+  /* v8 ignore next 3 -- production SSM fetch is exercised through the public-base-url suite */
+  const fetchedPublicBaseUrl = dependencies.created
     ? undefined
     : await fetchPublicBaseUrl(dependencies.ssmClient);
   /* v8 ignore next 8 -- production AWS client construction is an SDK boundary */
@@ -175,7 +176,7 @@ export async function createLambdaRuntime(
       aws: true,
       sessionCursorSecret: bootstrapSecrets!.cursorSecret,
       skipEnsureTables: true,
-      ...(publicBaseUrl !== undefined ? { publicBaseUrl } : {}),
+      ...(fetchedPublicBaseUrl !== undefined ? { publicBaseUrl: fetchedPublicBaseUrl } : {}),
     }));
   /* v8 ignore next 7 -- production auth construction is exercised through the shared auth suite */
   const auth =
@@ -206,7 +207,22 @@ export async function createLambdaRuntime(
     );
     track(delivery);
   };
-  const viewerSockets = createLambdaViewerSockets({ auth, management, storage: created.storage });
+  /* v8 ignore next 3 -- production origin is the fetched public base URL and fails closed when absent */
+  let viewerPublicBaseUrl = dependencies.created
+    ? created.plane.state.publicBaseUrl
+    : fetchedPublicBaseUrl;
+  const viewerSockets = createLambdaViewerSockets({
+    auth,
+    management,
+    storage: created.storage,
+    resolvePublicBaseUrl: async () => {
+      if (viewerPublicBaseUrl !== undefined) return viewerPublicBaseUrl;
+      /* v8 ignore next 3 -- production SSM refetch after a transient cold-start miss */
+      const resolved = await fetchPublicBaseUrl(dependencies.ssmClient);
+      if (resolved !== undefined) viewerPublicBaseUrl = resolved;
+      return resolved;
+    },
+  });
   const runInvocation = async <T>(operation: () => Promise<T>): Promise<T> => {
     const deliveries = new Set<Promise<void>>();
     return deliveryContext.run(deliveries, async () => {
@@ -273,7 +289,13 @@ export async function createLambdaRuntime(
             await auth.hydrate(created.storage);
           const viewerTicket = event.queryStringParameters?.ticket;
           if (viewerTicket) {
-            return { statusCode: await viewerSockets.connect(connectionId, viewerTicket) };
+            return {
+              statusCode: await viewerSockets.connect(
+                connectionId,
+                viewerTicket,
+                eventHeaders(event).origin,
+              ),
+            };
           }
           const principal = await auth.authenticate(authenticationRequest(event));
           if (!authenticatedHost(principal)) return { statusCode: 403 };

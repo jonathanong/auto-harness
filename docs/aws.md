@@ -245,6 +245,7 @@ historical session-log record. This avoids periodic full-state rehydration durin
 | HostInventories        | `hostId`          | —              | —                       | Host inventory                                                       |
 | AuditLogs              | `scope` (`audit`) | `timestampId`  | —                       | Append-only newest-first query                                       |
 | RateLimits             | `bucketKey`       | —              | —                       | Atomic fixed-window counters + TTL                                   |
+| ViewerTickets          | `ticketHash`      | —              | —                       | Hashed one-time viewer tickets + TTL                                 |
 | Providers              | `id`              | —              | —                       | Provider catalog                                                     |
 | ProviderAccounts       | `id`              | —              | —                       | Provider account catalog                                             |
 | Commands               | `id`              | —              | —                       | Command catalog                                                      |

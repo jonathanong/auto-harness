@@ -16,6 +16,7 @@ const controlPort = CONTROL_PORT;
 const hostPanePort = HOST_PANE_PORT;
 const dynamoEndpoint = DYNAMO_ENDPOINT;
 const apiUrl = API_BASE;
+const controlOrigin = `http://127.0.0.1:${controlPort}`;
 
 /**
  * Playwright E2E — see docs/e2e.md.
@@ -101,6 +102,10 @@ export default defineConfig({
         ? `HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node scripts/ensure-dynamodb.mts && HARNESS_DDB_ENDPOINT=${dynamoEndpoint} node services/api/src/cli.ts serve --port ${apiPort}`
         : "pnpm local:dynamodb:e2e && pnpm local:dynamodb:e2e:ready && pnpm local:api:e2e",
       url: `${apiUrl}/health`,
+      env: {
+        ...process.env,
+        HARNESS_PUBLIC_BASE_URL: controlOrigin,
+      },
       reuseExistingServer: false,
       timeout: 180_000,
       stdout: "pipe",

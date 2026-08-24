@@ -495,53 +495,39 @@ describe("control-plane authentication security", () => {
       ),
     ).toBeNull();
     const service = await auth.createServiceAccount({ name: "agent", role: "operator" });
-    let serviceCookie = "";
-    auth.issueCookie(
-      { setHeader: (_name: string, value: string) => (serviceCookie = value) } as never,
-      service.account,
-    );
-    const service2 = await auth.createServiceAccount({ name: "agent-2", role: "operator" });
-    await auth.deleteServiceAccount(service.account.id);
-    expect(await auth.authenticate(request({ cookie: serviceCookie.split(";")[0]! }))).toBeNull();
-    const mismatch = signedCookie(secret, {
-      id: service2.account.id,
-      username: "wrong",
-      role: "operator",
-      kind: "service-account",
-      exp: future,
-    });
-    expect(await auth.authenticate(request({ cookie: mismatch }))).toBeNull();
-    let service2Cookie = "";
-    auth.issueCookie(
-      { setHeader: (_name: string, value: string) => (service2Cookie = value) } as never,
-      (await auth.authenticateApiKey(service2.apiKey))!,
-    );
+    expect(() =>
+      auth.issueCookie({ setHeader: () => undefined } as never, service.account),
+    ).toThrow("session cookies are only available to browser accounts");
     expect(
-      await auth.authenticate(request({ cookie: service2Cookie.split(";")[0]! })),
-    ).toMatchObject({
-      id: service2.account.id,
-      username: "agent-2",
-      role: "operator",
-      kind: "service-account",
-    });
-    const scoped = await auth.createServiceAccount({
-      name: "scoped",
-      role: "agent",
+      await auth.authenticate(
+        request({
+          cookie: signedCookie(secret, {
+            id: service.account.id,
+            username: service.account.username,
+            role: service.account.role,
+            kind: "service-account",
+            exp: future,
+          }),
+        }),
+      ),
+    ).toBeNull();
+    const scoped = await auth.createUser({
+      username: "scoped",
+      password: "password",
+      role: "read-only",
       allowedRepositoryIds: ["repo-a"],
-      boundHostId: "host-a",
     });
     const scopedClaims = {
-      id: scoped.account.id,
-      username: scoped.account.username,
-      role: scoped.account.role,
-      kind: scoped.account.kind,
+      id: scoped.id,
+      username: scoped.username,
+      role: scoped.role,
+      kind: scoped.kind,
       allowedRepositoryIds: ["repo-a"],
-      boundHostId: "host-a",
       exp: future,
     };
     expect(
       await auth.authenticate(request({ cookie: signedCookie(secret, scopedClaims) })),
-    ).toMatchObject({ id: scoped.account.id });
+    ).toMatchObject({ id: scoped.id });
     for (const claims of [
       { ...scopedClaims, allowedRepositoryIds: undefined },
       { ...scopedClaims, allowedRepositoryIds: ["repo-a", "repo-b"] },

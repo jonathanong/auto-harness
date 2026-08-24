@@ -31,6 +31,7 @@ export type DynamoTableNames = {
   commands: string;
   auditLogs: string;
   rateLimits: string;
+  viewerTickets: string;
   sessionUsage: string;
   sessionUsageKinds: string;
   integrations: string;
@@ -58,6 +59,7 @@ export function tableNames(prefix = "AutoHarness"): DynamoTableNames {
     commands: `${p}-Commands`,
     auditLogs: `${p}-AuditLogs`,
     rateLimits: `${p}-RateLimits`,
+    viewerTickets: `${p}-ViewerTickets`,
     sessionUsage: `${p}-SessionUsage`,
     sessionUsageKinds: `${p}-SessionUsageKinds`,
     integrations: `${p}-Integrations`,

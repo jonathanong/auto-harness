@@ -110,6 +110,11 @@ export const DYNAMO_TABLES: TableDef[] = [
     ttlAttribute: "expiresAt",
   },
   {
+    name: "ViewerTickets",
+    partitionKey: { name: "ticketHash", type: "S" },
+    ttlAttribute: "expiresAt",
+  },
+  {
     name: "Providers",
     partitionKey: { name: "id", type: "S" },
   },

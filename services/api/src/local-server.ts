@@ -4,7 +4,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { AuthService } from "./auth.ts";
 import { createLocalApp } from "./local-app.ts";
-import type { LocalServerOptions } from "./local-http.ts";
+import { resolvePublicBaseUrl, type LocalServerOptions } from "./local-http.ts";
 import { LocalScheduler } from "./local-scheduler.ts";
 import { MemorySessionStore } from "./memory-store.ts";
 import { slackSessionSnapshot } from "./slack-session-runtime.ts";
@@ -53,9 +53,10 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
   let plane = options.plane;
   let store = options.store;
 
+  const publicBaseUrl = resolvePublicBaseUrl(options.publicBaseUrl);
   if (!plane && !store && options.useDynamo !== false) {
     const created = await createControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
+      publicBaseUrl,
     });
     plane = created.plane;
     store = new MemorySessionStore({ plane });
@@ -63,7 +64,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     plane = store.plane;
   } else if (!plane) {
     plane = new ControlPlane({
-      publicBaseUrl: options.publicBaseUrl ?? "http://localhost:7421",
+      publicBaseUrl,
     });
     store = new MemorySessionStore({ plane });
   }
@@ -80,6 +81,7 @@ export async function startLocalServer(options: LocalServerOptions = {}): Promis
     authService: auth,
     plane,
     store: store ?? new MemorySessionStore({ plane }),
+    publicBaseUrl,
   });
   const { store: resolvedStore, plane: resolvedPlane, handler } = app;
   await auth.hydrate(resolvedPlane.state.storage);

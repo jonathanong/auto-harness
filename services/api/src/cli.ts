@@ -1,5 +1,6 @@
 import { installCrashLogging, onShutdownSignal } from "@auto-harness/shared";
 
+import { publicBaseUrlFromEnv } from "./local-http.ts";
 import { startLocalServer } from "./local-server.ts";
 
 export async function main(argv: string[] = process.argv): Promise<number> {
@@ -39,7 +40,13 @@ export async function main(argv: string[] = process.argv): Promise<number> {
   }
 
   installCrashLogging();
-  const server = await startLocalServer({ port, host, useDynamo: true });
+  const publicBaseUrl = publicBaseUrlFromEnv();
+  const server = await startLocalServer({
+    port,
+    host,
+    useDynamo: true,
+    ...(publicBaseUrl !== undefined ? { publicBaseUrl } : {}),
+  });
   console.log(`Auto Harness local API listening on http://${host}:${server.port}`);
   console.log(`POST http://${host}:${server.port}/api/v1/sessions`);
   console.log(

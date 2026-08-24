@@ -96,11 +96,11 @@ Admin operations:
 
 User accounts are for humans interacting with the Web UI and API. Created by admins.
 
-| Property    | Value                                                                       |
-| ----------- | --------------------------------------------------------------------------- |
-| Storage     | DynamoDB (Users table), password bcrypt-hashed                              |
-| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`)             |
-| Session     | On Web UI login, a session cookie is issued (HTTP-only, secure, 24h expiry) |
+| Property    | Value                                                                                                                            |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Storage     | DynamoDB (Users table), password bcrypt-hashed                                                                                   |
+| Auth method | Basic auth (`Authorization: Basic <base64(username:password)>`)                                                                  |
+| Session     | On Web UI login, a session cookie is issued (HTTP-only, secure, 24h expiry). Service accounts cannot log in or receive a cookie. |
 
 Admins create user accounts via the API or Web UI:
 
@@ -118,12 +118,12 @@ The user can change their password after first login.
 
 Service accounts are for machines — CI/CD systems, VPS agents, and external integrations. Created by admins.
 
-| Property    | Value                                                              |
-| ----------- | ------------------------------------------------------------------ |
-| Format      | `hns_` prefix + 48 random characters                               |
-| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation. |
-| Rotation    | Create a new key, update consumers, delete the old key             |
-| Auth method | `Authorization: Bearer <api-key>` header (REST and WebSocket)      |
+| Property    | Value                                                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Format      | `hns_` prefix + 48 random characters                                                                                                 |
+| Storage     | SHA-256 hash stored in DynamoDB. Plain key shown once on creation.                                                                   |
+| Rotation    | Create a new key, update consumers, delete the old key                                                                               |
+| Auth method | `Authorization: Bearer <api-key>` header (REST and host WebSocket). Browser login, session cookies, and viewer tickets are rejected. |
 
 Service accounts have the same role system as user accounts (`read-only`, `author`, `operator`, `maintainer`, `agent`, `admin`) and can optionally be scoped to specific repositories. `agent` additionally requires `boundHostId`.
 
@@ -184,6 +184,15 @@ sequenceDiagram
 | Flags       | `HttpOnly`, `Secure`, `SameSite=Strict`                                                                                                     |
 | Expiry      | 24 hours (configurable)                                                                                                                     |
 | Signing key | `HARNESS_SESSION_SECRET`: local/VPS env var, or Lambda's SSM-fetched value ([deploy-aws.md](deploy-aws.md#secrets-and-config-never-commit)) |
+| Principals  | Admin and user accounts only. A service-account API key cannot mint or present a browser session cookie.                                    |
+
+### Viewer tickets
+
+Live log viewing uses a separate credential from the session cookie. `POST /api/v1/auth/viewer-ticket` mints a 60-second, **one-time** opaque ticket from an authenticated browser session (cookie or user/admin basic auth). The response is `{ ticket }` with `Cache-Control: no-store`. Service accounts receive `403`.
+
+The API stores only a hash of the ticket (DynamoDB `ViewerTickets` with TTL, or the in-memory equivalent on a local ControlPlane). Connecting to `/ws/viewer?ticket=…` consumes that hash transactionally, so a replay — including two concurrent consumes — succeeds at most once. The raw ticket is never logged.
+
+The viewer WebSocket also requires a browser `Origin` that matches the configured web origin. Locally that is `HARNESS_PUBLIC_BASE_URL` (ControlPlane `publicBaseUrl`); on AWS it is the deployed `PUBLIC_BASE_URL`. It must be the control UI origin, not the API listen address. A missing or mismatched `Origin` is rejected. When `HARNESS_AUTH_MODE=required`, `/ws/viewer` requires the one-time ticket and does not accept the session cookie.
 
 ---
 

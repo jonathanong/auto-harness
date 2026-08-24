@@ -103,6 +103,13 @@ describe("createLocalApp authentication routes", () => {
       account: { name: "agent-a", createdAt: expect.any(String) },
       apiKey: expect.any(String),
     });
+    expect(
+      (
+        await invoke("POST", "/api/v1/auth/login", undefined, {
+          authorization: `Bearer ${(account.json as { apiKey: string }).apiKey}`,
+        })
+      ).status,
+    ).toBe(401);
     const legacyDaemon = await invoke("POST", "/api/v1/auth/service-accounts", {
       name: "legacy-daemon",
       role: "operator",

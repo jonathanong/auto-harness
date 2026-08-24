@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- authentication and account lifecycle share one security boundary. */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { isUserRole } from "@auto-harness/shared";
 import bcrypt from "bcryptjs";
@@ -21,6 +21,7 @@ import {
   type ServiceAccount,
   type User,
 } from "./auth-accounts.ts";
+import type { ViewerTicketRecord } from "./db/plane-storage-types.ts";
 
 export type AuthMode = "disabled" | "required";
 const COOKIE = "auto_harness_session";
@@ -104,6 +105,7 @@ export class AuthService {
   private lastRefreshAt = Number.NEGATIVE_INFINITY;
   private lastMissRefreshAt = Number.NEGATIVE_INFINITY;
   private refreshing: Promise<void> | undefined;
+  private readonly memoryTickets = new Map<string, ViewerTicketRecord>();
 
   constructor(
     // `| undefined` on each field since callers commonly forward their own
@@ -368,6 +370,9 @@ export class AuthService {
   }
 
   issueCookie(res: ServerResponse, principal: Principal): void {
+    if (!isBrowserPrincipal(principal)) {
+      throw new Error("session cookies are only available to browser accounts");
+    }
     const header = { alg: "HS256", typ: "JWT" };
     const payload = { ...principal, exp: Math.floor((Date.now() + DAY_MS) / 1000) };
     const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
@@ -382,24 +387,78 @@ export class AuthService {
     res.setHeader("Set-Cookie", `${COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
   }
 
-  /** Short-lived browser-to-API WebSocket credential; never stored in JavaScript cookies. */
-  issueViewerTicket(principal: Principal): string {
-    const header = { alg: "HS256", typ: "JWT" };
-    const payload = {
-      ...principal,
-      audience: "viewer",
-      exp: Math.floor((Date.now() + VIEWER_TICKET_MS) / 1000),
-    };
-    const unsigned = `${b64url(JSON.stringify(header))}.${b64url(JSON.stringify(payload))}`;
-    const signature = createHmac("sha256", this.secret).update(unsigned).digest("base64url");
-    return `${unsigned}.${signature}`;
+  /** Short-lived one-time browser-to-API WebSocket credential. */
+  async issueViewerTicket(principal: Principal): Promise<string> {
+    if (!isBrowserPrincipal(principal)) {
+      throw new Error("viewer tickets are only available to browser sessions");
+    }
+    const storedPrincipal = browserPrincipal(principal);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const ticket = randomBytes(32).toString("base64url");
+      const ticketHash = hashViewerTicket(ticket);
+      const record: ViewerTicketRecord = {
+        ticketHash,
+        principal: storedPrincipal,
+        expiresAtMs: this.now() + VIEWER_TICKET_MS,
+      };
+      try {
+        await this.persistViewerTicket(record);
+        return ticket;
+      } catch (error) {
+        if (isTicketHashCollision(error)) continue;
+        throw error;
+      }
+    }
+    throw new Error("unable to issue viewer ticket");
   }
 
   async authenticateViewerTicket(token: string): Promise<Principal | null> {
-    return await this.verifySession(token, "viewer");
+    if (!token) return null;
+    const consumed = await this.consumeViewerTicket(hashViewerTicket(token));
+    if (!consumed) return null;
+    return this.bindCurrentPrincipal(consumed.principal);
   }
 
-  private async verifySession(token: string, audience?: "viewer"): Promise<Principal | null> {
+  private async persistViewerTicket(record: ViewerTicketRecord): Promise<void> {
+    const storage = this.viewerTicketStorage();
+    if (storage) {
+      await storage.putViewerTicket(record);
+      return;
+    }
+    this.sweepMemoryTickets();
+    if (this.memoryTickets.has(record.ticketHash)) {
+      throw Object.assign(new Error("viewer ticket hash collision"), {
+        name: "ConditionalCheckFailedException",
+      });
+    }
+    this.memoryTickets.set(record.ticketHash, record);
+  }
+
+  private async consumeViewerTicket(ticketHash: string): Promise<ViewerTicketRecord | null> {
+    const storage = this.viewerTicketStorage();
+    if (storage) return storage.consumeViewerTicket(ticketHash, this.now());
+    const stored = this.memoryTickets.get(ticketHash);
+    if (!stored) return null;
+    this.memoryTickets.delete(ticketHash);
+    return stored.expiresAtMs <= this.now() ? null : stored;
+  }
+
+  private viewerTicketStorage():
+    | Required<Pick<AuthStorage, "putViewerTicket" | "consumeViewerTicket">>
+    | undefined {
+    const storage = this.storage;
+    if (!storage?.putViewerTicket || !storage.consumeViewerTicket) return undefined;
+    return storage as Required<Pick<AuthStorage, "putViewerTicket" | "consumeViewerTicket">>;
+  }
+
+  private sweepMemoryTickets(): void {
+    const now = this.now();
+    for (const [ticketHash, stored] of this.memoryTickets) {
+      if (stored.expiresAtMs <= now) this.memoryTickets.delete(ticketHash);
+    }
+  }
+
+  private async verifySession(token: string): Promise<Principal | null> {
     const parts = token.split(".");
     if (parts.length !== 3 || !this.secret) return null;
     const [header, payload, signature] = parts as [string, string, string];
@@ -427,9 +486,11 @@ export class AuthService {
       value.exp <= Date.now() / 1000
     )
       return null;
-    if (value.kind !== "admin" && value.kind !== "user" && value.kind !== "service-account")
-      return null;
-    if (audience ? value.audience !== audience : value.audience !== undefined) return null;
+    if (value.audience !== undefined || !isBrowserPrincipal(value)) return null;
+    return this.bindCurrentPrincipal(value);
+  }
+
+  private async bindCurrentPrincipal(value: Principal): Promise<Principal | null> {
     // Re-bind to live account state. This is the check that makes a cookie revocable, so
     // it must not be answered from a cache that outlived the account.
     await this.refreshAccounts("hit");
@@ -438,8 +499,17 @@ export class AuthService {
       await this.refreshAccounts("miss");
       current = this.findCurrentPrincipal(value);
     }
-    const { exp: _exp, audience: _audience, ...claims } = value;
-    if (!current || !samePrincipalClaims(current, claims)) return null;
+    const {
+      exp: _exp,
+      audience: _audience,
+      ...claims
+    } = value as Principal & {
+      exp?: unknown;
+      audience?: unknown;
+    };
+    if (!current || !isBrowserPrincipal(current) || !samePrincipalClaims(current, claims)) {
+      return null;
+    }
     return current;
   }
 
@@ -452,8 +522,7 @@ export class AuthService {
       const user = this.users.get(value.username);
       return user && user.id === value.id ? publicPrincipal(user) : null;
     }
-    const account = this.serviceAccounts.get(value.id);
-    return account && account.username === value.username ? publicPrincipal(account) : null;
+    return null;
   }
 }
 
@@ -482,6 +551,40 @@ function samePrincipalClaims(current: Principal, claims: Record<string, unknown>
     Array.isArray(actual) &&
     actual.length === expected.length &&
     actual.every((value, index) => value === expected[index])
+  );
+}
+
+function isBrowserPrincipal<T extends Principal>(
+  principal: T,
+): principal is T & { kind: "admin" | "user" } {
+  return principal.kind === "admin" || principal.kind === "user";
+}
+
+function browserPrincipal(
+  principal: Principal & { kind: "admin" | "user" },
+): ViewerTicketRecord["principal"] {
+  return {
+    id: principal.id,
+    username: principal.username,
+    role: principal.role,
+    kind: principal.kind,
+    ...(principal.allowedRepositoryIds
+      ? { allowedRepositoryIds: principal.allowedRepositoryIds }
+      : {}),
+    ...(principal.boundHostId ? { boundHostId: principal.boundHostId } : {}),
+  };
+}
+
+function hashViewerTicket(ticket: string): string {
+  return createHash("sha256").update(ticket).digest("hex");
+}
+
+function isTicketHashCollision(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "ConditionalCheckFailedException"
   );
 }
 

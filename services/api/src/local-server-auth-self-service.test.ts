@@ -32,6 +32,7 @@ describe("self-service authentication routes", () => {
       session,
     );
     expect(viewerTicket.status).toBe(200);
+    expect(viewerTicket.headers.get("cache-control")).toBe("no-store");
     expect(
       await auth.authenticateViewerTicket((viewerTicket.json as { ticket: string }).ticket),
     ).toMatchObject(user);
@@ -171,9 +172,9 @@ describe("self-service authentication routes", () => {
       ).json,
     ).toMatchObject(user);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/me")).status).toBe(401);
-    expect((await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket")).json).toEqual({
-      ticket: null,
-    });
+    const anonymousTicket = await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket");
+    expect(anonymousTicket.json).toEqual({ ticket: null });
+    expect(anonymousTicket.headers.get("cache-control")).toBe("no-store");
     expect((await invokeHandler(handler, "PUT", "/api/v1/auth/password", {})).status).toBe(401);
     expect((await invokeHandler(handler, "GET", "/api/v1/auth/unknown")).status).toBe(404);
   });
@@ -201,6 +202,32 @@ describe("self-service authentication routes", () => {
     });
     expect(result).toBe(true);
     expect(status).toBe(401);
+  });
+
+  it("rejects service-account ticket minting and maps issue failures to an internal error", async () => {
+    const auth = new AuthService({ mode: "required", secret: "a".repeat(32), admins: admins() });
+    const service = await auth.createServiceAccount({ name: "ci", role: "operator" });
+    const { handler } = createLocalApp({ plane: new ControlPlane(), authService: auth });
+    expect(
+      (
+        await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket", undefined, {
+          authorization: `Bearer ${service.apiKey}`,
+        })
+      ).json,
+    ).toMatchObject({ error: { code: "FORBIDDEN" } });
+
+    const user = await auth.createUser({ username: "alice", password: "before", role: "operator" });
+    (auth as unknown as { issueViewerTicket: () => Promise<never> }).issueViewerTicket =
+      async () => {
+        throw new Error("ticket store unavailable");
+      };
+    expect(
+      (
+        await invokeHandler(handler, "POST", "/api/v1/auth/viewer-ticket", undefined, {
+          cookie: await issueCookie(auth, user),
+        })
+      ).json,
+    ).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
   });
 
   it("uses a safe validation message when a request stream rejects with a non-Error", async () => {

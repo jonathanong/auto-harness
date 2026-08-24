@@ -5,7 +5,12 @@ import type { Duplex } from "node:stream";
 import { mayAccessRepository } from "./auth-policy.ts";
 import type { AuthService, Principal } from "./auth.ts";
 import type { ControlPlane, LogRecord } from "./control-plane.ts";
-import { authenticateViewer, parseViewerMessage, rejectUpgrade } from "./viewer-ws-protocol.ts";
+import {
+  authenticateViewer,
+  isAllowedViewerOrigin,
+  parseViewerMessage,
+  rejectUpgrade,
+} from "./viewer-ws-protocol.ts";
 import { WebSocketServer, type WebSocket } from "ws";
 
 const MAX_WS_FRAME_BYTES = 16 * 1024;
@@ -187,7 +192,12 @@ export function attachViewerWsHub(
 
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     if (new URL(req.url ?? "/", "http://localhost").pathname !== "/ws/viewer") return;
-    void authenticateViewer(req, auth)
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    if (!isAllowedViewerOrigin(origin, plane.state.publicBaseUrl)) {
+      rejectUpgrade(socket);
+      return;
+    }
+    void authenticateViewer(req, auth, plane.state.publicBaseUrl)
       .then((principal) => {
         if (auth.mode === "required" && !principal) {
           rejectUpgrade(socket);
