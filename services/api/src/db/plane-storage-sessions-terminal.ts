@@ -33,6 +33,8 @@ type FinishSessionOpts = {
   hostAssignmentLease?: HostAssignmentLease | undefined;
   /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
   preserveProviderAccountLease?: boolean;
+  /** Timeout keeps host capacity until terminal/disconnect cleanup. */
+  preserveHostAssignmentLease?: boolean;
   timedOutHostId?: string;
 };
 
@@ -90,7 +92,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     removes: [
       "reconnectDeadlineAt",
       "assignmentConnectionId",
-      "hostAssignmentLease",
+      ...(opts.preserveHostAssignmentLease ? [] : ["hostAssignmentLease"]),
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
     ],
   };

@@ -22,6 +22,7 @@ import {
 } from "./plane-storage-types.ts";
 import * as sessions from "./plane-storage-sessions.ts";
 import * as providerAccountLeases from "./plane-storage-provider-account-leases.ts";
+import * as hostAssignment from "./plane-storage-host-assignment.ts";
 import * as reconnect from "./plane-storage-reconnect.ts";
 import * as reconnectRollback from "./plane-storage-reconnect-rollback.ts";
 import * as locks from "./plane-storage-locks.ts";
@@ -305,8 +306,17 @@ export class DynamoPlaneStorageBase {
     concurrencyId: string;
     sessionId: string;
     attemptId: string;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return providerAccountLeases.releaseTimedOutProviderAccountLease(this.ctx, opts);
+  }
+
+  releaseTimedOutHostAssignment(opts: {
+    sessionId: string;
+    attemptId: string;
+    hostId: string;
+  }): Promise<boolean> {
+    return hostAssignment.releaseTimedOutHostAssignment(this.ctx, opts);
   }
 
   backfillProviderAccountLease(
@@ -388,6 +398,7 @@ export class DynamoPlaneStorageBase {
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
+    preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
@@ -625,6 +636,7 @@ export class DynamoPlaneStorageBase {
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
+    preserveHostAssignmentLease?: boolean;
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
