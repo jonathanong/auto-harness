@@ -254,6 +254,57 @@ describe("durable runtime read-through", () => {
     expect(state.sessions.has(session.id)).toBe(false);
   });
 
+  it("hydrates cancelled occupancy so in-flight cancels still consume host caps", async () => {
+    const occupying = {
+      ...session,
+      id: "cancelled-hold",
+      status: "cancelled" as const,
+      hostId: "host",
+      worktreeId: "worktree",
+    };
+    const released = {
+      ...session,
+      id: "cancelled-released",
+      status: "cancelled" as const,
+      hostId: "host",
+    };
+    const state = createControlPlaneState({
+      shardCount: 1,
+      storage: {
+        listConnections: async () => [
+          {
+            connectionId: "connection",
+            type: "host",
+            hostId: "host",
+            connectedAt: "t",
+            lastHeartbeatAt: "t",
+            maxConcurrentAssignments: 1,
+          },
+        ],
+        listHostInventories: async () => [],
+        listRepositories: async () => [],
+        listCommands: async () => [],
+        listProviders: async () => [],
+        listProviderAccounts: async () => [],
+        listSessionsByStatus: async (status: string) =>
+          status === "cancelled" ? [occupying, released] : [],
+      } as never,
+    });
+    state.sessions.set("stale-cancelled", {
+      ...occupying,
+      id: "stale-cancelled",
+      worktreeId: "stale",
+    });
+
+    await refreshSchedulerReadModel(state);
+    expect(state.sessions.get("cancelled-hold")).toMatchObject({
+      status: "cancelled",
+      worktreeId: "worktree",
+    });
+    expect(state.sessions.has("cancelled-released")).toBe(false);
+    expect(state.sessions.has("stale-cancelled")).toBe(false);
+  });
+
   it("reads repository pages and skips pending durable connections", async () => {
     const state = createControlPlaneState({
       storage: {

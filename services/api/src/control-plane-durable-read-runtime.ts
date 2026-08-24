@@ -8,6 +8,7 @@ import {
   listRepositoriesDurable,
   refreshTargetCatalogDurable,
 } from "./control-plane-durable-read-catalog.ts";
+import { sessionOccupiesHostAssignment } from "./control-plane-provider-account-leases.ts";
 
 export async function getSessionDurable(
   state: ControlPlaneState,
@@ -153,20 +154,35 @@ export async function refreshSchedulerReadModel(state: ControlPlaneState): Promi
   await hydrateRunningSessions(state, storage);
 }
 
+async function listSessionsByStatusAcrossShards(
+  state: ControlPlaneState,
+  storage: DynamoPlaneStorage,
+  status: SessionRecord["status"],
+): Promise<SessionRecord[]> {
+  return (
+    await Promise.all(
+      [...Array(state.shardCount).keys()].map((shard) =>
+        storage.listSessionsByStatus(status, shard),
+      ),
+    )
+  ).flat();
+}
+
 async function hydrateRunningSessions(
   state: ControlPlaneState,
   storage: DynamoPlaneStorage,
 ): Promise<void> {
   if (typeof storage.listSessionsByStatus !== "function") return;
-  const running = (
-    await Promise.all(
-      [...Array(state.shardCount).keys()].map((shard) =>
-        storage.listSessionsByStatus("running", shard),
-      ),
-    )
-  ).flat();
+  const [running, cancelled] = await Promise.all([
+    listSessionsByStatusAcrossShards(state, storage, "running"),
+    listSessionsByStatusAcrossShards(state, storage, "cancelled"),
+  ]);
+  const occupying = [
+    ...running,
+    ...cancelled.filter((session) => sessionOccupiesHostAssignment(session)),
+  ];
   for (const [id, session] of state.sessions) {
-    if (session.status === "running") state.sessions.delete(id);
+    if (session.status === "running" || session.status === "cancelled") state.sessions.delete(id);
   }
-  for (const session of running) state.sessions.set(session.id, { ...session });
+  for (const session of occupying) state.sessions.set(session.id, { ...session });
 }

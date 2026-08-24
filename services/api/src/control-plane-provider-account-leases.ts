@@ -37,14 +37,19 @@ export function hostProviderAccountReady(
   );
 }
 
-function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boolean {
-  if (session.hostId !== hostId) return false;
+/** True when the daemon still holds this session against advertised host capacity. */
+export function sessionOccupiesHostAssignment(session: SessionRecord): boolean {
+  if (!session.hostId) return false;
   return (
     session.status === "running" ||
     session.providerAccountLease !== undefined ||
     session.worktreeId != null ||
     session.mainCheckoutLease === true
   );
+}
+
+function sessionHoldsHostAssignment(session: SessionRecord, hostId: string): boolean {
+  return session.hostId === hostId && sessionOccupiesHostAssignment(session);
 }
 
 export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: string): boolean {

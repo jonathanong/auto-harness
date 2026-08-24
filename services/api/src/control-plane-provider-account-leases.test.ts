@@ -6,6 +6,7 @@ import {
   accountHasLeaseCapacity,
   hostHasAssignmentCapacity,
   hostProviderAccountReady,
+  sessionOccupiesHostAssignment,
   maxConcurrentSessionsFor,
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
@@ -195,6 +196,19 @@ describe("provider account execution-profile leases", () => {
     expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
     expect(hostHasAssignmentCapacity(state, "other")).toBe(true);
     state.storage = {} as never;
+    expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
+    const cancelled = {
+      ...state.sessions.get("running")!,
+      id: "cancelled",
+      status: "cancelled" as const,
+      worktreeId: "wt",
+    };
+    expect(sessionOccupiesHostAssignment(cancelled)).toBe(true);
+    expect(sessionOccupiesHostAssignment({ ...cancelled, worktreeId: null, hostId: "host" })).toBe(
+      false,
+    );
+    state.sessions.clear();
+    state.sessions.set("cancelled", cancelled);
     expect(hostHasAssignmentCapacity(state, "host")).toBe(false);
   });
 
