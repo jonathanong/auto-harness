@@ -8,6 +8,7 @@ import {
 import type { LogRecord } from "./control-plane-types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistSession, queueWrite, trackLogPersist } from "./control-plane-state.ts";
+import { sessionLogsTtlEpochSeconds } from "./db/dynamo.ts";
 import {
   heartbeat,
   heartbeatDurable,
@@ -55,6 +56,24 @@ function measure(records: readonly LogRecord[]): number {
   return records.reduce((total, item) => total + Buffer.byteLength(item.content), 0);
 }
 
+function logRecord(opts: {
+  sessionId: string;
+  stream: string;
+  content: string;
+  timestamp: string;
+  seq: number;
+}): LogRecord {
+  return {
+    sessionId: opts.sessionId,
+    timestampSeq: formatLogSortKey(opts.timestamp, opts.seq),
+    stream: opts.stream,
+    content: opts.content,
+    timestamp: opts.timestamp,
+    seq: opts.seq,
+    ttl: sessionLogsTtlEpochSeconds(),
+  };
+}
+
 /**
  * Bound the in-memory replay cache for one session and return the retained list.
  *
@@ -96,15 +115,7 @@ export function appendLog(
     seq: number;
   },
 ): LogRecord {
-  const timestampSeq = formatLogSortKey(opts.timestamp, opts.seq);
-  const rec: LogRecord = {
-    sessionId: opts.sessionId,
-    timestampSeq,
-    stream: opts.stream,
-    content: opts.content,
-    timestamp: opts.timestamp,
-    seq: opts.seq,
-  };
+  const rec = logRecord(opts);
   state.logs.set(opts.sessionId, retainLogs(state, rec));
   if (state.storage) {
     const persisted = queueWrite(state, async (storage) => {
@@ -127,14 +138,7 @@ export async function appendLogDurable(
     seq: number;
   },
 ): Promise<LogRecord> {
-  const rec: LogRecord = {
-    sessionId: opts.sessionId,
-    timestampSeq: formatLogSortKey(opts.timestamp, opts.seq),
-    stream: opts.stream,
-    content: opts.content,
-    timestamp: opts.timestamp,
-    seq: opts.seq,
-  };
+  const rec = logRecord(opts);
   if (state.storage) {
     await state.storage.putLog(rec);
   }
@@ -185,14 +189,7 @@ export async function handleHostLogBatchDurable(
   if (!hostId || (await storage.getHostLock(hostId)) !== sourceConnectionId) {
     return { ok: false, error: "stale host connection" };
   }
-  const records = messages.map((message) => ({
-    sessionId: message.sessionId,
-    stream: message.stream,
-    content: message.content,
-    timestamp: message.timestamp,
-    seq: message.seq,
-    timestampSeq: formatLogSortKey(message.timestamp, message.seq),
-  }));
+  const records = messages.map((message) => logRecord(message));
   if (!(await storage.putLogsFenced(records, { hostId, connectionId: sourceConnectionId }))) {
     return { ok: false, error: "stale host connection" };
   }
@@ -371,28 +368,14 @@ export async function handleHostMessageDurable(
     if (Buffer.byteLength(msg.content) > MAX_LOG_CHUNK_BYTES) {
       return { ok: false, error: "log chunk exceeds 32 KiB" };
     }
-    const log = {
-      sessionId: msg.sessionId,
-      stream: msg.stream,
-      content: msg.content,
-      timestamp: msg.timestamp,
-      seq: msg.seq,
-    };
+    const log = logRecord(msg);
     if (fence) {
-      if (
-        !(await storage.putLogFenced(
-          { ...log, timestampSeq: formatLogSortKey(log.timestamp, log.seq) },
-          fence,
-        ))
-      ) {
+      if (!(await storage.putLogFenced(log, fence))) {
         return { ok: false, error: "stale host connection" };
       }
-      const retained = retainLogs(state, {
-        ...log,
-        timestampSeq: formatLogSortKey(log.timestamp, log.seq),
-      });
+      const retained = retainLogs(state, log);
       state.logs.set(log.sessionId, retained);
-      state.onLogCommitted?.({ ...log, timestampSeq: formatLogSortKey(log.timestamp, log.seq) });
+      state.onLogCommitted?.(log);
     } else {
       await appendLogDurable(state, log);
     }

@@ -12,10 +12,14 @@ import {
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 
-import { tableNames, type DynamoTableNames } from "./dynamo.ts";
+import { SESSION_LOGS_TTL_ATTRIBUTE, tableNames, type DynamoTableNames } from "./dynamo.ts";
 import { integrationsTableDefinition } from "./ensure-integrations-table.ts";
 import { notificationDeliveriesTableDefinition } from "./ensure-notification-deliveries-table.ts";
-import { enableRateLimitTtl, rateLimitTableDefinition } from "./ensure-rate-limit-table.ts";
+import {
+  enableRateLimitTtl,
+  enableTableTtl,
+  rateLimitTableDefinition,
+} from "./ensure-rate-limit-table.ts";
 import {
   ensureSchedulesRepositoryIndex,
   ensureSessionsRepositoryIndex,
@@ -177,6 +181,7 @@ export async function ensureControlPlaneTables(opts: {
       { AttributeName: "timestampSeq", KeyType: KeyType.RANGE },
     ],
   });
+  await enableTableTtl(ddb, names.sessionLogs, SESSION_LOGS_TTL_ATTRIBUTE);
 
   await createIfMissing(ddb, {
     TableName: names.schedules,

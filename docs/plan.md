@@ -192,7 +192,7 @@ erDiagram
         string timestampSeq "SK, format: <ISO-timestamp> + <zero-padded-seq> — see Invariant 5"
         string stream "stdout | stderr | system"
         string content
-        number ttl "target: DynamoDB TTL, auto-delete after expiry; not emitted today"
+        number ttl "Unix-epoch seconds, 7 days from write; DynamoDB TTL auto-delete after expiry"
     }
 
     Connection {
@@ -457,12 +457,13 @@ session create with `ref`/`target`/`fallbacks`/`concurrencyId`/`metadata`/`url`.
 CDK table definitions plus deployable HTTP/WebSocket Lambda runtime resources live in
 `services/cdk`, including an EventBridge rule and cron Lambda for durable scheduling sweeps.
 The explicit deploy, update, and teardown lifecycle and REST health check were verified against
-an AWS account in `us-west-2` on 2026-08-16. The SessionLogs
-table enables the `ttl` attribute, but runtime log records do not populate it and local table
-creation does not configure TTL, so current logs do not expire through TTL. Terminal archival
-retains bounded pointer/status metadata in the DynamoDB Archives table and writes JSONL objects to
-S3 when `ARCHIVE_BUCKET` configures the archive writer. No account-backed upload has been verified.
-The local store is DynamoDB Local via `pnpm local:dynamodb` (official image).
+an AWS account in `us-west-2` on 2026-08-16. New SessionLogs writes set `ttl` to Unix-epoch
+seconds 7 days from the write; CDK and local table creation enable DynamoDB TTL on that
+attribute. Rows written before this change omit `ttl` and are not backfilled, so they do not
+expire through TTL. Terminal archival retains bounded pointer/status metadata in the DynamoDB
+Archives table and writes JSONL objects to S3 when `ARCHIVE_BUCKET` configures the archive
+writer. No account-backed upload has been verified. The local store is DynamoDB Local via
+`pnpm local:dynamodb` (official image).
 
 **Migration marker:** none — cloud plumbing only, no live agent assignment loop yet.
 

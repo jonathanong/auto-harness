@@ -4,6 +4,15 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 /** Default endpoint for amazon/dynamodb-local (docker compose host port). */
 export const DEFAULT_DYNAMODB_ENDPOINT = "http://127.0.0.1:7423";
 
+export const SESSION_LOGS_TTL_ATTRIBUTE = "ttl";
+
+/** Seconds from a SessionLogs write until DynamoDB TTL expiry. */
+export const SESSION_LOGS_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+export function sessionLogsTtlEpochSeconds(nowMs = Date.now()): number {
+  return Math.floor(nowMs / 1000) + SESSION_LOGS_TTL_SECONDS;
+}
+
 export type DynamoTableNames = {
   users: string;
   sessions: string;
