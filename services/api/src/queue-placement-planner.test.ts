@@ -117,6 +117,26 @@ describe("queue placement planner", () => {
         Date.parse(NOW),
       ),
     ).toBe("no_eligible_route");
+    expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
+      "assignable",
+    );
+    expect(
+      explainPromptPlacement(
+        plane.state,
+        catalog,
+        session({ requiredLabels: ["gpu"] }),
+        Date.parse(NOW),
+      ),
+    ).toBe("no_idle_worktree");
+    plane.state.drainingHosts.add("host");
+    expect(
+      targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
+    ).toBe(false);
+    plane.state.drainingHosts.delete("host");
+    plane.state.worktrees.get("wt")!.online = false;
+    expect(
+      targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
+    ).toBe(false);
   });
 
   it("clears an unusable resume pin and reports assignable capacity", () => {

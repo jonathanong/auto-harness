@@ -102,6 +102,48 @@ describe("Dynamo session adapter defensive SDK outcomes", () => {
     expect(commands.some((command) => command instanceof UpdateCommand)).toBe(true);
   });
 
+  it("skips malformed queued rows and swallows a lost queueOrder repair", async () => {
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof UpdateCommand) {
+            throw { name: "ConditionalCheckFailedException" };
+          }
+          if ((command as QueryCommand).input.IndexName === SESSIONS_QUEUE_ORDER_INDEX) {
+            return { Items: [] };
+          }
+          return {
+            Items: [
+              { id: "broken", createdAt: "t0" },
+              { id: "ok", status: "queued", createdAt: "t", priority: 1 },
+            ],
+          };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    expect((await listSessionsByStatus(ctx, "queued", 0)).map((row) => row.id).toSorted()).toEqual([
+      "broken",
+      "ok",
+    ]);
+  });
+
+  it("propagates unexpected queueOrder repair failures", async () => {
+    const ctx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof UpdateCommand) throw new Error("repair-offline");
+          if ((command as QueryCommand).input.IndexName === SESSIONS_QUEUE_ORDER_INDEX) {
+            return { Items: [] };
+          }
+          return { Items: [{ id: "ok", status: "queued", createdAt: "t", priority: 1 }] };
+        },
+      },
+      tables: { sessions: "sessions" },
+    } as unknown as PlaneStorageCtx;
+    await expect(listSessionsByStatus(ctx, "queued", 0)).rejects.toThrow("repair-offline");
+  });
+
   it("falls back to the createdAt index while the queue-order GSI is backfilling", async () => {
     const commands: unknown[] = [];
     const ctx = {
