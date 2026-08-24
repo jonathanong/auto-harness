@@ -16,7 +16,10 @@ describe("host capability advertisements", () => {
         commandProfiles: [],
         capabilities: ["scheduled-main-checkout"],
       }),
-    ).toMatchObject({ capabilities: ["scheduled-main-checkout"] });
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 64,
+    });
     expect(
       parseHostMessage({
         type: "host:register",
@@ -38,6 +41,18 @@ describe("host capability advertisements", () => {
       providerAccountReadiness: [
         { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
       ],
+    });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        capabilities: ["scheduled-main-checkout"],
+        maxConcurrentAssignments: 4,
+      }),
+    ).toMatchObject({
+      capabilities: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 4,
     });
     expect(
       parseHostMessage({

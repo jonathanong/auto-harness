@@ -152,7 +152,7 @@ describe("scheduled terminal and retry message branches", () => {
 
   it("releases a cancelled leased run and carries late terminal metadata", async () => {
     const lease = {
-      concurrencyId: "provider-account:acct:0",
+      concurrencyId: "provider-lease:acct:0",
       providerAccountId: "acct",
       slot: 0,
       attemptId: "attempt",
@@ -189,7 +189,15 @@ describe("scheduled terminal and retry message branches", () => {
       reason: "late",
       cliResumeRef: "resume",
     });
-    expect(state.sessions.get("s")).toBeUndefined();
+    expect(state.sessions.get("s")).toMatchObject({
+      status: "cancelled",
+      errorCode: "killed",
+      errorMessage: "late",
+      exitCode: 2,
+      cliResumeRef: "resume",
+      worktreeId: null,
+    });
+    expect(state.sessions.get("s")).not.toHaveProperty("mainCheckoutLease");
     expect(state.providerAccountLeases.size).toBe(0);
   });
 

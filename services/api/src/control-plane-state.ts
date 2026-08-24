@@ -89,7 +89,7 @@ export type ControlPlaneState = {
   mainCheckoutLeases: Map<string, { sessionId: string; connectionId: string }>;
   /**
    * In-memory counterpart of ConcurrencyLocks provider-account slots.
-   * Keyed by the reserved `provider-account:` concurrency id.
+   * Keyed by the internal `provider-lease:` concurrency id.
    */
   providerAccountLeases: Map<
     string,

@@ -28,6 +28,7 @@ describe("host capabilities", () => {
     expect(parseHostCapabilitiesAdvertisement(undefined)).toEqual({ features: [] });
     expect(parseHostCapabilitiesAdvertisement(["scheduled-main-checkout"])).toEqual({
       features: ["scheduled-main-checkout"],
+      maxConcurrentAssignments: 64,
     });
     expect(
       parseHostCapabilitiesAdvertisement({

@@ -10,14 +10,14 @@ describe("provider account lease storage", () => {
     const send = vi.fn().mockResolvedValue({});
     await releaseProviderAccountLease(
       { doc: { send }, tables: { concurrencyLocks: "Locks" } } as never,
-      { concurrencyId: "provider-account:acct:0", sessionId: "sess", attemptId: "attempt" },
+      { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
     );
     expect(send).toHaveBeenCalledOnce();
     send.mockRejectedValueOnce({ name: "ConditionalCheckFailedException" });
     await expect(
       releaseProviderAccountLease(
         { doc: { send }, tables: { concurrencyLocks: "Locks" } } as never,
-        { concurrencyId: "provider-account:acct:0", sessionId: "sess", attemptId: "attempt" },
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
       ),
     ).resolves.toBeUndefined();
   });
@@ -27,7 +27,7 @@ describe("provider account lease storage", () => {
     await expect(
       releaseProviderAccountLease(
         { doc: { send }, tables: { concurrencyLocks: "Locks" } } as never,
-        { concurrencyId: "provider-account:acct:0", sessionId: "sess", attemptId: "attempt" },
+        { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
       ),
     ).rejects.toThrow("boom");
   });
@@ -36,7 +36,7 @@ describe("provider account lease storage", () => {
     expect(providerAccountLeaseDeleteItems("Locks", "sess", undefined)).toEqual([]);
     expect(
       providerAccountLeaseDeleteItems("Locks", "sess", {
-        concurrencyId: "provider-account:acct:0",
+        concurrencyId: "provider-lease:acct:0",
         attemptId: "attempt",
         providerAccountId: "acct",
         slot: 0,

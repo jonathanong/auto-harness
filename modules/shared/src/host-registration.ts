@@ -117,8 +117,8 @@ export function validateProviderAccountReadiness(
   return null;
 }
 
-/** Attempt-owned account leases share the concurrency-lock table under this prefix. */
-export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-account:";
+/** Attempt-owned account leases use a namespace disjoint from caller lock IDs. */
+export const PROVIDER_ACCOUNT_LEASE_PREFIX = "provider-lease:";
 
 export function providerAccountLeaseConcurrencyId(providerAccountId: string, slot: number): string {
   return `${PROVIDER_ACCOUNT_LEASE_PREFIX}${providerAccountId}:${String(slot)}`;
