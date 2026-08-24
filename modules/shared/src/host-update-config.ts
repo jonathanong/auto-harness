@@ -51,6 +51,11 @@ function isAbsolutePath(value: string): boolean {
   return value.startsWith("/") || value.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(value);
 }
 
+/** Persist PEM line breaks in the single-line form required by service environment files. */
+function normalizePublicKey(value: string): string {
+  return value.replace(/\r\n?|\n/gu, "\\n");
+}
+
 /** Strictly parse host-daemon signed-update configuration stored in inventory. */
 export function parseHostUpdateConfig(value: unknown): HostUpdateConfig {
   if (!isRecord(value) || typeof value.enabled !== "boolean") {
@@ -79,6 +84,10 @@ export function parseHostUpdateConfig(value: unknown): HostUpdateConfig {
   if (!manifestUrl || !publicKey) {
     throw new TypeError("enabled updateConfig requires manifestUrl and publicKey");
   }
+  const normalizedPublicKey = normalizePublicKey(publicKey);
+  if (normalizedPublicKey.length > MAX_UPDATE_PUBLIC_KEY_LENGTH) {
+    throw new TypeError("updateConfig.publicKey must be a non-empty string within its limit");
+  }
   requireHttpsUrl(manifestUrl);
   const installDir = optionalString(value, "installDir", MAX_UPDATE_PATH_LENGTH);
   if (installDir !== undefined && !isAbsolutePath(installDir)) {
@@ -103,7 +112,7 @@ export function parseHostUpdateConfig(value: unknown): HostUpdateConfig {
   return {
     enabled: true,
     manifestUrl,
-    publicKey,
+    publicKey: normalizedPublicKey,
     ...(installDir !== undefined ? { installDir } : {}),
     ...(pollMs !== undefined ? { pollMs } : {}),
     ...(daemonVersion !== undefined ? { daemonVersion } : {}),

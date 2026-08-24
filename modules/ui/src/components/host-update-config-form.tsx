@@ -16,6 +16,11 @@ import { Textarea } from "./textarea.tsx";
 import { showToast } from "./toast.tsx";
 import { WithTooltip } from "./tooltip.tsx";
 
+/** Render the persisted EnvironmentFile-safe key in the normal PEM form operators paste. */
+function displayPublicKey(value: string | undefined): string {
+  return value?.replaceAll("\\n", "\n") ?? "";
+}
+
 /** Structured, audited signed-update configuration for one host daemon. */
 export function HostUpdateConfigForm({
   hostId,
@@ -32,7 +37,7 @@ export function HostUpdateConfigForm({
   const [saved, setSaved] = useState(false);
   const [enabled, setEnabled] = useState(updateConfig?.enabled ?? false);
   const [manifestUrl, setManifestUrl] = useState(updateConfig?.manifestUrl ?? "");
-  const [publicKey, setPublicKey] = useState(updateConfig?.publicKey ?? "");
+  const [publicKey, setPublicKey] = useState(displayPublicKey(updateConfig?.publicKey));
   const [installDir, setInstallDir] = useState(updateConfig?.installDir ?? "");
   const [pollMs, setPollMs] = useState(
     updateConfig?.pollMs === undefined ? "" : String(updateConfig.pollMs),
@@ -44,7 +49,7 @@ export function HostUpdateConfigForm({
     if (dirty.current) return;
     setEnabled(updateConfig?.enabled ?? false);
     setManifestUrl(updateConfig?.manifestUrl ?? "");
-    setPublicKey(updateConfig?.publicKey ?? "");
+    setPublicKey(displayPublicKey(updateConfig?.publicKey));
     setInstallDir(updateConfig?.installDir ?? "");
     setPollMs(updateConfig?.pollMs === undefined ? "" : String(updateConfig.pollMs));
     setDaemonVersion(updateConfig?.daemonVersion ?? "");
@@ -148,7 +153,10 @@ export function HostUpdateConfigForm({
             />
           </div>
           <div className="space-y-1">
-            <Label htmlFor="hostUpdatePublicKey" tip="Ed25519 PEM used to verify the manifest">
+            <Label
+              htmlFor="hostUpdatePublicKey"
+              tip="Paste an Ed25519 PEM; line breaks are stored safely for the service environment"
+            >
               Manifest public key
             </Label>
             <Textarea

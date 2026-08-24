@@ -11,7 +11,7 @@ afterEach(reset);
 const updateConfig: HostUpdateConfig = {
   enabled: true,
   manifestUrl: "https://updates.example.test/manifest.json",
-  publicKey: "public key",
+  publicKey: "-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----",
   installDir: "/opt/auto-harness",
   pollMs: 60_000,
   daemonVersion: "1.2.3",
@@ -40,7 +40,7 @@ describe("HostUpdateConfigForm", () => {
       updateConfig.manifestUrl,
     );
     expect(field<HTMLTextAreaElement>(view.container, "host-update-public-key").value).toBe(
-      updateConfig.publicKey,
+      "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
     );
     expect(field<HTMLInputElement>(view.container, "host-update-install-dir").value).toBe(
       updateConfig.installDir,

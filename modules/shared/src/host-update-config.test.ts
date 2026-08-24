@@ -8,7 +8,7 @@ describe("parseHostUpdateConfig", () => {
       parseHostUpdateConfig({
         enabled: true,
         manifestUrl: "https://updates.example.test/manifest.json",
-        publicKey: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+        publicKey: "-----BEGIN PUBLIC KEY-----\r\nkey\n-----END PUBLIC KEY-----",
         installDir: "/opt/auto-harness",
         pollMs: 0,
         daemonVersion: "1.2.3",
@@ -16,11 +16,18 @@ describe("parseHostUpdateConfig", () => {
     ).toEqual({
       enabled: true,
       manifestUrl: "https://updates.example.test/manifest.json",
-      publicKey: "-----BEGIN PUBLIC KEY-----\nkey\n-----END PUBLIC KEY-----",
+      publicKey: "-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----",
       installDir: "/opt/auto-harness",
       pollMs: 0,
       daemonVersion: "1.2.3",
     });
+    expect(
+      parseHostUpdateConfig({
+        enabled: true,
+        manifestUrl: "https://updates.example.test/manifest.json",
+        publicKey: "-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----",
+      }).publicKey,
+    ).toBe("-----BEGIN PUBLIC KEY-----\\nkey\\n-----END PUBLIC KEY-----");
     expect(parseHostUpdateConfig({ enabled: false })).toEqual({ enabled: false });
   });
 
@@ -42,6 +49,7 @@ describe("parseHostUpdateConfig", () => {
       { ...valid, pollMs: -1 },
       { ...valid, pollMs: 2_147_483_648 },
       { ...valid, daemonVersion: "v1.2.3" },
+      { ...valid, publicKey: "\n".repeat(16_385) },
       { ...valid, unexpected: true },
     ]) {
       expect(() => parseHostUpdateConfig(input)).toThrow();

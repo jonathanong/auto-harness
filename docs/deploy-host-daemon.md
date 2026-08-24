@@ -164,6 +164,10 @@ On the agent host:
 | `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
 | `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
 
+The Host Advanced **Host daemon updates** form accepts a normal multiline PEM and stores its line
+breaks as literal `\n`, so the same setting remains valid when `install-service` writes the
+single-line service EnvironmentFile. API and host-config inputs receive the same normalization.
+
 For a managed Host, configure these as structured **Host daemon updates** controls on the
 control-plane Host’s Advanced tab. Those settings are authenticated, audited, and take precedence
 over legacy service-environment values. After saving, rerun `install-service` on that Host so the
