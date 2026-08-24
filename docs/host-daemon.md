@@ -465,7 +465,8 @@ Ordinary `PUT /inventory` preserves omitted exec-config fields.
 When `allowedRoots` is set, the daemon `realpath`s inventory filesystem paths and terminal hook
 paths (including at worktree claim and hook spawn) and refuses anything outside those roots.
 Unset or empty roots apply no extra restriction. Catalog command argv is not checked against
-these roots.
+these roots. Control-plane inventory and exec-config writes reject a relative `terminalHookScript`;
+empty string clears the stored hook.
 
 For a fresh session, the host script runs first, followed by one effective scoped script using the
 existing precedence `session assignment > worktree > host/repository attachment`. Both run in the

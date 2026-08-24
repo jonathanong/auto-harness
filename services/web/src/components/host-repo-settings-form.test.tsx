@@ -94,6 +94,21 @@ describe("HostRepoSettingsForm", () => {
     view.unmount();
   });
 
+  it("rejects a relative terminal hook before writing inventory", () => {
+    const fetch = stubInventoryFetch(inventory);
+    const view = mountForm(<HostRepoSettingsForm hostId="host" repo={repo} canWriteExecConfig />);
+    press(field(view.container, "repo-settings-open-repo-1"));
+    setValue(field(document, "repo-settings-hook-repo-1"), "hooks/done.sh");
+    submit(field(document, "form-repo-settings-repo-1"));
+    expect(field(document, "repo-settings-error-repo-1").textContent).toBe(
+      "repository.repo-1.terminalHookScript must be an absolute path",
+    );
+    expect(
+      fetch.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === "PUT"),
+    ).toBe(false);
+    view.unmount();
+  });
+
   it("saves trimmed settings with a main fallback and keeps worktrees", async () => {
     const fetch = stubInventoryFetch(inventory);
     const view = mountForm(
@@ -103,7 +118,7 @@ describe("HostRepoSettingsForm", () => {
     setValue(field(document, "repo-settings-path-repo-1"), " /new/repo ");
     setValue(field(document, "repo-settings-branch-repo-1"), " ");
     setValue(field(document, "repo-settings-setup-repo-1"), "setup");
-    setValue(field(document, "repo-settings-hook-repo-1"), "hook");
+    setValue(field(document, "repo-settings-hook-repo-1"), "/opt/harness/hook.sh");
     setValue(field(document, "repo-settings-required-environment-repo-1"), "Z_TOKEN, A_TOKEN");
     submit(field(document, "form-repo-settings-repo-1"));
     await act(async () => Promise.resolve());
@@ -115,7 +130,7 @@ describe("HostRepoSettingsForm", () => {
           defaultBranch: "main",
           requiredEnvironment: ["A_TOKEN", "Z_TOKEN"],
           setupScript: "setup",
-          terminalHookScript: "hook",
+          terminalHookScript: "/opt/harness/hook.sh",
           worktrees: [{ id: "worktree" }],
         },
       ],

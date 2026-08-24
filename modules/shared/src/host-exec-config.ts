@@ -11,6 +11,7 @@ export {
   isAbsolutePathString,
   parseAllowedRoots,
   parseHostExecConfig,
+  parseTerminalHookScript,
   type HostExecConfigPatch,
   type HostExecRepositoryPatch,
   type HostExecWorktreePatch,

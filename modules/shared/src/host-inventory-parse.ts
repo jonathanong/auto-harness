@@ -11,7 +11,7 @@ import {
   assertHostRepositoryRequiredEnvironmentLimit,
   parseRequiredEnvironment,
 } from "./environment-requirements.ts";
-import { parseAllowedRoots } from "./host-exec-config.ts";
+import { parseAllowedRoots, parseTerminalHookScript } from "./host-exec-config.ts";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -84,10 +84,9 @@ function parseRepository(rawRepository: unknown, index: number): HostRepository 
     throw new TypeError(`repository.${id}.worktrees must be an array`);
   }
   const setupScript = optionalString(rawRepository, "setupScript", `repository.${id}`);
-  const terminalHookScript = optionalString(
-    rawRepository,
-    "terminalHookScript",
-    `repository.${id}`,
+  const terminalHookScript = parseTerminalHookScript(
+    optionalString(rawRepository, "terminalHookScript", `repository.${id}`),
+    id,
   );
   const requiredEnvironment = parseRequiredEnvironment(
     rawRepository.requiredEnvironment,

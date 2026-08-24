@@ -31,6 +31,22 @@ export function isAbsolutePathString(path: string): boolean {
   return path.startsWith("/") || path.startsWith("\\\\") || /^[A-Za-z]:[\\/]/.test(path);
 }
 
+/** Empty string clears a stored hook. Non-empty values must be absolute and bounded. */
+export function parseTerminalHookScript(
+  value: string | undefined,
+  repositoryId: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (value.length === 0) return value;
+  if (value.length > MAX_EXEC_PATH_LENGTH) {
+    throw new TypeError(`repository.${repositoryId}.terminalHookScript is too long`);
+  }
+  if (!isAbsolutePathString(value)) {
+    throw new TypeError(`repository.${repositoryId}.terminalHookScript must be an absolute path`);
+  }
+  return value;
+}
+
 export function parseAllowedRoots(value: unknown, ctx = "allowedRoots"): string[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
@@ -91,15 +107,10 @@ function parseExecRepository(raw: unknown, index: number): HostExecRepositoryPat
     throw new TypeError(`repositories[${String(index)}]: id must be a non-empty string`);
   }
   const setupScript = optionalPatchString(raw, "setupScript", `repository.${id}`);
-  const terminalHookScript = optionalPatchString(raw, "terminalHookScript", `repository.${id}`);
-  if (terminalHookScript !== undefined && terminalHookScript.length > 0) {
-    if (terminalHookScript.length > MAX_EXEC_PATH_LENGTH) {
-      throw new TypeError(`repository.${id}.terminalHookScript is too long`);
-    }
-    if (!isAbsolutePathString(terminalHookScript)) {
-      throw new TypeError(`repository.${id}.terminalHookScript must be an absolute path`);
-    }
-  }
+  const terminalHookScript = parseTerminalHookScript(
+    optionalPatchString(raw, "terminalHookScript", `repository.${id}`),
+    id,
+  );
   let worktrees: HostExecWorktreePatch[] | undefined;
   if (Object.hasOwn(raw, "worktrees")) {
     if (!Array.isArray(raw.worktrees)) {

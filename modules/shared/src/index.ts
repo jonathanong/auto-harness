@@ -143,6 +143,7 @@ export {
   listExecConfigEdits,
   parseAllowedRoots,
   parseHostExecConfig,
+  parseTerminalHookScript,
   preserveHostExecConfig,
   reconcileInventoryWrite,
   type HostExecConfigPatch,

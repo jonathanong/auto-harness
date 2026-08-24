@@ -8,6 +8,7 @@ import {
   listExecConfigEdits,
   parseAllowedRoots,
   parseHostExecConfig,
+  parseTerminalHookScript,
   preserveHostExecConfig,
   reconcileInventoryWrite,
 } from "./host-exec-config.ts";
@@ -139,6 +140,9 @@ describe("parseHostExecConfig", () => {
         repositories: [{ id: "repo", terminalHookScript: `/${"a".repeat(4097)}` }],
       }),
     ).toThrow("too long");
+    expect(parseTerminalHookScript(undefined, "repo")).toBeUndefined();
+    expect(parseTerminalHookScript("", "repo")).toBe("");
+    expect(parseTerminalHookScript("/opt/hook.sh", "repo")).toBe("/opt/hook.sh");
   });
 });
 

@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import {
   mutateInventory,
   parseRequiredEnvironment,
+  parseTerminalHookScript,
   upsertHostRepository,
   type HostRepository,
 } from "@auto-harness/shared";
@@ -87,6 +88,17 @@ export function HostRepoSettingsForm({
                 pw: `repo-settings-error-${repo.id}`,
               });
               return;
+            }
+            if (canWriteExecConfig) {
+              try {
+                parseTerminalHookScript(terminalHookScript, repo.id);
+              } catch (error) {
+                showToast(error instanceof Error ? error.message : String(error), {
+                  variant: "destructive",
+                  pw: `repo-settings-error-${repo.id}`,
+                });
+                return;
+              }
             }
             start(async () => {
               try {

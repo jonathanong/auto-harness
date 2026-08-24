@@ -1128,8 +1128,12 @@ append `host-exec-config:update`.
 path for host-, repository-, and worktree-scoped setup scripts, repository `terminalHookScript`
 paths, and host-local `allowedRoots`. Omitted keys are left unchanged. Empty strings / empty
 `allowedRoots` clear the stored value. A host with no inventory yet is created empty, then the
-patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Successful
-writes append `host-exec-config:update` with the changed field paths (not script bodies).
+patch is applied. Unknown repository or worktree ids return `400 VALIDATION_ERROR`. Non-empty
+`terminalHookScript` values must be absolute paths on both this route and `PUT /inventory`.
+The success audit is recorded **before** the durable write; if that audit cannot be persisted the
+document is left unchanged (HTTP 500). If the following write fails, a failed
+`host-exec-config:update` is also recorded. Successful writes include the changed field paths
+(not script bodies).
 
 `allowedRoots` is a list of absolute host directories. When set, the daemon `realpath`s inventory
 filesystem paths and terminal hook paths (resolving symlinks and not-yet-created suffixes against
