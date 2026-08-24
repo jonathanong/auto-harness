@@ -126,7 +126,10 @@ export class ControlPlaneHostsService {
   putHostInventoryDurable(
     hostId: string,
     body: unknown,
-    options?: { allowLegacyRelativeTerminalHooks?: boolean },
+    options?: {
+      allowLegacyRelativeTerminalHooks?: boolean;
+      awaitProjection?: boolean;
+    },
   ): Promise<ReturnType<typeof agentHosts.putHostInventory>> {
     return agentHosts.putHostInventoryDurable(this.state, hostId, body, options);
   }

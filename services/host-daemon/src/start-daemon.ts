@@ -35,7 +35,7 @@ type InventoryPollOptions = {
   log: (line: string) => void;
   error: (line: string) => void;
   /** Make the connected host unavailable while an incoming root policy is unsafe. */
-  blockAssignments?: (() => Promise<void>) | undefined;
+  blockAssignments?: ((allowedRoots?: readonly string[]) => Promise<void>) | undefined;
   // `| undefined` (not just optional) so callers can pass through their own already-
   // optional fetchFn without a conditional spread at every call site.
   fetchFn?: typeof fetch | undefined;
@@ -84,7 +84,7 @@ export function startInventoryPoll(options: InventoryPollOptions): () => Promise
           // keeps polling; a valid subsequent document is applied and re-registers normally.
           policyBlocked = true;
           try {
-            await options.blockAssignments?.();
+            await options.blockAssignments?.(err.allowedRoots);
           } catch (blockError) {
             options.error(
               `inventory policy drain failed: ${
@@ -175,7 +175,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<{
       config: options.config,
       identity: options.identity,
       applyInventory: (next) => loop.applyInventory(next),
-      blockAssignments: () => loop.blockAssignmentsForInvalidInventory(),
+      blockAssignments: (allowedRoots) => loop.blockAssignmentsForInvalidInventory(allowedRoots),
       pollMs,
       log,
       error,

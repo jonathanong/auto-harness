@@ -170,6 +170,7 @@ export class DaemonLoop {
     const wasPolicyBlocked = this.inventoryPolicyBlocked;
     const wasPolicyDrainPublished = this.inventoryPolicyDrainPublished;
     await applyDaemonInventory(this.config, next, this.worktrees, async () => {
+      this.worktrees.clearAllowedRootsPolicy();
       // Worktree validation just succeeded against `next`; register the host as assignable again.
       this.inventoryPolicyBlocked = false;
       this.inventoryPolicyDrainPublished = false;
@@ -182,7 +183,8 @@ export class DaemonLoop {
       }
     });
   }
-  async blockAssignmentsForInvalidInventory(): Promise<void> {
+  async blockAssignmentsForInvalidInventory(allowedRoots?: readonly string[]): Promise<void> {
+    this.worktrees.setAllowedRootsPolicy(allowedRoots);
     if (this.inventoryPolicyBlocked && this.inventoryPolicyDrainPublished) return;
     // Set the local gate before network I/O so an already-connected peer cannot assign work in
     // the interval before its durable registration is marked draining.

@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- durable inventory projections and version-fenced mutations share one state boundary. */
-import type { HostInventoryRecord } from "./db/plane-storage.ts";
+import type { DynamoPlaneStorage, HostInventoryRecord } from "./db/plane-storage.ts";
 import type { WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { persistWorktree, queueWrite } from "./control-plane-state.ts";
@@ -84,7 +84,7 @@ export function putHostInventory(
 
 type InventoryWriteResult =
   | { ok: true; config: HostInventoryRecord }
-  | { ok: false; error: string; conflict?: true };
+  | { ok: false; error: string; conflict?: true; committed?: true };
 
 type InventoryDeleteResult = { ok: true } | { ok: false; error: string; conflict?: true };
 
@@ -143,7 +143,11 @@ export async function putHostInventoryDurable(
   state: ControlPlaneState,
   hostId: string,
   body: unknown,
-  options: { allowLegacyRelativeTerminalHooks?: boolean } = {},
+  options: {
+    allowLegacyRelativeTerminalHooks?: boolean;
+    /** Exec-config routes preserve their committed-result contract on projection failure. */
+    awaitProjection?: boolean;
+  } = {},
 ): Promise<InventoryWriteResult> {
   if (!state.storage) return putHostInventory(state, hostId, body, options);
   await Promise.all([listHostInventoriesDurable(state), listWorktreesDurable(state)]);
@@ -163,20 +167,48 @@ export async function putHostInventoryDurable(
   );
   // Older storage doubles return void; only an explicit false means the conditional write lost.
   if (stored === false) return inventoryVersionConflict();
-  // The inventory document is the commit point.  Projection writes are queued after it so a
-  // transient projection failure cannot make a committed exec-config request look like a 500
-  // (and trigger a misleading failed audit).  The queue preserves ordering and settleStorage
-  // still surfaces a projection failure for repair/observability.
-  queueWrite(state, async (storage) => {
+  const writeProjection = async (storage: DynamoPlaneStorage | undefined): Promise<void> => {
     await Promise.all([
       ...projection.worktrees.map((worktree) => storage!.putWorktree({ ...worktree })),
       ...projection.removedIds.map((id) => storage!.deleteWorktree(id)),
     ]);
-  });
+  };
   state.hostInventoryRevision += 1;
   state.hostInventories.set(hostId, result.config);
   for (const worktree of projection.worktrees) state.worktrees.set(worktree.id, worktree);
   for (const id of projection.removedIds) state.worktrees.delete(id);
+
+  if (options.awaitProjection === false) {
+    // The inventory document is already committed. Exec-config callers intentionally retain
+    // their committed-result response contract while the ordinary inventory route below waits.
+    queueWrite(state, writeProjection);
+  } else {
+    // Do not acknowledge an ordinary inventory update while its derived worktree catalog is
+    // merely queued. A direct attempt avoids leaving a failed promise in the general queue;
+    // if it fails, enqueue one durable retry so a transient projection outage is repaired.
+    await state.writeTail.catch(() => undefined);
+    let projectionError: unknown;
+    try {
+      await writeProjection(state.storage);
+    } catch (error) {
+      projectionError = error;
+      try {
+        await queueWrite(state, writeProjection);
+        projectionError = undefined;
+      } catch (retryError) {
+        projectionError = retryError;
+      }
+    }
+    if (projectionError !== undefined) {
+      return {
+        ok: false,
+        committed: true,
+        error: `host inventory committed but worktree projection failed: ${
+          projectionError instanceof Error ? projectionError.message : String(projectionError)
+        }`,
+      };
+    }
+  }
   return { ok: true, config: { ...result.config } };
 }
 

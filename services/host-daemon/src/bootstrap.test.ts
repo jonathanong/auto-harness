@@ -24,6 +24,7 @@ describe("fetchHostInventory", () => {
       throw new HostInventoryPolicyError(new Error("outside root"));
     }).toThrow("outside root");
     expect(new HostInventoryPolicyError("outside root").message).toContain("outside root");
+    expect(new HostInventoryPolicyError("outside root", ["/safe"]).allowedRoots).toEqual(["/safe"]);
   });
 
   it("maps identity and host inventory", async () => {

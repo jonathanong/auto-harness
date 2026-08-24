@@ -23,13 +23,16 @@ export type FetchHostInventoryDeps = {
 
 /** A fetched inventory is syntactically valid but unsafe under its allowed-roots policy. */
 export class HostInventoryPolicyError extends Error {
-  constructor(cause: unknown) {
+  readonly allowedRoots: string[] | undefined;
+
+  constructor(cause: unknown, allowedRoots?: readonly string[]) {
     super(
       `host inventory violates its allowed-roots policy: ${
         cause instanceof Error ? cause.message : String(cause)
       }`,
     );
     this.name = "HostInventoryPolicyError";
+    this.allowedRoots = allowedRoots === undefined ? undefined : [...allowedRoots];
   }
 }
 
@@ -93,7 +96,7 @@ export async function fetchHostInventory(
   try {
     await assertDaemonPathsAllowed(config);
   } catch (error) {
-    throw new HostInventoryPolicyError(error);
+    throw new HostInventoryPolicyError(error, config.allowedRoots);
   }
   return config;
 }

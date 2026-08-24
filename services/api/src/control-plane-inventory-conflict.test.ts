@@ -50,6 +50,65 @@ const body = (version?: number) => ({
 });
 
 describe("host inventory optimistic concurrency", () => {
+  it("waits for and retries the durable worktree projection before acknowledging", async () => {
+    let durable: HostInventoryRecord | undefined;
+    let projectionAttempts = 0;
+    const worktrees = new Map<string, unknown>();
+    const state = createControlPlaneState({
+      storage: {
+        listHostInventories: async () => (durable ? [{ ...durable }] : []),
+        listAllWorktrees: async () => [],
+        putHostInventory: async (record: HostInventoryRecord) => {
+          durable = record;
+          return true;
+        },
+        putWorktree: async (record: unknown) => {
+          projectionAttempts += 1;
+          if (projectionAttempts === 1) throw new Error("projection temporarily unavailable");
+          worktrees.set((record as { id: string }).id, record);
+        },
+        deleteWorktree: async () => undefined,
+      } as never,
+    });
+    const result = await putHostInventoryDurable(state, "host-a", {
+      repositories: [
+        {
+          id: "repo-a",
+          path: "/repo-a",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+        },
+      ],
+      commandProfiles: {},
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(projectionAttempts).toBe(2);
+    expect(worktrees.has("wt-a")).toBe(true);
+  });
+
+  it("does not report success when the committed projection cannot be repaired", async () => {
+    const { state, stored } = planeWithStorage();
+    state.storage!.putWorktree = async () => {
+      throw new Error("projection unavailable");
+    };
+
+    const result = await putHostInventoryDurable(state, "host-a", {
+      repositories: [
+        {
+          id: "repo-a",
+          path: "/repo-a",
+          defaultBranch: "main",
+          worktrees: [{ id: "wt-a", name: "wt-a", path: "/repo-a/wt-a", labels: [] }],
+        },
+      ],
+      commandProfiles: {},
+    });
+
+    expect(result).toMatchObject({ ok: false, committed: true });
+    expect(stored()?.hostId).toBe("host-a");
+  });
+
   it("advances the version on each accepted write", async () => {
     const { state, stored } = planeWithStorage();
 

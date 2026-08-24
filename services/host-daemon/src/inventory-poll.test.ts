@@ -176,12 +176,12 @@ describe("startInventoryPoll", () => {
     const fetchFn = vi.fn(async () => {
       calls += 1;
       if (calls === 1) {
-        throw new HostInventoryPolicyError(new Error("no usable allowed roots"));
+        throw new HostInventoryPolicyError(new Error("outside root"), ["/safe/root"]);
       }
       return Response.json(updatedInventory);
     }) as typeof fetch;
     const applyInventory = vi.fn(async (_next: DaemonConfig) => {});
-    const blockAssignments = vi.fn(async () => {});
+    const blockAssignments = vi.fn(async (_allowedRoots?: readonly string[]) => {});
     const errors: string[] = [];
     const stop = startInventoryPoll({
       config,
@@ -197,6 +197,7 @@ describe("startInventoryPoll", () => {
     try {
       await vi.advanceTimersByTimeAsync(10);
       expect(blockAssignments).toHaveBeenCalledOnce();
+      expect(blockAssignments).toHaveBeenCalledWith(["/safe/root"]);
       expect(applyInventory).not.toHaveBeenCalled();
       expect(errors[0]).toContain("allowed-roots policy");
 

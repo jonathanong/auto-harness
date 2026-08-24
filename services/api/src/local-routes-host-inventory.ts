@@ -225,9 +225,13 @@ export async function handleHostInventoryRoutes(ctx: RouteCtx): Promise<boolean>
           return true;
         // A conflict is not a bad request: the body was valid, the document simply moved
         // since the caller read it. Callers re-read and reapply.
-        send(res, result.conflict ? 409 : 400, {
+        send(res, result.committed ? 503 : result.conflict ? 409 : 400, {
           error: {
-            code: result.conflict ? "CONFLICT" : "VALIDATION_ERROR",
+            code: result.committed
+              ? "STORAGE_UNAVAILABLE"
+              : result.conflict
+                ? "CONFLICT"
+                : "VALIDATION_ERROR",
             message: result.error,
           },
         });

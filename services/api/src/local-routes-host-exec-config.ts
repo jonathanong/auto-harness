@@ -127,6 +127,7 @@ export async function handleHostExecConfigRoutes(ctx: RouteCtx): Promise<boolean
         // applyHostExecConfig can carry an untouched pre-policy relative hook forward.
         // New values are still rejected by parseHostExecConfig.
         allowLegacyRelativeTerminalHooks: true,
+        awaitProjection: false,
       },
     );
     if (!result.ok) {

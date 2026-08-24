@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- claim policy regressions share this focused manager fixture. */
 import { mkdir, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -202,5 +203,24 @@ describe("WorktreeManager", () => {
     await symlink(outside, worktreeLink);
     await new WorktreeManager(jailed, git).prepareCheckout(claimed, "main");
     expect(git.checkoutRef).toHaveBeenCalledWith({ cwd: await realpath(worktree), ref: "main" });
+  });
+
+  it("fails closed for a pending hook while an invalid roots policy is retained", async () => {
+    const jailed = parseDaemonConfig({
+      hostId: "a1",
+      repositories: [
+        {
+          id: "repo-1",
+          path: "/repo",
+          defaultBranch: "main",
+          terminalHookScript: "/repo/hook.sh",
+          worktrees: [{ id: "wt-1", name: "wt-1", path: "/repo/wt-1", labels: [] }],
+        },
+      ],
+    });
+    const manager = new WorktreeManager(jailed, fakeGit());
+    const claimed = await manager.claim("repo-1", "wt-1");
+    manager.setAllowedRootsPolicy([]);
+    await expect(claimed.currentHookTarget()).resolves.toBeNull();
   });
 });

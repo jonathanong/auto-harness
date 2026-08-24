@@ -39,10 +39,32 @@ export class WorktreeManager {
   private readonly mainWaiters = new Map<string, MainWaiter[]>();
   private readonly config: DaemonConfig;
   private readonly git: GitClient;
+  private allowedRootsPolicyActive = false;
+  private policyAllowedRoots: string[] = [];
 
   constructor(config: DaemonConfig, git: GitClient) {
     this.config = config;
     this.git = git;
+  }
+
+  /**
+   * Keep an invalid polled policy in force for pending hooks even though the rest of the
+   * inventory cannot be applied. An empty policy is intentionally fail-closed here.
+   */
+  setAllowedRootsPolicy(allowedRoots?: readonly string[]): void {
+    this.allowedRootsPolicyActive = true;
+    this.policyAllowedRoots = allowedRoots ? [...allowedRoots] : [];
+  }
+
+  clearAllowedRootsPolicy(): void {
+    this.allowedRootsPolicyActive = false;
+    this.policyAllowedRoots = [];
+  }
+
+  private effectiveAllowedRoots(): string[] {
+    return this.allowedRootsPolicyActive
+      ? this.policyAllowedRoots
+      : (this.config.allowedRoots ?? []);
   }
 
   async ensureAll(): Promise<void> {
@@ -76,7 +98,9 @@ export class WorktreeManager {
       ...(this.config.setupScript !== undefined
         ? { hostSetupScript: this.config.setupScript }
         : {}),
-      ...(this.config.allowedRoots?.length ? { allowedRoots: this.config.allowedRoots } : {}),
+      ...(this.effectiveAllowedRoots().length
+        ? { allowedRoots: this.effectiveAllowedRoots() }
+        : {}),
       repository: claimedRepository,
       worktree: claimedWorktree,
       cwd,
@@ -99,7 +123,8 @@ export class WorktreeManager {
   } | null> {
     const repository = this.config.repositories.find((candidate) => candidate.id === repositoryId);
     if (!repository) return null;
-    const roots = this.config.allowedRoots ?? [];
+    const roots = this.effectiveAllowedRoots();
+    if (this.allowedRootsPolicyActive && roots.length === 0) return null;
     if (worktreeId !== undefined) {
       const worktree = repository.worktrees.find((candidate) => candidate.id === worktreeId);
       if (!worktree) return null;
@@ -136,7 +161,7 @@ export class WorktreeManager {
       cwd,
       repositoryPath: repository.path,
       terminalHookScript: repository.terminalHookScript,
-      allowedRoots: this.config.allowedRoots,
+      allowedRoots: this.effectiveAllowedRoots(),
     });
   }
 
