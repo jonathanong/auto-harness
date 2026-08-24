@@ -101,6 +101,35 @@ describe("schedule pages", () => {
     expect(html).toContain('data-pw="form-edit-schedule-schedule-just-created"');
   });
 
+  it("keeps encoded-looking schedule ids intact when opening an edit", async () => {
+    vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
+    stubApi({
+      "/api/v1/schedules": {
+        items: [
+          {
+            id: "literal%2Fid",
+            name: "Encoded-looking id",
+            repositoryId: "repo-1",
+            target: { commandId: "command-1" },
+            fallbacks: [],
+            cron: "0 * * * *",
+            enabled: true,
+            timeout: 60,
+            queueTtlSeconds: 120,
+            nextRunAt: "tomorrow",
+            lastRunAt: null,
+          },
+        ],
+      },
+      "/api/v1/session-targets": { items: [{ id: "command-1", label: "command" }] },
+      "/api/v1/repositories": { items: [{ id: "repo-1", name: "Harness" }] },
+    });
+    const html = await renderPage(
+      SchedulesPage({ searchParams: Promise.resolve({ edit: "literal%2Fid" }) }),
+    );
+    expect(html).toContain("Edit Encoded-looking id");
+  });
+
   it("keeps the create form when an explicitly requested schedule no longer exists", async () => {
     vi.stubEnv("HARNESS_AUTH_MODE", "disabled");
     stubApi({

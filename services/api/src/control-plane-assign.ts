@@ -21,6 +21,7 @@ import { planPromptPlacement } from "./queue-placement-planner.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
+  hostAssignmentOccupancyCount,
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
@@ -257,6 +258,7 @@ export async function assignQueuedDurable(
             ? {
                 hostAssignmentLease: { hostId: candidate.hostId },
                 hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments,
+                legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
               }
             : {}),
           queueShard: session.queueShard,

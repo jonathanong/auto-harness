@@ -65,6 +65,11 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
+  return hostAssignmentOccupancyCount(state, hostId) < cap;
+}
+
+/** Read-model seed for hosts whose lock predates assignmentCount. */
+export function hostAssignmentOccupancyCount(state: ControlPlaneState, hostId: string): number {
   const occupied = new Set<string>();
   for (const session of state.sessions.values()) {
     if (sessionHoldsHostAssignment(session, hostId)) occupied.add(hostOccupancyKey(session));
@@ -76,7 +81,7 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
   for (const key of state.mainCheckoutLeases.keys()) {
     if (key.startsWith(`${hostId}\0`)) occupied.add(`c:${key.slice(hostId.length + 1)}`);
   }
-  return occupied.size < cap;
+  return occupied.size;
 }
 
 export function accountHasLeaseCapacity(

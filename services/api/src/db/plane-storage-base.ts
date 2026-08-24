@@ -287,6 +287,7 @@ export class DynamoPlaneStorageBase {
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -345,6 +346,7 @@ export class DynamoPlaneStorageBase {
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
     hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
     attemptId: string;
   }): Promise<AssignmentWriteResult> {
