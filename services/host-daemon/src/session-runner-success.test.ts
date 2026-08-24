@@ -128,7 +128,9 @@ describe("SessionRunner success paths", () => {
       },
     };
     const { sessionRunner, hooks } = setup(runner);
-    const result = await sessionRunner.run(baseAssign({ resolvedArgv: ["codex", "exec"] }));
+    const result = await sessionRunner.run(
+      baseAssign({ resolvedArgv: ["codex", "exec"], providerAccountId: "acct-1" }),
+    );
     expect(result.status).toBe("failed");
     expect(result.errorCode).toBe("usage_limit");
     expect(hooks).toEqual(["failed"]);

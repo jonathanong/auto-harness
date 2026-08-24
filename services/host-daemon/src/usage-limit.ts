@@ -26,11 +26,15 @@ const PROVIDER_PATTERNS = {
 
 type UsageLimitProvider = keyof typeof PROVIDER_PATTERNS;
 
+type UsageLimitMatch = "output" | "adapter";
+
 type UsageLimitInput = {
   /** Trusted catalog argv from the assignment. Never prompt text. */
   argv: readonly string[];
   /** Non-zero/null exit. Success never classifies as a usage limit. */
   failed: boolean;
+  /** Control-plane assignment account. Providerless commands fail closed. */
+  providerAccountId?: string;
   /** Adapter-supplied vendor quota; never inferred from untrusted output. */
   adapterUsageLimit?: boolean;
   output: string;
@@ -50,14 +54,17 @@ function resolveUsageLimitProvider(argv: readonly string[]): UsageLimitProvider 
 }
 
 /**
- * Classify a vendor usage/rate limit from trusted catalog identity plus a
- * failure signal. Untrusted output text is never enough on its own.
+ * Classify a vendor usage/rate limit from a provider-backed assignment, trusted
+ * catalog identity, and a failure signal. Untrusted output text is never enough
+ * on its own.
  */
-export function detectUsageLimit(input: UsageLimitInput): boolean {
-  if (!input.failed) return false;
+export function detectUsageLimit(input: UsageLimitInput): UsageLimitMatch | undefined {
+  if (!input.failed) return undefined;
+  if (!input.providerAccountId) return undefined;
   const provider = resolveUsageLimitProvider(input.argv);
-  if (provider === undefined) return false;
-  if (input.adapterUsageLimit === true) return true;
-  if (input.output.length === 0) return false;
-  return PROVIDER_PATTERNS[provider].some((re) => re.test(input.output));
+  if (provider === undefined) return undefined;
+  if (input.output.length > 0 && PROVIDER_PATTERNS[provider].some((re) => re.test(input.output))) {
+    return "output";
+  }
+  return input.adapterUsageLimit === true ? "adapter" : undefined;
 }

@@ -10,8 +10,9 @@ describe("@auto-harness/host-daemon", () => {
       detectUsageLimit({
         argv: ["codex"],
         failed: true,
+        providerAccountId: "acct-1",
         output: "insufficient_quota",
       }),
-    ).toBe(true);
+    ).toBe("output");
   });
 });

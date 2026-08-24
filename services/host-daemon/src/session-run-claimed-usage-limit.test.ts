@@ -69,6 +69,15 @@ describe("claimed session usage-limit classification", () => {
     expect(outcome.errorCode).toBeUndefined();
   });
 
+  it("does not classify a providerless vendor CLI as a usage limit", async () => {
+    const outcome = await runClaimed(
+      baseAssign({ resolvedArgv: ["codex", "exec"] }),
+      outputRunner("Error: insufficient_quota for request", { exitCode: 1 }),
+    );
+    expect(outcome.status).toBe("failed");
+    expect(outcome.errorCode).toBeUndefined();
+  });
+
   it("fails closed when the catalog executable is unknown", async () => {
     const outcome = await runClaimed(
       baseAssign({ resolvedArgv: ["usage"] }),
@@ -90,7 +99,7 @@ describe("claimed session usage-limit classification", () => {
   it("reports usage_limit for a genuine Codex limit on a failed run", async () => {
     await expect(
       runClaimed(
-        baseAssign({ resolvedArgv: ["codex", "exec"] }),
+        baseAssign({ resolvedArgv: ["codex", "exec"], providerAccountId: "acct-1" }),
         outputRunner("Error: insufficient_quota for request", { exitCode: 1 }),
       ),
     ).resolves.toMatchObject({
@@ -103,8 +112,21 @@ describe("claimed session usage-limit classification", () => {
   it("reports usage_limit from a trusted adapter failure channel", async () => {
     await expect(
       runClaimed(
-        baseAssign({ resolvedArgv: ["claude", "-p"] }),
+        baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }),
         outputRunner("", { exitCode: 1, usageLimit: true }),
+      ),
+    ).resolves.toMatchObject({
+      status: "failed",
+      errorCode: "usage_limit",
+      errorMessage: "Usage limit detected",
+    });
+  });
+
+  it("does not attribute unmatched CLI output to an adapter usage limit", async () => {
+    await expect(
+      runClaimed(
+        baseAssign({ resolvedArgv: ["claude", "-p"], providerAccountId: "acct-1" }),
+        outputRunner("command failed", { exitCode: 1, usageLimit: true }),
       ),
     ).resolves.toMatchObject({
       status: "failed",

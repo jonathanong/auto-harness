@@ -300,15 +300,15 @@ AI CLIs often hit **plan or rate limits** (monthly quota, TPM/RPM, “you've hit
 
 1. The assigned command runs to completion. Timeout and cancel are never `usage_limit`.
 2. Exit `0` is always `completed`. Successful output — including adversarial or prompt-controlled phrases such as “rate limit” — never cools down a Provider Account.
-3. On a failed command (`exitCode !== 0`), the daemon classifies using **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side) plus provider-specific matchers, or a provider-aware CLI adapter's `usageLimit` flag. Untrusted stdout/stderr is never enough on its own.
-4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage`, and `exitCode`. Do not retry or resolve a fallback on the host.
+3. On a failed command (`exitCode !== 0`), the daemon classifies using **trusted assignment identity** (`providerAccountId` from the control plane) plus **trusted catalog argv** (`resolvedArgv[0]`, already resolved control-plane-side) plus provider-specific matchers, or a provider-aware CLI adapter's `usageLimit` flag. Untrusted stdout/stderr is never enough on its own.
+4. On a match, report `session:status` with `status: failed`, `errorCode: "usage_limit"`, optional `errorMessage`, and `exitCode`. Do not retry or resolve a fallback on the host. Output-matcher hits use `errorMessage: "Usage limit detected in CLI output"`; adapter-only hits use `errorMessage: "Usage limit detected"`.
 5. The control plane then pauses the assigned Provider Account globally for its configured cooldown (default 5 hours), releases the worktree, and immediately tries the next eligible account or explicit fallback. A queued session remains eligible until its absolute `queueTtlSeconds` expires (default 8 days), then fails with `queue_expired`.
 
-Providerless commands (`providerId: null`) and unknown executables **fail closed**: generic quota-like text is an ordinary `failed`, not `usage_limit`. No account is paused.
+Providerless commands (`providerId: null`, no `providerAccountId`) and unknown executables **fail closed**: generic quota-like text is an ordinary `failed`, not `usage_limit`. No account is paused.
 
 **What counts as a usage-limit error:**
 
-Classification keys off the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
+Classification keys off a provider-backed assignment (`providerAccountId`) plus the spawned catalog executable (basename of `resolvedArgv[0]`), not free-form output and not the operator-chosen Provider record name. Matchers are case-insensitive and maintained per CLI:
 
 | Trusted executable | Example signals in failed CLI output                                                   |
 | ------------------ | -------------------------------------------------------------------------------------- |
@@ -317,13 +317,13 @@ Classification keys off the spawned catalog executable (basename of `resolvedArg
 | `gemini`           | `RESOURCE_EXHAUSTED`, `Resource has been exhausted`, `You exceeded your current quota` |
 | `grok`             | `Rate limit error`, `You've reached your free Grok Build usage limit for now.`         |
 
-Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success and on unknown/providerless argv.
+Generic phrases such as `rate limit`, `too many requests`, or a bare `429` are **never** enough, even with a trusted executable and a non-zero exit. A vendor-specific matcher or a provider-aware CLI adapter's `usageLimit` flag is required. That flag is still ignored on success, on unknown/providerless argv, and when the assignment has no `providerAccountId`.
 
 **What is not a usage limit:**
 
 - Successful commands (`exitCode === 0`), even when output contains vendor phrases
-- Prompt-controlled / adversarial stdout, unless trusted argv[0], a failure, **and** a vendor-specific matcher all apply
-- Providerless commands and unknown executables (fail closed)
+- Prompt-controlled / adversarial stdout, unless a provider-backed assignment, trusted argv[0], a failure, **and** a vendor-specific matcher all apply
+- Providerless commands (no `providerAccountId`) and unknown executables (fail closed)
 - App under test returning 429
 - GitHub API secondary rate limits during a push (unless classified separately later)
 - Agent host OOM / missing CLI → ordinary `failed` without `usage_limit`

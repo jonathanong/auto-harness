@@ -126,6 +126,7 @@ describe("claimed session cancellation", () => {
         logs,
         baseAssign({
           resolvedArgv: ["codex", "exec"],
+          providerAccountId: "acct-1",
           resumeRefCapture: { stream: "stdout", linePrefix: "resume: " },
         }),
         claimed,
