@@ -1,6 +1,10 @@
 /* eslint-disable max-lines -- provider account updates share transactional cap fencing. */
 
-import { TransactWriteCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  TransactWriteCommand,
+  UpdateCommand,
+  type TransactWriteCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   MAX_CONCURRENT_SESSIONS_LIMIT,
@@ -9,6 +13,8 @@ import {
 
 import type { PlaneStorageCtx, ProviderAccountRecord } from "./plane-storage-types.ts";
 import { ensureProviderAccountCount } from "./plane-storage-provider-accounts.ts";
+
+type TransactWriteItem = NonNullable<TransactWriteCommandInput["TransactItems"]>[number];
 
 export async function updateProviderAccount(
   ctx: PlaneStorageCtx,
@@ -169,7 +175,7 @@ async function updateWithLeaseFences(
     expression: string;
     values: Record<string, unknown>;
   },
-  leaseFences: Array<{ ConditionCheck: Record<string, unknown> }>,
+  leaseFences: TransactWriteItem[],
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -206,7 +212,7 @@ async function moveProviderAccount(
     expectedVersion: number;
     oldProviderId: string | undefined;
     newProviderId: string;
-    leaseFences: Array<{ ConditionCheck: Record<string, unknown> }>;
+    leaseFences: TransactWriteItem[];
     expression: string;
     values: Record<string, unknown>;
   },
