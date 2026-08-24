@@ -125,4 +125,36 @@ describe("durable worktree terminal branches", () => {
       connectionId: "connection",
     });
   });
+
+  it("keeps a committed terminal successful when legacy capacity repair throws", async () => {
+    const releaseLegacyHostAssignment = vi.fn(async () => {
+      throw new Error("host lock unavailable");
+    });
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const state = createControlPlaneState({ now: () => NOW });
+      setDurableReadStorage(state, {
+        finishSession: async () => true,
+        releaseLegacyHostAssignment,
+        putArchive: async () => undefined,
+      });
+      state.sessions.set(
+        "legacy-error",
+        row("legacy-error", { assignmentConnectionId: "connection", worktreeId: null }),
+      );
+
+      await handleHostMessageDurable(state, {
+        ...terminal("legacy-error", "completed"),
+        worktreeId: null,
+      });
+
+      expect(state.sessions.get("legacy-error")).toMatchObject({ status: "completed" });
+      expect(error).toHaveBeenCalledWith(
+        "legacy providerless host assignment release failed",
+        expect.any(Error),
+      );
+    } finally {
+      error.mockRestore();
+    }
+  });
 });

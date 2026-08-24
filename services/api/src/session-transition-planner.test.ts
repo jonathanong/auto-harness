@@ -553,6 +553,40 @@ describe("session-transition planner", () => {
       legacyProviderlessHostAssignmentForSession(session({ assignmentConnectionId: "conn" })),
     ).toEqual({ hostId: "host", connectionId: "conn" });
     expect(
+      legacyProviderlessHostAssignmentForSession(
+        session({ hostAssignmentLease: { hostId: "host" }, assignmentConnectionId: "conn" }),
+      ),
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(
+        session({ providerAccountLease: row.providerAccountLease, assignmentConnectionId: "conn" }),
+      ),
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(
+        session({
+          resolvedRoute: {
+            targetIndex: 0,
+            commandId: "cmd",
+            providerAccountId: "acct",
+            hostId: "host",
+            worktreeId: "wt",
+            attemptId: "attempt",
+          },
+          assignmentConnectionId: "conn",
+        }),
+      ),
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(session({ hostId: undefined })),
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(session({ assignmentConnectionId: undefined })),
+    ).toBeUndefined();
+    expect(
+      legacyProviderlessHostAssignmentForSession(session({ status: "queued" })),
+    ).toBeUndefined();
+    expect(
       finishSessionOptsFromPlan(
         session({
           resolvedRoute: {
