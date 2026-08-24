@@ -12,6 +12,7 @@ import SettingsPage from "./page.tsx";
 const originalHostId = process.env.HARNESS_HOST_ID;
 const originalAuthMode = process.env.HARNESS_AUTH_MODE;
 const router: AppRouterInstance = {
+  bfcacheId: "test",
   back() {},
   forward() {},
   prefetch() {},

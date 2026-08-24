@@ -9,6 +9,7 @@ import {
 } from "next/dist/shared/lib/app-router-context.shared-runtime";
 
 const router = {
+  bfcacheId: "test",
   back() {},
   forward() {},
   prefetch: async () => undefined,

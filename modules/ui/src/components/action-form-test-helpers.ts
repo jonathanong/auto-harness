@@ -18,6 +18,7 @@ import { TooltipProvider } from "./tooltip.tsx";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const mountedRoots = new Set<() => void>();
 export const router = {
+  bfcacheId: "test",
   back: vi.fn(),
   forward: vi.fn(),
   refresh: vi.fn(),
