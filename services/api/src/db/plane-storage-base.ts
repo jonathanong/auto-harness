@@ -277,6 +277,8 @@ export class DynamoPlaneStorageBase {
     providerAccountId?: string;
     providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    hostAssignmentCap?: number;
     queueShard: number;
   }): Promise<AssignmentWriteResult> {
     return sessions.tryAssignSession(this.ctx, opts);
@@ -325,6 +327,8 @@ export class DynamoPlaneStorageBase {
     providerAccountId?: string;
     providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
+    hostAssignmentCap?: number;
     queueShard: number;
     attemptId: string;
   }): Promise<AssignmentWriteResult> {
@@ -366,6 +370,7 @@ export class DynamoPlaneStorageBase {
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -382,6 +387,7 @@ export class DynamoPlaneStorageBase {
     usageLimitedUntil: string;
     errorMessage?: string | undefined;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return mainCheckout.requeueMainCheckoutUsageLimitedSession(this.ctx, opts);
   }
@@ -470,6 +476,7 @@ export class DynamoPlaneStorageBase {
     attemptId: string;
     concurrencyId?: string | undefined;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.releaseCancelledSessionWorktree(this.ctx, opts);
   }
@@ -489,6 +496,7 @@ export class DynamoPlaneStorageBase {
     fence?: { hostId: string; connectionId: string };
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.tryRequeueSession(this.ctx, opts);
   }
@@ -535,6 +543,7 @@ export class DynamoPlaneStorageBase {
     usageLimitedUntil: string;
     errorMessage?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.requeueUsageLimitedSession(this.ctx, opts);
   }
@@ -547,6 +556,7 @@ export class DynamoPlaneStorageBase {
     targetIndex: number;
     errorMessage?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.suppressProviderlessUsageLimit(this.ctx, opts);
   }
@@ -597,6 +607,7 @@ export class DynamoPlaneStorageBase {
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
     preserveProviderAccountLease?: boolean;
+    hostAssignmentLease?: SessionRecord["hostAssignmentLease"] | undefined;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

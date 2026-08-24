@@ -10,6 +10,7 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import type { HostAssignmentLease } from "./plane-storage-host-assignment.ts";
 import {
   isConditionalTransactionFailed,
   itemToSession,
@@ -39,6 +40,7 @@ type ReleaseMainCheckoutOptions = {
    * acknowledgement committed after this scheduler read its local cache. */
   requireUnacknowledged?: boolean;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
   /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
   preserveProviderAccountLease?: boolean;
 };
@@ -84,13 +86,17 @@ export async function releaseMainCheckoutSession(
             Update: {
               TableName: ctx.tables.hostLocks,
               Key: { hostId: opts.hostId },
-              UpdateExpression: "REMOVE mainCheckoutLeases.#repo",
+              UpdateExpression:
+                (opts.hostAssignmentLease ? "SET assignmentCount = assignmentCount - :one " : "") +
+                "REMOVE mainCheckoutLeases.#repo",
               ConditionExpression:
-                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId",
+                "mainCheckoutLeases.#repo.sessionId = :sessionId AND mainCheckoutLeases.#repo.connectionId = :connectionId" +
+                (opts.hostAssignmentLease ? " AND assignmentCount >= :one" : ""),
               ExpressionAttributeNames: { "#repo": opts.repositoryId },
               ExpressionAttributeValues: {
                 ":sessionId": opts.sessionId,
                 ":connectionId": opts.connectionId,
+                ...(opts.hostAssignmentLease ? { ":one": 1 } : {}),
               },
             },
           },
@@ -168,7 +174,7 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, hostAssignmentLease" +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt" : "")
   );

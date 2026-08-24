@@ -8,6 +8,10 @@ import {
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
 import { providerAccountLastAssignedTransactItem } from "./plane-storage-provider-account-assignment.ts";
+import {
+  hostAssignmentAcquireItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 import { sessionDrainAdmissionCheck } from "./plane-storage-session-drains.ts";
 import type { SessionRecord } from "./types.ts";
 
@@ -38,6 +42,8 @@ export async function tryAssignSession(
     providerAccountId?: string;
     providerId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+    hostAssignmentCap?: number;
     queueShard: number;
   },
 ): Promise<AssignmentWriteResult> {
@@ -71,6 +77,10 @@ export async function tryAssignSession(
   if (opts.providerAccountLease) {
     sessionSets.push("providerAccountLease = :providerAccountLease");
     sessionValues[":providerAccountLease"] = opts.providerAccountLease;
+  }
+  if (opts.hostAssignmentLease) {
+    sessionSets.push("hostAssignmentLease = :hostAssignmentLease");
+    sessionValues[":hostAssignmentLease"] = opts.hostAssignmentLease;
   }
   const drainCheck = sessionDrainAdmissionCheck(ctx, opts.repositoryId, opts.principalId);
   const transactItems = [
@@ -130,19 +140,29 @@ export async function tryAssignSession(
         ExpressionAttributeValues: sessionValues,
       },
     },
-    {
-      // A hydrated scheduler can retain an online worktree after a
-      // different process disconnects its host. The lease is the
-      // authority for reachability, so require the exact connection
-      // that was live when this candidate was selected.
-      ConditionCheck: {
-        TableName: ctx.tables.hostLocks,
-        Key: { hostId: opts.hostId },
-        ConditionExpression:
-          "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
-        ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
-      },
-    },
+    ...(opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
+      ? [
+          hostAssignmentAcquireItem(ctx, {
+            ...opts.hostAssignmentLease,
+            connectionId: opts.connectionId,
+            cap: opts.hostAssignmentCap,
+          }),
+        ]
+      : [
+          {
+            // A hydrated scheduler can retain an online worktree after a
+            // different process disconnects its host. The lease is the
+            // authority for reachability, so require the exact connection
+            // that was live when this candidate was selected.
+            ConditionCheck: {
+              TableName: ctx.tables.hostLocks,
+              Key: { hostId: opts.hostId },
+              ConditionExpression:
+                "connectionId = :connectionId AND (attribute_not_exists(disconnected) OR disconnected = :false) AND (attribute_not_exists(draining) OR draining = :false)",
+              ExpressionAttributeValues: { ":connectionId": opts.connectionId, ":false": false },
+            },
+          },
+        ]),
     ...(opts.providerAccountId
       ? [
           providerAccountLastAssignedTransactItem(ctx, {

@@ -127,6 +127,7 @@ async function commitDurableTimeout(
       ...(session.attemptId !== undefined ? { attemptId: session.attemptId } : {}),
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
       preserveProviderAccountLease: true,
+      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
     });
   }
   return storage.finishSession({
@@ -139,6 +140,7 @@ async function commitDurableTimeout(
     errorMessage: TIMEOUT_ERROR,
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
     preserveProviderAccountLease: true,
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
   });
 }
 

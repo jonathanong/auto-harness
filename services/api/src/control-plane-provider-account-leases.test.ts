@@ -5,6 +5,7 @@ import { ControlPlane } from "./control-plane.ts";
 import { backfillLegacyProviderAccountLeases } from "./control-plane-hydrate-provider-leases.ts";
 import {
   accountHasLeaseCapacity,
+  accountHasLeaseCapacityOverCap,
   hostHasAssignmentCapacity,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
@@ -278,6 +279,30 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getSession("sess-1")?.status).toBe("running");
     expect(plane.getSession("sess-2")?.status).toBe("queued");
     expect(plane.getSession("sess-1")?.providerAccountLease?.slot).toBe(0);
+  });
+
+  it("blocks durable assignment while legacy leases occupy slots beyond the cap", () => {
+    const state = createControlPlaneState();
+    state.storage = {} as never;
+    state.providerAccounts.set("acct", {
+      id: "acct",
+      providerId: "prov",
+      label: "account",
+      maxConcurrentSessions: 1,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    state.providerAccountLeases.set("provider-lease:acct:1", {
+      sessionId: "legacy",
+      attemptId: "attempt",
+      slot: 1,
+      hostId: "host",
+      providerAccountId: "acct",
+    });
+    expect(accountHasLeaseCapacityOverCap(state, "acct")).toBe(true);
+    expect(accountHasLeaseCapacity(state, "acct")).toBe(false);
+    state.providerAccountLeases.clear();
+    expect(accountHasLeaseCapacity(state, "acct")).toBe(true);
   });
 
   it("treats missing readiness as unavailable and honors host assignment caps", () => {

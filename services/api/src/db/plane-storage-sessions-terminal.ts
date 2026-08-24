@@ -11,6 +11,10 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 type FinishSessionOpts = {
   sessionId: string;
@@ -26,6 +30,7 @@ type FinishSessionOpts = {
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  hostAssignmentLease?: HostAssignmentLease | undefined;
   /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
   preserveProviderAccountLease?: boolean;
 };
@@ -83,6 +88,7 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     removes: [
       "reconnectDeadlineAt",
       "assignmentConnectionId",
+      "hostAssignmentLease",
       ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
     ],
   };
@@ -95,7 +101,7 @@ function finishSessionItems(
   cleanup: ReturnType<typeof sessionDrainActivityDelete>,
 ): Array<Record<string, unknown>> {
   const items: Array<Record<string, unknown>> = [
-    ...(opts.fence
+    ...(!opts.hostAssignmentLease && opts.fence
       ? [
           {
             ConditionCheck: {
@@ -149,6 +155,7 @@ function finishSessionItems(
           opts.sessionId,
           opts.providerAccountLease,
         )),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
     ...cleanup,
   );
   return items;

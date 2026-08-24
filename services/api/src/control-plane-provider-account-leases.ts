@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- provider-account capacity and lease lifecycle share one state helper. */
 import {
   DEFAULT_MAX_CONCURRENT_SESSIONS,
   providerAccountLeaseConcurrencyId,
@@ -83,8 +84,23 @@ export function accountHasLeaseCapacity(
   providerAccountId: string | undefined,
 ): boolean {
   if (!providerAccountId) return true;
-  if (state.storage) return true;
+  if (state.storage) return !accountHasLeaseCapacityOverCap(state, providerAccountId);
   return accountHasLeaseCapacityFromReadModel(state, providerAccountId);
+}
+
+/** Legacy hydration can temporarily leave leases in slots beyond a new cap. */
+export function accountHasLeaseCapacityOverCap(
+  state: ControlPlaneState,
+  providerAccountId: string,
+): boolean {
+  const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
+  const holders = new Set<string>();
+  for (const lease of state.providerAccountLeases.values()) {
+    if (lease.providerAccountId !== providerAccountId) continue;
+    if (lease.slot >= max) return true;
+    holders.add(lease.sessionId);
+  }
+  return holders.size > max;
 }
 
 /** Availability hints use the running-session read model even in durable mode. */
@@ -148,9 +164,16 @@ export function tryAcquireProviderAccountLeaseLocal(
 }
 
 export function providerAccountLeaseWriteOpts(
-  session: Pick<SessionRecord, "providerAccountLease">,
-): { providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]> } {
-  return session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {};
+  session: Pick<SessionRecord, "providerAccountLease"> &
+    Partial<Pick<SessionRecord, "hostAssignmentLease">>,
+): {
+  providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]>;
+  hostAssignmentLease?: NonNullable<SessionRecord["hostAssignmentLease"]>;
+} {
+  return {
+    ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
+    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+  };
 }
 
 /** Idempotent: a second release for the same attempt is a no-op. */
@@ -172,9 +195,13 @@ export function releaseProviderAccountLease(
   session: SessionRecord,
 ): void {
   const lease = session.providerAccountLease;
-  if (!lease) return;
+  if (!lease) {
+    delete session.hostAssignmentLease;
+    return;
+  }
   releaseProviderAccountLeaseLocal(state, session);
   delete session.providerAccountLease;
+  delete session.hostAssignmentLease;
   if (state.storage) {
     queueWrite(state, (storage) =>
       storage!.releaseProviderAccountLease({
@@ -193,6 +220,6 @@ export function releaseProviderAccountLeaseForSession(
 ): SessionRecord {
   if (!session.providerAccountLease) return session;
   releaseProviderAccountLease(state, session);
-  const { providerAccountLease: _, ...next } = session;
+  const { providerAccountLease: _, hostAssignmentLease: __, ...next } = session;
   return next;
 }

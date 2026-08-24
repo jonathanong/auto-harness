@@ -7,6 +7,10 @@ import {
   providerAccountLeaseDeleteItems,
   type ProviderAccountLeaseKey,
 } from "./plane-storage-provider-account-leases.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 function idleClaimedWorktreeUpdate(
   ctx: PlaneStorageCtx,
@@ -45,7 +49,7 @@ function usageLimitRequeueSessionUpdate(
         "SET #s = :queued, statusShard = :statusShard, queueOrder = :queueOrder" +
         ", worktreeId = :null, hostId = :null, errorCode = :code, errorMessage = :message" +
         (opts.extraSet ?? "") +
-        " REMOVE startedAt, ackReceivedAt, providerAccountLease",
+        " REMOVE startedAt, ackReceivedAt, providerAccountLease, hostAssignmentLease",
       ConditionExpression: "#s = :running AND worktreeId = :worktreeId AND attemptId = :attemptId",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: {
@@ -90,6 +94,7 @@ export async function requeueUsageLimitedSession(
     usageLimitedUntil: string;
     errorMessage?: string;
     providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
@@ -118,6 +123,7 @@ export async function requeueUsageLimitedSession(
       opts.sessionId,
       opts.providerAccountLease,
     ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
   ]);
 }
 
@@ -132,6 +138,7 @@ export async function suppressProviderlessUsageLimit(
     targetIndex: number;
     errorMessage?: string;
     providerAccountLease?: ProviderAccountLeaseKey | undefined;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
   },
 ): Promise<boolean> {
   const queueOrder = await queueOrderForSession(ctx, opts.sessionId);
@@ -153,5 +160,6 @@ export async function suppressProviderlessUsageLimit(
       opts.sessionId,
       opts.providerAccountLease,
     ),
+    ...(opts.hostAssignmentLease ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)] : []),
   ]);
 }
