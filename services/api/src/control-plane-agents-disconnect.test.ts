@@ -105,6 +105,7 @@ describe("durable host disconnect", () => {
       lastHeartbeatAt: "new",
       commandProfiles: ["echo-prompt"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 1,
     });
     plane.state.hostConnection.set("h", "B");
     plane.state.worktrees.set("w", {

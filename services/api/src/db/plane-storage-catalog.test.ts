@@ -982,4 +982,124 @@ describe("session log ttl", () => {
       expect(item.ttl).toBeLessThanOrEqual(Math.floor(after / 1000) + SESSION_LOGS_TTL_SECONDS);
     }
   });
+
+  it("conditions fenced log writes on the session attempt", async () => {
+    const commands: TransactWriteCommand[] = [];
+    const ctx: PlaneStorageCtx = {
+      doc: {
+        send: async (command: unknown) => {
+          if (command instanceof TransactWriteCommand) commands.push(command);
+          return {};
+        },
+      } as never,
+      tables: {
+        sessionLogs: "SessionLogs",
+        hostLocks: "HostLocks",
+        sessions: "Sessions",
+      } as never,
+    };
+    const rec = {
+      sessionId: "session-1",
+      timestampSeq: "2026-01-01T00:00:00.000Z#0000000001",
+      stream: "stdout",
+      content: "line",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      seq: 1,
+    };
+    expect(
+      await putLogsFenced(ctx, [rec], {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [
+          { sessionId: "session-1", attemptId: "a" },
+          { sessionId: "session-1", attemptId: "b" },
+        ],
+      }),
+    ).toBe(false);
+    expect(
+      await putLogFenced(ctx, rec, {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [
+          { sessionId: "session-1", attemptId: "a" },
+          { sessionId: "session-1", attemptId: "b" },
+        ],
+      }),
+    ).toBe(false);
+    expect(commands).toEqual([]);
+    expect(
+      await putLogFenced(ctx, rec, {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [
+          { sessionId: "session-1", attemptId: "attempt-1" },
+          { sessionId: "session-1", attemptId: "attempt-1" },
+        ],
+      }),
+    ).toBe(true);
+    commands.length = 0;
+    expect(
+      await putLogFenced(ctx, rec, {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
+      }),
+    ).toBe(true);
+    expect(
+      await putLogsFenced(
+        ctx,
+        [rec, { ...rec, seq: 2, timestampSeq: "2026-01-01T00:00:00.000Z#0000000002" }],
+        {
+          hostId: "host",
+          connectionId: "connection",
+          attempts: [
+            { sessionId: "session-1", attemptId: "attempt-1" },
+            { sessionId: "session-2", attemptId: "attempt-2" },
+          ],
+        },
+      ),
+    ).toBe(true);
+    expect(commands[0]?.input.TransactItems).toEqual(
+      expect.arrayContaining([
+        {
+          ConditionCheck: {
+            TableName: "HostLocks",
+            Key: { hostId: "host" },
+            ConditionExpression: "connectionId = :connectionId",
+            ExpressionAttributeValues: { ":connectionId": "connection" },
+          },
+        },
+        {
+          ConditionCheck: {
+            TableName: "Sessions",
+            Key: { id: "session-1" },
+            ConditionExpression: "attemptId = :attemptId",
+            ExpressionAttributeValues: { ":attemptId": "attempt-1" },
+          },
+        },
+      ]),
+    );
+    expect(
+      commands[1]?.input.TransactItems?.filter(
+        (item) => item.ConditionCheck?.TableName === "Sessions",
+      ),
+    ).toEqual([
+      {
+        ConditionCheck: {
+          TableName: "Sessions",
+          Key: { id: "session-1" },
+          ConditionExpression: "attemptId = :attemptId",
+          ExpressionAttributeValues: { ":attemptId": "attempt-1" },
+        },
+      },
+      {
+        ConditionCheck: {
+          TableName: "Sessions",
+          Key: { id: "session-2" },
+          ConditionExpression: "attemptId = :attemptId",
+          ExpressionAttributeValues: { ":attemptId": "attempt-2" },
+        },
+      },
+    ]);
+  });
 });

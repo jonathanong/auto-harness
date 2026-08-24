@@ -1,4 +1,27 @@
 import type { ControlPlaneState } from "./control-plane-state.ts";
+import { planSessionTransition, transitionEffect } from "./session-transition-planner.ts";
+
+export function ignoreStaleReconnectClaim(
+  state: ControlPlaneState,
+  session: import("./db/types.ts").SessionRecord | null | undefined,
+  attemptId: string | undefined,
+): boolean {
+  if (!session || attemptId === undefined) return false;
+  return Boolean(
+    transitionEffect(
+      planSessionTransition(
+        session,
+        { type: "reconnect_claim", attemptId },
+        {
+          now: state.now(),
+          source: state.storage ? "durable" : "local",
+          usageLimitRetryCeiling: state.usageLimitRetryCeiling,
+        },
+      ),
+      "ignore",
+    ),
+  );
+}
 
 export async function confirmReportedSession(
   state: ControlPlaneState,

@@ -48,6 +48,7 @@ function markHostReady(plane: ControlPlane, hostId: string, repositoryId = "repo
     capabilities: ["scheduled-main-checkout"],
     repositoryIds: [repositoryId],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
   });
   plane.state.hostConnection.set(hostId, connectionId);
   plane.state.hostInventories.set(hostId, {
@@ -142,6 +143,35 @@ describe("queue placement planner", () => {
     expect(
       targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
     ).toBe(false);
+  });
+
+  it("withholds prompt capacity from daemons below the fenced protocol", () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
+    seedBaseCommand(plane);
+    markHostReady(plane, "host");
+    const connection = plane.state.connections.get("host-connection")!;
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 0 });
+    plane.seedWorktree({
+      id: "wt",
+      name: "wt",
+      hostId: "host",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    const catalog = buildProviderCatalog(plane.state);
+    expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
+      "no_idle_worktree",
+    );
+    expect(
+      targetIsAvailable(plane.state, catalog, { commandId: BASE_COMMAND_ID }, Date.parse(NOW)),
+    ).toBe(false);
+    plane.state.connections.set("host-connection", { ...connection, protocolVersion: 1 });
+    expect(explainPromptPlacement(plane.state, catalog, session(), Date.parse(NOW))).toBe(
+      "assignable",
+    );
   });
 
   it("clears an unusable resume pin and reports assignable capacity", () => {

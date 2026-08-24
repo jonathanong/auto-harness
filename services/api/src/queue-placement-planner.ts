@@ -4,7 +4,10 @@ import type { ProviderCatalog, TargetRef } from "@auto-harness/shared";
 import type { SessionRecord, WorktreeRecord } from "./db/types.ts";
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import { compareWorktreesForRoundRobin } from "./control-plane-ordering.ts";
-import { hostEnvironmentReady } from "./control-plane-host-environment.ts";
+import {
+  hostAcceptsNewAssignments,
+  hostEnvironmentReady,
+} from "./control-plane-host-environment.ts";
 import { repositoryAdmissionOpen } from "./control-plane-repository-admission-state.ts";
 import { sessionPrincipalId } from "./control-plane-session-owner.ts";
 import {
@@ -65,6 +68,7 @@ function isSchedulableWorktree(
     worktree.status === "idle" &&
     worktree.online &&
     hostGitReady(state, worktree.hostId) &&
+    hostAcceptsNewAssignments(state, worktree.hostId) &&
     hostEnvironmentReady(state, worktree.hostId, worktree.repositoryId) &&
     !state.drainingHosts.has(worktree.hostId) &&
     !state.disconnectedHosts.has(worktree.hostId)

@@ -17,6 +17,7 @@ describe("WebSocket durable ACK replies", () => {
       await expect(waitForMessage(socket)).resolves.toEqual({
         type: "session:acknowledged",
         sessionId: "ack-session",
+        attemptId: "attempt-1",
       });
       socket.close();
       await waitForClose(socket);

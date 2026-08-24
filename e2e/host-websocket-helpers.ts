@@ -17,6 +17,7 @@ export async function registerObservedHost(
       socket.send(
         JSON.stringify({
           type: "host:register",
+          protocolVersion: 1,
           hostId,
           daemonInstanceId,
           daemonStartedAt,

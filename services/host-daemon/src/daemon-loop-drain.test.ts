@@ -30,6 +30,7 @@ describe("DaemonLoop drain", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "sess-x",
+        attemptId: "attempt-sess-x",
         repositoryId: "demo",
         prompt: "x",
         resolvedArgv: ["printf", "%s", "x"],
@@ -40,7 +41,11 @@ describe("DaemonLoop drain", () => {
       await loop.waitForIdle();
       expect(loop.inflightCount()).toBe(0);
       expect(logs.some((l) => l.includes("draining"))).toBe(true);
-      transport.deliver({ type: "session:cancel", sessionId: "sess-x" });
+      transport.deliver({
+        type: "session:cancel",
+        sessionId: "sess-x",
+        attemptId: "attempt-sess-x",
+      });
       expect(logs.some((l) => l.includes("cancel"))).toBe(true);
       // unknown wire type ignored
       transport.deliver({ type: "ping" } as never);

@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- protocolVersion/runningAttempts invalid cases. */
 import { describe, expect, it } from "vitest";
 
 import { parseHostMessage } from "./ws-hub.ts";
@@ -32,6 +33,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
     const log = {
       type: "session:log",
       sessionId: "session-1",
+      attemptId: "attempt-1",
       stream: "system",
       content: "done",
       timestamp: "2026-08-11T00:00:00.000Z",
@@ -44,6 +46,8 @@ describe("parseHostMessage exhaustive wire validation", () => {
         ...registration,
         capabilities: ["scheduled-main-checkout"],
         runningSessions: ["session-1"],
+        runningAttempts: [{ sessionId: "session-1", attemptId: "attempt-1" }],
+        protocolVersion: 1,
         daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
         runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
@@ -64,6 +68,11 @@ describe("parseHostMessage exhaustive wire validation", () => {
     });
     expect(parseHostMessage({ ...status, exitCode: 0 })).toMatchObject({ exitCode: 0 });
     expect(parseHostMessage(log)).toEqual(log);
+    const legacyLog = { ...log, attemptId: undefined };
+    delete (legacyLog as { attemptId?: string }).attemptId;
+    expect(parseHostMessage(legacyLog)).toBe(null);
+    expect(parseHostMessage(legacyLog, { protocolVersion: 0 })).toEqual(legacyLog);
+    expect(parseHostMessage(legacyLog, { protocolVersion: 1 })).toBe(null);
     expect(
       parseHostMessage({
         type: "host:keepalive",
@@ -100,6 +109,22 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...registration, runningSessions: "session-1" },
       { ...registration, runningSessions: Array(1_001).fill("session-1") },
       { ...registration, runningSessions: [""] },
+      { ...registration, runningAttempts: "session-1" },
+      {
+        ...registration,
+        runningAttempts: Array.from({ length: 1_001 }, () => ({ sessionId: "s", attemptId: "a" })),
+      },
+      { ...registration, runningAttempts: [{ sessionId: "", attemptId: "a" }] },
+      {
+        ...registration,
+        runningAttempts: [
+          { sessionId: "s", attemptId: "a" },
+          { sessionId: "s", attemptId: "b" },
+        ],
+      },
+      { ...registration, protocolVersion: -1 },
+      { ...registration, protocolVersion: 1.5 },
+      { ...registration, protocolVersion: 1_025 },
       { ...registration, daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000" },
       { ...registration, daemonStartedAt: "2026-08-11T00:00:00.000Z" },
       {
@@ -159,6 +184,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
     const log = {
       type: "session:log",
       sessionId: "session-1",
+      attemptId: "attempt-1",
       stream: "stdout",
       content: "ok",
       timestamp: "2026-08-11T00:00:00.000Z",
@@ -179,6 +205,7 @@ describe("parseHostMessage exhaustive wire validation", () => {
       { ...status, errorMessage: "x".repeat(4_097) },
       { ...status, cliResumeRef: "bad\0ref" },
       { ...log, sessionId: "" },
+      { ...log, attemptId: "" },
       { ...log, stream: "debug" },
       { ...log, content: 1 },
       { ...log, content: "x".repeat(32 * 1_024 + 1) },

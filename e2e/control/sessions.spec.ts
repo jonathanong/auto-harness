@@ -401,6 +401,7 @@ test.describe("control plane sessions", () => {
             socket.send(
               JSON.stringify({
                 type: "host:register",
+                protocolVersion: 1,
                 hostId,
                 worktrees: [
                   {
@@ -579,6 +580,7 @@ test.describe("control plane sessions", () => {
               socket.send(
                 JSON.stringify({
                   type: "host:register",
+                  protocolVersion: 1,
                   hostId,
                   worktrees: [
                     {
@@ -783,6 +785,7 @@ test.describe("control plane sessions", () => {
               socket.send(
                 JSON.stringify({
                   type: "host:register",
+                  protocolVersion: 1,
                   hostId,
                   worktrees: [
                     {

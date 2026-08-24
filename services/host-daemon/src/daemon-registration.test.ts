@@ -39,6 +39,11 @@ describe("daemon registration", () => {
         startedAt: "2026-08-11T00:00:00.000Z",
       },
       { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },
+      [
+        { sessionId: "z", attemptId: "2" },
+        { sessionId: "a", attemptId: "b" },
+        { sessionId: "a", attemptId: "a" },
+      ],
     );
     expect(messages).toEqual([
       expect.objectContaining({
@@ -46,7 +51,13 @@ describe("daemon registration", () => {
         hostId: "h",
         capabilities: ["scheduled-main-checkout"],
         repositories: [{ id: "r", path: "/repo", defaultBranch: "main" }],
+        protocolVersion: 1,
         runningSessions: ["a", "z"],
+        runningAttempts: [
+          { sessionId: "a", attemptId: "a" },
+          { sessionId: "a", attemptId: "b" },
+          { sessionId: "z", attemptId: "2" },
+        ],
         daemonInstanceId: "123e4567-e89b-42d3-a456-426614174000",
         daemonStartedAt: "2026-08-11T00:00:00.000Z",
         runtime: { daemonVersion: "0.0.0", gitVersion: "2.36.0", gitReady: true },

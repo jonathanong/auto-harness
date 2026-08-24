@@ -81,6 +81,7 @@ describe("repository admission", () => {
     session.status = "running";
     session.hostId = "host-1";
     session.worktreeId = "worktree-1";
+    session.attemptId = "attempt-1";
     plane.seedWorktree({
       id: "worktree-1",
       name: "worktree",
@@ -97,7 +98,11 @@ describe("repository admission", () => {
       ok: true,
       repository: { admissionState: "draining" },
     });
-    expect(messages).toContainEqual({ type: "session:cancel", sessionId: session.id });
+    expect(messages).toContainEqual({
+      type: "session:cancel",
+      sessionId: session.id,
+      attemptId: "attempt-1",
+    });
     delete plane.state.worktrees.get("worktree-1")!.currentSessionId;
     await expect(plane.reconcileRepositoryDrainsDurable()).resolves.toMatchObject([
       { admissionState: "paused" },

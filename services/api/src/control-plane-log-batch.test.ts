@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- omitted-attempt and mixed-host batch cases stay together. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -7,6 +8,7 @@ import { SESSION_LOGS_TTL_SECONDS } from "./db/dynamo.ts";
 const message = (sessionId: string, seq: number, content = "x") => ({
   type: "session:log" as const,
   sessionId,
+  attemptId: "a",
   stream: "stdout" as const,
   content,
   timestamp: "2026-01-01T00:00:00.000Z",
@@ -48,10 +50,15 @@ describe("durable host log batches", () => {
 
   it("validates chunk bounds and a single current host lease", async () => {
     const plane = new ControlPlane();
-    plane.state.sessions.set("one", { hostId: "host-one" } as never);
-    plane.state.sessions.set("two", { hostId: "host-two" } as never);
+    plane.state.sessions.set("one", { hostId: "host-one", attemptId: "a" } as never);
+    plane.state.sessions.set("two", { hostId: "host-two", attemptId: "a" } as never);
     plane.state.storage = {
-      getSession: async () => null,
+      getSession: async (sessionId: string) =>
+        sessionId === "one"
+          ? { hostId: "host-one", attemptId: "a" }
+          : sessionId === "two"
+            ? { hostId: "host-two", attemptId: "a" }
+            : null,
       getHostLock: async () => "other-connection",
     } as never;
 
@@ -72,7 +79,7 @@ describe("durable host log batches", () => {
 
   it("commits, retains, and publishes a fenced batch in sequence order", async () => {
     const plane = new ControlPlane();
-    plane.state.sessions.set("session", { hostId: "host" } as never);
+    plane.state.sessions.set("session", { hostId: "host", attemptId: "a" } as never);
     plane.state.logs.set(
       "session",
       Array.from({ length: 10_000 }, (_, seq) => ({
@@ -89,7 +96,7 @@ describe("durable host log batches", () => {
     const published: number[] = [];
     plane.state.onLogCommitted = (record) => published.push(record.seq);
     plane.state.storage = {
-      getSession: async () => null,
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
       getHostLock: async () => "connection",
       putLogsFenced: async (records: Array<{ seq: number; ttl?: number }>) => {
         written.push(records.map(({ seq }) => seq));
@@ -132,7 +139,7 @@ describe("durable host log batches", () => {
   it("uses an authoritative session row when the cache has no owner", async () => {
     const plane = new ControlPlane();
     plane.state.storage = {
-      getSession: async () => ({ hostId: "host" }),
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
       getHostLock: async () => "connection",
       putLogsFenced: async () => true,
       deleteLog: async () => {},
@@ -140,5 +147,95 @@ describe("durable host log batches", () => {
     await expect(
       handleHostLogBatchDurable(plane.state, [message("session", 1)], "connection"),
     ).resolves.toEqual({ ok: true });
+  });
+
+  it("ignores cached attempts and writes only the durable current attempt", async () => {
+    const plane = new ControlPlane();
+    plane.state.sessions.set("session", { hostId: "host", attemptId: "old" } as never);
+    const written: string[] = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (records: Array<{ content: string }>) => (
+        written.push(...records.map((record) => record.content)), true
+      ),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [{ ...message("session", 1, "stale"), attemptId: "old" }, message("session", 2, "current")],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(written).toEqual(["current"]);
+  });
+
+  it("fences a batch by the resolved current attempt, including omitted ids", async () => {
+    const plane = new ControlPlane();
+    const fences: Array<{ attempts?: Array<{ sessionId: string; attemptId: string }> }> = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host", attemptId: "a" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (
+        _records: unknown,
+        fence: { attempts?: Array<{ sessionId: string; attemptId: string }> },
+      ) => (fences.push(fence), true),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [
+          {
+            type: "session:log",
+            sessionId: "session",
+            stream: "stdout",
+            content: "legacy",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          },
+          message("session", 2, "current"),
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(fences).toEqual([
+      {
+        hostId: "host",
+        connectionId: "connection",
+        attempts: [
+          { sessionId: "session", attemptId: "a" },
+          { sessionId: "session", attemptId: "a" },
+        ],
+      },
+    ]);
+  });
+
+  it("writes a batch without attempt fences when no attempt id can be resolved", async () => {
+    const plane = new ControlPlane();
+    const fences: Array<{ attempts?: unknown }> = [];
+    plane.state.storage = {
+      getSession: async () => ({ hostId: "host" }),
+      getHostLock: async () => "connection",
+      putLogsFenced: async (_records: unknown, fence: { attempts?: unknown }) => (
+        fences.push(fence), true
+      ),
+    } as never;
+    await expect(
+      handleHostLogBatchDurable(
+        plane.state,
+        [
+          {
+            type: "session:log",
+            sessionId: "session",
+            stream: "stdout",
+            content: "legacy",
+            timestamp: "2026-01-01T00:00:00.000Z",
+            seq: 1,
+          },
+        ],
+        "connection",
+      ),
+    ).resolves.toEqual({ ok: true });
+    expect(fences).toEqual([{ hostId: "host", connectionId: "connection" }]);
   });
 });

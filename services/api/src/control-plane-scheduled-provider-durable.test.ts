@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- connection fixtures include protocolVersion. */
 import { describe, expect, it } from "vitest";
 
 import { createControlPlane } from "./create-plane.ts";
@@ -38,6 +39,7 @@ async function plane(connectionId: string, hostId: string, repositoryId: string)
     commandProfiles: [],
     capabilities: ["scheduled-main-checkout"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
     replaceExisting: true,
   });
   if (!registered.ok) throw new Error(registered.error);

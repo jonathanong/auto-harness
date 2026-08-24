@@ -114,7 +114,7 @@ sequenceDiagram
     WTM->>WTM: git worktree add if needed - prune stale
     Main->>Conn: Connect wss://...?token=
     Conn->>AWS: $connect
-    Conn->>AWS: host:register { hostId, worktrees[], capabilities[] }
+    Conn->>AWS: host:register { hostId, worktrees[], capabilities[], protocolVersion, runningAttempts[] }
     AWS-->>Conn: host:registered / session:assign (optional)
     Note over Main: Event loop: messages, sessions, heartbeats
 ```
@@ -128,10 +128,14 @@ On validation failure (missing repo path, bad JSON, missing key), the process ex
 ### Connection Manager
 
 - Opens WebSocket with `Authorization: Bearer <apiKey>` (the key is kept out of URL/query logs)
-- Sends `host:register` immediately after open
-- Routes inbound messages by `type` to Session Runner
+- Sends `host:register` immediately after open, including `protocolVersion` and
+  attempt-fenced `runningAttempts` (plus `runningSessions` for older control planes)
+- Routes inbound messages by protocol command (`session:assign`, `session:cancel`,
+  `session:acknowledged`, drain). In-flight state is keyed by `{sessionId, attemptId}`,
+  not session id alone, so a delayed cancel/ACK/log from an old attempt cannot touch
+  a newer assignment
 - Auto-reconnect with exponential backoff: 1s → 2s → 4s → … → **max 60s**
-- On reconnect: re-register full inventory + any **in-progress** sessions still running locally
+- On reconnect: re-register full inventory + any **in-progress** attempts still running locally
 - Responds to server `ping` with `pong`
 - Handles `post` failures only as disconnect (server detects stale connections separately)
 
@@ -251,7 +255,7 @@ When a CLI emits a session/conversation id, parse and return it on terminal `ses
 | Working directory | Worktree path, or main repo path for scheduled sessions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | Environment       | Small baseline (`PATH`, home/temp/locale/terminal fields) plus explicit `HARNESS_CHILD_ENV_ALLOWLIST`; control-plane `HARNESS_*` credentials are never inherited. Repo-local env files may be sourced only inside trusted setup scripts. **This includes CLI credential env vars** — `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, and similar are silently dropped unless explicitly added to `HARNESS_CHILD_ENV_ALLOWLIST`. A CLI configured for API-key auth (rather than a logged-in subscription CLI, which reads its own credential file under `$HOME`) will fail with what looks like a CLI-side auth error, not an obviously harness-side config problem — check the allowlist first. |
 | Timeout           | A single deadline covers checkout checks, setup, and the primary command. Running processes receive SIGTERM, then SIGKILL after a 5-second grace period; report `timed_out`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| Cancel            | `session:cancel` aborts setup or the primary command through the same SIGTERM → 5s → SIGKILL chain; report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Cancel            | `session:cancel { sessionId, attemptId }` aborts only that attempt through the same SIGTERM → 5s → SIGKILL chain; delayed cancels for an old attempt are ignored. Report exactly one `cancelled` terminal status.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 A repository-principal session drain uses this same cancel path. The control plane fences the
 exact assignment attempt before sending `session:cancel`; the daemon reports its normal terminal

@@ -943,6 +943,7 @@ describe("durable control-plane transitions", () => {
       status: "running",
       queueShard: 0,
       createdAt: "2026-01-01T00:00:00.000Z",
+      attemptId: "a",
     });
     const logCreated = new ControlPlane({
       storage: logFailing,
@@ -952,6 +953,7 @@ describe("durable control-plane transitions", () => {
       logCreated.handleHostMessageDurable({
         type: "session:log",
         sessionId: "session-failing-log",
+        attemptId: "a",
         stream: "stdout",
         content: "should not cache",
         timestamp: "2026-01-01T00:00:00.000Z",
@@ -1516,6 +1518,7 @@ describe("durable control-plane transitions", () => {
         await plane.handleHostMessageDurable({
           type: "session:log",
           sessionId: optionsSession.id,
+          attemptId: "a",
           stream: "stdout",
           content: "coverage",
           timestamp: "2026-01-01T00:00:00.000Z",

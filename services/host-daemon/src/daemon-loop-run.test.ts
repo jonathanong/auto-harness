@@ -21,6 +21,7 @@ describe("DaemonLoop run", () => {
       transport.deliver({
         type: "session:assign",
         sessionId: "scheduled-main",
+        attemptId: "attempt-scheduled-main",
         sessionType: "scheduled",
         repositoryId: "demo",
         prompt: "run maintenance",
@@ -71,6 +72,7 @@ describe("DaemonLoop run", () => {
       const assign: HostWireMessage = {
         type: "session:assign",
         sessionId: "sess-loop",
+        attemptId: "attempt-sess-loop",
         repositoryId: "demo",
         prompt: "hello-loop",
         resolvedArgv: ["printf", "%s\n", "resume-ref: daemon-ref"],
@@ -177,6 +179,7 @@ describe("DaemonLoop run", () => {
         transport.deliver({
           type: "session:assign",
           sessionId: `sess-${testCase.status}-resume-ref`,
+          attemptId: `attempt-sess-${testCase.status}-resume-ref`,
           repositoryId: "demo",
           prompt: "continue",
           resolvedArgv: ["fake-cli"],

@@ -69,11 +69,13 @@ describe("WebSocket transport residual runtime branches", () => {
     await transport.registered;
     socket.emit("message", Buffer.from("{"));
     for (const message of [
-      { type: "session:acknowledged", sessionId: "" },
-      { type: "session:acknowledged", sessionId: "x".repeat(513) },
-      { type: "session:acknowledged", sessionId: "session-1" },
+      { type: "session:acknowledged", sessionId: "", attemptId: "a" },
+      { type: "session:acknowledged", sessionId: "x".repeat(513), attemptId: "a" },
+      { type: "session:acknowledged", sessionId: "session-1", attemptId: "a" },
       { type: "session:assign" },
-      { type: "session:cancel" },
+      { type: "session:cancel", sessionId: "session-1", attemptId: "a" },
+      { type: "session:acknowledged", sessionId: "session-2" },
+      { type: "session:cancel", sessionId: "session-2" },
       { type: "host:drain" },
     ])
       socket.server(message);
@@ -81,6 +83,8 @@ describe("WebSocket transport residual runtime branches", () => {
     expect(received).toEqual([
       "session:acknowledged",
       "session:assign",
+      "session:cancel",
+      "session:acknowledged",
       "session:cancel",
       "host:drain",
     ]);
@@ -163,6 +167,7 @@ function log() {
   return {
     type: "session:log" as const,
     sessionId: "session-1",
+    attemptId: "a",
     stream: "stdout" as const,
     content: "line",
     timestamp: "2026-08-11T00:00:00.000Z",

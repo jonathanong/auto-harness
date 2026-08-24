@@ -42,7 +42,7 @@ describe("durable host-message fencing", () => {
     expect(deliveries).toEqual([
       {
         hostId: "h",
-        message: { type: "session:acknowledged", sessionId: "s" },
+        message: { type: "session:acknowledged", sessionId: "s", attemptId: "a" },
       },
     ]);
 
@@ -169,6 +169,7 @@ describe("durable host-message fencing", () => {
         {
           type: "session:log",
           sessionId: "s",
+          attemptId: "a",
           stream: "stdout",
           content: "x",
           timestamp: "t",
@@ -234,6 +235,7 @@ describe("durable host-message fencing", () => {
         {
           type: "session:log",
           sessionId: "s",
+          attemptId: "a",
           stream: "stdout",
           content: "x",
           timestamp: "t",
@@ -269,6 +271,7 @@ describe("durable host-message fencing", () => {
       local.handleHostMessage({
         type: "session:log",
         sessionId: "done",
+        attemptId: "a",
         stream: "stdout",
         content: "x".repeat(32 * 1024 + 1),
         timestamp: "t",

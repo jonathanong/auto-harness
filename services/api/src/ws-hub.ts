@@ -3,9 +3,11 @@ import type { Server as HttpServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 
 import {
+  ATTEMPT_FENCED_PROTOCOL_VERSION,
   HOST_CAPABILITIES,
   isHostRuntimeReport,
   isHostCapability,
+  isHostRunningAttempt,
   isValidCliResumeRef,
   isSessionStatus,
   principalHas,
@@ -154,7 +156,13 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             // The client must not equate a successful WebSocket write with a
             // server acknowledgement. This reply is emitted only after the
             // fenced, durable acknowledgement transaction has committed.
-            socket.send(JSON.stringify({ type: "session:acknowledged", sessionId: msg.sessionId }));
+            socket.send(
+              JSON.stringify({
+                type: "session:acknowledged",
+                sessionId: msg.sessionId,
+                attemptId: msg.attemptId,
+              }),
+            );
           } else if (
             msg.type === "host:status" &&
             result.hostDraining === msg.hostId &&
@@ -244,7 +252,11 @@ export function createPlaneWsBridge(options: WsBridgeOptions = {}): {
             socket.close(1008, "message rate exceeded");
             return;
           }
-          const msg = parseHostMessage(raw);
+          const protocolVersion =
+            boundConnectionId !== null
+              ? (plane.state.connections.get(boundConnectionId)?.protocolVersion ?? 0)
+              : ATTEMPT_FENCED_PROTOCOL_VERSION;
+          const msg = parseHostMessage(raw, { protocolVersion });
           if (!msg) {
             flushLogBatch();
             accepting = false;
@@ -334,7 +346,10 @@ async function authenticateSocket(
   return token ? await auth.authenticateApiKey(token) : null;
 }
 
-export function parseHostMessage(raw: unknown): HostToServerMessage | null {
+export function parseHostMessage(
+  raw: unknown,
+  options?: { protocolVersion?: number },
+): HostToServerMessage | null {
   if (typeof raw !== "string" && !Buffer.isBuffer(raw) && (!raw || typeof raw !== "object"))
     return null;
   try {
@@ -370,6 +385,25 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
           (!Array.isArray(message.runningSessions) ||
             message.runningSessions.length > 1_000 ||
             !message.runningSessions.every((sessionId) => boundedText(sessionId)))) ||
+        (message.runningAttempts !== undefined &&
+          (!Array.isArray(message.runningAttempts) ||
+            message.runningAttempts.length > 1_000 ||
+            !message.runningAttempts.every(
+              (attempt) =>
+                isHostRunningAttempt(attempt) &&
+                boundedText(attempt.sessionId) &&
+                boundedText(attempt.attemptId),
+            ) ||
+            new Set(
+              message.runningAttempts.map((attempt) =>
+                isHostRunningAttempt(attempt) ? attempt.sessionId : "",
+              ),
+            ).size !== message.runningAttempts.length)) ||
+        (message.protocolVersion !== undefined &&
+          (typeof message.protocolVersion !== "number" ||
+            !Number.isSafeInteger(message.protocolVersion) ||
+            message.protocolVersion < 0 ||
+            message.protocolVersion > 1_024)) ||
         (message.daemonInstanceId === undefined) !== (message.daemonStartedAt === undefined) ||
         (message.daemonInstanceId !== undefined && !isUuid(message.daemonInstanceId)) ||
         (message.daemonStartedAt !== undefined &&
@@ -409,7 +443,12 @@ export function parseHostMessage(raw: unknown): HostToServerMessage | null {
     if (message.type === "session:log") {
       const timestamp = message.timestamp;
       const stream = message.stream;
+      const protocolVersion = options?.protocolVersion ?? ATTEMPT_FENCED_PROTOCOL_VERSION;
+      const attemptIdOk =
+        boundedText(message.attemptId) ||
+        (protocolVersion < ATTEMPT_FENCED_PROTOCOL_VERSION && message.attemptId === undefined);
       return boundedText(message.sessionId) &&
+        attemptIdOk &&
         (stream === "stdout" || stream === "stderr" || stream === "system") &&
         typeof message.content === "string" &&
         Buffer.byteLength(message.content) <= MAX_LOG_CHUNK_BYTES &&
@@ -464,7 +503,14 @@ function isAllowedMessage(
   if (!hostId) return false;
   if (msg.type === "host:keepalive" || msg.type === "host:status") return msg.hostId === hostId;
   const session = plane.getSession(msg.sessionId);
-  return Boolean(session && session.hostId === hostId);
+  if (!session) return false;
+  if (session.hostId === hostId) return true;
+  return (
+    "attemptId" in msg &&
+    msg.attemptId !== undefined &&
+    session.attemptId !== undefined &&
+    msg.attemptId !== session.attemptId
+  );
 }
 
 export function attachHostWsHub(server: HttpServer, plane: ControlPlane): WsHub {

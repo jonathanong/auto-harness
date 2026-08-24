@@ -69,7 +69,11 @@ export async function cancelSessionDurable(
       };
       state.sessions.set(id, updatedSession);
       noteSlackSessionLifecycle(state, updatedSession);
-      state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
+      state.onHostMessage?.(assignment.hostId, {
+        type: "session:cancel",
+        sessionId: id,
+        attemptId: assignment.attemptId,
+      });
       return { ok: true, session: toPublic(state, updatedSession) };
     }
     if (
@@ -115,7 +119,11 @@ export async function cancelSessionDurable(
     // assignment.hostId (not session.hostId) — the guard above validated this exact
     // value as the host that actually holds the lease being cancelled; session is the
     // separately-fetched fresh record and isn't guaranteed to agree in a race.
-    state.onHostMessage?.(assignment.hostId, { type: "session:cancel", sessionId: id });
+    state.onHostMessage?.(assignment.hostId, {
+      type: "session:cancel",
+      sessionId: id,
+      attemptId: assignment.attemptId,
+    });
     return { ok: true, session: toPublic(state, updatedSession) };
   }
 

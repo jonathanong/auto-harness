@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
 import {
+  hostAcceptsNewAssignments,
   hostEnvironmentReady,
   repositoryEnvironmentReadiness,
 } from "./control-plane-host-environment.ts";
@@ -95,5 +96,24 @@ describe("host environment readiness", () => {
       missing: ["REPO_TOKEN"],
       ready: false,
     });
+  });
+
+  it("withholds new assignments from daemons below the fenced protocol", () => {
+    const plane = new ControlPlane();
+    expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(false);
+    plane.state.hostConnection.set("host-1", "c1");
+    plane.state.connections.set("c1", {
+      connectionId: "c1",
+      type: "host",
+      hostId: "host-1",
+      connectedAt: "now",
+      lastHeartbeatAt: "now",
+    });
+    expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(false);
+    plane.state.connections.set("c1", {
+      ...plane.state.connections.get("c1")!,
+      protocolVersion: 1,
+    });
+    expect(hostAcceptsNewAssignments(plane.state, "host-1")).toBe(true);
   });
 });

@@ -78,6 +78,7 @@ function providerState() {
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+      protocolVersion: 1,
     });
     state.hostConnection.set(hostId, `connection-${hostId}`);
     state.hostInventories.set(hostId, {

@@ -267,6 +267,7 @@ function log(seq: number) {
   return {
     type: "session:log" as const,
     sessionId: "s1",
+    attemptId: "a",
     stream: "stdout" as const,
     content: "log",
     timestamp: "2026-01-01T00:00:00.000Z",
@@ -282,6 +283,7 @@ function assign(sessionId: string) {
   return {
     type: "session:assign" as const,
     sessionId,
+    attemptId: `attempt-${sessionId}`,
     repositoryId: "r",
     prompt: "p",
     resolvedArgv: ["c"],

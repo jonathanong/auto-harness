@@ -6,6 +6,7 @@ import { WsOutboundBuffer } from "./ws-outbound-buffer.ts";
 const log = (seq: number) => ({
   type: "session:log" as const,
   sessionId: "s1",
+  attemptId: "a1",
   stream: "stdout" as const,
   content: "x",
   timestamp: "2026-01-01T00:00:00.000Z",

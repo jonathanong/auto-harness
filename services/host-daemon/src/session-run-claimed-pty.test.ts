@@ -29,7 +29,7 @@ describe("claimed session PTY output", () => {
 
     const outcome = await runClaimedSession(
       systemRunner,
-      new LogStreamer("session-1", (chunk) => logs.push(chunk)),
+      new LogStreamer("session-1", "attempt-1", (chunk) => logs.push(chunk)),
       logs,
       baseAssign({ resumeRefCapture: { stream: "stderr", linePrefix: "resume: " } }),
       claimed,

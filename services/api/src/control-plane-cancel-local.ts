@@ -31,7 +31,11 @@ export function cancelSession(
   session.errorMessage = "cancelled by operator";
   session.completedAt = state.now();
   if (cancel.holdAssignment && hostId) {
-    state.onHostMessage?.(hostId, { type: "session:cancel", sessionId: id });
+    state.onHostMessage?.(hostId, {
+      type: "session:cancel",
+      sessionId: id,
+      attemptId: session.attemptId!,
+    });
     persistSession(state, session);
     return { ok: true, session: toPublic(state, session) };
   }

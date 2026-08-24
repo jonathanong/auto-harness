@@ -10,6 +10,7 @@ import {
   type ArchiveMetadata,
   type ConnectionRecord,
   type AuthAccountRecord,
+  type HostLogFence,
   type LogQuery,
   type LogRecord,
   type PlaneStorageCtx,
@@ -654,14 +655,11 @@ export class DynamoPlaneStorageBase {
     return catalog.putLog(this.ctx, rec);
   }
 
-  putLogFenced(rec: LogRecord, fence: { hostId: string; connectionId: string }): Promise<boolean> {
+  putLogFenced(rec: LogRecord, fence: HostLogFence): Promise<boolean> {
     return catalog.putLogFenced(this.ctx, rec, fence);
   }
 
-  putLogsFenced(
-    records: readonly LogRecord[],
-    fence: { hostId: string; connectionId: string },
-  ): Promise<boolean> {
+  putLogsFenced(records: readonly LogRecord[], fence: HostLogFence): Promise<boolean> {
     return catalog.putLogsFenced(this.ctx, records, fence);
   }
 

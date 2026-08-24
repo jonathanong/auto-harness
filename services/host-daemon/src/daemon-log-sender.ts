@@ -12,6 +12,7 @@ export async function sendDaemonLog(
     .send({
       type: "session:log",
       sessionId: chunk.sessionId,
+      attemptId: chunk.attemptId,
       stream: chunk.stream,
       content: chunk.content,
       timestamp: chunk.timestamp,

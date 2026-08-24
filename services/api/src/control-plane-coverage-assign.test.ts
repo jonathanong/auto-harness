@@ -15,6 +15,7 @@ function markHostReady(plane: ControlPlane, hostId: string): void {
     commandProfiles: [],
     repositoryIds: ["repo-1"],
     runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
+    protocolVersion: 1,
   });
   plane.state.hostConnection.set(hostId, connectionId);
 }

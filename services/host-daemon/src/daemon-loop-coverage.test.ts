@@ -6,6 +6,8 @@ import { DaemonLoop, createLoopbackTransport } from "./daemon-loop.ts";
 import { createAcknowledgingLoopbackTransport, makeRepo } from "./daemon-loop-test-helpers.ts";
 
 type Inflight = {
+  sessionId: string;
+  attemptId: string;
   controller: AbortController;
   work: Promise<void>;
   acknowledged: boolean;
@@ -14,13 +16,22 @@ type Inflight = {
 type LoopInternals = {
   inflight: Map<string, Inflight>;
   handleServerMessage(message: HostWireMessage): Promise<void>;
-  waitForAcknowledgement(sessionId: string, signal: AbortSignal): Promise<boolean>;
+  waitForAcknowledgement(
+    sessionId: string,
+    attemptId: string,
+    signal: AbortSignal,
+  ): Promise<boolean>;
 };
+
+function attemptIdFor(sessionId: string): string {
+  return `attempt-${sessionId}`;
+}
 
 function assign(sessionId: string): Extract<HostWireMessage, { type: "session:assign" }> {
   return {
     type: "session:assign",
     sessionId,
+    attemptId: attemptIdFor(sessionId),
     repositoryId: "demo",
     prompt: "hello",
     resolvedArgv: ["printf", "%s", "hello"],
@@ -109,31 +120,41 @@ describe("DaemonLoop coverage guards", () => {
       });
       const internals = loop as unknown as LoopInternals;
       const raced: Inflight = {
+        sessionId: "raced",
+        attemptId: attemptIdFor("raced"),
         controller: new AbortController(),
         work: Promise.resolve(),
         acknowledged: false,
       };
-      internals.inflight.set("raced", raced);
+      internals.inflight.set(`raced\0${raced.attemptId}`, raced);
       markAcknowledged = () => {
         raced.acknowledged = true;
       };
       await expect(
-        internals.waitForAcknowledgement("raced", raced.controller.signal),
+        internals.waitForAcknowledgement("raced", raced.attemptId, raced.controller.signal),
       ).resolves.toBe(true);
 
-      internals.inflight.set("early", {
+      internals.inflight.set(`early\0${attemptIdFor("early")}`, {
+        sessionId: "early",
+        attemptId: attemptIdFor("early"),
         controller: new AbortController(),
         work: Promise.resolve(),
         acknowledged: false,
       });
-      internals.inflight.set("duplicate", {
+      internals.inflight.set(`duplicate\0${attemptIdFor("duplicate")}`, {
+        sessionId: "duplicate",
+        attemptId: attemptIdFor("duplicate"),
         controller: new AbortController(),
         work: Promise.resolve(),
         acknowledged: true,
       });
-      await internals.handleServerMessage({ type: "session:acknowledged", sessionId: "early" });
+      await internals.handleServerMessage({
+        type: "session:acknowledged",
+        sessionId: "early",
+        attemptId: attemptIdFor("early"),
+      });
       await internals.handleServerMessage(assign("duplicate"));
-      expect(lines).toContain("duplicate assign ignored for duplicate");
+      expect(lines).toContain("duplicate assign ignored for duplicate attempt attempt-duplicate");
       loop.stop();
     } finally {
       cleanup();

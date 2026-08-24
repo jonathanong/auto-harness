@@ -100,6 +100,7 @@ async function connectHost(hostId: string, repositoryId: string, worktreeId: str
       socket.send(
         JSON.stringify({
           type: "host:register",
+          protocolVersion: 1,
           hostId,
           worktrees: [
             {

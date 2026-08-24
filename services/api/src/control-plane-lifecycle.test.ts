@@ -153,6 +153,7 @@ describe("ControlPlane lifecycle", () => {
     plane.handleHostMessage({
       type: "session:log",
       sessionId: "sess-1",
+      attemptId: assigned.attemptId!,
       stream: "stdout",
       content: "hi",
       timestamp: "2026-01-01T00:00:00.000Z",
