@@ -422,7 +422,7 @@ created by the Lambda service on first invocation, not by CDK**, so it is not a
 stack resource and `cdk destroy` never touches it. Runtime and web Lambdas now
 set 14-day CloudWatch log retention, so leftover
 `/aws/lambda/AutoHarness-<environment>*` groups stop accumulating events after
-that window — retention expires log *events*, not the log group resource
+that window — retention expires log _events_, not the log group resource
 itself, so the (now-empty) groups remain until deleted manually.
 
 Similarly, when access logs were ever enabled (`HARNESS_ACCESS_LOGS_ENABLED=1`),
