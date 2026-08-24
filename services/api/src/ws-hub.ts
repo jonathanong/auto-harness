@@ -552,8 +552,7 @@ function isAllowedMessage(
     "attemptId" in msg &&
     msg.attemptId !== undefined &&
     session.attemptId !== undefined &&
-    msg.attemptId === session.attemptId &&
-    session.timedOutHostId === hostId
+    (msg.attemptId !== session.attemptId || session.timedOutHostId === hostId)
   );
 }
 
