@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+/* eslint-disable max-lines -- archive retry regressions cover durable and in-memory fences. */
+import { describe, expect, it, vi } from "vitest";
 
 import {
   archiveSessionLogs,
@@ -152,6 +153,55 @@ describe("archive retry state", () => {
       retryState: "pending",
       retryOrder: "new-claim",
     });
+  });
+
+  it("does not restore a stale same-key upload over a newer durable retry generation", async () => {
+    const uploaded: string[] = [];
+    const key = "sessions/durable-fenced/logs.jsonl";
+    const newer: import("./control-plane-types.ts").ArchiveMetadata = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      retryState: "processing",
+      retryOrder: "new-claim",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    const state = createControlPlaneState({
+      archiveWriter: { putArchive: async ({ body }) => void uploaded.push(body) },
+      storage: {
+        getArchive: async () => newer,
+        listLogs: async () => [{ timestamp: "1", stream: "stdout", content: "old" }],
+        completeArchiveRetry: async () => false,
+      } as never,
+    });
+    await retrySessionArchiveIfNeeded(state, "durable-fenced", {
+      retryState: "processing",
+      retryOrder: "old-claim",
+    });
+    expect(uploaded).toEqual(['{"timestamp":"1","stream":"stdout","content":"old"}\n']);
+  });
+
+  it("persists a retry marker without reading logs when the writer is absent", async () => {
+    const putArchive = vi.fn(async () => undefined);
+    const listLogs = vi.fn(async () => {
+      throw new Error("WS invocation must not materialize logs");
+    });
+    const state = createControlPlaneState({
+      storage: { putArchive, listLogs } as never,
+    });
+    const object = await archiveSessionLogs(state, "ws-only");
+    expect(object).toMatchObject({ key: "sessions/ws-only/logs.jsonl", body: "" });
+    expect(listLogs).not.toHaveBeenCalled();
+    expect(putArchive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "sessions/ws-only/logs.jsonl",
+        status: "pending",
+        objectStored: false,
+        retryState: "pending",
+      }),
+    );
   });
 
   it("restores the current logs when a stale same-key upload loses its completion fence", async () => {

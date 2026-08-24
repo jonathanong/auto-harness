@@ -904,6 +904,26 @@ describe("Lambda runtime adapters", () => {
     expect(create).toHaveBeenCalledTimes(1);
   });
 
+  it("forwards the real AWS cron context instead of treating the event as context", async () => {
+    const cron = vi.fn(async () => ({
+      ackDeadlinesEnforced: 0,
+      archivesRetried: 0,
+      queuedAssigned: 0,
+      scheduledAssigned: 0,
+      schedulesFired: 0,
+      staleHostsReclaimed: 0,
+    }));
+    const handlers = createLambdaHandlers(async () => ({
+      cron,
+      rest: vi.fn(async () => ({ statusCode: 204 })),
+      websocket: vi.fn(async () => ({ statusCode: 200 })),
+    }));
+    const event = { source: "aws.events" };
+    const context = { getRemainingTimeInMillis: () => 9_000 };
+    await handlers.cron(event, context);
+    expect(cron).toHaveBeenCalledWith(event, context);
+  });
+
   it("retries construction on the next invocation instead of caching a failed cold start", async () => {
     // A rejected promise is not null/undefined, so a bare `runtime ??= createRuntime()`
     // would cache the failure forever — every invocation this container ever handles

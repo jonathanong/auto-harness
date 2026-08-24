@@ -43,7 +43,8 @@ type PlaneBundle = Awaited<ReturnType<typeof createControlPlane>>;
 type ManagementClient = Pick<ApiGatewayManagementApiClient, "send">;
 
 export type LambdaRuntime = {
-  cron: (context?: LambdaCronContext) => Promise<CronResult>;
+  /** Accept direct test/runtime context or the real AWS (event, context) pair. */
+  cron: (eventOrContext?: unknown, context?: LambdaCronContext) => Promise<CronResult>;
   rest: (event: HttpApiEvent) => Promise<HttpApiResponse>;
   websocket: (event: WebSocketEvent) => Promise<{ statusCode: number }>;
 };
@@ -277,7 +278,9 @@ export async function createLambdaRuntime(
   });
 
   return {
-    async cron(context?: LambdaCronContext) {
+    async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      const context =
+        lambdaContext ?? (isLambdaCronContext(eventOrContext) ? eventOrContext : undefined);
       return runInvocation(async () => {
         // Bounded and resumable: never make Lambda initialization scan history.
         await created.plane.migrateSessionDrainActivityLedgerPage();
@@ -403,6 +406,14 @@ export async function createLambdaRuntime(
   };
 }
 
+function isLambdaCronContext(value: unknown): value is LambdaCronContext {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { getRemainingTimeInMillis?: unknown }).getRemainingTimeInMillis === "function"
+  );
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required in the Lambda runtime`);
@@ -427,8 +438,8 @@ export function createLambdaHandlers(
     return runtime;
   };
   return {
-    async cron(context?: LambdaCronContext) {
-      return (await getRuntime()).cron(context);
+    async cron(eventOrContext?: unknown, lambdaContext?: LambdaCronContext) {
+      return (await getRuntime()).cron(eventOrContext, lambdaContext);
     },
     async rest(event) {
       return (await getRuntime()).rest(event);

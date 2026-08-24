@@ -6,17 +6,36 @@ export async function archiveSessionLogs(
   sessionId: string,
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
 ): Promise<ArchiveObject> {
+  const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
+  // REST/WebSocket Lambdas do not have S3 credentials.  Persist only a bounded retry pointer;
+  // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
+  // do not materialize a potentially huge transcript in the short-lived WS invocation.
+  if (!state.archiveWriter) {
+    const pending: ArchiveMetadata = {
+      key,
+      contentType: "application/x-ndjson",
+      bodyBytes: 0,
+      status: "pending",
+      objectStored: false,
+      updatedAt: state.now(),
+      retryState: retryClaim?.retryState ?? "pending",
+      retryOrder: retryClaim?.retryOrder ?? `${state.now()}#${key}`,
+    };
+    if (state.storage && !retryClaim) await state.storage.putArchive(pending);
+    if (!retryClaim) state.archives.set(key, pending);
+    return { key, body: "", contentType: pending.contentType };
+  }
   // Only this session's log writes. Awaiting every pending log write made archive cost
   // scale with total output since process start rather than with the session's own.
   await Promise.all(state.pendingLogPersists.get(sessionId) ?? []);
   const body = await archiveBody(state, sessionId);
   const object: ArchiveObject = {
-    key: `${state.archivePrefix}${sessionId}/logs.jsonl`,
+    key,
     body,
     contentType: "application/x-ndjson",
   };
   const pending: ArchiveMetadata = {
-    key: object.key,
+    key,
     contentType: object.contentType,
     bodyBytes: Buffer.byteLength(object.body),
     status: "pending",
@@ -43,7 +62,15 @@ export async function archiveSessionLogs(
   if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
     const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
     if (committed) state.archives.set(object.key, complete);
-    else await restoreCompletedArchiveObject(state, object, sessionId);
+    else {
+      // A newer retry generation may already own this key.  Never overwrite its in-flight
+      // upload with a stale worker's same-key restoration; only repair after observing a
+      // completed durable generation.
+      const current = await state.storage.getArchive(object.key);
+      if (current?.status === "complete" && current.objectStored) {
+        await restoreCompletedArchiveObject(state, object, sessionId);
+      }
+    }
   } else if (retryClaim) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
