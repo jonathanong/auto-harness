@@ -149,7 +149,11 @@ On the agent host:
 | `HARNESS_API_URL`             | Control plane base — the CloudFront `WebUrl` from the deploy output ([deploy-aws.md](deploy-aws.md#stack-parameters-and-outputs)) on AWS, or `http://127.0.0.1:7420` locally. **Never** a raw `RestApiUrl`/`WebSocketUrl` `*.execute-api.*.amazonaws.com` value — see [aws.md](aws.md#websocket-wss)                                                   |
 | `HARNESS_API_KEY`             | Service account `hns_…`                                                                                                                                                                                                                                                                                                                                |
 | `HARNESS_CHILD_ENV_ALLOWLIST` | Optional comma-separated non-`HARNESS_*` names to forward to repository commands (for example `GITHUB_TOKEN`). Every listed name must also be defined in the persisted service environment; installation and daemon startup reject malformed, reserved, duplicate, or undefined names without printing their values. Empty defined values are allowed. |
+| `HARNESS_UPDATE_MANIFEST_URL` | Optional HTTPS signed-update manifest. Set this and `HARNESS_UPDATE_PUBLIC_KEY` together to enable updates.                                                                                                                                                                                                                                            |
+| `HARNESS_UPDATE_PUBLIC_KEY`   | Ed25519 PEM used to verify the update manifest. In an EnvironmentFile, encode line breaks as literal `\\n`.                                                                                                                                                                                                                                            |
 | `HARNESS_UPDATE_INSTALL_DIR`  | Optional persistent signed-update root. On Linux it defaults to `/opt/auto-harness`; when set, use the same absolute path for the checkout/current tree and the stable launcher selects its `current` directory.                                                                                                                                       |
+| `HARNESS_UPDATE_POLL_MS`      | Optional integer poll interval in milliseconds. `0` checks once on startup; the maximum is `2147483647` (Node's largest timer delay).                                                                                                                                                                                                                  |
+| `HARNESS_DAEMON_VERSION`      | Optional fallback current version before an activated `current` tree supplies its persisted marker.                                                                                                                                                                                                                                                    |
 
 If the CloudFront WebSocket hop ever needs to be bypassed (deploy-day diagnosis only, not a
 supported steady-state configuration), add `--ws wss://<WebSocketUrl>` to this unit's
@@ -328,7 +332,7 @@ runs collapse into one update. Set `HARNESS_UPDATE_MANIFEST_URL` (https),
 optional `HARNESS_UPDATE_INSTALL_DIR` (defaults: `/opt/auto-harness` on Linux,
 `~/Library/Application Support/auto-harness/updates` on macOS, and
 `%APPDATA%\\auto-harness\\updates` on Windows), and optional `HARNESS_UPDATE_POLL_MS` (`0` = once
-per start) to enable the
+per start; maximum `2147483647`) to enable the
 production HTTPS fetch, filesystem install, and systemd/launchd/schtasks restart adapters. On
 Linux, the checked-in manual unit uses a stable wrapper outside the activated tree; that wrapper
 reads the persisted `HARNESS_UPDATE_INSTALL_DIR`, so set `UPDATE_ROOT` above to the same path when

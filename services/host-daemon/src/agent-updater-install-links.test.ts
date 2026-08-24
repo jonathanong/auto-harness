@@ -1,4 +1,12 @@
-import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -130,10 +138,21 @@ describe("file update installer links", () => {
   it("uses Windows junction pointers without requiring symlink privilege", async () => {
     const { rootDir, cleanup } = tempRoot();
     try {
+      const current = join(rootDir, "current");
+      let rejectReplacement = false;
       const installer = createFileUpdateInstaller({
         rootDir,
         extract: runnableExtract,
         platform: "win32",
+        renamePath: (source, destination) => {
+          if (destination === current && existsSync(destination)) {
+            throw new Error("Windows cannot replace an existing junction");
+          }
+          if (rejectReplacement && source === `${current}.next`) {
+            throw new Error("replacement junction failed");
+          }
+          renameSync(source, destination);
+        },
       });
       await installer.stage({ version: "1.2.0", artifact: new Uint8Array() });
       await installer.activate("1.2.0");
@@ -141,9 +160,18 @@ describe("file update installer links", () => {
         realpathSync(join(rootDir, "versions", "1.2.0")),
       );
       await installer.stage({ version: "1.3.0", artifact: new Uint8Array() });
+      rejectReplacement = true;
+      await expect(installer.activate("1.3.0")).rejects.toThrow("replacement junction failed");
+      expect(readInstalledVersion(rootDir)).toBe("1.2.0");
+      expect(existsSync(`${current}.next`)).toBe(false);
+      expect(existsSync(`${current}.next.previous`)).toBe(false);
+
+      rejectReplacement = false;
       await installer.activate("1.3.0");
+      expect(existsSync(`${current}.next.previous`)).toBe(false);
       await installer.rollback();
       expect(readInstalledVersion(rootDir)).toBe("1.2.0");
+      expect(existsSync(`${current}.rollback.previous`)).toBe(false);
     } finally {
       cleanup();
     }

@@ -621,6 +621,9 @@ authorized handoff and lets `Restart=always` restart it; macOS/Windows invoke a 
 that resolves `current` at every start. The installed version marker survives that restart.
 Activation or restart failure rolls back to the previous directory and
 resumes scheduling (`DaemonLoop.resumeFromDrain`).
+After the restarted daemon confirms the activated pointer and version marker, it retains that
+version plus one rollback version and prunes older release trees. `HARNESS_UPDATE_POLL_MS` accepts
+`0` for a one-time startup check or an integer no greater than `2147483647` milliseconds.
 Operators can still follow [the manual update runbook](deploy-host-daemon.md#update).
 
 ### Goals

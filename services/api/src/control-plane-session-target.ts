@@ -119,14 +119,20 @@ function resolveNativeResumeRoute(
   if (spec.resumeArgvTemplate && !session.cliResumeRef) return null;
   const providerId = accountId ? catalog.providerAccounts[accountId]?.providerId : undefined;
   const argv = providerId ? migrateLegacyProviderArgv(spec.argv) : [...spec.argv];
+  const resumeArgvTemplate =
+    spec.resumeArgvTemplate === undefined
+      ? undefined
+      : providerId
+        ? migrateLegacyProviderArgv(spec.resumeArgvTemplate)
+        : [...spec.resumeArgvTemplate];
   return {
     targetIndex,
     commandId: session.pinnedCommandId,
     ...(providerId !== undefined ? { providerId } : {}),
     ...(accountId ? { providerAccountId: accountId } : {}),
-    resolvedArgv: spec.resumeArgvTemplate
+    resolvedArgv: resumeArgvTemplate
       ? materializeResumeArgv(
-          spec.resumeArgvTemplate,
+          resumeArgvTemplate,
           session.cliResumeRef!,
           session.prompt,
           spec.appendPromptSeparator,
@@ -137,7 +143,7 @@ function resolveNativeResumeRoute(
         : spec.appendPromptSeparator
           ? [...argv, "--", session.prompt]
           : [...argv, session.prompt],
-    resumeSpec: copyResumeSpec(spec, argv),
+    resumeSpec: copyResumeSpec(spec, argv, resumeArgvTemplate),
   };
 }
 
@@ -416,11 +422,17 @@ function insertArgs(argv: readonly string[], index: number, args: readonly strin
 
 function commandResumeSpec(command: CommandRecord, providerBound: boolean): SessionResumeSpec {
   const argv = providerBound ? migrateLegacyProviderArgv(command.argv) : [...command.argv];
+  const resumeArgvTemplate =
+    command.resumeArgvTemplate === undefined
+      ? undefined
+      : providerBound
+        ? migrateLegacyProviderArgv(command.resumeArgvTemplate)
+        : [...command.resumeArgvTemplate];
   return {
     argv,
     appendPrompt: command.appendPrompt,
     appendPromptSeparator: command.appendPromptSeparator,
-    ...(command.resumeArgvTemplate ? { resumeArgvTemplate: [...command.resumeArgvTemplate] } : {}),
+    ...(resumeArgvTemplate ? { resumeArgvTemplate } : {}),
     ...(command.resumeRefCapture ? { resumeRefCapture: { ...command.resumeRefCapture } } : {}),
   };
 }
@@ -428,12 +440,13 @@ function commandResumeSpec(command: CommandRecord, providerBound: boolean): Sess
 function copyResumeSpec(
   spec: SessionResumeSpec,
   argv: readonly string[] = spec.argv,
+  resumeArgvTemplate: readonly string[] | undefined = spec.resumeArgvTemplate,
 ): SessionResumeSpec {
   return {
     argv: [...argv],
     appendPrompt: spec.appendPrompt,
     appendPromptSeparator: spec.appendPromptSeparator,
-    ...(spec.resumeArgvTemplate ? { resumeArgvTemplate: [...spec.resumeArgvTemplate] } : {}),
+    ...(resumeArgvTemplate ? { resumeArgvTemplate: [...resumeArgvTemplate] } : {}),
     ...(spec.resumeRefCapture ? { resumeRefCapture: { ...spec.resumeRefCapture } } : {}),
   };
 }

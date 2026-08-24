@@ -51,6 +51,7 @@ describe("parseCliUsage", () => {
         input_tokens: 12,
         output_tokens: 4,
         cache_read_input_tokens: 3,
+        cache_creation_input_tokens: 2,
       },
     });
     expect(
@@ -63,7 +64,7 @@ describe("parseCliUsage", () => {
         observedAt,
         inputTokens: "12",
         outputTokens: "4",
-        cachedInputTokens: "3",
+        cachedInputTokens: "5",
       },
     });
   });

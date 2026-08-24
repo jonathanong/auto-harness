@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MAX_UPDATE_POLL_MS,
   createDaemonUpdater,
   parseUpdatePollMs,
   startUpdatePoll,
@@ -14,7 +15,11 @@ describe("daemon updater runtime", () => {
     expect(parseUpdatePollMs(undefined)).toBe(60 * 60_000);
     expect(parseUpdatePollMs("")).toBe(60 * 60_000);
     expect(parseUpdatePollMs("0")).toBe(0);
+    expect(parseUpdatePollMs(String(MAX_UPDATE_POLL_MS))).toBe(MAX_UPDATE_POLL_MS);
     expect(() => parseUpdatePollMs("-1")).toThrow("HARNESS_UPDATE_POLL_MS");
+    expect(() => parseUpdatePollMs(String(MAX_UPDATE_POLL_MS + 1))).toThrow(
+      "HARNESS_UPDATE_POLL_MS",
+    );
     expect(
       createDaemonUpdater({
         loop: {} as DaemonLoop,
@@ -42,6 +47,22 @@ describe("daemon updater runtime", () => {
         error: () => undefined,
       }),
     ).toThrow("supervisor restart adapter is required");
+    let runs = 0;
+    expect(() =>
+      startUpdatePoll(
+        {
+          run: async () => {
+            runs += 1;
+          },
+        } as never,
+        {
+          pollMs: MAX_UPDATE_POLL_MS + 1,
+          log: () => undefined,
+          error: () => undefined,
+        },
+      ),
+    ).toThrow("HARNESS_UPDATE_POLL_MS");
+    expect(runs).toBe(0);
   });
 
   it("polls once when pollMs is zero", async () => {
@@ -58,6 +79,7 @@ describe("daemon updater runtime", () => {
           HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
           HARNESS_UPDATE_PUBLIC_KEY: "not-a-key",
           HARNESS_UPDATE_POLL_MS: "0",
+          HARNESS_UPDATE_INSTALL_DIR: "/tmp/auto-harness-updater-runtime-test",
         },
         log: (line) => logs.push(line),
         error: () => undefined,

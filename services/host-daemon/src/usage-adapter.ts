@@ -218,7 +218,11 @@ function usageFromRecord(
   const fields = usageFields(provider);
   const inputTokens = tokenString(nested, ...fields.input);
   const outputTokens = tokenString(nested, ...fields.output);
-  const cachedInputTokens = tokenString(nested, ...fields.cached);
+  const cachedInputTokens =
+    provider === "claude"
+      ? (sumTokenFields(nested, "cache_read_input_tokens", "cache_creation_input_tokens") ??
+        tokenString(nested, ...fields.cached))
+      : tokenString(nested, ...fields.cached);
   const reasoningTokens = tokenString(nested, ...fields.reasoning);
   const totalTokens = tokenString(nested, ...fields.total);
   if (
@@ -262,15 +266,23 @@ function usageFields(provider: CliProvider): {
   return {
     input: ["input_tokens", "prompt_tokens", "inputTokens"],
     output: ["output_tokens", "completion_tokens", "outputTokens"],
-    cached: [
-      "cache_read_input_tokens",
-      "cache_creation_input_tokens",
-      "cached_input_tokens",
-      "cachedInputTokens",
-    ],
+    cached: ["cached_input_tokens", "cachedInputTokens"],
     reasoning: ["reasoning_tokens", "reasoningTokens"],
     total: ["total_tokens", "totalTokens"],
   };
+}
+
+function sumTokenFields(fields: JsonRecord, ...keys: string[]): string | undefined {
+  let total = 0n;
+  let found = false;
+  for (const key of keys) {
+    const value = tokenString(fields, key);
+    if (value === undefined) continue;
+    total += BigInt(value);
+    found = true;
+  }
+  const rendered = total.toString();
+  return found && rendered.length <= 30 ? rendered : undefined;
 }
 
 function tokenString(fields: JsonRecord, ...keys: string[]): string | undefined {

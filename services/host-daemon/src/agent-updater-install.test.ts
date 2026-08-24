@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createFileUpdateInstaller,
+  pruneConfirmedVersions,
   readInstalledVersion,
   removeStagedVersion,
 } from "./agent-updater-install.ts";
@@ -65,6 +66,29 @@ describe("file update installer", () => {
       expect(existsSync(join(rootDir, "versions", "1.0.0", "package.json"))).toBe(true);
       await installer.rollback();
       expect(readInstalledVersion(rootDir)).toBe("1.0.0");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("prunes only confirmed obsolete release trees while retaining active and rollback", async () => {
+    const { rootDir, cleanup } = tempRoot();
+    try {
+      const installer = createFileUpdateInstaller({ rootDir, extract: runnableExtract });
+      for (const version of ["1.0.0", "1.1.0", "1.2.0"]) {
+        await installer.stage({ version, artifact: new Uint8Array() });
+        await installer.activate(version);
+      }
+      const marker = join(rootDir, "current", ".auto-harness-version");
+      writeFileSync(marker, "9.9.9\n");
+      expect(pruneConfirmedVersions(rootDir)).toEqual([]);
+      expect(existsSync(join(rootDir, "versions", "1.0.0"))).toBe(true);
+
+      writeFileSync(marker, "1.2.0\n");
+      expect(pruneConfirmedVersions(rootDir)).toEqual(["1.0.0"]);
+      expect(existsSync(join(rootDir, "versions", "1.0.0"))).toBe(false);
+      expect(existsSync(join(rootDir, "versions", "1.1.0"))).toBe(true);
+      expect(existsSync(join(rootDir, "versions", "1.2.0"))).toBe(true);
     } finally {
       cleanup();
     }

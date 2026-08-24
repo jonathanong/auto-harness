@@ -1,11 +1,16 @@
 import { AgentUpdater } from "./agent-updater.ts";
 import { createHttpsUpdateFetcher } from "./agent-updater-fetch.ts";
-import { createFileUpdateInstaller, readInstalledVersion } from "./agent-updater-install.ts";
+import {
+  createFileUpdateInstaller,
+  pruneConfirmedVersions,
+  readInstalledVersion,
+} from "./agent-updater-install.ts";
 import { createSupervisorRestartInstaller } from "./agent-updater-supervisor.ts";
 import { resolveUpdateInstallDir } from "./update-install-dir.ts";
 import type { DaemonLoop } from "./daemon-loop.ts";
 
 const DEFAULT_POLL_MS = 60 * 60_000;
+export const MAX_UPDATE_POLL_MS = 2_147_483_647;
 
 type DaemonUpdaterBindings = {
   loop: DaemonLoop;
@@ -20,10 +25,16 @@ type DaemonUpdaterBindings = {
 export function parseUpdatePollMs(raw: string | undefined): number {
   if (raw === undefined || raw === "") return DEFAULT_POLL_MS;
   const parsed = Number(raw);
-  if (!Number.isInteger(parsed) || parsed < 0) {
-    throw new Error("HARNESS_UPDATE_POLL_MS must be a non-negative integer");
-  }
+  assertUpdatePollMs(parsed);
   return parsed;
+}
+
+function assertUpdatePollMs(pollMs: number): void {
+  if (!Number.isInteger(pollMs) || pollMs < 0 || pollMs > MAX_UPDATE_POLL_MS) {
+    throw new Error(
+      `HARNESS_UPDATE_POLL_MS must be an integer between 0 and ${MAX_UPDATE_POLL_MS}`,
+    );
+  }
 }
 
 export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdater | undefined {
@@ -39,8 +50,18 @@ export function createDaemonUpdater(bindings: DaemonUpdaterBindings): AgentUpdat
     ...(bindings.service.home !== undefined ? { home: bindings.service.home } : {}),
     ...(bindings.service.appData !== undefined ? { appData: bindings.service.appData } : {}),
   });
+  const installedVersion = readInstalledVersion(installDir);
+  if (installedVersion) {
+    try {
+      pruneConfirmedVersions(installDir);
+    } catch (error) {
+      bindings.error(
+        `updater cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
   const configuredVersion = bindings.env.HARNESS_DAEMON_VERSION?.trim();
-  const currentVersion = readInstalledVersion(installDir) ?? configuredVersion ?? "0.0.0";
+  const currentVersion = installedVersion ?? configuredVersion ?? "0.0.0";
   const files = createFileUpdateInstaller({
     rootDir: installDir,
     currentVersion,
@@ -70,6 +91,7 @@ export function startUpdatePoll(
     error: (line: string) => void;
   },
 ): () => Promise<void> {
+  assertUpdatePollMs(options.pollMs);
   let stopped = false;
   let active: Promise<void> | undefined;
   const run = (): void => {

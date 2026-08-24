@@ -1,8 +1,19 @@
 import { normalizeSlackNotifications } from "@auto-harness/shared";
 
-import type { ControlPlaneState } from "./control-plane-state.ts";
-import type { SlackDeliveryRecord } from "./slack-delivery-types.ts";
+import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
+import type { SlackIntegrationRecord } from "./slack-integration-types.ts";
 import { enqueueSlackDeliveries } from "./slack-outbox.ts";
+
+type HostOfflineAlertStore = Pick<SlackOutboxStore, "enqueue"> & {
+  getSlackIntegration?: () => Promise<SlackIntegrationRecord | null>;
+};
+
+/** Structural slice of control-plane state, kept narrow for alert delivery tests. */
+export type HostOfflineAlertState = {
+  storage: HostOfflineAlertStore | undefined;
+  slackIntegration: SlackIntegrationRecord | undefined;
+  now: () => string;
+};
 
 export function planHostOfflineAlert(input: {
   hostId: string;
@@ -34,11 +45,11 @@ export function planHostOfflineAlert(input: {
 }
 
 export async function enqueueHostOfflineAlert(
-  state: ControlPlaneState,
+  state: HostOfflineAlertState,
   input: { hostId: string; reason: string; lastHeartbeatAt: string },
 ): Promise<void> {
   const storage = state.storage;
-  if (!storage || typeof storage.enqueue !== "function") return;
+  if (!storage) return;
   const record =
     typeof storage.getSlackIntegration === "function"
       ? await storage.getSlackIntegration()

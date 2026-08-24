@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- environment parsing and service-install persistence cases share one fixture. */
 import { describe, expect, it } from "vitest";
 
 import {
@@ -78,6 +79,23 @@ describe("renderEnvFile", () => {
     expect(renderEnvFile(example, { PATH: "/opt/homebrew/bin" }, { capturePath: false })).toContain(
       "PATH=/usr/bin",
     );
+  });
+
+  it("persists every advertised updater setting in a new service environment", () => {
+    const rendered = renderEnvFile(example, {
+      HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+      HARNESS_UPDATE_PUBLIC_KEY: "public-key",
+      HARNESS_UPDATE_INSTALL_DIR: "/srv/auto-harness",
+      HARNESS_UPDATE_POLL_MS: "60000",
+      HARNESS_DAEMON_VERSION: "1.2.3",
+    });
+    expect(rendered).toContain(
+      "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json",
+    );
+    expect(rendered).toContain("HARNESS_UPDATE_PUBLIC_KEY=public-key");
+    expect(rendered).toContain("HARNESS_UPDATE_INSTALL_DIR=/srv/auto-harness");
+    expect(rendered).toContain("HARNESS_UPDATE_POLL_MS=60000");
+    expect(rendered).toContain("HARNESS_DAEMON_VERSION=1.2.3");
   });
 
   it("keeps an existing extra key and rejects multiline values", () => {

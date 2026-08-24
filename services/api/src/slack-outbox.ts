@@ -22,7 +22,7 @@ type SlackOutboxOptions = {
 
 /** Enqueues insert-only stable IDs, so replaying the same lifecycle event is idempotent. */
 export async function enqueueSlackDeliveries(
-  store: SlackOutboxStore,
+  store: Pick<SlackOutboxStore, "enqueue">,
   deliveries: readonly SlackDeliveryRecord[],
 ): Promise<{ created: number; existing: number }> {
   let created = 0;

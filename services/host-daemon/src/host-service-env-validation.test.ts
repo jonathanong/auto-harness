@@ -119,7 +119,7 @@ describe("persisted service environment validation", () => {
     );
   });
 
-  it("merges exported execution settings without replacing unrelated persisted values", () => {
+  it("merges exported execution and updater settings without replacing unrelated persisted values", () => {
     const original =
       "# keep this\nHARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\nOTHER=value\n";
     const updated = preparePersistedEnv({
@@ -128,6 +128,11 @@ describe("persisted service environment validation", () => {
       env: {
         HARNESS_EXECUTION_PROFILES: "/etc/auto-harness/profiles.json",
         HARNESS_MAX_CONCURRENT_ASSIGNMENTS: "3",
+        HARNESS_UPDATE_MANIFEST_URL: "https://updates.example.test/manifest.json",
+        HARNESS_UPDATE_PUBLIC_KEY: "public-key",
+        HARNESS_UPDATE_INSTALL_DIR: "/srv/auto-harness",
+        HARNESS_UPDATE_POLL_MS: "60000",
+        HARNESS_DAEMON_VERSION: "1.2.3",
       },
     }).contents;
     expect(updated).toContain("# keep this");
@@ -135,13 +140,30 @@ describe("persisted service environment validation", () => {
     expect(updated).toContain("OTHER=value");
     expect(updated).toContain("HARNESS_EXECUTION_PROFILES=/etc/auto-harness/profiles.json");
     expect(updated).toContain("HARNESS_MAX_CONCURRENT_ASSIGNMENTS=3");
+    expect(updated).toContain(
+      "HARNESS_UPDATE_MANIFEST_URL=https://updates.example.test/manifest.json",
+    );
+    expect(updated).toContain("HARNESS_UPDATE_PUBLIC_KEY=public-key");
+    expect(updated).toContain("HARNESS_UPDATE_INSTALL_DIR=/srv/auto-harness");
+    expect(updated).toContain("HARNESS_UPDATE_POLL_MS=60000");
+    expect(updated).toContain("HARNESS_DAEMON_VERSION=1.2.3");
     expect(
       preparePersistedEnv({
         existing: `${original}HARNESS_EXECUTION_PROFILES=old.json\n`,
         example: "",
-        env: { HARNESS_EXECUTION_PROFILES: "new.json" },
+        env: {
+          HARNESS_EXECUTION_PROFILES: "new.json",
+          HARNESS_UPDATE_PUBLIC_KEY: "new-public-key",
+        },
       }).contents,
     ).toContain("HARNESS_EXECUTION_PROFILES=new.json");
+    expect(
+      preparePersistedEnv({
+        existing: `${original}HARNESS_UPDATE_PUBLIC_KEY=old-public-key\n`,
+        example: "",
+        env: { HARNESS_UPDATE_PUBLIC_KEY: "new-public-key" },
+      }).contents,
+    ).toContain("HARNESS_UPDATE_PUBLIC_KEY=new-public-key");
     expect(preparePersistedEnv({ existing: original, example: "", env: {} }).contents).toBe(
       original,
     );
