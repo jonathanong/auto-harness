@@ -518,6 +518,7 @@ async function applySessionStatusDurable(
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
   if (
+    session.status === "running" &&
     msg.status === "failed" &&
     msg.errorCode === "usage_limit" &&
     accountId &&
