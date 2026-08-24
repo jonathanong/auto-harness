@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- optional finish fields share the durable terminal fixture. */
 import { describe, expect, it } from "vitest";
 
 import { setDurableReadStorage } from "./control-plane-durable-read-test-helpers.ts";
@@ -76,6 +77,44 @@ describe("durable terminal message residual coverage", () => {
     expect(reads).toEqual([["s", true]]);
     expect(releases).toHaveLength(1);
     expect(releases[0]).toMatchObject({ expectedStatus: "cancelled", status: "cancelled" });
+  });
+
+  it("finishes a leased scheduled attempt with every optional report field", async () => {
+    const state = createControlPlaneState({ now: () => NOW });
+    state.sessions.set("s", row({ concurrencyId: "concurrency" }));
+    let input: Record<string, unknown> = {};
+    setDurableReadStorage(state, {
+      releaseMainCheckoutSession: async (next: Record<string, unknown>) => {
+        input = next;
+        return true;
+      },
+      putArchive: async () => undefined,
+    });
+    await handleHostMessageDurable(
+      state,
+      message({
+        status: "failed",
+        errorCode: "command_failed",
+        exitCode: 1,
+        errorMessage: "boom",
+        cliResumeRef: "resume",
+      }),
+    );
+    expect(input).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      errorCode: "command_failed",
+      reason: "boom",
+      cliResumeRef: "resume",
+      concurrencyId: "concurrency",
+    });
+    expect(state.sessions.get("s")).toMatchObject({
+      status: "failed",
+      exitCode: 1,
+      errorCode: "command_failed",
+      errorMessage: "boom",
+      cliResumeRef: "resume",
+    });
   });
 
   it("releases a cancelled scheduled attempt with default completion metadata", async () => {

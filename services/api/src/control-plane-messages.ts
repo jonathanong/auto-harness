@@ -978,8 +978,6 @@ function applySessionStatus(
     hostStatusEvent(msg),
     plannerContext(state, "local", cachedProviderAccount(state, session)),
   );
-  const rejected = transitionEffect(plan, "reject");
-  if (rejected) return { ok: false, error: rejected.error };
   if (transitionEffect(plan, "ignore")) return { ok: true };
 
   const terminal = isTerminalSessionStatus(msg.status);

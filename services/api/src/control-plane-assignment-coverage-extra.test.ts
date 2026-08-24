@@ -299,6 +299,7 @@ describe("assignment residual coverage", () => {
       type: "host",
       connectedAt: NOW,
       lastHeartbeatAt: NOW,
+      commandProfiles: [],
       capabilities: [],
       repositoryIds: ["repo"],
       runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
@@ -312,7 +313,13 @@ describe("assignment residual coverage", () => {
       commandProfiles: {},
       updatedAt: NOW,
     });
-    state.sessions.set("s", session({ target: { commandId: "provider-command" } }));
+    state.sessions.set(
+      "s",
+      session({
+        target: { commandId: "provider-command" },
+        targetLabels: ["provider-command"],
+      }),
+    );
     setDurableReadStorage(state, {
       expireQueuedSession: async () => false,
       tryAssignSession: async () => {
@@ -320,7 +327,9 @@ describe("assignment residual coverage", () => {
         return true;
       },
     });
-    await expect(assignQueuedDurable(state)).resolves.toHaveLength(1);
+    await expect(assignQueuedDurable(state)).resolves.toMatchObject([
+      { session: { resolvedRoute: { providerAccountId: "account" } } },
+    ]);
     expect(state.providerAccounts.has("account")).toBe(false);
   });
 });
