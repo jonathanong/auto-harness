@@ -215,7 +215,7 @@ off by default. They require `stage.accessLogSettings`, which in turn requires
 an `AWS::ApiGateway::Account` resource — a **one-time, AWS-account-wide
 singleton** (one per account/region, shared by every stack and every repo
 deployed into that account) that points API Gateway at an IAM role with
-`logs:*` permissions. `deploy`/`update` never provision it, so enabling access
+the required CloudWatch Logs permissions. `deploy`/`update` never provision it, so enabling access
 logs on a fresh account fails closed (no log groups, `AccessLogSettings`
 absent) rather than requiring an account-wide IAM change on every deploy.
 

@@ -4,7 +4,11 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root/services/cdk"
 
-export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-west-2}}"
+export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
+if [[ -z "$AWS_REGION" ]]; then
+  echo "AWS_REGION or AWS_DEFAULT_REGION is required" >&2
+  exit 1
+fi
 
 cat <<EOF
 This creates the account-wide API Gateway -> CloudWatch Logs IAM role
