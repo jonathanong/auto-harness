@@ -10,6 +10,7 @@ import {
 } from "./control-plane-host-environment.ts";
 import {
   accountHasLeaseCapacity,
+  accountHasLeaseCapacityFromReadModel,
   hostHasAssignmentCapacity,
   hostProviderAccountReady,
 } from "./control-plane-provider-account-leases.ts";
@@ -289,7 +290,7 @@ export function targetIsAvailable(
     ).some(
       (route) =>
         hostProviderAccountReady(state, worktree.hostId, route.providerAccountId) &&
-        accountHasLeaseCapacity(state, route.providerAccountId),
+        accountHasLeaseCapacityFromReadModel(state, route.providerAccountId),
     );
   });
 }

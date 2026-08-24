@@ -26,6 +26,8 @@ type FinishSessionOpts = {
   fence?: { hostId: string; connectionId: string };
   concurrencyId?: string;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
+  preserveProviderAccountLease?: boolean;
 };
 
 function setOptional(
@@ -78,7 +80,11 @@ function finishSessionUpdate(opts: FinishSessionOpts): {
     names: { "#s": "status" },
     values,
     sets,
-    removes: ["reconnectDeadlineAt", "assignmentConnectionId", "providerAccountLease"],
+    removes: [
+      "reconnectDeadlineAt",
+      "assignmentConnectionId",
+      ...(opts.preserveProviderAccountLease ? [] : ["providerAccountLease"]),
+    ],
   };
 }
 
@@ -136,11 +142,13 @@ function finishSessionItems(
     });
   }
   items.push(
-    ...providerAccountLeaseDeleteItems(
-      ctx.tables.concurrencyLocks,
-      opts.sessionId,
-      opts.providerAccountLease,
-    ),
+    ...(opts.preserveProviderAccountLease
+      ? []
+      : providerAccountLeaseDeleteItems(
+          ctx.tables.concurrencyLocks,
+          opts.sessionId,
+          opts.providerAccountLease,
+        )),
     ...cleanup,
   );
   return items;

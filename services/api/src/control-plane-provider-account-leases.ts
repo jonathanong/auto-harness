@@ -84,12 +84,34 @@ export function accountHasLeaseCapacity(
 ): boolean {
   if (!providerAccountId) return true;
   if (state.storage) return true;
+  return accountHasLeaseCapacityFromReadModel(state, providerAccountId);
+}
+
+/** Availability hints use the running-session read model even in durable mode. */
+export function accountHasLeaseCapacityFromReadModel(
+  state: ControlPlaneState,
+  providerAccountId: string | undefined,
+): boolean {
+  if (!providerAccountId) return true;
   const max = maxConcurrentSessionsFor(state.providerAccounts.get(providerAccountId));
-  let used = 0;
+  const holders = new Set<string>();
   for (const lease of state.providerAccountLeases.values()) {
-    if (lease.providerAccountId === providerAccountId) used += 1;
+    if (lease.providerAccountId === providerAccountId) holders.add(lease.sessionId);
   }
-  return used < max;
+  for (const session of state.sessions.values()) {
+    if (session.providerAccountLease?.providerAccountId === providerAccountId) {
+      holders.add(session.id);
+      continue;
+    }
+    if (
+      (session.status === "running" ||
+        (session.status === "cancelled" && session.hostId != null)) &&
+      session.resolvedRoute?.providerAccountId === providerAccountId
+    ) {
+      holders.add(session.id);
+    }
+  }
+  return holders.size < max;
 }
 
 export function tryAcquireProviderAccountLeaseLocal(

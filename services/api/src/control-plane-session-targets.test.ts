@@ -131,6 +131,85 @@ describe("listSessionTargets", () => {
     ]);
   });
 
+  it("marks a durable provider unavailable when its running account slots are full", () => {
+    const state = createControlPlaneState();
+    state.storage = {} as never;
+    state.providers.set("prov-1", {
+      id: "prov-1",
+      name: "claude",
+      defaultCommandId: "cmd-1",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.commands.set("cmd-1", {
+      id: "cmd-1",
+      name: "claude-print",
+      argv: ["claude"],
+      appendPrompt: true,
+      providerId: "prov-1",
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.providerAccounts.set("acct-1", {
+      id: "acct-1",
+      providerId: "prov-1",
+      label: "one",
+      maxConcurrentSessions: 1,
+      createdAt: "t",
+      updatedAt: "t",
+    });
+    state.hostInventories.set("host-1", {
+      hostId: "host-1",
+      repositories: [],
+      providerAccounts: [{ providerAccountId: "acct-1" }],
+      commandProfiles: {},
+      updatedAt: "t",
+    });
+    state.worktrees.set("wt-1", {
+      id: "wt-1",
+      name: "wt-1",
+      hostId: "host-1",
+      repositoryId: "repo-1",
+      path: "/wt",
+      labels: [],
+      status: "idle",
+      online: true,
+    });
+    markHostReady(state, "host-1");
+    state.sessions.set("running", {
+      id: "running",
+      repositoryId: "repo-1",
+      prompt: "run",
+      target: { providerId: "prov-1" },
+      fallbacks: [],
+      targetLabels: ["claude"],
+      queueTtlSeconds: 60,
+      queueExpiresAt: "2099-01-01T00:00:00.000Z",
+      timeout: 30,
+      priority: 0,
+      requiredLabels: [],
+      status: "running",
+      queueShard: 0,
+      createdAt: "t",
+      hostId: "host-1",
+      resolvedRoute: {
+        targetIndex: 0,
+        providerId: "prov-1",
+        providerAccountId: "acct-1",
+        commandId: "cmd-1",
+        hostId: "host-1",
+        worktreeId: "wt-1",
+        attemptId: "attempt",
+      },
+    });
+    expect(listSessionTargets(state).find((target) => target.id === "prov-1")).toMatchObject({
+      available: false,
+    });
+    expect(listSessionTargets(state).find((target) => target.id === "cmd-1")).toMatchObject({
+      available: false,
+    });
+  });
+
   it("doesn't crash on a stale real-storage host record missing providerAccounts at runtime", () => {
     const state = createControlPlaneState();
     state.providers.set("prov-1", {

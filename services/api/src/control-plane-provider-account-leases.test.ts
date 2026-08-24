@@ -582,7 +582,7 @@ describe("provider account execution-profile leases", () => {
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
   });
 
-  it("releases the account lease when an acknowledged session times out", () => {
+  it("retains the account lease until an acknowledged timeout reports terminal", () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     expect(
       plane.createSession({
@@ -605,8 +605,8 @@ describe("provider account execution-profile leases", () => {
     expect(plane.state.providerAccountLeases.size).toBe(1);
     const due = Date.parse(plane.getSession("sess-1")!.ackReceivedAt!) + 30_000;
     expect(plane.enforceRunningTimeouts(due)).toEqual(["sess-1"]);
-    expect(plane.state.providerAccountLeases.size).toBe(0);
-    expect(plane.getSession("sess-1")).not.toHaveProperty("providerAccountLease");
+    expect(plane.state.providerAccountLeases.size).toBe(1);
+    expect(plane.getSession("sess-1")).toHaveProperty("providerAccountLease");
     expect(
       plane.createSession({
         repositoryId: "repo-1",
@@ -615,10 +615,21 @@ describe("provider account execution-profile leases", () => {
         timeout: 30,
       }).ok,
     ).toBe(true);
+    expect(plane.assignQueued()).toHaveLength(0);
+    expect(
+      plane.handleHostMessage({
+        type: "session:status",
+        sessionId: "sess-1",
+        worktreeId: session.worktreeId!,
+        attemptId: session.attemptId!,
+        status: "completed",
+      }).ok,
+    ).toBe(true);
+    expect(plane.state.providerAccountLeases.size).toBe(0);
     expect(plane.assignQueued()).toHaveLength(1);
   });
 
-  it("releases a provider-account lease through durable timeout", async () => {
+  it("retains a provider-account lease through durable timeout", async () => {
     const plane = seedAccountPlane({ maxConcurrentSessions: 1 });
     expect(
       plane.createSession({
@@ -653,9 +664,9 @@ describe("provider account execution-profile leases", () => {
     expect(finished[0]).toMatchObject({
       sessionId: "sess-1",
       status: "timed_out",
-      providerAccountLease: { providerAccountId: "acct-1", slot: 0 },
+      preserveProviderAccountLease: true,
     });
-    expect(plane.state.providerAccountLeases.size).toBe(0);
+    expect(plane.state.providerAccountLeases.size).toBe(1);
   });
 
   it("counts a cancelled in-flight assignment against the advertised host cap", () => {

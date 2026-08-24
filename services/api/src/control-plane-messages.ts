@@ -501,7 +501,15 @@ export async function handleHostMessageDurable(
     // `onHostMessage`. Keeping it out of this result prevents a local WS hub
     // from delivering the same confirmation once through its bridge and once
     // as a direct socket response.
-    return handleHostMessage(state, msg, sourceConnectionId);
+    const result = handleHostMessage(state, msg, sourceConnectionId);
+    if (
+      result.ok &&
+      msg.type === "session:status" &&
+      (isTerminalSessionStatus(msg.status) || msg.errorCode === "usage_limit")
+    ) {
+      await requestAssignment(state);
+    }
+    return result;
   }
   const storage = state.storage;
   if (msg.type === "session:log") {
@@ -650,6 +658,15 @@ async function applySessionStatusDurable(
     return { ok: false, error: "session not found" };
   }
   state.sessions.set(session.id, session);
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    session.providerAccountLease?.attemptId === msg.attemptId
+  ) {
+    releaseProviderAccountLease(state, session);
+    persistSession(state, session);
+    return { ok: true };
+  }
   let providerAccount: SessionTransitionContext["providerAccount"];
   let loadedAccount: ReturnType<ControlPlaneState["providerAccounts"]["get"]> | null | undefined;
   const accountId = session.resolvedRoute?.providerAccountId;
@@ -1023,6 +1040,15 @@ function applySessionStatus(
   }
   const session = state.sessions.get(msg.sessionId);
   if (!session) return { ok: false, error: "session not found" };
+  if (
+    session.status === "timed_out" &&
+    isTerminalSessionStatus(msg.status) &&
+    session.providerAccountLease?.attemptId === msg.attemptId
+  ) {
+    releaseProviderAccountLease(state, session);
+    persistSession(state, session);
+    return { ok: true };
+  }
   const plan = planSessionTransition(
     session,
     hostStatusEvent(msg),

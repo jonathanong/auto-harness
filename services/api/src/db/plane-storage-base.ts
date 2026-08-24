@@ -365,6 +365,7 @@ export class DynamoPlaneStorageBase {
     concurrencyId?: string | undefined;
     requireUnacknowledged?: boolean;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    preserveProviderAccountLease?: boolean;
   }): Promise<boolean> {
     return mainCheckout.releaseMainCheckoutSession(this.ctx, opts);
   }
@@ -595,6 +596,7 @@ export class DynamoPlaneStorageBase {
     fence?: { hostId: string; connectionId: string };
     concurrencyId?: string;
     providerAccountLease?: SessionRecord["providerAccountLease"];
+    preserveProviderAccountLease?: boolean;
   }): Promise<boolean> {
     return sessions.finishSession(this.ctx, opts);
   }

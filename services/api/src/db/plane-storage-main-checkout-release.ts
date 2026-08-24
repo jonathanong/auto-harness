@@ -39,6 +39,8 @@ type ReleaseMainCheckoutOptions = {
    * acknowledgement committed after this scheduler read its local cache. */
   requireUnacknowledged?: boolean;
   providerAccountLease?: ProviderAccountLeaseKey | undefined;
+  /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
+  preserveProviderAccountLease?: boolean;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -121,11 +123,13 @@ export async function releaseMainCheckoutSession(
                 },
               ]
             : []),
-          ...providerAccountLeaseDeleteItems(
-            ctx.tables.concurrencyLocks,
-            opts.sessionId,
-            opts.providerAccountLease,
-          ),
+          ...(opts.preserveProviderAccountLease
+            ? []
+            : providerAccountLeaseDeleteItems(
+                ctx.tables.concurrencyLocks,
+                opts.sessionId,
+                opts.providerAccountLease,
+              )),
           ...cleanup,
         ],
       }),
@@ -164,7 +168,8 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, providerAccountLease" +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt" : "")
   );
 }

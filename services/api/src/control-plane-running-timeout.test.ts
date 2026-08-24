@@ -74,4 +74,37 @@ describe("acknowledged running sessions converge or time out", () => {
     expect(plane.getWorktree(worktreeId)?.status).toBe("idle");
     expect(plane.getWorktree(worktreeId)?.currentSessionId).toBeNull();
   });
+
+  it("retains a provider lease until the timed-out daemon reports terminal", () => {
+    const plane = new ControlPlane({ now: () => NOW });
+    const { sessionId, worktreeId } = startAcknowledgedRunning(plane);
+    const session = plane.state.sessions.get(sessionId)!;
+    const lease = {
+      concurrencyId: "provider-lease:acct:0",
+      providerAccountId: "acct",
+      slot: 0,
+      attemptId: session.attemptId!,
+    };
+    session.providerAccountLease = lease;
+    plane.state.providerAccountLeases.set(lease.concurrencyId, {
+      sessionId,
+      attemptId: lease.attemptId,
+      slot: lease.slot,
+      hostId: "host",
+      providerAccountId: lease.providerAccountId,
+    });
+    expect(plane.enforceRunningTimeouts(runningDeadlineMs(plane, sessionId))).toEqual([sessionId]);
+    expect(plane.state.providerAccountLeases.has(lease.concurrencyId)).toBe(true);
+    expect(plane.getSession(sessionId)?.providerAccountLease).toEqual(lease);
+    expect(
+      plane.handleHostMessage({
+        type: "session:status",
+        sessionId,
+        worktreeId,
+        attemptId: session.attemptId!,
+        status: "completed",
+      }).ok,
+    ).toBe(true);
+    expect(plane.state.providerAccountLeases.has(lease.concurrencyId)).toBe(false);
+  });
 });
