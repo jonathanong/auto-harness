@@ -174,15 +174,16 @@ export function buildRegisteredInventory(
         id: repository.id,
         path: repository.path,
         defaultBranch: repository.defaultBranch ?? prior?.defaultBranch ?? "main",
-        worktrees: advertised.map((worktree) => ({
-          id: worktree.id,
-          name: worktree.name,
-          path: worktree.path,
-          labels: [...worktree.labels],
-          ...(prior?.worktrees.find((item) => item.id === worktree.id)?.setupScript !== undefined
-            ? { setupScript: prior.worktrees.find((item) => item.id === worktree.id)?.setupScript }
-            : {}),
-        })),
+        worktrees: advertised.map((worktree) => {
+          const previousWorktree = prior?.worktrees.find((item) => item.id === worktree.id);
+          return {
+            ...previousWorktree,
+            id: worktree.id,
+            name: worktree.name,
+            path: worktree.path,
+            labels: [...worktree.labels],
+          };
+        }),
       };
     }),
     providerAccounts: previous?.providerAccounts.map((account) => ({ ...account })) ?? [],

@@ -268,6 +268,17 @@ export function reconcileInventoryWrite(input: {
 }):
   | { ok: true; inventory: HostInventory; execEdits: string[] }
   | { ok: false; error: string; execEdits: string[]; kind: "forbidden" | "validation" } {
+  const existingDuplicateError = input.existing
+    ? duplicateInventoryIdError(input.existing)
+    : undefined;
+  if (existingDuplicateError) {
+    return {
+      ok: false,
+      error: `existing inventory: ${existingDuplicateError}`,
+      execEdits: [],
+      kind: "validation",
+    };
+  }
   const duplicateError = duplicateInventoryIdError(input.incoming);
   if (duplicateError) {
     return { ok: false, error: duplicateError, execEdits: [], kind: "validation" };

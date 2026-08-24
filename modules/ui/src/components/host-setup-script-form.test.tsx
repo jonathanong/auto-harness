@@ -110,12 +110,12 @@ describe("HostSetupScriptForm", () => {
       "/opt/harness",
     );
     setValue(field(view.container, "host-setup-script"), "source ~/.zshrc");
-    setValue(field(view.container, "host-allowed-roots"), "/opt/harness\n/usr/local");
+    setValue(field(view.container, "host-allowed-roots"), "/opt/harness,with,commas\n/usr/local");
     setValue(field(view.container, "host-required-environment"), " REGION\nTOKEN ");
     await submit(field(view.container, "form-host-setup-script"));
     expect(execPatch).toEqual({
       setupScript: "source ~/.zshrc",
-      allowedRoots: ["/opt/harness", "/usr/local"],
+      allowedRoots: ["/opt/harness,with,commas", "/usr/local"],
     });
     expect(written).toBeUndefined();
     expect(field(view.container, "host-setup-script-ok").textContent).toBe("Saved.");

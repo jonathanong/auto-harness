@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- registration inventory and exec-config preservation share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -57,6 +58,63 @@ describe("host registration repository inventory", () => {
     expect(plane.getHostInventory("host")?.repositories[0]?.requiredEnvironment).toEqual([
       "REPO_TOKEN",
     ]);
+  });
+
+  it("preserves repository and worktree exec config omitted from registration", () => {
+    const plane = new ControlPlane({ connectionIdFactory: () => "connection" });
+    expect(
+      plane.putHostInventory("host", {
+        repositories: [
+          {
+            id: "repo",
+            path: "/repo",
+            defaultBranch: "main",
+            setupScript: "pnpm install",
+            terminalHookScript: "/repo/hook.sh",
+            requiredEnvironment: ["REPO_TOKEN"],
+            providerAccountOverrides: { account: { enabled: true, commandId: "repo-cmd" } },
+            worktrees: [
+              {
+                id: "worktree",
+                name: "worktree",
+                path: "/repo/worktree",
+                labels: ["old"],
+                setupScript: "pnpm build",
+                providerAccountOverrides: { account: { enabled: false } },
+              },
+            ],
+          },
+        ],
+      }).ok,
+    ).toBe(true);
+
+    expect(
+      plane.registerHost({
+        hostId: "host",
+        repositories: [{ id: "repo", path: "/repo", defaultBranch: "main" }],
+        worktrees: [
+          {
+            id: "worktree",
+            name: "worktree",
+            repositoryId: "repo",
+            path: "/repo/worktree",
+            labels: [],
+          },
+        ],
+      }),
+    ).toMatchObject({ ok: true });
+    expect(plane.getHostInventory("host")?.repositories[0]).toMatchObject({
+      setupScript: "pnpm install",
+      terminalHookScript: "/repo/hook.sh",
+      requiredEnvironment: ["REPO_TOKEN"],
+      providerAccountOverrides: { account: { enabled: true, commandId: "repo-cmd" } },
+      worktrees: [
+        {
+          setupScript: "pnpm build",
+          providerAccountOverrides: { account: { enabled: false } },
+        },
+      ],
+    });
   });
 
   it("retains an explicit empty allowed-roots list across daemon registration", () => {

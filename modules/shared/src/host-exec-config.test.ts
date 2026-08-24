@@ -496,4 +496,20 @@ describe("listExecConfigEdits / preserve / reconcile", () => {
       }),
     ).toMatchObject({ ok: false, kind: "validation", error: "duplicate worktree wt-1" });
   });
+
+  it("rejects duplicate IDs already present in stored inventory", () => {
+    const existing = inventory();
+    existing.repositories.push({ ...existing.repositories[0]! });
+    expect(
+      reconcileInventoryWrite({
+        existing,
+        incoming: inventory(),
+        allowExecConfig: true,
+      }),
+    ).toMatchObject({
+      ok: false,
+      kind: "validation",
+      error: "existing inventory: duplicate repository repo-1",
+    });
+  });
 });

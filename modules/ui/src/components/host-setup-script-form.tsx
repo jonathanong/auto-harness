@@ -98,7 +98,7 @@ export function HostSetupScriptForm({
                     parsedRoots =
                       parseAllowedRoots(
                         roots
-                          .split(/[\n,]+/)
+                          .split(/\r?\n/)
                           .map((line) => line.trim())
                           .filter(Boolean),
                       ) ?? [];
