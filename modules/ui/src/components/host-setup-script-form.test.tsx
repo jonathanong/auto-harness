@@ -96,6 +96,27 @@ function PendingExecRefreshHarness({ mutateExec }: { mutateExec: typeof mutateEx
   );
 }
 
+function PendingEnvironmentRefreshHarness({ mutateInv }: { mutateInv: typeof mutateInventory }) {
+  const [environment, setEnvironment] = useState(["SERVER_TOKEN"]);
+  return (
+    <>
+      <button
+        type="button"
+        data-pw="pending-environment-refresh"
+        onClick={() => setEnvironment(["SUBMITTED_TOKEN"])}
+      >
+        Refresh after save
+      </button>
+      <HostSetupScriptForm
+        hostId="host"
+        requiredEnvironment={environment}
+        mutateInv={mutateInv}
+        canWriteExecConfig={false}
+      />
+    </>
+  );
+}
+
 describe("HostSetupScriptForm", () => {
   it("saves exec-config and required environment through independent forms", async () => {
     let execPatch: HostExecConfigPatch | undefined;
@@ -307,13 +328,32 @@ describe("HostSetupScriptForm", () => {
       });
     const view = mount(<PendingExecRefreshHarness mutateExec={mutateExec} />);
     setValue(field(view.container, "host-allowed-roots"), "/submitted-root");
-    submit(field(view.container, "form-host-setup-script"));
-    await act(async () => Promise.resolve());
+    await submit(field(view.container, "form-host-setup-script"));
+    expect(resolveSave).toBeDefined();
     setValue(field(view.container, "host-allowed-roots"), "/typed-while-pending");
     await act(async () => resolveSave?.({ ok: true }));
     act(() => field(view.container, "pending-refresh").click());
     expect(field<HTMLTextAreaElement>(view.container, "host-allowed-roots").value).toBe(
       "/typed-while-pending",
+    );
+    view.unmount();
+  });
+
+  it("preserves required-environment edits typed while the save is pending", async () => {
+    let resolveSave: ((result: { ok: true }) => void) | undefined;
+    const mutateInv: typeof mutateInventory = async () =>
+      await new Promise((resolve) => {
+        resolveSave = resolve;
+      });
+    const view = mount(<PendingEnvironmentRefreshHarness mutateInv={mutateInv} />);
+    setValue(field(view.container, "host-required-environment"), "SUBMITTED_TOKEN");
+    await submit(field(view.container, "form-host-required-environment"));
+    expect(resolveSave).toBeDefined();
+    setValue(field(view.container, "host-required-environment"), "TYPED_WHILE_PENDING");
+    await act(async () => resolveSave?.({ ok: true }));
+    act(() => field(view.container, "pending-environment-refresh").click());
+    expect(field<HTMLTextAreaElement>(view.container, "host-required-environment").value).toBe(
+      "TYPED_WHILE_PENDING",
     );
     view.unmount();
   });

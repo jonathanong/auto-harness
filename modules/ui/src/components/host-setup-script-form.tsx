@@ -52,6 +52,7 @@ export function HostSetupScriptForm({
   const scriptValueRef = useRef(script);
   const rootsValueRef = useRef(roots);
   const environmentDirtyRef = useRef(false);
+  const environmentValueRef = useRef(environment);
   const savedRefreshExecRef = useRef<string | null>(null);
   const savedRefreshEnvironmentRef = useRef<string | null>(null);
 
@@ -78,6 +79,7 @@ export function HostSetupScriptForm({
     savedRefreshEnvironmentRef.current = null;
     if (!environmentDirtyRef.current) {
       setEnvironment(nextEnvironment);
+      environmentValueRef.current = nextEnvironment;
     }
     if (!preserveSavedFeedback) setEnvironmentSaved(false);
   }, [requiredEnvironment]);
@@ -218,6 +220,7 @@ export function HostSetupScriptForm({
           onSubmit={(event) => {
             event.preventDefault();
             setEnvironmentSaved(false);
+            const submittedEnvironment = environment;
             startInventory(async () => {
               try {
                 const inventoryResult = await mutateInv(hostId, (current) =>
@@ -233,8 +236,10 @@ export function HostSetupScriptForm({
                   });
                   return;
                 }
-                savedRefreshEnvironmentRef.current = environment;
-                environmentDirtyRef.current = false;
+                savedRefreshEnvironmentRef.current = submittedEnvironment;
+                if (environmentValueRef.current === submittedEnvironment) {
+                  environmentDirtyRef.current = false;
+                }
                 setEnvironmentSaved(true);
                 router.refresh();
               } catch (error) {
@@ -260,6 +265,7 @@ export function HostSetupScriptForm({
               value={environment}
               onChange={(event) => {
                 setEnvironment(event.target.value);
+                environmentValueRef.current = event.target.value;
                 environmentDirtyRef.current = true;
               }}
               className="font-mono text-xs"

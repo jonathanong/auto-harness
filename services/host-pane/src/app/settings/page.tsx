@@ -4,11 +4,14 @@ import { DrainButton, HostConfigForm, HostSetupScriptForm } from "@auto-harness/
 import { ProviderAccountsReadonly } from "../../components/provider-accounts-readonly.tsx";
 import { hostId, apiGet } from "../../lib/api.ts";
 import { loadHostInventoryWithVersion } from "../../lib/inventory.ts";
+import { can, loadPrincipal } from "../../lib/principal.ts";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const id = hostId();
+  const principal = await loadPrincipal();
+  const canEditExecConfig = can(principal, "fleet:exec-config");
   const { inventory, version } = await loadHostInventoryWithVersion(id);
 
   let providers: Provider[] = [];
@@ -87,7 +90,7 @@ export default async function SettingsPage() {
           setupScript={inventory.setupScript}
           allowedRoots={inventory.allowedRoots}
           requiredEnvironment={inventory.requiredEnvironment}
-          canWriteExecConfig
+          canWriteExecConfig={canEditExecConfig}
         />
       </div>
 

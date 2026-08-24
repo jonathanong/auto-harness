@@ -10,6 +10,7 @@ import { setApiTransportForTests } from "../../lib/api.ts";
 import SettingsPage from "./page.tsx";
 
 const originalHostId = process.env.HARNESS_HOST_ID;
+const originalAuthMode = process.env.HARNESS_AUTH_MODE;
 const router: AppRouterInstance = {
   back() {},
   forward() {},
@@ -23,6 +24,8 @@ afterEach(() => {
   setApiTransportForTests(undefined);
   if (originalHostId === undefined) delete process.env.HARNESS_HOST_ID;
   else process.env.HARNESS_HOST_ID = originalHostId;
+  if (originalAuthMode === undefined) delete process.env.HARNESS_AUTH_MODE;
+  else process.env.HARNESS_AUTH_MODE = originalAuthMode;
 });
 
 describe("host-pane settings route", () => {
@@ -103,6 +106,41 @@ describe("host-pane settings route", () => {
     setApiTransportForTests(async () => Response.json({}));
 
     expect(render(await SettingsPage())).toContain("No provider accounts attached to this host.");
+  });
+
+  it("only renders host exec-config controls for an authenticated capable principal", async () => {
+    process.env.HARNESS_AUTH_MODE = "required";
+    setApiTransportForTests(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return Response.json({
+          username: "operator",
+          role: "operator",
+          kind: "user",
+          capabilities: [],
+        });
+      }
+      if (url.endsWith("/inventory")) return Response.json({});
+      return Response.json({});
+    });
+    const readOnlyMarkup = render(await SettingsPage());
+    expect(readOnlyMarkup).not.toContain('data-pw="host-setup-script"');
+
+    setApiTransportForTests(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/auth/me")) {
+        return Response.json({
+          username: "admin",
+          role: "admin",
+          kind: "admin",
+          capabilities: ["fleet:exec-config"],
+        });
+      }
+      if (url.endsWith("/inventory")) return Response.json({});
+      return Response.json({});
+    });
+    const adminMarkup = render(await SettingsPage());
+    expect(adminMarkup).toContain('data-pw="host-setup-script"');
   });
 });
 
