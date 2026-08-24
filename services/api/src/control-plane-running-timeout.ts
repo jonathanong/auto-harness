@@ -90,9 +90,7 @@ function rememberDurableTimeout(
     completedAt,
     worktreeId: null,
     hostId: null,
-    ...(session.providerAccountLease && session.hostId
-      ? { timedOutHostId: session.hostId }
-      : {}),
+    ...(session.providerAccountLease && session.hostId ? { timedOutHostId: session.hostId } : {}),
   };
   delete next.mainCheckoutLease;
   delete next.assignmentConnectionId;
@@ -133,9 +131,7 @@ async function commitDurableTimeout(
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
       preserveProviderAccountLease: true,
       ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
-      ...(session.providerAccountLease && session.hostId
-        ? { timedOutHostId: session.hostId }
-        : {}),
+      ...(session.providerAccountLease && session.hostId ? { timedOutHostId: session.hostId } : {}),
     });
   }
   return storage.finishSession({
