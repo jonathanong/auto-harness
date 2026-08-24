@@ -21,6 +21,7 @@ import {
   accountHasLeaseCapacity,
   hostHasAssignmentCapacity,
   hostProviderAccountReady,
+  hostAssignmentOccupancyCount,
   tryAcquireProviderAccountLeaseLocal,
 } from "./control-plane-provider-account-leases.ts";
 import type { AssignmentWriteResult } from "./db/plane-storage-types.ts";
@@ -196,6 +197,7 @@ export async function assignScheduledQueuedDurable(
                 ? {
                     hostAssignmentLease: { hostId },
                     hostAssignmentCap: connection.maxConcurrentAssignments,
+                    legacyAssignmentCount: hostAssignmentOccupancyCount(state, hostId),
                   }
                 : {}),
               queueShard: session.queueShard,

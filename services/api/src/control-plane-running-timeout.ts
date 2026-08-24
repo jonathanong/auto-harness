@@ -30,7 +30,8 @@ function persistTimedOutSession(state: ControlPlaneState, session: SessionRecord
 }
 
 function timeOutAcknowledgedSession(state: ControlPlaneState, session: SessionRecord): void {
-  const timedOutHostId = session.providerAccountLease ? session.hostId : undefined;
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease ? session.hostId : undefined;
   session.status = "timed_out";
   session.errorMessage = TIMEOUT_ERROR;
   session.completedAt = state.now();
@@ -67,6 +68,8 @@ function rememberDurableTimeout(
   session: SessionRecord,
   completedAt: string,
 ): void {
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease ? session.hostId : undefined;
   const worktreeId = session.worktreeId;
   if (worktreeId) {
     const wt = state.worktrees.get(worktreeId);
@@ -90,7 +93,7 @@ function rememberDurableTimeout(
     completedAt,
     worktreeId: null,
     hostId: null,
-    ...(session.providerAccountLease && session.hostId ? { timedOutHostId: session.hostId } : {}),
+    ...(timedOutHostId ? { timedOutHostId } : {}),
   };
   delete next.mainCheckoutLease;
   delete next.assignmentConnectionId;
@@ -117,6 +120,8 @@ async function commitDurableTimeout(
   session: SessionRecord,
   completedAt: string,
 ): Promise<boolean> {
+  const timedOutHostId =
+    session.providerAccountLease || session.hostAssignmentLease ? session.hostId : undefined;
   if (session.mainCheckoutLease && session.hostId && session.assignmentConnectionId) {
     return storage.releaseMainCheckoutSession({
       sessionId: session.id,
@@ -130,8 +135,8 @@ async function commitDurableTimeout(
       ...(session.attemptId !== undefined ? { attemptId: session.attemptId } : {}),
       ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
       preserveProviderAccountLease: true,
-      ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
-      ...(session.providerAccountLease && session.hostId ? { timedOutHostId: session.hostId } : {}),
+      preserveHostAssignmentLease: true,
+      ...(timedOutHostId ? { timedOutHostId } : {}),
     });
   }
   return storage.finishSession({
@@ -144,7 +149,8 @@ async function commitDurableTimeout(
     errorMessage: TIMEOUT_ERROR,
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
     preserveProviderAccountLease: true,
-    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    preserveHostAssignmentLease: true,
+    ...(timedOutHostId ? { timedOutHostId } : {}),
   });
 }
 

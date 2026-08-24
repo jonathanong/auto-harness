@@ -1453,7 +1453,9 @@ export async function completeArchiveRetry(
         TableName: ctx.tables.archives,
         Key: { key: archive.key },
         UpdateExpression:
-          "SET contentType = :contentType, bodyBytes = :bodyBytes, #status = :complete, objectStored = :true, updatedAt = :updatedAt REMOVE retryState, retryOrder",
+          "SET contentType = :contentType, bodyBytes = :bodyBytes, #status = :complete, objectStored = :true, updatedAt = :updatedAt" +
+          (archive.objectKey ? ", objectKey = :objectKey" : "") +
+          " REMOVE retryState, retryOrder",
         ConditionExpression:
           "objectStored = :false AND retryState = :processing AND retryOrder = :expected",
         ExpressionAttributeNames: { "#status": "status" },
@@ -1463,6 +1465,7 @@ export async function completeArchiveRetry(
           ":complete": "complete",
           ":true": true,
           ":updatedAt": archive.updatedAt,
+          ...(archive.objectKey ? { ":objectKey": archive.objectKey } : {}),
           ":false": false,
           ":processing": "processing",
           ":expected": expectedRetryOrder,

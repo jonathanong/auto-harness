@@ -8,6 +8,7 @@ import {
   accountHasLeaseCapacityOverCap,
   accountHasLeaseCapacityFromReadModel,
   hostHasAssignmentCapacity,
+  hostAssignmentOccupancyCount,
   hostProviderAccountReady,
   sessionOccupiesHostAssignment,
   maxConcurrentSessionsFor,
@@ -255,6 +256,31 @@ describe("provider account execution-profile leases", () => {
     ).toBe(true);
     expect(plane.assignQueued()).toHaveLength(1);
     expect(plane.assignQueued()).toEqual([]);
+  });
+
+  it("seeds a missing durable host count from active legacy assignments", () => {
+    const state = createControlPlaneState();
+    state.sessions.set("legacy", {
+      id: "legacy",
+      repositoryId: "repo",
+      prompt: "run",
+      target: { commandId: "command" },
+      fallbacks: [],
+      targetLabels: [],
+      queueTtlSeconds: 60,
+      queueExpiresAt: NOW,
+      timeout: 60,
+      priority: 0,
+      requiredLabels: [],
+      onConflict: "queue",
+      status: "running",
+      queueShard: 0,
+      createdAt: NOW,
+      hostId: "host",
+      worktreeId: "worktree",
+    });
+    expect(hostAssignmentOccupancyCount(state, "host")).toBe(1);
+    expect(hostAssignmentOccupancyCount(state, "other")).toBe(0);
   });
 
   it("exhausts account slots at maxConcurrentSessions", () => {

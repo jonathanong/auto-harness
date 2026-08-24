@@ -43,6 +43,8 @@ type ReleaseMainCheckoutOptions = {
   hostAssignmentLease?: HostAssignmentLease | undefined;
   /** Timeout keeps the slot until the daemon reports terminal or disconnect recovery. */
   preserveProviderAccountLease?: boolean;
+  /** Timeout keeps host capacity until terminal/disconnect cleanup. */
+  preserveHostAssignmentLease?: boolean;
 };
 
 async function queueOrderForSession(ctx: PlaneStorageCtx, sessionId: string): Promise<string> {
@@ -174,7 +176,8 @@ function updateExpression(opts: ReleaseMainCheckoutOptions, isQueued: boolean): 
     (opts.suppressedTargetIndex !== undefined
       ? ", suppressedTargetIndexes = list_append(if_not_exists(suppressedTargetIndexes, :empty), :index)"
       : "") +
-    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt, hostAssignmentLease" +
+    " REMOVE assignmentConnectionId, assignmentSentAt, reconnectDeadlineAt, mainCheckoutLease, ackReceivedAt" +
+    (opts.preserveHostAssignmentLease ? "" : ", hostAssignmentLease") +
     (opts.preserveProviderAccountLease ? "" : ", providerAccountLease") +
     (isQueued ? ", startedAt" : "")
   );

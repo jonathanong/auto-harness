@@ -21,6 +21,7 @@ import { planPromptPlacement } from "./queue-placement-planner.ts";
 import {
   accountHasLeaseCapacity,
   hostProviderAccountReady,
+  hostAssignmentOccupancyCount,
   providerAccountLeaseWriteOpts,
   releaseProviderAccountLease,
   tryAcquireProviderAccountLeaseLocal,
@@ -257,6 +258,7 @@ export async function assignQueuedDurable(
             ? {
                 hostAssignmentLease: { hostId: candidate.hostId },
                 hostAssignmentCap: state.connections.get(connectionId)!.maxConcurrentAssignments,
+                legacyAssignmentCount: hostAssignmentOccupancyCount(state, candidate.hostId),
               }
             : {}),
           queueShard: session.queueShard,
@@ -453,7 +455,6 @@ export async function enforceAckDeadlinesDurable(
       : [];
   for (const session of durableSessions) {
     if (
-      session.type === "scheduled" &&
       session.status === "running" &&
       !session.ackReceivedAt &&
       session.assignmentSentAt &&
@@ -463,7 +464,7 @@ export async function enforceAckDeadlinesDurable(
       state.sessions.set(session.id, session);
       state.pendingAcks.set(session.id, {
         sessionId: session.id,
-        worktreeId: null,
+        worktreeId: session.type === "prompt" ? (session.worktreeId ?? null) : null,
         attemptId: session.attemptId,
         assignedAtMs: Date.parse(session.assignmentSentAt),
       });

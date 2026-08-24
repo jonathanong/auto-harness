@@ -65,6 +65,11 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
     ? state.connections.get(connectionId)?.maxConcurrentAssignments
     : undefined;
   if (cap === undefined) return true;
+  return hostAssignmentOccupancyCount(state, hostId) < cap;
+}
+
+/** Read-model seed for hosts whose lock predates assignmentCount. */
+export function hostAssignmentOccupancyCount(state: ControlPlaneState, hostId: string): number {
   const occupied = new Set<string>();
   for (const session of state.sessions.values()) {
     if (sessionHoldsHostAssignment(session, hostId)) occupied.add(hostOccupancyKey(session));
@@ -76,7 +81,7 @@ export function hostHasAssignmentCapacity(state: ControlPlaneState, hostId: stri
   for (const key of state.mainCheckoutLeases.keys()) {
     if (key.startsWith(`${hostId}\0`)) occupied.add(`c:${key.slice(hostId.length + 1)}`);
   }
-  return occupied.size < cap;
+  return occupied.size;
 }
 
 export function accountHasLeaseCapacity(
@@ -168,15 +173,21 @@ export function tryAcquireProviderAccountLeaseLocal(
 }
 
 export function providerAccountLeaseWriteOpts(
-  session: Pick<SessionRecord, "providerAccountLease"> &
-    Partial<Pick<SessionRecord, "hostAssignmentLease">>,
+  session: Pick<SessionRecord, "providerAccountLease" | "hostAssignmentLease"> &
+    Partial<Pick<SessionRecord, "hostId" | "timedOutHostId" | "status">>,
 ): {
   providerAccountLease?: NonNullable<SessionRecord["providerAccountLease"]>;
   hostAssignmentLease?: NonNullable<SessionRecord["hostAssignmentLease"]>;
 } {
   return {
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    ...(session.hostAssignmentLease
+      ? { hostAssignmentLease: session.hostAssignmentLease }
+      : session.hostId && (session.status === "running" || session.status === "cancelled")
+        ? { hostAssignmentLease: { hostId: session.hostId } }
+        : session.timedOutHostId
+          ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
+          : {}),
   };
 }
 
@@ -223,7 +234,24 @@ export async function releaseTimedOutProviderAccountLease(
   session: SessionRecord,
 ): Promise<boolean> {
   const lease = session.providerAccountLease;
-  if (!lease) return false;
+  if (!lease) {
+    if (
+      state.storage &&
+      typeof state.storage.releaseTimedOutHostAssignment === "function" &&
+      session.timedOutHostId &&
+      session.attemptId
+    ) {
+      const released = await state.storage.releaseTimedOutHostAssignment({
+        sessionId: session.id,
+        attemptId: session.attemptId,
+        hostId: session.timedOutHostId,
+      });
+      if (!released) return false;
+    }
+    delete session.hostAssignmentLease;
+    delete session.timedOutHostId;
+    return true;
+  }
   if (!state.storage || typeof state.storage.releaseTimedOutProviderAccountLease !== "function") {
     releaseProviderAccountLease(state, session);
     delete session.timedOutHostId;
@@ -233,6 +261,11 @@ export async function releaseTimedOutProviderAccountLease(
     concurrencyId: lease.concurrencyId,
     sessionId: session.id,
     attemptId: lease.attemptId,
+    ...(session.hostAssignmentLease
+      ? { hostAssignmentLease: session.hostAssignmentLease }
+      : session.timedOutHostId
+        ? { hostAssignmentLease: { hostId: session.timedOutHostId } }
+        : {}),
   });
   if (!released) return false;
   releaseProviderAccountLeaseLocal(state, session);

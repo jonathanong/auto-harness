@@ -44,6 +44,7 @@ export async function tryAssignSession(
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: HostAssignmentLease | undefined;
     hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
   },
 ): Promise<AssignmentWriteResult> {
@@ -53,6 +54,7 @@ export async function tryAssignSession(
     "worktreeId = :wid",
     "hostId = :hid",
     "startedAt = :now",
+    "assignmentSentAt = :now",
     "attemptId = :attemptId",
     "resolvedArgv = :argv",
     "resolvedRoute = :route",
@@ -146,6 +148,9 @@ export async function tryAssignSession(
             ...opts.hostAssignmentLease,
             connectionId: opts.connectionId,
             cap: opts.hostAssignmentCap,
+            ...(opts.legacyAssignmentCount !== undefined
+              ? { legacyAssignmentCount: opts.legacyAssignmentCount }
+              : {}),
           }),
         ]
       : [

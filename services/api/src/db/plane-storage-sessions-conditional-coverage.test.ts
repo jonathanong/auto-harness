@@ -186,6 +186,7 @@ describe("session storage conditional outcomes", () => {
         },
         hostAssignmentLease: { hostId: "host" },
         hostAssignmentCap: 1,
+        legacyAssignmentCount: 1,
         queueShard: 0,
       }),
     ).resolves.toBe(true);
@@ -194,7 +195,8 @@ describe("session storage conditional outcomes", () => {
       expect.objectContaining({
         Update: expect.objectContaining({
           TableName: "HostLocks",
-          ConditionExpression: expect.stringContaining("assignmentCount"),
+          ConditionExpression: expect.stringContaining("attribute_not_exists(assignmentCount)"),
+          ExpressionAttributeValues: expect.objectContaining({ ":legacyCount": 1 }),
         }),
       }),
     );

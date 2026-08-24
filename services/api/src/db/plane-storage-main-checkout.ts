@@ -63,6 +63,7 @@ export async function tryAssignMainCheckoutSession(
     providerAccountLease?: SessionRecord["providerAccountLease"];
     hostAssignmentLease?: HostAssignmentLease | undefined;
     hostAssignmentCap?: number;
+    legacyAssignmentCount?: number;
     queueShard: number;
     attemptId: string;
   },
@@ -118,12 +119,12 @@ export async function tryAssignMainCheckoutSession(
         UpdateExpression:
           "SET mainCheckoutLeases.#repo = :lease, lastScheduledAssignedAt = :now" +
           (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
-            ? ", assignmentCount = if_not_exists(assignmentCount, :zero) + :one"
+            ? ", assignmentCount = if_not_exists(assignmentCount, :legacyCount) + :one"
             : ""),
         ConditionExpression:
           "connectionId = :connectionId AND (attribute_not_exists(draining) OR draining = :false) AND attribute_not_exists(mainCheckoutLeases.#repo)" +
           (opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
-            ? " AND (attribute_not_exists(assignmentCount) OR assignmentCount < :cap)"
+            ? " AND ((attribute_exists(assignmentCount) AND assignmentCount < :cap) OR (attribute_not_exists(assignmentCount) AND :legacyCount < :cap))"
             : ""),
         ExpressionAttributeNames: { "#repo": opts.repositoryId },
         ExpressionAttributeValues: {
@@ -132,7 +133,11 @@ export async function tryAssignMainCheckoutSession(
           ":lease": lease,
           ":now": opts.now,
           ...(opts.hostAssignmentLease && opts.hostAssignmentCap !== undefined
-            ? { ":zero": 0, ":one": 1, ":cap": opts.hostAssignmentCap }
+            ? {
+                ":legacyCount": opts.legacyAssignmentCount ?? 0,
+                ":one": 1,
+                ":cap": opts.hostAssignmentCap,
+              }
             : {}),
         },
       },

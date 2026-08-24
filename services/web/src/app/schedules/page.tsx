@@ -60,7 +60,7 @@ export default async function SchedulesPage({
     error = e instanceof Error ? e.message : String(e);
   }
 
-  const requestedEditId = editId ? decodeURIComponent(editId) : undefined;
+  const requestedEditId = editId;
   let editing = requestedEditId
     ? items.find((schedule) => schedule.id === requestedEditId)
     : undefined;

@@ -1,16 +1,26 @@
+/* eslint-disable max-lines -- archive retry fencing and direct archive reads share one lifecycle. */
+import { createHash } from "node:crypto";
+
 import type { ControlPlaneState } from "./control-plane-state.ts";
 import type { ArchiveMetadata, ArchiveObject } from "./control-plane-types.ts";
+
+function archiveObjectKey(key: string, retryOrder: string | undefined): string {
+  if (!retryOrder) return key;
+  const suffix = createHash("sha256").update(retryOrder).digest("hex").slice(0, 16);
+  return key.replace(/\.jsonl$/, `.${suffix}.jsonl`);
+}
 
 export async function archiveSessionLogs(
   state: ControlPlaneState,
   sessionId: string,
   retryClaim?: { retryState: "pending" | "processing"; retryOrder: string },
+  deferBody = false,
 ): Promise<ArchiveObject> {
   const key = `${state.archivePrefix}${sessionId}/logs.jsonl`;
   // REST/WebSocket Lambdas do not have S3 credentials.  Persist only a bounded retry pointer;
   // Cron, which owns the archive writer, reads the durable session logs later.  In particular,
   // do not materialize a potentially huge transcript in the short-lived WS invocation.
-  if (!state.archiveWriter) {
+  if (!state.archiveWriter && deferBody) {
     const pending: ArchiveMetadata = {
       key,
       contentType: "application/x-ndjson",
@@ -29,8 +39,10 @@ export async function archiveSessionLogs(
   // scale with total output since process start rather than with the session's own.
   await Promise.all(state.pendingLogPersists.get(sessionId) ?? []);
   const body = await archiveBody(state, sessionId);
+  const objectKey = archiveObjectKey(key, retryClaim?.retryOrder);
   const object: ArchiveObject = {
     key,
+    ...(objectKey === key ? {} : { objectKey }),
     body,
     contentType: "application/x-ndjson",
   };
@@ -46,8 +58,20 @@ export async function archiveSessionLogs(
   };
   if (state.storage && !retryClaim) await state.storage.putArchive(pending);
   if (!retryClaim) state.archives.set(object.key, pending);
-  if (state.archiveWriter) await state.archiveWriter.putArchive(object);
+  if (!state.archiveWriter) {
+    const complete: ArchiveMetadata = {
+      ...pending,
+      status: "complete",
+      objectStored: false,
+      updatedAt: state.now(),
+    };
+    if (state.storage) await state.storage.putArchive(complete);
+    state.archives.set(object.key, complete);
+    return object;
+  }
+  await state.archiveWriter.putArchive({ ...object, key: object.objectKey ?? object.key });
   const storedMetadata = { ...pending };
+  if (object.objectKey) storedMetadata.objectKey = object.objectKey;
   delete storedMetadata.retryState;
   delete storedMetadata.retryOrder;
   const complete: ArchiveMetadata = {
@@ -62,15 +86,7 @@ export async function archiveSessionLogs(
   if (state.storage && retryClaim && typeof state.storage.completeArchiveRetry === "function") {
     const committed = await state.storage.completeArchiveRetry(complete, retryClaim.retryOrder);
     if (committed) state.archives.set(object.key, complete);
-    else {
-      // A newer retry generation may already own this key.  Never overwrite its in-flight
-      // upload with a stale worker's same-key restoration; only repair after observing a
-      // completed durable generation.
-      const current = await state.storage.getArchive(object.key);
-      if (current?.status === "complete" && current.objectStored) {
-        await restoreCompletedArchiveObject(state, object, sessionId);
-      }
-    }
+    // A generation that loses the durable fence must never write the winner's object key.
   } else if (retryClaim) {
     // In-memory mode has no conditional write primitive, so apply the same fence locally.
     // A newer claim may have replaced this row while the object upload was in flight.
@@ -78,8 +94,6 @@ export async function archiveSessionLogs(
     if (current?.retryState === "processing" && current.retryOrder === retryClaim.retryOrder) {
       if (state.storage) await state.storage.putArchive(complete);
       state.archives.set(object.key, complete);
-    } else if (current?.status === "complete" && current.objectStored) {
-      await restoreCompletedArchiveObject(state, object, sessionId);
     }
   } else {
     if (state.storage) await state.storage.putArchive(complete);
@@ -96,16 +110,6 @@ async function archiveBody(state: ControlPlaneState, sessionId: string): Promise
     .map(({ timestamp, stream, content }) => JSON.stringify({ timestamp, stream, content }))
     .join("\n");
   return body ? `${body}\n` : "";
-}
-
-/** A stale worker may finish its same-key upload after a newer fenced generation. */
-async function restoreCompletedArchiveObject(
-  state: ControlPlaneState,
-  object: ArchiveObject,
-  sessionId: string,
-): Promise<void> {
-  if (!state.archiveWriter) return;
-  await state.archiveWriter.putArchive({ ...object, body: await archiveBody(state, sessionId) });
 }
 
 /** Retry an interrupted object upload after the session transition already committed. */
@@ -214,7 +218,9 @@ export async function retryPendingArchives(
 export function queueSessionArchive(state: ControlPlaneState, sessionId: string): void {
   // pendingPersists only tracks completion (drain waits on it), never the resolved
   // ArchiveObject — void it explicitly rather than pushing the value-carrying promise.
-  state.pendingPersists.push(archiveSessionLogs(state, sessionId).then(() => undefined));
+  state.pendingPersists.push(
+    archiveSessionLogs(state, sessionId, undefined, true).then(() => undefined),
+  );
 }
 
 export function getArchive(state: ControlPlaneState, sessionId: string): ArchiveMetadata | null {

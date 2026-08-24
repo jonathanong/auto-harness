@@ -11,6 +11,15 @@ function firstDefined<T>(primary: T | undefined, fallback: T | undefined): T | u
   return fallback;
 }
 
+function hostLeaseForSession(session: SessionRecord): SessionRecord["hostAssignmentLease"] {
+  return (
+    session.hostAssignmentLease ??
+    (session.hostId && (session.status === "running" || session.status === "cancelled")
+      ? { hostId: session.hostId }
+      : undefined)
+  );
+}
+
 function reportFieldsFromPlan(plan: SessionTransitionPlan): {
   exitCode?: number | null;
   errorCode?: string;
@@ -50,7 +59,7 @@ export function finishSessionOptsFromPlan(
     ...(extras.fence ? { fence: extras.fence } : {}),
     ...(session.concurrencyId !== undefined ? { concurrencyId: session.concurrencyId } : {}),
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }
 
@@ -72,7 +81,7 @@ export function requeueUsageLimitedSessionOptsFromPlan(
     usageLimitedUntil: cooldown.usageLimitedUntil,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }
 
@@ -92,6 +101,6 @@ export function suppressProviderlessUsageLimitOptsFromPlan(
     targetIndex: suppress.targetIndex,
     ...(requeue?.errorMessage ? { errorMessage: requeue.errorMessage } : {}),
     ...(session.providerAccountLease ? { providerAccountLease: session.providerAccountLease } : {}),
-    ...(session.hostAssignmentLease ? { hostAssignmentLease: session.hostAssignmentLease } : {}),
+    ...(hostLeaseForSession(session) ? { hostAssignmentLease: hostLeaseForSession(session) } : {}),
   };
 }

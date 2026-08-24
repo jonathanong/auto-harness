@@ -666,7 +666,10 @@ async function applySessionStatusDurable(
   if (
     session.status === "timed_out" &&
     isTerminalSessionStatus(msg.status) &&
-    session.providerAccountLease?.attemptId === msg.attemptId
+    (session.providerAccountLease?.attemptId === msg.attemptId ||
+      (!session.providerAccountLease &&
+        session.timedOutHostId != null &&
+        session.attemptId === msg.attemptId))
   ) {
     if (state.storage) {
       await releaseTimedOutProviderAccountLease(state, session);
@@ -872,6 +875,7 @@ async function applySessionStatusDurable(
         suppressedTargetIndex: suppress.targetIndex,
         ...(msg.exitCode !== undefined ? { exitCode: msg.exitCode } : {}),
         ...(msg.cliResumeRef ? { cliResumeRef: msg.cliResumeRef } : {}),
+        ...providerAccountLeaseWriteOpts(session),
       });
       if (!committed) return { ok: true };
       releaseScheduledLeaseLocal(state, session);
@@ -932,7 +936,7 @@ async function applySessionStatusDurable(
     delete next.reconnectDeadlineAt;
     state.sessions.set(session.id, next);
     state.pendingAcks.delete(session.id);
-    await archiveSessionLogs(state, session.id);
+    await archiveSessionLogs(state, session.id, undefined, true);
     await requestAssignment(state);
     return { ok: true };
   }
@@ -1031,7 +1035,7 @@ async function applySessionStatusDurable(
   state.sessions.set(msg.sessionId, nextSession);
   state.pendingAcks.delete(msg.sessionId);
   if (!shouldSuppressTarget) {
-    await archiveSessionLogs(state, msg.sessionId);
+    await archiveSessionLogs(state, msg.sessionId, undefined, true);
     noteSlackSessionLifecycle(state, nextSession);
   }
   await requestAssignment(state);

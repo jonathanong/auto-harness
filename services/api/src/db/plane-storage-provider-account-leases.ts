@@ -7,6 +7,10 @@ import {
   isConditionalTransactionFailureAt,
   type PlaneStorageCtx,
 } from "./plane-storage-types.ts";
+import {
+  hostAssignmentReleaseItem,
+  type HostAssignmentLease,
+} from "./plane-storage-host-assignment.ts";
 
 export type ProviderAccountLeaseKey = {
   concurrencyId: string;
@@ -166,7 +170,12 @@ export async function releaseProviderAccountLease(
 /** Atomically remove a timeout-preserved lease from its session and lock. */
 export async function releaseTimedOutProviderAccountLease(
   ctx: PlaneStorageCtx,
-  opts: { concurrencyId: string; sessionId: string; attemptId: string },
+  opts: {
+    concurrencyId: string;
+    sessionId: string;
+    attemptId: string;
+    hostAssignmentLease?: HostAssignmentLease | undefined;
+  },
 ): Promise<boolean> {
   try {
     await ctx.doc.send(
@@ -188,6 +197,9 @@ export async function releaseTimedOutProviderAccountLease(
             },
           },
           providerAccountLeaseDeleteItem(ctx.tables.concurrencyLocks, opts),
+          ...(opts.hostAssignmentLease
+            ? [hostAssignmentReleaseItem(ctx, opts.hostAssignmentLease)]
+            : []),
         ],
       }),
     );

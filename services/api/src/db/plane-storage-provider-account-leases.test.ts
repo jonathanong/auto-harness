@@ -6,6 +6,7 @@ import {
   releaseProviderAccountLease,
   releaseTimedOutProviderAccountLease,
 } from "./plane-storage-provider-account-leases.ts";
+import { releaseTimedOutHostAssignment } from "./plane-storage-host-assignment.ts";
 
 describe("provider account lease storage", () => {
   it("deletes the attempt-owned lock and ignores a lost condition", async () => {
@@ -70,6 +71,22 @@ describe("provider account lease storage", () => {
         { concurrencyId: "provider-lease:acct:0", sessionId: "sess", attemptId: "attempt" },
       ),
     ).resolves.toBe(false);
+  });
+
+  it("atomically releases a timeout-preserved host slot without a provider lease", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    await expect(
+      releaseTimedOutHostAssignment(
+        { doc: { send }, tables: { sessions: "Sessions", hostLocks: "Hosts" } } as never,
+        { sessionId: "sess", attemptId: "attempt", hostId: "host" },
+      ),
+    ).resolves.toBe(true);
+    const request = send.mock.calls[0]?.[0] as { input: { TransactItems: unknown[] } } | undefined;
+    expect(request).toBeDefined();
+    const items = request!.input.TransactItems;
+    expect(items).toHaveLength(2);
+    expect(items[0]).toMatchObject({ Update: { TableName: "Sessions" } });
+    expect(items[1]).toMatchObject({ Update: { TableName: "Hosts" } });
   });
 
   it("omits transact deletes when no lease is held", () => {
