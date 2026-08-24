@@ -42,6 +42,7 @@ export {
   defaultMaxConcurrentAssignments,
   hasHostCapability,
   isHostCapability,
+  isPositiveAssignmentCap,
   normalizeHostCapabilities,
   parseHostCapabilitiesAdvertisement,
   type HostCapability,

@@ -64,6 +64,21 @@ describe("persisted service environment validation", () => {
     ).toEqual(["HARNESS_API_URL"]);
   });
 
+  it("validates the persisted host assignment cap before service installation", () => {
+    const identity =
+      "HARNESS_HOST_ID=host-1\nHARNESS_API_URL=https://control.example.com\nHARNESS_API_KEY=secret\n";
+    for (const value of ["1", "64", "256", ""]) {
+      expect(
+        validatePersistedEnvFile(`${identity}HARNESS_MAX_CONCURRENT_ASSIGNMENTS=${value}\n`),
+      ).toEqual([]);
+    }
+    for (const value of ["0", "257", "nope", "2.5"]) {
+      expect(
+        validatePersistedEnvFile(`${identity}HARNESS_MAX_CONCURRENT_ASSIGNMENTS=${value}\n`),
+      ).toEqual(["HARNESS_MAX_CONCURRENT_ASSIGNMENTS"]);
+    }
+  });
+
   it("reports only variable names and remediation, never persisted values", () => {
     const message = persistedEnvError(["HARNESS_API_URL", "HARNESS_API_KEY"]);
     expect(message).toContain("HARNESS_API_URL");

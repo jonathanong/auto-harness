@@ -45,6 +45,25 @@ describe("local provider catalog route coverage", () => {
     expect(missing).toMatchObject({ status: 404, json: { error: { code: "NOT_FOUND" } } });
   });
 
+  it("rejects non-numeric provider-account caps rather than treating them as absent", async () => {
+    const plane = seededPlane();
+    for (const maxConcurrentSessions of [null, "2"] as const) {
+      const response = await invoke(plane, "PATCH", "/api/v1/provider-accounts/account", {
+        maxConcurrentSessions,
+      });
+      expect(response).toMatchObject({
+        status: 400,
+        json: {
+          error: {
+            code: "VALIDATION_ERROR",
+            message: expect.stringContaining("maxConcurrentSessions"),
+          },
+        },
+      });
+    }
+    expect(plane.getProviderAccount("account")?.maxConcurrentSessions).toBe(1);
+  });
+
   it("maps a conditional provider account update loss to conflict", async () => {
     const plane = new ControlPlane({
       storage: { updateProviderAccount: async () => false } as never,

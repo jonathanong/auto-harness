@@ -106,6 +106,51 @@ describe("requestAssignment", () => {
     expect(backfills).toBe(0);
   });
 
+  it("refreshes stale provider readiness before bounded event placement", async () => {
+    const plane = new ControlPlane({ now: () => NOW, shardCount: 1, idFactory: () => "session" });
+    plane.createProvider({ id: "provider", name: "vendor", defaultCommandId: "command" });
+    plane.createProviderAccount({
+      id: "account",
+      providerId: "provider",
+      label: "account",
+    });
+    plane.createCommand({
+      id: "command",
+      name: "command",
+      argv: ["command"],
+      providerId: "provider",
+    });
+    plane.registerHost({
+      hostId: "host",
+      worktrees: [
+        { id: "worktree", name: "worktree", repositoryId: "repo", path: "/work", labels: [] },
+      ],
+      providerAccountReadiness: [{ providerAccountId: "account", ready: true }],
+    });
+    expect(
+      plane.createSession({
+        repositoryId: "repo",
+        prompt: "run",
+        target: { providerId: "provider" },
+        timeout: 60,
+      }).ok,
+    ).toBe(true);
+    const connection = [...plane.state.connections.values()][0]!;
+    setDurableReadStorage(plane.state, {
+      getConnection: async () => ({
+        ...connection,
+        providerAccountReadiness: [{ providerAccountId: "account", ready: false }],
+      }),
+    });
+
+    await requestAssignment(plane.state);
+
+    expect(plane.state.sessions.get("session")?.status).toBe("queued");
+    expect(plane.state.connections.get(connection.connectionId)?.providerAccountReadiness).toEqual([
+      { providerAccountId: "account", ready: false },
+    ]);
+  });
+
   it("handles scheduled queue entries and isolates a per-session failure", async () => {
     const plane = new ControlPlane({ now: () => NOW, shardCount: 1 });
     seedBaseCommand(plane);

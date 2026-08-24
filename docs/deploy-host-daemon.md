@@ -54,9 +54,10 @@ pnpm local:daemon install-service
 
 Every platform validates the effective persisted env before writing service files or restarting.
 It requires a non-placeholder bound `HARNESS_HOST_ID`, a well-formed non-local HTTPS production
-`HARNESS_API_URL`, and a non-placeholder `HARNESS_API_KEY`. `status` / `run-session` / `start`
-keep the local defaults. If a deployed URL changes, update only the non-secret URL while retaining
-the persisted bound key:
+`HARNESS_API_URL`, a non-placeholder `HARNESS_API_KEY`, and—when configured—an integer
+`HARNESS_MAX_CONCURRENT_ASSIGNMENTS` from 1 through 256. `status` / `run-session` / `start` keep the
+local defaults. If a deployed URL changes, update only the non-secret URL while retaining the
+persisted bound key:
 
 ```bash
 pnpm local:daemon install-service --api-url 'https://new-control.example.com'

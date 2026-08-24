@@ -3,6 +3,7 @@ import type { SessionRecord } from "./db/types.ts";
 import { assignQueuedDurable } from "./control-plane-assign.ts";
 import { assignScheduledQueuedDurable } from "./control-plane-scheduled-assign.ts";
 import { compareSessionsForQueue } from "./control-plane-ordering.ts";
+import { refreshAssignmentReadinessDurable } from "./control-plane-assignment-readiness.ts";
 import {
   listQueuedSessionsDurable,
   refreshSchedulerReadModel,
@@ -54,7 +55,13 @@ export async function assignQueuedAndScheduledDurable(
     if (promptQueued.length === 0 && scheduledQueued.length === 0) {
       return { queuedAssigned: [], scheduledAssigned: [] };
     }
-    if (fullScan) await refreshSchedulerReadModel(state);
+    if (fullScan) {
+      await refreshSchedulerReadModel(state);
+    } else {
+      // Bound event-path reads while making every unrefreshed profile fail
+      // closed until the complete cron repair refreshes the whole model.
+      await refreshAssignmentReadinessDurable(state, maxSessions);
+    }
     queued = [...promptQueued, ...scheduledQueued].toSorted(compareSessionsForQueue);
   } else {
     queued = [...state.sessions.values()]

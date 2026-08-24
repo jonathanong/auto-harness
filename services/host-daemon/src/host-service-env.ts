@@ -1,4 +1,4 @@
-import { LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
+import { isPositiveAssignmentCap, LOCAL_API_HTTP, LOCAL_HOST_ID } from "@auto-harness/shared";
 import { isAbsolute, win32 } from "node:path";
 import { parseChildEnvAllowlist } from "./child-env.ts";
 
@@ -60,6 +60,10 @@ function isPlaceholder(value: string): boolean {
  */
 function isPersistableExecutionProfilesPath(value: string): boolean {
   return isAbsolute(value) || win32.isAbsolute(value);
+}
+
+function isInvalidAssignmentCap(value: string | undefined): boolean {
+  return value !== undefined && value !== "" && !isPositiveAssignmentCap(Number(value));
 }
 
 export function isProductionApiUrl(value: string): boolean {
@@ -127,6 +131,10 @@ export function validatePersistedEnvFile(contents: string): string[] {
     !isPersistableExecutionProfilesPath(executionProfiles)
   ) {
     errors.push("HARNESS_EXECUTION_PROFILES");
+  }
+  const maxConcurrentAssignments = env.HARNESS_MAX_CONCURRENT_ASSIGNMENTS;
+  if (isInvalidAssignmentCap(maxConcurrentAssignments)) {
+    errors.push("HARNESS_MAX_CONCURRENT_ASSIGNMENTS");
   }
   errors.push(...parseChildEnvAllowlist(env).errors);
   return errors;

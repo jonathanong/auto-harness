@@ -95,8 +95,9 @@ task as the current user on Windows (not `LOCALSYSTEM`). Identity is read from `
 written to a mode-0600 env file that is never committed.
 
 Every platform validates the effective persisted env before writing service files or restarting:
-use a bound, non-placeholder host id, a non-local HTTPS production URL, and a bound key (same
-recipe as [deploy-host-daemon.md](deploy-host-daemon.md)):
+use a bound, non-placeholder host id, a non-local HTTPS production URL, a bound key, and—when
+set—an integer `HARNESS_MAX_CONCURRENT_ASSIGNMENTS` from 1 through 256 (same recipe as
+[deploy-host-daemon.md](deploy-host-daemon.md)):
 
 ```bash
 export HARNESS_HOST_ID='<bound-host-id>'
