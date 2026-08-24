@@ -552,7 +552,7 @@ test.describe("control plane sessions", () => {
       // origin) to exercise the same browser WebSocket policy as the real UI.
       await page.goto("/sessions");
       await page.evaluate(
-        ({ hostId, repoId, worktreeId, wsBase }) =>
+        ({ hostId, repoId, worktreeId, accountId, wsBase }) =>
           new Promise<void>((resolve, reject) => {
             const socket = new WebSocket(wsBase);
             const timeout = setTimeout(
@@ -592,12 +592,19 @@ test.describe("control plane sessions", () => {
                     },
                   ],
                   commandProfiles: [],
+                  providerAccountReadiness: [
+                    {
+                      providerAccountId: accountId,
+                      ready: true,
+                      fingerprint: "a".repeat(64),
+                    },
+                  ],
                   runtime: { daemonVersion: "test", gitVersion: "2.36.0", gitReady: true },
                 }),
               );
             });
           }),
-        { hostId, repoId, worktreeId, wsBase: WS_BASE },
+        { hostId, repoId, worktreeId, accountId, wsBase: WS_BASE },
       );
 
       const created = await request.post(`${API_BASE}/api/v1/sessions`, {

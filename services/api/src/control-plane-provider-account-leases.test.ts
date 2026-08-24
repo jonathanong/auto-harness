@@ -326,6 +326,29 @@ describe("provider account execution-profile leases", () => {
             attemptId: "old",
           },
         },
+        {
+          id: "cancelled-released",
+          repositoryId: "repo",
+          prompt: "p",
+          target: { commandId: "c" },
+          fallbacks: [],
+          targetLabels: [],
+          queueTtlSeconds: 1,
+          queueExpiresAt: NOW,
+          timeout: 1,
+          priority: 0,
+          requiredLabels: [],
+          status: "cancelled",
+          queueShard: 0,
+          createdAt: NOW,
+          hostId: null,
+          providerAccountLease: {
+            concurrencyId: "provider-account:acct:2",
+            providerAccountId: "acct",
+            slot: 2,
+            attemptId: "done",
+          },
+        },
       ],
       listAllWorktrees: async () => [],
       listConnections: async () => [],
@@ -347,6 +370,7 @@ describe("provider account execution-profile leases", () => {
       attemptId: "attempt",
     });
     expect(plane.state.providerAccountLeases.has("provider-account:acct:1")).toBe(false);
+    expect(plane.state.providerAccountLeases.has("provider-account:acct:2")).toBe(false);
     expect(plane.getProviderAccount("acct")?.maxConcurrentSessions).toBe(1);
   });
 

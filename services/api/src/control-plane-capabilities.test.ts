@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- advertisement, durable register, and hydrate cases share fixtures. */
 import { describe, expect, it } from "vitest";
 
 import { ControlPlane } from "./control-plane.ts";
@@ -33,6 +34,15 @@ describe("host capability advertisements", () => {
         { providerAccountId: "acct", ready: true, fingerprint: "a".repeat(64) },
       ],
     });
+    expect(
+      parseHostMessage({
+        type: "host:register",
+        hostId: "host",
+        worktrees,
+        commandProfiles: [],
+        maxConcurrentAssignments: 8,
+      }),
+    ).toMatchObject({ maxConcurrentAssignments: 8 });
     expect(
       parseHostMessage({
         type: "host:register",
@@ -75,7 +85,8 @@ describe("host capability advertisements", () => {
   });
 
   it("forwards assignment capacity and readiness through durable registration", async () => {
-    const plane = new ControlPlane({ connectionIdFactory: () => "durable-ready" });
+    let n = 0;
+    const plane = new ControlPlane({ connectionIdFactory: () => `durable-ready-${++n}` });
     expect(
       (
         await plane.handleHostMessageDurable({
@@ -91,9 +102,22 @@ describe("host capability advertisements", () => {
         })
       ).ok,
     ).toBe(true);
-    const conn = plane.state.connections.get("durable-ready");
+    const conn = plane.state.connections.get("durable-ready-1");
     expect(conn?.maxConcurrentAssignments).toBe(3);
     expect(conn?.providerAccountReadiness?.[0]?.providerAccountId).toBe("acct");
+
+    expect(
+      (
+        await plane.handleHostMessageDurable({
+          type: "host:register",
+          hostId: "durable-features",
+          worktrees: [
+            { id: "wt-f", name: "wt-f", repositoryId: "repo", path: "/repo/wt", labels: [] },
+          ],
+          capabilities: { features: ["scheduled-main-checkout"], maxConcurrentAssignments: 5 },
+        } as never)
+      ).ok,
+    ).toBe(true);
   });
 
   it("replaces a capability with an older reconnect advertisement", () => {
