@@ -18,6 +18,8 @@ import {
   buildSlackConfigBody,
   notificationFields,
   responseMessage,
+  slackDeliveryWarning,
+  slackSaveSuccessMessage,
   validateSlackForm,
   type PublicSlackIntegration,
   type SlackFormValues,
@@ -36,6 +38,7 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
   const [success, setSuccess] = useState<string | null>(null);
   const mounted = useRef(true);
   const configured = Boolean(config);
+  const deliveryWarning = slackDeliveryWarning(config);
 
   useEffect(() => {
     mounted.current = true;
@@ -64,7 +67,7 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
       // Reset first so browser password managers and the DOM cannot retain plaintext secrets.
       form.reset();
       setConfig(next);
-      setSuccess("Slack configuration saved. Configuration alone does not send messages.");
+      setSuccess(slackSaveSuccessMessage(next));
       router.refresh();
     } catch {
       if (mounted.current) {
@@ -81,14 +84,15 @@ export function SlackSettingsForm({ initial }: { initial?: PublicSlackIntegratio
       <CardHeader>
         <CardTitle>Slack configuration</CardTitle>
         <p className="text-sm text-muted-foreground">
-          Store the workspace configuration used by future notification delivery.
+          Store the workspace bot token and channel used for session lifecycle delivery.
         </p>
       </CardHeader>
       <CardContent className="space-y-5">
-        <Alert variant="warning" role="note" data-pw="slack-delivery-warning">
-          Configuration alone does not send Slack messages. OAuth, delivery, inbound verification,
-          and session threads are separate capabilities and are not enabled here.
-        </Alert>
+        {deliveryWarning ? (
+          <Alert variant="warning" role="note" data-pw="slack-delivery-warning">
+            {deliveryWarning}
+          </Alert>
+        ) : null}
 
         <SlackConfiguredState config={config} />
         <form

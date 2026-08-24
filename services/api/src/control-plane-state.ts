@@ -74,6 +74,8 @@ export type ControlPlaneState = {
   commands: Map<string, CommandRecord>;
   /** Ciphertext-only cache; REST reads always refresh it from durable storage. */
   slackIntegration: SlackIntegrationRecord | undefined;
+  /** True when this process (or its deployed sibling cron) can run the Slack outbox. */
+  slackOutboundEnabled: boolean;
   secretEncryptor: SecretEncryptor | undefined;
   /** Append-only audit records hydrated for local/in-memory reads. */
   auditLogs: Map<string, AuditLogRecord>;
@@ -143,6 +145,7 @@ export function createControlPlaneState(options: ControlPlaneOptions = {}): Cont
     providerAccounts: new Map(),
     commands: new Map(),
     slackIntegration: undefined,
+    slackOutboundEnabled: false,
     secretEncryptor: options.secretEncryptor,
     auditLogs: new Map(),
     usageRecords: new Map(),

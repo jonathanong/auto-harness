@@ -61,8 +61,8 @@ export type LocalServerOptions = {
   /** Per-connection WebSocket messages per second. */
   wsRateLimitPerSecond?: number;
   /**
-   * Optional outbound boundary. No Slack transport is supplied by production code;
-   * tests or a future approved adapter must inject one explicitly.
+   * Optional outbound boundary. Local/AWS runtimes inject the HTTP transport when
+   * credentials can be decrypted; tests may replace it.
    */
   slackTransport?: SlackTransport;
   slackWorker?: SlackLifecycleWorkerOptions;

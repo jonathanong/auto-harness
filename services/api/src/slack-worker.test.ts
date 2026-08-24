@@ -224,4 +224,31 @@ describe("Slack lifecycle worker", () => {
     await bounded.stop();
     expect([...store.items.values()].filter(({ status }) => status === "sent")).toHaveLength(1);
   });
+
+  it("runs a one-shot drain without starting the interval timer", async () => {
+    const store = new MemoryOutbox();
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deliver = vi.fn(async (request: { channel: string; idempotencyKey: string }) => {
+      await blocked;
+      return { channel: request.channel, messageTs: `ts-${request.idempotencyKey}` };
+    });
+    const worker = new SlackLifecycleWorker(
+      {
+        store,
+        transport: { deliver },
+        getConfig: async () => config,
+        listSessions: async () => [completed],
+      },
+      { now: () => initial },
+    );
+    const first = worker.runOnce();
+    expect(await worker.runOnce()).toBe(false);
+    expect(await worker.tick()).toBe(false);
+    release();
+    expect(await first).toBe(true);
+    expect(deliver).toHaveBeenCalled();
+  });
 });

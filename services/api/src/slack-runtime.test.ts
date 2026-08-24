@@ -1,0 +1,172 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { ControlPlane } from "./control-plane.ts";
+import type { SecretEncryptor } from "./secret-crypto.ts";
+import type { SlackDeliveryRecord, SlackOutboxStore } from "./slack-delivery-types.ts";
+import {
+  DEFAULT_SLACK_NOTIFICATIONS,
+  type SlackIntegrationRecord,
+} from "./slack-integration-types.ts";
+import { createSlackLifecycleWorker } from "./slack-runtime.ts";
+
+const now = "2026-08-12T10:00:00.000Z";
+const token = "xoxb-1234567890-abcdefghij";
+
+class MemoryOutbox implements SlackOutboxStore {
+  readonly items = new Map<string, SlackDeliveryRecord>();
+
+  async enqueue(value: SlackDeliveryRecord) {
+    if (this.items.has(value.id)) return "exists" as const;
+    this.items.set(value.id, structuredClone(value));
+    return "created" as const;
+  }
+
+  async claimDue(input: Parameters<SlackOutboxStore["claimDue"]>[0]) {
+    const value = [...this.items.values()].find(
+      (item) =>
+        (item.status === "pending" || item.status === "delivering") &&
+        item.nextAttemptAt <= input.now,
+    );
+    if (!value) return null;
+    Object.assign(value, {
+      status: "delivering",
+      leaseToken: input.leaseToken,
+      leaseExpiresAt: input.leaseExpiresAt,
+      nextAttemptAt: input.leaseExpiresAt,
+    });
+    return structuredClone(value);
+  }
+
+  async get(id: string) {
+    return structuredClone(this.items.get(id) ?? null);
+  }
+
+  async complete(input: Parameters<SlackOutboxStore["complete"]>[0]) {
+    const value = this.items.get(input.id);
+    if (!value || value.leaseToken !== input.leaseToken) return false;
+    Object.assign(value, {
+      status: "sent",
+      remoteChannel: input.result.channel,
+      remoteMessageTs: input.result.messageTs,
+    });
+    return true;
+  }
+
+  async reschedule(input: Parameters<SlackOutboxStore["reschedule"]>[0]) {
+    const value = this.items.get(input.id);
+    if (!value || value.leaseToken !== input.leaseToken) return false;
+    Object.assign(value, input, { lastError: input.error });
+    return true;
+  }
+}
+
+function encryptor(): SecretEncryptor {
+  return {
+    encrypt: async (plaintext) => Buffer.from(plaintext, "utf8").toString("base64"),
+    decrypt: async (ciphertext) => Buffer.from(ciphertext, "base64").toString("utf8"),
+  };
+}
+
+function slackRecord(): SlackIntegrationRecord {
+  return {
+    id: "slack",
+    type: "slack",
+    encryptedConfig: Buffer.from(JSON.stringify({ botToken: token }), "utf8").toString("base64"),
+    defaultChannel: "C123",
+    enabled: true,
+    notifications: DEFAULT_SLACK_NOTIFICATIONS,
+    signingSecretConfigured: false,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+describe("Slack production runtime", () => {
+  it("starts only with an outbox and either credentials or an injected transport", () => {
+    expect(createSlackLifecycleWorker(new ControlPlane())).toBeUndefined();
+    expect(
+      createSlackLifecycleWorker(
+        new ControlPlane({ storage: { enqueue: async () => "created" } as never }),
+      ),
+    ).toBeUndefined();
+    const store = new MemoryOutbox();
+    expect(
+      createSlackLifecycleWorker(new ControlPlane({ storage: store as never })),
+    ).toBeUndefined();
+    expect(
+      createSlackLifecycleWorker(new ControlPlane({ storage: store as never }), {
+        transport: { deliver: vi.fn() },
+      }),
+    ).toBeDefined();
+  });
+
+  it("delivers through the HTTP transport when the bot token can be decrypted", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({
+      storage: Object.assign(store, {
+        getSlackIntegration: async () => slackRecord(),
+        listAllSessions: async () => [
+          {
+            id: "session-1",
+            repositoryId: "repo-1",
+            prompt: "ship it",
+            target: { commandId: "command-1" },
+            fallbacks: [],
+            targetLabels: ["Codex"],
+            queueTtlSeconds: 60,
+            queueExpiresAt: now,
+            timeout: 60,
+            priority: 4,
+            requiredLabels: [],
+            status: "queued",
+            queueShard: 0,
+            createdAt: now,
+          },
+        ],
+        listRepositories: async () => [
+          {
+            id: "repo-1",
+            name: "auto-harness",
+            url: "git@example.test:auto-harness.git",
+            defaultBranch: "main",
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+      }) as never,
+      secretEncryptor: encryptor(),
+      publicBaseUrl: "https://ui.test",
+      now: () => now,
+    });
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ok: true, channel: "C123", ts: "9.0" }), { status: 200 }),
+    );
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now },
+    });
+    expect(worker).toBeDefined();
+    expect(plane.state.slackOutboundEnabled).toBe(true);
+    expect(await worker!.runOnce()).toBe(true);
+    expect(fetchImpl).toHaveBeenCalled();
+    expect(JSON.parse(fetchImpl.mock.calls[0]![1].body as string)).toMatchObject({
+      channel: "C123",
+      text: expect.stringContaining("auto-harness"),
+    });
+  });
+
+  it("falls back to in-memory Slack config and skips disabled integrations", async () => {
+    const store = new MemoryOutbox();
+    const plane = new ControlPlane({ storage: store as never, secretEncryptor: encryptor() });
+    plane.state.slackIntegration = { ...slackRecord(), enabled: false };
+    const fetchImpl = vi.fn();
+    const worker = createSlackLifecycleWorker(plane, {
+      fetch: fetchImpl,
+      worker: { now: () => now },
+    });
+    expect(await worker!.runOnce()).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});

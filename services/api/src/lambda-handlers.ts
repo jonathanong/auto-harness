@@ -12,6 +12,7 @@ import { AuthService, type Principal } from "./auth.ts";
 import { createControlPlane } from "./create-plane.ts";
 import { createLocalApp } from "./local-app.ts";
 import { createLambdaViewerSockets } from "./lambda-viewer-websocket.ts";
+import { createSlackLifecycleWorker } from "./slack-runtime.ts";
 import { parseHostMessage } from "./ws-hub.ts";
 
 import {
@@ -244,6 +245,14 @@ export async function createLambdaRuntime(
     );
   };
   const app = createLocalApp({ authService: auth, plane: created.plane, useDynamo: false });
+  const slackWorker = createSlackLifecycleWorker(created.plane, {
+    worker: {
+      maxOperationsPerTick: 50,
+      onError: (error) => {
+        console.error("slack delivery failed", error);
+      },
+    },
+  });
 
   return {
     async cron() {
@@ -259,6 +268,7 @@ export async function createLambdaRuntime(
         const sessionDrainsReconciled = await created.plane.reconcileSessionDrainsDurable();
         const queuedAssigned = await created.plane.assignQueuedDurable();
         const scheduledAssigned = await created.plane.assignScheduledQueuedDurable();
+        if (slackWorker) await slackWorker.runOnce();
         return {
           ackDeadlinesEnforced: ackDeadlinesEnforced.length,
           runningTimeoutsEnforced: runningTimeoutsEnforced.length,

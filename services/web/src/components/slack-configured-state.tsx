@@ -25,6 +25,16 @@ export function SlackConfiguredState({ config }: { config?: PublicSlackIntegrati
           <dt className="text-muted-foreground">Enabled</dt>
           <dd data-pw="slack-enabled-state">{config?.enabled ? "Yes" : "No"}</dd>
         </div>
+        <div>
+          <dt className="text-muted-foreground">Delivery</dt>
+          <dd data-pw="slack-delivery-state">
+            {config?.deliveryAvailable
+              ? "Available"
+              : config
+                ? "Configured but delivery unavailable"
+                : "Not configured"}
+          </dd>
+        </div>
       </dl>
       <p className="mt-3 text-xs text-muted-foreground">
         Secret values are never returned, prefilled, logged, or cached. Enter them again for every

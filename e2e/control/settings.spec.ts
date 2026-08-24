@@ -15,6 +15,7 @@ const publicConfig = {
   },
   botTokenConfigured: true,
   signingSecretConfigured: true,
+  deliveryAvailable: false,
   version: 1,
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
@@ -56,8 +57,9 @@ test.describe("control plane Slack settings", () => {
     await expect(page.getByTestId("slack-default-channel-state")).toHaveText("—");
     await expect(page.getByTestId("slack-enabled-state")).toHaveText("No");
     await expect(page.getByTestId("slack-delivery-warning")).toContainText(
-      "Configuration alone does not send Slack messages",
+      "Messages are sent only when outbound delivery is available",
     );
+    await expect(page.getByTestId("slack-delivery-state")).toHaveText("Not configured");
     await expect(page.getByTestId("form-slack-create")).toBeVisible();
     await expect(page.getByTestId("slack-default-channel")).toHaveValue("#harness");
     await expect(page.getByTestId("slack-enabled")).toBeChecked();

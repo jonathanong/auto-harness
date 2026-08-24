@@ -22,7 +22,7 @@ The control plane owns:
 | Cron schedules                | EventBridge rule (1 min) → Cron Lambda                         |
 | Authn / authz                 | Session cookies, API keys, basic auth (see [auth.md](auth.md)) |
 | Integrations                  | Slack (and future webhooks) via KMS-encrypted config           |
-| Notification delivery outbox  | Durable leased lifecycle operations; no Slack transport yet    |
+| Notification delivery outbox  | Durable leased Slack lifecycle operations drained by cron      |
 | Audit trail                   | AuditLogs table                                                |
 
 The control plane **does not** hold git credentials, SSH keys, or AI vendor API keys. Those live only on the VPS ([host-daemon.md](host-daemon.md), [security.md](security.md)). Authn/authz: [auth.md](auth.md).

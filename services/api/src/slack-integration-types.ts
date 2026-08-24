@@ -34,9 +34,13 @@ export type SlackIntegrationRecord = {
 
 export type PublicSlackIntegration = Omit<SlackIntegrationRecord, "encryptedConfig"> & {
   botTokenConfigured: true;
+  deliveryAvailable: boolean;
 };
 
-export function toPublicSlackIntegration(record: SlackIntegrationRecord): PublicSlackIntegration {
+export function toPublicSlackIntegration(
+  record: SlackIntegrationRecord,
+  deliveryAvailable = false,
+): PublicSlackIntegration {
   const { encryptedConfig: _encryptedConfig, ...publicRecord } = record;
-  return { ...publicRecord, botTokenConfigured: true };
+  return { ...publicRecord, botTokenConfigured: true, deliveryAvailable };
 }

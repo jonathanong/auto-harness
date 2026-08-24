@@ -376,8 +376,11 @@ repository- or host-scoped admins receive `403`.
 body, including the `xoxb-…` bot token and a channel name (such as `#harness`)
 or Slack channel ID. `enabled`, notification toggles, and an optional signing
 secret are supported. `GET` returns no token, signing secret, or ciphertext:
-only `botTokenConfigured` and `signingSecretConfigured` flags. `DELETE` returns
-`204`.
+only `botTokenConfigured`, `signingSecretConfigured`, and `deliveryAvailable`
+flags. `DELETE` returns `204`. `deliveryAvailable` is `true` only when this
+environment can decrypt the bot token and run the outbound worker; otherwise
+the control plane reports configured-but-unavailable and does not imply that
+messages will be sent.
 
 KMS encrypts the secret fields with `KMS_KEY_ID` and the stable
 `auto-harness/slack-integration` / `slack` encryption context before the
@@ -387,9 +390,11 @@ stale worker receives `409 CONFLICT`, rather than overwriting another worker.
 All create, update, delete, validation, and storage outcomes are audit events;
 the request body and secret values are never passed to audit metadata.
 
-This configuration endpoint does not implement Slack OAuth, incoming events,
-outbound HTTP, or production session-thread delivery. A local lifecycle worker
-can run only when a transport is explicitly injected; the API supplies none.
+Outbound session-thread delivery uses `chat.postMessage` / `chat.update` through
+the leased outbox. The local server starts the worker when storage and a
+decryptable bot token exist; the deployed cron Lambda drains the same outbox.
+Retries use the existing attempt ceiling and dead-letter exhausted operations.
+This endpoint does not implement Slack OAuth or incoming event verification.
 
 ---
 

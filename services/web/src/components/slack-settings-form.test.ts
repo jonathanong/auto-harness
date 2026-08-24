@@ -5,6 +5,8 @@ import {
   DEFAULT_SLACK_NOTIFICATIONS,
   initialSlackFormValues,
   responseMessage,
+  slackDeliveryWarning,
+  slackSaveSuccessMessage,
   validateSlackForm,
   type SlackFormValues,
 } from "./slack-settings.ts";
@@ -58,6 +60,7 @@ describe("Slack settings form", () => {
         notifications: { ...DEFAULT_SLACK_NOTIFICATIONS, onSessionStarted: false },
         botTokenConfigured: true,
         signingSecretConfigured: true,
+        deliveryAvailable: false,
         version: 2,
         createdAt: "2026-01-01T00:00:00.000Z",
         updatedAt: "2026-01-01T00:00:00.000Z",
@@ -71,6 +74,70 @@ describe("Slack settings form", () => {
         notifications: { ...DEFAULT_SLACK_NOTIFICATIONS, onSessionStarted: false },
       }),
     );
+  });
+
+  it("reports configured-but-unavailable until delivery can actually send", () => {
+    expect(slackDeliveryWarning()).toContain("outbound delivery is available");
+    expect(
+      slackDeliveryWarning({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#harness",
+        enabled: true,
+        notifications: { ...DEFAULT_SLACK_NOTIFICATIONS },
+        botTokenConfigured: true,
+        signingSecretConfigured: false,
+        deliveryAvailable: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toContain("configured but delivery is unavailable");
+    expect(
+      slackDeliveryWarning({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#harness",
+        enabled: true,
+        notifications: { ...DEFAULT_SLACK_NOTIFICATIONS },
+        botTokenConfigured: true,
+        signingSecretConfigured: false,
+        deliveryAvailable: true,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toBeNull();
+    expect(
+      slackSaveSuccessMessage({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#harness",
+        enabled: true,
+        notifications: { ...DEFAULT_SLACK_NOTIFICATIONS },
+        botTokenConfigured: true,
+        signingSecretConfigured: false,
+        deliveryAvailable: true,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toContain("will be delivered");
+    expect(
+      slackSaveSuccessMessage({
+        id: "slack",
+        type: "slack",
+        defaultChannel: "#harness",
+        enabled: true,
+        notifications: { ...DEFAULT_SLACK_NOTIFICATIONS },
+        botTokenConfigured: true,
+        signingSecretConfigured: false,
+        deliveryAvailable: false,
+        version: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ).toContain("configured but delivery is unavailable");
   });
 
   it("uses a server error message only when it is safe to display", async () => {

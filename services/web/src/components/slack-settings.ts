@@ -51,6 +51,20 @@ export function buildSlackConfigBody(values: SlackFormValues): Record<string, un
   };
 }
 
+export function slackDeliveryWarning(config?: PublicSlackIntegration): string | null {
+  if (config?.deliveryAvailable) return null;
+  if (config) {
+    return "Slack is configured but delivery is unavailable. Lifecycle messages are not sent until this environment can decrypt the bot token and run the outbound worker.";
+  }
+  return "Configuration is stored encrypted. Messages are sent only when outbound delivery is available in this environment.";
+}
+
+export function slackSaveSuccessMessage(config: PublicSlackIntegration): string {
+  return config.deliveryAvailable
+    ? "Slack configuration saved. Lifecycle messages will be delivered to the configured channel."
+    : "Slack configuration saved. Slack is configured but delivery is unavailable.";
+}
+
 export function initialSlackFormValues(config?: PublicSlackIntegration): SlackFormValues {
   return {
     botToken: "",
